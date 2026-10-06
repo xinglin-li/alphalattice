@@ -1202,5 +1202,141 @@
  "operations.schema_reference_not_local": {
   "detail": "The installed command schema refers outside its local definitions, so its command table cannot be generated. Restore the matching build's command schema and generate the table again.",
   "next_action": "RESTORE_THE_MATCHING_COMMAND_SCHEMA"
+ },
+ "native_bridge.readiness_incomplete": {
+  "detail": "Local declarations and a binding do not confirm runtime readiness. Read attachment_preflight.missing and the role diagnostics, then run python -m alphalattice.interface.local_application.native_setup --project <project> doctor after the named link is available. Review hooks only when the actual host reports an untrusted or changed definition. Research can continue.",
+  "next_action": "READ_THE_NAMED_MISSING_LINK_THEN_RUN_NATIVE_DOCTOR"
+ },
+ "native_bridge.start_not_observed": {
+  "detail": "No retained native Start names this child in the bound parent Session. Start a new native specialist in that Session, then assign its exact prepared bundle to its returned child id. Research and the accepted answer are kept.",
+  "next_action": "START_A_NATIVE_SPECIALIST_THEN_ASSIGN_ITS_EXACT_BUNDLE"
+ },
+ "native_bridge.assignment_not_observed": {
+  "detail": "No retained assignment names this exact prepared bundle and a started child of its role. Send native_research.py message --kind assignment --to <child-id> --reference <bundle-reference> from the bound parent Session, then submit the unchanged answer. Research and the accepted answer are kept.",
+  "next_action": "ASSIGN_THE_EXACT_BUNDLE_TO_ITS_STARTED_CHILD"
+ },
+ "native_bridge.assignment_ambiguous": {
+  "detail": "The exact prepared bundle was assigned to more than one child. Prepare a new bundle and assign it once to the returned id of its native specialist; retain the accepted answer without claiming a child author.",
+  "next_action": "PREPARE_AND_ASSIGN_A_NEW_BUNDLE_ONCE"
+ },
+ "native_bridge.history_not_retained": {
+  "detail": "The native observation needed for this answer is no longer retained. Keep the accepted answer and start a new native specialist with a new exact bundle assignment to observe a fresh chain.",
+  "next_action": "OBSERVE_A_NEW_NATIVE_CHAIN_WITH_A_NEW_BUNDLE"
+ },
+ "native_bridge.history_unavailable": {
+  "detail": "The native observation ledger could not be read completely. Check the workspace Host connection and its Activity read refusal, then run native doctor again. An unread ledger supplies no child attribution; research and accepted answers are kept.",
+  "next_action": "CHECK_THE_WORKSPACE_HOST_THEN_RUN_NATIVE_DOCTOR"
+ },
+ "native_bridge.hook_model_not_observed": {
+  "detail": "The child Start and exact assignment are retained, but no runtime model was observed. Keep the accepted answer and its declared role-card basis; run a new native specialist whose host supplies the model to observe runtime authorship.",
+  "next_action": "OBSERVE_A_NEW_NATIVE_START_WITH_ITS_RUNTIME_MODEL"
+ },
+ "native_bridge.accepted_author_not_observed": {
+  "detail": "The accepted answer has no fully observed native child author. Read its native diagnostic for the missing Start, model or exact assignment; keep the accepted answer and observe a new chain for a new bundle.",
+  "next_action": "READ_THE_AUTHOR_DIAGNOSTIC_THEN_OBSERVE_A_NEW_CHAIN"
+ },
+ "native_bridge.accepted_author_mismatch": {
+  "detail": "The retained native chain differs from the accepted answer's saved author. Keep the saved answer and author; inspect its original parent Session and exact bundle assignment before retrying observation delivery.",
+  "next_action": "CHECK_THE_SAVED_AUTHOR_AND_ORIGINAL_ASSIGNMENT"
+ },
+ "native_bridge.parent_session_mismatch": {
+  "detail": "The current parent Session differs from the accepted answer's saved Session. Deliver its observation from the original bound parent Session; retrying in another Session does not move its Goal or author.",
+  "next_action": "DELIVER_FROM_THE_ORIGINAL_BOUND_PARENT_SESSION"
+ },
+ "native_bridge.binding_mismatch": {
+  "detail": "The native binding does not name the accepted answer's original host, parent Session and workspace. Return to that configured project and original parent Session before retrying observation delivery; keep the saved answer.",
+  "next_action": "RETURN_TO_THE_ORIGINAL_PROJECT_AND_PARENT_SESSION"
+ },
+ "native_bridge.accepted_delivery_failed": {
+  "detail": "The product accepted the answer, but its native observation delivery failed. Keep the answer and retry its same submission from the original bound parent Session; the same accepted answer is delivered idempotently.",
+  "next_action": "RETRY_THE_SAME_ACCEPTED_SUBMISSION_FROM_ITS_PARENT"
+ },
+ "native_bridge.accepted_delivery_unavailable": {
+  "detail": "The product accepted the answer, but its native observation publisher is unavailable. Check the workspace Host connection, then retry the same accepted submission from its original parent Session.",
+  "next_action": "CHECK_THE_HOST_THEN_RETRY_THE_SAME_ACCEPTED_SUBMISSION"
+ },
+ "native_bridge.accepted_bundle_unavailable": {
+  "detail": "The product accepted the answer, but its exact prepared bundle cannot be read for observation delivery. Check the saved bundle path and its owner refusal, then retry the same submission without changing the answer.",
+  "next_action": "CHECK_THE_SAVED_BUNDLE_THEN_RETRY_THE_SAME_SUBMISSION"
+ },
+ "native_bridge.runtime_connection_unavailable": {
+  "detail": "The native runtime connection could not be read. Open this exact configured project in the intended host, then run native doctor again. A separate CLI runtime does not establish attachment to the App.",
+  "next_action": "OPEN_THE_EXACT_PROJECT_IN_ITS_HOST_THEN_RUN_NATIVE_DOCTOR"
+ },
+ "native_bridge.runtime_response_invalid": {
+  "detail": "The runtime returned an incomplete or incompatible definition or attachment read. Keep research running and inspect this exact host's hook definitions, then run native doctor again.",
+  "next_action": "CHECK_THE_EXACT_HOST_READ_THEN_RUN_NATIVE_DOCTOR"
+ },
+ "native_bridge.runtime_request_refused": {
+  "detail": "The host refused the read-only runtime inspection. Read the host's refusal for this exact project and resolve that route before running native doctor again; research can continue.",
+  "next_action": "READ_THE_HOST_REFUSAL_THEN_RUN_NATIVE_DOCTOR"
+ },
+ "native_bridge.runtime_definition_unproved": {
+  "detail": "The actual host did not confirm these exact enabled project hook definitions and their current hashes as trusted. Inspect those definitions in the intended host; approve only its first-use or changed-definition review, then run native doctor again.",
+  "next_action": "REVIEW_THE_ACTUAL_HOST_DEFINITIONS_THEN_RUN_NATIVE_DOCTOR"
+ },
+ "native_bridge.runtime_not_checked": {
+  "detail": "This host's live runtime definition and trust inspection is unavailable here. Use that host's own hook review and retain its exact definition hashes and trust receipt; research can continue without native readiness.",
+  "next_action": "READ_THE_INTENDED_HOST_HOOK_REVIEW_AND_RECEIPT"
+ },
+ "native_bridge.runtime_attachment_unproved": {
+  "detail": "The inspected runtime is not proved to be the active App serving this exact parent Session and project. Use an exact App runtime read before claiming attachment; another daemon or CLI supplies no App trust proof. Research can continue.",
+  "next_action": "OBTAIN_THE_EXACT_APP_RUNTIME_ATTACHMENT_READ"
+ },
+ "native_bridge.runtime_read_only": {
+  "detail": "Native readiness permits only definition and attachment reads. Use native doctor; hook approval remains the host's first-use or changed-definition review.",
+  "next_action": "USE_NATIVE_DOCTOR_FOR_READ_ONLY_INSPECTION"
+ },
+ "native_bridge.lead_usage_file_missing": {
+  "detail": "The host could not locate the bound lead Session's usage file. Check that exact Session in its native host, then run its next Goal or answer command. No reading or zero count was invented; research can continue.",
+  "next_action": "CHECK_THE_BOUND_LEAD_SESSION_THEN_RUN_ITS_NEXT_COMMAND"
+ },
+ "native_bridge.lead_usage_read_failed": {
+  "detail": "The host could not read or deliver the bound lead's usage. Check its Session file and workspace Host connection, then run the next Goal or answer command; the research command keeps its own result.",
+  "next_action": "CHECK_THE_SESSION_AND_HOST_THEN_RUN_THE_NEXT_COMMAND"
+ },
+ "native_bridge.lead_usage_not_observed": {
+  "detail": "The bound lead Session has no complete usage record that the owner can read. Continue in that same native Session and run its next Goal or answer command; an absent reading is not zero usage.",
+  "next_action": "CONTINUE_THE_SAME_NATIVE_SESSION_THEN_RUN_ITS_NEXT_COMMAND"
+ },
+ "native_bridge.lead_usage_incomplete": {
+  "detail": "Complete lead usage records were delivered, but some Session records remain incomplete. Keep the delivered readings and run the next Goal or answer command after the host completes those records; research can continue.",
+  "next_action": "KEEP_DELIVERED_READINGS_AND_READ_AGAIN_ON_THE_NEXT_COMMAND"
+ },
+ "native_bridge.transport_unavailable": {
+  "detail": "The workspace Host did not acknowledge the native observation. Check the Host connection, then retry the same observation or accepted submission from its bound parent Session. Research can continue.",
+  "next_action": "CHECK_THE_HOST_THEN_RETRY_THE_SAME_OBSERVATION"
+ },
+ "native_bridge.activity_client_unavailable": {
+  "detail": "This client cannot publish the native observation through the workspace Host. Use the current installed client in this exact configured project, then retry the same observation; research can continue.",
+  "next_action": "USE_THE_CURRENT_INSTALLED_CLIENT_THEN_RETRY"
+ },
+ "native_bridge.observation_busy": {
+  "detail": "The native observation publisher is busy. Keep research running and retry the same observation from its bound parent Session after the current delivery ends.",
+  "next_action": "RETRY_THE_SAME_OBSERVATION_AFTER_DELIVERY_ENDS"
+ },
+ "native_bridge.product_contract_unavailable": {
+  "detail": "The native observation could not be built against the installed product contract. Use the current installed client and Host in the same project, then retry the same observation; research can continue.",
+  "next_action": "USE_MATCHING_CLIENT_AND_HOST_THEN_RETRY"
+ },
+ "native_hook.definition_unreadable": {
+  "detail": "The local lifecycle declarations are missing, unreadable or malformed. The person checks this exact project configuration, then runs native doctor again. Local declarations alone establish no runtime trust; research can continue.",
+  "next_action": "CHECK_THE_EXACT_PROJECT_DECLARATIONS_THEN_RUN_NATIVE_DOCTOR"
+ },
+ "native_bridge.native_event_delivery_unverified": {
+  "detail": "Retained participant declarations do not prove native hook delivery. Keep the accepted research answer. Ask the host owner for a verified native delivery read, then run native doctor on a fresh child; do not relabel declarations or repeat a trust review that already holds.",
+  "next_action": "ASK_THE_HOST_OWNER_FOR_VERIFIED_NATIVE_DELIVERY_THEN_RUN_DOCTOR"
+ },
+ "activity.cursor_invalid": {
+  "detail": "The activity cursor must be a positive whole ordinal returned by this workspace Host. Read the newest activity page again, then use its returned older-page cursor.",
+  "next_action": "READ_THE_NEWEST_ACTIVITY_PAGE_THEN_USE_ITS_RETURNED_CURSOR"
+ },
+ "activity.observation_id_invalid": {
+  "detail": "The selected observation must use its complete 64-character lowercase hexadecimal identity. Read the activity page and use the exact observation id it returns.",
+  "next_action": "READ_ACTIVITY_THEN_USE_ITS_COMPLETE_OBSERVATION_ID"
+ },
+ "activity.query_selection_conflict": {
+  "detail": "An activity read selects either an older-page cursor or one exact observation, never both. Remove the other selector and read the selected page or observation again.",
+  "next_action": "KEEP_ONE_ACTIVITY_SELECTOR_THEN_READ_AGAIN"
  }
 }

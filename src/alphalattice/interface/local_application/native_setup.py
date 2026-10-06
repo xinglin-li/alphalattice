@@ -10,6 +10,8 @@ import shlex
 import subprocess
 import sys
 import tomllib
+from collections.abc import Callable, Iterable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -117,16 +119,33 @@ def admitted_session_project(workspace: Path, requested: Path, host: str) -> Pat
     return project.resolve()
 
 
-def attachment_preflight() -> dict[str, str]:
-    """Report that local files establish no runtime trust or prospective child observation.
-
-    Returns:
-        A named refusal with the existing hook trust remedy.
-    """
+def attachment_preflight(
+    project: Path | None = None,
+    binding: NativeResearchBinding | None = None,
+    events: Iterable[Mapping[str, Any]] | None = None,
+    *,
+    goal_id: str | None = None,
+    runtime: dict[str, Any] | None = None,
+    read_external: Callable[..., Mapping[str, Any]] | None = None,
+    history_available: bool = True,
+) -> dict[str, Any]:
+    """Read the common native readiness owner and attach the named way forward."""
     from alphalattice.interface.local_application.cli_contract import refusal_words
+    from alphalattice.interface.local_application.native_runtime import readiness
 
-    code = "native_bridge.hook_trust_not_confirmed"
-    return {"status": "REFUSED", "failure_code": code, **refusal_words(code)}
+    result = readiness(
+        ROOT if project is None else project,
+        binding,
+        events,
+        goal_id=goal_id,
+        runtime=runtime,
+        read_external=read_external,
+        history_available=history_available,
+    )
+    return {
+        **result,
+        **(refusal_words(result["failure_code"]) if result.get("failure_code") else {}),
+    }
 
 
 def files_unavailable(
@@ -412,9 +431,28 @@ def bind_session(
         # Named only when off, so a binding written before the switch reads the same.
         **({"usage": "OFF"} if usage == "off" else {}),
     }
+    existing = NativeResearchBinding.read(project)
+    if existing is None:
+        document["observation_started_at"] = datetime.now(UTC).isoformat()
+    else:
+        if (
+            existing.session_id != session_id
+            or existing.workspace.resolve() != workspace.resolve()
+            or existing.host != host
+            or existing.roles != tuple(document["roles"])
+            or existing.usage != ("OFF" if usage == "off" else "READ")
+        ):
+            raise NativeBridgeError("native_bridge.existing_configuration_differs")
+        if existing.observation_started_at is not None:
+            document["observation_started_at"] = existing.observation_started_at.isoformat()
     NativeResearchBinding.from_document(document)
     _create_or_match(BINDING_NAME, document, project)
-    preflight = attachment_preflight()
+    binding = NativeResearchBinding.read(project)
+    preflight = attachment_preflight(
+        project,
+        binding,
+        runtime={"status": "NOT_CHECKED", "host_trust": "NOT_CHECKED", "trust_changed": False},
+    )
     return {
         "status": "BOUND_NOT_ATTACHED",
         "session_id": session_id,
@@ -558,7 +596,8 @@ def main() -> int:
     )
     unbind.add_argument("--session-id", required=True)
     doctor = commands.add_parser(
-        "doctor", help="Inspect local configuration; no host/model operation."
+        "doctor",
+        help="Read runtime definitions and prospective native evidence; no model operation.",
     )
     doctor.add_argument(
         "--host", choices=HOSTS, help="The host to inspect; by default the bound one, else codex."
@@ -621,6 +660,7 @@ def main() -> int:
             result = unbind_session(ROOT, session_id=args.session_id)
         elif args.command == "doctor":
             from alphalattice.interface.local_application.client import LocalResearchClient
+            from alphalattice.interface.local_application.native_runtime import retained_history
 
             binding = NativeResearchBinding.read(ROOT)
             host = args.host or (binding.host if binding is not None else "codex")
@@ -628,16 +668,32 @@ def main() -> int:
             if refusal is not None:
                 print(json.dumps(refusal))
                 return 2
+
+            def read_external(**selector: Any) -> dict[str, Any]:
+                assert binding is not None
+                return LocalResearchClient(binding.workspace, timeout=5).read_external(**selector)
+
+            history, history_status = (
+                retained_history(read_external)
+                if binding is not None
+                else (None, {"status": "UNAVAILABLE"})
+            )
+            preflight = attachment_preflight(
+                ROOT,
+                binding,
+                history,
+                read_external=read_external if binding is not None else None,
+                history_available=history_status["status"] == "AVAILABLE",
+            )
             result = {
-                "status": "LOCAL_CONFIGURATION_ONLY",
+                **preflight,
                 "hook_declarations_present": bool(_hooks(host)),
                 "session_bound": binding is not None,
                 "host": binding.host if binding is not None else None,
                 "usage_reading": binding.usage if binding is not None else None,
                 "roles": _roles(host),
-                "host_trust": "NOT_CHECKED",
-                "foreground_attachment": "NOT_PROVED",
-                "attachment_preflight": attachment_preflight(),
+                "attachment_preflight": preflight,
+                "history_read": history_status,
                 "activity_client_supported": callable(
                     getattr(LocalResearchClient, "publish_event", None)
                 ),

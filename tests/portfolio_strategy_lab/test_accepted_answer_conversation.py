@@ -451,6 +451,7 @@ def test_generic_specialist_doors_seal_exact_references_without_scientific_admis
         assert detail["submitted_by"] == "fixture-parent"
         assert detail["task_id"] == str(task.task_id)
         assert detail["answer_reference"] == record.record_hash
+        assert detail["answer_digest"] == record.answer_digest
         assert detail["bundle_reference"] == bundle.record_hash
         assert detail["contribution"] == {
             "text": authored["text"],
@@ -464,7 +465,13 @@ def test_generic_specialist_doors_seal_exact_references_without_scientific_admis
         assert answers() == [row]
     else:
         assert result["recorded_agent"]["basis"] == "NOT_OBSERVED"
-        assert "conversation" not in result and answers() == []
+        assert result["conversation"]["status"] == "UNAVAILABLE"
+        assert result["conversation"]["reason"] == "native_bridge.start_not_observed"
+        assert result["conversation"]["missing"] == ["native_subagent_start", "exact_assignment"]
+        assert result["conversation"]["task_id"] == str(task.task_id)
+        assert result["conversation"]["bundle_reference"] == bundle.record_hash
+        assert result["conversation"]["session_id"] == "fixture-parent"
+        assert answers() == []
 
 
 @pytest.mark.parametrize(
@@ -781,6 +788,7 @@ def test_selected_typed_answer_reads_the_whole_accepted_task_contribution(
     assert selected["accepted_answer"]["contribution"] == accepted.model_dump(mode="json")
     assert selected["accepted_answer"]["task_id"] == str(task.task_id)
     assert selected["accepted_answer"]["answer_reference"] == record.record_hash
+    assert selected["accepted_answer"]["answer_digest"] == record.answer_digest
     assert selected["accepted_answer"]["bundle_reference"] == bundle.record_hash
     assert answers() == [row]
 
@@ -864,7 +872,7 @@ def test_generic_prepare_requires_exact_assigned_task(answer_scene, tmp_path):
 )
 def test_unproved_answer_is_accepted_without_a_child_conversation_credit(answer_scene, case):
     """BEHAVIOUR: absent, mismatched or conflicting authorship never guesses a child."""
-    _live, _bundle, _accepted, record, events, publish, submit, answers = answer_scene
+    _live, bundle, _accepted, record, events, publish, submit, answers = answer_scene
     if case in {"unknown", "role_card"}:
         run = (
             AgentRun(host="codex", session_id="fixture-parent", basis="NOT_OBSERVED")
@@ -890,7 +898,21 @@ def test_unproved_answer_is_accepted_without_a_child_conversation_credit(answer_
     publish()
     result = submit(filed=record)
     assert result["status"] == "ACCEPTED"
-    assert result.get("conversation", {}).get("status") in {None, "UNAVAILABLE"}
+    assert result["conversation"]["status"] == "UNAVAILABLE"
+    assert (
+        result["conversation"]["reason"]
+        == {
+            "unknown": "native_bridge.accepted_author_not_observed",
+            "role_card": "native_bridge.accepted_author_not_observed",
+            "wrong_bundle": "native_bridge.assignment_not_observed",
+            "wrong_child": "native_bridge.start_not_observed",
+            "ambiguous": "native_bridge.assignment_ambiguous",
+        }[case]
+    )
+    assert result["conversation"]["session_id"] == "fixture-parent"
+    assert result["conversation"]["bundle_reference"] == bundle.record_hash
+    assert result["conversation"]["answer_reference"] == record.record_hash
+    assert result["conversation"]["task_id"] == bundle.submission["task_id"]
     assert answers() == []
 
 
@@ -911,6 +933,36 @@ def test_unfiled_and_correction_records_supply_no_accepted_delivery(answer_scene
         )
         is None
     )
+
+
+def test_failed_history_read_is_unavailable_and_preserves_filed_acceptance(
+    answer_scene, monkeypatch
+):
+    """BEHAVIOUR: a failed optional ledger read cannot become an empty record or child credit."""
+    live, bundle, _accepted, record, _events, publish, submit, answers = answer_scene
+    publish()
+    before = live.operations.observer.read_external(ExternalActivityReadQuery())["items"]
+    original = live.operations.observer.read_external
+
+    def unavailable(query):
+        raise OSError("SYNTHETIC-PRIVATE-HISTORY-ERROR")
+
+    with monkeypatch.context() as history:
+        history.setattr(live.operations.observer, "read_external", unavailable)
+        result = submit()
+    assert result["status"] == "ACCEPTED"
+    assert result["conversation"]["status"] == "UNAVAILABLE"
+    assert result["conversation"]["reason"] == "native_bridge.history_unavailable"
+    assert result["conversation"]["missing"] == ["native_history"]
+    assert result["conversation"]["session_id"] == "fixture-parent"
+    assert result["conversation"]["bundle_reference"] == bundle.record_hash
+    assert result["conversation"]["task_id"] == bundle.submission["task_id"]
+    assert "SYNTHETIC-PRIVATE-HISTORY-ERROR" not in str(result)
+    assert (
+        live.review.artifacts.load(ANSWER_CATEGORY, record.record_hash, AgentAnswerRecord) == record
+    )
+    assert original(ExternalActivityReadQuery())["items"] == before
+    assert answers() == []
 
 
 @pytest.mark.parametrize("operation", ["EVIDENCE_ANALYSIS_SUBMIT", "CRO_REVIEW_SUBMIT"])
@@ -946,7 +998,11 @@ def test_direct_answer_doors_keep_unknown_author_accepted_without_child_credit(
         caller="EXTERNAL_AUTOMATION",
     )
     assert result["disposition"] == "ADMITTED" and result["answer"]["verdict"] == "ACCEPTED"
-    assert "conversation" not in result and answers() == []
+    assert result["conversation"]["status"] == "UNAVAILABLE"
+    assert result["conversation"]["reason"] == "native_bridge.accepted_delivery_unavailable"
+    assert result["conversation"]["missing"] == ["accepted_delivery"]
+    assert result["conversation"]["task_id"] == bundle.submission["task_id"]
+    assert answers() == []
     assert (
         live.review.artifacts.load(ANSWER_CATEGORY, unknown.record_hash, AgentAnswerRecord)
         == unknown
@@ -974,7 +1030,7 @@ def test_observation_failure_preserves_acceptance_and_reports_missing_conversati
     answer_scene, monkeypatch
 ):
     """BEHAVIOUR: an optional observer cannot undo an already accepted answer."""
-    live, _bundle, _accepted, record, _events, publish, submit, _answers = answer_scene
+    live, bundle, _accepted, record, _events, publish, submit, answers = answer_scene
     publish()
     original = live.operations.observer.admit_external_event
 
@@ -984,10 +1040,13 @@ def test_observation_failure_preserves_acceptance_and_reports_missing_conversati
     monkeypatch.setattr(live.operations.observer, "admit_external_event", unavailable)
     result = submit()
     assert result["status"] == "ACCEPTED"
-    assert result["conversation"] == {
-        "status": "UNAVAILABLE",
-        "reason": "native_bridge.accepted_answer_not_recorded",
-    }
+    assert result["conversation"]["status"] == "UNAVAILABLE"
+    assert result["conversation"]["reason"] == "native_bridge.accepted_delivery_failed"
+    assert result["conversation"]["missing"] == ["accepted_answer_delivery"]
+    assert result["conversation"]["task_id"] == bundle.submission["task_id"]
+    assert result["conversation"]["bundle_reference"] == bundle.record_hash
+    assert result["conversation"]["answer_reference"] == record.record_hash
+    assert answers() == []
     assert "SYNTHETIC-PRIVATE-ERROR" not in str(result)
     assert (
         live.review.artifacts.load(ANSWER_CATEGORY, record.record_hash, AgentAnswerRecord) == record
@@ -1000,7 +1059,7 @@ def test_observation_failure_preserves_acceptance_and_reports_missing_conversati
 
 def test_delivery_read_failure_preserves_the_already_filed_acceptance(answer_scene, monkeypatch):
     """BEHAVIOUR: optional post-admission metadata reads cannot replace the accepted receipt."""
-    live, _bundle, _accepted, record, _events, publish, submit, answers = answer_scene
+    live, bundle, _accepted, record, _events, publish, submit, answers = answer_scene
     publish()
     original = live.review.artifacts.load
 
@@ -1010,10 +1069,11 @@ def test_delivery_read_failure_preserves_the_already_filed_acceptance(answer_sce
     monkeypatch.setattr(live.review.artifacts, "load", unreadable)
     result = submit()
     assert result["status"] == "ACCEPTED"
-    assert result["conversation"] == {
-        "status": "UNAVAILABLE",
-        "reason": "native_bridge.accepted_answer_not_recorded",
-    }
+    assert result["conversation"]["status"] == "UNAVAILABLE"
+    assert result["conversation"]["reason"] == "native_bridge.accepted_delivery_unavailable"
+    assert result["conversation"]["missing"] == ["accepted_delivery"]
+    assert result["conversation"]["task_id"] == bundle.submission["task_id"]
+    assert result["conversation"]["bundle_reference"] == bundle.record_hash
     assert live.operations.observer_failures == 1
     assert "SYNTHETIC-PRIVATE-READ-ERROR" not in str(result)
     assert answers() == []

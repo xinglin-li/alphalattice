@@ -581,6 +581,18 @@ _DAMAGED = ClientRefusal(
 )
 _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
     # First match wins: an exact code before the prefix that also covers it.
+    (
+        "activity.cursor_invalid",
+        ClientRefusal("INVALID_INPUT", **refusal_words("activity.cursor_invalid")),
+    ),
+    (
+        "activity.observation_id_invalid",
+        ClientRefusal("INVALID_INPUT", **refusal_words("activity.observation_id_invalid")),
+    ),
+    (
+        "activity.query_selection_conflict",
+        ClientRefusal("INVALID_INPUT", **refusal_words("activity.query_selection_conflict")),
+    ),
     # `backup restore` is the client's own, with no Host (V328): its refusals too.
     (
         "local_client.restore_unavailable",

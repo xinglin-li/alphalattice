@@ -60,7 +60,10 @@ from alphalattice.interface.local_application.cli_contract import (
     flag,
     offered_requests,
 )
-from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.interface.local_application.failure_codes import (
+    owner_failure_code,
+    public_failure,
+)
 
 CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     ("schema", "show"): "A command's request schema (each branch of a two-operation command), "
@@ -1430,10 +1433,20 @@ def _command(
         section=getattr(args, "section", None),
         declaration=getattr(args, "declaration", None),
     )
+
+    def before(document: dict[str, Any]) -> None:
+        _read_lead(document, workspace=args.workspace, goal=args.goal)
+
+    def after(document: dict[str, Any], answer: dict[str, Any]) -> None:
+        _read_lead(document, workspace=args.workspace, goal=args.goal, after=True, answer=answer)
+
     if whole:
-        return client.run(request, before_send=_read_lead)
+        return client.run(request, before_send=before, after_send=after)
     return client.run(
-        request, document_override=_line_document(parser, args), before_send=_read_lead
+        request,
+        document_override=_line_document(parser, args),
+        before_send=before,
+        after_send=after,
     )
 
 
@@ -1616,24 +1629,68 @@ DECLARATION_CLIENT_COMMANDS: Final = {
 
 
 LEAD_READING_OPERATIONS: Final = frozenset({"GOAL_TAKE", "GOAL_SUBMIT", "AGENT_ANSWER_SUBMIT"})
-"""A session's own rare commands, before which its lead is read (V301): the reading reaches the
-Host ahead of the request, so the goal's record and the answer's provenance have it."""
+"""Read the lead after its Goal is taken, before that Goal or an answer is submitted (V301).
+The Host files the reading under the admitted parent Session and its exact active Goal."""
 
 
-def _read_lead(document: dict[str, Any]) -> None:
-    """Deliver the lead's reading through the native bridge, never in the request's way: an
-    unbound project, a binding that turned readings off or a bridge that fails reads nothing.
+def _read_lead(
+    document: dict[str, Any],
+    *,
+    workspace: Path | None = None,
+    goal: str | None = None,
+    after: bool = False,
+    answer: dict[str, Any] | None = None,
+) -> None:
+    """Word optional lead-delivery failures without changing the research outcome.
 
-    Here, above the client: the bridge delivers through the client, so the client calling the
-    bridge would be a cycle.
+    Args:
+        document: The exact request the client sends.
+        workspace: The request's resolved workspace, independent of a native binding.
+        goal: The request's explicit Goal selector, when named.
+        after: The post-exchange callback; take establishes its Goal before usage is filed.
+        answer: The post-exchange owner answer, when available.
     """
-
-    if document.get("operation") not in LEAD_READING_OPERATIONS:
+    operation = document.get("operation")
+    if operation not in LEAD_READING_OPERATIONS or (operation == "GOAL_TAKE") != after:
+        return
+    if after and (answer is None or answer.get("status") != "GOAL_TAKEN"):
         return
     from alphalattice.interface.local_application.native_bridge import lead_readings
 
-    with suppress(Exception):
-        lead_readings(Path.cwd(), os.environ)
+    try:
+        named_goal = answer.get("goal_id") if after and answer is not None else goal
+        if named_goal is None and operation == "GOAL_SUBMIT":
+            named_goal = document.get("goal_id")
+        receipts = lead_readings(Path.cwd(), os.environ, workspace=workspace, goal=named_goal)
+    except Exception as error:
+        receipts = [
+            {
+                "status": "UNAVAILABLE",
+                "reason": owner_failure_code(error) or "native_bridge.lead_usage_read_failed",
+            }
+        ]
+    for receipt in receipts:
+        if receipt.get("status") in {"DELIVERED", "SKIPPED"}:
+            continue
+        from alphalattice.interface.local_application.cli_contract import refusal_words
+        from alphalattice.interface.local_application.failure_codes import safe_failure_code
+
+        reason = safe_failure_code(receipt.get("reason")) or "native_bridge.lead_usage_read_failed"
+        words = refusal_words(reason) or refusal_words("native_bridge.lead_usage_read_failed")
+        print(
+            json.dumps(
+                {
+                    "native_observation": {
+                        "status": receipt.get("status", "UNAVAILABLE"),
+                        "phase": "LEAD_USAGE",
+                        "operation": operation,
+                        "reason": reason,
+                        **words,
+                    }
+                }
+            ),
+            file=sys.stderr,
+        )
 
 
 __all__ = ["CLIENT_COMMANDS", "OFFLINE_COMMANDS", "main", "schema"]

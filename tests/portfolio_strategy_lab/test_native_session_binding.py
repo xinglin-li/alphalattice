@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,113 @@ from alphalattice.interface.local_application.native_setup import bind_session, 
 from tests.portfolio_strategy_lab.local_web_support import _json
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _lead_usage_file(tmp_path, monkeypatch):
+    """A labelled synthetic host Session file, never a supplied usage claim."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "synthetic-claude"))
+    path = tmp_path / "synthetic-claude/projects/fixture-project/fixture-parent.jsonl"
+    path.parent.mkdir(parents=True)
+    record = {
+        "type": "assistant",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "message": {
+            "id": "synthetic-response-1",
+            "model": "claude-sonnet-5-5",
+            "role": "assistant",
+            "content": [{"type": "text", "text": "SECRET-SYNTHETIC-CONVERSATION"}],
+            "usage": {
+                "input_tokens": 7,
+                "output_tokens": 3,
+                "cache_read_input_tokens": 2,
+                "cache_creation_input_tokens": 1,
+            },
+        },
+    }
+    path.write_bytes((json.dumps(record) + "\n").encode())
+    return path
+
+
+def test_lead_usage_is_read_and_sequenced_by_the_host_without_a_child_stop(
+    live,
+    tmp_path,
+    monkeypatch,
+):
+    """P2: only the admitted parent asks the Host to read its own usage; retry is idempotent.
+
+    The agent cannot write bridge metadata, provide counts or publish conversation content.
+    This live transport proves the reader separately from SubagentStop.
+    """
+    project = _project(live, "claude-code")
+    _session(monkeypatch, "claude-code")
+    _lead_usage_file(tmp_path, monkeypatch)
+    client = LocalResearchClient(live.workspace)
+    assert client.bind_native_session(project)["status"] == "BOUND_NOT_ATTACHED"
+    opening = Path.open
+    calling_thread = threading.get_ident()
+
+    def host_only_metadata(path, mode="r", *args, **kwargs):
+        if path.parent == project / ".codex" and any(flag in mode for flag in "wxa+"):
+            assert threading.get_ident() != calling_thread
+        return opening(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", host_only_metadata)
+    first = client.publish_native_event(project, {"source": "native_usage_read"})
+    second = client.publish_native_event(project, {"source": "native_usage_read"})
+    assert first["status"] == second["status"] == "DELIVERED"
+    items = client.read_external()["items"]
+    assert len(items) == 1
+    payload = items[0]["payload"]
+    assert payload["event_kind"] == "NATIVE_AGENT_USAGE"
+    subject = payload["subject"]
+    assert subject["native_agent_id"] == subject["native_session_id"] == "fixture-parent"
+    assert subject["role"] == "research_lead"
+    assert (subject["input_tokens"], subject["output_tokens"], subject["responses"]) == (
+        "7",
+        "3",
+        "1",
+    )
+    assert "SECRET-SYNTHETIC-CONVERSATION" not in json.dumps(items)
+
+
+@pytest.mark.parametrize("problem", ("counts", "path", "child", "missing_file", "off"))
+def test_lead_usage_request_accepts_no_claims_and_keeps_missing_usage_visible(
+    live,
+    tmp_path,
+    monkeypatch,
+    problem,
+):
+    """P2: the narrow read door names absence and admits neither supplied counts nor child ids."""
+    project = _project(live, "claude-code")
+    _session(monkeypatch, "claude-code")
+    _lead_usage_file(tmp_path, monkeypatch)
+    client = LocalResearchClient(live.workspace)
+    assert (
+        client.bind_native_session(project, usage="off" if problem == "off" else "read")["status"]
+        == "BOUND_NOT_ATTACHED"
+    )
+    event = {"source": "native_usage_read"}
+    if problem == "counts":
+        event["input_tokens"] = 999
+    elif problem == "path":
+        event["transcript_path"] = "SECRET-PATH"
+    elif problem == "child":
+        _session(monkeypatch, "claude-code", "synthetic-child")
+    elif problem == "missing_file":
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "absent-host"))
+    answer = client.publish_native_event(project, event)
+    if problem == "missing_file":
+        assert answer == {
+            "status": "UNAVAILABLE",
+            "reason": "native_bridge.lead_usage_file_missing",
+        }
+    elif problem == "off":
+        assert answer == {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}
+    else:
+        assert answer["status"] == "REFUSED"
+    _session(monkeypatch, "claude-code")
+    assert client.read_external()["items"] == []
+    assert "SECRET-PATH" not in json.dumps(answer)
 
 
 def _project(live, host: str) -> Path:
@@ -80,7 +188,15 @@ def test_session_bind_uses_the_host_writer_and_never_claims_attachment(
     assert answer["data"]["host_trust"] == "NOT_CHECKED"
     assert answer["data"]["foreground_attachment"] == "NOT_PROVED"
     assert answer["data"]["attachment_preflight"]["failure_code"] == (
-        "native_bridge.hook_trust_not_confirmed"
+        "native_bridge.readiness_incomplete"
+    )
+    assert "complete_fresh_native_chain" in answer["data"]["attachment_preflight"]["missing"]
+    assert (
+        "actual_runtime_definitions_and_trust" in answer["data"]["attachment_preflight"]["missing"]
+    )
+    assert (
+        "prospective_observation_checkpoint"
+        not in answer["data"]["attachment_preflight"]["missing"]
     )
     binding = NativeResearchBinding.read(project)
     assert (binding.host, binding.session_id, binding.workspace) == (
@@ -88,6 +204,7 @@ def test_session_bind_uses_the_host_writer_and_never_claims_attachment(
         "fixture-parent",
         live.workspace,
     )
+    assert binding.observation_started_at.tzinfo is not None
     before = binding_path.read_bytes()
     client = LocalResearchClient(live.workspace)
     assert client.bind_native_session(project)["status"] == "BOUND_NOT_ATTACHED"

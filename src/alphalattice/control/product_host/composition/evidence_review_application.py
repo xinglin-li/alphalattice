@@ -3734,6 +3734,7 @@ class EvidenceReviewApplication:
                 **metadata,
                 "status": "AVAILABLE",
                 "verdict": answer.verdict.value,
+                "answer_digest": answer.answer_digest,
                 "contribution": contribution,
             }
         except (OSError, ValueError, TaskNotFoundError):

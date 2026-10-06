@@ -12,7 +12,9 @@ product boundary must establish provenance separately. No host version pin.
 from __future__ import annotations
 
 import json
+import tomllib
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Literal, cast
 
@@ -24,6 +26,49 @@ role or model meets the Host's subject bound where the bridge builds the event (
 
 class NativeHookInputError(ValueError):
     """A safe failure code with no rejected input or parser excerpt."""
+
+
+def definition_digest(project: Path, host: str) -> str:
+    """Fingerprint the local lifecycle declarations; this establishes no runtime trust.
+
+    Args:
+        project: The exact admitted native project.
+        host: The host whose two lifecycle definitions are selected.
+
+    Returns:
+        The SHA-256 of those local definitions, independent of other configuration.
+
+    Raises:
+        NativeHookInputError: A declaration is unsafe, missing or malformed.
+    """
+    path = project / (".codex/config.toml" if host == "codex" else ".claude/settings.json")
+    if host not in {"codex", "claude-code"} or path.is_symlink() or path.parent.is_symlink():
+        raise NativeHookInputError("native_hook.definition_unreadable")
+    try:
+        with path.open("rb") as stream:
+            data = stream.read(MAX_HOOK_INPUT_BYTES + 1)
+        if len(data) > MAX_HOOK_INPUT_BYTES:
+            raise ValueError
+        document = (
+            tomllib.loads(data.decode("utf-8"))
+            if host == "codex"
+            else json.loads(data, object_pairs_hook=_unique_object)
+        )
+        hooks = document["hooks"]
+        selected = {
+            event: [
+                group
+                for group in hooks[event]
+                if isinstance(group, dict) and group.get("matcher") == "^alphalattice_.*$"
+            ]
+            for event in ("SubagentStart", "SubagentStop")
+        }
+        if any(not groups for groups in selected.values()):
+            raise ValueError
+        encoded = json.dumps({"host": host, "hooks": selected}, sort_keys=True).encode("utf-8")
+    except (OSError, KeyError, TypeError, ValueError, UnicodeError, RecursionError):
+        raise NativeHookInputError("native_hook.definition_unreadable") from None
+    return sha256(encoded).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)

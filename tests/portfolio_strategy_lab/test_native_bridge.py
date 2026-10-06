@@ -597,17 +597,42 @@ def test_ordinary_project_setup_still_validates_local_declarations_without_trust
         (project / ".git").mkdir()
         (project / ".git/HEAD").write_text("ref: refs/heads/main\n", newline="\n")
     entry = _entry()
-    for command, status in (
-        ("configure", "LOCAL_DECLARATIONS_VALIDATED"),
-        ("doctor", "LOCAL_CONFIGURATION_ONLY"),
+    for command, status, code in (
+        ("configure", "LOCAL_DECLARATIONS_VALIDATED", 0),
+        ("doctor", "REFUSED", 2),
     ):
         monkeypatch.setattr(entry.sys, "argv", ["native", "--project", str(project), command])
-        assert entry.main() == 0
+        before = {path: path.read_bytes() for path in project.rglob("*") if path.is_file()}
+        assert entry.main() == code
         result = json.loads(capsys.readouterr().out)
         assert result["status"] == status
         if command == "doctor":
+            assert result["failure_code"] == "native_bridge.readiness_incomplete"
             assert result["host_trust"] == "NOT_CHECKED"
             assert result["foreground_attachment"] == "NOT_PROVED"
+            assert result["hook_declarations_present"] is True
+            assert {"alphalattice_evidence_analyst", "alphalattice_cro"} <= set(result["roles"])
+            assert result["session_bound"] is False and result["observation_started_at"] is None
+            assert {
+                "actual_runtime_definitions_and_trust",
+                "active_native_session_attachment",
+                "native_session_binding",
+                "prospective_observation_checkpoint",
+                "native_history",
+                "complete_fresh_native_chain",
+            } <= set(result["missing"])
+            assert result["attachment_preflight"]["evidence"] == []
+            for role in result["attachment_preflight"]["roles"].values():
+                assert role["status"] == "NOT_PROVED" and role["chains"] == []
+                assert {
+                    "fresh_same_definition_start",
+                    "exact_assignment",
+                    "credited_accepted_answer",
+                } <= set(role["missing"])
+            assert result["research_nonblocking"] is True and result["trust_changed"] is False
+            assert {
+                path: path.read_bytes() for path in project.rglob("*") if path.is_file()
+            } == before
     assert not (project / ".codex" / BINDING_NAME).exists()
 
 
@@ -689,9 +714,36 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     )
     assert (code, bound["status"]) == (0, "BOUND_NOT_ATTACHED")
     assert NativeResearchBinding.read(project).roles == tuple(cards)
+    binding_before_doctor = (project / ".codex" / BINDING_NAME).read_bytes()
     code, report = run("doctor")
-    assert (code, report["host"], report["roles"]) == (0, "claude-code", cards)
+    assert (code, report["host"], report["roles"]) == (2, "claude-code", cards)
+    assert report["status"] == "REFUSED"
+    assert report["failure_code"] == "native_bridge.readiness_incomplete"
     assert report["hook_declarations_present"] is True
+    assert report["session_bound"] is True and report["session_id"] == "parent"
+    assert (
+        report["observation_started_at"]
+        == NativeResearchBinding.read(project).observation_started_at.isoformat()
+    )
+    assert {
+        "actual_runtime_definitions_and_trust",
+        "active_native_session_attachment",
+        "native_history",
+        "complete_fresh_native_chain",
+    } <= set(report["missing"])
+    assert "native_session_binding" not in report["missing"]
+    assert "prospective_observation_checkpoint" not in report["missing"]
+    assert report["attachment_preflight"]["evidence"] == []
+    for role in report["attachment_preflight"]["roles"].values():
+        assert role["status"] == "NOT_PROVED" and role["chains"] == []
+        assert {
+            "fresh_same_definition_start",
+            "exact_assignment",
+            "credited_accepted_answer",
+        } <= set(role["missing"])
+    assert report["research_nonblocking"] is True and report["trust_changed"] is False
+    assert (project / ".codex" / BINDING_NAME).read_bytes() == binding_before_doctor
+    assert (project / ".claude/settings.json").read_bytes() == settings
     assert not (project / ".codex/config.toml").exists()
     # The Codex host still reads its own file, and refuses without it.
     assert run("configure")[1]["status"] == "REFUSED"

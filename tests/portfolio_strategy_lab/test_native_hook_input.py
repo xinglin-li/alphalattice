@@ -131,3 +131,62 @@ def test_claude_code_names_the_turn_prompt_id_and_the_host_follows_the_key(tmp_p
     assert _read(tmp_path, _payload(tmp_path, prompt_id="ignored")).host == "codex"
     with pytest.raises(NativeHookInputError, match="invalid_prompt_id"):
         _read(tmp_path, {**payload, "prompt_id": ""})
+
+
+@pytest.mark.parametrize("host", ("codex", "claude-code"))
+def test_local_definition_digest_tracks_only_the_lifecycle_declarations(tmp_path, host):
+    """P2: a local fingerprint detects changed hooks, never proves host trust."""
+    import json
+
+    from alphalattice.interface.local_application.native_hook_input import definition_digest
+
+    directory = tmp_path / (".codex" if host == "codex" else ".claude")
+    directory.mkdir()
+    path = directory / ("config.toml" if host == "codex" else "settings.json")
+
+    def write(command, unrelated):
+        if host == "codex":
+            content = f'other = "{unrelated}"\n'
+            for event in ("SubagentStart", "SubagentStop"):
+                content += (
+                    f'[[hooks.{event}]]\nmatcher = "^alphalattice_.*$"\n'
+                    f'[[hooks.{event}.hooks]]\ntype = "command"\ncommand = "{command}"\n'
+                )
+        else:
+            content = json.dumps(
+                {
+                    "other": unrelated,
+                    "hooks": {
+                        event: [
+                            {
+                                "matcher": "^alphalattice_.*$",
+                                "hooks": [{"type": "command", "command": command}],
+                            }
+                        ]
+                        for event in ("SubagentStart", "SubagentStop")
+                    },
+                }
+            )
+        path.write_bytes(content.encode())
+
+    write("synthetic-first", "first")
+    first = definition_digest(tmp_path, host)
+    assert len(first) == 64
+    write("synthetic-first", "second")
+    assert definition_digest(tmp_path, host) == first
+    write("synthetic-changed", "second")
+    assert definition_digest(tmp_path, host) != first
+
+
+@pytest.mark.parametrize(
+    "content", (b"{}", b"not-json", b'{"hooks": 7}', b'{"hooks": {}, "hooks": {}}')
+)
+def test_local_definition_digest_refuses_missing_or_ambiguous_declarations(tmp_path, content):
+    """P2: malformed local declarations produce a bounded named missing-definition link."""
+    from alphalattice.interface.local_application.native_hook_input import definition_digest
+
+    directory = tmp_path / ".claude"
+    directory.mkdir()
+    (directory / "settings.json").write_bytes(content)
+    with pytest.raises(ValueError, match=r"native_hook\.definition_unreadable"):
+        definition_digest(tmp_path, "claude-code")

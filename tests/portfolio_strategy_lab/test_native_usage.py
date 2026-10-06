@@ -9,6 +9,8 @@ import pytest
 from alphalattice.interface.local_application import client as client_module
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
+    NativeResearchBinding,
+    deliver_lead_usage_owned,
     hook_reply,
     pin_differs,
 )
@@ -243,8 +245,16 @@ def receiver(monkeypatch):
     seen = []
 
     class AcceptedClient:
-        def __init__(self, workspace, *, timeout):
+        def __init__(self, workspace, *, timeout, goal=None):
             assert timeout == 2.0
+            assert goal is None
+            self.workspace = workspace
+
+        def publish_native_event(self, project, event):
+            assert event == {"source": "native_usage_read"}
+            binding = NativeResearchBinding.read(project)
+            assert binding is not None and binding.workspace == self.workspace
+            return deliver_lead_usage_owned(project, binding, publish=self.publish_event)
 
         def publish_event(self, body):
             seen.append(body)

@@ -305,6 +305,35 @@ class LocalResearchClient:
             "/api/client/session/event", {"project": str(project), "event": event}
         )[0]
 
+    def read_external(
+        self, *, before: int | None = None, observation_id: str | None = None
+    ) -> dict[str, Any]:
+        """Read a native activity page or exact accepted-event readback from this Host.
+
+        Args:
+            before: The owner's exclusive older cursor, or the newest page.
+            observation_id: One exact retained observation, exclusive of a page cursor.
+
+        Returns:
+            The unchanged bounded activity page or selected owner readback.
+
+        Raises:
+            LocalResearchClientError: A selector is invalid or the admitted transport fails.
+        """
+        if before is not None and (type(before) is not int or before <= 0):
+            raise LocalResearchClientError("activity.cursor_invalid")
+        if observation_id is not None:
+            if (
+                not isinstance(observation_id, str)
+                or re.fullmatch(r"[0-9a-f]{64}", observation_id) is None
+            ):
+                raise LocalResearchClientError("activity.observation_id_invalid")
+            if before is not None:
+                raise LocalResearchClientError("activity.query_selection_conflict")
+            return self._exchange("/api/activity/external?observation_id=" + observation_id)[0]
+        suffix = "" if before is None else f"?before={before}"
+        return self._exchange("/api/activity/external" + suffix)[0]
+
     def cpu_budget(
         self, value: str | None = None, *, tasks_waiting: str | None = None
     ) -> dict[str, Any]:
@@ -2185,6 +2214,7 @@ def run(
     *,
     document_override: dict[str, Any] | Callable[[], dict[str, Any]] | None = None,
     before_send: Callable[[dict[str, Any]], None] | None = None,
+    after_send: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
 ) -> int:
     """One command over the running Host, printed as one envelope; returns its exit code.
 
@@ -2320,6 +2350,8 @@ def run(
                 if document.get("operation") in {"REPORT", "EXPORT"} and args.format == "html"
                 else client.exchange(document)
             )
+            if after_send is not None:
+                after_send(document, body)
             if (named := named_read(document, body)) is not body:
                 # The CLI's copy names what the read read, printed and saved, so `--from` reads
                 # it again; the Host's answer stays its owner's (OP15, V449).

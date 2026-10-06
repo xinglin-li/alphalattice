@@ -2187,6 +2187,7 @@ def _native_session_routes(
         NativeBridgeError,
         NativeResearchBinding,
         admitted_coordination_event,
+        deliver_lead_usage_owned,
         deliver_owned,
     )
     from alphalattice.interface.local_application.native_setup import (
@@ -2271,6 +2272,20 @@ def _native_session_routes(
                     caller="EXTERNAL_AUTOMATION",
                 )
 
+            if request.event == {"source": "native_usage_read"}:
+                provenance = REQUEST_PROVENANCE.get()
+                if provenance is None or (provenance.vendor, provenance.session) != (
+                    binding.host,
+                    binding.session_id,
+                ):
+                    return refusal("native_bridge.event_scope_invalid")
+                goal = operations.goals.attributed_goal(provenance)
+                return deliver_lead_usage_owned(
+                    project,
+                    binding,
+                    publish=publish,
+                    goal_id=None if goal is None else str(goal.goal_id),
+                )
             return deliver_owned(
                 project,
                 binding,

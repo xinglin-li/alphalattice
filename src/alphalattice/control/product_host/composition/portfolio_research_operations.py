@@ -1434,7 +1434,7 @@ class PortfolioResearchOperations:
                 return self.export(request.result_hash)
         raise ValueError("portfolio_research.operation_unknown")
 
-    def _agent_history(self) -> list[dict[str, Any]]:
+    def _agent_history(self) -> list[dict[str, Any]] | None:
         """Read the whole retained native record; a partial read settles no author."""
         items: list[dict[str, Any]] = []
         if self.observer is not None:
@@ -1453,12 +1453,18 @@ class PortfolioResearchOperations:
                     ):
                         raise ValueError("Team history pagination did not advance")
                     before = oldest
-            except (OSError, ValueError, KeyError, TypeError):
-                items = []
-        return items
+            except Exception:
+                return None
+            return items
+        return None
 
     def _agent_run(
-        self, role: str, bundle_reference: str, *, events: list[dict[str, Any]] | None = None
+        self,
+        role: str,
+        bundle_reference: str,
+        *,
+        events: list[dict[str, Any]] | None = None,
+        history_available: bool = True,
     ) -> AgentRun | None:
         """Who made an answer to one bundle, recorded beside it (V300, AU3, LAWS.md ID7).
 
@@ -1475,7 +1481,7 @@ class PortfolioResearchOperations:
             return None
         run: AgentRun = AgentRun.model_validate(
             judgment_agent(
-                self._agent_history() if events is None else events,
+                self._agent_history() if events is None and history_available else events,
                 host=provenance.vendor,
                 session_id=provenance.session,
                 bundle_role=role,
@@ -1488,32 +1494,60 @@ class PortfolioResearchOperations:
         self,
         bundle: AgentBundleRecord | None,
         body: Mapping[str, object],
-        events: list[dict[str, Any]],
+        events: list[dict[str, Any]] | None,
     ) -> dict[str, object] | None:
         """Wire one sealed answer to the shared native observation owner (V691)."""
         view = body.get("answer")
         delivery = view.get("accepted_delivery") if isinstance(view, dict) else None
-        if body.get("disposition") not in {"ADMITTED", "REUSED_EXACT"} or not isinstance(
-            delivery, dict
-        ):
+        if body.get("disposition") not in {"ADMITTED", "REUSED_EXACT"}:
             return None
-        if bundle is None:
+        provenance = REQUEST_PROVENANCE.get()
+        references: dict[str, object] = {
+            **({"host": provenance.vendor} if provenance is not None and provenance.vendor else {}),
+            **(
+                {"session_id": provenance.session}
+                if provenance is not None and provenance.session
+                else {}
+            ),
+            **({"bundle_reference": bundle.record_hash} if bundle is not None else {}),
+            **({"task_id": body["task_id"]} if body.get("task_id") else {}),
+        }
+
+        def unavailable(reason: str, *missing: str) -> dict[str, object]:
+            code = f"native_bridge.{reason}"
+            return {
+                "status": "UNAVAILABLE",
+                "reason": code,
+                **(refusal_words(code) or refusal_words("native_bridge.accepted_delivery_failed")),
+                "missing": list(missing),
+                **references,
+            }
+
+        if not isinstance(delivery, dict):
+            if isinstance(view, dict) and view.get("verdict") in {"ACCEPTED", "DONE"}:
+                return unavailable("accepted_delivery_unavailable", "accepted_delivery")
             return None
-        if delivery.get("status") == "UNAVAILABLE" or self.observer is None:
-            raise ValueError("native_bridge.accepted_answer_not_recorded")
-        observer = self.observer
+        if delivery.get("status") == "UNAVAILABLE":
+            raise ValueError("native_bridge.accepted_delivery_unavailable")
         record = AgentAnswerRecord.model_validate(delivery["answer_record"])
+        references.update(answer_reference=record.record_hash, task_id=delivery["task_id"])
         run = record.agent_run
-        if run is None or run.basis != "HOOK":
-            return None
+        if run is not None:
+            references.update(host=run.host, session_id=run.session_id)
+        if bundle is None:
+            return unavailable("accepted_bundle_unavailable", "accepted_bundle")
+        if self.observer is None:
+            return unavailable("history_unavailable", "native_history")
+        observer = self.observer
+        if run is None:
+            return unavailable("accepted_author_not_observed", "accepted_author")
         workspace = self.workspace_session.workspace
         project = session_project(workspace, run.host)
         admitted_session_project(workspace, project, run.host)
         binding = NativeResearchBinding.read(project)
         if binding is None or binding.workspace.resolve() != workspace.resolve():
-            raise ValueError("native_bridge.accepted_answer_not_recorded")
+            return unavailable("binding_mismatch", "native_binding")
         task = self.workspace_session.task_control_registry.task(UUID(str(delivery["task_id"])))
-        provenance = REQUEST_PROVENANCE.get()
 
         def retain_goal(document: dict[str, Any]) -> None:
             if not delivery.get("first_submission"):
@@ -1551,13 +1585,40 @@ class PortfolioResearchOperations:
     ) -> dict[str, object]:
         """Keep observation optional at every registered accepted-answer return door."""
         failures = self.observer_failures
-        conversation = self._observe(lambda: self.record_agent_answer(bundle, body, events or []))
+        conversation = self._observe(lambda: self.record_agent_answer(bundle, body, events))
         if conversation is not None:
             body["conversation"] = conversation
         elif self.observer_failures > failures:
+            view = body.get("answer")
+            delivery = view.get("accepted_delivery") if isinstance(view, dict) else None
+            unavailable_delivery = (
+                isinstance(delivery, dict) and delivery.get("status") == "UNAVAILABLE"
+            )
+            reason = (
+                "native_bridge.accepted_delivery_unavailable"
+                if unavailable_delivery
+                else "native_bridge.accepted_delivery_failed"
+            )
+            provenance = REQUEST_PROVENANCE.get()
             body["conversation"] = {
                 "status": "UNAVAILABLE",
-                "reason": "native_bridge.accepted_answer_not_recorded",
+                "reason": reason,
+                **refusal_words(reason),
+                "missing": [
+                    "accepted_delivery" if unavailable_delivery else "accepted_answer_delivery"
+                ],
+                **({"bundle_reference": bundle.record_hash} if bundle is not None else {}),
+                **({"task_id": body["task_id"]} if body.get("task_id") else {}),
+                **(
+                    {"host": provenance.vendor}
+                    if provenance is not None and provenance.vendor
+                    else {}
+                ),
+                **(
+                    {"session_id": provenance.session}
+                    if provenance is not None and provenance.session
+                    else {}
+                ),
             }
         return body
 
@@ -1638,7 +1699,12 @@ class PortfolioResearchOperations:
                 # its answer as provenance; the answer is read whatever they are (OP11).
                 answer, read = answer_read(request.agent_answer or {})
                 events = self._agent_history()
-                agent_run = self._agent_run(bundle.role, bundle.record_hash, events=events)
+                agent_run = self._agent_run(
+                    bundle.role,
+                    bundle.record_hash,
+                    events=events,
+                    history_available=events is not None,
+                )
                 if bundle.role not in ANSWER_FIELDS:
                     try:
                         generic_body = self.review.submit_specialist_answer(

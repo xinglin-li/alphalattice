@@ -14,17 +14,20 @@ import json
 import re
 import tomllib
 from collections.abc import Callable, Iterable, Mapping
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
+from uuid import UUID
 
 from alphalattice.control.workspace_runtime.lock import WorkspaceLock
-from alphalattice.interface.local_application.cli_contract import agent_session
+from alphalattice.interface.local_application.cli_contract import agent_session, refusal_words
 from alphalattice.interface.local_application.failure_codes import safe_failure_code
 from alphalattice.interface.local_application.native_hook_input import (
     NativeHookInputError,
+    definition_digest,
     read_subagent_lifecycle,
 )
 from alphalattice.interface.local_application.native_observation_sequence import (
@@ -128,6 +131,7 @@ class NativeResearchBinding:
     roles: tuple[str, ...]
     host: str = "codex"
     usage: str = "READ"
+    observation_started_at: datetime | None = None
 
     @classmethod
     def read(cls, project: Path) -> NativeResearchBinding | None:
@@ -180,13 +184,21 @@ class NativeResearchBinding:
         try:
             if not isinstance(value, dict):
                 raise ValueError
-            if set(value) - {"host", "usage"} != {"session_id", "workspace", "roles"}:
+            if set(value) - {"host", "usage", "observation_started_at"} != {
+                "session_id",
+                "workspace",
+                "roles",
+            }:
                 raise ValueError
             host = _text(value.get("host", "codex"))
             if host not in HOSTS:
                 raise ValueError
             usage = _text(value.get("usage", "READ"))
             if usage not in USAGE_READINGS:
+                raise ValueError
+            checkpoint = value.get("observation_started_at")
+            observed_at = None if checkpoint is None else datetime.fromisoformat(_text(checkpoint))
+            if observed_at is not None and observed_at.utcoffset() is None:
                 raise ValueError
             # The session's id is every event's correlation id, and a role a card's name; a
             # binding holding a longer one would deliver nothing (V574).
@@ -209,6 +221,7 @@ class NativeResearchBinding:
             roles=admitted_roles,
             host=host,
             usage=usage,
+            observation_started_at=observed_at,
         )
 
     @classmethod
@@ -289,6 +302,9 @@ def lifecycle_event(
         "lifecycle": asdict(observed),
         "role_pin": role_pin(project, observed.host, observed.agent_type),
     }
+    # The real lifecycle observation survives; readiness names the unproved definition.
+    with suppress(NativeHookInputError):
+        event["definition_digest"] = definition_digest(project, observed.host)
     if observed.host == binding.host == "codex":
         # An alias leaves only the admitted first-record owner, never hook input or a turn.
         spawn = codex_thread_spawn(observed.agent_id)
@@ -548,6 +564,8 @@ def _activity_content(
         }
         if native["model"] is not None:
             subject["hook_model"] = native["model"]
+        if event.get("definition_digest"):
+            subject["native_definition_digest"] = event["definition_digest"]
         spawn = event.get("thread_spawn")
         if isinstance(spawn, Mapping) and native["host"] == "codex":
             agent_path = canonical_agent_path(spawn.get("agent_path"))
@@ -654,9 +672,18 @@ def _usage_content(
 
 
 def observation_request(
-    project: Path, binding: NativeResearchBinding, event: dict[str, Any]
+    project: Path,
+    binding: NativeResearchBinding,
+    event: dict[str, Any],
+    *,
+    usage_goal_id: str | None = None,
 ) -> dict[str, object]:
-    """Map one selected event, retaining stable producer identity for explicit retry."""
+    """Map one selected event, retaining stable producer identity for explicit retry.
+
+    ``usage_goal_id`` is the Goal resolved by the Host, never a native event's claim.
+    A usage snapshot includes its recorded times and efforts as well as its counts;
+    the exact normalized snapshot and owner Goal together settle its retry identity.
+    """
     kind, summary, subject = _activity_content(binding, event)
     if len(binding.session_id) > CORRELATION_CHARACTERS:
         raise NativeBridgeError("native_bridge.activity_correlation_invalid")
@@ -665,15 +692,19 @@ def observation_request(
     scope = _digest([str(project.resolve()), binding.session_id, str(binding.workspace.resolve())])
     # A repeated hook callback has no independent event id in the native input.
     # Deduplicate its declared turn/child/state; do not invent a new host event.
-    # A usage event is a reading so far: the same counts read again are the same event.
+    # A usage event is a reading so far, scoped to the Goal the Host resolved. Canonical
+    # JSON normalizes mapping order and tuple/list representation. A later valid source
+    # record can change times or efforts without changing the response/token counts.
     identity = (
         [kind, subject["native_agent_id"], subject["native_turn_id"], subject["stop_hook_active"]]
         if event["source"] == "native_hook"
         else [kind, subject["native_agent_id"], subject["message_id"]]
         if event["source"] in {"actor_declared", "product_accepted"}
-        else [kind, subject["native_agent_id"], subject["model"]]
-        + [subject[name] for name in _USAGE_COUNTS]
-        + [subject.get("pin_differs", "")]
+        else [
+            kind,
+            event["usage"],
+            None if usage_goal_id is None else str(UUID(usage_goal_id)),
+        ]
     )
     event_id = _digest(identity)
     sequence, occurred_at = reserve_sequence(
@@ -762,13 +793,14 @@ def deliver_owned(
     event: dict[str, Any],
     *,
     publish: Callable[[dict[str, Any]], dict[str, Any]],
+    usage_goal_id: str | None = None,
 ) -> dict[str, object]:
     """Reserve and publish one event through the existing sequence and observation owners."""
     from alphalattice.interface.local_application.client import LocalResearchClientError
 
     try:
         with WorkspaceLock(metadata_path(project, LOCK_NAME)):
-            request = observation_request(project, binding, event)
+            request = observation_request(project, binding, event, usage_goal_id=usage_goal_id)
             response = publish(request)
     except WorkspaceConflictError:
         return {"status": "UNAVAILABLE", "reason": "native_bridge.observation_busy"}
@@ -811,7 +843,7 @@ def deliver_accepted_answer(
     parent: Mapping[str, object],
     task_id: str,
     admitted_at: datetime,
-    events: Iterable[Mapping[str, Any]],
+    events: Iterable[Mapping[str, Any]] | None,
     publish: Callable[[dict[str, Any]], dict[str, Any]],
     before_publish: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, object] | None:
@@ -824,58 +856,64 @@ def deliver_accepted_answer(
     observation and Goal owners; optional observation failure preserves acceptance.
     """
     run = answer.agent_run
-    if answer.verdict not in {AnswerVerdict.ACCEPTED, AnswerVerdict.DONE} or run is None:
+    if answer.verdict not in {AnswerVerdict.ACCEPTED, AnswerVerdict.DONE}:
         return None
-    if run.basis != "HOOK" or run.agent_id is None or run.role is None:
-        return None
-    unavailable: dict[str, object] = {
-        "status": "UNAVAILABLE",
-        "reason": "native_bridge.accepted_answer_not_recorded",
+    references: dict[str, object] = {
+        "host": run.host if run is not None else binding.host,
+        "session_id": run.session_id if run is not None else binding.session_id,
+        "bundle_reference": bundle.record_hash,
+        "answer_reference": answer.record_hash,
+        "task_id": task_id,
     }
+
+    def unavailable(reason: str, *missing: str, **details: object) -> dict[str, object]:
+        return {
+            "status": "UNAVAILABLE",
+            "reason": reason,
+            "missing": list(missing),
+            **(refusal_words(reason) or refusal_words("native_bridge.accepted_delivery_failed")),
+            **references,
+            **details,
+        }
+
+    if run is None:
+        return unavailable("native_bridge.accepted_author_not_observed", "accepted_author")
     try:
-        if (parent.get("vendor"), parent.get("session")) != (run.host, run.session_id) or (
+        if (parent.get("vendor"), parent.get("session")) != (run.host, run.session_id):
+            return unavailable("native_bridge.parent_session_mismatch", "parent_session")
+        if (
             binding.host,
             binding.session_id,
         ) != (run.host, run.session_id):
-            return unavailable
-        if run.role not in binding.roles or not binding.workspace.resolve().is_relative_to(
-            project.resolve()
+            return unavailable("native_bridge.binding_mismatch", "native_binding")
+        if not binding.workspace.resolve().is_relative_to(project.resolve()) or (
+            run.basis == "HOOK" and run.role not in binding.roles
         ):
-            return unavailable
-        history = list(events)
-        proved = judgment_agent(
-            history,
+            return unavailable("native_bridge.binding_mismatch", "native_binding")
+        decision = judgment_agent_evidence(
+            events,
             host=run.host,
             session_id=run.session_id,
             bundle_role=bundle.role,
             bundle_reference=bundle.record_hash,
         )
+        diagnostic = decision["diagnostic"]
+        if diagnostic["status"] == "UNAVAILABLE":
+            return {**diagnostic, **references, "stored_basis": run.basis}
+        if run.basis != "HOOK" or run.agent_id is None or run.role is None:
+            return unavailable(
+                "native_bridge.accepted_author_not_observed",
+                "hook_authorship",
+                stored_basis=run.basis,
+            )
+        proved = decision["agent_run"]
         if (proved.get("basis"), proved.get("agent_id"), proved.get("role")) != (
             "HOOK",
             run.agent_id,
             run.role,
         ):
-            return unavailable
-        starts = [
-            item
-            for item in history
-            if (item.get("payload") or {}).get("event_kind") == "NATIVE_SUBAGENT_START_HOOK"
-        ]
-        assignments = {
-            str(subject["message_id"])
-            for item in history
-            if isinstance(subject := (item.get("payload") or {}).get("subject"), dict)
-            and subject.get("message_kind") == "assignment"
-            and subject.get("message_id")
-            and judgment_agent(
-                [*starts, item],
-                host=run.host,
-                session_id=run.session_id,
-                bundle_role=bundle.role,
-                bundle_reference=bundle.record_hash,
-            ).get("agent_id")
-            == run.agent_id
-        }
+            return unavailable("native_bridge.accepted_author_mismatch", "stored_author")
+        assignments = decision["evidence"]["assignment_message_ids"]
         parts: list[str] = []
 
         def fields(value: object, path: str) -> None:
@@ -922,12 +960,25 @@ def deliver_accepted_answer(
                 before_publish(document)
             return publish(document)
 
-        return deliver_owned(project, binding, event, publish=file)
+        result = deliver_owned(project, binding, event, publish=file)
+        if result.get("status") != "DELIVERED":
+            return unavailable(
+                str(result.get("reason") or "native_bridge.accepted_delivery_failed"),
+                "accepted_answer_delivery",
+                **{key: result[key] for key in ("detail", "next_action") if key in result},
+            )
+        return result
     except Exception:
-        return unavailable
+        return unavailable("native_bridge.accepted_delivery_failed", "accepted_answer_delivery")
 
 
-def lead_readings(project: Path, environ: Mapping[str, str]) -> list[dict[str, object]]:
+def lead_readings(
+    project: Path,
+    environ: Mapping[str, str],
+    *,
+    workspace: Path | None = None,
+    goal: str | None = None,
+) -> list[dict[str, object]]:
     """The lead's readings, delivered where its own command asks (V301).
 
     A session with no subagent had no reading, since the bridge read the hosts' session files
@@ -938,21 +989,70 @@ def lead_readings(project: Path, environ: Mapping[str, str]) -> list[dict[str, o
     Args:
         project: The project whose binding names the session.
         environ: The command's environment, naming the session it runs in.
+        workspace: The command's workspace; another workspace receives no reading.
+        goal: The command's named Goal; the Host resolves it using normal provenance.
 
     Returns:
-        Each delivery's answer, one per model; none when nothing was read.
+        The Host's aggregate receipt; none when observation is off or this is not its lead.
     """
-    binding = NativeResearchBinding.read(project)
-    if binding is None or binding.usage == "OFF":
+    found = NativeResearchBinding.find(project)
+    if found is None:
+        return []
+    project, binding = found
+    if binding.usage == "OFF":
         return []
     # The session as every reader of it reads it (V583): an agent inside another names none.
     if agent_session(environ) != (binding.host, binding.session_id):
         return []
-    path = session_file(binding.host, binding.session_id)
-    if path is None:
-        return []
+    if workspace is not None and workspace.resolve() != binding.workspace.resolve():
+        return [{"status": "UNAVAILABLE", "reason": "native_bridge.workspace_mismatch"}]
+    # The Host reads its admitted own-session file and reserves the producer sequence.
+    # A protected project never asks the agent process to write observation metadata.
+    from alphalattice.interface.local_application.client import LocalResearchClient
+
+    return [
+        LocalResearchClient(binding.workspace, timeout=2.0, goal=goal).publish_native_event(
+            project, {"source": "native_usage_read"}
+        )
+    ]
+
+
+def deliver_lead_usage_owned(
+    project: Path,
+    binding: NativeResearchBinding,
+    *,
+    publish: Callable[[dict[str, Any]], dict[str, Any]],
+    goal_id: str | None = None,
+) -> dict[str, object]:
+    """Read the bound lead's usage at the Host, with no supplied paths or counts.
+
+    Args:
+        project: The Host's admitted project whose producer sequence it owns.
+        binding: The exact parent session and workspace admitted by that Host.
+        publish: The Host's existing external observation owner.
+        goal_id: The exact Goal the Host resolved before reading this snapshot.
+
+    Returns:
+        Delivered readings, or a bounded named diagnostic preserving optional research.
+    """
+    if binding.usage == "OFF":
+        return {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}
+    try:
+        path = session_file(binding.host, binding.session_id)
+        if path is None:
+            return {"status": "UNAVAILABLE", "reason": "native_bridge.lead_usage_file_missing"}
+        reading = read_session(path, host=binding.host)
+    except (OSError, ValueError):
+        return {"status": "UNAVAILABLE", "reason": "native_bridge.lead_usage_read_failed"}
+    rows = reading.by_model()
+    if not rows:
+        return {
+            "status": "UNAVAILABLE",
+            "reason": "native_bridge.lead_usage_not_observed",
+            "incomplete": reading.incomplete,
+        }
     answers = []
-    for row in read_session(path, host=binding.host).by_model():
+    for row in rows:
         usage = {
             "session_id": binding.session_id,
             "agent_id": binding.session_id,
@@ -961,8 +1061,22 @@ def lead_readings(project: Path, environ: Mapping[str, str]) -> list[dict[str, o
             **asdict(row),
             "pin_differs": [],
         }
-        answers.append(deliver(project, binding, {"source": "native_usage", "usage": usage}))
-    return answers
+        answer = deliver_owned(
+            project,
+            binding,
+            {"source": "native_usage", "usage": usage},
+            publish=publish,
+            usage_goal_id=goal_id,
+        )
+        answers.append(answer)
+        if answer["status"] != "DELIVERED":
+            return {**answer, "readings": answers, "incomplete": reading.incomplete}
+    return {
+        "status": "PARTIAL" if reading.incomplete else "DELIVERED",
+        "readings": answers,
+        "incomplete": reading.incomplete,
+        **({"reason": "native_bridge.lead_usage_incomplete"} if reading.incomplete else {}),
+    }
 
 
 JUDGMENT_ROLES = {
@@ -994,13 +1108,35 @@ def _proved_agent_path(subject: Mapping[str, Any], *, host: str, session_id: str
 
 
 def judgment_agent(
-    events: Iterable[Mapping[str, Any]],
+    events: Iterable[Mapping[str, Any]] | None,
     *,
     host: str,
     session_id: str,
     bundle_role: str,
     bundle_reference: str | None,
 ) -> dict[str, object]:
+    """Return the unchanged AgentRun projection of the shared authorship decision."""
+    return cast(
+        dict[str, object],
+        judgment_agent_evidence(
+            events,
+            host=host,
+            session_id=session_id,
+            bundle_role=bundle_role,
+            bundle_reference=bundle_reference,
+        )["agent_run"],
+    )
+
+
+def judgment_agent_evidence(
+    events: Iterable[Mapping[str, Any]] | None,
+    *,
+    host: str,
+    session_id: str,
+    bundle_role: str,
+    bundle_reference: str | None,
+    history_available: bool = True,
+) -> dict[str, Any]:
     """Who made an answer to one bundle, as the session's own records settle it (AU3, V555).
 
     A request names its session, never its subagent, so the author is settled by a link: the
@@ -1023,24 +1159,48 @@ def judgment_agent(
         events: The Host's external activity items, every one it holds, in any order.
         host: The session's host.
         session_id: The session the answer's request named.
-        bundle_role: The answered bundle's role, ``ANALYST`` or ``CRO``.
+        bundle_role: One of the seven registered bundle roles.
         bundle_reference: The answered bundle's key, its record's hash: a 64-hex reference
             any message can carry, where its directory may be longer than one can.
+        history_available: Whether the Host read its retained history successfully.
 
     Returns:
-        The fields of an ``AgentRun``.
+        The unchanged ``agent_run``, a bounded ``diagnostic`` naming each missing
+        link, and ``evidence`` identifiers read from the same matched events.
+        ``None`` or an unavailable history never means a genuinely empty ledger.
     """
     cards = JUDGMENT_ROLES.get(bundle_role, ())
     run: dict[str, object] = {"host": host, "session_id": session_id}
+    proof: dict[str, object] = {}
+
+    def decided(
+        fields: dict[str, object], reason: str | None = None, *missing: str
+    ) -> dict[str, Any]:
+        diagnostic: dict[str, object] = {
+            "status": "AVAILABLE" if reason is None else "UNAVAILABLE",
+            "host": host,
+            "session_id": session_id,
+            "bundle_role": bundle_role,
+            **({"bundle_reference": bundle_reference} if bundle_reference is not None else {}),
+        }
+        if reason is not None:
+            code = f"native_bridge.{reason}"
+            diagnostic.update(reason=code, missing=list(missing), **refusal_words(code))
+        return {"agent_run": fields, "diagnostic": diagnostic, "evidence": proof}
+
+    unknown = {**run, "basis": "NOT_OBSERVED"}
+    if events is None or not history_available:
+        return decided(unknown, "history_unavailable", "native_history")
     started: dict[str, Mapping[str, Any]] = {}
-    assigned: set[str] = set()
+    start_items: dict[str, Mapping[str, Any]] = {}
+    assigned: dict[str, list[Mapping[str, Any]]] = {}
     path_agents: dict[str, set[str]] = {}
     agent_paths: dict[str, set[str]] = {}
     for item in sorted(events, key=lambda value: int(value.get("ordinal") or 0)):
         if item.get("payload") is None and session_id in (item.get("correlation_ids") or ()):
             # Retention keeps a session's newest events once the store is full: the one it
             # emptied may be the assignment, or a second one that unsettles it.
-            return {**run, "basis": "NOT_OBSERVED"}
+            return decided(unknown, "history_not_retained", "retained_history")
         payload = item.get("payload") or {}
         subject = payload.get("subject") or {}
         if subject.get("native_session_id") != session_id or subject.get("native_host") != host:
@@ -1054,6 +1214,7 @@ def judgment_agent(
                 agent_paths.setdefault(agent_id, set()).add(agent_path)
             if any(role == card or role.startswith(f"{card}_") for card in cards):
                 started[agent_id] = subject
+                start_items[agent_id] = item
         elif (
             kind == "NATIVE_COORDINATION_MESSAGE"
             and subject.get("message_kind") == "assignment"
@@ -1061,25 +1222,59 @@ def judgment_agent(
             and bundle_reference is not None
             and subject.get("reference") == bundle_reference
         ):
-            assigned.add(str(subject.get("recipient_id", "")))
+            assigned.setdefault(str(subject.get("recipient_id", "")), []).append(item)
+    if not assigned:
+        if not started:
+            return decided(
+                unknown, "start_not_observed", "native_subagent_start", "exact_assignment"
+            )
+        return decided(unknown, "assignment_not_observed", "exact_assignment")
     resolved: set[str] = set()
+    unresolved: str | None = None
     for recipient in assigned:
         if canonical_agent_path(recipient) is not None:
             candidates = path_agents.get(recipient, set())
             if len(candidates) != 1:
-                return {**run, "basis": "NOT_OBSERVED"}
+                unresolved = "assignment_ambiguous" if candidates else "start_not_observed"
+                continue
             candidate = next(iter(candidates))
             if agent_paths.get(candidate) != {recipient}:
-                return {**run, "basis": "NOT_OBSERVED"}
+                unresolved = "assignment_ambiguous"
+                continue
         else:
             candidate = recipient
         if candidate not in started:
-            return {**run, "basis": "NOT_OBSERVED"}
+            unresolved = unresolved or "start_not_observed"
+            continue
         resolved.add(candidate)
+    if len(resolved) > 1 or (unresolved is not None and len(assigned) > 1):
+        return decided(unknown, "assignment_ambiguous", "assignment_unambiguous")
+    if unresolved is not None:
+        return decided(
+            unknown,
+            unresolved,
+            "assignment_unambiguous"
+            if unresolved == "assignment_ambiguous"
+            else "native_subagent_start",
+        )
     agent = next(iter(resolved)) if len(resolved) == 1 else None
     subject = None if agent is None else started.get(agent)
     if subject is None:
-        return {**run, "basis": "NOT_OBSERVED"}
+        return decided(unknown, "start_not_observed", "native_subagent_start")
+    start = start_items[cast(str, agent)]
+    if start.get("observation_id"):
+        proof["start_observation_id"] = start["observation_id"]
+    assignment_items = [item for items in assigned.values() for item in items]
+    proof["assignment_observation_ids"] = sorted(
+        {str(item["observation_id"]) for item in assignment_items if item.get("observation_id")}
+    )
+    proof["assignment_message_ids"] = sorted(
+        {
+            str(value)
+            for item in assignment_items
+            if (value := (item.get("payload") or {}).get("subject", {}).get("message_id"))
+        }
+    )
     pinned = subject.get("role_effort")
     run |= {
         "agent_id": agent,
@@ -1087,10 +1282,14 @@ def judgment_agent(
         "efforts": [pinned] if pinned not in (None, "inherit") else [],
     }
     if subject.get("hook_model"):
-        return {**run, "model": subject["hook_model"], "basis": "HOOK"}
+        return decided({**run, "model": subject["hook_model"], "basis": "HOOK"})
     if subject.get("role_model") not in (None, "inherit"):
-        return {**run, "model": subject["role_model"], "basis": "ROLE_CARD"}
-    return {**run, "basis": "NOT_OBSERVED"}
+        return decided(
+            {**run, "model": subject["role_model"], "basis": "ROLE_CARD"},
+            "hook_model_not_observed",
+            "hook_model",
+        )
+    return decided({**run, "basis": "NOT_OBSERVED"}, "hook_model_not_observed", "hook_model")
 
 
 def handle_hook(project: Path, data: bytes) -> dict[str, object]:
