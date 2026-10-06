@@ -20,3 +20,9 @@ Readbacks carry temporal statements for evaluated window, earlier input history,
 Windows is verified for this source-checkout release; macOS and Linux are unverified. On 2026-09-30 at checkout `c109a7bc`, an empty-workspace preparation through its data decision took 407.1 seconds and 3.99 GB peak memory, using eight logical processors on four P-cores. The machine was Windows 11 Pro, Intel Core i9-13900K (24 cores, 32 logical processors) and 128 GB memory; a comparison ran concurrently on disjoint cores. This observation is neither a hardware minimum nor a runtime guarantee. [Getting started](getting-started.md) has the measurement context.
 
 Xinglin Li created AlphaLattice alone and made this release. It is Apache-2.0; [NOTICE](../../NOTICE) lists included third-party material and separately installed software/model licenses. The release takes no outside contributions; see the [contributing note](../../CONTRIBUTING.md).
+
+## 0.1.1
+
+The seven shipped Codex specialist role cards run at `high` reasoning effort instead of `xhigh`:
+in the agent evaluation, `high` completed the same tasks faster. A project configured from 0.1.0
+keeps its copied cards; set `model_reasoning_effort` in its `.codex/agents/` files to choose.
