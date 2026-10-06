@@ -400,6 +400,21 @@ def worded_refusal(body: dict[str, Any], *, workspace: Path | None = None) -> di
         return body
     words = refusal_words(code, workspace=workspace)
     if code.partition(":")[0] in NETWORK_ACCESS_REFUSALS:
+        source_access = body.get("source_network_access")
+        source_ways = body.get("source_ways")
+        official = source_ways.get("official") if isinstance(source_ways, Mapping) else None
+        recovery = official.get("before") if isinstance(official, Mapping) else None
+        current = words.get("network_access")
+        if (
+            code.partition(":")[0] == "evidence_review.workspace_network_not_allowed"
+            and isinstance(source_access, Mapping)
+            and source_access.get("network_allowed") is False
+            and isinstance(current, Mapping)
+            and current.get("network_allowed") is True
+            and isinstance(recovery, str)
+        ):
+            # An opened control does not replace this Host's denied source transport.
+            words.update(detail=recovery, next_action="READ_NETWORK_ACCESS")
         # Keep an owner's decoded provider needs while refreshing the actual permission.
         previous = body.get("detail")
         if isinstance(previous, str) and previous.startswith("The research update needs "):

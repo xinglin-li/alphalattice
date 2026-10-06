@@ -24,6 +24,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceError,
     ResearchWorkspaceEvidenceReview,
 )
+from alphalattice.control.workspace_runtime.network_access import NetworkAccess
 from alphalattice.evidence.alternative_evidence.contracts import (
     WHOLE_FILING_BYTES,
     AlternativeEvidenceClass,
@@ -333,6 +334,8 @@ class AdmittedEvidenceReviewWorkspace:
     evidence_policy: AdmittedEvidencePolicy
     review_actor: PortfolioReviewActor | None
     """Always absent since AG2: a review's answer comes from an agent through the seam."""
+    network_access: NetworkAccess | None = None
+    """The source admission's process permission, outside the resource binding."""
 
     @property
     def model_authority_admitted(self) -> bool:
@@ -443,6 +446,7 @@ def admit_evidence_review_workspace(
             )
         ),
         review_actor=None,
+        network_access=None if official_source is None else official_source.network_access,
     )
 
 

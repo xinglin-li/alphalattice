@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from alphalattice.control.product_host.composition.evidence_review_bundles import (
@@ -35,7 +36,14 @@ from alphalattice.evidence.alternative_evidence.contracts import (
 )
 from alphalattice.evidence.alternative_evidence.runtime.policy import AdmittedEvidencePolicy
 from alphalattice.evidence.alternative_evidence.sources.admission import admit_official_source
-from alphalattice.evidence.alternative_evidence.sources.sec_edgar import SecEdgarSource
+from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
+    HttpxSecOfficialTransport,
+    SecEdgarSource,
+)
+from alphalattice.interface.local_application.client import LocalResearchClient
+from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
+    PortfolioReviewDossier,
+)
 from tests.alternative_evidence_desk.issuer_listing import TICKERS
 from tests.alternative_evidence_desk.planted_corpus import _NOW, CIKS
 from tests.alternative_evidence_desk.review_http_support import (
@@ -116,6 +124,9 @@ def test_the_official_source_is_admitted_only_by_consent_in_an_open_environment(
     # nothing leaves the process (matrix row 16).
     assert closed.admitted and closed.transport_origin == "DENIED"
     assert closed.refusal_code == "evidence_review.network_disabled"
+    assert closed.network_access is not None
+    assert closed.network_access.allowed is False
+    assert closed.network_access.decided_by == "OPERATOR_OFFLINE_SWITCH"
     with pytest.raises(ValueError, match="network_disabled"):
         closed.source.acquire_registry(captured_at=_NOW)  # type: ignore[union-attr]
     assert closed.source.network_call_count == 1  # type: ignore[union-attr]
@@ -131,6 +142,7 @@ def test_the_official_source_is_admitted_only_by_consent_in_an_open_environment(
         environment={"SEC_USER_AGENT": "QA qa@example.com"},
     )
     assert official.admitted and official.transport_origin == "OFFICIAL_HTTP"
+    assert official.network_access is not None and official.network_access.allowed
     assert isinstance(official.source, SecEdgarSource)
     assert official.source.network_call_count == 0, "admission makes no request"
     official.source._transport.close()  # type: ignore[attr-defined]
@@ -138,6 +150,7 @@ def test_the_official_source_is_admitted_only_by_consent_in_an_open_environment(
     injected = admit_official_source(network_consent=True, transport=_scenario())
     assert injected.admitted and injected.transport_origin == "INJECTED"
     assert injected.network_consent is True and injected.refusal_code is None
+    assert injected.network_access is None
 
 
 def test_the_workspace_admission_takes_the_live_branch_only_with_an_admitted_source(
@@ -196,6 +209,24 @@ def test_the_workspace_admission_takes_the_live_branch_only_with_an_admitted_sou
         assert live.resources.recorded_documents == recorded.resources.recorded_documents
     finally:
         live.runtime.close()
+
+    denied_source = admit_official_source(
+        network_consent=True, environment={"ALPHALATTICE_NETWORK_DISABLED": "1"}
+    )
+    held = admit_evidence_review_workspace(
+        workspace=tmp_path,
+        binding=binding,
+        semantic_capability_reader=lambda _runtime: CAPABILITY_HASH,
+        official_source=denied_source,
+    )
+    try:
+        assert held.network_access == denied_source.network_access
+        assert held.evidence_policy == live.evidence_policy
+        assert held.resources.binding_hash == live.resources.binding_hash
+        assert held.resources.live_source is not None
+        assert held.resources.live_source.network_call_count == 0
+    finally:
+        held.runtime.close()
 
 
 def test_the_public_operation_prepares_live_reuses_bodies_and_joins_a_refresh_in_flight(
@@ -557,6 +588,7 @@ def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
         recorded,
         evidence_resources=replace(recorded.evidence_resources, live_source=denied.source),
         evidence_policy=live_evidence_policy(recorded.evidence_policy),
+        network_access=denied.network_access,
     )
     service = start_service(workspace, offline, tmp_path, clock=lambda: now[0])
     try:
@@ -570,25 +602,206 @@ def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
             f"&evidence_unit_id={ONE_UNIT}"
         )
         assert packet["status"] == "EVIDENCE_ANALYST_PACKET_READY"
-        # A new cutoff is a source check the denied transport refuses by
-        # name: no outbound work, every issuer failed as network_disabled,
-        # nothing held presented as fresh.
+        reused = service.post(
+            "/api/evidence/prepare", _submission(again["next_requests"]["prepare"])
+        )
+        assert reused["disposition"] == "REUSED_EXACT" and reused["task_id"] == task_id
+        # A new cutoff refuses before admission or an inventory request;
+        # a held body does not make its filing index current.
         now[0] = _NOW + timedelta(hours=1)
         later = service.get("/api/evidence/preview?" + query)
+        assert later["status"] == "EVIDENCE_PREREQUISITES_MISSING"
+        assert later["failure_code"] == "evidence_review.workspace_network_not_allowed"
+        access = later["network_access"]
+        assert access["network_allowed"] is False
+        assert access["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
+        assert access["next_action"] == "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
+        assert later["next_requests"]["network"] == {"operation": "NETWORK_ACCESS"}
+        assert "prepare" not in later["next_requests"]
+        tasks_before = service.registry.tasks()
         fresh = service.post(
-            "/api/evidence/prepare", _submission(later["next_requests"]["prepare"])
+            "/api/evidence/prepare",
+            _submission(
+                {
+                    **preview["next_requests"]["prepare"],
+                    "evidence_as_of": now[0].isoformat(),
+                    "preparation_binding_hash": later["preparation_binding_hash"],
+                }
+            ),
         )
-        assert fresh["disposition"] == "ADMITTED"
-        service.drain()
-        status = service.get(f"/api/status?task_id={fresh['task_id']}")
-        assert status["lifecycle"] == "BLOCKED"
-        assert status["latest_failure_code"] == "alternative_evidence.network_disabled"
+        assert fresh["disposition"] == "REFUSED_NETWORK_ACCESS"
+        assert fresh["failure_code"] == "evidence_review.workspace_network_not_allowed"
+        assert "task_id" not in fresh
+        assert fresh["network_access"] == access
+        assert fresh["detail"] == "The command gave SEC consent. " + str(access["detail"])
+        assert "Restart only an idle Host" in fresh["source_ways"]["official"]["before"]
+        assert service.registry.tasks() == tasks_before
         refused = denied.source._transport.refused  # type: ignore[attr-defined]
-        # The preparation's index read and the Task each asked once, and each
-        # was refused by name before anything left the process.
-        assert refused == ["https://www.sec.gov/files/company_tickers.json"] * 2
+        assert refused == [], "the refused preparation performs no source work"
         assert transport.body_calls[fetched:] == [], "the injected source was never used again"
         assert service.get("/api/evidence/preview?" + query)["prepared_task_id"] is None
+    finally:
+        service.session.stop()
+
+
+def test_a_denied_source_requires_an_idle_restart_after_the_control_opens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """requirement (P4): opening the control cannot replace a denied transport;
+    its refusal reports the current control and the existing idle-restart recovery."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
+    workspace, report = build_workspace(tmp_path)
+    recorded = build_authority(tmp_path=tmp_path, report=report, model_authority_admitted=False)
+    assert recorded.evidence_resources is not None
+    denied = admit_official_source(network_consent=True, workspace_root=workspace, environment={})
+    assert denied.source is not None and denied.network_access is not None
+    assert denied.network_access.decided_by == "DEFAULT"
+    authority = replace(
+        recorded,
+        evidence_resources=replace(recorded.evidence_resources, live_source=denied.source),
+        evidence_policy=live_evidence_policy(recorded.evidence_policy),
+        network_access=denied.network_access,
+    )
+    service = start_service(workspace, authority, tmp_path, clock=lambda: _NOW)
+    try:
+        query = f"result_hash={service.result_hash()}"
+        closed = service.get("/api/evidence/preview?" + query)
+        assert closed["network_access"]["network_allowed"] is False
+        set_network_access(workspace, enabled=True)
+        opened = service.get("/api/evidence/preview?" + query)
+        assert opened["status"] == "EVIDENCE_PREREQUISITES_MISSING"
+        assert opened["network_access"]["network_allowed"] is True
+        assert opened["network_access"]["decided_by"] == "WORKSPACE_CONTROL"
+        assert opened["source_network_access"]["network_allowed"] is False
+        assert opened["source_network_access"]["decided_by"] == "DEFAULT"
+        assert "prepare" not in opened["next_requests"]
+        assert "No workspace control is set" not in opened["detail"]
+        assert "Restart only an idle Host" in opened["source_ways"]["official"]["before"]
+        tasks_before = service.registry.tasks()
+        refused = service.post(
+            "/api/evidence/prepare",
+            {
+                "result_hash": service.result_hash(),
+                "evidence_as_of": opened["evidence_as_of"],
+                "preparation_binding_hash": opened["preparation_binding_hash"],
+            },
+        )
+        assert refused["disposition"] == "REFUSED_NETWORK_ACCESS"
+        assert refused["failure_code"] == "evidence_review.workspace_network_not_allowed"
+        assert refused["network_access"] == opened["network_access"]
+        assert refused["detail"] == opened["source_ways"]["official"]["before"]
+        assert refused["next_action"] == "READ_NETWORK_ACCESS"
+        assert service.registry.tasks() == tasks_before
+        assert denied.source.network_call_count == 0
+    finally:
+        service.session.stop()
+
+
+def test_a_real_source_reads_the_closed_control_before_any_new_acquisition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """requirement (P4): a real client admitted while open cannot acquire after
+    the workspace closes; its controlled HTTP transport is never called."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
+    workspace, report = build_workspace(tmp_path)
+    set_network_access(workspace, enabled=True)
+    admission = admit_official_source(
+        network_consent=True,
+        workspace_root=workspace,
+        environment={"SEC_USER_AGENT": "QA qa@example.com"},
+    )
+    assert admission.source is not None and admission.network_access is not None
+    assert admission.transport_origin == "OFFICIAL_HTTP" and admission.network_access.allowed
+    admission.source.close()
+    requests: list[httpx.Request] = []
+
+    def controlled(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(503)
+
+    with HttpxSecOfficialTransport(
+        user_agent="QA qa@example.com", transport=httpx.MockTransport(controlled)
+    ) as transport:
+        source = SecEdgarSource(transport)
+        assert source.network_capable
+        recorded = build_authority(tmp_path=tmp_path, report=report, model_authority_admitted=False)
+        assert recorded.evidence_resources is not None
+        authority = replace(
+            recorded,
+            evidence_resources=replace(recorded.evidence_resources, live_source=source),
+            evidence_policy=live_evidence_policy(recorded.evidence_policy),
+            network_access=admission.network_access,
+        )
+        service = start_service(workspace, authority, tmp_path, clock=lambda: _NOW)
+        try:
+            query = f"result_hash={service.result_hash()}"
+            ready = service.get("/api/evidence/preview?" + query)
+            assert ready["status"] == "EVIDENCE_PREPARATION_READY"
+            set_network_access(workspace, enabled=False)
+            closed = service.get("/api/evidence/preview?" + query)
+            assert closed["status"] == "EVIDENCE_PREREQUISITES_MISSING"
+            assert closed["network_access"]["network_allowed"] is False
+            assert closed["network_access"]["decided_by"] == "WORKSPACE_CONTROL"
+            assert closed["source_network_access"]["network_allowed"] is True
+            assert "prepare" not in closed["next_requests"]
+            tasks_before = service.registry.tasks()
+            refused = service.post(
+                "/api/evidence/prepare", _submission(ready["next_requests"]["prepare"])
+            )
+            assert refused["failure_code"] == "evidence_review.workspace_network_not_allowed"
+            assert refused["network_access"] == closed["network_access"]
+            assert "task_id" not in refused
+            assert service.registry.tasks() == tasks_before
+            assert source.network_call_count == 0 and transport.request_count == 0
+            assert requests == []
+        finally:
+            service.session.stop()
+
+
+def test_a_failed_live_run_is_not_retried_with_a_denied_source(tmp_path: Path) -> None:
+    """requirement (P4): an already sealed failed run does not bypass the network
+    refusal when its exact preparation is retried after a Host restart."""
+    workspace, report = build_workspace(tmp_path)
+    scenario = _scenario()
+    scenario.failures["https://www.sec.gov/files/company_tickers.json"] = lambda: ValueError(
+        "alternative_evidence.network_disabled"
+    )
+    recorded = build_authority(tmp_path=tmp_path, report=report, model_authority_admitted=False)
+    assert recorded.evidence_resources is not None
+    live = replace(
+        recorded,
+        evidence_resources=replace(
+            recorded.evidence_resources, live_source=SecEdgarSource(scenario)
+        ),
+        evidence_policy=live_evidence_policy(recorded.evidence_policy),
+    )
+    service = start_service(workspace, live, tmp_path, clock=lambda: _NOW)
+    try:
+        preview = service.get(f"/api/evidence/preview?result_hash={service.result_hash()}")
+        request = _submission(preview["next_requests"]["prepare"])
+        admitted = service.post("/api/evidence/prepare", request)
+        service.drain()
+        assert service.get(f"/api/status?task_id={admitted['task_id']}")["lifecycle"] == "BLOCKED"
+    finally:
+        service.session.stop()
+    denied = admit_official_source(
+        network_consent=True, environment={"ALPHALATTICE_NETWORK_DISABLED": "1"}
+    )
+    assert denied.source is not None
+    offline = replace(
+        recorded,
+        evidence_resources=replace(recorded.evidence_resources, live_source=denied.source),
+        evidence_policy=live_evidence_policy(recorded.evidence_policy),
+        network_access=denied.network_access,
+    )
+    service = start_service(workspace, offline, tmp_path, clock=lambda: _NOW)
+    try:
+        tasks_before = service.registry.tasks()
+        refused = service.post("/api/evidence/prepare", request)
+        assert refused["failure_code"] == "evidence_review.workspace_network_not_allowed"
+        assert "task_id" not in refused
+        assert service.registry.tasks() == tasks_before
+        assert denied.source.network_call_count == 0
     finally:
         service.session.stop()
 
@@ -882,6 +1095,87 @@ def test_a_filing_read_once_is_carried_while_it_stays_in_the_window(tmp_path: Pa
         projection = EvidenceCroProjector(review).projection()
         assert projection.state == "REVIEW_PUBLISHED", projection.state
         assert projection.evidence_selection == "UNIQUE_CURRENT"
+    finally:
+        service.session.stop()
+
+
+def test_carried_findings_keep_an_issuer_whose_new_filing_cannot_be_read(tmp_path: Path) -> None:
+    """A failed new source keeps the earlier finding and its issuer visible,
+    without counting the issuer as reviewed. The same public route recovers
+    after the source is available, keeping every dossier validation.
+    """
+    from pydantic import ValidationError
+
+    transport = _scenario()
+    now = [_NOW]
+    service, _authority = _live_service(tmp_path, transport, now)
+    try:
+        client = LocalResearchClient(service.session.workspace)
+        selected = {"result_hash": service.result_hash()}
+        first = client.request({"operation": "EVIDENCE_REFRESH", **selected})
+        assert first["disposition"] == "ADMITTED", first
+        service.drain()
+        original = client.request({"operation": "CRO_REVIEW_DOSSIER", **selected})
+        assert original["status"] == "CRO_DOSSIER_READY", original
+        finding = original["dossier"]["findings"][0]
+        changed = finding["affected_entities"][0]
+        now[0] = transport.retrieved_at = _NOW + timedelta(days=1)
+        new = ScenarioFiling(
+            f"{CIKS[changed]}-26-000200",
+            "8-K",
+            now[0].date().isoformat(),
+            (now[0] - timedelta(hours=1)).isoformat().replace("+00:00", ".000Z"),
+            f"{changed.casefold()}-unavailable.htm",
+        )
+        transport.add_filing(CIKS[changed], new, filing_body(new.accession))
+        transport.fail_body(
+            CIKS[changed], new, lambda: RuntimeError("fixture: new filing unavailable")
+        )
+        second = client.request({"operation": "EVIDENCE_REFRESH", **selected})
+        assert second["disposition"] == "ADMITTED", second
+        service.drain()
+        exported = client.request({"operation": "CRO_REVIEW_DOSSIER", **selected})
+        assert exported.get("status") == "CRO_DOSSIER_READY", exported
+        dossier = PortfolioReviewDossier.model_validate(exported["dossier"])
+        assert dossier.issuer(changed).review_state == "UNREVIEWED"
+        assert any(changed in item.affected_entities for item in dossier.findings)
+        assert not any(changed in child.ordered_entity_ids for child in dossier.evidence_children)
+        assert dossier.coverage.reviewed_ending_weight_coverage < 1.0
+        assert any(changed in reason for reason in dossier.coverage.unavailable_reasons)
+        bundle = client.request(
+            {
+                "operation": "AGENT_BUNDLE_PREPARE",
+                "agent_role": "CRO",
+                "bundle_directory": str(tmp_path / "cro-bundle"),
+                **selected,
+            }
+        )
+        assert bundle["status"] == "AGENT_BUNDLE_READY", bundle
+        # The compiler's issuer union repairs its own output, never the contract.
+        damaged = dossier.model_dump(mode="json")
+        damaged["issuers"] = [row for row in damaged["issuers"] if row["entity_id"] != changed]
+        with pytest.raises(ValidationError, match=r"chief_risk_officer\.dossier_entity_invalid"):
+            PortfolioReviewDossier.model_validate(damaged)
+        stale = client.request(
+            {
+                "operation": "CRO_REVIEW_DOSSIER",
+                **selected,
+                "review_dossier_hash": "a" * 64,
+                "review_read_at": dossier.evidence_as_of.isoformat(),
+            }
+        )
+        assert stale["refused"].endswith("chief_risk_officer.delivery_continuation_stale")
+        transport.heal_body(CIKS[changed], new)
+        retry = client.request({"operation": "EVIDENCE_REFRESH", **selected})
+        assert retry["disposition"] == "ADMITTED", retry
+        service.drain()
+        recovered = client.request({"operation": "CRO_REVIEW_DOSSIER", **selected})
+        assert recovered["status"] == "CRO_DOSSIER_READY", recovered
+        current = PortfolioReviewDossier.model_validate(recovered["dossier"])
+        assert current.issuer(changed).review_state in {
+            "EXECUTED_NO_FINDINGS",
+            "EXECUTED_WITH_FINDINGS",
+        }
     finally:
         service.session.stop()
 

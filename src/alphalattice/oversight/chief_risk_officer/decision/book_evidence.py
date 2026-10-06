@@ -1444,8 +1444,8 @@ def compile_portfolio_coverage_dossier(
         for issuer in scope.selected_issuers
         if issuer.entity_id in reviewed or issuer.entity_id in nothing_filed
     )
-    # A holding with an open issue whose filings were not read today is in the
-    # dossier all the same: the issue counts in every result (W3).
+    # An earlier finding or open issue can still name a holding whose new
+    # source was not read. Keep the issuer without counting it as reviewed.
     named = {value.entity_id for value in issuers}
     issuers += tuple(
         PortfolioReviewDossierIssuer(
@@ -1461,7 +1461,10 @@ def compile_portfolio_coverage_dossier(
         )
         for issuer in scope.selected_issuers
         if issuer.entity_id not in named
-        and any(issuer.entity_id in value.affected_entities for value in opened)
+        and (
+            any(issuer.entity_id in value.affected_entities for value in findings)
+            or any(issuer.entity_id in value.affected_entities for value in opened)
+        )
     )
     weight_parts: dict[str, object] = {}
     if nothing_filed:

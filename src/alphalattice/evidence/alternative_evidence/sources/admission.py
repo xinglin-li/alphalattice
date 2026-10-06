@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, TypedDict
 
-from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.control.workspace_runtime.network_access import NetworkAccess, network_access
 from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceAdmission,
     AlternativeEvidenceSourcePolicy,
@@ -123,6 +123,9 @@ class OfficialSourceAdmission:
     every request by name -- what the workspace holds reads back, nothing
     outbound happens, and a source check is refused as `network_disabled`
     rather than answered from stale local inventory."""
+    network_access: NetworkAccess | None = None
+    """The effective permission read when a real source was composed; absent for
+    an injected transport. Runtime admission data, never a source binding."""
     maximum_document_bytes: int | None = None
     """The per-document cap the operator declared for this source, when one
     was declared; the recorded policy's cap otherwise. Stated at admission,
@@ -238,7 +241,8 @@ def admit_official_source(
         )
     values = dict(os.environ if environment is None else environment)
     # The workspace's typed network control decides, the operator's offline switch first (V53).
-    if not network_access(workspace_root, values).allowed:
+    access = network_access(workspace_root, values)
+    if not access.allowed:
         return OfficialSourceAdmission(
             source=SecEdgarSource(
                 DeniedSecOfficialTransport(), maximum_body_resources=maximum_body_resources
@@ -246,6 +250,7 @@ def admit_official_source(
             network_consent=True,
             transport_origin="DENIED",
             refusal_code="evidence_review.network_disabled",
+            network_access=access,
             **declared,
         )
     user_agent = values.get(SEC_USER_AGENT_VARIABLE, "").strip()
@@ -278,6 +283,7 @@ def admit_official_source(
         ),
         network_consent=True,
         transport_origin="OFFICIAL_HTTP",
+        network_access=access,
         **declared,
     )
 

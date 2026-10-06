@@ -50,6 +50,72 @@ def _cli(workspace: Path, *arguments: str) -> tuple[int, dict[str, Any], str]:
     return result.returncode, json.loads(result.stdout.strip().splitlines()[-1]), result.stdout
 
 
+@pytest.mark.parametrize(
+    "network_consent",
+    [
+        pytest.param(None, id="defaults-without-consent"),
+        pytest.param(False, id="bounds-without-consent"),
+        pytest.param(True, id="consent-and-bounds"),
+    ],
+)
+def test_serve_preserves_explicit_sec_consent_and_source_bounds(
+    tmp_path: Path, network_consent: bool | None
+) -> None:
+    """The source-ways command reaches the launcher; bounds alone grant no consent."""
+    from alphalattice.interface.local_application.cli import main
+
+    launches: list[list[str]] = []
+    source_arguments = (
+        []
+        if network_consent is None
+        else [
+            *(["--sec-network-consent"] if network_consent else []),
+            "--sec-max-document-bytes",
+            "2097152",
+            "--sec-acquisition-window-seconds",
+            "3600",
+            "--sec-max-total-attempts",
+            "300",
+            "--sec-max-total-response-bytes",
+            "100000000",
+            "--sec-max-body-resources",
+            "150",
+            "--sec-campaign-id",
+            "synthetic-cli-contract",
+        ]
+    )
+
+    def launch(arguments: list[str]) -> int:
+        launches.append(arguments)
+        return 0
+
+    assert (
+        main(
+            [
+                "--workspace",
+                str(tmp_path),
+                "serve",
+                "--no-browser",
+                "--stop-on-stdin",
+                *source_arguments,
+            ],
+            serve=launch,
+        )
+        == 0
+    )
+    assert launches == [
+        [
+            "--workspace",
+            str(tmp_path),
+            "--port",
+            "0",
+            "--no-browser",
+            "--stop-on-stdin",
+            *source_arguments,
+        ]
+    ]
+
+
 def test_storage_cap_is_one_operator_setting_through_the_real_cli_and_http(
     live: LocalPortfolioWebSession,
 ) -> None:

@@ -341,6 +341,13 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
     start.add_argument("--stop-on-stdin", action="store_true")
     start.add_argument("--no-browser", action="store_true")
     start.add_argument("--port", type=int, default=0)
+    start.add_argument("--sec-network-consent", action="store_true")
+    start.add_argument("--sec-max-document-bytes", type=int, default=None)
+    start.add_argument("--sec-acquisition-window-seconds", type=int, default=None)
+    start.add_argument("--sec-max-total-attempts", type=int, default=None)
+    start.add_argument("--sec-max-total-response-bytes", type=int, default=None)
+    start.add_argument("--sec-max-body-resources", type=int, default=None)
+    start.add_argument("--sec-campaign-id", default=None)
     whole = nouns.add_parser(
         "request",
         description="Send one whole request document, or one next request of a saved answer.",
@@ -1372,6 +1379,20 @@ def _command(
                 str(args.port),
                 *(["--no-browser"] if args.no_browser else []),
                 *(["--stop-on-stdin"] if args.stop_on_stdin else []),
+                *(["--sec-network-consent"] if args.sec_network_consent else []),
+                *[
+                    argument
+                    for field in (
+                        "sec_max_document_bytes",
+                        "sec_acquisition_window_seconds",
+                        "sec_max_total_attempts",
+                        "sec_max_total_response_bytes",
+                        "sec_max_body_resources",
+                        "sec_campaign_id",
+                    )
+                    if (value := getattr(args, field)) is not None
+                    for argument in ("--" + field.replace("_", "-"), str(value))
+                ],
             ]
         )
     common = {

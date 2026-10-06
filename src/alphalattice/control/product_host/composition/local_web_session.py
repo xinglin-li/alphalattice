@@ -132,6 +132,7 @@ from alphalattice.control.task_control.registry import (
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReader
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
+from alphalattice.control.workspace_runtime.network_access import NetworkAccess
 from alphalattice.evidence.alternative_evidence.contracts import SecIssuerRegistrySnapshot
 from alphalattice.evidence.alternative_evidence.publication.analysis import (
     AlternativeEvidenceAnalysisPublicationService,
@@ -403,6 +404,8 @@ class EvidenceReviewAuthority:
     campaign_summary: Callable[[], dict[str, object]] | None = None
     """Reads the live source's campaign balance from its ledger now; None
     without a named campaign."""
+    network_access: NetworkAccess | None = None
+    """The official source's process permission, outside every resource binding."""
 
     selected_analysis_publication_hash: str | None = None
 
@@ -625,6 +628,7 @@ class LocalPortfolioWebSession:
                 review_actor=admitted_review.review_actor,
                 model_authority_admitted=admitted_review.model_authority_admitted,
                 campaign_summary=_campaign_reader(self._official_source),
+                network_access=admitted_review.network_access,
             )
         session = WorkspaceApplicationSession.acquire(self.workspace).__enter__()
         self.session = session
@@ -1066,6 +1070,7 @@ def build_evidence_review_application(
             authority.selected_analysis_publication_hash if authority is not None else None
         ),
         campaign_summary=authority.campaign_summary if authority is not None else None,
+        network_access=authority.network_access if authority is not None else None,
         clock=clock,
     )
 

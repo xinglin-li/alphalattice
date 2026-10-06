@@ -5552,6 +5552,12 @@ def _review_outcome_body(outcome: ReviewOutcome | dict[str, object]) -> dict[str
         body["evidence_unit_id"] = outcome.evidence_unit_id
     if outcome.answer is not None:
         body["answer"] = dict(outcome.answer)
+    if outcome.network_access is not None:
+        body["network_access"] = dict(outcome.network_access)
+    if outcome.source_network_access is not None:
+        body["source_network_access"] = dict(outcome.source_network_access)
+    if outcome.source_ways is not None:
+        body["source_ways"] = dict(outcome.source_ways)
     return body
 
 

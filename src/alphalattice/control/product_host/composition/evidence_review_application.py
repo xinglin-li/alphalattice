@@ -54,7 +54,7 @@ from alphalattice.control.task_control.contracts import (
 )
 from alphalattice.control.task_control.registry import TaskNotFoundError
 from alphalattice.control.task_control.runner import TaskControlRunner
-from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.control.workspace_runtime.network_access import NetworkAccess, network_access
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceResearchObligation,
     AlternativeEvidenceRetrievalAccessReceipt,
@@ -715,6 +715,12 @@ class ReviewOutcome:
     answer: dict[str, object] | None = None
     """How the Host received the answer this admitted: its verdict
     (`ACCEPTED` or `DONE`), its number, the items accepted and dropped."""
+    network_access: dict[str, object] | None = None
+    """The effective network owner's reading when source acquisition was refused."""
+    source_network_access: dict[str, object] | None = None
+    """The launch reading that composed this Host's source transport."""
+    source_ways: dict[str, object] | None = None
+    """The existing source recovery, including replacement of an idle denied Host."""
 
     @property
     def reused(self) -> bool:
@@ -1180,6 +1186,8 @@ class EvidenceReviewApplication:
     installed_temporal_statements: Callable[[date, date], tuple[str, ...]] | None = None
     read_experiment: Callable[[UUID, str], dict[str, object]] | None = None
     campaign_summary: Callable[[], dict[str, object]] | None = None
+    network_access: NetworkAccess | None = None
+    """The official source's admission reading; runtime data, never a run binding."""
     _unit_obligation_cache: dict[
         tuple[str, datetime],
         dict[tuple[str, ...], tuple[str, AlternativeEvidenceResearchObligation]],
@@ -1334,6 +1342,10 @@ class EvidenceReviewApplication:
             and policy.mode is not AlternativeEvidenceMode.RECORDED
             and policy.network_consent
         ):
+            refusal = self._source_acquisition_refusal()
+            if refusal is not None:
+                assert refusal.failure_code is not None
+                raise PortfolioEvidenceReviewError(refusal.failure_code)
             adapter.read_inventory(
                 entities=resolved.scope.ordered_entity_ids,
                 evidence_as_of=evidence_as_of,
@@ -1359,6 +1371,31 @@ class EvidenceReviewApplication:
             read_filings=counted.read_filings,
         )
         return ResolvedCoverage(resolved=resolved, run=run, prepare_only=prepare_only)
+
+    def _source_acquisition_refusal(
+        self, *, evidence_as_of: datetime | None = None
+    ) -> ReviewOutcome | None:
+        """Project the admitted source's network hold using its owner's words."""
+        if self.network_access is None:
+            return None
+        current = network_access(self.workspace)
+        if self.network_access.allowed and current.allowed:
+            return None
+        from alphalattice.control.product_host.composition.plain_refusals import refused
+
+        words = refused("evidence_review.workspace_network_not_allowed")
+        ways = source_ways(self.workspace, entities=None, book=None)
+        official = cast(dict[str, object], ways["official"])
+        return ReviewOutcome(
+            disposition="REFUSED_NETWORK_ACCESS",
+            detail=str(official["before"]),
+            failure_code=words["failure_code"],
+            evidence_as_of=evidence_as_of,
+            network_access=current.body(),
+            source_network_access=self.network_access.body(),
+            source_ways=ways,
+            next_requests={"network": {"operation": "NETWORK_ACCESS"}},
+        )
 
     def _source_counts(
         self, scope: PortfolioIssuerScope, *, evidence_as_of: datetime
@@ -2018,6 +2055,23 @@ class EvidenceReviewApplication:
                     "failure_code": "alternative_evidence.book_sources_short",
                     "next_action": "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE",
                 }
+        network_refusal = self._source_acquisition_refusal(evidence_as_of=run.evidence_as_of)
+        if network_refusal is not None:
+            envelope, _goal, _plan = coverage_run_task_contract(run=run, prepare_only=True)
+            reusable = (
+                completed is not None
+                or self._refresh_in_flight(coverage, identity=envelope.input_hash) is not None
+            )
+            if not reusable:
+                source_ready = False
+                ways |= {
+                    "failure_code": network_refusal.failure_code,
+                    "detail": network_refusal.detail,
+                    "network_access": network_refusal.network_access,
+                    "source_network_access": network_refusal.source_network_access,
+                    "source_ways": network_refusal.source_ways,
+                }
+                next_requests.update(network_refusal.next_requests or {})
         if source_ready:
             next_requests["prepare"] = {
                 "operation": "EVIDENCE_PREPARE",
@@ -2182,12 +2236,18 @@ class EvidenceReviewApplication:
                 failure_code="alternative_evidence.matter_selection_policy_retired",
             )
         now = self.clock()
-        coverage = self.resolve_coverage(
-            chosen,
-            evidence_as_of=evidence_as_of or now,
-            prepare_only=prepare_only,
-            read_inventory=True,
-        )
+        try:
+            coverage = self.resolve_coverage(
+                chosen,
+                evidence_as_of=evidence_as_of or now,
+                prepare_only=prepare_only,
+                read_inventory=True,
+            )
+        except PortfolioEvidenceReviewError as error:
+            refusal = self._source_acquisition_refusal(evidence_as_of=evidence_as_of or now)
+            if refusal is None or str(error) != refusal.failure_code:
+                raise
+            return refusal
         preview = {
             "operation": "EVIDENCE_PREVIEW",
             **chosen.request_fields(),
@@ -2315,6 +2375,9 @@ class EvidenceReviewApplication:
         in_flight = self._refresh_in_flight(coverage, identity=envelope.input_hash)
         if in_flight is not None:
             return in_flight
+        network_refusal = self._source_acquisition_refusal(evidence_as_of=run.evidence_as_of)
+        if network_refusal is not None:
+            return network_refusal
         adapter.admit_run(run)
         command = AlternativeEvidenceRefreshCommand(
             application=self, run=run, prepare_only=coverage.prepare_only
