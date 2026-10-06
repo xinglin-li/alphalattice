@@ -8,6 +8,7 @@ import json
 import os
 import queue
 import shlex
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -29,8 +30,24 @@ def shell_command(command: list[str], shell: str | None) -> list[str]:
             "& " + words + "; exit $LASTEXITCODE",
         ]
     if shell == "bash":
-        return ["bash", "--noprofile", "--norc", "-c", "exec " + shlex.join(command)]
+        return [git_bash(), "--noprofile", "--norc", "-c", "exec " + shlex.join(command)]
     return command
+
+
+def git_bash() -> str:
+    """The bash that PATH names, as the person's own shell starts it.
+
+    Windows process creation searches System32 before PATH, where WSL's launcher bash.exe would
+    stand in for Git Bash; a PATH that still reaches only that launcher is refused by name.
+    """
+    bash = shutil.which("bash")
+    system = Path(os.environ.get("SYSTEMROOT", "C:/Windows")) / "System32"
+    if bash is None or Path(bash).parent.resolve() == system.resolve():
+        raise SystemExit(
+            f"wheel_smoke: no Git Bash on PATH (found {bash or 'none'}); run the bash smoke from "
+            "Git Bash, or put Git Bash's bin first on PATH"
+        )
+    return bash
 
 
 def smoke(command: list[str], *, cwd: Path, fresh_shell: str | None = None) -> dict[str, object]:
@@ -145,8 +162,14 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fresh-shell", choices=["powershell", "bash"])
     args = parser.parse_args()
-    with tempfile.TemporaryDirectory(prefix="alphalattice-outside-checkout-") as directory:
-        result = smoke(args.command, cwd=Path(directory), fresh_shell=args.fresh_shell)
+    try:
+        with tempfile.TemporaryDirectory(prefix="alphalattice-outside-checkout-") as directory:
+            result = smoke(args.command, cwd=Path(directory), fresh_shell=args.fresh_shell)
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(
+            f"wheel_smoke: {error.cmd} exited {error.returncode}\n"
+            f"{error.stdout or ''}{error.stderr or ''}"
+        ) from error
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(json.dumps(result))
 

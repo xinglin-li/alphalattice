@@ -14,6 +14,7 @@ from urllib.parse import unquote, urlsplit
 
 import pytest
 from markdown_it import MarkdownIt
+from scripts.release import wheel_smoke
 from scripts.release.wheel_build import resource_files, runtime_requirements
 
 from alphalattice.control.product_host.composition import (
@@ -329,3 +330,18 @@ def test_installed_scaffolding_refuses_before_writing_source(
     assert not installed.exists()
     words = cli_contract.client_refusal("model_extension.editable_checkout_required")
     assert "editable checkout" in words.detail and words.next_action
+
+
+def test_the_bash_smoke_starts_the_git_bash_that_path_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """regression: process creation finds System32's WSL bash.exe before PATH (the hosted Windows
+    runner has one); the smoke starts the bash PATH names and refuses the WSL launcher by name."""
+    git_bash = str(tmp_path / "Git/usr/bin/bash.exe")
+    monkeypatch.setattr(wheel_smoke.shutil, "which", lambda name: git_bash)
+    assert wheel_smoke.shell_command(["alphalattice", "--help"], "bash")[0] == git_bash
+    monkeypatch.setenv("SYSTEMROOT", str(tmp_path / "Windows"))
+    launcher = str(tmp_path / "Windows/System32/bash.exe")
+    monkeypatch.setattr(wheel_smoke.shutil, "which", lambda name: launcher)
+    with pytest.raises(SystemExit, match="no Git Bash on PATH"):
+        wheel_smoke.shell_command(["alphalattice", "--help"], "bash")
