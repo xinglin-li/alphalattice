@@ -1,7 +1,7 @@
 name = "alphalattice_factor"
 description = "Analyze a supplied Factor report and its exact product-generated curation choices."
 model = "gpt-6-luna"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 approval_policy = "never"
 developer_instructions = """

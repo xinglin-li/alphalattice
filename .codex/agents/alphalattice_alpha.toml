@@ -1,7 +1,7 @@
 name = "alphalattice_alpha"
 description = "Analyze installed Alpha experiment candidates, fold support and predictive evidence."
 model = "gpt-6-luna"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 approval_policy = "never"
 developer_instructions = """

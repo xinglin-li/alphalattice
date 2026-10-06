@@ -1,7 +1,7 @@
 name = "alphalattice_data"
 description = "Advise on one product-exported Data/Feature issue or update state, preserving its evidence and permission limits."
 model = "gpt-6-luna"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 approval_policy = "never"
 developer_instructions = """
