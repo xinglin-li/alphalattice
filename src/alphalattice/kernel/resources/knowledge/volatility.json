@@ -1,0 +1,27 @@
+{
+  "schema_version": "1",
+  "resource_kind": "knowledge",
+  "namespace": "system",
+  "stable_id": "knowledge.volatility",
+  "revision": "1.0.0",
+  "title": "Volatility model review knowledge",
+  "scope": "Evidence and package boundaries for deterministic daily volatility forecasts.",
+  "owner_refs": [
+    "openspec:quant-risk-estimation",
+    "reference:numerical-risk-estimation"
+  ],
+  "guidance": [
+    "Require the selected forecast and every candidate outcome to cite the same snapshot and forecast origin.",
+    "Treat candidate failure as evidence and never infer a replacement model from package defaults.",
+    "Use the owner specification for formulas, windows, selection, units, and tolerances."
+  ],
+  "assumptions": [
+    "The deterministic Quant port has already validated point-in-time input availability."
+  ],
+  "warnings": [
+    "Package API documentation does not authorize changing a risk-model parameter."
+  ],
+  "official_sources": [
+    "https://numpy.org/doc/stable/reference/generated/numpy.std.html"
+  ]
+}

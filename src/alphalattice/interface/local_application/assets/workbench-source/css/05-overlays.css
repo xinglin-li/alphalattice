@@ -1,0 +1,546 @@
+/* 05-overlays — Overlays: dialogs, sheets, toast, evidence lens, object peek, task drawer.
+   Files are concatenated in name order by build.py; that order is the cascade order. Edit by hand — the generator in qa/parity/css only did the migration from v3.13. */
+body.modal-open {
+  overflow: hidden;
+}
+/* Dialogs: native focus isolation and keyboard dismissal; the glass (law 150, 12-material) with the
+   large radius (the user's word, 2026-09-20: no right-angled box; Codex's dialogs and menus). The
+   head's inset went with the lens's rule in round 62 and is restored here. */
+dialog {
+  color: var(--text);
+  padding: 0;
+  max-width: calc(var(--vw) - 2 * var(--viewport-inset));
+  width: var(--width-lg);
+  max-height: calc(var(--vh) - 2 * var(--viewport-inset));
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+}
+/* The page behind a modal: half the dim it wore and a fog, the glass's company (`backdrop`, `backdrop-blur`;
+   the user, 2026-09-24: 只保留一部分背景变暗的程度. 增加背景雾化, 模糊化); it arrives with the dialog. A sheet
+   (Keyboard shortcuts) floats: nothing dims or fogs behind it and a press outside closes it (the user:
+   keyboard shortcuts为什么要做成背景全黑? 我觉得它就弄成悬浮就完事了). */
+dialog::backdrop {
+  background: var(--backdrop);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  backdrop-filter: var(--backdrop-blur);
+}
+dialog[open]::backdrop {
+  animation: ui-crossfade var(--dur-3) var(--curve-arrive);
+}
+dialog.sheet::backdrop {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+dialog[open] {
+  display: flex;
+  flex-direction: column;
+  animation: dialog-in var(--dur-3) var(--curve-arrive);
+  transform-origin: 50% 50%;
+}
+dialog.quick-dialog {
+  animation: quick-in var(--dur-3) var(--curve-arrive);
+}
+dialog[open][data-leaving] {
+  animation: dialog-out var(--dur-1) var(--curve-move) forwards;
+}
+dialog.quick-dialog[data-leaving] {
+  animation-name: quick-out;
+}
+dialog[data-leaving]::backdrop {
+  animation: ui-fade-out var(--dur-1) var(--curve-move) forwards;
+}
+/* A dialog's parts fade, never the dialog: a glass layer under a fading host frosts nothing until the
+   fade ends (law 150). The dialog scales and its shadow grows (dialog-in, quick-in). */
+dialog[open] > *,
+dialog[open]::before,
+dialog[open]::after {
+  animation: ui-crossfade var(--dur-3) var(--curve-arrive);
+}
+dialog[open][data-leaving] > *,
+dialog[open][data-leaving]::before,
+dialog[open][data-leaving]::after {
+  animation: ui-fade-out var(--dur-1) var(--curve-move) forwards;
+}
+.menu[data-leaving] {
+  animation: pop-out var(--dur-1) var(--curve-move) forwards;
+}
+dialog.sheet {
+  margin: var(--space-4) var(--space-4) var(--space-4) auto;
+  height: calc(var(--vh) - 2 * var(--viewport-inset));
+  max-height: none;
+  width: var(--width-md);
+}
+/* The shortcuts sheet (round 51): a search, then the groups of the key map as dense rows with
+   their caps at the right; the caps sit at a menu row's end the same way. */
+dialog.key-sheet { width: var(--width-md); }
+.key-search { margin-bottom: var(--space-4); }
+.key-group + .key-group { margin-top: var(--space-5); }
+.key-group h3 { margin: 0 0 var(--space-1); font: var(--weight-strong) var(--style-footnote-size)/var(--style-footnote-leading) var(--font-ui); letter-spacing: var(--style-footnote-tracking); color: var(--muted); } /* round 89: a group inside the box is a section label */
+.key-row { display: flex; align-items: center; gap: var(--space-3); min-height: var(--row-dense); border-bottom: 1px solid var(--edge-hair); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+.key-row:last-child { border-bottom: 0; }
+.keycap { display: inline-flex; align-items: center; gap: var(--space-05); margin-left: auto; flex: none; }
+.keycap > i { font-style: normal; color: var(--faint); font-size: var(--style-caption-size); line-height: var(--style-caption-leading); margin: 0 var(--space-05); }
+/* Round 55: one menu. A popover on the overlay material beside its trigger (or at a pointer), the
+   picker the same menu fixed in the top layer at its trigger's width; rows of an icon slot, the
+   words with a note under them, and a cap, a check or a chevron at the end; a search field above
+   eight or more rows. The ···, the row's ···, the chip's values and the picker are instances. */
+.menu { position: absolute; right: 0; top: calc(100% + var(--popover-gap)); z-index: var(--layer-menu); display: grid; gap: var(--space-05); min-width: min(var(--width-xs), calc(var(--vw) - 2 * var(--viewport-inset))); max-width: calc(var(--vw) - var(--space-8)); max-height: var(--menu-limit, calc(var(--vh) - var(--space-16))); overflow-y: auto; padding: var(--space-2); border-radius: var(--radius-card); transform-origin: top right; animation: pop-in var(--dur-1) var(--curve-arrive); }
+.menu[hidden] { display: none; }
+.menu.menu-align-start { right: auto; left: 0; transform-origin: top left; }
+.menu.menu-open-up { top: auto; bottom: calc(100% + var(--popover-gap)); transform-origin: bottom right; }
+.menu.menu-align-start.menu-open-up { transform-origin: bottom left; }
+.menu.menu-at-pointer { position: fixed; left: var(--menu-x); top: var(--menu-y); right: auto; bottom: auto; transform-origin: top left; }
+.menu.menu-fixed { position: fixed; inset: auto; left: var(--picker-left); top: var(--picker-top); width: var(--picker-width); min-width: 0; max-height: var(--picker-max); margin: 0; overflow: hidden; padding: var(--space-1); scrollbar-gutter: auto; transform-origin: top left; }
+.menu.menu-fixed[data-side=top] { transform-origin: bottom left; }
+.menu[data-picker-kind=theme] { padding-inline: var(--space-05); }
+.menu-list { display: grid; gap: var(--space-05); min-height: 0; max-height: var(--picker-max); overflow: auto; overscroll-behavior: contain; }
+.menu:has(.menu-search) .menu-list { max-height: calc(var(--picker-max) - var(--control-md) - 2 * var(--space-2)); }
+.menu-search { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2) var(--space-2); border-bottom: 1px solid var(--edge-hair); }
+.menu-search > .icon { width: var(--icon-sm); height: var(--icon-sm); color: var(--muted); }
+.menu-search input { width: 0; flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: var(--weight-body) var(--style-callout-size)/var(--style-callout-leading) var(--font-ui); }
+.menu-row, body[data-page] .menu > :is(.button, .text-btn) { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-2); width: 100%; min-height: var(--menu-row-height); padding: var(--control-pad-md) var(--space-2); border: 0; border-color: transparent; border-radius: var(--radius-control); background: transparent; color: var(--text); text-align: left; text-decoration: none; font: var(--weight-label) var(--style-callout-size)/var(--style-callout-leading) var(--font-ui); cursor: pointer; white-space: normal; overflow-wrap: anywhere; }
+.menu-row:hover, .menu-row:focus-visible, body[data-page] .menu > :is(.button, .text-btn):is(:hover, :focus-visible) { background: var(--ds-control-hover); border-color: transparent; }
+.menu-row:focus-visible, body[data-page] .menu > :is(.button, .text-btn):focus-visible { outline: none; } /* the fill is the focus (macOS menus); a ring on top is a second border */
+.menu-row[aria-pressed=true] { background: var(--fill-selected); }
+.menu-row[aria-selected=true] { background: transparent; }
+.menu-row > .icon { width: var(--icon-size); height: var(--icon-size); flex: none; color: var(--muted); }
+/* F3 (law 135): a list's folder in the rail's menu stands indented under its list, as in the dock. */
+.menu-row > .menu-word { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-row > .menu-note { margin-left: auto; padding-block: 0; padding-left: var(--space-3); flex: none; color: var(--muted); font-weight: var(--weight-body); font-size: var(--style-caption-size); line-height: var(--style-caption-leading); letter-spacing: var(--style-caption-tracking); font-variant-numeric: tabular-nums; }
+.menu-row[aria-disabled=true] { color: var(--muted); cursor: default; }
+.menu-row.menu-static, .menu-row.menu-fact { cursor: default; }
+.menu-row.menu-static:hover, .menu-row.menu-fact:hover { background: transparent; }
+.menu-row .zoom-step { width: var(--menu-step-size); height: var(--menu-step-size); flex: none; border-radius: var(--radius-control); color: var(--text); background: var(--ds-control-hover); font: inherit; }
+.menu-row .zoom-step + .zoom-step { margin-left: var(--space-1); }
+.menu-head { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-2) var(--space-3); }
+.menu-head > div { min-width: 0; display: grid; }
+.menu-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-head small { color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+.menu-tile { display: grid; place-items: center; width: var(--menu-tile-size); height: var(--menu-tile-size); flex: none; border-radius: var(--radius-block); background: var(--ds-control-hover); color: var(--text); }
+.menu-tile .icon { width: var(--icon-lg); height: var(--icon-lg); }
+.menu-divider { margin: var(--space-1) 0; border: 0; border-top: 1px solid var(--edge-hair); }
+.menu.menu-popover { min-width: min(var(--width-sm), calc(var(--vw) - 2 * var(--viewport-inset))); }
+[data-anchor="product"] .menu { min-width: min(var(--width-sm), calc(var(--vw) - 2 * var(--viewport-inset))); } /* the Text size row: the word, the figure, two steps (round 86: the word was cut) */
+.menu-row .menu-segments { margin-left: auto; display: inline-flex; gap: var(--space-05); flex: none; } /* the Language row's EN / 中文 (round 86) */
+body[data-page] .menu-row .menu-segments [data-control="segment"] { min-height: var(--menu-segment-height); padding: 0 var(--space-2); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); }
+.menu-words { display: grid; gap: var(--space-05); min-width: 0; flex: 1; }
+/* CT3 keeps picker titles whole on one line. A title beyond the fitted popup measure rolls
+   with the whole list; it does not gain a separate scroller or lose its exact choice text.
+   The option under the pointer or the keys wears the accent tint, the chosen one its ✓;
+   an action menu keeps the neutral fill. */
+:is(.picker-pop, .choice-list) .menu-row { white-space: nowrap; overflow-wrap: normal; min-width: 0; max-width: 100%; } /* a grid item shrinks only when told to */
+.picker-pop .menu-row { min-width: max-content; max-width: none; }
+/* Round 94 (measured: a 1,264-session list cost 33 ms of layout and 132 ms of style on each open): the
+   rows off the list's screen are not laid out until they scroll in; each keeps its one-line height. */
+:is(.picker-pop, .choice-list) .picker-option { content-visibility: auto; contain-intrinsic-block-size: auto var(--row-dense); }
+:is(.picker-pop, .choice-list) .menu-words { display: flex; align-items: center; gap: 0; min-width: 0; flex: 1 1 auto; } /* round 94: the words' basis is their content, so a squeeze reaches the ✓'s box and the meta before the title */
+:is(.picker-pop, .choice-list) .menu-words > strong { display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-label); } /* round 94 (the user's still): an option is a menu row's word, not a wall of bold; the ✓ marks the chosen */
+:is(.picker-pop, .choice-list) .menu-words > strong > .icon { vertical-align: middle; margin-right: var(--space-2); }
+.choice-list .menu-words > strong { white-space: normal; overflow: visible; text-overflow: clip; } /* W: an option of a list in place wraps at its separators (a factor's name), never cut */
+:is(.picker-pop, .choice-list) .menu-words > small { flex: 0 999999 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* round 94: the meta takes what the title leaves and gives way whole (a shrink weight that leaves it no stub) */
+.picker-trigger.picker-chip > .picker-trigger-label { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; } /* the chip's label, its divider, its value */
+:is(.picker-pop, .choice-list) .picker-option:is(:hover, :focus-visible) { background: var(--fill-highlight); }
+/* Round 94 (the user's rule): the list is its trigger's width, or its widest title's when the titles
+   need more (`Picker.fit`); while measuring, the list takes its max-content with every row drawn and
+   no metas; the search field never sets the width. Inside the width the meta gives way whole before
+   the title loses a letter, and the ✓'s box can give up to 6 px so a list snaps to its trigger. The
+   220 px query that dropped the metas of a 240 px list is gone with the 240 px floor. */
+.picker-pop.measuring .menu-list { width: max-content; max-width: none; }
+.picker-pop.measuring .picker-option { content-visibility: visible; }
+.picker-pop.measuring .menu-words > small { display: none; }
+:is(.picker-pop, .choice-list) .menu-check { width: auto; flex: 0 999999 var(--icon-size); min-width: var(--icon-xs); overflow: visible; }
+/* Below 640 the list is a sheet from the foot (Apple's), never a squeezed list. */
+.menu.menu-fixed[data-sheet=true] { left: var(--space-4); right: var(--space-4); top: auto; bottom: var(--space-4); width: auto; max-height: var(--picker-max); transform-origin: bottom center; }
+.menu-row strong { font: inherit; }
+.menu-row small { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); font-weight: var(--weight-body); }
+.menu-check { display: grid; place-items: center; width: var(--icon-size); flex: none; color: var(--ink-link); opacity: 0; }
+.menu-check .icon { width: var(--icon-sm); height: var(--icon-sm); }
+.menu-row:is([aria-selected=true], [aria-checked=true]) .menu-check { opacity: 1; }
+.menu-empty { padding: var(--space-5) var(--space-3); color: var(--muted); text-align: center; font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+.menu-more { padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); } /* round 94: the rows a long list keeps back */
+.dialog-head {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-5);
+  flex: none;
+  padding: var(--sheet-inset) var(--sheet-inset) var(--space-5);
+}
+.dialog-head h2 {
+  margin-top: var(--space-1);
+  font-size: var(--style-title-1-size);
+  line-height: var(--style-title-1-leading);
+  letter-spacing: var(--style-title-1-tracking);
+  font-weight: var(--weight-strong);
+}
+.dialog-list-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: left;
+  margin-bottom: var(--space-2);
+}
+.dialog-list-btn .icon {
+  color: var(--ink-link);
+}
+.toast { /* bottom right (round 56, Linear's), a mark, the quoted id, the word; inside the window (round 94) so it reads the dock's width */
+  position: fixed;
+  bottom: var(--toast-offset);
+  right: var(--space-6);
+  border-radius: var(--radius-card); /* it floats: the glass (law 150), not the lane (2026-09-23) */
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  z-index: var(--layer-toast);
+  max-width: calc(var(--vw) - 2 * var(--viewport-inset));
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.toast {
+  animation: ui-crossfade var(--dur-1) var(--curve-move);
+}
+html[data-dock=right] .toast {
+  right: calc(var(--lead) + var(--space-6)); /* round 94 (the still): the toast stands over the lane, never over the dock's foot rows */
+}
+.toast[data-leaving] {
+  animation: ui-fade-out var(--dur-1) var(--curve-move) forwards;
+}
+.toast .icon {
+  width: var(--icon-sm);
+}
+#toastIcon { display: grid; place-items: center; color: var(--ink-link); }
+#toastAction:empty { display: none; }
+.toast-name { max-width: var(--measure-name); font-weight: var(--weight-label); }
+#toastIcon .icon { width: var(--icon-size); height: var(--icon-size); }
+.toast code { font-family: var(--font-mono); color: var(--text); }
+/* Round 56: the composer — the context line, a title and a body with placeholders instead of
+   labels, the properties as chips along the bottom, the rest folded; one sheet, one primary. */
+.composer { display: grid; gap: var(--space-3); }
+.composer-context { color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+.composer-title, .composer-body { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); padding: 0; resize: vertical; }
+.composer-title { font: var(--weight-label) var(--style-title-2-size)/var(--style-title-2-leading) var(--font-ui); letter-spacing: var(--style-title-2-tracking); }
+.composer-body { font: var(--weight-body) var(--style-body-size)/var(--style-body-leading) var(--font-ui); min-height: calc(var(--composer-lines) * var(--style-body-leading)); }
+:is(.composer-title, .composer-body)::placeholder { color: var(--faint); }
+.composer-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--edge-hair); }
+.composer-more { margin-top: var(--space-2); }
+.composer-more .field { margin-top: var(--space-3); }
+.composer-stages { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin-top: var(--space-3); }
+.composer-note { color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+.dialog-foot-note { margin-right: auto; display: inline-flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); }
+.dialog-body .kv dd {
+  text-align: left;
+}
+/* Round 93: the palette (Raycast's, Linear's ⌘K, VS Code's) -- no head, no close glyph, no foot; the
+   input row first with the context chip before the caret; rows one line with the words, the subtitle
+   after a middle dot and the chord at the right; sections as kickers; the highlighted row the neutral
+   face, never an outline or the accent (an action is not an option). */
+dialog.quick-dialog {
+  width: min(var(--width-lg), calc(var(--vw) - 2 * var(--viewport-inset)));
+  max-height: min(var(--quick-height), var(--quick-cover));
+  margin-top: var(--quick-top);
+  margin-bottom: auto;
+  padding: var(--space-2);
+  container-type: inline-size;
+}
+.quick-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--quick-search-height);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-bottom: 1px solid var(--edge-hair);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.quick-search > .icon { height: var(--icon-size); width: var(--icon-size); color: var(--muted); flex: none; }
+.quick-search > input { flex: 1 1 auto; min-width: 0; border: 0; background: transparent; padding: 0; font-size: var(--style-body-size); line-height: var(--style-body-leading); }
+.quick-context { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; max-width: var(--share-chip); min-height: var(--space-6); padding: 0 var(--space-2); border-radius: var(--radius-control); background: var(--ui-face); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quick-context > code { font: var(--style-footnote-size)/var(--style-footnote-leading) var(--font-mono); }
+#quickResults { display: grid; gap: var(--space-1); padding: var(--space-2) 0 0; overflow: auto; }
+/* The command menu's rows (round 54): a section head in the eyebrow style, rows at the regular
+   row height with the words, a sub line and the key cap at the end. */
+.menu-section { margin: var(--space-3) var(--space-3) var(--space-1); color: var(--muted); font-size: var(--style-caption-size); line-height: var(--style-caption-leading); letter-spacing: var(--style-caption-tracking); font-weight: var(--weight-strong); } /* round 93 (law 75): a menu's section is a section label -- muted, 600, the caption */
+.menu-section:first-child { margin-top: 0; }
+/* Round 57: the display popover — sections of checked rows and a row of toggle chips. */
+.display-options { position: relative; display: inline-flex; }
+.display-menu { min-width: min(var(--width-sm), calc(var(--vw) - 2 * var(--viewport-inset))); }
+.display-props { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) var(--space-2) var(--space-2); }
+.display-prop { min-height: var(--display-prop-height); padding: 0 var(--space-3); color: var(--muted); font: var(--weight-body) var(--style-footnote-size)/var(--style-footnote-leading) var(--font-ui); }
+.display-prop[aria-pressed=true] { border-style: solid; border-color: var(--ui-line); color: var(--text); }
+.card-list > .group-head { margin: var(--space-2) 0 var(--space-1); }
+.card-list > .group-head:first-child { margin-top: 0; }
+.data-table tr.table-group > th { padding: var(--space-2) var(--space-3); background: var(--surface-bar); font-weight: var(--weight-label); text-align: left; }
+.data-table tr.table-group > th > b { margin-left: var(--space-2); font-weight: var(--weight-body); color: var(--muted); }
+.quick-result {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-control);
+  text-align: left;
+  border: 0;
+  min-height: var(--quick-result-height);
+  width: 100%;
+  background: transparent;
+  color: var(--text);
+}
+.quick-result > .keycap { margin-left: auto; flex: none; }
+.quick-result > .icon { width: var(--icon-lg); height: var(--icon-lg); --icon-stroke: 1.6; color: var(--muted); flex: none; }
+.quick-words { min-width: 0; flex: 1 1 auto; display: flex; align-items: baseline; gap: 0; white-space: nowrap; overflow: hidden; }
+/* Round 95 (the user's reading): a title and its meta on one line are joined by the middle dot with a
+   half step either side -- the dot is the sheet's, never typed into the words (a typed leading space
+   collapses at a flex item's start and the dot hugged the title). */
+:is(.quick-words, .picker-pop .menu-words, .choice-list .menu-words) > small::before { content: '·'; margin: 0 var(--space-1); color: var(--muted); }
+.quick-words > strong { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--style-callout-size); line-height: var(--style-callout-leading); font-weight: var(--weight-label); }
+.quick-words > small { flex: 0 4 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); }
+@container (width < 420px) { .quick-words > small { display: none; } }
+.quick-result.active, .quick-result:hover { background: var(--fill-selected); }
+.quick-empty {
+  padding: var(--space-8) var(--space-5);
+  text-align: center;
+}
+.quick-empty p {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  margin-top: var(--space-2);
+}
+/* Research map: three legible rows, real parallel Alpha/Risk branch. No horizontal scrolling. */
+dialog.research-map-dialog {
+  width: var(--width-2xl);
+  max-width: calc(var(--vw) - 2 * var(--viewport-inset));
+}
+.dialog-head {
+  flex-shrink: 0;
+}
+/* The peek (round 53): a card beside the held row on the glass (law 150); it arrives from a
+   6 px rise and is gone on Space or Esc. */
+.object-peek {
+  position: fixed;
+  z-index: var(--layer-peek);
+  min-width: var(--width-xs);
+  max-width: var(--width-sm);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-radius: var(--radius-card);
+  opacity: 0;
+  transform: translateY(var(--popover-gap)) scale(.985);
+  transition: opacity var(--dur-1) var(--curve-move),transform var(--dur-2) var(--curve-move);
+}
+.object-peek.is-open { opacity: 1; transform: none; }
+.object-peek > h3 { margin: 0 0 var(--space-2); font: var(--weight-strong) var(--style-headline-size)/var(--style-headline-leading) var(--font-ui); }
+.object-peek > .peek-id { margin: 0 0 var(--space-1); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); }
+.object-peek > .peek-props, .object-peek > .peek-note, .object-peek > .peek-time { margin: 0 0 var(--space-1); color: var(--muted); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+.object-peek > .peek-note { color: var(--text); -webkit-line-clamp: var(--clamp-note); }
+.object-peek > .peek-keys { margin: var(--space-2) 0 0; display: flex; align-items: center; gap: var(--space-2); }
+.object-peek .peek-keys > .text-btn { gap: var(--space-2); padding-inline: var(--space-1); color: var(--muted); font-size: var(--style-caption-size); line-height: var(--style-caption-leading); }
+/* The alert (round 82, macOS): a short question with two answers -- ~340 px, centred, a bold
+   title, one line of body, equal pills; anything with a body of facts stays a dialog. */
+dialog.alert { width: auto; min-width: var(--width-sm); max-width: var(--width-md); text-align: center; }
+dialog.alert .dialog-head { justify-content: center; padding: var(--space-8) var(--space-6) 0; border: 0; }
+dialog.alert :is(.dialog-kind, .dialog-head .icon-btn) { display: none; }
+dialog.alert .dialog-head h2 { font-size: var(--style-title-3-size); line-height: var(--style-title-3-leading); letter-spacing: var(--style-title-3-tracking); font-weight: var(--weight-strong); }
+dialog.alert .dialog-body { padding: var(--space-2) var(--space-6) var(--space-5); color: var(--muted); }
+dialog.alert .dialog-foot { border-top: 0; padding: 0 var(--space-6) var(--space-6); flex-wrap: nowrap; }
+dialog.alert .dialog-foot > .button { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow-wrap: normal; }
+/* Non-modal when there is space to read side by side. Native modal sheet on narrow screens. */
+.dialog-body {
+  overflow-y: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--scroll-thumb) transparent;
+  padding: var(--sheet-inset);
+}
+.dialog-body * {
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+/* The code dialog (round 92): a document read whole. The block never wraps and scrolls both ways;
+   the dialog is as wide as a document wants; the copy glyph stands beside the close. */
+dialog.code-dialog { width: min(var(--width-xl), calc(var(--vw) - 2 * var(--viewport-inset))); }
+.code-dialog .dialog-body { padding: 0; display: flex; min-height: 0; }
+.code-document { flex: 1 1 auto; margin: 0; border: 0; border-radius: 0; background: transparent; white-space: pre; overflow: auto; max-height: var(--document-max); padding: var(--sheet-inset); }
+.dialog-tools { display: flex; align-items: center; gap: var(--space-1); flex: none; }
+/* The both-ways net (round 92): a narrow container -- the side column, a dialog's body, the Task
+   panel -- never clips a block or a table; they scroll inside it. */
+:is(#inspector, .dialog-body) :is(pre, .code-block, .table-scroll, table) { max-width: 100%; overflow: auto; }
+.dialog-foot {
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  flex: none;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--sheet-inset);
+  border-color: var(--ds-edge);
+}
+/* One footer order whatever the caller wrote: secondaries first, the primary or critical action last. */
+.dialog-foot > :is([data-control="primary"],[data-control="critical"]) {
+  order: 2;
+}
+.dialog-foot > :is(.button,.text-btn):not([data-control="primary"]):not([data-control="critical"]) {
+  order: 1;
+}
+/* The drawer's head is a Title 2 line with the close at its end. */
+body[data-page] :is(.button,.dialog-list-btn,.comparison-candidate) {
+  font-size: var(--style-body-size);
+  line-height: var(--style-body-leading);
+  min-height: var(--button-height);
+}
+.dialog-head h2 {
+  font-size: var(--style-title-1-size);
+  line-height: var(--style-title-1-leading);
+  letter-spacing: var(--style-title-1-tracking);
+  overflow-wrap: anywhere;
+}
+.dialog-body {
+  font-size: var(--style-body-size);
+  line-height: var(--style-body-leading);
+}
+.dialog-list-btn>span {
+  word-break: normal;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dialog-list-btn strong {
+  display: block;
+  font-size: var(--style-title-3-size);
+  white-space: normal;
+  line-height: var(--style-title-3-leading);
+  letter-spacing: var(--style-title-3-tracking);
+}
+.dialog-list-btn small {
+  display: block;
+  color: var(--muted);
+  margin-top: var(--space-1);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+/* v3.10: calmer comparison furniture. Identities and unresolved constraints never filter out. */
+:is(.input-with-icon,.search-wrap,.es-search) {
+  border: 1px solid var(--ui-line);
+  border-radius: var(--radius-pill);
+  background: var(--field-face);
+  box-shadow: var(--rim-top);
+}
+:is(.input-with-icon,.search-wrap,.es-search):focus-within {
+  outline: var(--focus-ring-width) solid var(--accent);
+  outline-offset: var(--focus-ring-offset);
+}
+body:not([data-input="pointer"]) .quick-search:focus-within { border-bottom-color: var(--accent); } /* round 93: the keyboard's mark on the palette's row (its hairline takes the accent); nothing under the pointer */
+/* Round 93: the one tooltip -- the footnote on the glass (law 150), no arrow (Linear's; Apple's help tags), in the top layer. */
+#tip { position: fixed; inset: auto; margin: 0; width: max-content; max-width: var(--width-sm); overflow-wrap: normal; padding: var(--space-1) var(--space-2); border-radius: var(--radius-control); color: var(--text); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); pointer-events: none; overflow-wrap: anywhere; }
+#tip .keycap { margin-left: var(--space-1); vertical-align: middle; }
+/* The copy dialog's field when the clipboard is refused: eight editor lines. */
+.copy-field { min-height: calc(var(--copy-lines) * var(--editor-line)); }
+.dialog-list-btn {
+  transform: none;
+}
+:is(.dialog-list-btn,.comparison-candidate) {
+  box-shadow: none;
+  border-color: var(--ui-line);
+}
+@media (width < 640px) {
+dialog.sheet {
+    inset: 0;
+    margin: var(--space-2);
+    width: calc(var(--vw) - 2 * var(--space-2));
+    height: calc(var(--vh) - 2 * var(--space-2));
+    max-width: none;
+  }
+.dialog-head {
+    gap: var(--space-3);
+  }
+.dialog-body .kv dd {
+    font-size: var(--style-callout-size);
+    line-height: var(--style-callout-leading);
+  }
+.dialog-list-btn strong {
+    font-size: var(--style-headline-size);
+    line-height: var(--style-headline-leading);
+  }
+.dialog-list-btn small {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.toast {
+    width: calc(var(--vw) - 2 * var(--viewport-inset));
+    right: var(--space-4);
+    bottom: var(--toast-offset);
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+html[data-dock=right] .toast {
+    width: calc(var(--vw) - var(--lead) - 2 * var(--viewport-inset));
+    right: calc(var(--lead) + var(--space-4));
+  }
+.dialog-body .diff-values {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.quick-search {
+    padding: 0 var(--space-3);
+  }
+}
+@media (width < 768px) {
+.research-map-dialog .dialog-head {
+    padding: var(--space-5) var(--space-5) var(--space-4);
+  }
+.research-map-dialog .dialog-body {
+    padding: var(--space-4) var(--space-5);
+  }
+.research-map-dialog .dialog-foot {
+    padding: var(--space-3) var(--space-5);
+  }
+dialog.research-map-dialog {
+    max-width: calc(var(--vw) - 2 * var(--viewport-inset));
+  }
+}
+@media (width < 768px) {
+.dialog-list-btn {
+    padding: var(--space-4);
+  }
+.dialog-list-btn>span {
+    flex: 1;
+  }
+.dialog-list-btn strong {
+    font-size: var(--style-headline-size);
+    line-height: var(--style-headline-leading);
+  }
+.dialog-list-btn small {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+}
+@media (width < 768px) {
+.dialog-head,
+  .dialog-body {
+    padding: var(--space-5);
+  }
+.dialog-foot {
+    padding: var(--space-4) var(--space-5);
+  }
+.dialog-head h2 {
+    font-size: var(--style-title-1-size);
+    line-height: var(--style-title-1-leading);
+    letter-spacing: var(--style-title-1-tracking);
+  }
+}
+@media (width < 640px) {
+.dialog-foot {
+    flex-wrap: wrap;
+  }
+}

@@ -1,0 +1,843 @@
+{
+  "schema": "alphalattice.playpen.identity-roles",
+  "note": "Every implementation identity the Host records, with how its installed value is computed, how a recorded value is compared, and how its closure is chosen (binding plan section 14, R1). LAWS.md ID1-ID5. The number-deciding packages are the ones whose code can move a result: the desks and the deterministic capabilities that compute, from config/package-architecture.json; composition, control, protocols, storage and workspace mechanics are not. Inside those packages, a module under a platform segment (its composition, storage, task control, telemetry or workspace runtime) decides no number (binding plan B5), so a closure by rule does not follow it. A role's closure is BY_RULE when its own closure is computed by `source_rule_closure_hash`; an identity it folds in from a Desk artifact (a Feature engine factor) keeps that artifact's own identity. A role whose code retires leaves `roles` for `retired`, naming the card that retired it and why: its recorded moves stay as history, and nothing installs, reads or compares it again (RT, 2026-09-29).",
+  "number_deciding_packages": [
+    "alpha_modeling",
+    "alpha_research",
+    "causal_inputs",
+    "causal_outcomes",
+    "data",
+    "factor_research",
+    "feature_engine",
+    "market_data_ops",
+    "portfolio_backtesting",
+    "portfolio_inputs",
+    "portfolio_management",
+    "portfolio_strategy_lab",
+    "quant",
+    "research_foundation",
+    "risk_research",
+    "sector_research",
+    "validation"
+  ],
+  "platform_segments": [
+    "composition",
+    "storage",
+    "task_control",
+    "telemetry",
+    "workspace_runtime"
+  ],
+  "roles": [
+    {
+      "role": "research_experiment.factor.screening-development.implementation",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.composition.research_experiments:_implementation_hash",
+      "arguments": {
+        "kind": "factor.screening-development"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "research_experiment.alpha.model-development.implementation",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.composition.research_experiments:_implementation_hash",
+      "arguments": {
+        "kind": "alpha.model-development"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.composition.research_experiments:_implementation_hash",
+      "arguments": {
+        "kind": "alpha.model-development"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "research_experiment.alpha.qualification.implementation",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.composition.research_experiments:_qualification_implementation_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "research_experiment.risk.covariance-development.implementation",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.composition.research_experiments:_implementation_hash",
+      "arguments": {
+        "kind": "risk.covariance-development"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "research_experiment.portfolio.policy-development.implementation",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.composition.research_experiments:_implementation_hash",
+      "arguments": {
+        "kind": "portfolio.policy-development"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "product_host.research_feature_materialization",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.data_preparation.feature_research:implementation_hash",
+      "arguments": {
+        "preparation": false
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "product_host.research_feature_materialization.prepared",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.data_preparation.feature_research:implementation_hash",
+      "arguments": {
+        "preparation": true
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "product_host.research_strategy_preparation",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.data_preparation.research_strategy:implementation_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "product_host.conditional_decision_advancement",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.composition.decision_advancement:DecisionAdvancementApplication.implementation",
+      "arguments": {
+        "self": null
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "factor_research.review_decision_policy",
+      "owner": "factor_research",
+      "installed": "alphalattice.foundation.factor_research.research_loop.decisions:factor_research_decision_policy_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "alpha_research.campaign_decision_policy",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.experiments.campaign_evidence:alpha_campaign_decision_policy_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "alpha_research.model_lifecycle_replay",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scores.product_lifecycle:lifecycle_implementation_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "product_host.strategy_scoring",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.composition.strategy_scoring:_implementation_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "product_host.strategy_calibration",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.composition.strategy_calibration:_implementation_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "product_host.portfolio_updates",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.composition.portfolio_updates:_implementation_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "product_host.workspace_preparation",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.data_preparation.application:_implementation",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "product_host.research_input_capture",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.data_preparation.input_capture:_implementation",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "product_host.research_component_training_input",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.data_preparation.model_training:_implementation",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "alternative_evidence.acquisition_binding",
+      "owner": "alternative_evidence",
+      "installed": "alphalattice.evidence.alternative_evidence.runtime.identity:alternative_acquisition_binding_hash",
+      "arguments": {
+        "playpen_root": "<root>"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "alternative_evidence.canonicalization_binding",
+      "owner": "alternative_evidence",
+      "installed": "alphalattice.evidence.alternative_evidence.runtime.identity:alternative_document_binding_hash",
+      "arguments": {
+        "playpen_root": "<root>"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "alternative_evidence.retrieval_binding",
+      "owner": "alternative_evidence",
+      "installed": "alphalattice.evidence.alternative_evidence.runtime.identity:alternative_retrieval_binding_hash",
+      "arguments": {
+        "playpen_root": "<root>"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "alternative_evidence.analysis_policy",
+      "owner": "alternative_evidence",
+      "installed": "alphalattice.evidence.alternative_evidence.analysis.submissions:build_alternative_analysis_policy_binding",
+      "arguments": {
+        "playpen_root": "<root>"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE",
+      "result": "binding_hash"
+    },
+    {
+      "role": "alternative_evidence.decision_policy",
+      "owner": "alternative_evidence",
+      "installed": "alphalattice.evidence.alternative_evidence.analysis.submissions:build_alternative_evidence_decision_policy_binding",
+      "arguments": {
+        "playpen_root": "<root>"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE",
+      "result": "binding_hash"
+    },
+    {
+      "role": "alternative_evidence.publication_binding",
+      "owner": "alternative_evidence",
+      "installed": "alphalattice.evidence.alternative_evidence.runtime.identity:alternative_document_publication_binding_hash",
+      "arguments": {
+        "playpen_root": "<root>"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "chief_risk_officer.portfolio_review_policy",
+      "owner": "chief_risk_officer",
+      "installed": "alphalattice.oversight.chief_risk_officer.decision.submissions:build_portfolio_review_policy_binding",
+      "arguments": {
+        "playpen_root": "<root>"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE",
+      "result": "binding_hash"
+    },
+    {
+      "role": "feature_engine.preprocessing_catalog",
+      "owner": "feature_engine",
+      "installed": "alphalattice.foundation.feature_engine.producers.preprocessing.catalog:build_installed_panel_preprocessing_catalog",
+      "arguments": {},
+      "result": "catalog_hash",
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "feature_engine.preprocessing_implementation.ROBUST_SECTOR_NEUTRAL_Z",
+      "owner": "feature_engine",
+      "installed": "alphalattice.foundation.feature_engine.producers.preprocessing.catalog:installed_implementation_binding_hash",
+      "arguments": {
+        "recipe_id": "ROBUST_SECTOR_NEUTRAL_Z"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "feature_engine.preprocessing_implementation.ROBUST_UNIVERSE_Z",
+      "owner": "feature_engine",
+      "installed": "alphalattice.foundation.feature_engine.producers.preprocessing.catalog:installed_implementation_binding_hash",
+      "arguments": {
+        "recipe_id": "ROBUST_UNIVERSE_Z"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "feature_engine.preprocessing_implementation.TIME_SERIES_ABSOLUTE_STATE_ROBUST",
+      "owner": "feature_engine",
+      "installed": "alphalattice.foundation.feature_engine.producers.preprocessing.catalog:installed_implementation_binding_hash",
+      "arguments": {
+        "recipe_id": "TIME_SERIES_ABSOLUTE_STATE_ROBUST"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "feature_engine.preprocessing_implementation.STATE_INTERACTION_BLOCK",
+      "owner": "feature_engine",
+      "installed": "alphalattice.foundation.feature_engine.producers.preprocessing.catalog:installed_implementation_binding_hash",
+      "arguments": {
+        "recipe_id": "STATE_INTERACTION_BLOCK"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z",
+      "owner": "feature_engine",
+      "installed": "alphalattice.foundation.feature_engine.producers.preprocessing.catalog:installed_implementation_binding_hash",
+      "arguments": {
+        "recipe_id": "JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_STATE_INTERACTION_BLOCK",
+      "owner": "feature_engine",
+      "installed": "alphalattice.foundation.feature_engine.producers.preprocessing.catalog:installed_implementation_binding_hash",
+      "arguments": {
+        "recipe_id": "JOINT_PRIMARY_STATE_INTERACTION_BLOCK"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "feature_engine.factor_value.ABSOLUTE_STATE",
+      "owner": "feature_engine",
+      "installed": "devtools.architecture.identity_closures:installed_family_value_identity",
+      "arguments": {
+        "method_family": "ABSOLUTE_STATE"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "feature_engine.factor_value.DOWNSIDE_TAIL",
+      "owner": "feature_engine",
+      "installed": "devtools.architecture.identity_closures:installed_family_value_identity",
+      "arguments": {
+        "method_family": "DOWNSIDE_TAIL"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "feature_engine.factor_value.FACTOR_FORMULA",
+      "owner": "feature_engine",
+      "installed": "devtools.architecture.identity_closures:installed_family_value_identity",
+      "arguments": {
+        "method_family": "FACTOR_FORMULA"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "feature_engine.factor_value.OPEN_INTRADAY",
+      "owner": "feature_engine",
+      "installed": "devtools.architecture.identity_closures:installed_family_value_identity",
+      "arguments": {
+        "method_family": "OPEN_INTRADAY"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "feature_engine.factor_value.RESIDUAL_REVERSAL",
+      "owner": "feature_engine",
+      "installed": "devtools.architecture.identity_closures:installed_family_value_identity",
+      "arguments": {
+        "method_family": "RESIDUAL_REVERSAL"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "feature_engine.factor_value.SECTOR_LEADER_LAG",
+      "owner": "feature_engine",
+      "installed": "devtools.architecture.identity_closures:installed_family_value_identity",
+      "arguments": {
+        "method_family": "SECTOR_LEADER_LAG"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "feature_engine.factor_value.SESSION_LIQUIDITY",
+      "owner": "feature_engine",
+      "installed": "devtools.architecture.identity_closures:installed_family_value_identity",
+      "arguments": {
+        "method_family": "SESSION_LIQUIDITY"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "feature_engine.factor_value.SESSION_OBSERVATION",
+      "owner": "feature_engine",
+      "installed": "devtools.architecture.identity_closures:installed_family_value_identity",
+      "arguments": {
+        "method_family": "SESSION_OBSERVATION"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "feature_engine.factor_value.STATE_INTERACTION",
+      "owner": "feature_engine",
+      "installed": "devtools.architecture.identity_closures:installed_family_value_identity",
+      "arguments": {
+        "method_family": "STATE_INTERACTION"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "feature_engine.factor_value.controls",
+      "owner": "feature_engine",
+      "installed": "devtools.architecture.identity_closures:installed_control_value_identity",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "feature_engine.source_availability_catalog",
+      "owner": "feature_engine",
+      "installed": "alphalattice.foundation.feature_engine.catalog.observation_clock:installed_source_availability_catalog",
+      "arguments": {},
+      "result": "catalog_hash",
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "product_host.research_feature_source_projection",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.research_authoring.feature_materialization:feature_source_projection_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "risk_research.estimator_catalog",
+      "owner": "risk_research",
+      "installed": "alphalattice.investment.risk_research.estimators.catalog:build_installed_risk_estimator_catalog",
+      "arguments": {},
+      "result": "binding.catalog_hash",
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "risk_research.estimator.risk-covariance-ewma-standardized-ledoit-wolf",
+      "owner": "risk_research",
+      "installed": "alphalattice.investment.risk_research.estimators.catalog:installed_numerical_binding_hash",
+      "arguments": {
+        "adapter_id": "risk-covariance-ewma-standardized-ledoit-wolf"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "risk_research.estimator.risk-covariance-fast-slow-ledoit-wolf",
+      "owner": "risk_research",
+      "installed": "alphalattice.investment.risk_research.estimators.catalog:installed_numerical_binding_hash",
+      "arguments": {
+        "adapter_id": "risk-covariance-fast-slow-ledoit-wolf"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "risk_research.estimator.risk-covariance-diagonal-shrunk-ledoit-wolf",
+      "owner": "risk_research",
+      "installed": "alphalattice.investment.risk_research.estimators.catalog:installed_numerical_binding_hash",
+      "arguments": {
+        "adapter_id": "risk-covariance-diagonal-shrunk-ledoit-wolf"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "alpha_research.scale_implementation.LAGGED_XS_DISPERSION",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scaling.catalog:installed_scale_implementation_hash",
+      "arguments": {
+        "recipe_id": "LAGGED_XS_DISPERSION"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "alpha_research.scale_implementation.EWMA_XS_DISPERSION",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scaling.catalog:installed_scale_implementation_hash",
+      "arguments": {
+        "recipe_id": "EWMA_XS_DISPERSION"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "alpha_research.scale_implementation.ASYMMETRIC_EWMA_XS_DISPERSION",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scaling.catalog:installed_scale_implementation_hash",
+      "arguments": {
+        "recipe_id": "ASYMMETRIC_EWMA_XS_DISPERSION"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "alpha_research.scale_implementation.HAR_XS_DISPERSION",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scaling.catalog:installed_scale_implementation_hash",
+      "arguments": {
+        "recipe_id": "HAR_XS_DISPERSION"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "alpha_research.campaign_scale_catalog",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scaling.catalog:build_alpha_campaign_cross_sectional_scale_catalog",
+      "arguments": {},
+      "result": "catalog_hash",
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "alpha_research.return_unit_capability",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.calibration.authority:installed_alpha_return_unit_capability",
+      "arguments": {},
+      "result": "capability_hash",
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "sector_research.forecast_catalog",
+      "owner": "sector_research",
+      "installed": "alphalattice.investment.sector_research.models.catalog:build_installed_sector_forecast_catalog",
+      "arguments": {},
+      "result": "binding.catalog_hash",
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "sector_research.method.ZERO_SECTOR_FORECAST",
+      "owner": "sector_research",
+      "installed": "alphalattice.investment.sector_research.models.catalog:installed_numerical_binding_hash",
+      "arguments": {
+        "method_id": "ZERO_SECTOR_FORECAST"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "sector_research.method.EWMA_SECTOR_MEAN",
+      "owner": "sector_research",
+      "installed": "alphalattice.investment.sector_research.models.catalog:installed_numerical_binding_hash",
+      "arguments": {
+        "method_id": "EWMA_SECTOR_MEAN"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "sector_research.method.SECTOR_RELATIVE_STRENGTH_126",
+      "owner": "sector_research",
+      "installed": "alphalattice.investment.sector_research.models.catalog:installed_numerical_binding_hash",
+      "arguments": {
+        "method_id": "SECTOR_RELATIVE_STRENGTH_126"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "sector_research.method.DISTRIBUTED_LAG_ELASTIC_NET",
+      "owner": "sector_research",
+      "installed": "alphalattice.investment.sector_research.models.catalog:installed_numerical_binding_hash",
+      "arguments": {
+        "method_id": "DISTRIBUTED_LAG_ELASTIC_NET"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.public_path",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.application.resolution:public_path_rule_value",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "product_host.research_input_materializer",
+      "owner": "product_host",
+      "installed": "alphalattice.control.product_host.research_authoring.input_revisions:materializer_rule_value",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "BY_RULE"
+    },
+    {
+      "role": "alpha_research.product_recipe",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scores.product_recipe:installed_product_recipe_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "alpha_research.strategy_recipe",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scores.heterogeneous_product:installed_strategy_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "alpha_research.component_recipe.broad_feature",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scores.heterogeneous_product:installed_component_recipe_hash",
+      "arguments": {
+        "component": "broad_feature"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "alpha_research.component_recipe.trend_candidate",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scores.heterogeneous_product:installed_component_recipe_hash",
+      "arguments": {
+        "component": "trend_candidate"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "alpha_research.component_recipe.fast_rebound",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scores.heterogeneous_product:installed_component_recipe_hash",
+      "arguments": {
+        "component": "fast_rebound"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "alpha_research.component_recipe.contextual_momentum",
+      "owner": "alpha_research",
+      "installed": "alphalattice.investment.alpha_research.scores.heterogeneous_product:installed_component_recipe_hash",
+      "arguments": {
+        "component": "contextual_momentum"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.book_recipe.four_component",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies:installed_book_part_hash",
+      "arguments": {
+        "book": "four_component",
+        "part": "book_recipe"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.policy_binding.four_component",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies:installed_book_part_hash",
+      "arguments": {
+        "book": "four_component",
+        "part": "policy_binding"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.policy_catalog.four_component",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies:installed_book_part_hash",
+      "arguments": {
+        "book": "four_component",
+        "part": "policy_catalog"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.book_recipe.rebound_return",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies:installed_book_part_hash",
+      "arguments": {
+        "book": "rebound_return",
+        "part": "book_recipe"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.policy_binding.rebound_return",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies:installed_book_part_hash",
+      "arguments": {
+        "book": "rebound_return",
+        "part": "policy_binding"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.policy_catalog.rebound_return",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies:installed_book_part_hash",
+      "arguments": {
+        "book": "rebound_return",
+        "part": "policy_catalog"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.book_alpha_recipe.rebound_return",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies:installed_book_part_hash",
+      "arguments": {
+        "book": "rebound_return",
+        "part": "book_alpha_recipe"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.book_recipe.trend_rebound",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies:installed_book_part_hash",
+      "arguments": {
+        "book": "trend_rebound",
+        "part": "book_recipe"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.policy_binding.trend_rebound",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies:installed_book_part_hash",
+      "arguments": {
+        "book": "trend_rebound",
+        "part": "policy_binding"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.policy_catalog.trend_rebound",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies:installed_book_part_hash",
+      "arguments": {
+        "book": "trend_rebound",
+        "part": "policy_catalog"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
+      "role": "portfolio_strategy_lab.book_alpha_recipe.trend_rebound",
+      "owner": "portfolio_strategy_lab",
+      "installed": "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies:installed_book_part_hash",
+      "arguments": {
+        "book": "trend_rebound",
+        "part": "book_alpha_recipe"
+      },
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    }
+  ],
+  "retired": [
+    {
+      "role": "factor_research.execution_binding",
+      "retired_by": "RT R35",
+      "reason": "Its installed function went with the one-session Factor runtime (factor_research/runtime/production.py), which only the retired --replay of run_factor_research_pipeline.py ran; Factor evidence is made and replayed by the Factor study."
+    },
+    {
+      "role": "factor_research.review_binding",
+      "retired_by": "RT R35",
+      "reason": "Its installed function went with the one-session Factor runtime (factor_research/runtime/production.py); curation is sealed through experiment curate (admit_factor_research_curation) under the review decision policy's own role."
+    },
+    {
+      "role": "alpha_research.methodology_decision_policy",
+      "retired_by": "RT R28",
+      "reason": "Its installed function (alpha_methodology_decision_policy_hash) went with the Alpha methodology comparison and decision (V18's paired campaign comparison), which no product flow, script or Task reaches; the record contracts stay for readback."
+    },
+    {
+      "role": "risk_research.common_mode_calibration",
+      "retired_by": "RT R14",
+      "reason": "Its installed function (common_mode_numerical_binding_hash) went with the Risk common-mode calibration research program (risk_research/calibration's runtime, evaluation and publication), which no product operation runs and no live closure imports; kept records of its kinds have no live reader."
+    },
+    {
+      "role": "factor_research.candidate_evidence_semantics",
+      "retired_by": "RT R02",
+      "reason": "Its installed function (candidate_evidence_semantics_hash) went with the Pre-Research Factor chain's candidate curation (factor_research/programs/candidates.py), which only the retired Panel logical-identity migration ran (D3); the Factor study curates through experiment curate under the review decision policy's own role."
+    },
+    {
+      "role": "factor_research.screening_science",
+      "retired_by": "RT R02",
+      "reason": "Its installed function (screening_science_identity) went with the desktop multi-cadence screening engine (factor_research/evaluation/screening.py), which only the retired Panel logical-identity migration ran (D3); the Factor study screens through oos_evidence under factor.screening-development."
+    },
+    {
+      "role": "risk_research.execution_binding",
+      "retired_by": "RT M01",
+      "reason": "Its installed function (risk_execution_binding_hash) went with the Risk production runtime and the frozen pin (RT M01): no product path ever wired the current writer (V17), and Risk studies bind their numerical code through the development path's own closures (research_experiment.risk.covariance-development.implementation)."
+    },
+    {
+      "role": "risk_research.recipe_decision_policy",
+      "retired_by": "RT M01",
+      "reason": "Its installed function (risk_recipe_decision_policy_hash) went with the Risk recipe decision sealer (publication/decisions.py), which only the unwired production runtime and its own tests called (RT M01)."
+    },
+    {
+      "role": "portfolio_strategy_lab.alpha_scores_execution_binding",
+      "retired_by": "RT M01",
+      "reason": "Its installed function (alpha_portfolio_execution_binding_hash) went with the Portfolio Alpha score development runtime (inputs/alpha_scores/), which only tests reached after the Stage-6 campaign retired (RT R01); it went with M01 because it read the current Risk publication (RT M01). Portfolio studies read Alpha through the experiment path."
+    }
+  ]
+}

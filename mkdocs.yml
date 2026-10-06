@@ -1,0 +1,38 @@
+site_name: AlphaLattice API Reference
+site_description: Generated local reference for the AlphaLattice research product.
+site_url: http://localhost:8000/
+docs_dir: docs
+site_dir: site
+exclude_docs: |
+  /public-source/
+  *.py
+theme:
+  name: material
+  features:
+    - content.action.view
+    - content.code.copy
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: false
+            show_if_no_docstring: true
+            show_root_heading: true
+            members_order: source
+            filters:
+              - "!^_"
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Documentation:
+          - index.md
+          - reference/**/*.md
+hooks:
+  - docs/reference_hooks.py
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences

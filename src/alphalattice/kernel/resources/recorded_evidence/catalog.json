@@ -1,0 +1,42 @@
+{
+  "schema_version": "1",
+  "namespace": "SYSTEM_FIXTURE",
+  "catalog_id": "alphalattice.recorded-evidence",
+  "revision": "1.0.0",
+  "license_id": "CC0-1.0",
+  "license_scope": "recorded-evidence-fixtures-only",
+  "license_relative_path": "LICENSE-CC0-1.0.txt",
+  "license_file_sha256": "2dc649e13a17f4af2c5d96fefa22ee9d53a4b4de6c3948e63d4a69623bc23fbb",
+  "entries": [
+    {
+      "schema_version": "1",
+      "namespace": "SYSTEM_FIXTURE",
+      "stable_id": "recorded.issuer-veto",
+      "revision": "1.0.0",
+      "relative_path": "records/issuer-veto.json",
+      "media_type": "application/json",
+      "logical_hash": "99801ec11f3d9f02e13ea6a30f255eba07b0e6fb44bae72b0c698a1249412459",
+      "file_sha256": "921188b44775f9bf727fc9750f2cfb8f65279a8377ce19f3a151a888ba1e3876"
+    },
+    {
+      "schema_version": "1",
+      "namespace": "SYSTEM_FIXTURE",
+      "stable_id": "recorded.macro-stress",
+      "revision": "1.0.0",
+      "relative_path": "records/macro-stress.json",
+      "media_type": "application/json",
+      "logical_hash": "70115b36daa6b9bc5d67a23f1eec6247f41b255d4865de214ae86911260be270",
+      "file_sha256": "9c8e9e30095c4f4f4e93b3fb263e96f100c6044294c160c490e88c3295aaf14a"
+    },
+    {
+      "schema_version": "1",
+      "namespace": "SYSTEM_FIXTURE",
+      "stable_id": "recorded.source-limitation",
+      "revision": "1.0.0",
+      "relative_path": "records/source-limitation.json",
+      "media_type": "application/json",
+      "logical_hash": "5ed7db28fabff534bf471c125c6454b5657c7339332fd617d6db43b2f4ecc8a2",
+      "file_sha256": "81d1f55771789c7ad4e0e2df032cfc3834623960b5364041d542e2a03f123aca"
+    }
+  ]
+}

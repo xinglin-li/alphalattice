@@ -1,0 +1,223 @@
+{
+ "schema": "alphalattice.playpen.registry.owners-map",
+ "version": 1,
+ "note": "G1: each core noun's one owner package, from the plan's owner table (develop-wave-2, \"G1's map\"; the contested choices decided by the user on 2026-09-27). The owner defines a noun -- its types, state and decisions -- and every other package only imports it. A noun is recognised by the public types its `defined_by` modules export. `folds_in` lists what other packages still define of it and the card that moves it: G2 refuses a new definition outside the owner, naming the owner, against this list, which only shrinks. An owner a card creates names it (`created_by`).",
+ "nouns": {
+  "workspace": {
+   "covers": "paths, lock, persistence, databases, artifacts, checkpoints, writer lease, mutation gate",
+   "owner": "alphalattice.control.workspace_runtime",
+   "defined_by": [
+    "alphalattice.control.workspace_runtime.artifacts",
+    "alphalattice.control.workspace_runtime.core",
+    "alphalattice.control.workspace_runtime.database",
+    "alphalattice.control.workspace_runtime.lock",
+    "alphalattice.control.workspace_runtime.mutation_gate",
+    "alphalattice.control.workspace_runtime.paths",
+    "alphalattice.control.workspace_runtime.writer_lease"
+   ],
+   "folds_in": []
+  },
+  "network access": {
+   "covers": "whether a process may reach the network",
+   "owner": "alphalattice.control.workspace_runtime",
+   "defined_by": [
+    "alphalattice.control.workspace_runtime.network_access"
+   ],
+   "folds_in": []
+  },
+  "task": {
+   "covers": "lifecycle, registry, recovery, jobs",
+   "owner": "alphalattice.control.task_control",
+   "defined_by": [
+    "alphalattice.control.task_control.contracts"
+   ],
+   "folds_in": [],
+   "note": "The Host's composition/task_recovery.py stays its composition (O3, 2026-09-29): it composes Task Control's board with Guanyin's maintenance detail and the interface's failure codes, level 4 modules Task Control (level 1) may not import; the recovery decisions it shapes are Task Control's own transitions."
+  },
+  "data platform": {
+   "covers": "readiness, preflight, remediation, update, maintenance",
+   "owner": "alphalattice.control.data_platform",
+   "defined_by": [
+    "alphalattice.control.data_platform.contracts"
+   ],
+   "folds_in": []
+  },
+  "market data": {
+   "covers": "the stored data and its numbers",
+   "owner": "alphalattice.foundation.market_data_ops",
+   "defined_by": [
+    "alphalattice.foundation.market_data_ops.sources.contracts"
+   ],
+   "folds_in": []
+  },
+  "feature": {
+   "covers": "features, Panels and their state",
+   "owner": "alphalattice.foundation.feature_engine",
+   "defined_by": [
+    "alphalattice.foundation.feature_engine.contracts",
+    "alphalattice.foundation.feature_engine.catalog.contracts",
+    "alphalattice.foundation.feature_engine.inputs.contracts",
+    "alphalattice.foundation.feature_engine.storage.contracts"
+   ],
+   "folds_in": []
+  },
+  "factor": {
+   "covers": "factor studies, curation and publication",
+   "owner": "alphalattice.foundation.factor_research",
+   "defined_by": [
+    "alphalattice.foundation.factor_research.research_loop.contracts"
+   ],
+   "folds_in": []
+  },
+  "alpha": {
+   "covers": "Alpha studies, models, scores and publication",
+   "owner": "alphalattice.investment.alpha_research",
+   "with": [
+    "alphalattice.capabilities.alpha_modeling"
+   ],
+   "defined_by": [
+    "alphalattice.investment.alpha_research.evaluation.contracts",
+    "alphalattice.investment.alpha_research.experiments.contracts",
+    "alphalattice.investment.alpha_research.publication.contracts",
+    "alphalattice.investment.alpha_research.scaling.contracts",
+    "alphalattice.investment.alpha_research.simple_signal.contracts",
+    "alphalattice.capabilities.alpha_modeling.contracts"
+   ],
+   "folds_in": []
+  },
+  "risk": {
+   "covers": "risk models, estimates and publication",
+   "owner": "alphalattice.investment.risk_research",
+   "defined_by": [
+    "alphalattice.investment.risk_research.contracts",
+    "alphalattice.investment.risk_research.estimators.contracts",
+    "alphalattice.investment.risk_research.experiments.contracts"
+   ],
+   "folds_in": []
+  },
+  "sector": {
+   "covers": "sector research",
+   "owner": "alphalattice.investment.sector_research",
+   "defined_by": [
+    "alphalattice.investment.sector_research.contracts",
+    "alphalattice.investment.sector_research.inputs.contracts",
+    "alphalattice.investment.sector_research.models.contracts"
+   ],
+   "folds_in": []
+  },
+  "portfolio research": {
+   "covers": "strategies, books, backtests, finalization",
+   "owner": "alphalattice.investment.portfolio_strategy_lab",
+   "with": [
+    "alphalattice.capabilities.portfolio_inputs",
+    "alphalattice.capabilities.portfolio_backtesting"
+   ],
+   "defined_by": [
+    "alphalattice.investment.portfolio_strategy_lab.contracts",
+    "alphalattice.investment.portfolio_strategy_lab.application.contracts",
+    "alphalattice.investment.portfolio_strategy_lab.policies.contracts",
+    "alphalattice.investment.portfolio_strategy_lab.regularization.contracts",
+    "alphalattice.investment.portfolio_strategy_lab.research_loop.contracts",
+    "alphalattice.capabilities.portfolio_backtesting.contracts",
+    "alphalattice.capabilities.portfolio_inputs.signed_score.contracts",
+    "alphalattice.capabilities.portfolio_inputs.tradability.contracts"
+   ],
+   "folds_in": []
+  },
+  "the PM's planning": {
+   "covers": "mandates and the planning surface",
+   "owner": "alphalattice.investment.portfolio_management",
+   "defined_by": [
+    "alphalattice.investment.portfolio_management.mandates.research_effort"
+   ],
+   "folds_in": [],
+   "note": "the planning desk retired (RT V312) and its contracts with V327; what is left is the research desk's candidate inventory and the paired panel grid (V1's route)"
+  },
+  "alternative evidence": {
+   "covers": "sources, reading, review",
+   "owner": "alphalattice.evidence.alternative_evidence",
+   "defined_by": [
+    "alphalattice.evidence.alternative_evidence.contracts",
+    "alphalattice.evidence.alternative_evidence.analysis.contracts",
+    "alphalattice.evidence.alternative_evidence.documents.contracts",
+    "alphalattice.evidence.alternative_evidence.publication.contracts",
+    "alphalattice.evidence.alternative_evidence.retrieval.contracts",
+    "alphalattice.evidence.alternative_evidence.sources.contracts"
+   ],
+   "folds_in": []
+  },
+  "the CRO": {
+   "covers": "review and decisions",
+   "owner": "alphalattice.oversight.chief_risk_officer",
+   "defined_by": [
+    "alphalattice.oversight.chief_risk_officer.decision.portfolio_review",
+    "alphalattice.oversight.chief_risk_officer.decision.submissions"
+   ],
+   "folds_in": []
+  },
+  "research program": {
+   "covers": "authoring, cases, experiments, history, delivery",
+   "owner": "alphalattice.control.research_program",
+   "with": [
+    "alphalattice.protocols.research_authoring"
+   ],
+   "defined_by": [
+    "alphalattice.protocols.research_authoring.contracts",
+    "alphalattice.control.research_program.authoring.workflow"
+   ],
+   "folds_in": [],
+   "note": "level 1 with no peers: only code importing level 0 alone may move there (V213) The Host's research_authoring files are its composition (O3, 2026-09-29): the Desk handoffs, the drafts that compose the Host's input envelope with a Desk's installed domain, the authority resolver over the workspace, and the paired methodology's source resolver over five owners' stores; their one-owner helpers adapt an owner's store to the workspace or translate its refusal into the authoring vocabulary. The Desk computations they held moved: the execution-outcome selection to causal outcomes and the development Alpha mandate to Alpha. One component's lifecycle admission moved to Alpha's scores/lifecycle_preparation.py with MODEL_KERNEL's rotation for V365 and V366 (V325, 2026-10-01)."
+  },
+  "the agent seam": {
+   "covers": "an agent's submissions and their provenance",
+   "owner": "alphalattice.protocols.actor_execution",
+   "defined_by": [
+    "alphalattice.protocols.actor_execution.contracts"
+   ],
+   "folds_in": [],
+   "retiring": [],
+   "note": "the built-in agent's modules retired with AG2 (2026-09-27)"
+  },
+  "observation": {
+   "covers": "what ran, recorded",
+   "owner": "alphalattice.control.observation_runtime",
+   "defined_by": [
+    "alphalattice.control.observation_runtime.contracts"
+   ],
+   "folds_in": []
+  },
+  "the guardian": {
+   "covers": "judging what ran and offering recovery",
+   "owner": "alphalattice.control.guanyin",
+   "defined_by": [],
+   "folds_in": [],
+   "note": "GY and GY2 settle its contracts"
+  },
+  "validation": {
+   "covers": "the checks and their contracts",
+   "owner": "alphalattice.kernel.validation",
+   "defined_by": [
+    "alphalattice.kernel.validation.contracts"
+   ],
+   "folds_in": []
+  },
+  "protected validation": {
+   "covers": "the permit gate for protected evidence",
+   "owner": "alphalattice.oversight.model_validation",
+   "defined_by": [
+    "alphalattice.oversight.model_validation.protected_gate"
+   ],
+   "folds_in": [],
+   "note": "an independent permission gate, kept apart from validation (corrected 2026-09-27)"
+  },
+  "alpha candidates": {
+   "covers": "the Alpha candidate registry: the qualification over a family of development studies and the candidate set it seals for the Portfolio",
+   "owner": "alphalattice.investment.alpha_research.candidates",
+   "defined_by": [
+    "alphalattice.investment.alpha_research.candidates.contracts"
+   ],
+   "folds_in": [],
+   "note": "left the retired goal loop's package in GR4; a goal is the Host's ledger (GR1)"
+  }
+ }
+}

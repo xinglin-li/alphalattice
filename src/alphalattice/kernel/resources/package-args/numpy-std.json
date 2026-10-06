@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.numpy.std",
+  "revision": "1.0.0",
+  "title": "NumPy standard deviation adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "numpy", "version": "2.5.1"},
+  "companion_distributions": [],
+  "callable": "numpy.std",
+  "arguments": [
+    {"schema_version": "1", "name": "ddof", "value_kind": "number", "has_default": true, "default": 0, "minimum": 0.0}
+  ],
+  "interactions": ["The owner specification selects the project ddof value."],
+  "assumptions": ["Input values are finite and validated before the call."],
+  "warnings": ["The package default is documentation, not AlphaLattice policy."],
+  "failure_modes": ["Unsupported ddof or unavailable locked NumPy distribution."],
+  "owner_policy_ref": "reference:numerical-validation-metrics",
+  "official_source_url": "https://numpy.org/doc/stable/reference/generated/numpy.std.html"
+}

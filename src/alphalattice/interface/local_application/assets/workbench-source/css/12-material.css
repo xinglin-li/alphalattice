@@ -1,0 +1,258 @@
+/* 12-material — Round 1 (2026-09-18): the page and the hairlines read the surface ladder.
+   Files are concatenated in name order by build.py; this layer comes last so the material
+   wins over per-page values that rounds 2 and 6 will delete at their owners. Keep it short:
+   only what many selectors share. */
+body[data-page] {
+  background: var(--surface-page);
+}
+/* Captions and ledes at one size, muted, with a reading line. */
+:is(.kv dt,.kv dd,.feature-row h3,.term-list dt) {
+  font-size: var(--style-body-size);
+  line-height: var(--style-body-leading);
+}
+/* ---- the glass (law 150): every floating layer's one material, `material.glass` ---- */
+/* A layer -- the glass under the words (`::after`), the host carrying only its outline and shadow -- where
+   the host holds a fixed menu or picker (a filter on the host would make it their frame): the detail, a
+   dialog, the drawer. A face -- the host's own fill, filter and inner light -- where it holds none and
+   fades in (a glass layer under a fading host frosts nothing until the fade ends): the menus and pickers,
+   the toast, the peek, the tooltips, the thread's new-posts pill, a warning on the page. Both wear the
+   ring (`::before`). Opaque controls (Settings) is the parameters' `opaque` mode: the overlay material. A
+   control on the canvas is never glass (the user, 2026-09-20); one floating over the words is a layer. */
+[data-layer="detail"],
+dialog,
+html[data-nav=drawer] .window[data-side=open] .side {
+  --ground: var(--glass-fill);
+  border: 0;
+  background: transparent;
+  box-shadow: var(--glass-edge), var(--glass-shadow);
+  isolation: isolate; /* its glass behind its words -- a stacking context, not a containing block */
+}
+[data-layer="detail"]::after,
+dialog::after,
+html[data-nav=drawer] .window[data-side=open] .side::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--glass-glow), var(--glass-fill);
+  box-shadow: var(--glass-sheen); /* the rim's light seeping in, under the words */
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  pointer-events: none;
+}
+.menu,
+.toast,
+.object-peek,
+#tip,
+.chart-tooltip,
+#main .team-new-bar > .team-new-pill,
+body[data-page] .banner:is(.warning, .danger)[data-box] {
+  --ground: var(--glass-fill);
+  border: 0;
+  background: var(--glass-glow), var(--glass-fill);
+  box-shadow: var(--glass-sheen), var(--glass-edge), var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  isolation: isolate;
+}
+#main .team-new-bar > .team-new-pill,
+body[data-page] .banner:is(.warning, .danger)[data-box] {
+  position: relative; /* the ring measures from it */
+}
+/* the ring: 1 px of light cut from the rim's gradient by a mask (a gradient border that keeps the radius) */
+[data-layer="detail"]::before,
+dialog::before,
+html[data-nav=drawer] .window[data-side=open] .side::before,
+.menu::before,
+.toast::before,
+.object-peek::before,
+#tip::before,
+.chart-tooltip::before,
+#main .team-new-bar > .team-new-pill::before,
+body[data-page] .banner:is(.warning, .danger)[data-box]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: var(--layer-sticky);
+  padding: 1px;
+  border-radius: inherit;
+  background: var(--glass-rim);
+  -webkit-mask: var(--glass-rim-mask) content-box, var(--glass-rim-mask);
+  -webkit-mask-composite: xor;
+  mask: var(--glass-rim-mask) content-box exclude, var(--glass-rim-mask);
+  pointer-events: none;
+}
+/* a warning inside a floating layer is not a second floating box (a layer holds no box, law 148): it
+   is the glass's well */
+body[data-page] :is([data-layer="detail"], dialog) .banner:is(.warning, .danger)[data-box] {
+  background: var(--glass-well);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+body[data-page] :is([data-layer="detail"], dialog) .banner:is(.warning, .danger)[data-box]::before {
+  content: none;
+}
+/* a control on the glass is a breath of tint, not an opaque chip, and a clear step darker under the pointer
+   (`glass-control-hover`: the controls' own hover is the tint's twin on the glass); opaque, it keeps its own */
+body:not(.opaque-controls)[data-page] :where([data-layer="detail"], dialog, .banner:is(.warning, .danger)) :is([data-control="action"], [data-control="quiet"]):not(:disabled, [aria-disabled=true]) { background: var(--glass-control); border-color: var(--glass-control-edge); }
+body:not(.opaque-controls)[data-page] :where([data-layer="detail"], dialog, .banner:is(.warning, .danger)) :is([data-control="action"], [data-control="quiet"]):not(:disabled, [aria-disabled=true]):hover { background: var(--glass-control-hover); }
+/* the research map's nodes are tinted like a control on the glass, never a white face on it (the user,
+   2026-09-24: 这几个白色的button在玻璃材质的时候有点出戏) */
+body:not(.opaque-controls) dialog .map-node { background: var(--glass-control); border-color: var(--glass-control-edge); box-shadow: none; }
+body:not(.opaque-controls) dialog .map-node:hover { background: var(--glass-control-hover); border-color: var(--edge-strong); }
+/* Every heading and every hero number in the display cut; captions a shade lighter than body ink. */
+body[data-page] #main :is(h1) {
+  letter-spacing: var(--style-large-title-tracking);
+}
+/* One step under the 20 px page title: every section and card title is the section size (round 11). */
+body[data-page] #main h2 {
+  font-size: var(--style-title-2-size);
+  line-height: var(--style-title-2-leading);
+  letter-spacing: var(--style-title-2-tracking);
+}
+/* An activity row is a sentence: the operation in ink, the caller after it in muted words. */
+.fv-log-entry > strong { font-weight: var(--weight-strong); }
+.fv-log-entry > .fv-log-by { color: var(--muted); font-weight: var(--weight-body); }
+/* One copy affordance on a code block, top right, shown on hover or focus; its host is whatever
+   block `Controls.mountCopy` mounted it on (`.copy-host`), so no block is named here (C1). */
+.copy-host { position: relative; }
+.code-copy {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--curve-move);
+}
+.copy-host:is(:hover,:focus-within) .code-copy { opacity: 1; }
+/* Provenance: one disclosure for the exact references a surface would otherwise print inline. */
+.provenance {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--edge-hair);
+  padding-top: var(--space-2);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+}
+.provenance > summary { cursor: pointer; font-weight: var(--weight-label); color: var(--muted); }
+.provenance > summary:hover { color: var(--text); }
+.provenance .kv { margin-top: var(--space-2); }
+.provenance .mono { color: var(--text); }
+/* Motion: hover and focus answer in --motion-fast, open and select in --motion-base, enter and
+   leave in --motion-slow, one curve. A row that arrives and a stat value that changes crossfade. */
+@keyframes ui-crossfade { from { opacity: 0; } to { opacity: 1; } }
+.fv-log-row.ui-arrived, .list-row.ui-arrived, .stat-value[data-changed] { animation: ui-crossfade var(--dur-2) var(--curve-move); }
+details > *:not(summary) { animation: ui-crossfade var(--dur-2) var(--curve-move); }
+/* Round 94: a disclosure's body slides open and shut over --dur-2 (the engine interpolates its
+   height to auto; an engine without `interpolate-size` keeps the cut). */
+.reveal-details::details-content { block-size: 0; overflow-y: clip; interpolate-size: allow-keywords; transition: block-size var(--dur-2) var(--curve-move), content-visibility var(--dur-2) allow-discrete; }
+.reveal-details[open]::details-content { block-size: auto; }
+/* The (i): a sentence that opens on demand; the fact line stays. */
+.title-line { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
+/* The holdings toolbar sits on the section's edge and keeps TY4's box step before its figure;
+   a holdings row's opener is a quiet chevron and the listing mark is text, not a tile.
+   (The figures rail keeps the card's inset by the rail's rule.) */
+.portfolio-detail-surface .holdings-toolbar { padding: var(--space-4) 0 var(--stack-box); }
+.holdings-table-area .icon-btn { background: transparent; border-color: transparent; box-shadow: none; color: var(--muted); }
+.holdings-table-area .icon-btn:hover { color: var(--text); background: var(--ds-control-hover); }
+/* Dense rows at split width (tasks, saved records): the properties wrap under the title, as the
+   activity rows do, instead of cutting the title. */
+@container reading-lane (width < 1080px) {
+:is(.tp-task, .object-row) { flex-wrap: wrap; row-gap: var(--space-1); }
+:is(.tp-task, .object-row) > .list-row-main { flex: 1 1 0; } /* round 86: a long title grows into the first line, never onto a line of its own */
+body[data-page][data-reading] :is(.tp-task, .object-row) > .list-row-props { order: 9; flex: 1 1 100%; max-width: none; padding-left: var(--row-indent, 0px); flex-wrap: wrap; row-gap: var(--space-05); }
+.slotted > :is(.tp-task, .object-row) > .list-row-props > [data-empty] { display: none; } /* round 90: wrapped facts start at the title, no empty slot before them */
+}
+.stat-value { color: var(--text); }
+/* Round 20f: de-boxing and hierarchy (laws 22-31). Spacing before borders: an informational notice
+   is a line, not a card; a strip of facts is an instrument strip (a hairline, faint dividers, no
+   rim); the Lab's mode selector is words until chosen; the Overview's three cards weigh
+   differently (attention over resume over team); the navigation is quiet but for the current
+   page. */
+.banner.neutral:not([data-box]) { /* a neutral notice is a line; one declared a decision is a box and keeps the notice's inset (the user, 2026-09-24: 对号距离边框太近了) */
+  background: transparent;
+  border: 0;
+  padding: var(--space-2) 0 var(--space-05);
+  box-shadow: none;
+}
+/* A link inside running text is a word in the link ink, not a control chassis. */
+body[data-page] .inline-link { color: var(--ink-link); font-weight: var(--weight-label); text-decoration: none; }
+body[data-page] .inline-link:hover { text-decoration: underline; text-underline-offset: var(--underline-offset); }
+/* a long status sentence stays on the icon's line and wraps inside it, instead of dropping under the icon */
+.prep-liveness > span { flex: 1 0 min(var(--width-xs), calc(100% - var(--icon-sm) - var(--space-2))); min-width: 0; } /* V655: keep the words while cancellation wraps */
+.version-row .list-row-props { flex-wrap: wrap; }
+/* Round 27: the six type levels, applied where each level lives. The masthead's 38 px name keeps
+   its own rule; eyebrows keep 12 px mono and carry no content. */
+html body[data-page] #main :is(.object-header h1) { font-size: var(--style-large-title-size); font-weight: var(--weight-label); line-height: var(--style-large-title-leading); letter-spacing: var(--style-large-title-tracking); }
+html body[data-page] #main h2 { font-size: var(--style-title-2-size); font-weight: var(--weight-label); line-height: var(--style-title-2-leading); letter-spacing: var(--style-title-2-tracking); }
+html body[data-page] #main :is(.panel-head, .table-toolbar) h2 { font-size: var(--style-callout-size); line-height: var(--style-callout-leading); font-weight: var(--weight-label); letter-spacing: 0; color: var(--muted); } /* N3 (law 121): a section is a label -- 13 / 500 in the muted ink; a heading's size is the object's name's */
+/* The type formula (round 89, law 75): a title -- a row's, a form row's, an exchange's name -- is
+   the text ink at medium (500), Codex's and Linear's; 600 belongs to a group label and a section
+   label only; a fact's label (`kv dt`) is grey and regular, its value the text ink. */
+body[data-page] #main :is(.list-row strong, .card-list .list-row-main > strong, .team-exchange-line strong) { font-size: var(--style-headline-size); font-weight: var(--weight-label); line-height: var(--style-headline-leading); }
+body[data-page] #main :is(.lab-control-group h3, .feature-row h3) { font-size: var(--style-headline-size); font-weight: var(--weight-strong); line-height: var(--style-headline-leading); }
+body[data-page] #main .kv dt { font-size: var(--style-callout-size); font-weight: var(--weight-body); line-height: var(--style-callout-leading); color: var(--muted); }
+body[data-page] #main :is(.team-exchange-body > p, .prep-liveness, .prep-liveness > span, .lede, .kv dd) { font-size: var(--style-body-size); line-height: var(--style-body-leading); }
+body[data-page] #main :is(.banner p, .control-reason, .tp-caption, .caption, .stat-label) { font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+body[data-page] #main :is(.sub-cell, .list-row time, .team-exchange-end time, .fv-log-by) { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+/* Round 27: the primitives. A rail is the de-boxed strip of 20g under one name; a status line is
+   a sentence with its icon; a separator is a hairline with an optional label. */
+body[data-page][data-reading] .stat-strip.rail {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--edge-hair);
+  border-radius: 0;
+  padding: var(--space-1) 0 var(--space-5);
+  gap: var(--space-5);
+}
+.stat-strip.rail > .stat { border-right: 0; padding-inline: 0; }
+/* a rail directly in a card keeps the card's inset (round 60: a one-row scope as tiles) -- over the
+   reading rail's own zero above (the user, 2026-09-24: Annualized return 离左边框太近了) */
+.panel > .stat-strip.rail, body[data-page][data-reading] .panel > .stat-strip.rail { padding-inline: var(--space-6); }
+.separator { border: 0; border-top: 1px solid var(--edge-hair); margin: var(--space-6) 0; }
+div.separator { display: flex; align-items: center; gap: var(--space-3); border: 0; }
+div.separator::before, div.separator::after { content: ''; flex: 1 1 auto; border-top: 1px solid var(--edge-hair); }
+div.separator > span { font-size: var(--style-callout-size); line-height: var(--style-callout-leading); color: var(--muted); }
+/* Round 20g: de-boxing II. A strip of facts is spacing with a hairline under it, no box and no
+   dividers; each fact and each card leads with a tile — a rounded square tinted with its tone,
+   the icon in the tone's ink (blue for the brand, amber for attention, violet for the team). */
+.tile {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--tile-size);
+  height: var(--tile-size);
+  border-radius: var(--radius-block);
+  --tile-ink: var(--ink-link);
+  color: var(--tile-ink);
+  background: color-mix(in srgb, var(--tile-ink) var(--tint-wash), transparent);
+}
+.tile > .icon { width: var(--icon-size); height: var(--icon-size); }
+/* Round 30: the team card is the quietest of the three — no tile box, the icon and the eyebrow muted. */
+.stat-label > .stat-icon { display: inline-flex; width: var(--icon-sm); height: var(--icon-sm); margin-right: var(--space-2); vertical-align: middle; color: var(--muted); }
+.stat-label > .stat-icon > .icon { width: var(--icon-sm); height: var(--icon-sm); }
+/* Navigation words by tier (round 20b): the full words above 1180 px, short ones under it. */
+.title-line > .badge { white-space: nowrap; }
+/* U75 (FT5: a value never rolls): a head's state keeps its word whole and its next step wraps inside the head's box; held
+   to one line, a Blocked workspace's way on rolled Home 21 px at 375 */
+.title-line > .state { max-width: 100%; }
+.title-line > .state > :not(.state-next) { white-space: nowrap; }
+.title-line > h1 { margin: 0; }
+/* A state is a dot and a word (round 71): no chrome; the tone is the dot's colour, the time and
+   the next action in the muted ink; the dot breathes only while the owner's heartbeat is observed. */
+.state { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text); font-weight: var(--weight-label); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); } /* a state's word is UI text (law 75), in a row or a table cell alike */
+.state > i, .row-dot > i { width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--tone); flex: none; }
+.state > :is(.state-time, .state-next) { color: var(--muted); font-weight: var(--weight-body); }
+:is(.state, .row-dot)[data-live=true] > i { animation: live-breathe var(--dur-pulse) ease-in-out infinite; }
+.state.neutral:not([data-live=true]) > i { display: none; } /* round 95 (the user's reading): a neutral state is its word alone -- `declared only`, `Queued`, `draft` carry no grey dot; a live one keeps its breathing dot */
+.row-dot { display: inline-grid; place-items: center; width: var(--icon-size); height: var(--icon-size); }
+/* A refusal in three parts (round 15): what happened, why, what to try next. */
+.refusal > .grow > p { margin: var(--space-1) 0 0; }
+.refusal .refusal-next { color: var(--text); }
+.refusal .refusal-next .text-btn { padding: 0; min-height: 0; }
+/* Round 11: two densities. Reading runs no wider than 72 ch inside any card; rows and tables
+   keep the card's width -- a Team conversation's exchanges among the rows (the user, 2026-09-30: the words
+   keep up with the lane). */
+body[data-page] #main :is(p,.lede,.caption):not(.stat *,.section-empty *,.flex,.table-note,.team-conversation *) { max-width: var(--measure-line); }

@@ -1,0 +1,460 @@
+{
+  "schema": "alphalattice.playpen.storage-authority-registry",
+  "groups": [
+    {
+      "tables": [
+        "market_profile",
+        "listing",
+        "provider_symbol_mapping",
+        "raw_daily_bar_current",
+        "corporate_action_current",
+        "provider_adjusted_close_current"
+      ],
+      "database": "workspace",
+      "semantic_role": "current source-of-record state",
+      "generation_model": "SINGLE_CURRENT",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "market_data_ops",
+      "rebuildability": "SOURCE_OR_DURABLE_EVIDENCE_REQUIRED",
+      "artifact_relationship": "NONE"
+    },
+    {
+      "tables": [
+        "bar_revision",
+        "corporate_action_revision",
+        "provider_adjusted_series_revision"
+      ],
+      "database": "workspace",
+      "semantic_role": "append-only semantic revision evidence",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "reachable-revision policy",
+      "rebuildability": "AUDIT_LEDGER_REQUIRED",
+      "artifact_relationship": "PROVENANCE_ONLY"
+    },
+    {
+      "tables": [
+        "universe_manifest",
+        "universe_manifest_listing"
+      ],
+      "database": "workspace",
+      "semantic_role": "content-addressed universe membership",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "verified-head reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "MACHINE_AUTHORITY"
+    },
+    {
+      "tables": [
+        "universe_bootstrap",
+        "universe_membership_event",
+        "universe_source_observation"
+      ],
+      "database": "workspace",
+      "semantic_role": "bootstrap boundary and append-only forward membership journal",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "verified-head reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "MACHINE_AUTHORITY"
+    },
+    {
+      "tables": [
+        "data_quality",
+        "current_universe_quality_admission"
+      ],
+      "database": "workspace",
+      "semantic_role": "current governed admission state",
+      "generation_model": "SINGLE_CURRENT",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "data_operations",
+      "rebuildability": "REASSESSMENT_ALLOWED",
+      "artifact_relationship": "OPERATIONAL_PROJECTION"
+    },
+    {
+      "tables": [
+        "provider_attempt",
+        "current_universe_hydration_deferred"
+      ],
+      "database": "workspace",
+      "semantic_role": "bounded attempt and failure ledger",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "task-receipt reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "RECEIPT_EVIDENCE"
+    },
+    {
+      "tables": [
+        "current_universe_onboarding",
+        "current_universe_onboarding_listing",
+        "current_universe_maintenance",
+        "current_universe_maintenance_listing",
+        "manifest_transition"
+      ],
+      "database": "workspace",
+      "semantic_role": "task and transition control projection",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "task_control",
+      "rebuildability": "RECONCILE_FROM_RECEIPTS_WHERE_DEFINED",
+      "artifact_relationship": "OPERATIONAL_PROJECTION"
+    },
+    {
+      "tables": [
+        "workspace_readiness"
+      ],
+      "database": "workspace",
+      "semantic_role": "cross-domain workspace readiness projection",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "workspace_runtime.storage.readiness.WorkspaceReadinessRepository",
+      "retention_owner": "workspace_runtime",
+      "rebuildability": "RECONCILE_FROM_RECEIPTS_WHERE_DEFINED",
+      "artifact_relationship": "OPERATIONAL_PROJECTION"
+    },
+    {
+      "tables": [
+        "feature_universe_rebuild_requirement"
+      ],
+      "database": "workspace",
+      "semantic_role": "post-membership research-foundation rebuild lifecycle",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "research_foundation.storage.ResearchFoundationStateRepository",
+      "retention_owner": "research_foundation",
+      "rebuildability": "RECONCILE_FROM_RECEIPTS_WHERE_DEFINED",
+      "artifact_relationship": "OPERATIONAL_PROJECTION",
+      "schema_writers": [
+        "market_data_ops"
+      ]
+    },
+    {
+      "tables": [
+        "market_reference_current",
+        "sector_classification_current",
+        "feature_daily_revision",
+        "sector_classification_revision",
+        "feature_input_admission",
+        "listing_quarantine",
+        "feature_input_agent_case",
+        "feature_input_delegation",
+        "feature_input_provider_deferred",
+        "feature_input_candidate_binding",
+        "sector_panel_rebuild_requirement",
+        "sector_reference_progress",
+        "sector_reference_staging",
+        "workspace_token_bucket"
+      ],
+      "database": "workspace",
+      "semantic_role": "Feature input, eligibility, reference, and sector state",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "feature_engine.storage.FeatureStateRepository",
+      "retention_owner": "feature_engine",
+      "rebuildability": "RECONCILE_FROM_RECEIPTS_WHERE_DEFINED",
+      "artifact_relationship": "OPERATIONAL_PROJECTION",
+      "schema_writers": [
+        "market_data_ops"
+      ]
+    },
+    {
+      "tables": [
+        "panel_factor_availability_revision"
+      ],
+      "database": "workspace",
+      "semantic_role": "append-only Panel availability evidence",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "feature_engine.storage.PanelStateRepository",
+      "retention_owner": "active-panel binding",
+      "rebuildability": "AUDIT_LEDGER_REQUIRED",
+      "artifact_relationship": "PROVENANCE_ONLY",
+      "schema_writers": [
+        "market_data_ops"
+      ]
+    },
+    {
+      "tables": [
+        "panel_cross_section_availability"
+      ],
+      "database": "workspace",
+      "semantic_role": "current Panel availability by session cross-section",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "feature_engine.storage.PanelStateRepository",
+      "retention_owner": "active-panel binding",
+      "rebuildability": "RECOMPUTABLE_FROM_BASE_AND_POLICY",
+      "artifact_relationship": "OPERATIONAL_PROJECTION",
+      "schema_writers": [
+        "market_data_ops"
+      ]
+    },
+    {
+      "tables": [
+        "panel_cross_section_availability_revision"
+      ],
+      "database": "workspace",
+      "semantic_role": "append-only Panel availability evidence by session cross-section",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "feature_engine.storage.PanelStateRepository",
+      "retention_owner": "active-panel binding",
+      "rebuildability": "AUDIT_LEDGER_REQUIRED",
+      "artifact_relationship": "PROVENANCE_ONLY",
+      "schema_writers": [
+        "market_data_ops"
+      ]
+    },
+    {
+      "tables": [
+        "feature_daily_current",
+        "feature_catalog_current"
+      ],
+      "database": "workspace",
+      "semantic_role": "single active listing-local base Feature state and catalog binding",
+      "generation_model": "SINGLE_CURRENT",
+      "authority_owner": "feature_engine.storage.FeatureStateRepository",
+      "retention_owner": "current-state storage governance",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "BASE_FOR_IMMUTABLE_PANEL"
+    },
+    {
+      "tables": [
+        "feature_input_cutoff_set"
+      ],
+      "database": "workspace",
+      "semantic_role": "deduplicated active Feature input-cutoff dictionary",
+      "generation_model": "SINGLE_CURRENT",
+      "authority_owner": "feature_engine.storage.FeatureStateRepository",
+      "retention_owner": "current-state storage governance",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "NORMALIZED_LINEAGE_DICTIONARY"
+    },
+    {
+      "tables": [
+        "feature_ineligibility_run"
+      ],
+      "database": "workspace",
+      "semantic_role": "feature eligibility assessment generations",
+      "generation_model": "BY_CATALOG",
+      "authority_owner": "feature_engine.storage.FeatureStateRepository",
+      "retention_owner": "catalog reachability",
+      "rebuildability": "REASSESSMENT_ALLOWED",
+      "artifact_relationship": "PROVENANCE_ONLY",
+      "schema_writers": [
+        "market_data_ops"
+      ]
+    },
+    {
+      "tables": [
+        "action_audit_receipt",
+        "remediation_execution"
+      ],
+      "database": "workspace",
+      "semantic_role": "durable market-data audit and remediation execution receipts",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "artifact reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "RECEIPT_EVIDENCE"
+    },
+    {
+      "tables": [
+        "feature_materialization_receipt",
+        "sector_reference_receipt"
+      ],
+      "database": "workspace",
+      "semantic_role": "durable Feature computation and reference receipts",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "feature_engine.storage.FeatureStateRepository",
+      "retention_owner": "artifact reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "RECEIPT_EVIDENCE",
+      "schema_writers": [
+        "market_data_ops"
+      ]
+    },
+    {
+      "tables": [
+        "panel_materialization_receipt"
+      ],
+      "database": "workspace",
+      "semantic_role": "durable Panel materialization receipts",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "feature_engine.storage.PanelStateRepository",
+      "retention_owner": "artifact reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "RECEIPT_EVIDENCE",
+      "schema_writers": [
+        "market_data_ops"
+      ]
+    },
+    {
+      "tables": [
+        "panel_factor_availability"
+      ],
+      "database": "workspace",
+      "semantic_role": "current Panel availability by binding",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "feature_engine.storage.PanelStateRepository",
+      "retention_owner": "active-panel binding",
+      "rebuildability": "RECOMPUTABLE_FROM_BASE_AND_POLICY",
+      "artifact_relationship": "OPERATIONAL_PROJECTION",
+      "schema_writers": [
+        "market_data_ops"
+      ]
+    },
+    {
+      "tables": [
+        "active_feature_panel_binding"
+      ],
+      "database": "workspace",
+      "semantic_role": "single active immutable Panel pointer",
+      "generation_model": "SINGLE_CURRENT",
+      "authority_owner": "feature_engine.storage.PanelStateRepository",
+      "retention_owner": "workspace_runtime",
+      "rebuildability": "AUTHORITATIVE_READBACK_REQUIRED",
+      "artifact_relationship": "ACTIVE_POINTER",
+      "schema_writers": [
+        "market_data_ops"
+      ]
+    },
+    {
+      "tables": [
+        "feature_panel_snapshot_manifest"
+      ],
+      "database": "workspace",
+      "semantic_role": "immutable Panel snapshot registry",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "feature_engine.storage.PanelStateRepository",
+      "retention_owner": "foundation reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "METADATA_INDEX_FOR_MACHINE_ARTIFACT",
+      "schema_writers": [
+        "market_data_ops"
+      ]
+    },
+    {
+      "tables": [
+        "unified_observation",
+        "observation_projection_checkpoint"
+      ],
+      "database": "observation",
+      "semantic_role": "bounded public-safe operational assertions and replay checkpoints in runtime/observations.sqlite; same-named DuckDB tables are legacy-migration-only",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "observation_runtime.ObservationLedger",
+      "retention_owner": "observation_runtime.ObservationRetentionPolicy",
+      "rebuildability": "ASSERTIONS_REPLAYABLE_WHILE_AVAILABLE_SOURCE_AUTHORITIES_REMAIN_SEPARATE",
+      "artifact_relationship": "PUBLIC_OBSERVATION_AND_HOT_PROJECTION_INDEX"
+    },
+    {
+      "tables": [
+        "refusal_count"
+      ],
+      "database": "observation",
+      "semantic_role": "durable counts of refused requests by day, operation, failure code, caller kind and agent vendor; no session, request or text (AC, OP14)",
+      "generation_model": "SINGLE_CURRENT",
+      "authority_owner": "observation_runtime.ObservationLedger",
+      "retention_owner": "observation_runtime.ObservationLedger",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "NONE"
+    },
+    {
+      "tables": [
+        "observation_store_metadata"
+      ],
+      "database": "observation",
+      "semantic_role": "active SQLite UOL schema and verified legacy-migration marker",
+      "generation_model": "SINGLE_CURRENT",
+      "authority_owner": "observation_runtime.ObservationLedger",
+      "retention_owner": "observation_runtime.ObservationStoreMigrator",
+      "rebuildability": "MIGRATION_RECEIPT_AND_SCHEMA_READBACK_REQUIRED",
+      "artifact_relationship": "STORAGE_PROVENANCE_ONLY"
+    },
+    {
+      "tables": [
+        "workspace_task",
+        "workspace_task_command",
+        "workspace_task_event",
+        "workspace_task_execution",
+        "workspace_task_projection",
+        "workspace_task_stage_receipt",
+        "workspace_task_work_item"
+      ],
+      "database": "task-control",
+      "semantic_role": "Task Control's research Tasks: their records, work items, executions, events, commands, stage receipts and the projection a read lists",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "task_control.registry.DuckDbTaskControlRegistry",
+      "retention_owner": "task_control",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "NONE"
+    },
+    {
+      "tables": [
+        "workspace_task_heartbeat"
+      ],
+      "database": "task-heartbeats",
+      "semantic_role": "a running Task's heartbeats, beside its checkpoint",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "task_control.runner._SqliteHeartbeatStore",
+      "retention_owner": "task_control",
+      "rebuildability": "DISPOSABLE_WHEN_NO_TASK_RUNS",
+      "artifact_relationship": "NONE"
+    },
+    {
+      "tables": [
+        "action_audit_chain_receipt",
+        "data_remediation_failure_receipt",
+        "workspace_data_update_receipt",
+        "workspace_maintenance_cycle",
+        "workspace_maintenance_event"
+      ],
+      "database": "workspace",
+      "semantic_role": "the workspace maintenance cycles, their events and the data update, audit-chain and remediation-failure receipts (V156)",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "data_platform.maintenance.registry.DuckDbWorkspaceMaintenanceRegistry",
+      "retention_owner": "data_platform",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "NONE"
+    },
+    {
+      "tables": [
+        "cjk_fts",
+        "content",
+        "dense_nodes",
+        "metadata",
+        "term_fts",
+        "trigram_fts",
+        "vec_chunks"
+      ],
+      "database": "knowledge-hybrid-index",
+      "semantic_role": "a hybrid knowledge index: its passages, full-text postings and dense vectors",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "knowledge.hybrid.WorkspaceHybridKnowledgeIndex",
+      "retention_owner": "knowledge",
+      "rebuildability": "REBUILDABLE_FROM_THE_CORPUS",
+      "artifact_relationship": "NONE"
+    },
+    {
+      "tables": [
+        "feature_ineligibility",
+        "feature_ineligibility_legacy"
+      ],
+      "database": "workspace",
+      "semantic_role": "retired Feature eligibility tables, altered and dropped by the migration that replaced them",
+      "generation_model": "LEGACY_MIGRATION_ONLY",
+      "authority_owner": "feature_engine.storage.FeatureStateRepository",
+      "retention_owner": "feature_engine",
+      "rebuildability": "NONE_RETIRED",
+      "artifact_relationship": "NONE"
+    },
+    {
+      "tables": [
+        "native_observation_sequence"
+      ],
+      "database": "native-observation-sequences",
+      "semantic_role": "checkout-local native bridge retry hashes and first receipt times; sequences retain the Host's deduplication identity across sessions and migration",
+      "generation_model": "BY_REVISION",
+      "authority_owner": "local_application.native_observation_sequence.reserve_sequence",
+      "retention_owner": "local_application.native_observation_sequence",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "TRANSPORT_RETRY_METADATA_ONLY"
+    }
+  ]
+}

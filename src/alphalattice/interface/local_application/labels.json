@@ -1,0 +1,431 @@
+{
+ "schema": "alphalattice.labels",
+ "version": 1,
+ "note": "The product's names for what it installs: each strategy, component, recipe, policy, risk method and rule, by the id the code and the workspaces keep, with a title and a summary in English and Chinese. Read by the CLI, the Workbench and the docs; outside every identity closure, so a title or summary changes no number and no identity (LAWS.md ID10). The ids that still carry a stage code are the spellings workspaces store; they move to meaningful ids when the release's corpora are prepared fresh (NM2, V451), and a title here never waits for that.",
+ "labels": [
+  {
+   "kind": "strategy",
+   "id": "FOUR_COMPONENT_BOOK",
+   "title": "Four Component Book",
+   "summary": "Four separately ranked LightGBM ensembles with 184, 18, 20 and 44 features use 1,260-session training windows, quarterly refits, three seeds and four vintages weighted 4:3:2:1, each receiving one quarter of capital in its own three-sleeve, 35-name, exit-rank-70 equal-weight book on the shared formation clock, with preserved sleeve drift before post-trade merging and no Risk weighting overlay.",
+   "title_zh": "四组件组合",
+   "summary_zh": "四组独立排序的 LightGBM 集成模型分别含 184、18、20 和 44 个特征，采用 1,260 交易日训练窗、季度重训、三个种子及按 4:3:2:1 加权的四个批次，各占四分之一资金，按共享形成时钟分别运行三个分仓、35 标的、退出排名 70 的等权组合，保留分仓漂移再合并交易后权重，不施加 Risk 定权叠加。"
+  },
+  {
+   "kind": "strategy",
+   "id": "BROAD_FEATURE_BOOK",
+   "title": "Broad Feature Book",
+   "summary": "The pinned 184-feature LightGBM ensemble uses 1,260-session training windows, quarterly refits, three seeds and four vintages weighted 4:3:2:1 to supply one score surface to a request-selected policy; on scored formation sessions the authored default book reviews one of three 35-name sleeves, retains names within rank 70 and uses equal weights, while its controls admit other policies and sizing rules.",
+   "title_zh": "广域特征组合",
+   "summary_zh": "固定的 184 特征 LightGBM 集成模型使用 1,260 交易日训练窗、季度重训、三个种子及按 4:3:2:1 加权的四个批次，向请求选择的配置规则提供一个评分面；在有评分的形成交易日，可声明的默认组合复核三个分仓中的一个，每仓 35 只标的，保留排名 70 以内的持仓并采用等权，控制项也允许其他配置规则与定权方式。"
+  },
+  {
+   "kind": "strategy",
+   "id": "RETURN_G6_MU_ONLY",
+   "title": "Rebound Return Book",
+   "summary": "The 20-feature rebound LightGBM ensemble uses 1,260-session training windows, quarterly refits, three seeds and four vintages weighted 4:3:2:1 and receives all capital in a three-sleeve 35-name book with exit rank 70 and close decisions for next-open execution, using positive lifted rank-bucket return weights from formation 521, a 2.1-times sleeve equal-weight ceiling and a 6% aggregate name cap.",
+   "title_zh": "反弹收益组合",
+   "summary_zh": "20 特征反弹 LightGBM 集成模型使用 1,260 交易日训练窗、季度重训、三个种子及按 4:3:2:1 加权的四个批次，独占资金，三个分仓各持 35 只标的、退出排名 70，收盘决策后于下一开盘执行，自第 521 次形成起以平移为正的排名分桶收益定权，并施加分仓等权的 2.1 倍上限及单标的 6% 的总组合上限。"
+  },
+  {
+   "kind": "strategy",
+   "id": "BALANCED_G2_G6_EQUAL_CAPITAL",
+   "title": "Trend Rebound Book",
+   "summary": "The 18-feature trend and 20-feature rebound LightGBM ensembles use 1,260-session training windows, quarterly refits, three seeds and four vintages weighted 4:3:2:1 and each receive half the capital in separate equal-weight three-sleeve 35-name books with exit rank 70, close decisions and next-open execution, excluding the trend model’s outsider sentinel before selection.",
+   "title_zh": "趋势反弹组合",
+   "summary_zh": "18 特征趋势和 20 特征反弹 LightGBM 集成模型使用 1,260 交易日训练窗、季度重训、三个种子及按 4:3:2:1 加权的四个批次，各占一半资金，分别运行三个分仓、35 只标的、退出排名 70 的等权组合，收盘决策后于下一开盘执行，趋势模型的候选范围外哨兵值在选股前被排除。"
+  },
+  {
+   "kind": "component",
+   "id": "G0_IW184",
+   "title": "Broad Feature Scores",
+   "summary": "The pinned 184-feature LightGBM model trains on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a one-session purge, ranking each model’s eligible predictions before averaging seeds and vintages over the whole eligible universe.",
+   "title_zh": "广域特征评分",
+   "summary_zh": "固定的 184 特征 LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离一个交易日，对每个模型的合格预测排序，再在整个合格研究范围内平均种子和批次。"
+  },
+  {
+   "kind": "component",
+   "id": "G2_R0_TREND",
+   "title": "Trend Candidate Scores",
+   "summary": "Eighteen trend, high-distance and return-consistency features feed a LightGBM model trained on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a five-session purge and three-session standardized total-return target, ranking predictions within the top-100 raw 12-minus-1 momentum candidates including boundary ties.",
+   "title_zh": "趋势候选评分",
+   "summary_zh": "18 个趋势、距高点及收益一致性特征输入模型，LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离五个交易日并以三交易日标准化总收益为目标，在原始 12 减 1 动量前 100 名及边界并列候选中排序预测。"
+  },
+  {
+   "kind": "component",
+   "id": "G6_R0_FAST_REBOUND",
+   "title": "Fast Rebound Scores",
+   "summary": "Twenty fast price, volume, rebound, market and Sector-context features feed a LightGBM model trained on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a five-session purge and the whole-universe one-session total-return target, producing the full eligible score surface.",
+   "title_zh": "短期反弹评分",
+   "summary_zh": "20 个短期价格、成交量、反弹、市场和 Sector 情境特征输入模型，LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离五个交易日并以整个研究范围的单交易日总收益为目标，形成全体合格标的的评分面。"
+  },
+  {
+   "kind": "component",
+   "id": "G7_R1_CONTEXTUAL_MOMENTUM",
+   "title": "Contextual Momentum Scores",
+   "summary": "Forty-four momentum, market and Sector-context features feed a LightGBM model trained on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a five-session purge and a declared momentum-continuation target standardized within candidates, admitting raw 12-minus-1 momentum midrank percentiles of at least 0.50 with minimum support 70.",
+   "title_zh": "情境动量评分",
+   "summary_zh": "44 个动量、市场和 Sector 情境特征输入模型，LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离五个交易日，声明的动量延续目标在候选中标准化，以原始 12 减 1 动量的中间秩百分位至少 0.50、最少支持数 70 确定候选。"
+  },
+  {
+   "kind": "component",
+   "id": "BROAD_ENSEMBLE",
+   "title": "Broad Ensemble Scores",
+   "summary": "The pinned 184-feature LightGBM model trains on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a one-session purge, converting each model’s predictions to within-session percentile ranks before seed and vintage aggregation into one product score.",
+   "title_zh": "广域集成评分",
+   "summary_zh": "固定的 184 特征 LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离一个交易日，先将各模型预测转为当日百分位秩，再平均种子和批次，形成一个产品评分。"
+  },
+  {
+   "kind": "recipe",
+   "id": "IW184_IMPLIED_PLUS_WITHIN_FIXED1260_QUARTERLY_SEED3_VINTAGE4",
+   "title": "Quarterly Feature Ensemble",
+   "summary": "A pinned 184-feature LightGBM recipe uses 300 boosting iterations, depth five, 31 leaves, 1,260 training sessions, one-session purge, quarterly refits, three seeds and four vintages weighted 4:3:2:1.",
+   "title_zh": "季度特征集成",
+   "summary_zh": "固定的 184 特征 LightGBM 配方使用 300 次提升迭代、树深五、31 个叶子、1,260 个训练交易日、单交易日隔离、季度重训、三个种子及按 4:3:2:1 加权的四个批次。"
+  },
+  {
+   "kind": "model_set",
+   "id": "fdf50ae203586a2ab314ddfe5d563ae863692041eb68ea9486e778a0c3ea2132",
+   "title": "Broad Ensemble Model Set",
+   "summary": "The pinned 184-feature LightGBM model trains on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a one-session purge, ranking each model’s eligible predictions before averaging seeds and vintages over the whole eligible universe.",
+   "title_zh": "广域集成模型集",
+   "summary_zh": "固定的 184 特征 LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离一个交易日，对每个模型的合格预测排序，再在整个合格研究范围内平均种子和批次。"
+  },
+  {
+   "kind": "model_set",
+   "id": "ebd48211e4c2d7ec70b3b8dc15ed6fcd8f60f56e7ffe5171afee9039ed808eb1",
+   "title": "Trend Candidate Model Set",
+   "summary": "Eighteen trend, high-distance and return-consistency features feed a LightGBM model trained on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a five-session purge and three-session standardized total-return target, ranking predictions within the top-100 raw 12-minus-1 momentum candidates including boundary ties.",
+   "title_zh": "趋势候选模型集",
+   "summary_zh": "18 个趋势、距高点及收益一致性特征输入模型，LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离五个交易日并以三交易日标准化总收益为目标，在原始 12 减 1 动量前 100 名及边界并列候选中排序预测。"
+  },
+  {
+   "kind": "model_set",
+   "id": "8cadf2a8344b4f86d12644bb71778a19216357a985869172aa7fb4110c7111d8",
+   "title": "Fast Rebound Model Set",
+   "summary": "Twenty fast price, volume, rebound, market and Sector-context features feed a LightGBM model trained on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a five-session purge and the whole-universe one-session total-return target, producing the full eligible score surface.",
+   "title_zh": "短期反弹模型集",
+   "summary_zh": "20 个短期价格、成交量、反弹、市场和 Sector 情境特征输入模型，LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离五个交易日并以整个研究范围的单交易日总收益为目标，形成全体合格标的的评分面。"
+  },
+  {
+   "kind": "model_set",
+   "id": "b2d982a99c072059f32ed5805dd23c83398c01b9f9de883bc0b8c92b12bf599b",
+   "title": "Contextual Momentum Model Set",
+   "summary": "Forty-four momentum, market and Sector-context features feed a LightGBM model trained on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a five-session purge and a declared momentum-continuation target standardized within candidates, admitting raw 12-minus-1 momentum midrank percentiles of at least 0.50 with minimum support 70.",
+   "title_zh": "情境动量模型集",
+   "summary_zh": "44 个动量、市场和 Sector 情境特征输入模型，LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离五个交易日，声明的动量延续目标在候选中标准化，以原始 12 减 1 动量的中间秩百分位至少 0.50、最少支持数 70 确定候选。"
+  },
+  {
+   "kind": "feature_axis",
+   "id": "IW184_IMPLIED_PLUS_WITHIN",
+   "title": "Pinned Feature Axis",
+   "summary": "The ordered 184-feature axis is bound by its declared SHA-256; the checked-in recipe specifies its count without enumerating all members.",
+   "title_zh": "固定特征轴",
+   "summary_zh": "有序的 184 特征轴由声明的 SHA-256 绑定，仓库中的配方列明数量，未枚举全部成员。"
+  },
+  {
+   "kind": "feature_axis",
+   "id": "TREND_FEATURE_AXIS",
+   "title": "Trend Feature Axis",
+   "summary": "Eighteen ordered features measure stock trends, distance from highs, return consistency, price oscillators and recovery from recent lows.",
+   "title_zh": "趋势特征轴",
+   "summary_zh": "18 个有序特征度量个股趋势、距高点距离、收益一致性、价格振荡及近期低点后的恢复。"
+  },
+  {
+   "kind": "feature_axis",
+   "id": "REBOUND_CONTEXT_AXIS",
+   "title": "Rebound Context Axis",
+   "summary": "Twenty ordered features combine short price and volume changes and rebound indicators with market breadth, drawdown and Sector recovery context.",
+   "title_zh": "反弹情境轴",
+   "summary_zh": "20 个有序特征将短期价格及成交量变化、反弹指标与市场广度、回撤及 Sector 恢复情境结合。"
+  },
+  {
+   "kind": "feature_axis",
+   "id": "MOMENTUM_CONTEXT_AXIS",
+   "title": "Momentum Context Axis",
+   "summary": "Forty-four ordered features combine stock momentum and volume trends with market returns, volatility, breadth, rotation and Sector returns and surprises.",
+   "title_zh": "动量情境轴",
+   "summary_zh": "44 个有序特征将个股动量及成交量趋势与市场收益、波动率、广度、轮动、Sector 收益及意外变化结合。"
+  },
+  {
+   "kind": "target",
+   "id": "EXACT_FROZEN_G0_H1_WHOLE_UNIVERSE_TARGET",
+   "title": "Single Session Return",
+   "summary": "The next-open-to-open one-session log total return is bounded by a 3.5-scaled-MAD rule, centered once across the eligible universe and standardized by sample dispersion.",
+   "title_zh": "单交易日收益",
+   "summary_zh": "下一开盘至再下一开盘的单交易日对数总收益按 3.5 倍缩放 MAD 限幅，在合格研究范围内中心化一次，再按样本离散度标准化。"
+  },
+  {
+   "kind": "target",
+   "id": "T1_H3_PURE_TOTAL_RETURN_Z",
+   "title": "Three Session Return",
+   "summary": "Three consecutive one-session log total returns are summed before the whole-universe stock cross-section transform, with the last holding-end session determining target maturity.",
+   "title_zh": "三交易日收益",
+   "summary_zh": "三个连续单交易日的对数总收益先求和，再按整个研究范围的个股横截面变换，以最后的持有结束交易日确定目标成熟时间。"
+  },
+  {
+   "kind": "target",
+   "id": "MOMENTUM_CONTINUATION_H1_Z",
+   "title": "Momentum Continuation Target",
+   "summary": "The frozen momentum component declares a one-session momentum-continuation target with candidate-only MAD bounding, mean centering and sample-standard-deviation normalization.",
+   "title_zh": "动量延续目标",
+   "summary_zh": "冻结动量组件声明单交易日动量延续目标，在候选范围内做 MAD 限幅、均值中心化及样本标准差归一化。"
+  },
+  {
+   "kind": "target",
+   "id": "HISTORICAL_ENSEMBLE_TARGET",
+   "title": "Historical Ensemble Target",
+   "summary": "The installed single-component package carries this historical target label beside the pinned Alpha recipe without defining an excess-return subtraction in the package declaration.",
+   "title_zh": "历史集成目标",
+   "summary_zh": "已安装的单组件包在固定 Alpha 配方旁携带这个历史目标标签，其包声明未定义超额收益的减法。"
+  },
+  {
+   "kind": "target_cross_section",
+   "id": "UNIVERSE_RETURN_NORMALIZATION",
+   "title": "Universe Return Normalization",
+   "summary": "The frozen declaration uses the canonical whole-universe cross-section for its one-session total-return target.",
+   "title_zh": "全域收益标准化",
+   "summary_zh": "冻结声明在单交易日总收益目标中使用规范的整个研究范围横截面。"
+  },
+  {
+   "kind": "target_cross_section",
+   "id": "WHOLE_UNIVERSE_MAD_3_5_MEAN_CENTER_SAMPLE_STD_Z",
+   "title": "Universe Sample Standardization",
+   "summary": "The whole-universe target cross-section uses 3.5 MAD bounding, mean centering and sample-standard-deviation normalization.",
+   "title_zh": "全域样本标准化",
+   "summary_zh": "整个研究范围的目标横截面采用 3.5 MAD 限幅、均值中心化及样本标准差归一化。"
+  },
+  {
+   "kind": "target_cross_section",
+   "id": "CANDIDATE_ONLY_MAD_3_5_MEAN_CENTER_SAMPLE_STD_Z",
+   "title": "Candidate Sample Standardization",
+   "summary": "The candidate-only target cross-section uses 3.5 MAD bounding, mean centering and sample-standard-deviation normalization.",
+   "title_zh": "候选样本标准化",
+   "summary_zh": "候选范围内的目标横截面采用 3.5 MAD 限幅、均值中心化及样本标准差归一化。"
+  },
+  {
+   "kind": "objective",
+   "id": "BROAD_SQUARED_ERROR",
+   "title": "Broad Squared Error",
+   "summary": "The broad ensemble declares the installed squared-error objective with the pinned LightGBM parameter point.",
+   "title_zh": "广域平方误差",
+   "summary_zh": "广域集成模型声明已安装的平方误差目标，并使用固定 LightGBM 参数点。"
+  },
+  {
+   "kind": "objective",
+   "id": "EXACT_GATE_B_L2",
+   "title": "Trend Squared Error",
+   "summary": "The trend component declares the frozen squared-error objective with the pinned LightGBM parameter point.",
+   "title_zh": "趋势平方误差",
+   "summary_zh": "趋势组件声明冻结的平方误差目标，并使用固定 LightGBM 参数点。"
+  },
+  {
+   "kind": "objective",
+   "id": "ROW_BALANCED_L2",
+   "title": "Row Balanced Error",
+   "summary": "The rebound component declares a row-balanced squared-error objective with the pinned LightGBM parameter point.",
+   "title_zh": "行均衡误差",
+   "summary_zh": "反弹组件声明行均衡的平方误差目标，并使用固定 LightGBM 参数点。"
+  },
+  {
+   "kind": "objective",
+   "id": "CONTEXTUAL_MOMENTUM_L2",
+   "title": "Momentum Squared Error",
+   "summary": "The contextual momentum component declares a squared-error objective with the pinned LightGBM parameter point.",
+   "title_zh": "动量平方误差",
+   "summary_zh": "情境动量组件声明平方误差目标，并使用固定 LightGBM 参数点。"
+  },
+  {
+   "kind": "objective",
+   "id": "ONE_AGGREGATED_PRODUCT_SCORE_PER_FORMATION",
+   "title": "Aggregated Ensemble Score",
+   "summary": "The single-component package consumes one aggregated product score per formation.",
+   "title_zh": "集成汇总评分",
+   "summary_zh": "单组件包在每次形成时使用一个汇总产品评分。"
+  },
+  {
+   "kind": "score_consumer",
+   "id": "FORMATION_CLOSE_RAW_12_1_TOP100_CANDIDATE_PERCENTILE",
+   "title": "Trend Candidate Percentiles",
+   "summary": "The historical trend package names percentile scores within the formation-close top-100 raw 12-minus-1 momentum candidates.",
+   "title_zh": "趋势候选百分位",
+   "summary_zh": "历史趋势包声明形成收盘时原始 12 减 1 动量前 100 名候选内的百分位评分。"
+  },
+  {
+   "kind": "score_consumer",
+   "id": "FULL_UNIVERSE_FAST_REBOUND_SCORE",
+   "title": "Universe Rebound Score",
+   "summary": "The historical rebound package consumes the fast rebound score across the full eligible universe.",
+   "title_zh": "全域反弹评分",
+   "summary_zh": "历史反弹包在全部合格研究范围中使用短期反弹评分。"
+  },
+  {
+   "kind": "weight_rule",
+   "id": "ew",
+   "title": "Equal Name Weights",
+   "summary": "Selected names start with equal raw mass before the sleeve ceiling and aggregate name cap are applied.",
+   "title_zh": "标的等权",
+   "summary_zh": "选中标的先赋予相等的原始权重，再施加分仓上限和总组合单标的上限。"
+  },
+  {
+   "kind": "weight_rule",
+   "id": "iv1",
+   "title": "Inverse Volatility Weights",
+   "summary": "Selected names receive raw mass proportional to inverse per-name volatility before capping and normalization.",
+   "title_zh": "逆波动率权重",
+   "summary_zh": "选中标的的原始权重与各标的波动率的倒数成比例，再做上限处理和归一化。"
+  },
+  {
+   "kind": "weight_rule",
+   "id": "iv2",
+   "title": "Inverse Variance Weights",
+   "summary": "Selected names receive raw mass proportional to inverse per-name variance before capping and normalization.",
+   "title_zh": "逆方差权重",
+   "summary_zh": "选中标的的原始权重与各标的方差的倒数成比例，再做上限处理和归一化。"
+  },
+  {
+   "kind": "weight_rule",
+   "id": "mu.iv0",
+   "title": "Lifted Return Weights",
+   "summary": "Selected rank-bucket return means are shifted by their minimum and given a floor of one tenth of the spread, without a Risk tilt, then capped and normalized.",
+   "title_zh": "平移收益权重",
+   "summary_zh": "选中排名分桶的收益均值减去最小值，并加上极差十分之一作为底值，不施加 Risk 倾斜，随后处理上限并归一化。"
+  },
+  {
+   "kind": "weight_rule",
+   "id": "mu.iv1",
+   "title": "Return Volatility Tilt",
+   "summary": "Positive lifted rank-bucket return mass is multiplied by inverse volatility, then capped and normalized; a missing or partial return curve is refused.",
+   "title_zh": "收益波动率倾斜",
+   "summary_zh": "平移为正的排名分桶收益权重乘以逆波动率，再处理上限并归一化；收益曲线缺失或不完整时拒绝计算。"
+  },
+  {
+   "kind": "weight_rule",
+   "id": "mu.iv2",
+   "title": "Return Variance Tilt",
+   "summary": "Positive lifted rank-bucket return mass is multiplied by inverse variance, then capped and normalized; a missing or partial return curve is refused.",
+   "title_zh": "收益方差倾斜",
+   "summary_zh": "平移为正的排名分桶收益权重乘以逆方差，再处理上限并归一化；收益曲线缺失或不完整时拒绝计算。"
+  },
+  {
+   "kind": "policy",
+   "id": "WHOLE_BOOK_HYSTERESIS_EQUAL_WEIGHT",
+   "title": "Buffered Equal Weight",
+   "summary": "After 126-session burn-in, the fixed whole-book rule reviews 50 names every three formations, retains eligible holdings inside exit rank 150 and allocates equal available mass while preserving untradable carry.",
+   "title_zh": "缓冲等权配置",
+   "summary_zh": "固定全组合规则在 126 个交易日预热后，每三个形成复核 50 只标的，保留退出排名 150 以内的合格持仓，等分可用资金并保留不可交易持仓。"
+  },
+  {
+   "kind": "policy",
+   "id": "WHOLE_BOOK_HYSTERESIS_INVERSE_VOLATILITY",
+   "title": "Buffered Inverse Volatility",
+   "summary": "After 126-session burn-in, the fixed 50-name whole-book rule reviews every three formations with exit rank 150 and sizes by inverse covariance-diagonal volatility, falling back to equal weights if selected volatility is unusable.",
+   "title_zh": "缓冲逆波动配置",
+   "summary_zh": "固定 50 标的全组合规则在 126 个交易日预热后，每三个形成复核、退出排名 150，以协方差对角线波动率的倒数定权，选中波动率不可用时退回等权。"
+  },
+  {
+   "kind": "policy",
+   "id": "WHOLE_BOOK_HYSTERESIS_CAUSAL_RANK_MU_DIAGONAL_TILT",
+   "title": "Buffered Rank Return",
+   "summary": "After 378-session burn-in, the fixed 50-name whole-book rule reviews every three formations with exit rank 100, tilting equal weights by centered 20-bucket returns from 252 matured formations divided by covariance-diagonal variance at coefficient 0.03 and a 6% name cap.",
+   "title_zh": "缓冲排名收益",
+   "summary_zh": "固定 50 标的全组合规则在 378 个交易日预热后，每三个形成复核、退出排名 100，取 252 个已成熟形成的 20 桶收益中心化后除以协方差对角线方差，以 0.03 系数倾斜等权并限制单标的为 6%。"
+  },
+  {
+   "kind": "policy",
+   "id": "TRANCHE_BOOK_SLEEVE_SCHEDULE_HYSTERESIS_CLOSED_FORM",
+   "title": "Rotating Sleeve Book",
+   "summary": "The default rule opens three 35-name sleeves together, then reviews one each session with exit rank 70, resets sleeve shares to equal notional and caps each sleeve name at 2.1 times equal weight and each aggregate name at 6%.",
+   "title_zh": "轮转分仓组合",
+   "summary_zh": "默认规则同时开启三个各含 35 标的的分仓，之后每个交易日复核一个、退出排名 70，将分仓份额重置为等额，并限制分仓单标的为等权的 2.1 倍、总组合单标的为 6%。"
+  },
+  {
+   "kind": "policy",
+   "id": "RETURN_SCALED_TOTAL_SIGNAL_GLOBAL_QP",
+   "title": "Banded Signal Allocation",
+   "summary": "The policy maximizes return-scaled signal less covariance risk and turnover cost under long-only name caps, Sector bands, untradable carry and a market-beta guardrail; authored Portfolio studies cannot supply its required beta lane.",
+   "title_zh": "区间信号配置",
+   "summary_zh": "该规则在只做多、单标的上限、Sector 区间、不可交易持仓及市场贝塔护栏下，最大化收益尺度信号减去协方差风险和换仓成本；当前可声明的 Portfolio 研究无法提供其所需贝塔数据道。"
+  },
+  {
+   "kind": "risk_method",
+   "id": "EWMA_STANDARDIZED_LEDOIT_WOLF_CORRELATION",
+   "title": "Standardized Shrinkage Covariance",
+   "summary": "A 63-session variance initialization and 252 subsequent causally standardized open-to-open log-return rows feed one Ledoit–Wolf correlation, rescaled once by the latest exponentially weighted volatility diagonal; default decay is 0.94.",
+   "title_zh": "标准化收缩协方差",
+   "summary_zh": "63 个交易日用于方差初始化，随后 252 行因果标准化的开盘至开盘对数收益用于估计一个 Ledoit–Wolf 相关矩阵，再以最新指数加权波动率对角线缩放一次，默认衰减率为 0.94。"
+  },
+  {
+   "kind": "risk_method",
+   "id": "FAST_SLOW_LEDOIT_WOLF_CORRELATION",
+   "title": "Fast Slow Covariance",
+   "summary": "Ledoit–Wolf correlations from the latest 63 and full 252 causally standardized return rows are blended at an admitted weight of 0.25, 0.50 or 0.75, normalized to correlation and rescaled once by the shared latest exponentially weighted volatility diagonal.",
+   "title_zh": "快慢协方差",
+   "summary_zh": "将最近 63 行及完整 252 行因果标准化收益估计的 Ledoit–Wolf 相关矩阵，按允许的 0.25、0.50 或 0.75 权重混合，归一为相关矩阵，再用共享的最新指数加权波动率对角线缩放一次。"
+  },
+  {
+   "kind": "model_family",
+   "id": "BROAD_FEATURE_MODEL",
+   "title": "Broad Feature Model",
+   "summary": "The pinned 184-feature LightGBM model trains on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a one-session purge, ranking each model’s eligible predictions before averaging seeds and vintages over the whole eligible universe.",
+   "title_zh": "广域特征模型",
+   "summary_zh": "固定的 184 特征 LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离一个交易日，对每个模型的合格预测排序，再在整个合格研究范围内平均种子和批次。"
+  },
+  {
+   "kind": "model_family",
+   "id": "TREND_REBOUND_LGBM",
+   "title": "Trend Candidate Model",
+   "summary": "Eighteen trend, high-distance and return-consistency features feed a LightGBM model trained on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a five-session purge and three-session standardized total-return target, ranking predictions within the top-100 raw 12-minus-1 momentum candidates including boundary ties.",
+   "title_zh": "趋势候选模型",
+   "summary_zh": "18 个趋势、距高点及收益一致性特征输入模型，LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离五个交易日并以三交易日标准化总收益为目标，在原始 12 减 1 动量前 100 名及边界并列候选中排序预测。"
+  },
+  {
+   "kind": "model_family",
+   "id": "FAST_REBOUND_RECAPTURE",
+   "title": "Fast Rebound Model",
+   "summary": "Twenty fast price, volume, rebound, market and Sector-context features feed a LightGBM model trained on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a five-session purge and the whole-universe one-session total-return target, producing the full eligible score surface.",
+   "title_zh": "短期反弹模型",
+   "summary_zh": "20 个短期价格、成交量、反弹、市场和 Sector 情境特征输入模型，LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离五个交易日并以整个研究范围的单交易日总收益为目标，形成全体合格标的的评分面。"
+  },
+  {
+   "kind": "model_family",
+   "id": "CONTEXTUAL_MOMENTUM_LGBM",
+   "title": "Contextual Momentum Model",
+   "summary": "Forty-four momentum, market and Sector-context features feed a LightGBM model trained on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a five-session purge and a declared momentum-continuation target standardized within candidates, admitting raw 12-minus-1 momentum midrank percentiles of at least 0.50 with minimum support 70.",
+   "title_zh": "情境动量模型",
+   "summary_zh": "44 个动量、市场和 Sector 情境特征输入模型，LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离五个交易日，声明的动量延续目标在候选中标准化，以原始 12 减 1 动量的中间秩百分位至少 0.50、最少支持数 70 确定候选。"
+  },
+  {
+   "kind": "model_family",
+   "id": "BROAD_ENSEMBLE_MODEL",
+   "title": "Broad Ensemble Model",
+   "summary": "The pinned 184-feature LightGBM model trains on 1,260 sessions, with quarterly refits in January, April, July and October, three seeds and four vintages weighted 4:3:2:1 with a one-session purge, converting each model’s predictions to within-session percentile ranks before seed and vintage aggregation into one product score.",
+   "title_zh": "广域集成模型",
+   "summary_zh": "固定的 184 特征 LightGBM 使用 1,260 个训练交易日，在一、四、七、十月按季重训，三个随机种子和四个批次按 4:3:2:1 加权，隔离一个交易日，先将各模型预测转为当日百分位秩，再平均种子和批次，形成一个产品评分。"
+  },
+  {
+   "kind": "book_recipe",
+   "id": "ComponentBookRecipe",
+   "title": "Drifting Sleeve Recipe",
+   "summary": "Three equal-weight sleeves each select 35 names and retain holdings inside exit rank 70, preserve drifted sleeve capital rather than equalizing it, and apply the 6% aggregate cap from formation 525.",
+   "title_zh": "漂移分仓配方",
+   "summary_zh": "三个等权分仓各选 35 只标的并保留退出排名 70 以内的持仓，保留漂移后的分仓资金而不重置等额，自第 525 次形成起施加 6% 的总组合单标的上限。"
+  },
+  {
+   "kind": "book_recipe",
+   "id": "TrancheBookRecipe",
+   "title": "Equal Notional Sleeves",
+   "summary": "The default recipe declares 35 names in each of three sleeves, exit rank 70 and lifted-return inverse-volatility sizing with equal sleeve notionals, a 2.1-times sleeve equal-weight ceiling and a 6% aggregate cap; authored studies admit equal weight or inverse-volatility/variance instead.",
+   "title_zh": "等额分仓配方",
+   "summary_zh": "默认配方声明三个分仓各含 35 标的、退出排名 70、以平移收益乘逆波动率定权、分仓资金等额、分仓等权的 2.1 倍上限及总组合 6% 上限；可声明的研究改为允许等权或逆波动率、逆方差。"
+  },
+  {
+   "kind": "book_recipe",
+   "id": "FrozenHistoricalBookRecipe",
+   "title": "Historical Sleeve Recipe",
+   "summary": "The historical book declares three 35-name sleeves with exit rank 70, review phase one, preserved drifted capital, a 2.1-times sleeve equal-weight ceiling and a 6% aggregate cap and return-sizing activation from formation 521.",
+   "title_zh": "历史分仓配方",
+   "summary_zh": "历史组合声明三个各含 35 标的的分仓、退出排名 70、复核相位一、保留漂移资金、分仓等权的 2.1 倍上限，并自第 521 次形成起启用总组合 6% 上限及收益定权。"
+  }
+ ]
+}

@@ -1,0 +1,8 @@
+# The one isolated local GPU runtime for the enhanced retrieval recipes
+# (Qwen3 encoder and reranker): PyTorch with CUDA 13.0 from the PyTorch wheel
+# index and the transformers loader. Compiled with hashes into
+# requirements-gpu.lock; installed on top of the retrieval environment by
+# scripts/create_gpu_environment.py. Nothing here reaches the default .venv.
+torch==2.14.0+cu130
+transformers==5.17.0
+safetensors

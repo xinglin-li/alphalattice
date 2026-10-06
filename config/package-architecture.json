@@ -1,0 +1,495 @@
+{
+  "schema": "alphalattice.playpen.package-architecture",
+  "packages": [
+    {
+      "package_id": "actor_execution",
+      "product_area": "protocols",
+      "capability_owner": "Actor Execution Protocol",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": 0,
+      "authority_kind": "ACTOR_EXECUTION_PROVENANCE",
+      "allowed_peer_dependencies": [
+        "shared_kernel"
+      ],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.protocols.actor_execution"
+    },
+    {
+      "package_id": "alpha_modeling",
+      "product_area": "capabilities",
+      "capability_owner": "Alpha Modeling",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 0,
+      "authority_kind": "MODEL_MECHANICS",
+      "allowed_peer_dependencies": [
+        "shared_kernel"
+      ],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.capabilities.alpha_modeling"
+    },
+    {
+      "package_id": "knowledge",
+      "product_area": "kernel",
+      "capability_owner": "Knowledge Catalog",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 0,
+      "authority_kind": "KNOWLEDGE_CATALOG_MECHANICS",
+      "allowed_peer_dependencies": [
+        "shared_kernel",
+        "workspace_runtime"
+      ],
+      "artifact_writer": true,
+      "physical_namespace_target": "alphalattice.kernel.knowledge"
+    },
+    {
+      "package_id": "portfolio_backtesting",
+      "product_area": "capabilities",
+      "capability_owner": "Portfolio Backtesting",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 0,
+      "authority_kind": "PORTFOLIO_PATH_MECHANICS",
+      "allowed_peer_dependencies": [
+        "shared_kernel"
+      ],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.capabilities.portfolio_backtesting"
+    },
+    {
+      "package_id": "research_authoring",
+      "product_area": "protocols",
+      "capability_owner": "Research Authoring Protocol",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": 0,
+      "authority_kind": "EXPERIMENT_AUTHORING_VOCABULARY",
+      "allowed_peer_dependencies": [
+        "actor_execution",
+        "shared_kernel"
+      ],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.protocols.research_authoring"
+    },
+    {
+      "package_id": "resources",
+      "product_area": "kernel",
+      "capability_owner": "Product Resource Data",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": 0,
+      "authority_kind": "PRODUCT_RESOURCE_DATA",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.resources"
+    },
+    {
+      "package_id": "shared_kernel",
+      "product_area": "kernel",
+      "capability_owner": "Shared Kernel",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": 0,
+      "authority_kind": "IDENTITY_AND_PRIMITIVES",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.shared_kernel"
+    },
+    {
+      "package_id": "workspace_runtime",
+      "product_area": "capabilities",
+      "capability_owner": "Workspace Runtime",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 0,
+      "authority_kind": "ARTIFACT_AND_WORKSPACE_MECHANICS",
+      "allowed_peer_dependencies": [
+        "shared_kernel"
+      ],
+      "artifact_writer": true,
+      "physical_namespace_target": "alphalattice.control.workspace_runtime"
+    },
+    {
+      "package_id": "data",
+      "product_area": "kernel",
+      "capability_owner": "Market Data Mechanics",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 1,
+      "authority_kind": "MARKET_DATA_MECHANICS",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.data"
+    },
+    {
+      "package_id": "observation_runtime",
+      "product_area": "control",
+      "capability_owner": "Observation Runtime",
+      "role": "CONTROL_RUNTIME",
+      "dependency_level": 1,
+      "authority_kind": "OBSERVATION_LEDGER",
+      "allowed_peer_dependencies": [
+        "task_control",
+        "workspace_runtime"
+      ],
+      "artifact_writer": true,
+      "physical_namespace_target": "alphalattice.control.observation_runtime"
+    },
+    {
+      "package_id": "quant",
+      "product_area": "kernel",
+      "capability_owner": "Factor And Return Mechanics",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 1,
+      "authority_kind": "FACTOR_AND_RETURN_MECHANICS",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.quant"
+    },
+    {
+      "package_id": "research_program",
+      "product_area": "control",
+      "capability_owner": "Research Program Authoring",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 1,
+      "authority_kind": "DESK_NEUTRAL_PROGRAM_ORCHESTRATION",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.control.research_program"
+    },
+    {
+      "package_id": "task_control",
+      "product_area": "control",
+      "capability_owner": "Task Control",
+      "role": "CONTROL_RUNTIME",
+      "dependency_level": 1,
+      "authority_kind": "TASK_AUTHORITY",
+      "allowed_peer_dependencies": [
+        "workspace_runtime"
+      ],
+      "artifact_writer": true,
+      "physical_namespace_target": "alphalattice.control.task_control"
+    },
+    {
+      "package_id": "validation",
+      "product_area": "kernel",
+      "capability_owner": "Validation Statistics",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 1,
+      "authority_kind": "VALIDATION_STATISTICS_MECHANICS",
+      "allowed_peer_dependencies": [
+        "data",
+        "quant"
+      ],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.validation"
+    },
+    {
+      "package_id": "causal_inputs",
+      "product_area": "capabilities",
+      "capability_owner": "Causal Inputs",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 2,
+      "authority_kind": "SHARED_TEMPORAL_ADMISSION",
+      "allowed_peer_dependencies": [
+        "causal_outcomes",
+        "feature_engine"
+      ],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.capabilities.causal_inputs"
+    },
+    {
+      "package_id": "causal_outcomes",
+      "product_area": "foundation",
+      "capability_owner": "Causal Outcomes",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 2,
+      "authority_kind": "CAUSAL_OUTCOME_COMPILATION",
+      "allowed_peer_dependencies": [
+        "feature_engine",
+        "market_data_ops"
+      ],
+      "artifact_writer": true,
+      "physical_namespace_target": "alphalattice.foundation.causal_outcomes"
+    },
+    {
+      "package_id": "factor_research",
+      "product_area": "foundation",
+      "capability_owner": "Factor Research",
+      "role": "DESK",
+      "dependency_level": 2,
+      "authority_kind": "FACTOR_RESEARCH",
+      "allowed_peer_dependencies": [
+        "causal_outcomes",
+        "feature_engine",
+        "market_data_ops"
+      ],
+      "artifact_writer": true,
+      "agent_free_import_roots": [
+        "alphalattice.foundation.factor_research.experiments.execution"
+      ],
+      "physical_namespace_target": "alphalattice.foundation.factor_research"
+    },
+    {
+      "package_id": "feature_engine",
+      "product_area": "foundation",
+      "capability_owner": "Feature Engine",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 2,
+      "authority_kind": "FEATURE_AND_PANEL_STATE",
+      "allowed_peer_dependencies": [
+        "market_data_ops"
+      ],
+      "artifact_writer": true,
+      "physical_namespace_target": "alphalattice.foundation.feature_engine"
+    },
+    {
+      "package_id": "live_evidence",
+      "product_area": "kernel",
+      "capability_owner": "Live Evidence Sources",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 2,
+      "authority_kind": "EVIDENCE_SOURCE_MECHANICS",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.live_evidence"
+    },
+    {
+      "package_id": "market_data_ops",
+      "product_area": "foundation",
+      "capability_owner": "Market Data Operations",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 2,
+      "authority_kind": "MARKET_DATA_STATE",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": true,
+      "physical_namespace_target": "alphalattice.foundation.market_data_ops"
+    },
+    {
+      "package_id": "portfolio_inputs",
+      "product_area": "capabilities",
+      "capability_owner": "Portfolio Inputs",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 2,
+      "authority_kind": "SHARED_PORTFOLIO_INPUTS",
+      "allowed_peer_dependencies": [
+        "causal_inputs",
+        "causal_outcomes",
+        "feature_engine",
+        "market_data_ops"
+      ],
+      "artifact_writer": true,
+      "physical_namespace_target": "alphalattice.capabilities.portfolio_inputs"
+    },
+    {
+      "package_id": "research_foundation",
+      "product_area": "foundation",
+      "capability_owner": "Research Foundation",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 2,
+      "authority_kind": "FOUNDATION_BINDING_AND_ADMISSION",
+      "allowed_peer_dependencies": [
+        "causal_outcomes",
+        "factor_research",
+        "feature_engine",
+        "market_data_ops"
+      ],
+      "artifact_writer": true,
+      "physical_namespace_target": "alphalattice.foundation.research_foundation"
+    },
+    {
+      "package_id": "alpha_research",
+      "product_area": "investment",
+      "capability_owner": "Alpha Research",
+      "role": "DESK",
+      "dependency_level": 3,
+      "authority_kind": "ALPHA_RESEARCH_AND_PUBLICATION",
+      "allowed_peer_dependencies": [
+        "factor_research",
+        "portfolio_management",
+        "risk_research",
+        "sector_research"
+      ],
+      "artifact_writer": true,
+      "agent_free_import_roots": [
+        "alphalattice.investment.alpha_research.experiments.execution",
+        "alphalattice.investment.alpha_research.publication.artifacts",
+        "alphalattice.investment.alpha_research.verification.impact"
+      ],
+      "physical_namespace_target": "alphalattice.investment.alpha_research"
+    },
+    {
+      "package_id": "alternative_evidence",
+      "product_area": "evidence",
+      "capability_owner": "Alternative Evidence",
+      "role": "DESK",
+      "dependency_level": 3,
+      "authority_kind": "ALTERNATIVE_EVIDENCE",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": true,
+      "agent_free_import_roots": [
+        "alphalattice.evidence.alternative_evidence.runtime.identity",
+        "alphalattice.evidence.alternative_evidence.runtime.service"
+      ],
+      "physical_namespace_target": "alphalattice.evidence.alternative_evidence"
+    },
+    {
+      "package_id": "chief_risk_officer",
+      "product_area": "oversight",
+      "capability_owner": "Chief Risk Officer",
+      "role": "INDEPENDENT_OVERSIGHT",
+      "dependency_level": 3,
+      "authority_kind": "CRO_DECISION",
+      "allowed_peer_dependencies": [
+        "alternative_evidence",
+        "portfolio_strategy_lab"
+      ],
+      "artifact_writer": true,
+      "agent_free_import_roots": [
+        "alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task"
+      ],
+      "physical_namespace_target": "alphalattice.oversight.chief_risk_officer"
+    },
+    {
+      "package_id": "data_platform",
+      "product_area": "control",
+      "capability_owner": "Data Platform",
+      "role": "CONTROL_RUNTIME",
+      "dependency_level": 3,
+      "authority_kind": "DATA_PLATFORM_DECISIONS",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": true,
+      "agent_free_import_roots": [
+        "alphalattice.control.data_platform.maintenance.coordinator"
+      ],
+      "physical_namespace_target": "alphalattice.control.data_platform"
+    },
+    {
+      "package_id": "model_validation",
+      "product_area": "oversight",
+      "capability_owner": "Independent Model Validation",
+      "role": "INDEPENDENT_OVERSIGHT",
+      "dependency_level": 3,
+      "authority_kind": "PROTECTED_MODEL_VALIDATION",
+      "allowed_peer_dependencies": [
+        "alpha_research",
+        "factor_research",
+        "portfolio_strategy_lab",
+        "risk_research",
+        "sector_research"
+      ],
+      "artifact_writer": true,
+      "agent_free_import_roots": [],
+      "physical_namespace_target": "alphalattice.oversight.model_validation"
+    },
+    {
+      "package_id": "portfolio_management",
+      "product_area": "investment",
+      "capability_owner": "Portfolio Management",
+      "role": "DESK",
+      "dependency_level": 3,
+      "authority_kind": "PORTFOLIO_MANDATE_AND_PLAN",
+      "allowed_peer_dependencies": [
+        "factor_research",
+        "research_foundation"
+      ],
+      "artifact_writer": true,
+      "agent_free_import_roots": [
+        "alphalattice.investment.portfolio_management.mandates.research_effort"
+      ],
+      "physical_namespace_target": "alphalattice.investment.portfolio_management"
+    },
+    {
+      "package_id": "portfolio_strategy_lab",
+      "product_area": "investment",
+      "capability_owner": "Portfolio Strategy Lab",
+      "role": "DESK",
+      "dependency_level": 3,
+      "authority_kind": "PORTFOLIO_POLICY_RESEARCH",
+      "allowed_peer_dependencies": [
+        "alpha_research",
+        "alternative_evidence",
+        "factor_research",
+        "portfolio_management",
+        "risk_research",
+        "sector_research"
+      ],
+      "artifact_writer": true,
+      "agent_free_import_roots": [
+        "alphalattice.investment.portfolio_strategy_lab.publication.artifacts"
+      ],
+      "physical_namespace_target": "alphalattice.investment.portfolio_strategy_lab"
+    },
+    {
+      "package_id": "risk_research",
+      "product_area": "investment",
+      "capability_owner": "Risk Research",
+      "role": "DESK",
+      "dependency_level": 3,
+      "authority_kind": "RISK_RESEARCH_AND_PUBLICATION",
+      "allowed_peer_dependencies": [
+        "factor_research"
+      ],
+      "artifact_writer": true,
+      "agent_free_import_roots": [
+        "alphalattice.investment.risk_research.experiments.execution"
+      ],
+      "physical_namespace_target": "alphalattice.investment.risk_research"
+    },
+    {
+      "package_id": "sector_research",
+      "product_area": "investment",
+      "capability_owner": "Sector Research",
+      "role": "DESK",
+      "dependency_level": 3,
+      "authority_kind": "SECTOR_RESEARCH",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": true,
+      "agent_free_import_roots": [],
+      "physical_namespace_target": "alphalattice.investment.sector_research"
+    },
+    {
+      "package_id": "guanyin",
+      "product_area": "control",
+      "capability_owner": "Guanyin Read Model",
+      "role": "CONTROL_RUNTIME",
+      "dependency_level": 4,
+      "authority_kind": "READ_MODEL_PROJECTION",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": true,
+      "physical_namespace_target": "alphalattice.control.guanyin"
+    },
+    {
+      "package_id": "local_application",
+      "product_area": "interface",
+      "capability_owner": "Local Application Service",
+      "role": "COMPOSITION_ROOT",
+      "dependency_level": 4,
+      "authority_kind": "LOCAL_PRODUCT_BOUNDARY",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.interface.local_application"
+    },
+    {
+      "package_id": "product_host",
+      "product_area": "control",
+      "capability_owner": "Product Host",
+      "role": "COMPOSITION_ROOT",
+      "dependency_level": 4,
+      "authority_kind": "PRODUCT_COMPOSITION",
+      "allowed_peer_dependencies": [
+        "guanyin",
+        "local_application"
+      ],
+      "artifact_writer": true,
+      "agent_free_import_roots": [
+        "alphalattice.control.product_host.composition.local_web_session"
+      ],
+      "physical_namespace_target": "alphalattice.control.product_host"
+    },
+    {
+      "package_id": "playpen_governance",
+      "product_area": "engineering",
+      "capability_owner": "Architecture Governance",
+      "role": "ENGINEERING_TOOL",
+      "dependency_level": 5,
+      "authority_kind": "BUILD_TIME_GUARD",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "devtools.architecture"
+    }
+  ]
+}

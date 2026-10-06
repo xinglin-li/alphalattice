@@ -1,0 +1,66 @@
+/* Line icons: 24 × 24 viewBox, stroke inherits currentColor from the CSS .icon rule. */
+const ICON = {
+  overview: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
+  data: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 4 16 4 16 0V5M4 12v7c0 4 16 4 16 0v-7"/>',
+  lab: '<path d="M9 3h6M10 3v6l-6 10a1.4 1.4 0 0 0 1.2 2h13.6a1.4 1.4 0 0 0 1.2-2L14 9V3M7 15h10"/>',
+  portfolio: '<path d="M3 20h18M5 16v-5m7 5V4m7 12V8M4 8l7-5 9 3"/>',
+  evidence: '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"/><path d="M12 8v5m0 3h.01"/>',
+  history: '<path d="M4 8a9 9 0 1 1-1 8M3 3v6h6M12 7v5l3 2"/>',
+  advanced: '<path d="M4 6h16M4 12h16M4 18h16M8 3v6m8 0v6m-6 0v6"/>',
+  chevron: '<path d="m8 10 4 4 4-4"/>',
+  arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
+  back: '<path d="M20 12H4m6-6-6 6 6 6"/>',
+  check: '<path d="m5 12 4 4L19 6"/>',
+  checkcircle: '<circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 6-6"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13.5 13.5 0 0 1 0 18M12 3a13.5 13.5 0 0 0 0 18"/>',
+  calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/>',
+  flag: '<path d="M5 21V4h11l-1.5 4L16 12H5"/>',
+  sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  play: '<path d="m8 4 12 8-12 8Z"/>',
+  refresh: '<path d="M20 7a9 9 0 0 0-16 2M4 17a9 9 0 0 0 16-2M20 3v5h-5M4 21v-5h5"/>',
+  close: '<path d="m6 6 12 12M6 18 18 6"/>',
+  ban: '<circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/>',
+  warning: '<path d="m12 3 10 18H2Z"/><path d="M12 9v5m0 3h.01"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>',
+  review: '<circle cx="9" cy="7" r="4"/><path d="M2 21v-3a7 7 0 0 1 11-5m3 1 5 5m0-5-5 5"/>',
+  lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3m-4 5v3"/>',
+  file: '<path d="M14 2H5v20h14V7Zm0 0v5h5M8 12h8m-8 4h8"/>',
+  copy: '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>',
+  link: '<path d="m10 14 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 8l2-2a4 4 0 1 1 6 6l-5 5a4 4 0 0 1-6 0" transform="translate(1 0) scale(.9)"/>',
+  task: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 2h6v4H9Zm-1 9 1 1 2-2m2 1h3m-8 6 1 1 2-2m2 1h3"/>',
+  cube: '<path d="m12 2 9 5v10l-9 5-9-5V7Zm0 0v10m-9-5 9 5 9-5m-9 5v10"/>',
+  fork: '<path d="M5 3v5c0 4 14 4 14 8v5M19 3v5c0 4-14 4-14 8v5M12 12v9"/>',
+  user: '<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
+  pin: '<path d="m7 3 10 0-1 6 4 3-8 3-8-3 4-3Zm5 12v7"/>',
+  eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+  cloud: '<path d="M7 18a5 5 0 1 1-.5-10 6 6 0 0 1 11.5 1A4.5 4.5 0 1 1 18 18"/><path d="M12 12v9m-3-3 3 3 3-3"/>',
+  search: '<circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/>',
+  edit: '<path d="m4 16 12-12 4 4L8 20l-5 1Zm10-10 4 4"/>',
+  partial: '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h9M5.5 6.5H12M5.5 17.5H12"/>',
+  wrench: '<path d="M21 3a6 6 0 0 1-8 8L5 21l-3-3 10-8a6 6 0 0 1 8-8l-4 4 2 2Z"/>',
+  branch: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9c0 5-12 3-12 8"/>',
+  archive: '<rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v13h14V8M9 12h6"/>',
+  grid: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18m6-18v18M3 9h18M3 15h18"/>',
+  stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+  plus: '<path d="M12 4v16M4 12h16"/>',
+  activity: '<path d="M3 12h4l3-7 4 14 3-7h4"/>',
+  keyboard: '<rect x="3" y="7" width="18" height="11" rx="2"/><path d="M7 11h.01M11 11h.01M15 11h.01M8 15h8"/>',
+  more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+  panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path class="fill" d="M5 4h4v16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/>',
+  'panel-right': '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/><path class="fill" d="M15 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4z"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  auto: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+  team: '<circle cx="12" cy="6" r="3"/><circle cx="5" cy="15" r="2"/><circle cx="19" cy="15" r="2"/><path d="M8 20v-1a4 4 0 0 1 8 0v1M2 21v-1a3 3 0 0 1 3-3m17 4v-1a3 3 0 0 0-3-3M8 12l2-3m6 3-2-3"/>',
+};
+
+function icon(name, cls = '') {
+  return html`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${raw(ICON[name] || ICON.info)}</svg>`;
+}
+
+/* The static brand mark (20-edge octagram) is drawn by the frozen AlphaStaticMark module. */
+function mark() {
+  return raw(window.AlphaStaticMark.svg());
+}

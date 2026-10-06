@@ -1,0 +1,1283 @@
+{
+  "schema": "alphalattice.playpen.artifact-authority-registry",
+  "groups": [
+    {
+      "path_prefixes": [
+        "alpha-research/goal-driven"
+      ],
+      "roots": [
+        "artifacts",
+        "runtime"
+      ],
+      "semantic_role": "Alpha qualification programs, append-only Candidate Registries, qualification evidence, three-peer current candidate sets or evidence-complete scientific stops, receipts, markers, and safe projections; the retired goal loop's boards and batches read back only",
+      "authority_owner": "alpha_research.candidates.AlphaGoalResearchArtifactStore",
+      "retention_owner": "current, previous, pinned, and in-flight Alpha Goal program reachability",
+      "rebuildability": "DEVELOPMENT_CHILDREN_REBUILDABLE_FROM_FROZEN_FOUNDATION_CURRENT_CANDIDATE_SCORES_PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "CANONICAL_ALPHA_RESEARCH_RUNTIME_AND_CURRENT_CANDIDATE_AUTHORITY",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY"
+    },
+    {
+      "path_prefixes": [
+        "alpha-research"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "shared Alpha numerical children plus immutable historical registered-model decisions, current refit state, current formation scores, receipts, markers, and safe projections; legacy runtime is readback-only",
+      "authority_owner": "alpha_research.publication.AlphaCurrentArtifactStore",
+      "retention_owner": "current, previous, pinned, and in-flight Research Desk run reachability",
+      "rebuildability": "DEVELOPMENT_EVIDENCE_REBUILDABLE_FROM_FROZEN_FOUNDATION_CURRENT_SCORE_PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "SHARED_ALPHA_NUMERICAL_EVIDENCE_AND_HISTORICAL_DECISION_READBACK",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY"
+    },
+    {
+      "path_prefixes": [
+        "storage-governance/availability",
+        "storage-governance/current.json",
+        "storage-governance/plans",
+        "storage-governance/receipts"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "current-state storage retention and physical availability, with the retired migration's marker-last evidence (RT R12)",
+      "authority_owner": "workspace_runtime.BoundedStorageRetentionOwner",
+      "retention_owner": "current workspace state",
+      "rebuildability": "RECEIPTS_PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "STORAGE_GOVERNANCE_AND_OPERATIONAL_PROJECTION",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/sector-map-receipts",
+        "feature-panel/closure/sector-maps"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "immutable historical sector mapping and reconstruction evidence",
+      "authority_owner": "feature_engine.PanelClosurePublisher",
+      "retention_owner": "sector-revision reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "REMATERIALIZATION_INPUT",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/base-keys",
+        "feature-panel/closure/base-manifests",
+        "feature-panel/closure/base-values"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "immutable consumed base-value closure",
+      "authority_owner": "feature_engine.PanelClosurePublisher",
+      "retention_owner": "Panel recipe reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "REMATERIALIZATION_INPUT",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/availability",
+        "feature-panel/closure/availability-manifests",
+        "feature-panel/closure/row-receipt-manifests",
+        "feature-panel/closure/row-receipts"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "immutable Panel diagnostics and exact row receipt assignments",
+      "authority_owner": "feature_engine.PanelClosurePublisher",
+      "retention_owner": "Panel recipe reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "REMATERIALIZATION_INPUT",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/recipes"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "content-addressed historical Panel derivation recipes",
+      "authority_owner": "feature_engine.PanelClosurePublisher",
+      "retention_owner": "Panel snapshot reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "REMATERIALIZATION_RECIPE",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/retention-assessments",
+        "feature-panel/closure/runs"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "closure proof receipts, marker-last completion, and safe operations projection",
+      "authority_owner": "workspace_runtime.PanelStorageClosureRun",
+      "retention_owner": "closure-run reachability",
+      "rebuildability": "RECEIPTS_PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "PROOF_AND_OPERATIONAL_PROJECTION",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT R25"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/feature-ledger/first-loads",
+        "feature-panel/closure/feature-ledger/heads",
+        "feature-panel/closure/feature-ledger/patch-rows",
+        "feature-panel/closure/feature-ledger/patches",
+        "feature-panel/closure/feature-ledger/roots",
+        "feature-panel/closure/feature-ledger/transitions"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "append-only base Feature recovery roots, patches, receipts, markers, and column first loads",
+      "authority_owner": "feature_engine.FeatureClosureLedger",
+      "retention_owner": "Feature closure head and Panel recovery-binding reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "REMATERIALIZATION_INPUT_AND_TRANSITION_PROOF",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/panel-recovery-bindings"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Panel closure checkpoints and map-before-activation evidence",
+      "authority_owner": "feature_engine.panels.FeatureClosureLedger",
+      "retention_owner": "Panel snapshot and sector revision reachability",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "RECOVERY_BINDING_AND_ACTIVATION_PROOF",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/logical/content-manifests",
+        "feature-panel/closure/logical/derivation-bindings",
+        "feature-panel/closure/logical/equivalence-attestations",
+        "feature-panel/closure/logical/physical-materializations",
+        "feature-panel/closure/logical/publication-markers",
+        "feature-panel/closure/logical/revisions",
+        "feature-panel/closure/logical/semantic-indexes"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "native Panel logical identity, physical encoding, derivation, semantic-index, and marker-last mapping",
+      "authority_owner": "feature_engine.PanelLogicalIdentityPublisher",
+      "retention_owner": "Panel publication and Foundation reachability",
+      "rebuildability": "LOGICAL_DIGESTS_REBUILDABLE_FROM_RETAINED_PHYSICAL_OR_CLOSURE",
+      "artifact_relationship": "LOGICAL_NUMERICAL_AND_PHYSICAL_ENCODING_AUTHORITY",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "research-decisions/reproducibility/candidate",
+        "research-decisions/reproducibility/findings",
+        "research-decisions/reproducibility/portfolio-manager"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "frozen-context Agent decision reproducibility observations and activation-path finding",
+      "authority_owner": "research_decision.ResearchDecisionReproducibilityCoordinator",
+      "retention_owner": "Pre-Research identity migration receipt reachability",
+      "rebuildability": "MEASUREMENT_RECEIPTS_PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "DECISION_HEALTH_EVIDENCE_ONLY",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT R04"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/logical-identity-migrations/acceptance-markers",
+        "feature-panel/logical-identity-migrations/accepted-migrations",
+        "feature-panel/logical-identity-migrations/by-execution",
+        "feature-panel/logical-identity-migrations/markers",
+        "feature-panel/logical-identity-migrations/receipts",
+        "feature-panel/logical-identity-migrations/rollback-plans",
+        "feature-panel/logical-identity-migrations/rollback-receipts"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "marker-last Panel identity migration, exact-replay receipt, and Guanyin safe projection",
+      "authority_owner": "product_host.migrations.PanelIdentityMigrationArtifactStore",
+      "retention_owner": "Pre-Research HEAD and migration-marker reachability",
+      "rebuildability": "MIGRATION_RECEIPTS_PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "IDENTITY_MIGRATION_PROOF_AND_OPERATIONAL_PROJECTION",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT R04"
+    },
+    {
+      "path_prefixes": [
+        "factor-research/outcomes/logical-rebind-receipts"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "zero-decode rebinding evidence from legacy physical Panel identity to native logical Panel identity",
+      "authority_owner": "factor_research.publication.FactorResearchArtifactStore",
+      "retention_owner": "logical outcome and migration marker reachability",
+      "rebuildability": "RECEIPT_PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "DETERMINISTIC_IDENTITY_MIGRATION_PROOF",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-catalog-crud/base-values",
+        "feature-catalog-crud/deltas",
+        "feature-catalog-crud/markers",
+        "feature-catalog-crud/operations",
+        "feature-catalog-crud/panels",
+        "feature-catalog-crud/plans",
+        "feature-catalog-crud/revisions",
+        "feature-catalog-crud/transitions"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "disposable governed Feature Catalog revisions, incremental value and Panel artifacts, plans, transitions, and marker-last receipts",
+      "authority_owner": "feature_engine.FeatureCatalogCrudArtifactStore",
+      "retention_owner": "disposable Feature CRUD workspace lifecycle",
+      "rebuildability": "DISPOSABLE_DOGFOOD_ONLY",
+      "artifact_relationship": "CATALOG_TRANSITION_AND_INCREMENTAL_NUMERICAL_PROOF",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY",
+      "retired": "127313b4"
+    },
+    {
+      "path_prefixes": [
+        "risk-research/covariance/builds",
+        "risk-research/covariance/chunks"
+      ],
+      "roots": [
+        "artifacts",
+        "experiment"
+      ],
+      "semantic_role": "Risk covariance build checkpoints and chunks: the store writes them for the current publication, and the frozen legacy surfaces' chunks read back only",
+      "authority_owner": "risk_research.surfaces.RiskArtifactStore",
+      "retention_owner": "current and previous Risk covariance readback reachability",
+      "rebuildability": "LEGACY_IMPLEMENTATION_IDENTITY_UNBOUND_RECOMPUTE_WOULD_MOVE_PUBLISHED_IDENTITY",
+      "artifact_relationship": "CURRENT_PUBLICATION_WITH_FROZEN_LEGACY_READBACK",
+      "eviction_authority": "NONE"
+    },
+    {
+      "path_prefixes": [
+        "alpha-research/current",
+        "alpha-research/current/candidate-numerical-fold-by-binding",
+        "alpha-research/current/model-fit-sidecar-by-operation",
+        "alpha-research/current/model-text"
+      ],
+      "roots": [
+        "artifacts",
+        "experiment"
+      ],
+      "semantic_role": "Immutable development evidence in the established Alpha CAS namespace",
+      "authority_owner": "alpha_research.experiments.AlphaDevelopmentArtifactStore",
+      "retention_owner": "alpha_research",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/sector-activation-markers",
+        "feature-panel/closure/sector-activation-receipts"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Own immutable ledger artifacts plus one CAS pointer per catalog",
+      "authority_owner": "feature_engine.panels.FeatureClosureLedger",
+      "retention_owner": "feature_engine",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "storage-governance/panel-residue-receipts"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Mutate only operational residue after an accepted logical cutover",
+      "authority_owner": "feature_engine.panels.PanelRetentionResidueOwner",
+      "retention_owner": "feature_engine",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "alpha-research/current-guardian.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what AlphaResearchGuardianPublisher publishes",
+      "authority_owner": "guanyin.alpha.AlphaResearchGuardianPublisher",
+      "retention_owner": "guanyin",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY",
+      "retired": "RT R21"
+    },
+    {
+      "path_prefixes": [
+        "alpha-research/stability-case",
+        "alpha-research/stability-case/guardian.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what AlphaStabilityGuardianPublisher publishes",
+      "authority_owner": "guanyin.alpha.AlphaStabilityGuardianPublisher",
+      "retention_owner": "guanyin",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY",
+      "retired": "RT R21"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/guardian",
+        "feature-panel/closure/guardian/current.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Atomically replace the safe view without creating operational truth",
+      "authority_owner": "guanyin.data.PanelClosureGuardianPublisher",
+      "retention_owner": "guanyin",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY",
+      "retired": "RT R54"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/logical-identity-migrations/guardian-current.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Publish one read-only safe view; operational owners remain elsewhere",
+      "authority_owner": "guanyin.data.PanelIdentityMigrationGuardianPublisher",
+      "retention_owner": "guanyin",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY",
+      "retired": "RT R04"
+    },
+    {
+      "path_prefixes": [
+        "portfolio-management/current-foundation-guardian.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what CurrentFoundationPMGuardianPublisher publishes",
+      "authority_owner": "guanyin.research.CurrentFoundationPMGuardianPublisher",
+      "retention_owner": "guanyin",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY",
+      "retired": "RT R67"
+    },
+    {
+      "path_prefixes": [
+        "alpha-research/portfolio-scores/model-evidence",
+        "alpha-research/portfolio-scores/model-evidence/development"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Resolve current authorities, build development scores, and publish one pointer",
+      "authority_owner": "portfolio_strategy_lab.inputs.alpha_scores.AlphaPortfolioDevelopmentRuntime",
+      "retention_owner": "portfolio_strategy_lab",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT M01"
+    },
+    {
+      "path_prefixes": [
+        "alpha-research/portfolio-scores",
+        "alpha-research/portfolio-scores/builds",
+        "alpha-research/portfolio-scores/chunks",
+        "alpha-research/portfolio-scores/current",
+        "alpha-research/portfolio-scores/current/active.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Own one score artifact tree and its sole current pointer",
+      "authority_owner": "portfolio_strategy_lab.inputs.alpha_scores.AlphaPortfolioScoreStore",
+      "retention_owner": "portfolio_strategy_lab",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT M01"
+    },
+    {
+      "path_prefixes": [
+        "alpha-research/portfolio-scores/policy-oos",
+        "alpha-research/portfolio-scores/policy-oos/by-slate",
+        "alpha-research/portfolio-scores/policy-oos/checkpoints",
+        "alpha-research/portfolio-scores/policy-oos/surfaces"
+      ],
+      "roots": [
+        "artifacts",
+        "runtime"
+      ],
+      "semantic_role": "what PortfolioOosAlphaScoreStore publishes",
+      "authority_owner": "portfolio_strategy_lab.inputs.alpha_scores.PortfolioOosAlphaScoreStore",
+      "retention_owner": "portfolio_strategy_lab",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT R07"
+    },
+    {
+      "path_prefixes": [
+        "research-decisions/reproducibility/candidate-migration-receipts",
+        "research-decisions/reproducibility/pm-migration-receipts"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Stage validated decisions without changing any current safe projection",
+      "authority_owner": "product_host.migrations.research_program.ResearchDecisionMigrationPublisher",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT R04"
+    },
+    {
+      "path_prefixes": [
+        "pre-research-authority/summaries"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what PreResearchAuthoritySummaryStore publishes",
+      "authority_owner": "product_host.publication.PreResearchAuthoritySummaryStore",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT R16"
+    },
+    {
+      "path_prefixes": [
+        "alpha-research/sector-context",
+        "alpha-research/sector-context/manifests",
+        "alpha-research/sector-context/surfaces"
+      ],
+      "roots": [
+        "artifacts",
+        "runtime"
+      ],
+      "semantic_role": "what SectorContextStore publishes",
+      "authority_owner": "sector_research.inputs.SectorContextStore",
+      "retention_owner": "sector_research",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "data-operations/execution-outcomes"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what _ExecutionOutcomeArtifactStore publishes",
+      "authority_owner": "causal_outcomes.execution._ExecutionOutcomeArtifactStore",
+      "retention_owner": "causal_outcomes",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "factor-research/current",
+        "factor-research/current/active.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Publish and exactly replay the sole production Factor Research pointer",
+      "authority_owner": "factor_research.publication.CurrentFactorResearchService",
+      "retention_owner": "factor_research",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT V312"
+    },
+    {
+      "path_prefixes": [
+        "factor-research/candidates/evidence",
+        "factor-research/candidates/markers",
+        "factor-research/candidates/protocol-health",
+        "factor-research/candidates/receipts",
+        "factor-research/candidates/slates",
+        "factor-research/front-desk-projection.json",
+        "factor-research/outcomes/manifests",
+        "factor-research/outcomes/reuse-receipts",
+        "factor-research/research-desk",
+        "factor-research/research-desk/foundation-admissions",
+        "factor-research/research-desk/foundation-markers",
+        "factor-research/research-desk/foundations",
+        "factor-research/research-desk/inputs",
+        "factor-research/research-desk/markers",
+        "factor-research/research-desk/pre-research-projection.json",
+        "factor-research/research-desk/receipts",
+        "factor-research/screening",
+        "factor-research/screening/history.json",
+        "factor-research/screening/markers",
+        "factor-research/screening/receipts",
+        "factor-research/screening/reports"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Own immutable Factor Research children and one safe history projection",
+      "authority_owner": "factor_research.publication.FactorResearchArtifactStore",
+      "retention_owner": "factor_research",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/research-feature-preprocessing"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "One Feature-owned build over all independently admitted candidates",
+      "authority_owner": "feature_engine.panels.DevelopmentFeatureOverlayService",
+      "retention_owner": "feature_engine",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/closure/feature-ledger/genesis-roots"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Own immutable ledger artifacts plus one CAS pointer per catalog",
+      "authority_owner": "feature_engine.panels.FeatureClosureLedger",
+      "retention_owner": "feature_engine",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "run-monitor/data-tradability-guardian.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Atomically publish the latest derivative guardian view",
+      "authority_owner": "guanyin.data.DataTradabilityGuardianPublisher",
+      "retention_owner": "guanyin",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY",
+      "retired": "RT R63"
+    },
+    {
+      "path_prefixes": [
+        "run-monitor/panel-duckdb-exit-guardian.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Atomically replace one user-safe view without creating operational truth",
+      "authority_owner": "guanyin.data.PanelExitGuardianProjectionPublisher",
+      "retention_owner": "guanyin",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY",
+      "retired": "RT R57"
+    },
+    {
+      "path_prefixes": [
+        "run-monitor/storage-guardian.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what StorageGuardianProjectionPublisher publishes",
+      "authority_owner": "guanyin.data.StorageGuardianProjectionPublisher",
+      "retention_owner": "guanyin",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY",
+      "retired": "RT R12"
+    },
+    {
+      "path_prefixes": [
+        "run-monitor/portfolio-development-guardian.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what PortfolioDevelopmentGuardianPublisher publishes",
+      "authority_owner": "guanyin.portfolio.PortfolioDevelopmentGuardianPublisher",
+      "retention_owner": "guanyin",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY",
+      "retired": "RT R43"
+    },
+    {
+      "path_prefixes": [
+        "run-monitor/portfolio-strategy-lab-guardian.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Atomically replace one derivative guardian view",
+      "authority_owner": "guanyin.portfolio.PortfolioStrategyGuardianPublisher",
+      "retention_owner": "guanyin",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY",
+      "retired": "RT R44"
+    },
+    {
+      "path_prefixes": [
+        "data-operations/session-marks"
+      ],
+      "roots": [
+        "artifacts",
+        "experiment"
+      ],
+      "semantic_role": "Durable home for published mark chunks and manifests",
+      "authority_owner": "market_data_ops.publication.SessionMarkArtifactStore",
+      "retention_owner": "market_data_ops",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "protected-validation"
+      ],
+      "roots": [
+        "artifacts",
+        "runtime"
+      ],
+      "semantic_role": "The Gate's own content-addressed artifacts: permits, claims, receipts",
+      "authority_owner": "model_validation.ProtectedValidationStore",
+      "retention_owner": "model_validation",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "run-monitor/work-progress.json"
+      ],
+      "roots": [
+        "artifacts",
+        "experiment"
+      ],
+      "semantic_role": "Atomically publish the latest safe progress without touching DuckDB",
+      "authority_owner": "observation_runtime.telemetry.WorkspaceProgressPublisher",
+      "retention_owner": "observation_runtime",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY"
+    },
+    {
+      "path_prefixes": [
+        "portfolio-benchmark/surfaces"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Content-addressed storage for Portfolio benchmark input surfaces",
+      "authority_owner": "portfolio_inputs.PortfolioBenchmarkStore",
+      "retention_owner": "portfolio_inputs",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "data-operations/tradability"
+      ],
+      "roots": [
+        "artifacts",
+        "runtime"
+      ],
+      "semantic_role": "Own immutable Parquet chunks and compact tradability JSON authorities",
+      "authority_owner": "portfolio_inputs.tradability.TradabilityArtifactStore",
+      "retention_owner": "portfolio_inputs",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "portfolio-management/guardian-projection.json",
+        "portfolio-management/safe-projection.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what PortfolioManagementArtifactStore publishes",
+      "authority_owner": "portfolio_management.publication.PortfolioManagementArtifactStore",
+      "retention_owner": "portfolio_management",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT V312"
+    },
+    {
+      "path_prefixes": [
+        "portfolio-policy-oos/consumption",
+        "portfolio-policy-oos/consumption/active.json",
+        "portfolio-policy-oos/current",
+        "portfolio-policy-oos/current/active.json",
+        "portfolio-policy-oos/evidence-by-slate",
+        "portfolio-policy-oos/results-by-slate"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what PortfolioPolicyOosStore publishes",
+      "authority_owner": "portfolio_strategy_lab.evaluation.PortfolioPolicyOosStore",
+      "retention_owner": "portfolio_strategy_lab",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT R07"
+    },
+    {
+      "path_prefixes": [
+        "research-desk/portfolio-input",
+        "research-desk/portfolio-input/current",
+        "research-desk/portfolio-input/current/active.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what _PortfolioInputStore publishes",
+      "authority_owner": "portfolio_strategy_lab.inputs._PortfolioInputStore",
+      "retention_owner": "portfolio_strategy_lab",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT M01"
+    },
+    {
+      "path_prefixes": [
+        "portfolio-strategy-lab/development",
+        "portfolio-strategy-lab/development/fast-slow-comparisons"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Portfolio-owned CAS for fast/slow comparison evidence",
+      "authority_owner": "portfolio_strategy_lab.inputs.return_signals.PortfolioSignalArtifactStore",
+      "retention_owner": "portfolio_strategy_lab",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT R42"
+    },
+    {
+      "path_prefixes": [
+        "portfolio-strategy-lab/advancement"
+      ],
+      "roots": [
+        "artifacts",
+        "runtime"
+      ],
+      "semantic_role": "Content-addressed advancement artifacts plus one by-program receipt index",
+      "authority_owner": "portfolio_strategy_lab.publication.AdvancementLedgerStore",
+      "retention_owner": "portfolio_strategy_lab",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "portfolio-strategy-lab/finalization"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Content-addressed finalization artifacts behind four one-time commits",
+      "authority_owner": "portfolio_strategy_lab.publication.PortfolioFinalizationStore",
+      "retention_owner": "portfolio_strategy_lab",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "portfolio-strategy-lab/public"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Content-addressed descendants plus one by-program reuse index",
+      "authority_owner": "portfolio_strategy_lab.publication.PortfolioLedgerStore",
+      "retention_owner": "portfolio_strategy_lab",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "portfolio-strategy-lab",
+        "portfolio-strategy-lab/baseline-slates",
+        "portfolio-strategy-lab/baseline-slates/by-program",
+        "portfolio-strategy-lab/checkpoints",
+        "portfolio-strategy-lab/current",
+        "portfolio-strategy-lab/current/active.json",
+        "portfolio-strategy-lab/current/strategy-research-active.json"
+      ],
+      "roots": [
+        "artifacts",
+        "experiment"
+      ],
+      "semantic_role": "Content-addressed Strategy Lab evidence: JSON documents and packed lanes",
+      "authority_owner": "portfolio_strategy_lab.publication.PortfolioResearchArtifactStore",
+      "retention_owner": "portfolio_strategy_lab",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "research-evidence"
+      ],
+      "roots": [
+        "experiment"
+      ],
+      "semantic_role": "what ResearchExperimentApplication publishes",
+      "authority_owner": "product_host.composition.ResearchExperimentApplication",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "workspace-data"
+      ],
+      "roots": [
+        "runtime"
+      ],
+      "semantic_role": "Metadata only until the Data Task executes a Human-confirmed request",
+      "authority_owner": "product_host.maintenance.WorkspaceDataChanges",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/snapshot-lifecycle.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "the read-side Panel snapshot lifecycle projection ArtifactResolver.publish_feature_panel_lifecycle_projection publishes",
+      "authority_owner": "workspace_runtime.ArtifactResolver",
+      "retention_owner": "workspace_runtime",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "product-host/portfolio-research"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what PortfolioResearchPipelineStore publishes",
+      "authority_owner": "product_host.publication.PortfolioResearchPipelineStore",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "product-host/goals"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what GoalStore publishes",
+      "authority_owner": "product_host.publication.GoalStore",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/semantic-index"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "what _bind_factor_inputs publishes",
+      "authority_owner": "product_host.research_authoring._bind_factor_inputs",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "storage-governance/input-cleanup-completed",
+        "storage-governance/input-cleanup-started",
+        "storage-governance/input-plans"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Resolve current/rollback roots and freeze exact unrooted file candidates",
+      "authority_owner": "product_host.storage.BoundedStorageRetentionOwner",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "pre-research-revisions",
+        "pre-research-revisions/pending-transition.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Content-addressed HEAD/marker store with one atomic CAS pointer",
+      "authority_owner": "research_foundation.runtime.PreResearchHeadStore",
+      "retention_owner": "research_foundation",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "risk-research/current/common-mode-calibration-research.json"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Publish compact Risk research evidence; covariance bytes remain elsewhere",
+      "authority_owner": "risk_research.calibration.CommonModeCalibrationRepository",
+      "retention_owner": "risk_research",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT R14"
+    },
+    {
+      "path_prefixes": [
+        "risk-research/current",
+        "risk-research/current/active.json",
+        "risk-research/current/markers",
+        "risk-research/current/projections",
+        "risk-research/current/receipts",
+        "risk-research/review-decisions"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Publish and exactly replay one current Risk pointer",
+      "authority_owner": "risk_research.publication.CurrentRiskService",
+      "retention_owner": "risk_research",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
+      "retired": "RT M01"
+    },
+    {
+      "path_prefixes": [
+        "data-operations/risk-returns"
+      ],
+      "roots": [
+        "artifacts",
+        "experiment"
+      ],
+      "semantic_role": "Publish immutable Parquet chunks and one content-addressed manifest",
+      "authority_owner": "risk_research.surfaces.RiskReturnArtifactStore",
+      "retention_owner": "risk_research",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "feature-panel/chunks",
+        "feature-panel/manifests",
+        "feature-panel/panel-duckdb-exit/receipts",
+        "feature-panel/panel-duckdb-exit/transitions",
+        "feature-panel/preprocessing-marker"
+      ],
+      "roots": [
+        "artifacts",
+        "experiment"
+      ],
+      "semantic_role": "Resolve only known content-addressed artifact kinds inside trusted code",
+      "authority_owner": "workspace_runtime.ArtifactResolver",
+      "retention_owner": "workspace_runtime",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "risk-research/covariance/diagnostics",
+        "risk-research/covariance/surfaces",
+        "risk-research/dossiers"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Risk covariance diagnostics, surfaces and dossiers: the current publication writes them, and the frozen legacy surfaces among them read back only",
+      "authority_owner": "risk_research.publication.CurrentRiskService",
+      "retention_owner": "current and previous Risk covariance readback reachability",
+      "rebuildability": "LEGACY_IMPLEMENTATION_IDENTITY_UNBOUND_RECOMPUTE_WOULD_MOVE_PUBLISHED_IDENTITY",
+      "artifact_relationship": "CURRENT_PUBLICATION_WITH_FROZEN_LEGACY_READBACK",
+      "eviction_authority": "NONE",
+      "retired": "RT M01"
+    },
+    {
+      "path_prefixes": [
+        "research-inputs"
+      ],
+      "roots": [
+        "workspace"
+      ],
+      "semantic_role": "research inputs: a sealed copy of the market store, the Panel and the outcome an experiment reads, pooled by digest; not rebuildable once the live store moves",
+      "authority_owner": "product_host.research_authoring._bind_factor_inputs",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "research-market-inputs"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "the Portfolio hand-off's market inputs, rebuilt from the market store in the same state",
+      "authority_owner": "product_host.research_authoring.prepare_portfolio_handoff",
+      "retention_owner": "product_host",
+      "rebuildability": "REBUILDABLE_FROM_THE_MARKET_STORE_IN_THE_SAME_STATE",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "research-risk-inputs"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "Risk's market inputs, rebuilt from the market store in the same state",
+      "authority_owner": "product_host.research_authoring.risk_workflow",
+      "retention_owner": "product_host",
+      "rebuildability": "REBUILDABLE_FROM_THE_MARKET_STORE_IN_THE_SAME_STATE",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "research-programs"
+      ],
+      "roots": [
+        "experiment"
+      ],
+      "semantic_role": "an experiment's sealed Programs, content-addressed",
+      "authority_owner": "research_program.authoring.ResearchProgramStore",
+      "retention_owner": "research_program",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "alternative-evidence"
+      ],
+      "roots": [
+        "runtime"
+      ],
+      "semantic_role": "the Evidence and CRO records: requests, registries, snapshots, document sets, retrieval generations, receipts, briefs, packages, publications, dossiers and reviews",
+      "authority_owner": "alternative_evidence.publication.AlternativeEvidenceArtifactStore",
+      "retention_owner": "alternative_evidence",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "NONE"
+    },
+    {
+      "path_prefixes": [
+        "runtime/evidence-knowledge"
+      ],
+      "roots": [
+        "workspace"
+      ],
+      "semantic_role": "the Evidence knowledge workspace: source objects, documents and the retrieval indexes, a cache keyed by content and model for the indexes",
+      "authority_owner": "knowledge.hybrid.WorkspaceHybridKnowledgeIndex",
+      "retention_owner": "knowledge",
+      "rebuildability": "SOURCES_REFETCHABLE_WHERE_SERVED_INDEXES_REBUILDABLE",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "runtime/execution"
+      ],
+      "roots": [
+        "workspace"
+      ],
+      "semantic_role": "the workspace's CPU budget and the log of what each preparation ran with",
+      "authority_owner": "alternative_evidence.runtime.CpuBudgetStore",
+      "retention_owner": "alternative_evidence",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY"
+    },
+    {
+      "path_prefixes": [
+        "runtime/upgrade-overview.json"
+      ],
+      "roots": [
+        "workspace"
+      ],
+      "semantic_role": "the installed identities the user last acknowledged",
+      "authority_owner": "product_host.composition.acknowledge_upgrade",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY"
+    },
+    {
+      "path_prefixes": [
+        "staging/sector-reference"
+      ],
+      "roots": [
+        "workspace"
+      ],
+      "semantic_role": "sector reference inputs staged for the Feature build",
+      "authority_owner": "feature_engine.producers.SectorRefreshStager",
+      "retention_owner": "feature_engine",
+      "rebuildability": "REBUILDABLE_FROM_THE_REFERENCE_SOURCE",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY"
+    },
+    {
+      "path_prefixes": [
+        "yfinance-cache"
+      ],
+      "roots": [
+        "workspace"
+      ],
+      "semantic_role": "the provider's own cache",
+      "authority_owner": "market_data_ops.sources.YFinanceMarketDataProvider",
+      "retention_owner": "market_data_ops",
+      "rebuildability": "DISPOSABLE_PROVIDER_CACHE",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "CURRENT_STATE_RETENTION_POLICY"
+    },
+    {
+      "path_prefixes": [
+        "feature-trials"
+      ],
+      "roots": [
+        "runtime"
+      ],
+      "semantic_role": "one record per feature trial: its feature plan, its study, the Tasks of its chain and its outcome, rewritten whole as the trial moves on; a record that no longer reads is kept aside beside it",
+      "authority_owner": "product_host.composition.feature_trials.FeatureTrials",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "development/factor-deterministic-evidence"
+      ],
+      "roots": [
+        "experiment"
+      ],
+      "semantic_role": "a Factor study's sealed deterministic evidence, content-addressed, under its experiment's output (V205)",
+      "authority_owner": "factor_research.experiments.publish_factor_development_evidence",
+      "retention_owner": "factor_research",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "development/factor-development-receipt"
+      ],
+      "roots": [
+        "experiment"
+      ],
+      "semantic_role": "a Factor study's lineage receipts beside its child, under its experiment's output (V205)",
+      "authority_owner": "factor_research.experiments.publish_factor_development_receipt",
+      "retention_owner": "factor_research",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "development/factor-curation-receipt"
+      ],
+      "roots": [
+        "experiment"
+      ],
+      "semantic_role": "a Factor study's curation decisions, under its experiment's output (V205)",
+      "authority_owner": "factor_research.experiments.publish_factor_development_curation",
+      "retention_owner": "factor_research",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "evidence-cro-authority/semantic-model"
+      ],
+      "roots": [
+        "workspace"
+      ],
+      "semantic_role": "the retained retrieval recipe's model copy, which the relink turns into links to the machine's model store (V205, V208)",
+      "authority_owner": "knowledge.model_store.relink_retained_copy",
+      "retention_owner": "knowledge",
+      "rebuildability": "REBUILDABLE_FROM_THE_MACHINES_MODEL_STORE",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    }
+  ]
+}

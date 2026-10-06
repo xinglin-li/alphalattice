@@ -1,0 +1,354 @@
+{
+  "annotation_history": [
+    {
+      "added_ranges": 11,
+      "change": "annotation completion",
+      "date": "2026-09-03",
+      "rule": "An additional occurrence was accepted only when it states the same event with the same entity, period, jurisdiction and material attributes as the frozen target, found by searching the admitted corpus for the event's own entities rather than for topic words, and bound to source bytes by its own anchor. Occurrences of different events of the same issuer and topic -- the Araxa disposal group for MOS, the CNBV authorization requests for MELI, the hospital antitrust class actions for ISRG -- were refused. For the Flemish settlement every sentence naming the Remediation Agreement was enumerated: sentences stating the agreement, its terms or its charge were accepted; the section heading and the sentence about subsequent technical meetings were not.",
+      "sub_facts_previously_unannotated": [
+        "DG-LITIGATION/derivative"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "classification": "SOURCE_CONFIRMED",
+      "entity_id": "MMM",
+      "fact": "Belgian PFAS settlement with the Flemish Government covering emissions from Zwijndrecht, and PFAS contamination class actions in Georgia.",
+      "fact_ranges": [
+        {
+          "anchor_sha256": "38aa3b53f10b6bddebd9a8d92902e4e5baeba541040831eada3d93f5753366f6",
+          "character_end": 358934,
+          "character_start": 358805,
+          "document_type": "10-K",
+          "excerpt": "funds to be used by the Flemish Government in its sole discretion in connection with PFAS emissions from the Zwijndrecht facility",
+          "revision": "0000066740-26-000014",
+          "sub_fact": "flemish-settlement"
+        },
+        {
+          "anchor_sha256": "813d394d14a76dd505875554f345f1c8e28c6b1646126db24e10a5709e52f7ab",
+          "character_end": 121654,
+          "character_start": 121529,
+          "document_type": "10-Q",
+          "excerpt": "on behalf of a putative class of all governmental entities in Georgia who own or operate municipal landfills impacted by PFAS",
+          "revision": "0000066740-26-000246",
+          "sub_fact": "georgia-class-actions"
+        },
+        {
+          "added": "2026-09-03 annotation completion",
+          "anchor_sha256": "9760827de4872ff869717aff8982610d1f37e3bd0f20aa9414bfdff1b416edae",
+          "character_end": 161783,
+          "character_start": 161538,
+          "document_type": "10-Q",
+          "excerpt": "In July 2022, 3M Belgium entered into a remediation agreement with the Flemish government (\"Flemish Remediation Agreement\") under which 3M Belgium committed €571 million to address issues associated with PFAS relating to the Zwijndrecht Facility",
+          "revision": "0000066740-26-000246",
+          "sub_fact": "flemish-settlement"
+        },
+        {
+          "added": "2026-09-03 annotation completion",
+          "anchor_sha256": "9950b03fbd96d1075b51303502d704c4f20138b58f4abc99e76ff91cf8898291",
+          "character_end": 358316,
+          "character_start": 358168,
+          "document_type": "10-K",
+          "excerpt": "in July 2022, 3M Belgium and the Flemish Government announced an agreement (the “Remediation Agreement”) in connection with the Zwijndrecht facility",
+          "revision": "0000066740-26-000014",
+          "sub_fact": "flemish-settlement"
+        },
+        {
+          "added": "2026-09-03 annotation completion",
+          "anchor_sha256": "6dd78abfbf70dfa9b51baf3418aa33ada4a51c7ff87e92c7cec64bf8201e4ec6",
+          "character_end": 162616,
+          "character_start": 162413,
+          "document_type": "10-Q",
+          "excerpt": "The Flemish Remediation Agreement contains certain provisions ending litigation and providing certain releases of liability for 3M Belgium, while preserving the Flemish government's regulatory authority.",
+          "revision": "0000066740-26-000246",
+          "sub_fact": "flemish-settlement"
+        },
+        {
+          "added": "2026-09-03 annotation completion",
+          "anchor_sha256": "2acb77a81f0fe6d6d4b6f0c3f068ed43f44489f1fe8788880e676291b8f26e0e",
+          "character_end": 162765,
+          "character_start": 162617,
+          "document_type": "10-Q",
+          "excerpt": "In the first half of 2022, the Company recorded a pre-tax charge of approximately $500 million in connection with the Flemish Remediation Agreement.",
+          "revision": "0000066740-26-000246",
+          "sub_fact": "flemish-settlement"
+        }
+      ],
+      "legacy_terms": [
+        "pfas"
+      ],
+      "probe_id": "MMM-PFAS",
+      "recall": "any_sub_fact",
+      "topic": "LEGAL_REGULATORY"
+    },
+    {
+      "classification": "SOURCE_CONFIRMED",
+      "entity_id": "MOS",
+      "fact": "Carlsbad disposal group impairment of about $191.2 million, and an initial charge of about $442 million on the Patrocinio complex.",
+      "fact_ranges": [
+        {
+          "anchor_sha256": "4d78b4ad6cfd7aaac342a7227f211dc4aae6b0305506da4e5ec5b14901350d08",
+          "character_end": 78646,
+          "character_start": 78551,
+          "document_type": "10-Q",
+          "excerpt": "The total impairment recognized on the Carlsbad disposal group was approximately $191.2 million",
+          "revision": "0001285785-26-000112",
+          "sub_fact": "carlsbad-191m"
+        },
+        {
+          "anchor_sha256": "cf560e10a902efe4f428fcb4ab072d2f269ca802668be60730c334bed1c79ec8",
+          "character_end": 94546,
+          "character_start": 94444,
+          "document_type": "10-Q",
+          "excerpt": "This decision resulted in an initial charge of approximately $442 million in the first quarter of 2026",
+          "revision": "0001285785-26-000112",
+          "sub_fact": "patrocinio-442m"
+        }
+      ],
+      "legacy_terms": [
+        "impairment"
+      ],
+      "probe_id": "MOS-IMPAIRMENT",
+      "recall": "any_sub_fact",
+      "topic": "OPERATIONS_SUPPLY"
+    },
+    {
+      "classification": "SOURCE_CONFIRMED",
+      "entity_id": "CF",
+      "fact": "Yazoo City incident asset impairments: $25 million on the North American AN asset group, and a further $23 million charge in the second quarter.",
+      "fact_ranges": [
+        {
+          "anchor_sha256": "b649578b59957a16d65520ad0f534459882f18269d01e917f54ad52b4a0003c0",
+          "character_end": 249053,
+          "character_start": 248948,
+          "document_type": "10-K",
+          "excerpt": "we recorded an impairment of certain fixed assets within our North American AN asset group of $25 million",
+          "revision": "0001324404-26-000007",
+          "sub_fact": "yazoo-25m"
+        },
+        {
+          "anchor_sha256": "b649578b59957a16d65520ad0f534459882f18269d01e917f54ad52b4a0003c0",
+          "character_end": 333150,
+          "character_start": 333045,
+          "document_type": "10-K",
+          "excerpt": "we recorded an impairment of certain fixed assets within our North American AN asset group of $25 million",
+          "revision": "0001324404-26-000007",
+          "sub_fact": "yazoo-25m"
+        },
+        {
+          "anchor_sha256": "b649578b59957a16d65520ad0f534459882f18269d01e917f54ad52b4a0003c0",
+          "character_end": 390451,
+          "character_start": 390346,
+          "document_type": "10-K",
+          "excerpt": "we recorded an impairment of certain fixed assets within our North American AN asset group of $25 million",
+          "revision": "0001324404-26-000007",
+          "sub_fact": "yazoo-25m"
+        },
+        {
+          "anchor_sha256": "26d76d093bcc4ecd63ae01e18e98e9d92d9a52226e8140b5bf29cfce4137e44a",
+          "character_end": 39822,
+          "character_start": 39745,
+          "document_type": "10-Q",
+          "excerpt": "we recorded an impairment charge of $23 million in the second quarter of 2026",
+          "revision": "0001324404-26-000019",
+          "sub_fact": "yazoo-23m"
+        },
+        {
+          "anchor_sha256": "26d76d093bcc4ecd63ae01e18e98e9d92d9a52226e8140b5bf29cfce4137e44a",
+          "character_end": 109476,
+          "character_start": 109399,
+          "document_type": "10-Q",
+          "excerpt": "we recorded an impairment charge of $23 million in the second quarter of 2026",
+          "revision": "0001324404-26-000019",
+          "sub_fact": "yazoo-23m"
+        },
+        {
+          "anchor_sha256": "26d76d093bcc4ecd63ae01e18e98e9d92d9a52226e8140b5bf29cfce4137e44a",
+          "character_end": 117209,
+          "character_start": 117132,
+          "document_type": "10-Q",
+          "excerpt": "we recorded an impairment charge of $23 million in the second quarter of 2026",
+          "revision": "0001324404-26-000019",
+          "sub_fact": "yazoo-23m"
+        },
+        {
+          "added": "2026-09-03 annotation completion",
+          "anchor_sha256": "b649578b59957a16d65520ad0f534459882f18269d01e917f54ad52b4a0003c0",
+          "character_end": 37641,
+          "character_start": 37536,
+          "document_type": "10-Q",
+          "excerpt": "we recorded an impairment of certain fixed assets within our North American AN asset group of $25 million",
+          "revision": "0001324404-26-000019",
+          "sub_fact": "yazoo-25m"
+        },
+        {
+          "added": "2026-09-03 annotation completion",
+          "anchor_sha256": "eaca72369877906026872a37ba36c146b977c8d9d9639b627e6bc0d17e1d2f5d",
+          "character_end": 108904,
+          "character_start": 108799,
+          "document_type": "10-Q",
+          "excerpt": "we recorded an impairment of certain fixed assets within our North American AN asset group of $25 million",
+          "revision": "0001324404-26-000019",
+          "sub_fact": "yazoo-25m"
+        },
+        {
+          "added": "2026-09-03 annotation completion",
+          "anchor_sha256": "b649578b59957a16d65520ad0f534459882f18269d01e917f54ad52b4a0003c0",
+          "character_end": 116106,
+          "character_start": 116001,
+          "document_type": "10-Q",
+          "excerpt": "we recorded an impairment of certain fixed assets within our North American AN asset group of $25 million",
+          "revision": "0001324404-26-000019",
+          "sub_fact": "yazoo-25m"
+        }
+      ],
+      "legacy_terms": [
+        "impairment"
+      ],
+      "probe_id": "CF-IMPAIRMENT",
+      "recall": "any_sub_fact",
+      "topic": "OPERATIONS_SUPPLY"
+    },
+    {
+      "classification": "SOURCE_CONFIRMED",
+      "entity_id": "MELI",
+      "fact": "Central Bank of Brazil resolutions establishing the virtual asset service provider framework, and Mercado Pago's authorization request under it.",
+      "fact_ranges": [
+        {
+          "anchor_sha256": "40cc0c99a3fe135fcdac859721ddd444f18acc37e227d6fd0d2eefa414aaac1e",
+          "character_end": 156518,
+          "character_start": 156445,
+          "document_type": "10-Q",
+          "excerpt": "establishing the regulatory framework for Virtual Asset Service Providers",
+          "revision": "0001099590-26-000023",
+          "sub_fact": "vasp-framework"
+        },
+        {
+          "anchor_sha256": "cdc6072376f563a1596ced91ce381a4bba43b805a83cb2139ef9d7364103ad07",
+          "character_end": 157072,
+          "character_start": 156984,
+          "document_type": "10-Q",
+          "excerpt": "submitted a request on July 30, 2026, within the prescribed regulatory transition period",
+          "revision": "0001099590-26-000023",
+          "sub_fact": "mercado-pago-request"
+        }
+      ],
+      "legacy_terms": [
+        "tax",
+        "regulatory"
+      ],
+      "probe_id": "MELI-REGULATORY",
+      "recall": "any_sub_fact",
+      "topic": "LEGAL_REGULATORY"
+    },
+    {
+      "classification": "SOURCE_CONFIRMED",
+      "entity_id": "ISRG",
+      "fact": "Named da Vinci product liability lawsuits, and the Surgical Instrument Service antitrust complaint in the Northern District of California.",
+      "fact_ranges": [
+        {
+          "anchor_sha256": "818f3be6c6b8ae33d635b8f452910b37f534ed0bfcca87bad71bed4f2e6f5901",
+          "character_end": 49522,
+          "character_start": 49424,
+          "document_type": "10-Q",
+          "excerpt": "The Company is currently named as a defendant in a number of individual product liability lawsuits",
+          "revision": "0001035267-26-000058",
+          "sub_fact": "product-liability"
+        },
+        {
+          "anchor_sha256": "094769982359d9912035ae3224fd9694c8dfd929140bdcce56852d45c7986f1b",
+          "character_end": 51643,
+          "character_start": 51555,
+          "document_type": "10-Q",
+          "excerpt": "filed a complaint in the Northern District of California Court alleging antitrust claims",
+          "revision": "0001035267-26-000058",
+          "sub_fact": "sis-antitrust"
+        },
+        {
+          "added": "2026-09-03 annotation completion",
+          "anchor_sha256": "094769982359d9912035ae3224fd9694c8dfd929140bdcce56852d45c7986f1b",
+          "character_end": 535820,
+          "character_start": 535732,
+          "document_type": "10-K",
+          "excerpt": "filed a complaint in the Northern District of California Court alleging antitrust claims",
+          "revision": "0001035267-26-000010",
+          "sub_fact": "sis-antitrust"
+        },
+        {
+          "added": "2026-09-03 annotation completion",
+          "anchor_sha256": "818f3be6c6b8ae33d635b8f452910b37f534ed0bfcca87bad71bed4f2e6f5901",
+          "character_end": 533703,
+          "character_start": 533605,
+          "document_type": "10-K",
+          "excerpt": "The Company is currently named as a defendant in a number of individual product liability lawsuits",
+          "revision": "0001035267-26-000010",
+          "sub_fact": "product-liability"
+        }
+      ],
+      "legacy_terms": [
+        "litigation",
+        "lawsuit"
+      ],
+      "probe_id": "ISRG-LITIGATION",
+      "recall": "any_sub_fact",
+      "topic": "LEGAL_REGULATORY"
+    },
+    {
+      "classification": "SOURCE_CONFIRMED",
+      "entity_id": "DG",
+      "fact": "Named shareholder securities class actions in the Middle District of Tennessee, and the related shareholder derivative litigation.",
+      "fact_ranges": [
+        {
+          "anchor_sha256": "e00b21a0db97c8570ac816932e7694edaa2b117c12f5905e3d0f434174d8c391",
+          "character_end": 18920,
+          "character_start": 18794,
+          "document_type": "10-Q",
+          "excerpt": "putative shareholder class action lawsuits were filed in the United States District Court for the Middle District of Tennessee",
+          "revision": "0001104659-26-069205",
+          "sub_fact": "securities-class-action"
+        },
+        {
+          "anchor_sha256": "e00b21a0db97c8570ac816932e7694edaa2b117c12f5905e3d0f434174d8c391",
+          "character_end": 188671,
+          "character_start": 188545,
+          "document_type": "10-K",
+          "excerpt": "putative shareholder class action lawsuits were filed in the United States District Court for the Middle District of Tennessee",
+          "revision": "0001104659-26-032325",
+          "sub_fact": "securities-class-action"
+        },
+        {
+          "added": "2026-09-03 annotation completion",
+          "anchor_sha256": "77ec434fef47f86b792c06486eaa219de98b05c7f699a85a61357e12a79c6c57",
+          "character_end": 191471,
+          "character_start": 191357,
+          "document_type": "10-K",
+          "excerpt": "shareholder derivative actions were filed in the United States District Court for the Middle District of Tennessee",
+          "revision": "0001104659-26-032325",
+          "sub_fact": "derivative"
+        },
+        {
+          "added": "2026-09-03 annotation completion",
+          "anchor_sha256": "77ec434fef47f86b792c06486eaa219de98b05c7f699a85a61357e12a79c6c57",
+          "character_end": 21978,
+          "character_start": 21864,
+          "document_type": "10-Q",
+          "excerpt": "shareholder derivative actions were filed in the United States District Court for the Middle District of Tennessee",
+          "revision": "0001104659-26-069205",
+          "sub_fact": "derivative"
+        }
+      ],
+      "legacy_terms": [
+        "litigation",
+        "lawsuit"
+      ],
+      "probe_id": "DG-LITIGATION",
+      "recall": "any_sub_fact",
+      "topic": "LEGAL_REGULATORY"
+    }
+  ],
+  "document_bundle_hash": "d90801f029a419a1853811ab22ce13664fbbc8d39cdab185a4b48f2eaabe595c",
+  "evaluation_rule": "A span counts only after it is resolved through the verified document set by the handle it carries, its declared issuer, document type and revision agree with that set, and its excerpt is found inside the source bytes at the range it declares. An annotated range is RECALLED when such a span resolves to the annotated document and revision and the annotated sentence is present in its verified excerpt. A sub-fact is recalled when any of its ranges is. Each case declares whether the probe is RECALLED on any sub-fact or on all of them; the evaluator reports both readings. Overlapping a keyword elsewhere in the document, a midpoint of a range, an unverified excerpt, or a different event of the same issuer and topic does not count.",
+  "label": "DEVELOPMENT_CALIBRATION",
+  "schema": "gate-9c6e-grounded-casebook+sub-facts"
+}

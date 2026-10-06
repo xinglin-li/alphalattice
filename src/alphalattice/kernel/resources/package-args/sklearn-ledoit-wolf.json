@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.scikit-learn.ledoit-wolf",
+  "revision": "1.0.0",
+  "title": "scikit-learn LedoitWolf adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "scikit-learn", "version": "1.9.0"},
+  "companion_distributions": [],
+  "callable": "sklearn.covariance.LedoitWolf",
+  "arguments": [
+    {"schema_version": "1", "name": "assume_centered", "value_kind": "boolean", "has_default": true, "default": false},
+    {"schema_version": "1", "name": "block_size", "value_kind": "integer", "has_default": true, "default": 1000, "minimum": 1.0},
+    {"schema_version": "1", "name": "store_precision", "value_kind": "boolean", "has_default": true, "default": true}
+  ],
+  "interactions": ["fit input shape and candidate policy remain owned by Quant."],
+  "assumptions": ["Input is a finite sample-by-feature matrix."],
+  "warnings": ["Constructor success does not establish downstream matrix eligibility."],
+  "failure_modes": ["Unsupported constructor argument or unavailable locked scikit-learn distribution."],
+  "owner_policy_ref": "reference:numerical-risk-estimation",
+  "official_source_url": "https://scikit-learn.org/stable/modules/generated/sklearn.covariance.LedoitWolf.html"
+}

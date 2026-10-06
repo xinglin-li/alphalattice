@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.statsmodels.quantreg-fit",
+  "revision": "1.0.0",
+  "title": "statsmodels QuantReg.fit adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "statsmodels", "version": "0.14.6"},
+  "companion_distributions": [],
+  "callable": "statsmodels.regression.quantile_regression.QuantReg.fit",
+  "arguments": [
+    {"schema_version": "1", "name": "kernel", "value_kind": "string", "has_default": true, "default": "epa", "allowed_values": ["epa"]},
+    {"schema_version": "1", "name": "max_iter", "value_kind": "integer", "has_default": true, "default": 1000, "minimum": 1.0},
+    {"schema_version": "1", "name": "p_tol", "value_kind": "number", "has_default": true, "default": 0.000001, "minimum": 0.0},
+    {"schema_version": "1", "name": "q", "value_kind": "number", "required": true, "minimum": 0.0, "maximum": 1.0},
+    {"schema_version": "1", "name": "vcov", "value_kind": "string", "has_default": true, "default": "robust", "allowed_values": ["robust"]}
+  ],
+  "interactions": ["Quantile candidates are permanently diagnostic and use preregistered tau values."],
+  "assumptions": ["The design matrix is finite and complete-case."],
+  "warnings": ["Iteration warnings must be preserved in the fit ledger."],
+  "failure_modes": ["Unsupported fit argument or unavailable locked statsmodels distribution."],
+  "owner_policy_ref": "openspec:return-model-candidates-and-evaluation",
+  "official_source_url": "https://www.statsmodels.org/stable/generated/statsmodels.regression.quantile_regression.QuantReg.fit.html"
+}

@@ -1,0 +1,30 @@
+# Joint Primary is selections only. The Host derives every identity and path.
+feature_preprocessing_method_id: JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z
+target_method_id: UNIVERSE_BOUND_SECTOR_RESIDUAL_STD_Z
+model_method_ids:
+  - RIDGE
+  - LASSO
+  - ELASTIC_NET
+  - STATE_INTERACTION_LINEAR
+  - LIGHTGBM_REGULARIZED
+  - HIST_GRADIENT_BOOSTING
+  - HUBER_LINEAR
+model_search_domain_ids:
+  - REGULARIZED_LINEAR_BOUNDED_GRID
+  - CHRONOLOGICAL_LIGHTGBM_REGULARIZED_GRID
+  - HIST_GRADIENT_BOOSTING_CONDITIONAL_GRID
+  - HUBER_CONDITIONAL_GRID
+scale_method_ids:
+  - LAGGED_XS_DISPERSION
+  - EWMA_XS_DISPERSION
+  - ASYMMETRIC_EWMA_XS_DISPERSION
+  - HAR_XS_DISPERSION
+scale_search_domain_ids:
+  - LAGGED_CONTROL
+  - EWMA_HALF_LIVES_10_21_42
+  - ASYMMETRIC_EWMA_RISE_10_DECAY_42
+  - HAR_MINIMUM_63_RIDGE_RATIO_1E_6
+target_horizon_sessions: [1, 5]
+calibration_method_id: NORMALIZED_MOMENT_NONNEGATIVE_SLOPE
+blend_method_id: FAST_SLOW_STOCK_SIGNAL_BLEND
+blend_fast_weight_domain: [0.25, 0.5, 0.75]

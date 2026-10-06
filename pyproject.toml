@@ -1,0 +1,169 @@
+# This workspace owns its own dependency declaration and lock. `uv.lock` beside
+# this file is the only resolution authority; no parent project, lock, or
+# interpreter is consulted. uv installs the src-layout project editable;
+# source edits are live without rebuilding a distribution.
+#
+# Bootstrap once per worktree (dev group is default; `--offline` uses the local
+# uv cache only and an absent cache is a stop, never a fetch):
+#
+#     uv sync --locked --all-extras
+#
+# Extras name the capability each dependency group serves. The full retained
+# product needs all of them; a narrower environment is a deliberate choice.
+[project]
+name = "alphalattice"
+version = "0.1.0"
+description = "A local quantitative research workstation for Codex and Claude Code."
+authors = [{ name = "Xinglin Li", email = "xinglin789@outlook.com" }]
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Already locked; process telemetry is runtime, not only a test dependency.
+    "psutil>=7,<8",
+    "pydantic>=2.12,<3",
+    "python-dotenv>=1.1,<2",
+    "pyyaml>=6.0,<7",
+    # `protocols.actor_execution.projections` imports it at module load and is
+    # reached by deterministic Factor and Evidence contracts.
+    "tiktoken>=0.13,<1",
+]
+
+[project.scripts]
+alphalattice = "alphalattice.control.product_host.composition.entry:main"
+
+[build-system]
+requires = ["setuptools==83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["alphalattice*"]
+
+[tool.setuptools.cmdclass]
+build_py = "scripts.release.wheel_build.BuildPy"
+
+[tool.setuptools.package-dir]
+"" = "src"
+scripts = "scripts"
+
+[tool.setuptools.package-data]
+alphalattice = ["**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.md", "**/*.txt", "**/*.html", "**/*.css", "**/*.js", "**/*.woff2", "**/*.svg"]
+
+[project.optional-dependencies]
+# Data Operations, Feature, Panel, and workspace storage.
+data = [
+    "duckdb>=1.5,<2",
+    "exchange-calendars>=4.13,<5",
+    "numpy>=2.5,<3",
+    "pandas>=3.0,<4",
+    "pyarrow>=25,<26",
+    "tzdata>=2026.3,<2027",
+]
+# Explicitly admitted live market acquisition; network stays off by default.
+data-live = [
+    "httpx>=0.28,<1",
+    "yfinance>=1.5,<2",
+]
+# Explicitly admitted live evidence acquisition; network stays off by default.
+live-evidence = [
+    "httpx>=0.28,<1",
+    "trafilatura==2.1.0",
+]
+# Alpha, Risk, Sector, Portfolio, and Validation numerics.
+quant = [
+    "clarabel>=0.11,<1",
+    "cvxpy-base>=1.9,<2",
+    "joblib>=1.5,<2",
+    "lightgbm>=4.7,<4.8",
+    "numpy>=2.5,<3",
+    "optuna>=4.9,<5",
+    "osqp>=1.1,<2",
+    "pandas>=3.0,<4",
+    "pyarrow>=25,<26",
+    "scikit-learn>=1.9,<2",
+    "scipy>=1.18,<2",
+    "statsmodels>=0.14.6,<0.15",
+    "threadpoolctl>=3.6,<4",
+]
+# Pinned local semantic retrieval; the FastEmbed reranker closure stays in
+# `config/requirements-retrieval.lock` and `scripts/create_retrieval_environment.py`.
+semantic = [
+    "numpy>=2.5,<3",
+    "onnxruntime==1.27.0",
+    "sentencepiece==0.2.1",
+    "sqlite-vec==0.1.9",
+]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.140,<7",
+    # Preserve the product environment while the docs tools use mdformat's <4 range.
+    "markdown-it-py==4.2.0",
+    "mypy>=1.18,<2",
+    "pandas-stubs>=3.0,<4",
+    "pre-commit>=4.3,<5",
+    "py-spy>=0.4,<1",
+    "pytest>=8.4,<10",
+    "pytest-cov>=6,<8",
+    "pytest-timeout>=2.4,<3",
+    "pytest-xdist==3.8.0",
+    "ruff>=0.14,<1",
+]
+docs = [
+    "mkdocs-llmstxt>=0.5.0",
+    "mkdocs-material>=9.7.7",
+    "mkdocstrings-python>=2.0.9",
+]
+
+[tool.uv]
+package = true
+default-groups = ["dev"]
+conflicts = [[{ group = "docs" }, { group = "dev" }]]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "scripts", "tests", "benchmark", "probe", "case-study"]
+extend-exclude = ["experiments", "tmp", "workspaces"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.format]
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+pretty = true
+show_error_codes = true
+explicit_package_bases = true
+mypy_path = "src"
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = [
+    "duckdb",
+    "duckdb.*",
+    "pyarrow",
+    "pyarrow.*",
+    "sklearn",
+    "sklearn.*",
+    "statsmodels",
+    "statsmodels.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+# `-p no:cacheprovider`: the gate never uses `--lf`/`--ff`, and a `.pytest_cache`
+# written under another security context made every run print a read-only
+# cache warning that had to be read past to find the real output.
+addopts = "--strict-config --strict-markers -p no:cacheprovider"
+pythonpath = ["src", "scripts"]
+testpaths = ["tests"]
+markers = [
+    "untyped_failure: the test makes an operation fail without a product code on purpose; the answer check lets it pass (V449)",
+    "real_evidence: reads a dogfood evidence root declared in the private evidence-root registry; deselected by the routed gate and run explicitly by scripts/check_playpen.py --evidence",
+]

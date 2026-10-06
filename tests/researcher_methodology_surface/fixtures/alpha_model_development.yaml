@@ -1,0 +1,44 @@
+# A third Desk kind through the same envelope, dispatcher and workflow.
+#
+# The document names a *handle* for its Factor development evidence and never a
+# location: where handles resolve is Host configuration, so a document cannot
+# point the product at a directory and have it read as authority.
+experiment:
+  kind: alpha.model-development
+  schema_id: research-experiment-envelope
+  data_snapshot_handle: current
+  universe_handle: us-current-index-research
+  sessions:
+    start: 2024-02-01
+    end: 2024-03-01
+    # A decision event, not a date: a daily Feature for session T exists
+    # only after close(T), so an unstated phase is refused rather than
+    # assumed closed.
+    as_of:
+      session: 2024-03-15
+      phase: OFFICIAL_CLOSE
+  budget:
+    maximum_candidates: 8
+    maximum_numerical_calls: 5000
+  determinism:
+    seed: 20260816
+    thread_limit: 1
+    network_disabled: true
+  output_workspace: workspaces/research/alpha-development
+  baseline_workspace: workspaces/research/alpha-baseline
+  publication_intent: DEVELOPMENT_EVIDENCE_ONLY
+
+alpha:
+  # A sector-residual lane standardized by robust-z. No AlphaTargetPolicy can
+  # express this: the lane's derived standardization_id is rank-gauss, so before
+  # a recipe carried the routing key as a field the pairing was unnameable.
+  target_recipe_id: SECTOR_RESIDUAL_ROBUST_Z
+  model_capability_handle: capability-1
+  model_parameters:
+    family: ridge
+    alpha: 1.0
+  # Filled in by the case study from the published panel and the Factor
+  # development evidence, because both are content-addressed and neither has a
+  # stable literal to write down here.
+  ordered_feature_ids: []
+  factor_evidence_handle: ""

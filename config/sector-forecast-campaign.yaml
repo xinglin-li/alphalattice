@@ -1,0 +1,58 @@
+# Stage 4 Sector forecast Campaign: selections only, never authority.
+#
+# Every value here is a handle, a range, a restatement of an installed constant,
+# or an intent. Nothing in this file can name a catalog hash, a target identity,
+# a calibration slope or a sealed decision -- the request contract forbids
+# unknown keys, so a document that tried would fail to parse rather than be
+# quietly ignored.
+#
+# `parameters` blocks are restatements of each method's frozen singleton, which
+# is also where a refit schedule is stated: the cadence belongs to the method's
+# recipe identity, so naming it here is a claim the catalog checks, not a knob.
+# Omitting a block selects the same singleton.
+
+kind: SectorCampaignRequest
+development_only: true
+
+# The one-session causal outcome snapshot and the published Sector revision are
+# deliberately absent. They are resolved identities, not selections: a committed
+# document stating them answers "which evidence did this consume" from version
+# control rather than from the workspace that holds it, and it goes stale the
+# next time either is republished. They arrive as operator inputs on the command
+# line instead, and a document that states one is refused.
+
+# Training may draw on the whole matured history; the causal selection inside
+# the Host still admits only formations whose label had matured by each refit.
+training_start: 2016-08-01
+training_end: 2025-07-31
+
+# The forecast axis starts far enough in for the slowest method's warmup: the
+# distributed-lag challenger needs 252 usable rows plus its lag depth.
+forecast_start: 2018-01-02
+forecast_end: 2025-07-31
+
+# Contiguous, time-ordered calibration folds.
+calibration_fold_count: 5
+
+methods:
+  - id: ZERO_SECTOR_FORECAST
+  - id: EWMA_SECTOR_MEAN
+    parameters:
+      half_life_sessions: 21
+      minimum_history_sessions: 21
+      refit_every_sessions: 21
+      forecast_horizon_sessions: 1
+  - id: SECTOR_RELATIVE_STRENGTH_126
+    parameters:
+      lookback_sessions: 126
+      minimum_history_sessions: 126
+      refit_every_sessions: 21
+      forecast_horizon_sessions: 1
+  - id: DISTRIBUTED_LAG_ELASTIC_NET
+    parameters:
+      lag_count: 5
+      minimum_history_sessions: 252
+      refit_every_sessions: 21
+      forecast_horizon_sessions: 1
+      alpha_max_multiplier_basis_points: 1000
+      l1_ratio_percent: 50

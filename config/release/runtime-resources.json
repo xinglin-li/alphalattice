@@ -1,0 +1,42 @@
+{
+  "schema": "alphalattice.release.runtime-resources.v1",
+  "files": {
+    "AGENTS.md": "The public research-agent guide, shared by both hosts.",
+    "CLAUDE.md": "Claude Code's project entry includes the shared agent guide.",
+    "uv.lock": "The model contract checks declared libraries against the accepted lock.",
+    "config/identity-roles.json": "Rule closure entries and numerical package selection.",
+    "config/identity-switch.json": "Preserve identities recorded before rule closure switching.",
+    "config/identity-successors.json": "Read recorded identity successors on installed readback.",
+    "config/package-architecture.json": "The checkout marker and the installed package owner map.",
+    "config/requirements-retrieval.lock": "Pinned additions for explicitly selected retrieval setup.",
+    "config/market-profiles/us-current-index-research.yaml": "The retained data-update source profile.",
+    "config/release/runtime-resources.json": "The distribution's explicit resource and development exception contract.",
+    "skills/alternative-evidence/governed-evidence-analysis/SKILL.md": "Evidence Analyst's task procedure.",
+    "skills/chief-risk-officer/review-portfolio-evidence/SKILL.md": "CRO's task procedure."
+  },
+  "directories": {
+    ".agents/skills/alphalattice-research": "The Codex research Skill and its unchanged references.",
+    ".codex/agents": "The installed Codex role cards, unchanged.",
+    ".claude/agents": "The materialized Claude role cards, unchanged.",
+    ".claude/skills/alphalattice-research": "The materialized Claude Skill and its unchanged references."
+  },
+  "host_declarations": {
+    ".codex/config.toml": "Codex hook and role declarations read by native configure.",
+    ".claude/settings.json": "Claude hook declarations read by native configure."
+  },
+  "development_source_hashes": {
+    "scripts/check_alpha_verification_impact.py": "Verification-router metadata; an installed runtime reads its accepted byte identity, never executes the gate.",
+    "scripts/check_playpen.py": "The checkout gate; only its accepted byte identity is carried by the installed artifact-runtime closure.",
+    "scripts/broad_ensemble_research_closure.py": "Development closure tooling; only its byte identity is needed for historical parity-domain binding.",
+    "scripts/run_broad_ensemble_live_model_closure.py": "Development closure runner; only its byte identity is needed for historical parity-domain binding.",
+    "scripts/run_heterogeneous_live_score_closure.py": "Development score runner; only its byte identity is needed for historical parity-domain binding.",
+    "scripts/run_monthly_alpha_refit_research.py": "Development refit runner; only its byte identity is needed for historical parity-domain binding."
+  },
+  "checkout_only": {
+    "scripts/build_local_web_ui.py": "Builds distributable assets from their maintained source; the installed Host reads built assets.",
+    "scripts/create_gpu_environment.py": "Builds the checkout's dedicated GPU development environment from its platform lock.",
+    "scripts/materialize_claude_host.py": "Rebuilds maintained integration files; installed configure copies their materialized contents.",
+    "scripts/u0_probe.py:private-harness": "Planted QA shapes and their test resolver fallback are verification inputs; the product sandbox shares only the real-workspace readback.",
+    "model scaffold:adapter-source": "Authors source and its tests in an editable checkout; installed runtime must not write inside its distribution."
+  }
+}

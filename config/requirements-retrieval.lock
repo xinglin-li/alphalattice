@@ -1,0 +1,15 @@
+click==8.5.0
+fastembed==0.8.0
+fsspec==2026.7.0
+hf-xet==1.6.0
+huggingface-hub==1.30.0
+loguru==0.7.3
+mmh3==5.3.0
+numpy==2.5.1
+onnxruntime==1.27.0
+pillow==12.3.0
+py-rust-stemmers==0.1.8
+requests==2.34.2
+tokenizers==0.23.2
+tqdm==4.70.0
+win32-setctime==1.2.0; sys_platform == "win32"

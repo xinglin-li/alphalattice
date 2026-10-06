@@ -1,0 +1,40 @@
+# One authored Factor batch that names an externally defined method beside two
+# maintained controls. Nothing here carries an identity: the Host resolves the
+# Panel, the outcome, the sessions and every hash. The document chooses which
+# installed methods to measure, which installed policies to measure them under,
+# and nothing else.
+experiment:
+  kind: factor.screening-development
+  schema_id: research-experiment-envelope
+  data_snapshot_handle: current
+  universe_handle: us-current-index-research
+  sessions:
+    start: 2024-02-01
+    end: 2024-03-01
+    # A decision event, not a date: a daily Feature for session T exists
+    # only after close(T), so an unstated phase is refused rather than
+    # assumed closed.
+    as_of:
+      session: 2024-03-15
+      phase: OFFICIAL_CLOSE
+  budget:
+    maximum_candidates: 8
+    maximum_numerical_calls: 5000
+  determinism:
+    seed: 20260819
+    thread_limit: 1
+    network_disabled: true
+  output_workspace: workspaces/research/external-factor-development
+  baseline_workspace: workspaces/research/external-factor-baseline
+  publication_intent: DEVELOPMENT_EVIDENCE_ONLY
+
+factor:
+  # Two maintained controls and the external method, in the order the researcher
+  # authored them. Order is authority: the selected axis is bound into the Desk
+  # Program identity exactly as written.
+  factor_ids:
+    - amihud_21
+    - rev_21
+    - zz_case_study_range_position_5
+  screening_policy: BENJAMINI_YEKUTIELI_FDR
+  redundancy_policy: ABSOLUTE_CORRELATION_CLUSTER

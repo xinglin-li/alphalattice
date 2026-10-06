@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.scipy.slsqp",
+  "revision": "1.0.0",
+  "title": "SciPy SLSQP adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "scipy", "version": "1.18.0"},
+  "companion_distributions": [],
+  "callable": "scipy.optimize.minimize",
+  "arguments": [
+    {"schema_version": "1", "name": "method", "value_kind": "string", "required": true, "allowed_values": ["SLSQP"]},
+    {"schema_version": "1", "name": "options.disp", "value_kind": "boolean", "has_default": true, "default": false},
+    {"schema_version": "1", "name": "options.ftol", "value_kind": "number", "has_default": true, "default": 0.000001, "minimum": 0.0, "minimum_inclusive": false},
+    {"schema_version": "1", "name": "options.maxiter", "value_kind": "integer", "has_default": true, "default": 100, "minimum": 1.0}
+  ],
+  "interactions": ["Objective, gradient, bounds, starts, and residual acceptance remain owned by Quant."],
+  "assumptions": ["The deterministic caller supplies callable objective and gradient objects."],
+  "warnings": ["OptimizeResult success is attempt evidence, not project eligibility."],
+  "failure_modes": ["Unsupported method/options or unavailable locked SciPy distribution."],
+  "owner_policy_ref": "reference:numerical-portfolio-construction",
+  "official_source_url": "https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html"
+}

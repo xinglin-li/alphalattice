@@ -1,0 +1,12 @@
+repos:
+  - repo: local
+    hooks:
+      # Per-commit: lint and strict-type exactly what changed. The whole-repo
+      # structural guards and impact-selected suites moved to the full gate,
+      # `python scripts/check_playpen.py --staged`, which runs at the user's word
+      # (LAWS TE7); a card is handed back on this gate and its smallest tests.
+      - id: playpen-fast-guard
+        name: playpen fast guard (changed files)
+        entry: python scripts/check_playpen.py --staged --fast
+        language: system
+        pass_filenames: false

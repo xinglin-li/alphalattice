@@ -1,0 +1,198 @@
+"""The first-use goal (V452, LAWS OP19): from the person's one sentence the agent runs the
+first use, the first use's person-only steps delegated for the goal's life and recorded in its
+ledger, and nothing granted after it."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+from uuid import UUID
+
+import pytest
+
+from alphalattice.control.product_host.composition.goals import GoalApplication
+from alphalattice.control.product_host.publication.goals import GoalStore
+from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.interface.local_application.goals import FIRST_USE_HOURS
+from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchOperationRequest as Request,
+)
+
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
+SESSION = "00000000-0000-4000-8000-0000000000f1"
+FIRST_USE = {
+    "title": "First use",
+    "objective": "Build me a reviewed book from public data.",
+    "kind": "FIRST_USE",
+    "criteria": [{"criterion_id": "book", "text": "A reviewed book stands for the person."}],
+}
+
+
+def _cli(live: Any, *arguments: str) -> tuple[int, dict[str, Any]]:
+    """One agent session's command, as its CLI sends it."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--workspace",
+            str(live.workspace),
+            "--view",
+            "full",
+            *arguments,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "CLAUDE_CODE_SESSION_ID": SESSION},
+    )
+    return result.returncode, json.loads(result.stdout)["data"]
+
+
+def _code(answer: dict[str, Any]) -> str | None:
+    """A refusal's code, returned by its owner or raised and answered by the Host."""
+    return answer.get("failure_code") or answer.get("refused")
+
+
+def _network(live: Any) -> bool:
+    """The workspace's own network control, read past the tests' offline switch."""
+    return network_access(live.workspace, environment={}).allowed
+
+
+def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them(
+    live: Any, tmp_path: Path
+) -> None:
+    """requirement (V452, OP19; the user, 2026-10-01: the person gives one sentence and the
+    agent runs the first use, interruptible): without the goal the person's steps are refused;
+    under it the agent opens the network and confirms the preparation, each recorded as the
+    person's delegation, while a step it does not delegate stays the person's; a workspace has
+    one first use; the person ending the goal closes what its delegation opened."""
+
+    plan = "a" * 64
+    code, refused = _cli(live, "network", "set", "--enabled", "true")
+    assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
+    code, refused = _cli(live, "preparation", "confirm", "--plan", plan)
+    assert code == 2 and _code(refused) == "workspace_preparation.human_confirmation_required"
+    declaration = tmp_path / "first-use.json"
+    declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
+    code, opened = _cli(live, "goal", "open", "--file", str(declaration))
+    assert code == 0, opened
+    code, set_ = _cli(live, "network", "set", "--enabled", "true")
+    assert code == 0 and set_["status"] == "NETWORK_ACCESS", set_
+    assert _network(live)
+    # The preparation is the person's to confirm, carried by the agent: only the plan is asked.
+    code, confirmed = _cli(live, "preparation", "confirm", "--plan", plan)
+    assert _code(confirmed) != "workspace_preparation.human_confirmation_required", confirmed
+    # A step the goal does not delegate stays the person's.
+    code, storage = _cli(live, "storage", "confirm", "--plan", plan)
+    assert code == 2 and _code(storage) == "storage.human_confirmation_required"
+    code, shown = _cli(live, "goal", "show", opened["goal_id"])
+    # The goal offers no revision of the person's sentence (the review at 118f6378), and its
+    # record says its delegation and its end (U70).
+    assert "revise" not in shown["next_requests"]
+    assert shown["record"]["delegation"]["active"] is True
+    assert set(shown["record"]["delegation"]["steps"]) >= {"NETWORK_ACCESS_SET"}
+    code, network = _cli(live, "network", "show")
+    assert network["set_by"]["delegation"] == f"first-use-goal:{opened['goal_id']}"
+    code, decisions = _cli(live, "decision", "list")
+    first = next(d for d in decisions["decisions"] if d["kind"] == "FIRST_USE")
+    assert first["next_requests"]["stop"]["operation"] == "GOAL_ABANDON"
+    steps = shown["record"]["delegated_steps"]
+    assert [s["operation"] for s in steps] == ["NETWORK_ACCESS_SET", "WORKSPACE_PREPARE_CONFIRM"]
+    assert steps[0]["network_enabled"] is True
+    again = tmp_path / "again.json"
+    again.write_text(json.dumps({**FIRST_USE, "objective": "Another sentence."}), encoding="utf-8")
+    code, second = _cli(live, "goal", "open", "--file", str(again))
+    assert code == 2 and second["failure_code"] == "goal.first_use_already_opened"
+    code, ended = _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")
+    assert code == 0 and ended["state"] == "ABANDONED"
+    assert not _network(live)
+    code, refused = _cli(live, "network", "set", "--enabled", "true")
+    assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
+
+
+def test_a_first_use_ends_without_undoing_what_the_person_set_since(
+    live: Any, tmp_path: Path
+) -> None:
+    """regression (V460, an outside review at b39e55f2): the agent opened the network under the
+    first use, the person then opened it in Settings, and the goal's end closed it again. Its
+    end undoes only a setting its delegation still holds."""
+
+    declaration = tmp_path / "first-use.json"
+    declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
+    code, opened = _cli(live, "goal", "open", "--file", str(declaration))
+    assert code == 0, opened
+    code, _set = _cli(live, "network", "set", "--enabled", "true")
+    assert code == 0 and _network(live)
+    person = live.operations.execute(
+        Request(operation="NETWORK_ACCESS_SET", network_enabled=True), caller="HUMAN"
+    )
+    assert "set_by" not in person
+    code, ended = _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")
+    assert code == 0 and ended["state"] == "ABANDONED"
+    assert _network(live)
+
+
+def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised(
+    tmp_path: Path,
+) -> None:
+    """requirement (V452, OP19): the delegation holds for the first-use steps alone, for an
+    agent's request, within the goal's hours; the person's sentence is never revised."""
+
+    now = [datetime(2026, 10, 2, tzinfo=UTC)]
+    app = GoalApplication(
+        GoalStore(tmp_path, "workspace"),
+        lambda: now[0],
+        lambda *_: {},
+        lambda _: now[0],
+        {}.get,
+        workspace=tmp_path,
+    )
+    app.operate(
+        Request(
+            operation="GOAL_OPEN",
+            goal_id=UUID(int=7),
+            goal_declaration=FIRST_USE,
+            change_reason="The person's sentence",
+        ),
+        "EXTERNAL_AUTOMATION",
+    )
+    goal = app.store.head(UUID(int=7))
+    assert goal is not None and app.first_use() == goal
+    delegated = app.delegation(goal, "NETWORK_ACCESS_SET", "EXTERNAL_AUTOMATION")
+    assert delegated == f"first-use-goal:{goal.goal_id}"
+    assert app.delegation(goal, "MODEL_ACTIVATE", "EXTERNAL_AUTOMATION") is None
+    assert app.delegation(goal, "NETWORK_ACCESS_SET", "HUMAN") is None
+    with pytest.raises(ValueError, match=r"goal\.first_use_is_not_revised"):
+        app.operate(
+            Request(
+                operation="GOAL_REVISE",
+                goal_id=goal.goal_id,
+                goal_declaration={**FIRST_USE, "objective": "A longer window."},
+                change_reason="Widened",
+            ),
+            "EXTERNAL_AUTOMATION",
+        )
+    now[0] += timedelta(hours=FIRST_USE_HOURS)
+    assert app.delegation(goal, "NETWORK_ACCESS_SET", "EXTERNAL_AUTOMATION") is None
+    assert app.first_use_delegation(goal)["active"] is False
+
+
+def test_a_first_use_is_the_one_before_the_first_preparation(
+    live: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """requirement (V452): a workspace already prepared has had its first use, so a first-use
+    goal is refused there and the person decides each step."""
+
+    succeeded = SimpleNamespace(lifecycle=SimpleNamespace(value="SUCCEEDED"))
+    monkeypatch.setattr(live.operations.preparation, "tasks", lambda: [succeeded])
+    answer = live.operations.execute(
+        Request(operation="GOAL_OPEN", goal_declaration=FIRST_USE, change_reason="First"),
+        caller="EXTERNAL_AUTOMATION",
+    )
+    assert answer["failure_code"] == "goal.first_use_after_preparation", answer

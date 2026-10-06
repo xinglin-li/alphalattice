@@ -1,0 +1,2885 @@
+/* 06-pages — Page compositions: overview, data, research lab, portfolio, history, advanced.
+   Files are concatenated in name order by build.py; that order is the cascade order. Edit by hand — the generator in qa/parity/css only did the migration from v3.13. */
+/* Round 43: one drawing grid (24 × 24), four rendered sizes — 12 beside a Footnote or in a chip,
+   14 beside Callout, 16 beside Body and Headline, 20 in a head or the nav — and a stroke by size
+   (--icon-stroke: 2 at 12, 1.75 at 14 and 16, 1.6 at 20) so the visual stroke stays a full pixel
+   and matches the text's weight; monochrome in the text's ink unless it is the status. */
+.icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--icon-stroke, 1.75);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: middle;
+  flex: none;
+}
+.ink {
+  color: var(--ink-link);
+}
+.between {
+  justify-content: space-between;
+}
+.flow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.hairline {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: var(--space-5) 0;
+}
+.plan-line:last-child {
+  border-bottom: 0;
+}
+.legend-line {
+  display: inline-block;
+  width: var(--icon-lg);
+  height: var(--rule-width);
+  background: var(--series-1);
+  vertical-align: middle;
+  margin-right: var(--space-2);
+}
+.legend-line.benchmark {
+  background: var(--muted);
+  opacity: var(--opacity-secondary);
+}
+.chart-svg .grid {
+  stroke: var(--edge-hair);
+  stroke-width: 1;
+}
+.chart-svg .benchmark {
+  stroke: var(--muted);
+  stroke-width: 1.25;
+  stroke-dasharray: 4 5;
+  opacity: var(--opacity-secondary);
+  fill: none;
+}
+.chart-cross {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+/* The skeleton (round 71): the shape before the content — rows, a head or a body in the faint
+   ink — shown after the 400 ms hold; a slow shimmer where motion is allowed, still otherwise. */
+.skeleton {
+  display: grid;
+  gap: var(--space-2);
+  opacity: 0;
+  animation: skeleton-reveal var(--dur-1) step-end var(--dur-3) both;
+}
+@keyframes skeleton-reveal { to { opacity: 1; } }
+.skeleton-rows { gap: 0; }
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--row-dense);
+  padding: var(--space-2) var(--space-2);
+}
+.skeleton-row + .skeleton-row {
+  box-shadow: inset 0 1px 0 var(--edge-hair);
+}
+.ph {
+  display: inline-block;
+  height: var(--space-2);
+  border-radius: var(--radius-micro);
+  background: color-mix(in srgb,var(--faint) var(--tint-soft),transparent);
+  animation: skeleton-shimmer var(--dur-pulse) ease-in-out infinite;
+}
+@keyframes skeleton-shimmer { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+@media (prefers-reduced-motion:reduce) {
+.skeleton { opacity: 1; animation: none; }
+.ph { animation: none; }
+}
+.ph-dot { width: var(--dot); }
+.ph-line { flex: 1 1 auto; max-width: 46%; }
+.ph-short { width: 12%; }
+.skeleton-head { padding: var(--space-2) 0 var(--space-4); }
+.skeleton-head .ph-title { height: var(--space-4); width: 38%; }
+.skeleton-body { padding: var(--space-2) 0; }
+.skeleton-body .ph-line { max-width: 72%; }
+/* Nothing here (round 71): one sentence and at most one action in the quiet dashed box. */
+.section-empty { padding:var(--empty-pad) 0; border:0; background:transparent; color:var(--muted); text-align:center; }
+.section-empty:not(.page-empty) { padding:var(--empty-pad-tight) 0; } /* a section's or a box's empty is one quiet line (its way under it); the mark and the air are a page's own */
+.section-empty p { margin:0; font:var(--style-callout-size)/var(--style-callout-leading) var(--font-ui); }
+.section-empty .empty-mark { display:block; width:var(--empty-mark-size); height:var(--empty-mark-size); margin:0 auto var(--empty-gap); color:var(--muted); }
+.section-empty .empty-mark svg { width:100%; height:100%; fill:none; stroke:currentColor; stroke-linecap:round; }
+.section-empty .empty-mark svg line { vector-effect:non-scaling-stroke; stroke-width:var(--empty-mark-line); } /* one crisp line at any size (the frozen geometry, drawn for 1x) */
+.section-empty.page-empty { padding-top:calc(var(--empty-pad) + var(--empty-shift, 0px)); } /* a page's empty state at one height on every page (placeEmpty); padding, which no rhythm rule sets */
+.section-empty > :is(.button, .text-btn) { margin-top:var(--empty-way-gap); }
+.tiny {
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  font-size: var(--style-footnote-size);
+}
+/* Declaration is a work surface. There is no decorative PLAN placeholder. */
+.lab-workspace {
+  display: block;
+}
+/* The lane split (round 92; law 149, the Evidence reading's, the user's textbook): a list and the detail
+   it opened -- the Lab's PLAN reader, the desk's item reading, the window's detail a list hosts --
+   side by side from the pane step up; only that list gives way (`detail-width`), the page's head and
+   its other sections keep the page's width (the user, 2026-09-24: 不能整页挤压). The detail is pinned
+   under the top row once the page scrolls, its height limit the window under where it stands
+   (`--detail-top`, Geometry's). Below the step it is the pane's layer (02-shell). */
+.lane-split { display: grid; gap: var(--space-5); align-items: start; }
+.lane-split > .lane-main { min-width: 0; }
+@media (width >= 900px) {
+  .lane-split.has-reading { --aside: var(--detail-width); grid-template-columns: var(--grid-aside); }
+  /* beside a detail a figure is as wide as it is, not a report's breath: the list keeps its figures in view
+     before it rolls (the user, 2026-09-24, the holdings at 125 %: 这里没扛住) */
+  .lane-split.has-reading:not([data-detail-over]) .data-table :is(th, td):is(.col-num, .num):not(.col-index) { min-width: 0; }
+  /* and its columns share by what they hold, not in equal parts: equal parts over fixed columns made the table
+     wider than its box (710 in 608 at 125 %) */
+  .lane-split.has-reading:not([data-detail-over]) .data-table:not(.grid) :is(th, td).col-share { width: auto; }
+  /* word heads can take a second line; figure heads keep their whole label before the table rolls */
+  .lane-split.has-reading:not([data-detail-over]) .data-table th:not(.col-num) { white-space: normal; }
+  /* the table's floor is its columns' floors, not the lane's (660, the holdings' 710): the lane's floor made a
+     list beside its detail roll past its figures however few its columns (the holdings at 125 %: 710 in 607) */
+  .lane-split.has-reading:not([data-detail-over]) .data-table { min-width: 0; }
+  /* a grid's columns too (the factor evidence, the folds: 797 and 909 in 671 at 1470), and a text or a date cell
+     wraps at its words (a window's two dates at its dash) before the list rolls; a short label (Sector-0) and a
+     handle stay whole (law 88) */
+  .lane-split.has-reading:not([data-detail-over]) .data-table.grid :is(th, td):is(.col-date, .col-id, .col-text, .col-status) { min-width: var(--col-tight); }
+  .lane-split.has-reading:not([data-detail-over]) .data-table td:is(.col-text, .col-date):not(.col-tight) { white-space: normal; }
+  .lane-split.has-reading:not([data-detail-over]) .data-table td :is(.mono, .num) { white-space: nowrap; }
+  /* The Portfolio's holdings (the user, 2026-09-24: portfolio这里当做特殊情况, 用悬浮吧, 不做挤压了): the detail
+     floats over its table at the right, the table keeping its width; pinned the same way */
+  .lane-split.has-reading[data-detail-over] { grid-template-columns: minmax(0, 1fr); }
+  .lane-split[data-detail-over] > :is(.lane-main, .reading-pane) { grid-area: 1 / 1; }
+  .lane-split[data-detail-over] > .reading-pane { justify-self: end; width: var(--detail-width); margin-right: var(--detail-gap); z-index: var(--layer-float); }
+  .lane-split.has-reading > .reading-pane { position: sticky; top: calc(var(--shell-top-height) + var(--detail-gap)); max-height: calc(var(--vh) - max(var(--detail-top, 0px), var(--shell-top-height) + var(--detail-gap)) - var(--detail-gap)); }
+  /* the reading's area reaches the lane's foot: the room under the page's last box (the lane's foot and
+     a desk page's own) is the split's while a reading is open, so a pinned reading never rides up with
+     the page's end; the page's height is unchanged */
+  .lane-split.has-reading:last-child > .lane-main { padding-bottom: calc(var(--lane-foot) + var(--space-4)); }
+  .lane-split.has-reading:last-child { margin-bottom: calc(-1 * (var(--lane-foot) + var(--space-4))); } /* only a split that ends the page: one a section follows (a study's Properties) keeps its place */
+}
+.reading-pane-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-5) var(--space-3); border-bottom: 1px solid var(--edge-hair); flex: none; }
+.reading-pane-head > div { min-width: 0; flex: 1 1 auto; } /* the name takes the row: the close at the right, a way up at the left */
+.reading-pane-head .caption { margin: 0; }
+/* A detail's way one level up (LS5; the user, 2026-09-26: 回退, 能做成左侧隐藏的悬浮标): a tab in the card's own left
+   inset beside its head, out of sight past the card's edge (the card clips it) until the card is under the pointer or
+   the tab has keyboard focus; where nothing hovers (touch) it stays. It takes the inset's slot, never a layer over
+   words (LY4), and the head keeps its height and the body's edge. */
+body[data-page] [data-layer="detail"] > .icon-btn.detail-back-tab { position: absolute; inset-inline-start: 0; top: var(--space-4); z-index: var(--layer-raised); width: var(--space-5); height: var(--control-lg); min-width: 0; min-height: 0; padding: 0; border-radius: 0 var(--radius-control) var(--radius-control) 0; background: var(--glass-control); color: var(--muted); transform: translateX(-100%); transition: transform var(--dur-1) var(--curve-move), background var(--dur-1) var(--curve-move); }
+body[data-page] [data-layer="detail"]:hover > .icon-btn.detail-back-tab, body[data-page] [data-layer="detail"] > .icon-btn.detail-back-tab:focus-visible { transform: none; }
+body[data-page] [data-layer="detail"] > .icon-btn.detail-back-tab:is(:hover, :focus-visible) { background: var(--glass-control-hover); color: var(--text); }
+body[data-page] [data-layer="detail"] > .icon-btn.detail-back-tab .icon { width: var(--icon-sm); height: var(--icon-sm); }
+@media (hover: none) { body[data-page] [data-layer="detail"] > .icon-btn.detail-back-tab { transform: none; } }
+.reading-pane-head h2 { margin: 0; font-size: var(--style-headline-size); line-height: var(--style-headline-leading); letter-spacing: var(--style-headline-tracking); }
+.reading-pane-body { padding: var(--space-4) var(--space-5) var(--space-6); }
+.editor-workbench {
+  overflow: hidden;
+}
+.editor-workbench-header {
+  padding: 0 var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+.editor-file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.editor-file .icon {
+  height: var(--icon-size);
+  width: var(--icon-size);
+  color: var(--muted);
+}
+.declaration-context {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--edge-hair);
+}
+.declaration-context > .property-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.declaration-context > .lab-produces {
+  flex: none;
+  padding-top: var(--space-05);
+}
+.declaration-content {
+  min-width: 0;
+  display: grid;
+  border-block: 1px solid var(--edge-hair);
+}
+.declaration-content > .code-editor {
+  align-self: stretch;
+}
+.declaration-content > .code-editor .yaml-editor {
+  height: 100%;
+  box-sizing: border-box;
+}
+.code-editor {
+  --lead: 40px; grid-template-columns: var(--grid-master);
+}
+.yaml-editor {
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--scroll-thumb) transparent;
+  display: block;
+  width: 100%;
+  color: var(--text);
+  white-space: pre;
+  overflow: auto;
+  padding: 0 var(--space-6) var(--space-6) var(--space-4);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  resize: vertical;
+}
+.yaml-editor:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+.editor-workbench:focus-within {
+  border-color: color-mix(in srgb, var(--accent) var(--tint-edge), var(--line));
+}
+.editor-statusbar {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  background: transparent;
+  align-items: center;
+}
+.editor-statusbar #validationNotice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.editor-statusbar #validationNotice .icon {
+  height: var(--icon-sm);
+  width: var(--icon-sm);
+  flex: none;
+}
+.controls-content {
+  padding: var(--space-6);
+  min-height: calc(var(--editor-lines) * var(--editor-line) + var(--space-3));
+}
+.plan-line {
+  display: grid;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-3) 0;
+  --lead: 20px;
+  grid-template-columns: var(--grid-master);
+}
+.plan-line p {
+  color: var(--muted);
+  margin-top: var(--space-1);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.plan-line strong {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.plan-line>.icon {
+  color: var(--ink-link);
+  margin-top: var(--space-05);
+  width: var(--icon-sm);
+}
+.lab-submitted {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-5);
+}
+.lab-submitted h3 {
+  font-size: var(--style-headline-size);
+  line-height: var(--style-headline-leading);
+}
+.chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6) 0;
+  gap: var(--space-4);
+}
+.chart-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  gap: var(--space-1) var(--space-5);
+}
+/* A legend's key is one phrase: the keys wrap between them, never inside one (law 88; 375 px broke "Predicted / variance"). */
+.chart-legend > span { white-space: nowrap; }
+.chart-wrap {
+  min-width: 0;
+  position: relative;
+  padding: var(--space-2) var(--space-5) 0;
+}
+.chart-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+  min-height: 0;
+}
+.chart-wrap.chart-featured {
+  height: var(--chart-featured);
+}
+/* A module chart keeps a reading proportion as its column widens (2026-09-20: a 180 px band
+   across a wide card read as squashed): 180 tall at least, the featured height at most; the svg
+   is re-issued at the measured box (fitCharts), so its labels keep their size. */
+.chart-wrap.chart-module { width: 100%; height: auto; aspect-ratio: 2.75; min-height: var(--chart-module); max-height: var(--chart-featured); } /* the box's width: the ratio had carried the height cap into a width cap (320 x 2.75 = 880 px) */
+/* A figure's box (the user's rule, 2026-09-24: 以后图都需要带上背景box): the anchor surface (12-material),
+   its head and its body at one inset; the name stays at every width, the legend wraps under it. */
+.figure { padding: 0 0 var(--space-5); }
+.figure > .chart-toolbar { padding: var(--space-5) var(--space-6) 0; }
+.figure .chart-heading { flex-wrap: wrap; row-gap: var(--space-2); }
+.figure .chart-heading h2 { display: block; }
+.figure > .figure-body { min-width: 0; padding: var(--space-4) var(--space-6) 0; }
+.figure > .figure-body .chart-wrap { padding: 0; }
+@media (width < 640px) {
+  .figure > .chart-toolbar { padding: var(--space-4) var(--space-4) 0; }
+  .figure > .figure-body { padding: var(--space-3) var(--space-4) 0; }
+}
+.chart-svg text { /* round 90: the ticks are chrome (Apple Stocks' 11 pt): the caption token, not the footnote */
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--style-caption-size);
+  line-height: var(--style-caption-leading);
+  letter-spacing: 0;
+}
+.chart-under {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--muted);
+  padding: 0 var(--space-6) var(--space-4);
+  align-items: center;
+}
+.chart-svg .series {
+  stroke: var(--series-1);
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+/* A second book beside the first: its own validated hue per theme, a thinner stroke, drawn last. */
+.chart-svg .series.series-b {
+  stroke: var(--series-2);
+  stroke-width: 2;
+}
+.chart-svg line.bar.series {
+  stroke: var(--series-1);
+}
+.chart-svg .chart-marker {
+  fill: var(--ground);
+  stroke: var(--series-1);
+  stroke-width: 2;
+  pointer-events: none;
+}
+.legend-line.series-b {
+  background: var(--series-2);
+}
+/* ---- the navigator under the Portfolio chart: the whole series in miniature, the reader's
+   window on it, presets and readings; the rail is inset exactly like the plot area. ---- */
+.navigator-rail {
+  position: relative;
+  height: var(--navigator-rail-height);
+  margin-top: var(--space-2);
+  user-select: none;
+  touch-action: none;
+  border-radius: var(--radius-micro);
+  background: color-mix(in srgb, var(--subtle-surface) var(--tint-strong), transparent);
+}
+.navigator-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.navigator-series {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+.navigator-benchmark {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: var(--opacity-secondary);
+  vector-effect: non-scaling-stroke;
+}
+.navigator-shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--ground) var(--tint-strong), transparent);
+  pointer-events: none;
+  border-radius: var(--radius-micro);
+}
+.navigator-shade.start {
+  left: 0;
+}
+.navigator-shade.end {
+  right: 0;
+}
+.navigator-window { /* round 90: a tint, not a frame; the hairline handles carry the edges */
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  border-radius: var(--radius-micro);
+  background: color-mix(in srgb, var(--accent) var(--tint-faint), transparent);
+  cursor: grab;
+}
+.navigator-window.is-dragging {
+  cursor: grabbing;
+}
+.navigator-handle {
+  position: absolute;
+  top: 50%;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  padding: 0;
+  border-radius: 50%;
+  background: var(--ground);
+  border: var(--rule-width) solid var(--accent);
+  cursor: ew-resize;
+}
+.navigator-handle[data-handle=start] {
+  left: calc(var(--icon-sm) / -2);
+}
+.navigator-handle[data-handle=end] {
+  right: calc(var(--icon-sm) / -2);
+}
+.navigator-handle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--accent);
+  outline-offset: var(--focus-ring-offset);
+}
+.navigator-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--text);
+  opacity: var(--opacity-faded);
+  pointer-events: none;
+}
+.navigator-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.navigator-foot .mono {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+}
+.window-readings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  align-items: baseline;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--line);
+}
+.window-readings .reading {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.window-readings .reading small {
+  color: var(--muted);
+}
+.window-readings .reading b {
+  font-family: var(--font-mono);
+  font-weight: var(--weight-label);
+}
+.window-readings .reading b.pos {
+  color: var(--good-ink);
+}
+.window-readings .reading b.neg {
+  color: var(--danger-ink);
+}
+.window-readings > p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+}
+.chart-tooltip .tip-date {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+}
+.chart-tooltip .tip-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.chart-tooltip .tip-row span {
+  color: var(--muted);
+}
+.chart-tooltip .tip-key {
+  display: inline-block;
+  width: var(--icon-xs);
+  height: var(--rule-width);
+  background: var(--series-1);
+}
+.chart-tooltip .tip-key.series-b {
+  background: var(--series-2);
+}
+.chart-tooltip .tip-key.benchmark {
+  background: var(--muted);
+  opacity: var(--opacity-secondary);
+}
+.compare-overlay {
+  margin-bottom: var(--space-4);
+}
+/* The property block (round 14): a record's facts as label + value pairs in two columns, the
+   value the link; limitations as a list under them; one opener in the foot. */
+.prop {
+  display: grid;
+  --lead: 132px;
+  grid-template-columns: var(--grid-master);
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: var(--space-2) 0;
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  box-shadow: inset 0 -1px 0 var(--edge-hair);
+}
+.prop > dt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.prop > dt .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+}
+.prop > dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* A property's linked value flows as text: a narrow column wraps it at its words, never inside
+   an identifier and never as a second column (the quiet control's inline-flex is outranked here). */
+.prop > dd .text-btn {
+  display: inline;
+  padding: 0;
+  min-height: 0;
+  white-space: normal;
+  text-align: left;
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+:is(.prop, .kv) > dd .text-btn .mono { white-space: nowrap; } /* an identity in a value's way stays one token, in a Facts row too (WD3; the book's Team session broke over three lines, 2026-09-26) */
+.prop > dd .text-btn .icon { width: var(--icon-sm); height: var(--icon-sm); margin-left: var(--space-1); }
+.prop > dd .sub-cell {
+  display: inline;
+}
+.stat-basis {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  margin: var(--space-2) var(--space-1) var(--space-5);
+}
+.stat-basis > .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+  margin-top: calc((1lh - var(--icon-sm)) / 2);
+}
+/* A version's name is its dates (F2): where the line is short it breaks at the dash, never inside a
+   date and never cut -- the end date is what tells two versions apart. */
+.card-list .version-row .list-row-main > strong {
+  white-space: normal;
+}
+/* A data issue's row (F2): the move a figure, right-aligned on its unit. */
+.issue-row .list-row-props > :first-child {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+/* A research case (N6): the question leads its description in the reading size; each interpretation
+   is a comment -- its author and judgment on one line, the owner's words, the cited evidence. */
+.case-question { margin: 0 0 var(--space-3); font-size: var(--style-title-3-size); line-height: var(--style-title-3-leading); letter-spacing: var(--style-title-3-tracking); color: var(--text); }
+.case-thread > .case-comment + .case-comment { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--edge-hair); }
+.case-comment > header { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-1); }
+/* Exposure by sector: the one meter (a composition of every sector) and its legend (N6: one figure), in its box above the listing. */
+.sector-exposure { margin: 0 0 var(--space-4); }
+.compare-overlay .table-note { padding: var(--space-3) 0 0; }
+.performance-surface .stat-strip.five {
+  grid-template-columns: var(--grid-5);
+}
+.performance-surface .metric-basis {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: var(--space-05) var(--space-6) var(--space-4);
+}
+.performance-surface .metric-basis .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+}
+@media (width < 1024px) {
+.performance-surface .stat-strip.five {
+    grid-template-columns: var(--grid-3);
+  }
+}
+@media (width < 640px) {
+.performance-surface .stat-strip.five {
+    grid-template-columns: var(--grid-2);
+  }
+.navigator-foot {
+    flex-wrap: wrap;
+  }
+}
+.portfolio-tabs {
+  padding: 0 var(--inset-card); /* the words on the card's content edge; the hairline spans the card */
+}
+.holdings-toolbar {
+  padding: var(--space-4) var(--space-6);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-5);
+  align-items: center;
+}
+.session-selector {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+}
+.session-controls {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+.holdings-filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-left: var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--subtle-surface);
+  border: 1px solid var(--line);
+}
+.search-field>.icon {
+  height: var(--icon-size);
+  width: var(--icon-size);
+  color: var(--muted);
+}
+.holdings-table-area {
+  min-width: 0;
+}
+.holding-weights {
+  display: grid;
+  grid-template-columns: var(--grid-2);
+  gap: var(--space-4);
+  padding: var(--space-5) 0;
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.holding-weights dt {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+}
+.holding-weights dd {
+  font-size: var(--style-figure-size);
+  line-height: var(--style-figure-leading);
+  margin: var(--space-1) 0 0;
+  letter-spacing: var(--style-figure-tracking);
+}
+.holding-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block: 0;
+  text-align: left;
+  color: var(--text);
+}
+.holding-name strong,
+body[data-page] .holding-name strong {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  font-weight: var(--weight-label); /* round 89: an identity cell is medium (over the page's `strong`) */
+}
+.holding-name small {
+  color: var(--muted);
+  display: block;
+  margin-top: var(--space-05);
+}
+.detail-section {
+  padding: var(--space-6);
+}
+.comparison-candidate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.comparison-candidate strong {
+  display: block;
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.comparison-candidate small {
+  color: var(--muted);
+}
+/* The latest book as one wide card: its facts and numbers on the left, its own indexed path
+   over the whole report beside them, the legend under the path. */
+.chart-headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) 0;
+}
+.chart-headline > span,
+.chart-headline > small {
+  color: var(--muted);
+}
+.chart-headline > strong {
+  font: var(--style-figure-size)/var(--style-figure-leading) var(--font-ui);
+  letter-spacing: var(--style-figure-tracking);
+  font-variant-numeric: tabular-nums;
+}
+.chart-headline > small {
+  margin-left: auto;
+}
+.chart-headline.is-reading > small { color: var(--text); } /* under the pointer the line is the reading: the date and the benchmark */
+.chart-controls { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; justify-content: flex-end; } /* round 95: the ranges (Stocks' row) beside Indexed / Daily */
+.chart-svg .chart-last { fill: var(--series-1); font-weight: var(--weight-label); } /* the study's last value on the axis, in its ink */
+.chart-svg .chart-last-ground { fill: var(--ground); }
+/* A link inside a sentence: it is text, not a control (the quiet-control rule would make it a box). */
+.holdings-table-area .data-table {
+  min-width: var(--table-min-wide);
+}
+/* Three columns (a book whose sector and mapping are absent throughout) fit without a sideways scroll. */
+.holdings-table-area .data-table.holdings-compact {
+  min-width: 0;
+}
+@media (width < 1180px) {
+.editor-file-note {
+    display: none;
+  }
+.chart-heading {
+    gap: var(--space-5);
+  }
+}
+@media (width < 900px) {
+.chart-heading h2 {
+    display: none;
+  }
+.holdings-toolbar {
+    flex-wrap: wrap;
+    gap: var(--space-4);
+  }
+.chart-wrap {
+    padding: var(--space-2) var(--space-2) 0;
+  }
+}
+@media (width < 640px) {
+.editor-workbench-header {
+    padding: 0 var(--space-4);
+    gap: var(--space-2);
+  }
+.editor-file {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+    gap: var(--space-1);
+  }
+.editor-file .icon {
+    height: var(--icon-sm);
+    width: var(--icon-sm);
+  }
+.code-editor {
+    --lead: 32px; grid-template-columns: var(--grid-master);
+  }
+.editor-statusbar {
+    padding: var(--space-2) var(--space-4);
+    align-items: start;
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.editor-statusbar #validationNotice {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.controls-content {
+    padding: var(--space-4);
+    min-height: 0;
+  }
+.plan-line p {
+    font-size: var(--style-callout-size);
+    line-height: var(--style-callout-leading);
+  }
+.plan-line strong {
+    font-size: var(--style-callout-size);
+    line-height: var(--style-callout-leading);
+  }
+.chart-toolbar {
+    padding: var(--space-3) var(--space-4) 0;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+.chart-heading {
+    width: 100%;
+    display: block;
+  }
+.chart-legend {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+    gap: var(--space-1) var(--space-4);
+  }
+.chart-wrap {
+    overflow: hidden;
+    padding: var(--space-1) var(--space-3) 0; /* a phone's chart keeps an inset from its box's edge (the inset census: its last value touched the border) */
+  }
+.holdings-toolbar {
+    padding: var(--space-4) var(--space-4);
+    gap: var(--space-4);
+  }
+.session-selector {
+    display: block;
+    width: 100%;
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.session-controls {
+    margin-top: var(--space-2);
+  }
+.holdings-filters {
+    width: 100%;
+    gap: var(--space-2);
+  }
+.holdings-filters .search-field {
+    flex: 1;
+    min-width: 0;
+  }
+.detail-section {
+    padding: var(--space-4);
+  }
+}
+@media (width >= 900px) {
+.code-editor .yaml-editor {
+    height: clamp(calc(var(--editor-lines-min) * var(--editor-line)), calc(var(--vh) - var(--editor-reserve)), calc(var(--editor-lines-max) * var(--editor-line)));
+    min-height: calc(var(--editor-lines-min) * var(--editor-line));
+  }
+}
+.performance-surface .chart-wrap {
+  padding-top: var(--space-2);
+}
+.metric-open {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: left;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  min-height: var(--metric-open-height);
+}
+.metric-open .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--muted);
+  opacity: var(--opacity-faded);
+  transform: rotate(-35deg);
+  transition: opacity var(--dur-2) var(--curve-move), transform var(--dur-2) var(--curve-move);
+}
+.metric-open:hover .icon,
+.metric-open:focus-visible .icon {
+  opacity: 1;
+  transform: rotate(-35deg) translateX(var(--space-05));
+  color: var(--ink-link);
+}
+.metric-open:hover {
+  color: var(--ink-link);
+}
+/* One card per research lane, equal widths: four across, two by two, then one. */
+.editor-file-note {
+  color: var(--muted);
+  margin-left: var(--space-2);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.declaration-context {
+  background: transparent;
+  padding: var(--space-4) var(--space-5) var(--space-2);
+}
+/* Before a PLAN exists the scope is a margin note beside the editor (the template's own device:
+   it becomes a card only once a PLAN is there). The note reads as a lane, not as bare page. */
+.diff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.diff-count {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-micro);
+  background: var(--subtle-surface);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.diff-row {
+  display: grid;
+  grid-template-columns: var(--grid-2);
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  align-items: center;
+}
+.diff-before {
+  color: var(--muted);
+}
+.diff-arrow {
+  color: var(--muted);
+}
+.diff-row.changed .diff-values strong {
+  color: var(--ink-link);
+  background: var(--fill-selected);
+  border-radius: var(--radius-micro);
+  padding: var(--space-1) var(--space-2);
+}
+.diff-boundary,
+.diff-empty {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  margin-top: var(--space-2);
+}
+/* The navigator (round 95: the observation row above it retired -- the hero reads under the
+   pointer; the ranges sit beside Indexed / Daily). Neither changes the holdings date. */
+.chart-navigator {
+  margin: var(--space-1) var(--space-6) 1px;
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-3);
+}
+.chart-navigator>p {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  margin-top: var(--space-05);
+}
+.performance-surface .chart-under {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  padding-top: var(--space-1);
+}
+.proof-intro {
+  font-weight: var(--weight-body);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  margin: var(--space-4) 0;
+}
+
+.proof-footnote {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  margin: var(--space-3) 0;
+}
+
+@media (width < 640px) {
+.editor-workbench-header {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+.declaration-context {
+    grid-template-columns: var(--grid-1);
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+.diff-row {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+    gap: var(--space-2);
+  }
+.metric-open {
+    font-size: var(--style-figure-size);
+    line-height: var(--style-figure-leading);
+    letter-spacing: var(--style-figure-tracking);
+    gap: var(--space-1);
+  }
+.metric-open .icon {
+    height: var(--icon-xs);
+    --icon-stroke: 2;
+    width: var(--icon-xs);
+  }
+.chart-navigator {
+    margin: var(--space-1) var(--space-4) 0;
+    padding-top: var(--space-4);
+  }
+.chart-navigator>p {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.chart-under {
+    flex-wrap: wrap;
+    padding: 0 var(--space-4) var(--space-3);
+    gap: var(--space-2);
+    align-items: flex-start;
+    padding-bottom: var(--space-4);
+  }
+.proof-intro {
+    font-size: var(--style-callout-size);
+    line-height: var(--style-callout-leading);
+  }
+.proof-footnote {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+}
+/* PLAN hierarchy: readable change, compact explanation, reachable confirmation. */
+.diff-reference {
+  color: var(--muted);
+  font-size: var(--style-footnote-size);
+  margin: var(--space-2) 0 var(--space-2);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.diff-column-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.diff-values {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+  min-width: 0;
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.diff-boundary {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  margin-top: var(--space-2);
+}
+.plan-commit {
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-3);
+}
+.plan-commit p {
+  color: var(--muted);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  margin-top: var(--space-2);
+}
+::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border: var(--space-05) solid transparent;
+  background-clip: padding-box;
+  border-radius: var(--radius-control);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scroll-hover);
+}
+.wide-scrollbars ::-webkit-scrollbar {
+  width: var(--scrollbar-wide);
+  height: var(--scrollbar-wide);
+}
+.editor-workbench-header {
+  height: var(--editor-header-height);
+  box-shadow: var(--rim-top);
+}
+/* The editor's two faces are tabs on the header's own line: the strip is the header's height and
+   the indicator stands on its hairline (law 110). */
+.editor-workbench-header > .editor-tabs { align-self: stretch; box-shadow: none; }
+/* An answer's editor on a phone: its tools fold onto a second line and the header grows with them, never
+   past its box (MA4; box_inset_census, 2026-09-26: the tools ran 46 px in a 44 px header, 3.5 px from its top). */
+@media (width < 640px) {
+  .editor-workbench-header:has(> .review-answer-tools) { height: auto; min-height: var(--editor-header-height); flex-wrap: wrap; padding-block: var(--space-2); }
+}
+.yaml-editor {
+  min-height: calc(var(--editor-lines) * var(--editor-line));
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+}
+.map-section {
+  display: grid;
+  --lead: var(--map-lead);
+  grid-template-columns: var(--grid-master);
+  gap: var(--space-5);
+  padding: var(--space-4) 0;
+}
+.map-section-label {
+  padding: var(--space-3) 0;
+  font-size: var(--style-footnote-size);
+  color: var(--muted);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.map-section-label b {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--ink-link);
+  font-weight: var(--weight-label);
+}
+.map-nodes {
+  display: grid;
+  grid-template-columns: var(--grid-4);
+  gap: var(--space-5);
+  align-items: stretch;
+}
+.map-node {
+  position: relative;
+  padding: var(--space-3) var(--space-3);
+  border: 1px solid var(--edge-card);
+  border-radius: var(--radius-card);
+  background: var(--ground);
+  color: var(--text);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 77px;
+  box-shadow: var(--rim-top);
+}
+.map-node:hover {
+  background: var(--fill-selected);
+  border-color: var(--edge-strong);
+}
+.map-node .icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  color: var(--ink-link);
+}
+.map-node strong {
+  font-size: var(--style-callout-size);
+  display: block;
+  line-height: var(--style-callout-leading);
+}
+.map-node small {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  display: block;
+  color: var(--muted);
+  margin-top: var(--space-1);
+}
+.map-nodes:not(.parallel) .map-node:not(:last-child):after {
+  content: '→';
+  position: absolute;
+  right: -15px;
+  color: var(--muted);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.map-nodes.parallel {
+  grid-template-columns: var(--grid-2);
+  position: relative;
+}
+.map-connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  margin-left: calc(var(--map-lead) + var(--space-5));
+  height: var(--space-3);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.map-caption {
+  font-size: var(--style-footnote-size);
+  color: var(--muted);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-4);
+}
+@media (width < 1024px) {
+.research-map-dialog .map-section {
+    --lead: var(--map-lead-narrow);
+    grid-template-columns: var(--grid-master);
+    gap: var(--space-2);
+  }
+.map-connector {
+    margin-left: calc(var(--map-lead-narrow) + var(--space-2));
+  }
+}
+@media (width < 768px) {
+.map-section {
+    display: block;
+    padding: var(--space-2) 0;
+  }
+.map-section-label {
+    padding: 0 0 var(--space-2);
+    display: flex;
+    gap: var(--space-2);
+    align-items: baseline;
+  }
+.map-section-label b {
+    margin: 0;
+  }
+.map-nodes {
+    grid-template-columns: var(--grid-2);
+    gap: var(--space-3);
+  }
+.map-nodes:not(.parallel) .map-node:not(:last-child):after {
+    display: none;
+  }
+.map-node {
+    padding: var(--space-3) var(--space-2);
+    min-height: 75px;
+  }
+.map-node strong {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.map-node small {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.map-connector {
+    margin: 0;
+    height: var(--space-3);
+  }
+.map-caption {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+}
+@media (width < 640px) {
+.yaml-editor {
+    padding-right: var(--space-4);
+    padding-bottom: var(--space-5);
+    padding-left: var(--space-2);
+    min-height: calc(var(--editor-lines) * var(--editor-line));
+  }
+}
+/* One measured line box for numbers and code: no mismatched inherited padding. */
+.code-editor {
+  overscroll-behavior: contain;
+  display: block;
+  position: relative;
+  padding-top: 0;
+  margin-top: var(--space-4);
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+}
+.code-editor .editor-line-numbers {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--space-10);
+  padding: 0;
+  pointer-events: none;
+}
+.code-editor .editor-line-numbers span {
+  display: block;
+}
+/* The gap between the numbers and the text is the text column's offset, never its padding: a
+   padding scrolls sideways with the text, which then ran flush against the numbers. */
+.code-editor .yaml-editor {
+  margin-left: calc(var(--space-10) + var(--space-4));
+  width: calc(100% - var(--space-10) - var(--space-4));
+  padding-top: 0;
+  padding-left: 0;
+}
+/* The editor's paint (round 61): the coloured text sits under the textarea in the same box, font
+   and line grid; the textarea keeps the caret, the selection and the input, its own text
+   transparent. The paint follows the textarea's scroll (lab-editor.js). */
+.code-editor > .editor-paint {
+  position: absolute;
+  inset: 0 0 0 calc(var(--space-10) + var(--space-4));
+  margin: 0;
+  padding: 0 var(--space-6) var(--space-6) 0;
+  font: var(--style-callout-size)/var(--editor-line) var(--font-mono);
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+  tab-size: 2;
+  white-space: pre;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--text);
+}
+.code-editor > .yaml-editor {
+  position: relative;
+  color: transparent;
+  caret-color: var(--text);
+}
+.code-editor > .yaml-editor::selection {
+  color: transparent;
+  background: color-mix(in srgb, var(--accent) var(--tint-soft), transparent);
+}
+@media (width < 640px) {
+.code-editor {
+    margin-top: var(--space-4);
+  }
+.code-editor .editor-line-numbers {
+    width: var(--space-8);
+  }
+.code-editor .yaml-editor {
+    margin-left: calc(var(--space-8) + var(--space-2));
+    width: calc(100% - var(--space-8) - var(--space-2));
+  }
+.code-editor > .editor-paint {
+    inset: 0 0 0 calc(var(--space-8) + var(--space-2));
+    padding: 0 var(--space-4) var(--space-5) 0; /* the textarea's small-width padding */
+  }
+}
+/* The code editor's lines sit on one 24 px grid shared by the textarea and its line numbers
+   (--editor-line); the numbers are a step smaller than the code. */
+.editor-workbench .editor-line-numbers span {
+  font-size: var(--style-footnote-size);
+  line-height: var(--editor-line);
+  letter-spacing: var(--style-footnote-tracking);
+  height: var(--editor-line);
+  color: var(--faint);
+}
+/* Secondary headings are object labels, not markdown-like display headlines. */
+.session-limit {
+  display: block;
+  color: var(--muted);
+  max-width: var(--width-xs);
+}
+.session-selector {
+  flex-wrap: wrap;
+}
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+/* Secondary pages: one fact per line; operations grouped by responsibility. */
+.data-readiness-strip {
+  display: grid;
+  grid-template-columns: var(--grid-4);
+  padding: var(--space-5) 0;
+}
+/* Round 95 (Linear's grammar): clauses joined by `and`; `+ Filter` keeps the suggestion's dashes. */
+.filter-clauses { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.filter-op, .filter-and { color: var(--muted); }
+.filter-add .icon { width: var(--icon-sm); height: var(--icon-sm); color: var(--muted); }
+.filter-clear-all { margin-left: var(--space-1); }
+.input-with-icon .icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  color: var(--muted);
+}
+/* Control gallery labels avoid confusing a specimen with an active product state. */
+@media (width < 768px) {
+.data-readiness-strip {
+    grid-template-columns: var(--grid-2);
+    padding: 0;
+  }
+}
+.chart-svg [data-chart]:focus {
+  outline: none; /* round 95 (the user's stills: the blue rectangle, then the white one after a click): the crosshair, the marker and the hero's reading are the chart's focus, as a region's is its own -- `:focus`, because Chromium rings an SVG shape on any focus, not only the keyboard's */
+}
+.chart-tooltip { /* the glass (law 150, 12-material) */
+  position: absolute;
+  padding: var(--space-2) var(--space-3);
+  z-index: var(--layer-float);
+  max-width: var(--width-xs);
+  pointer-events: none;
+  border-radius: var(--radius-block);
+  font: var(--style-footnote-size)/var(--style-footnote-leading) var(--font-ui);
+}
+/* Search owns one outline including its icon; the inner input is not a second field. */
+.input-with-icon {
+  display: flex;
+  align-items: center;
+  padding-left: var(--space-3);
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: var(--field-height);
+  overflow: hidden;
+}
+.yaml-editor {
+  font: var(--style-callout-size)/var(--editor-line) var(--font-mono);
+  tab-size: 2;
+}
+.editor-line-numbers {
+  text-align: right;
+  letter-spacing: 0;
+  color: var(--faint);
+  user-select: none;
+  font: var(--style-callout-size)/var(--editor-line) var(--font-mono);
+}
+/* Data */
+.data-readiness-strip {
+  margin-block: var(--space-5);
+  padding-block: var(--space-5);
+}
+/* Full View stays log-only. A slim rail replaces four duplicate cards. */
+.ui-arrived {
+  animation: ui-event-arrival var(--dur-linger) var(--curve-arrive);
+}
+@media (width < 640px) {
+.lobby-tools > .lobby-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+/* The pane switch is for the one-column layout, where the editor and the scope alternate;
+ * with both on screen it has nothing to switch. */
+.editor-workbench .declaration-context {
+  background: transparent;
+}
+/* A single analysis surface: metrics and full chart, then the research detail. */
+.performance-surface .chart-toolbar {
+  padding-top: var(--space-5);
+}
+.portfolio-detail-surface {
+  overflow: visible;
+  margin-top: var(--space-5);
+}
+/* The attention list: grouped rows inset by the row's own padding, so a hovered row's well
+   aligns with the card's content edge (Apple's inset list); a hairline between rows. */
+.card-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr); /* a row is the list's width, never its words' (2026-09-22: a long
+     set-up line pushed its state under the sidebar) */
+  margin: var(--space-05) 0 0; /* the old `-var(--space-2)` was never valid CSS: the rows have always sat
+     on the card's content edge, their words inset by the row's padding */
+}
+.card-list > * {
+  min-width: 0;
+}
+.list-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--slot-gap);
+  width: 100%;
+  min-height: var(--row-dense);
+  margin: 0;
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--radius-control);
+  color: var(--text);
+  transition: background-color var(--dur-1) var(--curve-move);
+}
+/* the completed update's own counts, under its row on the name's column (the user, 2026-09-24) */
+.data-update-row > .data-update-counts { margin: 0; padding: 0 var(--space-2) var(--space-2) calc(var(--space-2) + var(--slot-lead) + var(--slot-gap)); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+.data-update-counts > b { color: var(--text); font-weight: var(--weight-label); }
+.list-row + .list-row {
+  box-shadow: inset 0 1px 0 var(--edge-hair);
+}
+/* Round 52: the row's states, one set for a list row and a table row — rest; hover, the hover
+   tint; held (the walk's row, `data-held`), the raised step with a 1 px ring of the link ink;
+   open (`aria-current`, the record shown beside or last opened), the accent at 8 % with the
+   2 px bar; a control's focus inside a row shows its own ring (round 51) and the row is held. */
+.list-row:hover,
+.list-row:focus-within {
+  background: var(--ds-control-hover);
+  box-shadow: none;
+}
+.list-row:hover + .list-row,
+.list-row:focus-within + .list-row {
+  box-shadow: none;
+}
+.list-row[data-held] {
+  background: var(--surface-raised);
+  box-shadow: none;
+  outline: 1px solid var(--ink-link);
+  outline-offset: -1px;
+}
+.list-row[data-held] + .list-row {
+  box-shadow: none;
+}
+.list-row[aria-current="true"] {
+  background: var(--ds-control-hover);
+}
+.list-row[data-held] .row-menu > .icon-btn {
+  color: var(--text);
+}
+/* The held row's ring is the focus indication: the control the walk focused inside it draws none. */
+:is(.list-row, tr)[data-held] :focus-visible {
+  outline-color: transparent;
+}
+/* A group's head and a filtered list's foot (round 52). */
+.group-head {
+  display: flex;
+  flex-wrap: wrap; /* W: a long label or note takes a second line, never an ellipsis (item 6) */
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--row-dense);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--surface-bar); /* a step above its ground, never the well (MA1; the user, 2026-09-25) */
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  font-weight: var(--weight-label);
+}
+.group-head > b {
+  font-weight: var(--weight-body);
+  color: var(--muted);
+}
+.group-head-tools {
+  margin-left: auto;
+}
+/* The lobby (law 136): the tool line -- the search first and flexible, the Filter chips, Display at
+   its right -- then one panel of groups; a group head folds (its chevron points down while open, right while folded),
+   `Show n more` stands at the titles' indent; compact density tightens a row and drops its line
+   under the title. */
+.lobby-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+.lobby-tools > .lobby-search {
+  flex: 1 1 var(--width-xs);
+  max-width: var(--width-sm);
+}
+.lobby-tools > .display-options {
+  margin-left: auto;
+}
+.lobby-head > .lobby-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+  min-height: 0;
+  text-align: left;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.lobby-fold > .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--muted);
+  transition: transform var(--dur-1) var(--curve-move);
+}
+.lobby-fold[aria-expanded="false"] > .icon {
+  transform: rotate(-90deg);
+}
+.lobby-fold > span {
+  min-width: 0;
+}
+.lobby-head > .lobby-note {
+  min-width: 0;
+  margin-left: var(--space-3);
+  color: var(--muted);
+}
+.lobby-fold > :is(.icon, b) {
+  flex: none;
+}
+.lobby-list > .lobby-more {
+  justify-self: start;
+  margin: var(--space-1) 0 var(--space-2) calc(var(--slot-lead) + var(--slot-gap));
+  color: var(--muted);
+}
+/* The saved compact density still wins when a lobby also uses the one-line list mode. */
+.card-list.lobby-list.density-compact > .list-row {
+  min-height: var(--control-sm);
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+.lobby-list.density-compact .list-row-why {
+  display: none;
+}
+.lobby-older {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding-left: calc(var(--space-2) + var(--slot-lead) + var(--slot-gap));
+  color: var(--muted);
+}
+.list-foot {
+  margin: var(--space-2) var(--space-3) 0;
+  color: var(--muted);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.list-row > .feature-icon {
+  align-self: flex-start;
+  margin-top: var(--space-05);
+}
+/* A facts line that wraps under the title starts where the title starts (round 86, the user's
+   still): the indent is the row's own lead (a glyph, a dot, a mark) plus the row's gap; the row
+   names its lead at render (round 94, `data-lead`), so no :has() is asked on every style pass. */
+.list-row[data-lead] {
+  --row-indent: calc(var(--slot-lead) + var(--slot-gap));
+}
+/* The spine (law 107): every lead -- a dot, a glyph, a mark -- takes the one lead column, so the
+   titles of a list start on one line whatever leads them. */
+.list-row > :is(.row-dot, .feature-icon, .mark) {
+  flex: none;
+  width: var(--slot-lead);
+}
+/* Round 95 (the user's reading of the Team lists: a grey dot on every row): a dot is colour on a
+   state, and colour gives meaning (law 65) -- a neutral state is its word alone. In a list that
+   mixes tones the neutral rows keep the dot's place so the titles align; a list with no toned dot
+   has no dot column, and its facts line starts where the title does. */
+.list-row > .row-dot.neutral { visibility: hidden; }
+.card-list:not(:has(> .list-row > .row-dot:not(.neutral))) > .list-row > .row-dot { display: none; }
+.card-list:not(:has(> .list-row > .row-dot:not(.neutral))) > .list-row[data-lead=dot] { --row-indent: 0px; }
+/* The title is the row's link: it stretches over the row; the actions sit above the stretch. */
+.list-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: default;
+}
+:is(a, button).list-row-main {
+  cursor: pointer;
+}
+:is(a, button).list-row-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.list-row-main:focus-visible {
+  outline: none;
+}
+.list-row:has(> .list-row-main:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--accent);
+  outline-offset: var(--focus-ring-inset);
+}
+.list-row-main > strong {
+  font-size: var(--style-callout-size);
+  font-weight: var(--weight-label);
+  line-height: var(--style-callout-leading);
+}
+/* A dense list (a list page): one line a row, the title cut with an ellipsis, whole on the object. */
+.card-list .list-row-main > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list-row-why {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.list-row-props {
+  display: flex;
+  flex: 0 1 auto;
+  gap: var(--space-4);
+  align-items: center;
+  min-width: 0;
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* A short reference leads the facts (law 136); one line, never wrapped inside (law 88). */
+.list-row-props > .list-row-ref {
+  order: -1;
+  white-space: nowrap;
+}
+.list-row-props > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* WD3, OW12: a hinted fact is a caption to read, including strategy dates before activation.
+   It wraps inside its fact slot at every list width; exact references keep their own rule. */
+.list-row-props > span:has(.hint) {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+.list-row-props > span > .hint { min-width: 0; }
+/* ST2: protect the state slot, not the whole facts group. At split width the group wraps complete
+   slots instead of carrying a neighbouring control beyond its row (MA4). */
+.list-row-props > span:has(> .state) { flex-shrink: 0; }
+.list-row-props > [data-empty] { display: none; } /* round 90: an empty slot exists only where the list sizes its slots */
+.slotted .list-row-props > [data-empty] { display: inline-flex; }
+.list-row-props .icon {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  --icon-stroke: 2;
+  flex: none;
+}
+.list-row-time {
+  flex: none;
+  min-width: var(--time-slot);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+/* WD3/ST6: exact-reference and fact controls sit above the row's stretched navigation target. */
+.list-row-props :is(.run-ref, .facts-ref) {
+  position: relative;
+  z-index: var(--layer-raised);
+}
+.row-actions {
+  position: relative;
+  z-index: var(--layer-raised);
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  align-items: center;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--curve-move);
+}
+.list-row:hover .row-actions,
+.list-row:focus-within .row-actions,
+.data-table tr:hover .row-actions,
+.data-table tr:focus-within .row-actions {
+  opacity: 1;
+}
+/* The row's ··· is there at rest in the faint ink (Stripe's list) and takes the text ink when the
+   row is hovered or focused; other row actions still wait for the hover. */
+.row-actions:has(> .row-menu) { opacity: 1; }
+.row-actions:has(.menu:not([hidden])) { z-index: var(--layer-sticky); }
+/* the open menu paints over the rows below */
+.row-menu > .icon-btn { color: var(--faint); }
+:is(.list-row:hover, .list-row:focus-within, .data-table tr:hover, .data-table tr:focus-within) .row-menu > .icon-btn { color: var(--text); }
+.row-actions .icon-btn {
+  min-height: 0;
+  padding: 0;
+}
+.row-menu {
+  position: relative;
+  display: block;
+}
+.table-foot {
+  display: flex;
+  flex-wrap: wrap; /* W (375 at 125 %): the count keeps its words on one line; Previous / Next go under it when both do not fit */
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  color: var(--muted);
+}
+/* A long table's turns at its head too (the user's phase 6 reading): the foot's row, ruled under instead of over. */
+.table-head-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  color: var(--muted);
+}
+/* A long page's sections, one row at its head (the user's phase 6 reading). */
+.page-jumps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+.table-pages {
+  display: flex;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+/* The trailing chevron keeps its slot on a row that opens nothing, so the state column is one
+   column across the list (the user's reading, 2026-09-22: "右侧也有对不齐的现象"); a list with no
+   opening row shows no slot at all. */
+.list-row > .chevron-slot { width: var(--icon-size); height: var(--icon-size); flex: none; }
+.card-list:not(:has(> .list-row > .icon:not(.chevron-slot):last-of-type)) .chevron-slot { display: none; }
+.list-row > .icon:last-of-type:not(.row-actions *) {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: none;
+  color: var(--muted);
+  transform: rotate(-90deg);
+}
+/* A row that folds in place turns its glyph down while open (T5: an open group kept the way-on arrow). */
+.list-row[aria-expanded="true"] > .icon:last-of-type:not(.row-actions *) { transform: none; }
+.list-row:hover > .icon:last-of-type {
+  color: var(--text);
+}
+/* The activity log's rows (round 20): the caller in muted words after the operation; the exact
+   observations a disclosure under the row, above the stretched title link so it can be opened. */
+.activity-rows {
+  display: block;
+  margin: 0;
+}
+.activity-row .fv-log-by {
+  color: var(--muted);
+  font-weight: var(--weight-body);
+}
+.activity-row.attention .list-row-main > strong {
+  color: var(--warning-ink);
+}
+.activity-row {
+  flex-wrap: wrap;
+}
+.activity-row > .list-row-main {
+  flex: 1 1 0;
+  min-width: 12em;
+}
+.activity-row > .list-row-props {
+  flex: 0 1 auto;
+  max-width: var(--share-facts);
+}
+/* The disclosure's summary sits on the row's line (a quiet count before the clock, above the
+   stretched link so it can be opened); its observations wrap under the row when open. */
+.activity-row > .list-row-time {
+  order: 7;
+}
+.activity-row > .row-actions,
+.activity-row > .icon:last-of-type {
+  order: 8;
+}
+/* The choice list (round 95; GitHub's label picker, Linear's multi-select): a field-shaped well --
+   the chosen as chips, the head (the count, All · None, the filter), one row per option in the
+   picker's shape. */
+.choice-list {
+  border: 1px solid var(--edge-hair);
+  border-radius: var(--radius-block);
+  background: var(--surface-well);
+  overflow: hidden;
+}
+.choice-head {
+  display: flex;
+  flex-wrap: wrap; /* a narrow list puts its search on a line of its own (the clip census, 2026-09-24: the list cut it at 375) */
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--edge-hair);
+}
+.choice-count { color: var(--muted); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); white-space: nowrap; }
+.choice-rows { --picker-max: 320px; padding: var(--space-1); }
+.choice-search { position: relative; display: flex; align-items: center; flex: 0 1 var(--width-xs); min-width: 0; margin-left: auto; }
+.choice-search > .icon { position: absolute; left: var(--space-3); width: var(--icon-sm); height: var(--icon-sm); color: var(--muted); pointer-events: none; }
+body[data-page] .choice-search > .ui-field { width: 100%; min-width: 0; min-height: var(--choice-search-height); padding-left: var(--space-8); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); } /* N6: the glyph never covers the placeholder (a field's own padding was later in the cascade) */
+/* A narrow list (a phone, the drawer): the properties take a second line under the title; the
+   lead, the title, the time and the way stay on the first. Measured on the list, not the page. */
+.card-list {
+  container-type: inline-size;
+}
+/* Below its full width, a dense list drops its least important property (marked by the row as
+   `data-drop`) rather than truncating every one mid-value (round 20) -- at a phone's width too
+   (W): the least important fact never earns a line of its own. */
+@container (width < 1080px) {
+.card-list .list-row-props > [data-drop] {
+    display: none;
+  }
+}
+/* On one line, a dense row's properties are facts and keep their width; the title gives way. */
+@container (width >= 640px) {
+.card-list .list-row-props:not(.activity-row *) {
+    flex-shrink: 0;
+  }
+}
+@container (width < 640px) {
+.slotted .list-row-props > [data-empty] { display: none; }
+.list-row {
+    flex-wrap: wrap;
+    row-gap: var(--space-1);
+  }
+/* The way on (a row's chevron, its ···) stands at the end of the title's line and never wraps alone
+   under the title (F2, the way-alone census: at 375 and 125 % a longer time pushed it to a line of
+   its own): it is placed there and the row keeps its room; a list's rows keep one right edge. */
+.card-list:has(> .list-row > .icon:not(.chevron-slot):last-of-type) > .list-row,
+  .list-row:has(> .icon:last-of-type:not(.chevron-slot)) {
+    padding-right: calc(var(--space-2) + var(--icon-size) + var(--slot-gap));
+  }
+.list-row:has(> .row-actions) {
+    padding-right: calc(var(--space-2) + var(--icon-control-size) + var(--slot-gap));
+  }
+.list-row > :is(.chevron-slot, .icon:last-of-type:not(.row-actions *)) {
+    position: absolute;
+    top: calc(var(--space-2) + (var(--style-callout-leading) - var(--icon-size)) / 2);
+    right: var(--space-2);
+  }
+.list-row > .row-actions {
+    position: absolute;
+    top: calc(var(--space-2) + (var(--style-callout-leading) - var(--icon-control-size)) / 2);
+    right: var(--space-2);
+  }
+/* The title keeps its floor (W, the squeeze census: at 375 a fact, a time and a way beside the title
+   left it 1-50 px): what follows it wraps before the floor is cut. */
+.list-row-main {
+    flex: 1 1 0;
+    min-width: min(var(--row-title-floor), 100%);
+  }
+.list-row-props {
+    order: 5;
+    flex-basis: 100%;
+    padding-left: var(--row-indent, 0px);
+    white-space: normal;
+    flex-wrap: wrap;
+    gap: var(--space-05) var(--space-3);
+  }
+.list-row-props > span {
+    overflow: visible;
+    flex-wrap: wrap; /* W: a fact of several pieces (`configured default · registered · latest cutoff`) wraps between them */
+  }
+/* A time holds its own width, not the column's floor (W; at 375 and 125 % the floor left a title a
+   letter): right-aligned before the way on whichever line holds them, the times' right edges meet. */
+.list-row-time {
+    min-width: 0;
+    margin-left: auto;
+  }
+.list-row > :is(.row-actions, .chevron-slot, .icon:last-of-type):not(.list-row-time + *) {
+    margin-left: auto;
+  }
+/* One fact rides the title's line (W; a row is one line); a fact that does not fit beside the title's
+   floor drops under it and wraps, at the title's indent (on the title's line the indent is space). The
+   Slotted lists keep every facts group on the shared second line at this width. */
+.list-row:not(.activity-row):not(:where(.slotted > .list-row)) > .list-row-props:not(:has(> :not([data-empty]) ~ :not([data-empty]))) {
+    order: 0;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+/* a one-line list's facts ride without the indent: the line is the list's promise (the walk's R2) */
+.card-list.lines:not(.slotted) > .list-row > .list-row-props {
+    padding-left: 0;
+  }
+.activity-row > .list-row-props {
+    flex: 1 1 100%; /* MA4/CT1: move complete facts to their own line, preserving each control's step */
+    max-width: none;
+    padding-left: var(--row-indent, 0px);
+  }
+/* The absolute action's reserved width belongs to the first line. Reclaim exactly that reservation
+   for the facts' own line, keeping the title, clock, control step and normal row inset (MA4, CT1). */
+.activity-row:has(> .row-actions) > .list-row-props {
+    margin-inline-end: calc(-1 * (var(--icon-control-size) + var(--slot-gap)));
+  }
+.activity-row > .list-row-time,
+  .activity-row > .icon:last-of-type {
+    order: 2;
+  }
+}
+/* The tasks' activity rows wrap their properties under the title at split width instead of
+   cutting them. */
+@container reading-lane (width < 1080px) {
+.activity-row { flex-wrap: wrap; row-gap: var(--space-1); }
+.activity-row > .list-row-props { order: 9; flex: 1 1 100%; max-width: none; padding-left: var(--row-indent, 0px); }
+}
+.feature-row.quiet h3 {
+  color: var(--text);
+}
+.feature-row.quiet .feature-icon {
+  color: var(--good-ink, var(--muted));
+}
+/* A page head's lede inside the meta block: one sentence, then the meta facts on their line. */
+.object-header .object-meta > p.lede {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  padding-right: clamp(0px, var(--share-lede-reserve), var(--width-xs));
+  margin: 0 0 var(--space-2);
+}
+.nowrap {
+  white-space: nowrap;
+}
+/* Terms with their meaning: the term on its line, the words under it, read down the column. */
+.term-list {
+  margin: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+/* Terms side by side inside a wide card: each its own column, never a key stretched from a value. */
+.term-list.columns {
+  --card-min: 200px;
+  grid-template-columns: var(--grid-cards);
+  gap: var(--space-4) var(--space-6);
+}
+.term-list dd .sub-cell {
+  display: inline;
+}
+.term-list dt {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  font-weight: var(--weight-label);
+  color: var(--muted);
+}
+.term-list dd {
+  color: var(--text); /* round 89b: a definition is read, not glanced at */
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  margin: var(--space-1) 0 0;
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+}
+/* ---- workspace preparation scene (product): one work area -- the five recorded stages as a
+   rail, the shown stage's own count and facts on the left, its recent real activity on the
+   right -- plus the attention state and what is kept. Reuses the Full View surface, rail and
+   log materials and the task presentation's glyph, meter and callout; adds only the scene's
+   own layout and its truth-bound motion. ---- */
+.prep-notice {
+  margin-bottom: var(--space-4);
+}
+.prep-area {
+  margin-bottom: var(--space-5);
+}
+.prep-area-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--ui-soft-line);
+  min-width: 0;
+}
+.prep-area[data-folded=true] .prep-area-head {
+  border-bottom: 0;
+}
+.prep-area-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex-wrap: wrap;
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  color: var(--muted);
+}
+.prep-area-title>.icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: none;
+}
+.prep-summary {
+  color: var(--text);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  overflow-wrap: anywhere;
+}
+.prep-summary-status[data-live=true] {
+  color: var(--ink-link);
+}
+.prep-summary-attention {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--warning-ink);
+}
+.prep-summary-attention .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+body[data-page] .prep-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+.prep-fold .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+/* The rail: Task Control's marks, the current stage lit while the owner reports work. An
+   inspected stage is held visibly without pretending to be current. */
+.prep-step small {
+  overflow-wrap: anywhere;
+}
+.prep-step.is-inspected .fv-step-node {
+  outline: var(--focus-ring-width) solid var(--accent);
+  outline-offset: var(--focus-ring-offset);
+}
+.prep-step.is-inspected strong {
+  color: var(--text);
+}
+/* The stage body: kicker, glyph and copy, the large count with its meter, the facts row. */
+.prep-kicker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.prep-stage-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+/* Round 22: the stage's mark is its icon, not the glass glyph (a functional surface is not decorated). */
+.stage-icon {
+  width: var(--stage-mark-size);
+  height: var(--stage-mark-size);
+  border-radius: var(--radius-control);
+  background: var(--ds-control-hover);
+  color: var(--muted);
+}
+.stage-icon[data-moving=true] { color: var(--ink-link); }
+.stage-icon .icon { width: var(--icon-lead); height: var(--icon-lead); --icon-stroke: 1.6; }
+.prep-activity-copy {
+  min-width: 0;
+  flex: 1;
+}
+.prep-activity-copy h2 {
+  margin: var(--space-1) 0 var(--space-2);
+  font-size: var(--style-title-2-size);
+  line-height: var(--style-title-2-leading);
+  letter-spacing: var(--style-title-2-tracking);
+}
+.prep-activity-count {
+  margin: var(--space-5) 0 var(--space-2);
+  font-size: var(--style-figure-size);
+  line-height: var(--style-figure-leading);
+  letter-spacing: var(--style-figure-tracking);
+}
+.prep-activity-count .tp-denom {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+/* The stage meter is the one meter (law 89): under its count, left aligned, at the meter's length. */
+.prep-main .tp-caption {
+  margin: var(--space-2) 0 0;
+}
+/* Secondary facts: legible, not four competing hero cards. */
+.prep-main .prep-strip {
+  margin: var(--space-5) 0 0;
+  padding: var(--space-4) 0 0;
+  border: 0;
+  border-top: 1px solid var(--ui-soft-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  gap: 0;
+}
+.prep-main .prep-strip .stat {
+  padding: 0 var(--space-3);
+  background: transparent;
+  box-shadow: none;
+  min-width: 0;
+}
+.prep-main .prep-strip .stat:first-child {
+  padding-left: 0;
+}
+.prep-work .run-log-tools {
+  flex: none;
+  white-space: nowrap;
+}
+.prep-main .prep-strip .stat-value {
+  font-size: var(--style-figure-size);
+  line-height: var(--style-figure-leading);
+  letter-spacing: var(--style-figure-tracking);
+}
+/* A changed stage body settles into place; the content itself never moves on its own. */
+.prep-settle {
+  animation: content-settle var(--dur-3) var(--curve-arrive);
+}
+/* The recent-activity reader: the log's own materials, rows folded per listing -- the time
+   column fits a clock, the symbol and the exact listing share the first line, the unit's
+   path below it, the state and the owner's time last. */
+.prep-work[data-history=true] .prep-log .run-log-lines {
+  opacity: var(--opacity-secondary);
+}
+/* N6: one listing, one line -- the symbol, what the owner recorded, the audit; wrapped only when
+   the lane is narrower than the line. */
+.prep-work .prep-unit {
+  --lead: 72px;
+  grid-template-columns: var(--grid-master);
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+.prep-unit .fv-log-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
+  min-width: 0;
+}
+.prep-unit .fv-log-entry>strong {
+  display: inline;
+}
+.prep-unit .fv-log-object {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  margin-top: 0;
+  color: var(--text);
+}
+.prep-log-empty {
+  padding: var(--space-2) 0;
+}
+.prep-feature-facts {
+  padding: var(--space-1) 0;
+}
+.prep-feature-facts dl {
+  margin: 0;
+}
+/* ---- the work area alive. Every motion here follows a recorded fact: the stage Task Control
+   reports as current turns, the connector flows into it, a stage that verified pops once, the
+   owner's count ticks when it changes, a recorded unit enters once, the clocks tick from their
+   recorded instants. Nothing moves for a Task the owner does not report as moving. ---- */
+/* Round 22: a stage in progress is a fact, not a spinner -- a still ring on the working node, the
+   connector to it in the same ink; nothing rotates or flows (law 16). The ink is the text's, as the
+   current step's (2026-09-25, CO3). */
+.fv-step.is-working .fv-step-node::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: var(--focus-ring-width) solid color-mix(in srgb,var(--text) var(--tint-strong),transparent);
+  opacity: 1;
+}
+body[data-page] .fv-step.is-complete:has(+ .fv-step.is-working)::before {
+  background: color-mix(in srgb,var(--text) var(--tint-strong),var(--line));
+}
+.fv-step.just-verified .fv-step-node {
+  animation: prep-pop var(--dur-3) var(--curve-arrive);
+}
+.fv-step.just-verified .fv-step-node::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid var(--good-ink);
+  opacity: 0;
+  animation: live-ring var(--dur-linger) var(--curve-arrive) 1;
+}
+@keyframes prep-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.14); } 100% { transform: scale(1); } }
+/* Round 22: no sheen on a meter and no travelling bar — an unknown extent is said as words, a
+   known one as a still width (law 16); the moving dashed track's fill is the meter's (04-surfaces). */
+.prep-tick .tp-number {
+  display: inline-block;
+  animation: prep-tick var(--dur-3) var(--curve-arrive);
+}
+.prep-log-rail strong.just-changed {
+  display: inline-block;
+  animation: prep-tick var(--dur-3) var(--curve-arrive);
+}
+@keyframes prep-tick { 0% { color: var(--ink-link); transform: translateY(-2px); } 100% { color: inherit; transform: none; } }
+.prep-work .prep-unit.ui-arrived {
+  animation: ui-event-arrival var(--dur-linger) var(--curve-arrive), prep-enter var(--dur-3) var(--curve-arrive);
+}
+@keyframes prep-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* One completion accent: a soft light on the line a finished Task became, once, then nothing. */
+.done-accent {
+  animation: prep-complete-glow var(--dur-linger) var(--curve-arrive);
+}
+@keyframes prep-complete-glow {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb,var(--ink-link) 32%,transparent); }
+  100% { box-shadow: 0 0 0 14px transparent; }
+}
+.prep-wait,
+.prep-liveness {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  color: var(--muted);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.prep-wait>.icon,
+.prep-liveness>.icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+}
+/* A glyph that leads words sits centred on their first line, whatever that line's height: half of
+   what the line has over the glyph, above it (the user, 2026-09-25: "字前面的图标感觉跟字对不齐";
+   hand-set 4 px nudges put these 2-3 px low), never a nudge. `glyph_align_census` holds it. */
+:is(.prep-wait, .prep-liveness, .prep-sources li, .performance-surface .metric-basis) > .icon {
+  align-self: flex-start;
+  margin-top: calc((1lh - var(--icon-sm)) / 2);
+}
+/* a reference's copy glyph, shown on hover, never makes the source's line taller than its words */
+.prep-sources .run-ref .icon-btn {
+  margin-block: calc((1lh - var(--icon-button-compact-size)) / 2);
+}
+.prep-liveness {
+  margin: 0 0 var(--space-5);
+  flex-wrap: wrap; /* V655: cancellation never takes the explanation's column */
+}
+.prep-attention {
+  padding: var(--space-1) var(--space-5) var(--space-5);
+  margin-bottom: var(--space-5);
+}
+.prep-attention .tp-callout {
+  margin-top: var(--space-4);
+}
+.prep-consequence {
+  margin: var(--space-3) 0 0;
+}
+.prep-kept {
+  padding: var(--space-1) var(--space-5) var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.prep-kept .tp-retained {
+  border-top: 0;
+  padding-top: var(--space-3);
+}
+.prep-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.prep-sources li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.prep-sources li>.icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+  color: var(--muted);
+}
+.prep-sources .mono {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  overflow-wrap: anywhere;
+}
+.prep-preview {
+  margin-bottom: var(--space-5);
+}
+@media (width < 640px) {
+.prep-activity-copy h2 {
+    font-size: var(--style-title-2-size);
+    line-height: var(--style-title-2-leading);
+    letter-spacing: var(--style-title-2-tracking);
+  }
+.prep-activity-count {
+    font-size: var(--style-figure-size);
+    line-height: var(--style-figure-leading);
+    letter-spacing: var(--style-figure-tracking);
+  }
+.prep-attention,
+  .prep-kept {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+}
+/* ---- batch 2: the data page's freshness line and update scene, issue cards, version rows,
+ * the storage breakdown. The work area (.prep-*) is shared by the preparation and update
+ * scenes; these rules only add what the returning-user surfaces need. ---- */
+.data-readiness-line {
+  margin: 0 0 var(--space-5);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.data-readiness-line > span:empty { display: none; }
+.prep-scene {
+  margin-bottom: var(--space-5);
+}
+.prep-scene-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-2) 0 var(--space-4);
+}
+.prep-scene-head h2 {
+  margin: 0;
+  font-size: var(--style-title-2-size);
+  line-height: var(--style-title-2-leading);
+  letter-spacing: var(--style-title-2-tracking);
+}
+.prep-scene-head h2 .muted {
+  font-weight: var(--weight-body);
+  font-size: var(--style-body-size);
+  line-height: var(--style-body-leading);
+}
+.prep-scene-head .flow {
+  align-items: center;
+}
+.prep-sources {
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+}
+/* A case (N6): the move as three figures, the owner's checks as one line of words under them, an
+   earlier decision on the listing as a quiet line, the owner's own actions as a plain list. */
+.issue-move.stat-strip {
+  --cols: 3;
+  grid-template-columns: var(--grid-equal);
+  max-width: var(--width-md);
+}
+.issue-checks {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.issue-evidence-item + .issue-evidence-item {
+  margin-top: var(--space-4);
+}
+.issue-evidence-item h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--style-headline-size);
+  line-height: var(--style-headline-leading);
+}
+.issue-earlier {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.issue-earlier li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.issue-earlier .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+  margin-top: var(--space-05);
+}
+.issue-earlier strong {
+  color: var(--text);
+  font-weight: var(--weight-label);
+}
+.issue-owner-actions {
+  margin-top: var(--space-4);
+  color: var(--muted);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.issue-owner-label {
+  display: flex;
+  align-items: center;
+  margin: 0 0 var(--space-1);
+}
+.issue-owner-actions ul {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+.issue-decision {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.issue-decision>.icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: none;
+  color: var(--accent);
+}
+.issue-decision>span {
+  flex: 1 1 var(--width-xs);
+}
+.issue-options {
+  margin: var(--space-3) 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.issue-options legend {
+  font-size: var(--style-caption-size);
+  line-height: var(--style-caption-leading);
+  font-weight: var(--weight-strong);
+  letter-spacing: var(--style-caption-tracking);
+  color: var(--muted); /* round 89: a section label is grey and a little bold, never uppercase */
+  margin-bottom: var(--space-2);
+}
+/* Permitted responses (round 22, law 23): rows with a separator, words until chosen; the chosen one
+   on the accent's tint; an unavailable one dimmed. */
+.issue-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--edge-hair);
+  border-radius: 0;
+  cursor: pointer;
+  background: transparent;
+}
+.issue-option:first-of-type {
+  border-top: 0;
+}
+.issue-option:hover {
+  background: var(--ds-control-hover);
+}
+.issue-option.is-selected {
+  background: var(--fill-selected);
+  border-radius: var(--radius-control);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) var(--tint-edge), transparent);
+}
+.issue-option.is-selected + .issue-option {
+  border-top-color: transparent;
+}
+.issue-option input {
+  margin-top: var(--space-1);
+  flex: none;
+}
+.issue-option strong {
+  display: block;
+  font-size: var(--style-headline-size);
+  line-height: var(--style-headline-leading);
+}
+.issue-option small {
+  display: block;
+  color: var(--muted);
+}
+
+@media (width < 640px) {
+.prep-scene-head {
+    padding-bottom: var(--space-2);
+  }
+.issue-decision {
+    padding: var(--space-2) var(--space-3);
+  }
+}
+/* ---- Research Lab readiness states, guided sources and the in-page experiment work ---- */
+/* A table's title keeps its line beside the filter box (the box asks for the whole row). */
+.table-toolbar h2 {
+  flex: none;
+}
+.lab-state {
+  min-width: 0;
+}
+.lab-state h2 {
+  font-size: var(--style-title-2-size);
+  margin: var(--space-1) 0 var(--space-2);
+  line-height: var(--style-title-2-leading);
+  letter-spacing: var(--style-title-2-tracking);
+}
+.lab-state .mono {
+  word-break: break-all;
+}
+.lab-state[data-state=loading] {
+  border-style: dashed;
+}
+.lab-state[data-state=refused] .mono {
+  color: var(--danger-ink);
+}
+.lab-guide-grid {
+  display: grid;
+  grid-template-columns: var(--grid-2);
+  gap: var(--space-5);
+  margin-top: var(--space-4);
+}
+.lab-guide-option {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: var(--space-4) var(--space-4);
+  background: var(--subtle-surface);
+}
+.lab-guide-option h3 {
+  font-size: var(--style-headline-size);
+  line-height: var(--style-headline-leading);
+  margin: 0 0 var(--space-2);
+}
+.lab-produces {
+  min-width: 0;
+}
+/* Field groups: a title, whitespace, no hairline boxes; the checklist and the editor are wells. */
+.lab-control-group {
+  border: 0;
+  padding: 0;
+  margin: var(--space-6) 0 0;
+}
+.lab-control-group > h3 { border: 0; padding: 0 0 var(--space-2); margin: 0; }
+.lab-control-group + .lab-control-group {
+  border-top: 1px solid var(--edge-hair);
+  margin-top: var(--space-2);
+  padding-top: var(--space-5);
+}
+.lab-control-group h3 {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  font-weight: var(--weight-label);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+  margin: 0 0 var(--space-3);
+}
+.lab-control-group .field small {
+  display: block;
+}
+.lab-control-group .form-grid {
+  align-items: start;
+}
+/* The chips took the selects (round 56): a group left with the checklist alone gives it the whole
+   width and its names flow in columns; a group of exactly three fields (the interval and the
+   cutoff) reads as one row. */
+.lab-control-group .field:has(> .choice-list) { grid-column: 1 / -1; }
+.lab-control-group .form-grid:has(> :nth-child(3):last-child) { grid-template-columns: var(--grid-3); }
+.lab-control-group .field {
+  align-content: start;
+}
+.field.is-invalid .ui-field,
+.ui-field[aria-invalid="true"] {
+  border-color: var(--danger-ink);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger-ink) var(--tint-edge), transparent);
+}
+.field.is-invalid > label {
+  color: var(--danger-ink);
+}
+.field small.field-error {
+  color: var(--danger-ink);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.editor-workbench .controls-content {
+  min-height: 0;
+}
+.lab-work,
+.lab-workspace + [data-prerequisites] { /* U60: what the flow needs stands under the work surface by the same step */
+  margin-top: var(--space-5);
+}
+.lab-work .lab-standing {
+  margin: var(--space-2) 0 0;
+}
+.lab-work-head .caption {
+  margin-top: var(--space-2);
+}
+@media (width < 900px) {
+.lab-guide-grid {
+    grid-template-columns: var(--grid-1);
+  }
+}
+@media (width < 640px) {
+.lab-state h2 {
+    font-size: var(--style-title-3-size);
+    line-height: var(--style-title-3-leading);
+    letter-spacing: var(--style-title-3-tracking);
+  }
+}
+/* ---- the selected session's own facts beside the holdings (a stored replay at one date) ---- */
+.holdings-section .session-facts {
+  --cols: 6;
+  grid-template-columns: var(--grid-equal);
+  border-top: 0; /* the facts are a rail on the section */
+  border-bottom: 1px solid var(--line);
+  margin: 0 0 var(--space-4);
+}
+.holdings-section .session-facts .stat-value {
+  font-size: var(--style-figure-size);
+  line-height: var(--style-figure-leading);
+  letter-spacing: var(--style-figure-tracking);
+}
+@media (width < 1180px) {
+.holdings-section .session-facts {
+    grid-template-columns: var(--grid-3);
+  }
+}
+@media (width < 640px) {
+.holdings-section .session-facts {
+    grid-template-columns: var(--grid-2);
+  }
+}
+/* A percent's unit is set light beside the figure (Mercury's statement figures). */
+.num-unit {
+  font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); /* round 89: on the ladder (the .72em unit read 8.6 px in a fact) */
+  font-weight: var(--weight-label);
+  color: var(--muted);
+  margin-left: 1px;
+}
+/* The sector composition is the one meter (law 89): its bar and legend rules live with the meter. */
+/* Sign colour: a gain reads in the good ink; a loss is ink with its sign. */
+.num.gain { color: var(--good-ink); }
+.num.loss { color: var(--text); }
+/* A slotted list is a table without its box (law 73; S1, 2026-09-22, the user's still of the
+   Task Center: "为什么 completed 会对不齐"). The slots were floors sized by hand in em per position
+   (13, 7, 6, 10, 10, 10; 8, 14, 17, 11): a fact longer than its floor widened its slot, and every
+   fact before it moved with it. Now the list is one grid of named columns -- the lead, the title,
+   up to eight facts, the time, the actions, the way -- and each row a subgrid of it, so a fact's
+   column follows its longest value in the list and every row's facts start on the same
+   lines; captions give way to the title's shared floor and wrap within their track. A fact no
+   row carries is a column of no width (an empty slot has no pad). It holds while
+   a row is one line -- a list of 640 at least; below, the facts go under the
+   title as before. Responsive facts fold before a dense row stacks. The runs list: a run's state and its duration, its starter, id, kind, stage
+   and verified count; a record's reference, interval, input and holdings; the date last. A list
+   of evidence rows, of retained sessions or of the Team's roster is one too (their own slots were
+   9 / 5 em, 6 / 15 / 15 em and 18 / 22 / 13.5 em). */
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) {
+  grid-template-columns: [lead] auto [ref] auto [main] minmax(min(var(--row-title-floor), 100%), 1fr) [f1] minmax(0, auto) [f2] minmax(0, auto) [f3] minmax(0, auto) [f4] minmax(0, auto) [f5] minmax(0, auto) [f6] minmax(0, auto) [f7] minmax(0, auto) [f8] minmax(0, auto) [time] auto [actions] auto [way] auto [end];
+}
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > * { grid-column: 1 / -1; }
+@container (width >= 640px) {
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row { display: grid; grid-template-columns: subgrid; column-gap: 0; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props { display: contents; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > :is(.row-dot, .feature-icon, .mark) { grid-column: lead; margin-inline-end: var(--slot-gap); }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-main { grid-column: main; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > * { padding-inline-start: var(--space-4); }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > :first-child { padding-inline-start: var(--slot-gap); }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > [data-empty] { padding: 0; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > :nth-child(1) { grid-column: f1; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > :nth-child(2) { grid-column: f2; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > :nth-child(3) { grid-column: f3; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > :nth-child(4) { grid-column: f4; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > :nth-child(5) { grid-column: f5; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > :nth-child(6) { grid-column: f6; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > :nth-child(7) { grid-column: f7; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > :nth-child(8) { grid-column: f8; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-time { grid-column: time; min-width: 0; padding-inline-start: var(--slot-gap); }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .row-actions { grid-column: actions; }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > :is(.chevron-slot, .icon:last-of-type) { grid-column: way; margin-inline-start: var(--slot-gap); }
+.card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > .list-row-ref { grid-column: ref; grid-row: 1; padding-inline: 0 var(--space-3); } /* placed first, whole: after the name the auto-placement cursor has passed its column */
+}
+/* The compact forward standing keeps its daily owner status whole at split width. A pair
+   of caption lines uses the regular row's budget, rather than clipping the status or growing
+   an eligible list row beyond it. The title, other slots and control steps keep their rules. */
+.forward-row > .list-row-props > [data-column=update] {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+@container (width >= 640px) {
+  .card-list > .forward-row {
+    padding-block: min(var(--space-2), calc((var(--row-regular) - 2 * var(--style-footnote-leading)) / 2));
+  }
+}
+/* The evidence rows (round 76): the state's word in one slot; an issuer's two figures in two
+   slots, right-aligned on their unit, its band after them. */
+.evidence-row[data-kind="issuer"] .list-row-props > span:nth-child(2), .evidence-row[data-kind="issuer"] .list-row-props > span:nth-child(3) { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+/* First use on the Home (round 74): the preparation's section under the groups. */
+.first-use { margin-bottom: var(--space-6); }
+/* The Home's groups (round 65): a breath between one list and the next head. */
+.home-groups .group-head + :is(.card-list, .section-empty) + .group-head {
+  margin-top: var(--space-4);
+}
+/* S (law 88): a source's locator rolls on its own line inside the source's row, its words under it. The
+   list's one column is its own width, never the longest locator's (the clip census, 2026-09-24: the rows ran
+   past the column and the section cut them), and a row's words may shrink so the locator can roll. */
+.prep-sources { grid-template-columns: minmax(0, 1fr); }
+.prep-sources li > :not(.icon) { min-width: 0; }
+.prep-sources .run-ref { max-width: 100%; }
+.prep-sources .prep-source-words { display: block; color: var(--muted); }
+/* The Alpha comparison's choice is a workspace (law 148), at a form's measure, not the lane's. */
+.study-compare-form { max-width: var(--width-md); } /* its fields are a form's (320) with the box's inset */
+/* The Lab's header at a narrow lane (the inset census, 2026-09-24): the property chips take the row, the
+   `produces` note goes under them -- side by side the chips ran past the box and it cut them. */
+@container reading-lane (width < 640px) {
+  .declaration-context { flex-wrap: wrap; }
+  /* a chip too long for the lane stays whole: the row rolls on one line, as a whole (FT5, the user's rule of 2026-09-22: too long is a roll of the box, never a bar per value) */
+  .declaration-context > .property-row { flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding-bottom: var(--space-1); }
+  .declaration-context > .property-row > * { flex: none; }
+  /* the interval and the cutoff: one row on a wide lane, one field a line on a narrow one (their dates showed 71 of 97 px) */
+  .lab-control-group .form-grid:has(> :nth-child(3):last-child) { grid-template-columns: var(--grid-1); }
+}

@@ -1,0 +1,88 @@
+# Local secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
+config/*.local.json
+.codex/*.local.json
+/AGENTS.override.md
+
+# Python environments, caches, and test output
+.venv/
+/.venv-docs/
+.uv-cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+/site/
+*.egg-info/
+**/.pytest-tmp-*/
+
+# Long-lived local state and generated experiment evidence
+/experiments/
+/tmp/
+/workspaces/
+/output/
+
+# Rebuilt from workbench-source; do not store a second copy of UI source.
+/src/alphalattice/interface/local_application/assets/workbench.html
+/src/alphalattice/interface/local_application/assets/workbench.css
+/src/alphalattice/interface/local_application/assets/workbench.js
+/src/alphalattice/interface/local_application/assets/workbench.zh.js
+/src/alphalattice/interface/local_application/assets/workbench-prelude.js
+/src/alphalattice/interface/local_application/assets/workbench-manifest.json
+
+# Generated artifacts and provider payloads must not enter source history
+**/artifacts/
+**/provider-payloads/
+**/provider_payloads/
+
+# Data stores, columnar data, model dumps, and local checkpoints
+*.duckdb
+*.duckdb.*
+*.sqlite
+*.sqlite3
+*.parquet
+*.arrow
+*.feather
+*.pkl
+*.pickle
+*.joblib
+*.npy
+*.npz
+*.onnx
+*.safetensors
+*.checkpoint
+
+# Logs, profiles, and OS/editor files
+*.log
+*.prof
+*.pstats
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.venv-retrieval/
+.codex/native-research-sequences.local.lock
+.codex/native-sequence-*/
+.venv-gpu/
+.claude/settings.local.json
+
+# Installed product browser dependencies and private browser evidence
+/third_party/playwright/node_modules/
+/third_party/playwright/.browsers/
+/third_party/code-analysis/node_modules/
+/.playwright-cli/
+
+# setuptools staging from `uv build` (the wheel test and scripts/release/wheel_build.py); never source
+/build/

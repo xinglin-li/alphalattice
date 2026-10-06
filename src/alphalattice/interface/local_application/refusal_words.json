@@ -1,0 +1,1206 @@
+{
+ "REFUSED_ALTERNATIVE_EVIDENCE_EXPIRED": {
+  "detail": "The evidence analysis this review would read has expired; prepare the evidence again and have it analysed, then ask for the review.",
+  "next_action": "PREVIEW_AND_PREPARE_AGAIN"
+ },
+ "REFUSED_AWAITING_ALTERNATIVE_EVIDENCE": {
+  "detail": "No current evidence analysis answers this book's issuers; prepare the evidence and have it analysed first, as the book's evidence preview offers.",
+  "next_action": "PREPARE_AND_ANALYSE_THE_EVIDENCE"
+ },
+ "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY": {
+  "detail": "No issuer registry and listing authority are admitted for this workspace, so a book's holdings cannot be named as issuers and no evidence is prepared; a person admits them when serving the Host.",
+  "next_action": "ADMIT_ISSUER_REGISTRY_AND_LISTING_AUTHORITY"
+ },
+ "REFUSED_NO_ADMITTED_EVIDENCE_RUNTIME": {
+  "detail": "This workspace has no admitted evidence runtime, so nothing is acquired; a person admits it when serving the Host.",
+  "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME"
+ },
+ "REFUSED_NO_ADMITTED_REVIEW_ACTOR": {
+  "detail": "No reviewer is admitted for a managed review in this workspace; the CRO's review is written by an agent from its bundle (`bundle prepare --role CRO`).",
+  "next_action": "PREPARE_THE_CRO_BUNDLE"
+ },
+ "REFUSED_NO_BOOK_TO_REVIEW": {
+  "detail": "This workspace holds no sealed book to review yet; a Portfolio study publishes one.",
+  "next_action": "RUN_A_PORTFOLIO_STUDY"
+ },
+ "activity.event_invalid": {
+  "detail": "The event does not meet the activity event contract; `schema show EVENT_DECLARE` names its fields.",
+  "next_action": "READ_ACTIVITY_EVENT_CONTRACT"
+ },
+ "activity.event_task_unknown": {
+  "detail": "The event names a Task this workspace does not hold; name one `task list` shows, or leave the Task out.",
+  "next_action": "NAME_AN_EXISTING_TASK_OR_OMIT_IT"
+ },
+ "activity.failure_detail_withheld": {
+  "detail": "The request failed for a reason the Host does not answer in words, since its text could carry a value or a path; the Host's log names it. Check the request against `schema show <operation>` and send it again.",
+  "next_action": "READ_CAPABILITIES_SCHEMA"
+ },
+ "activity.storage_unavailable": {
+  "detail": "This Host was composed without its activity ledger, so it records no events and answers no activity; the Host `alphalattice serve` starts keeps one.",
+  "next_action": "SERVE_THE_WORKSPACE_HOST"
+ },
+ "actor_execution.specialist_answer_problems": {
+  "detail": "The specialist answer has shape or reference problems. Fix the fields named in the returned corrections in the assigned answer file, then have the lead submit it again.",
+  "next_action": "CORRECT_THE_ASSIGNED_ANSWER"
+ },
+ "actor_execution.specialist_reference_invalid": {
+  "detail": "An answer reference is empty or outside its format. Use the exact references listed in the assigned bundle.",
+  "next_action": "USE_THE_BUNDLE_REFERENCES"
+ },
+ "actor_execution.specialist_text_empty": {
+  "detail": "The specialist answer has no text. Write the bounded answer in the assigned file, then have the lead submit it.",
+  "next_action": "WRITE_THE_ASSIGNED_ANSWER"
+ },
+ "agent_bundle.analyst_task_required": {
+  "detail": "An Analyst's bundle is one prepared packet's, so it takes the preparation's `task_id` beside the book, and a coverage run's `evidence_unit_id`, as the preparation's `packet_<unit>` request writes them. Nothing was prepared.",
+  "next_action": "GIVE_THE_PACKETS_TASK_AND_UNIT"
+ },
+ "agent_bundle.analyst_unit_required": {
+  "detail": "This preparation is a coverage run, whose packets are one unit's each: give the `evidence_unit_id` of a unit named after the colon, as its `packet_<unit>` request writes it. Nothing was prepared.",
+  "next_action": "GIVE_THE_PACKETS_TASK_AND_UNIT"
+ },
+ "agent_bundle.answer_settled": {
+  "detail": "This bundle's corrections ran out: the Host kept the acceptable part of the last answer they allowed and reads no other. Nothing was submitted; return your receipt to your lead (the same answer sent again reads it).",
+  "next_action": "RETURN_THE_RECEIPT_TO_YOUR_LEAD"
+ },
+ "agent_bundle.directory_holds_another_bundle": {
+  "detail": "This directory already holds another bundle, and one directory holds one bundle, so nothing was prepared. Name a new, empty directory.",
+  "next_action": "NAME_A_NEW_DIRECTORY"
+ },
+ "agent_bundle.directory_not_absolute": {
+  "detail": "A bundle's directory is named by its absolute path, so the Host and the agent read the same place; nothing was prepared.",
+  "next_action": "NAME_THE_DIRECTORY_BY_ITS_ABSOLUTE_PATH"
+ },
+ "agent_bundle.not_prepared": {
+  "detail": "This directory is not a bundle this workspace prepared. Nothing was submitted; tell your lead.",
+  "next_action": "TELL_YOUR_LEAD"
+ },
+ "agent_bundle.preparation_stale": {
+  "detail": "The evidence or the book changed after this bundle was prepared, so it no longer matches what the Host holds. Nothing was submitted; tell your lead, who prepares a new bundle.",
+  "next_action": "TELL_YOUR_LEAD"
+ },
+ "agent_bundle.role_unknown": {
+  "detail": "A bundle needs one of the specialist roles named in `schema show AGENT_BUNDLE_PREPARE`. Nothing was prepared.",
+  "next_action": "NAME_AN_INSTALLED_SPECIALIST_ROLE"
+ },
+ "agent_bundle.reference_bound_exceeded": {
+  "detail": "This Task holds more references than one specialist bundle can carry. Nothing was prepared; tell your lead to select a smaller assigned Task.",
+  "next_action": "TELL_YOUR_LEAD"
+ },
+ "agent_bundle.specialist_task_changed": {
+  "detail": "The assigned Task changed after this bundle was prepared. Nothing was submitted; tell your lead to prepare a new bundle for the Task's current record.",
+  "next_action": "TELL_YOUR_LEAD"
+ },
+ "agent_bundle.specialist_task_required": {
+  "detail": "This specialist's bundle takes the exact assigned Task's `task_id`. Nothing was prepared; give that Task id to your lead.",
+  "next_action": "TELL_YOUR_LEAD"
+ },
+ "native_bridge.accepted_answer_not_recorded": {
+  "detail": "The answer is accepted, but its Team exchange could not be recorded. Retry the same accepted answer from its original bound session.",
+  "next_action": "RETRY_FROM_THE_ORIGINAL_SESSION"
+ },
+ "agent_bundle.seal_bound_exceeded": {
+  "detail": "The answer is within its format, but the review it would seal exceeds a bound of the record at the places named under 'bounds', so nothing was submitted. This is the Host's limit, not the answer's: tell your lead, who reports it with these bounds.",
+  "next_action": "TELL_YOUR_LEAD"
+ },
+ "alpha_research.authoring_model_recipe_not_admissible": {
+  "detail": "The declaration's model, or one of its parameters, is outside what the installed Alpha capability admits; `study controls` lists each admitted model and every parameter's range.",
+  "next_action": "EDIT_DECLARATION_AND_PLAN"
+ },
+ "alpha_research.development_receipt_child_unavailable": {
+  "detail": "A file this Alpha study's receipt names is missing or unreadable in the workspace, so its readback is not complete; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "alpha_research.development_training_policy_not_installed": {
+  "detail": "The model the declaration names needs a training policy this build does not install; choose a model `study controls` lists for this study kind.",
+  "next_action": "EDIT_DECLARATION_AND_PLAN"
+ },
+ "alpha_research.development_work_budget_exceeded": {
+  "detail": "The study's fit, prediction and metric work exceeds its admitted budget; declare fewer folds, candidates or parameter values, or a budget within its bound, and the preview shows the work before it runs.",
+  "next_action": "EDIT_DECLARATION_AND_PLAN"
+ },
+ "alpha_research.factor_decision_selection_required": {
+  "detail": "An Alpha study plans from a Factor study's recorded curation: give the Factor study's Task (`factor_task_id`) and its curation receipt (`curation_receipt_hash`), as the Factor study's handoff offers them.",
+  "next_action": "PLAN_FROM_THE_FACTOR_HANDOFF"
+ },
+ "alpha_research.frozen_inference_manifest_invalid": {
+  "detail": "The installed strategy's frozen inference record does not read as its contract says, so nothing is scored; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "alpha_research.frozen_input_content_invalid": {
+  "detail": "A frozen input the score reads no longer matches the content its record names, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "alpha_research.heterogeneous_closure_file_absent": {
+  "detail": "A file the installed strategy's model closure names is missing from the workspace, so its scores are not made; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "alternative_evidence.acquisition_deadline_exceeded": {
+  "detail": "This unit's official acquisition ran past the window its request was admitted for, so it stopped; the filings it fetched are kept for the next attempt. Preview and prepare again, which opens a new window, or ask the person to serve the Host with a longer `--sec-acquisition-window-seconds`.",
+  "next_action": "PREVIEW_AND_PREPARE_AGAIN"
+ },
+ "alternative_evidence.answer_problems": {
+  "detail": "The answer was not accepted as written: each problem names its item and what to correct. Correct them and submit again within the rounds left.",
+  "next_action": "CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN"
+ },
+ "alternative_evidence.book_sources_short": {
+  "detail": "This book cannot be reviewed under the installed sources: none of its units holds a source document for enough of its issuers for the floor the installed Evidence package sets, so a preparation would fail every one, as `coverage.units_short_of_sources` names with the issuers without a source. It can be reviewed after the person consents to official SEC acquisition, which reads every holding's filing index at one cutoff; a package covers one unit, and units prepared under different packages cannot be reviewed together (`source_ways`).",
+  "next_action": "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE"
+ },
+ "alternative_evidence.delivery_continuation_stale": {
+  "detail": "The packet changed after its first part was read -- it was prepared or continued again -- so this part would not continue it, and nothing was delivered. Read the packet again from its first part.",
+  "next_action": "READ_THE_PACKET_FROM_ITS_FIRST_PART"
+ },
+ "alternative_evidence.document_set_empty": {
+  "detail": "None of this unit's issuers holds a source document at its cutoff, so it had nothing to read. Under the recorded package, preparing again finds nothing again: official SEC acquisition, the person's decision, reads every holding at one cutoff (`source_ways`), and under it preparing again retries what could not be fetched.",
+  "next_action": "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE"
+ },
+ "alternative_evidence.external_analysis_binding_changed": {
+  "detail": "The packet changed after the Analyst's bundle was prepared, so the answer does not meet it; nothing was submitted. Prepare a new bundle from the book's readback and answer that.",
+  "next_action": "PREPARE_A_NEW_BUNDLE"
+ },
+ "alternative_evidence.issuer_not_in_registry": {
+  "detail": "An issuer in the declared scope is absent from the official SEC registry. Check the issuer scope against the admitted input and official registry, then run preflight with the corrected scope.",
+  "next_action": "CHECK_THE_ISSUER_SCOPE_AND_PREFLIGHT"
+ },
+ "alternative_evidence.litigation_continuation_budget_exhausted": {
+  "detail": "The continuation's declared allowance is used up; what it read stays delivered, and what remains is named.",
+  "next_action": "ANSWER_FROM_THE_EVIDENCE_READ"
+ },
+ "alternative_evidence.litigation_continuation_limits_changed": {
+  "detail": "This chain was continued under other session and window limits; continue it under the limits it began with.",
+  "next_action": "CONTINUE_UNDER_THE_CHAINS_LIMITS"
+ },
+ "alternative_evidence.litigation_continuation_nothing_pending": {
+  "detail": "This packet's reading plan has nothing left to read.",
+  "next_action": "ANSWER_FROM_THE_EVIDENCE_READ"
+ },
+ "alternative_evidence.litigation_continuation_prior_mismatch": {
+  "detail": "The continuation names a receipt and span set other than this packet's own.",
+  "next_action": "SEND_THE_PACKETS_CONTINUATION_REQUEST"
+ },
+ "alternative_evidence.live_source_missing": {
+  "detail": "This unit was planned under official SEC acquisition, and this Host was served without it, so it could not read its filings. Ask the person to serve the Host with `--sec-network-consent`, or preview again, which plans under the recorded package this Host reads.",
+  "next_action": "SERVE_WITH_OFFICIAL_ACQUISITION_OR_PREVIEW_AGAIN"
+ },
+ "alternative_evidence.matter_selection_policy_retired": {
+  "detail": "The packet was prepared under a matter selection this build retired.",
+  "next_action": "PREVIEW_AND_PREPARE_AGAIN"
+ },
+ "alternative_evidence.minimum_entity_coverage_not_met": {
+  "detail": "Too few of this unit's issuers hold a source document at its cutoff for the installed package's floor; its code names the coverage reached and needed. Under the recorded package, preparing again fails the same way: official SEC acquisition, the person's decision, reads every holding at one cutoff (`source_ways`), and under it preparing again retries what could not be fetched.",
+  "next_action": "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE"
+ },
+ "alternative_evidence.preparation_superseded": {
+  "detail": "This packet was prepared under a contract the workspace has since superseded.",
+  "next_action": "PREVIEW_AND_PREPARE_AGAIN"
+ },
+ "alternative_evidence.prepared_book_scope_mismatch": {
+  "detail": "This packet's unit is no longer one of the book's units at its cutoff -- the book's scope moved -- so its answer cannot be admitted; nothing was submitted. Prepare the book again and answer the new packet.",
+  "next_action": "PREPARE_THE_BOOK_AGAIN"
+ },
+ "alternative_evidence.sec_acquisition_failed": {
+  "detail": "The bounded SEC acquisition did not complete. Its sanitized cause chain names the connection failure or HTTP status; resolve that cause and run preflight before retrying with the same admitted scope.",
+  "next_action": "READ_THE_SOURCE_CAUSE_AND_PREFLIGHT"
+ },
+ "alternative_evidence.sec_http_status_invalid": {
+  "detail": "The official SEC source answered an inadmissible HTTP status ({subject}). Check source availability and the admitted scope before retrying; no source body or headers are shown.",
+  "next_action": "CHECK_SOURCE_STATUS_AND_PREFLIGHT"
+ },
+ "alternative_evidence.sec_retryable_status": {
+  "detail": "The official SEC source answered retryable HTTP status {subject}. The bounded attempt did not complete; check source availability before retrying within the admitted budget.",
+  "next_action": "CHECK_SOURCE_STATUS_AND_PREFLIGHT"
+ },
+ "alternative_evidence.session_windows_absent": {
+  "detail": "This packet's reading session read no matter windows, so there are none to deliver; read the packet without `session_windows`.",
+  "next_action": "READ_THE_PACKET_WITHOUT_THE_DETAIL"
+ },
+ "alternative_evidence.task_resource_authority_mismatch": {
+  "detail": "This packet was prepared under the workspace's earlier Evidence {subject}, which has changed since, so nothing prepared under it can be read or answered: an install replaces the package, and every packet prepared under the one before goes stale. Nothing was submitted. Prepare the unit again (the book's preview, then prepare) and give the Analyst its new packet; units prepared under different packages cannot be reviewed together.",
+  "next_action": "PREPARE_THE_UNIT_AGAIN"
+ },
+ "alternative_evidence.topic_coverage_absent": {
+  "detail": "This packet holds no topic coverage to show ({subject}); read the packet itself.",
+  "next_action": "READ_THE_PACKET"
+ },
+ "alternative_evidence.unit_failed": {
+  "detail": "This unit stopped with `{subject}`, a refusal of the preparation's own records or work rather than of its sources. Preparing the book again retries it and keeps every unit that completed; if it stops with the same code again, report the code.",
+  "next_action": "PREPARE_AGAIN_THEN_REPORT_THE_CODE"
+ },
+ "alternative_evidence.view_filters_not_applicable": {
+  "detail": "The view's filters -- issuer, topic, days or dates -- do not apply to `{subject}`; read it without them.",
+  "next_action": "READ_WITHOUT_THE_FILTERS"
+ },
+ "catalog.replace_blocked": {
+  "detail": "A file this work writes stayed open in another program (a virus scanner, a backup or a sync client) through every retry, so it was not replaced, and what was written before it stands; once that program lets the workspace's files go, continue the same work from its readback, which offers its resume (for a stopped preparation, `preparation confirm --from <its readback>`).",
+  "next_action": "RESUME_ONCE_THE_FILE_IS_RELEASED"
+ },
+ "chief_risk_officer.answer_problems": {
+  "detail": "The review answer was not accepted as written: each problem names its item and what to correct. Correct them and submit again within the rounds left.",
+  "next_action": "CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN"
+ },
+ "chief_risk_officer.delivery_continuation_stale": {
+  "detail": "The book's dossier changed after its first part was read, so this part would not continue it, and nothing was delivered. Read the dossier again from its first part.",
+  "next_action": "READ_THE_DOSSIER_FROM_ITS_FIRST_PART"
+ },
+ "chief_risk_officer.dossier_cutoff_invalid": {
+  "detail": "A review reads the book as of one cutoff, the earliest of its units', and {subject}: its units were prepared at different cutoffs, and late evidence is never admitted as early, so these analyses cannot be reviewed together. Official SEC acquisition, with the person's consent, prepares every unit at one cutoff; recorded packages cover one unit each and replace one another, so units prepared under different packages cannot be reviewed together.",
+  "next_action": "PREPARE_EVERY_UNIT_AT_ONE_CUTOFF"
+ },
+ "chief_risk_officer.external_review_binding_changed": {
+  "detail": "The dossier, the review policy or the answer's schema changed after the CRO's bundle was prepared, so the answer does not meet them; nothing was submitted. Prepare a new bundle from the book's readback and answer that.",
+  "next_action": "PREPARE_A_NEW_BUNDLE"
+ },
+ "chief_risk_officer.external_review_context_changed": {
+  "detail": "What the CRO read changed after the review was answered -- the book's dossier is another -- so the review is not admitted. Prepare a new bundle from the book's readback and answer that.",
+  "next_action": "PREPARE_A_NEW_BUNDLE"
+ },
+ "chief_risk_officer.finding_handle_unknown": {
+  "detail": "No finding of the dossier read has this handle; use a handle the dossier names, as its findings list them.",
+  "next_action": "USE_A_HANDLE_THE_DOSSIER_NAMES"
+ },
+ "chief_risk_officer.submission_format_retired": {
+  "detail": "This review was queued before the answer format and never ran; its assessment is no longer admitted, so the CRO answers again. Prepare a new bundle from the book's readback and answer that.",
+  "next_action": "PREPARE_A_NEW_BUNDLE"
+ },
+ "content_store.artifact_missing": {
+  "detail": "The requested artifact {subject} is not kept in this workspace. Read workspace show to find a kept input or result. If a completed record names this missing file, restore a backup that holds it into a new folder and work there.",
+  "next_action": "READ_WORKSPACE_SHOW_OR_RESTORE_A_BACKUP"
+ },
+ "evidence_review.explicit_sec_network_consent_required": {
+  "detail": "SEC acquisition was not explicitly consented to by this command. Run preflight, then add --network-consent only with the person's permission; the workspace network control must also allow acquisition.",
+  "next_action": "PREFLIGHT_AND_GIVE_EXPLICIT_SEC_CONSENT"
+ },
+ "evidence_review.materialization_has_no_admitted_documents": {
+  "detail": "None of the package's issuers holds a document at its cutoff, so there is nothing to install: {subject}. An issuer whose filing index at the cutoff shows nothing filed in the window has none to hold, and a package needs at least one document. `next_commands` holds the way on: after an official acquisition in which one failed, the same acquisition at that cutoff, which may obtain it, and its check; otherwise the setup's own check.",
+  "next_action": "ACQUIRE_AGAIN_AT_THE_CUTOFF_OR_NAME_ISSUERS_THAT_FILED"
+ },
+ "evidence_review.materialization_issuer_coverage_incomplete": {
+  "detail": "Too few of the package's issuers hold a document at its cutoff for its coverage floor: {subject}. An issuer whose filing index at the cutoff shows nothing filed in the window holds nothing to count and is left out of the share; one whose acquisition failed or left its filings unread counts against it. `next_commands` holds the way on: after an official acquisition, the same acquisition at that one cutoff, which fetches again what failed and leaves the quiet ones uncounted, and its check; after a recorded import, the import's own check. The floor stays the package's.",
+  "next_action": "RUN_THE_OFFERED_WAY_AT_ONE_CUTOFF"
+ },
+ "evidence_review.preflight_requires_a_source": {
+  "detail": "A preflight checks a source before it is installed -- an official acquisition's setup, or a recorded import's records -- and a rebind reads no source, so it has none. Run the rebind without --preflight: it seals a package beside the installed one and binds it only with --install.",
+  "next_action": "RUN_THE_REBIND_WITHOUT_PREFLIGHT"
+ },
+ "evidence_review.sec_user_agent_required": {
+  "detail": "SEC acquisition needs the operator's contact in SEC_USER_AGENT. Configure it locally, then run preflight; the contact value is never printed in this refusal.",
+  "next_action": "CONFIGURE_SEC_CONTACT_AND_PREFLIGHT"
+ },
+ "evidence_review.source_file_unavailable": {
+  "detail": "The recorded import could not read a source file under its {subject} option: `location` names that option, the file relative to it and what the option should hold, and `causes` the sanitized OS cause. Correct the option, then run the import's own check in `next_commands`, which installs nothing; where one directory below the given root holds the named source set, the check is offered there.",
+  "next_action": "CORRECT_THE_SOURCE_OPTION_AND_CHECK_THE_IMPORT"
+ },
+ "evidence_review.workspace_network_not_allowed": {
+  "detail": "The command gave SEC consent, but effective workspace network access is closed. Read the network decision and resolve its named hold or set the workspace control under the person's authority; command consent alone does not open it.",
+  "next_action": "READ_THE_EFFECTIVE_NETWORK_CONTROL"
+ },
+ "execution.cpu_budget_invalid": {
+  "detail": "A CPU budget is `auto` or a whole number of this machine's cores, and one request sets either the budget or the Tasks that may wait, never both or neither.",
+  "next_action": "SET_AUTO_OR_A_WHOLE_NUMBER_OF_CORES"
+ },
+ "factor_research.curation_outside_report_axis": {
+  "detail": "A curation chooses among the factors the study's report selected, and a choice names one outside them; the report's items list them (`study show --section result.evidence_report`).",
+  "next_action": "EDIT_THE_CURATION_AND_SUBMIT_AGAIN"
+ },
+ "factor_research.curation_report_stale": {
+  "detail": "The curation names a report receipt (`expected_receipt_hash`) other than the study's current one; read the study again and curate against the receipt it answers.",
+  "next_action": "READ_THE_STUDY_AND_CURATE_AGAIN"
+ },
+ "factor_research.curation_selection_unavailable": {
+  "detail": "No curation this Factor study recorded has the receipt the plan names; plan from one it recorded, as the study's handoff offers it.",
+  "next_action": "PLAN_FROM_THE_FACTOR_HANDOFF"
+ },
+ "factor_research.evidence_curation_not_host_admitted": {
+  "detail": "The Factor study's curation is not one this Host admitted (`{subject}`); an Alpha study plans only from a curation submitted through the Host. Submit it, then plan from the study's handoff.",
+  "next_action": "SUBMIT_THE_CURATION_THROUGH_THE_HOST"
+ },
+ "factor_research.handoff_authority_field_mismatch": {
+  "detail": "A Factor handoff fixes `{subject}` of the Alpha study it opens: its kind, data, workspaces and publication intent come from the Factor study, and its universe is that study's or a declared sample of it. Leave the field out, or write the value `expected` gives, and plan again.",
+  "next_action": "EDIT_DECLARATION_AND_PLAN"
+ },
+ "factor_research.handoff_selection_mismatch": {
+  "detail": "The declaration's Alpha section names factors, or a factor evidence handle, other than the ones its curation selected; leave them to the handoff, which fills them.",
+  "next_action": "EDIT_DECLARATION_AND_PLAN"
+ },
+ "factor_research.review_limitations_incomplete": {
+  "detail": "A curation acknowledges every limitation the study's review states, and `{subject}` is not acknowledged; add it to `limitations_acknowledged`, as the curation template lists them.",
+  "next_action": "EDIT_THE_CURATION_AND_SUBMIT_AGAIN"
+ },
+ "factor_spec.formula_ref_factor_namespace": {
+  "detail": "A formula reference starts with `factor.`, as the Feature controls name every formula.",
+  "next_action": "READ_FEATURE_CATALOG_CONTROLS_AND_CORRECT_DOCUMENT"
+ },
+ "factor_spec.values_sorted_unique": {
+  "detail": "List the field's values sorted and without repeats, as the Feature controls list them.",
+  "next_action": "READ_FEATURE_CATALOG_CONTROLS_AND_CORRECT_DOCUMENT"
+ },
+ "feature_extension.extensions_page_out_of_range": {
+  "detail": "That page is past the listing's last ({subject}); ask for a page from 1 to the last.",
+  "next_action": "ASK_FOR_A_PAGE_IN_RANGE"
+ },
+ "feature_extension.human_confirmation_required": {
+  "detail": "A person activates or deactivates a formula factor, in the Workbench.",
+  "next_action": "ASK_A_PERSON_TO_CONFIRM"
+ },
+ "feature_input.case_manifest_unavailable": {
+  "detail": "The case names a workspace manifest revision that cannot be read. Inspect the workspace (`workspace show`) and its kept backups (`backup list`); restore a generation that holds the recorded manifest into a new directory before reading this case there.",
+  "next_action": "INSPECT_WORKSPACE_AND_RESTORE_RECORDED_MANIFEST"
+ },
+ "goal.closed_open_a_follow_up": {
+  "detail": "The goal this request works for is closed, so nothing more counts toward it; read its standing (`goal show`), or open a follow-up goal and work under it.",
+  "next_action": "NAME_AN_OPEN_GOAL_OR_NONE"
+ },
+ "goal.first_use_after_preparation": {
+  "detail": "This workspace is prepared already, so its first use is over: the person decides the steps that are theirs on the page the agent names. Open a goal of another kind for this work (`goal schema` prints one to edit).",
+  "next_action": "OPEN_A_GOAL_OF_ANOTHER_KIND"
+ },
+ "goal.first_use_already_opened": {
+  "detail": "This workspace has had its first use: a first-use goal opens once, from the person's sentence, and the person decides each step after it. Open a goal of another kind for this work (`goal schema` prints one to edit).",
+  "next_action": "OPEN_A_GOAL_OF_ANOTHER_KIND"
+ },
+ "goal.first_use_is_not_revised": {
+  "detail": "A first-use goal keeps the person's sentence as they gave it and its hours from its opening, so it is not revised, and no goal becomes one. Submit or abandon it, and open a goal of another kind for other work.",
+  "next_action": "SUBMIT_OR_ABANDON_THE_FIRST_USE"
+ },
+ "goal.goal_id_required": {
+  "detail": "Name the goal by its id: no goal is given and this agent session has taken none.",
+  "next_action": "COPY_THE_GOAL_ID_FROM_THE_GOAL_LIST"
+ },
+ "goal.not_found": {
+  "detail": "No goal in this workspace has that id; `goal list` names every goal by its id.",
+  "next_action": "COPY_THE_GOAL_ID_FROM_THE_GOAL_LIST"
+ },
+ "guanyin.remedy_not_offered": {
+  "detail": "That remedy is not one this incident offers now; the answer lists the remedies it offers and whether each is available.",
+  "next_action": "CHOOSE_AN_OFFERED_REMEDY"
+ },
+ "local_application.confirmation_stale": {
+  "detail": "The Task changed since the hash this request confirms was read; read the Task again (`task show`) and confirm against its current hash.",
+  "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"
+ },
+ "local_application.expected_task_hash_invalid": {
+  "detail": "`expected_task_hash` is a Task record's 64-character hash, as `task show` answers it.",
+  "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"
+ },
+ "local_application.expected_task_hash_required": {
+  "detail": "Recovering a Task is confirmed against the record read: give its current hash (`expected_task_hash`) from `task show` or its recovery view.",
+  "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"
+ },
+ "local_application.request_refused": {
+  "detail": "The Host refused this request for a reason without a product code (`{subject}`; the same fingerprint means the same cause); check it against `schema show <operation>` and send it again.",
+  "next_action": "READ_CAPABILITIES_SCHEMA"
+ },
+ "local_application.strategy_package_not_installed": {
+  "detail": "The selected strategy package `{subject}` is not installed in this workspace; select an installed package and read its controls.",
+  "next_action": "SELECT_STRATEGY_PACKAGE_FROM_CONTROLS"
+ },
+ "local_web.handler_failed": {
+  "detail": "The Host failed on this request in a way it did not expect (`{subject}`; the same fingerprint means the same cause), and nothing it would have written was kept. Send the request once more; if it fails with the same fingerprint, report the request and the fingerprint, and go on with other work.",
+  "next_action": "SEND_ONCE_MORE_THEN_REPORT_THE_FINGERPRINT"
+ },
+ "model_training.preview_required": {
+  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the training inputs again (`training plan`) from the same input and component, then run the plan hash the new answer names.",
+  "next_action": "PLAN_THE_TRAINING_INPUTS_AGAIN"
+ },
+ "native_bridge.message_field_invalid": {
+  "detail": "The message's `{subject}` is empty, longer than 200 characters or holds a control character, so nothing was sent: the Host's activity record holds an id or a reference of at most 200 characters. Send it again with the exact id as it was given, or an exact product reference -- a Task UUID, a 64-hex hash such as a bundle's `bundle_reference`, a History entry id or `case:<hash>`.",
+  "next_action": "SEND_IT_AGAIN_WITH_THE_EXACT_ID_OR_REFERENCE"
+ },
+ "observation.redaction_failed": {
+  "detail": "The event carries a field the activity ledger never keeps (a credential, token or secret, by its name) or a value it cannot record; send it without them.",
+  "next_action": "READ_ACTIVITY_EVENT_CONTRACT"
+ },
+ "observation.source_sequence_collision": {
+  "detail": "This source already recorded another event at that sequence number, or a later one; send each event once, its sequence numbers only rising.",
+  "next_action": "READ_ACTIVITY_EVENT_CONTRACT"
+ },
+ "portfolio_calibration.not_installed": {
+  "detail": "This strategy does not run forward, so nothing binds its score inputs, its calibration or its Portfolio update. A research installation is historical until a person activates one of its reviewed books, which runs its strategy forward: then the score, the calibration and the Portfolio update read that activation.",
+  "next_action": "ASK_A_PERSON_TO_ACTIVATE_A_REVIEWED_BOOK"
+ },
+ "portfolio_calibration.package_binding_mismatch": {
+  "detail": "This strategy's package changed after a person activated it: run its book again and activate the new run.",
+  "next_action": "RUN_THE_BOOK_AGAIN_AND_ACTIVATE_IT"
+ },
+ "portfolio_calibration.plan_required": {
+  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the calibration again (`calibration plan`) for the same package and score, then run the plan hash the new answer names.",
+  "next_action": "PLAN_THE_CALIBRATION_AGAIN"
+ },
+ "portfolio_calibration.result_evidence_invalid": {
+  "detail": "The calibration's stored result does not match the plan, score and observations its record names, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "portfolio_research.alpha_development_required": {
+  "detail": "A book is drafted from an Alpha development study's candidate, and the study named is a model lifecycle replay, which holds models but no candidates; the prerequisites name the development studies on this input, or the way to one.",
+  "next_action": "NAME_AN_ALPHA_DEVELOPMENT_STUDY"
+ },
+ "portfolio_research.alpha_parent_required": {
+  "detail": "A Portfolio study is drafted from an Alpha study's Task, and the Task named is another kind; `study list` names the Alpha studies.",
+  "next_action": "NAME_AN_ALPHA_STUDY"
+ },
+ "portfolio_research.book_end_under_scored": {
+  "detail": "The Alpha candidate scores fewer names than the book selects on its first or last formation ({subject}), and a book starts and ends on a formation its candidate scores; draft it with fewer names per rebalance, or from a candidate whose features cover that session.",
+  "next_action": "DRAFT_WITH_FEWER_NAMES_OR_ANOTHER_CANDIDATE"
+ },
+ "portfolio_research.date_selector_not_portfolio": {
+  "detail": "A session names a Portfolio study's book, and this study holds no book; read it without a session.",
+  "next_action": "READ_IT_WITHOUT_A_SESSION"
+ },
+ "portfolio_research.eligible_pool_short": {
+  "detail": "On {subject} fewer listings are both tradable and scored than the book selects, so the run stopped before writing any of the book; draft it with fewer names per rebalance.",
+  "next_action": "DRAFT_WITH_FEWER_NAMES"
+ },
+ "portfolio_research.session_outside_report": {
+  "detail": "The session named is not one of this study's book sessions, so no position was read; name one of the sessions its readback lists.",
+  "next_action": "NAME_ONE_OF_THE_STUDYS_SESSIONS"
+ },
+ "portfolio_strategy_lab.artifact_absent": {
+  "detail": "A stored file this study's record names is absent from the workspace, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "portfolio_strategy_lab.artifact_tampered": {
+  "detail": "A stored artifact of this study no longer matches the hash its record names, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "portfolio_strategy_lab.eligible_pool_short": {
+  "detail": "On {subject} fewer listings are both tradable and scored than the strategy book selects per rebalance, so the run stopped before writing any of its book. Read that session's data issues (`issue list`) and the strategy's scoring (`score show`); a book whose controls admit it runs again with fewer names per rebalance (`top_k`).",
+  "next_action": "READ_THE_SESSIONS_DATA_AND_SCORES"
+ },
+ "portfolio_update.eligible_pool_short": {
+  "detail": "On {subject} fewer listings are both tradable and scored than the active book selects per rebalance, so the update stopped before proposing its positions. Read that session's data issues (`issue list`) and its scoring (`score show`), and plan the update again once they cover enough names, or a person activates a book run with fewer names.",
+  "next_action": "READ_THE_SESSIONS_DATA_AND_SCORES"
+ },
+ "portfolio_update.not_installed": {
+  "detail": "This strategy does not run forward, so nothing binds its score inputs, its calibration or its Portfolio update. A research installation is historical until a person activates one of its reviewed books, which runs its strategy forward: then the score, the calibration and the Portfolio update read that activation.",
+  "next_action": "ASK_A_PERSON_TO_ACTIVATE_A_REVIEWED_BOOK"
+ },
+ "portfolio_update.publication_not_bound_to_task": {
+  "detail": "The publication named is not one this update Task published, so it was not read; name a publication the Task's readback lists.",
+  "next_action": "NAME_A_PUBLICATION_THE_TASK_LISTS"
+ },
+ "portfolio_update.strategy_package_required": {
+  "detail": "This workspace holds Portfolio updates of more than one strategy, so its latest would be one of them by guess: read a strategy's own latest with --package <strategy-package-id> (`next_requests` offers each strategy's, and `strategy_package_ids` names them), or one update with --task.",
+  "next_action": "READ_ONE_STRATEGYS_LATEST_UPDATE"
+ },
+ "portfolio_update.task_of_another_strategy": {
+  "detail": "Portfolio update Task {subject} is another strategy's than the one --package names, so it is not read as that strategy's: read the Task without --package, or the strategy's own latest with --package alone.",
+  "next_action": "READ_THE_TASK_OR_THE_STRATEGYS_OWN_LATEST"
+ },
+ "product_host.evidence_review_authority_absent": {
+  "detail": "No listing authority is admitted for this workspace -- no Evidence package is installed -- so its holdings cannot be mapped to issuers and nothing can be reviewed; the Skill's source setup procedure installs one.",
+  "next_action": "FOLLOW_THE_SOURCE_SETUP"
+ },
+ "product_host.evidence_review_book_unselected": {
+  "detail": "No book was named and the workspace has none to default to; name a book, as its readback or the research history offers it.",
+  "next_action": "NAME_A_BOOK"
+ },
+ "product_host.evidence_review_dossier_refused": {
+  "detail": "The review's dossier did not hold together (`{subject}`), a check of its own record rather than of the evidence, so nothing was read for review. Read the book's Evidence and prepare it again if a unit changed; if the same code returns, report it.",
+  "next_action": "READ_THE_BOOK_AND_REPORT_IF_IT_RETURNS"
+ },
+ "product_host.evidence_review_experiment_date_mismatch": {
+  "detail": "The session named does not hold this study's book as its receipt records it, so no book was opened; name one of the study's sessions, as its readback offers them.",
+  "next_action": "NAME_ONE_OF_THE_STUDYS_SESSIONS"
+ },
+ "product_host.evidence_review_experiment_not_published": {
+  "detail": "The Task named has published no study book at that session -- it is not a Task of this workspace, it is still running, or it stopped -- so there is nothing to review; read the Task (`task show`) and name the study's book as its readback offers it.",
+  "next_action": "READ_THE_TASK"
+ },
+ "product_host.evidence_review_experiment_receipt_mismatch": {
+  "detail": "The receipt named is not this study's, so its book was not opened; name the study's own receipt beside its Task and session, as its readback offers them.",
+  "next_action": "NAME_THE_STUDYS_RECEIPT"
+ },
+ "product_host.evidence_review_experiment_subject_mismatch": {
+  "detail": "The study's book this request names is not the one this review or bundle was made for; name the book it was made for, as its readback names it.",
+  "next_action": "NAME_THE_BOOK_IT_WAS_MADE_FOR"
+ },
+ "product_host.evidence_review_export_subject_mismatch": {
+  "detail": "The review named was published for another book than the one this request names; export it with its own book, as the review's readback names it.",
+  "next_action": "NAME_THE_REVIEWS_OWN_BOOK"
+ },
+ "product_host.evidence_review_exposure_empty": {
+  "detail": "This book holds no position at its window's end, so there is nothing for a review to read; choose a book that holds positions.",
+  "next_action": "CHOOSE_A_BOOK_WITH_HOLDINGS"
+ },
+ "product_host.evidence_review_handoff_unknown": {
+  "detail": "No handoff of this workspace has this hash, so no book was opened; name a handoff or a result, as the research history offers them.",
+  "next_action": "NAME_A_BOOK_THE_HISTORY_LISTS"
+ },
+ "product_host.evidence_review_publication_origin_unavailable": {
+  "detail": "The publication named is the one this update started from, and the Task that published it is not found, or more than one claims it, so no book was opened; name the publication beside the Task that published it, as that Task's readback offers it.",
+  "next_action": "NAME_THE_PUBLISHING_TASK"
+ },
+ "product_host.evidence_review_result_unknown": {
+  "detail": "No published result of this workspace has this hash, so no book was opened; name a result, as the research history offers them.",
+  "next_action": "NAME_A_BOOK_THE_HISTORY_LISTS"
+ },
+ "product_host.evidence_review_scope_empty": {
+  "detail": "None of this book's holdings maps to an issuer the installed Evidence registry admits, so there is no issuer to read; the Skill's source setup installs a registry and listing authority that cover the book's holdings.",
+  "next_action": "FOLLOW_THE_SOURCE_SETUP"
+ },
+ "product_host.evidence_review_selected_publication_off_scope": {
+  "detail": "The analysis selected for this workspace answers issuers outside this book's scope, so the book's review cannot read it; select one of the book's own current analyses.",
+  "next_action": "SELECT_ONE_OF_THE_BOOKS_ANALYSES"
+ },
+ "product_host.evidence_review_selection_not_current": {
+  "detail": "The analysis named is not a current one for this book's units, so it cannot be selected; the book's readback lists the current analyses to choose from.",
+  "next_action": "SELECT_A_CURRENT_ANALYSIS"
+ },
+ "product_host.evidence_review_update_basis_mismatch": {
+  "detail": "The position basis named is not this publication's: one with a pending proposal is read as its conditional estimate (`CONDITIONAL_ESTIMATE`), one whose book has entered as its observed research entry (`OBSERVED_RESEARCH_ENTRY`); name the basis its readback names.",
+  "next_action": "NAME_THE_PUBLICATIONS_BASIS"
+ },
+ "product_host.evidence_review_update_not_configured": {
+  "detail": "This Host serves no reader for research updates -- the workspace has no installed strategy, or no data update to advance one -- so an update's book cannot be opened for review; name a result's or a study's book, as the research history offers them.",
+  "next_action": "NAME_A_RESULT_OR_A_STUDYS_BOOK"
+ },
+ "product_host.evidence_review_update_publication_mismatch": {
+  "detail": "The publication named is not the one this update published, so its book was not opened; name the update's own publication, as its readback offers it.",
+  "next_action": "NAME_THE_UPDATES_OWN_PUBLICATION"
+ },
+ "product_host.evidence_review_update_subject_mismatch": {
+  "detail": "The update's book this request names is not the one this review or bundle was made for; name the book it was made for, as its readback names it.",
+  "next_action": "NAME_THE_BOOK_IT_WAS_MADE_FOR"
+ },
+ "product_host.evidence_review_update_task_mismatch": {
+  "detail": "The Task named is not a research update of this workspace -- no such Task, or a Task of another kind -- so no update's book was opened; name the update's own Task, as its readback or the research history offers it.",
+  "next_action": "NAME_THE_UPDATES_OWN_TASK"
+ },
+ "product_host.evidence_task_adapter_absent": {
+  "detail": "This Host was served without the evidence source package and its retrieval runtime, so no evidence is prepared or read here; a person admits them when serving the Host.",
+  "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME"
+ },
+ "research_authoring.document_unparsable": {
+  "detail": "The declaration does not read as YAML or JSON; correct it where reading stopped and plan again.",
+  "next_action": "CORRECT_DECLARATION_AND_REPLAN"
+ },
+ "research_authoring.evidence_artifact_invalid": {
+  "detail": "A stored evidence file of this study does not read as its record says; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "research_authoring.evidence_unavailable_for_replay": {
+  "detail": "This study's sealed evidence is not in the workspace, so it is not read back or replayed; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "research_authoring.experiment_section_missing": {
+  "detail": "A declaration holds an `experiment` section at its top level; `study controls` answers a template that has one.",
+  "next_action": "CORRECT_DECLARATION_AND_REPLAN"
+ },
+ "research_experiment.agent_execution_not_admitted": {
+  "detail": "An installed agent runs or curates a study only under its execution binding, which this request lacks; send it through the CLI in the agent's own session.",
+  "next_action": "SEND_IT_IN_THE_AGENT_SESSION"
+ },
+ "research_experiment.document_invalid": {
+  "detail": "The declaration does not meet its contract; `study controls` answers a template that does, and `schema show EXPERIMENT_PLAN` names every field.",
+  "next_action": "CORRECT_DECLARATION_AND_REPLAN"
+ },
+ "research_experiment.execution_binding_changed": {
+  "detail": "The study's implementation or its research input changed since this plan was previewed, so the plan no longer says what would run; plan it again and run the new preview.",
+  "next_action": "PLAN_AGAIN_AND_RUN_THE_NEW_PREVIEW"
+ },
+ "research_experiment.input_file_set_changed": {
+  "detail": "The research input's files are not the set its binding recorded (a file was added or removed); bind the input again (`input plan`, which a person confirms) and plan from the new binding.",
+  "next_action": "ASK_A_PERSON_TO_CONFIRM_A_NEW_INPUT_BINDING"
+ },
+ "research_experiment.input_file_tampered": {
+  "detail": "A file of the research input no longer holds the content its binding recorded; restore the file, or bind the input again (`input plan`, which a person confirms) and plan from the new binding.",
+  "next_action": "ASK_A_PERSON_TO_CONFIRM_A_NEW_INPUT_BINDING"
+ },
+ "research_experiment.insufficient_listing_support": {
+  "detail": "The input holds fewer listings than the study needs ({subject}, held below needed); widen the universe, or plan on an input with more listings.",
+  "next_action": "EDIT_DECLARATION_AND_PLAN"
+ },
+ "research_experiment.outcomes_after_declared_cutoff": {
+  "detail": "The study's outcomes run past the declaration's cutoff ({subject}, last outcome after the cutoff), so it would read past what it may know; end the evaluation or the holding period before the cutoff, or move the cutoff.",
+  "next_action": "EDIT_DECLARATION_AND_PLAN"
+ },
+ "research_experiment.output_not_host_managed": {
+  "detail": "A study's output and baseline workspaces are the Host's: write `managed`, or leave them out.",
+  "next_action": "EDIT_DECLARATION_AND_PLAN"
+ },
+ "research_experiment.preview_expired": {
+  "detail": "This plan's preview expired before it ran; plan it again and run the new preview.",
+  "next_action": "PLAN_AGAIN_AND_RUN_THE_NEW_PREVIEW"
+ },
+ "research_experiment.preview_required": {
+  "detail": "A study runs the plan its preview answered: plan it first (`study plan`), then run the plan hash the preview names.",
+  "next_action": "PLAN_THEN_RUN_THE_PREVIEW"
+ },
+ "research_experiment.refused": {
+  "detail": "The Host refused the request for a reason without a product code (`{subject}`, the same fingerprint for the same cause); check the request against `schema show <operation>` and send it again.",
+  "next_action": "READ_CAPABILITIES_SCHEMA"
+ },
+ "research_experiment.task_binding_mismatch": {
+  "detail": "A stored study Task no longer matches the contract this release rebuilds for it, so nothing was planned or run. The study is unchanged; the release reads it wrongly. Report it with the Task list (`task list`).",
+  "next_action": "REPORT_THE_TASK_BINDING"
+ },
+ "research_foundation.admission_artifact_unavailable": {
+  "detail": "The admission's recorded artifacts cannot be read. Inspect Research inputs (`input list`) and start a new Factor study (`study controls`, then `study plan`) with an explicit declaration; no earlier source graph is inferred.",
+  "next_action": "READ_INPUTS_AND_PLAN_A_FACTOR_STUDY"
+ },
+ "research_foundation.admission_binding_mismatch": {
+  "detail": "The sealed Foundation admission disagrees with its recorded Foundation binding, so it is not read. Read `backup list --view full`; restore a verified generation that holds both records into a new or empty directory outside the backup root and the original workspace with `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>`, then open the restored workspace and read the admission there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "research_foundation.admission_identity_invalid": {
+  "detail": "This sealed Foundation admission no longer matches the hash it is named by, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read it there. Sealing the same Foundation again reuses the sealed admission and meets the same file.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "research_foundation.preview_required": {
+  "detail": "A Foundation is sealed from the exact preview its answer named, which stays sealable for 60 minutes, across a Host restart; this one is past that or was never previewed in this workspace, so nothing was sealed. Preview it again (`foundation preview`) from the curated Factor study, then seal the admission hash the new answer names.",
+  "next_action": "PREVIEW_THE_FOUNDATION_AGAIN"
+ },
+ "research_history.cursor_filter_mismatch": {
+  "detail": "That cursor belongs to another history query; send the filters it came with, or start again without a cursor.",
+  "next_action": "SEND_THE_QUERY_THE_CURSOR_CAME_FROM"
+ },
+ "research_history.entry_unavailable": {
+  "detail": "No history entry of this strategy and input has that id; read the history without an entry to list them.",
+  "next_action": "LIST_THE_HISTORY"
+ },
+ "research_input.preview_required": {
+  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the input's capture again (`input plan`), then confirm the plan hash the new answer names.",
+  "next_action": "PLAN_THE_CAPTURE_AGAIN"
+ },
+ "research_input.version_not_admitted": {
+  "detail": "The binding named is not a version of this research input; `input list` lists each input's versions.",
+  "next_action": "SELECT_INPUT_VERSION"
+ },
+ "research_strategy.completed_parent_required": {
+  "detail": "Every study a strategy names, its Alpha lifecycle studies and its Risk study, must have completed, and one has not, so nothing was planned. Wait for it, or name a completed one.",
+  "next_action": "NAME_COMPLETED_PARENT_STUDIES"
+ },
+ "research_strategy.completed_preparation_required": {
+  "detail": "The strategy's preparation has not completed, so it cannot be installed. Wait for its Task, or recover it from its recovery view.",
+  "next_action": "WAIT_FOR_THE_PREPARATION"
+ },
+ "research_strategy.duplicate_parent": {
+  "detail": "The declaration names one Alpha study twice; name each component's lifecycle study once.",
+  "next_action": "NAME_EACH_PARENT_ONCE"
+ },
+ "research_strategy.execution_changed_replan": {
+  "detail": "This release prepares strategies differently from the plan's, or the workspace's configuration changed since it, so nothing ran. Plan the strategy again.",
+  "next_action": "PLAN_THE_STRATEGY_AGAIN"
+ },
+ "research_strategy.existing_installation_or_configuration_changed": {
+  "detail": "The workspace's installed strategy or its configuration changed after this preparation was planned, so nothing was installed. Plan the strategy again.",
+  "next_action": "PLAN_THE_STRATEGY_AGAIN"
+ },
+ "research_strategy.finish_or_recover_existing_task": {
+  "detail": "Another preparation of this strategy is still on its way, so a new one was not started. Follow that Task to its end, or recover it.",
+  "next_action": "FINISH_OR_RECOVER_THE_TASK"
+ },
+ "research_strategy.full_local_qa_outcomes_required": {
+  "detail": "The prepared strategy holds no outcomes over its input's whole span, which its book needs before it can run forward. Plan its preparation again on an input whose outcomes are prepared.",
+  "next_action": "PREPARE_THE_INPUTS_OUTCOMES"
+ },
+ "research_strategy.matured_economic_support_absent": {
+  "detail": "The calibrated Alpha study's window leaves no formation matured before the input's last session, so the strategy has nothing to prepare. Study that component over a window that ends earlier, or on a newer input.",
+  "next_action": "STUDY_A_WINDOW_WITH_MATURED_FORMATIONS"
+ },
+ "research_strategy.parent_input_mismatch": {
+  "detail": "Every study a strategy names must have run on the declaration's input binding, and one ran on another, so nothing was planned. Name studies of one input, and declare that input.",
+  "next_action": "NAME_PARENTS_OF_ONE_INPUT"
+ },
+ "research_strategy.parent_kind_or_component_mismatch": {
+  "detail": "A strategy needs one Alpha lifecycle study for each component its controls require (`required_components`) and one Risk covariance study, and the studies named do not match. Read the strategy's controls (`strategy controls`) for what each component needs.",
+  "next_action": "READ_THE_STRATEGY_CONTROLS"
+ },
+ "research_strategy.preview_required": {
+  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the strategy's preparation again (`strategy plan`) from the same declaration, then run the plan hash the new answer names.",
+  "next_action": "PLAN_THE_STRATEGY_AGAIN"
+ },
+ "research_strategy.risk_history_insufficient": {
+  "detail": "Each formation of a strategy's book needs its Risk study's returns to hold the installed decomposition's initialization and factor-fit history before it ({subject}), and the Risk study named does not, so nothing was planned. Study Risk on the same input from the start named, then plan the strategy again with that Risk study.",
+  "next_action": "STUDY_RISK_FROM_THE_NEEDED_START"
+ },
+ "research_strategy.risk_parent_support_incomplete": {
+  "detail": "A strategy's Risk study must cover every formation its calibrated Alpha study matured ({subject}), and the one named does not, so nothing was planned. Study Risk over the needed window on the same input, its start leaving the lookback before it, then plan the strategy again with that Risk study.",
+  "next_action": "STUDY_RISK_OVER_THE_NEEDED_WINDOW"
+ },
+ "research_strategy.task_kind_mismatch": {
+  "detail": "The Task named is not a strategy preparation; read it with `task show` and name the strategy's own preparation Task.",
+  "next_action": "READ_THE_TASK"
+ },
+ "research_update.binding_changed": {
+  "detail": "The update was planned on bindings that have changed since -- the strategy's activation or models, its catalog or the workspace's declaration -- so it no longer runs or resumes, and no later update of the strategy is planned while it waits; cancel its Task (`research-update show --package <package>` names it), then plan the update again.",
+  "next_action": "CANCEL_THE_UPDATE_AND_PLAN_AGAIN"
+ },
+ "research_input.publication_unavailable": {
+  "detail": "The publication record cannot be read. Inspect the workspace (`workspace show`), storage and kept backups (`backup list`); restore a generation that holds it into a new directory before reading this input there. No input identity or published state is inferred from unreadable bytes.",
+  "next_action": "INSPECT_STORAGE_AND_RESTORE_THE_PUBLICATION"
+ },
+ "research_update.input_source_access_not_admitted": {
+  "detail": "The research update needs {subject}. This workspace's closed network does not allow data-provider access; a person allows it (`network set`), then run the saved plan again.",
+  "next_action": "ASK_A_PERSON_TO_ALLOW_NETWORK_ACCESS"
+ },
+ "research_update.publication_not_bound_to_task": {
+  "detail": "The publication named is not one this research update published, so it was not read; name a publication its readback lists.",
+  "next_action": "NAME_A_PUBLICATION_THE_TASK_LISTS"
+ },
+ "research_update.strategy_package_required": {
+  "detail": "This workspace holds research updates of more than one strategy, so its latest would be one of them by guess: read a strategy's own latest with --package <strategy-package-id> (`next_requests` offers each strategy's, and `strategy_package_ids` names them), or one update with --task.",
+  "next_action": "READ_ONE_STRATEGYS_LATEST_UPDATE"
+ },
+ "research_update.task_of_another_strategy": {
+  "detail": "Research update Task {subject} is another strategy's than the one --package names, so it is not read as that strategy's: read the Task without --package, or the strategy's own latest with --package alone.",
+  "next_action": "READ_THE_TASK_OR_THE_STRATEGYS_OWN_LATEST"
+ },
+ "research_workspace.manifest_refused": {
+  "detail": "The workspace's manifest does not read as its contract says (`{subject}`: each field refused and its rule), so nothing in it runs; restore the workspace from a backup that holds a readable manifest (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "research_workspace.manifest_unreadable": {
+  "detail": "The directory holds no readable AlphaLattice workspace manifest; name the workspace's own directory (`--workspace`), or restore it from a backup.",
+  "next_action": "NAME_THE_WORKSPACE_OR_RESTORE_IT"
+ },
+ "research_workspace.prepared_before_renames": {
+  "detail": "This workspace was prepared before the 2026-10-02 renames, which this release does not read: it holds `{subject}`, a spelling the renames retired. Nothing in it is changed; start a new workspace, as the guide says, and prepare its data and research there.",
+  "next_action": "START_A_NEW_WORKSPACE"
+ },
+ "research_workspace.strategy_not_installed": {
+  "detail": "This workspace has no installed strategy package; prepare and install a research strategy before previewing or running its book. Research studies do not need an installed strategy.",
+  "next_action": "PREPARE_AND_INSTALL_A_RESEARCH_STRATEGY"
+ },
+ "risk_report.completed_portfolio_required": {
+  "detail": "Risk report references require a completed Portfolio study with its sealed receipt and captured input. An installed strategy book does not carry that study contract.",
+  "next_action": "CHOOSE_A_COMPLETED_PORTFOLIO_STUDY"
+ },
+ "risk_research.covariance_chunk_identity_invalid": {
+  "detail": "The saved Risk covariance chunk does not match its sealed identity. Do not use it for sizing; choose a verified completed Risk study on the same captured input.",
+  "next_action": "CHOOSE_A_VERIFIED_RISK_STUDY"
+ },
+ "evidence_review.replan_book_selection_required": {
+  "detail": "This evidence Task retains its issuer scope, not the book selector needed to plan again. Choose the book from history, then preview its evidence preparation.",
+  "next_action": "SELECT_THE_BOOK_AND_PREVIEW_EVIDENCE"
+ },
+ "risk_report.completed_risk_required": {
+  "detail": "A risk report links a Risk study that has published, and the Task named has not; run it, or name one `study list` shows published.",
+  "next_action": "NAME_A_PUBLISHED_RISK_STUDY"
+ },
+ "risk_research.formation_selection_requested_axis_unavailable": {
+  "detail": "The Risk study asks for formation sessions its estimator cannot form: each needs its lookback of earlier sessions in the research input. Start the window where that history exists; for a book's Risk study, the Alpha study's scored formations, whose first and last `study show` of the Alpha study names.",
+  "next_action": "START_THE_WINDOW_AFTER_THE_LOOKBACK"
+ },
+ "risk_research.parameter_value_not_admitted": {
+  "detail": "A Risk parameter's value is not one the installed estimator admits; `study controls` lists each parameter's admitted values.",
+  "next_action": "EDIT_DECLARATION_AND_PLAN"
+ },
+ "setup.command_failed": {
+  "detail": "A setup step exited {subject}, so setup did not complete; `causes` holds the exit status, never the step's output or command credentials. Resolve the failed step, run what `next_commands` offers, then run the setup again.",
+  "next_action": "RESOLVE_THE_FAILED_SETUP_STEP"
+ },
+ "setup.file_unavailable": {
+  "detail": "Setup could not read or write a file it needs ({subject}); `causes` holds the sanitized OS cause, never the file's path. Restore the file or choose a location this process can write, run what `next_commands` offers, then run the setup again.",
+  "next_action": "RESOLVE_THE_FILE_ACCESS_AND_CHECK_AGAIN"
+ },
+ "setup.http_failed": {
+  "detail": "The source answered HTTP {subject}, so setup did not complete; `causes` holds the status, never the response or either side's headers. Check the source's status and the admitted scope, run what `next_commands` offers, then retry within the same permissions.",
+  "next_action": "CHECK_SOURCE_STATUS_AND_RETRY"
+ },
+ "setup.input_invalid": {
+  "detail": "Setup could not read or validate its input ({subject}); `causes` holds the exception class, never the input's text. Check the command's inputs, bindings and configuration with what `next_commands` offers, correct them, then run the setup again.",
+  "next_action": "CHECK_THE_SETUP_INPUT_AND_BINDING"
+ },
+ "setup.network_failed": {
+  "detail": "The source connection failed ({subject}), so setup did not complete; `causes` holds the exception class, never the request. Check connectivity and any network control that holds this process, run what `next_commands` offers, then retry; permission is never inferred from a connection failure.",
+  "next_action": "CHECK_CONNECTION_AND_NETWORK_CONTROL"
+ },
+ "setup.owner_refused": {
+  "detail": "Setup was refused by its owner with `{subject}`. Resolve that condition, run what `next_commands` offers, then run the setup again; if the condition is unclear, report the code and the setup's inputs -- exception text and credentials are not needed.",
+  "next_action": "RESOLVE_THE_NAMED_REFUSAL_AND_CHECK_AGAIN"
+ },
+ "setup.unexpected_failure": {
+  "detail": "Setup stopped on an unexpected {subject}; `causes` holds its class only, since its text may carry credentials or source content. Report the class and the setup's inputs, run what `next_commands` offers, then run the setup again.",
+  "next_action": "REPORT_THE_SANITIZED_CAUSE_AND_SETUP_INPUTS"
+ },
+ "storage.cleanup_interrupted": {
+  "detail": "The approved cleanup stopped at a file the system would not release (held by another program, or not removable); it is journalled where it stopped, and a person resumes it (`storage confirm` on its plan) once the file is free.",
+  "next_action": "ASK_A_PERSON_TO_RESUME_THE_CLEANUP"
+ },
+ "storage.cleanup_plan_stale": {
+  "detail": "What the cleanup would release changed since it was planned (a reference moved, or an input went); plan the cleanup again (`storage plan`) for a person to confirm.",
+  "next_action": "PLAN_THE_CLEANUP_AGAIN"
+ },
+ "storage.cleanup_recovery_required": {
+  "detail": "An approved cleanup has not finished; a person resumes it (`storage confirm` on its plan) before another is planned or an input changes.",
+  "next_action": "ASK_A_PERSON_TO_RESUME_THE_CLEANUP"
+ },
+ "storage.cleanup_target_in_use": {
+  "detail": "An evidence index the cleanup would release is held by a build or an open reader; a person confirms the cleanup again once they finish.",
+  "next_action": "CONFIRM_THE_CLEANUP_LATER"
+ },
+ "storage.cleanup_target_protected": {
+  "detail": "A target of the cleanup is not eligible under the current roots (something still uses it, or only its owner may release it); plan the cleanup again (`storage plan`).",
+  "next_action": "PLAN_THE_CLEANUP_AGAIN"
+ },
+ "storage.managed_capacity_exceeded": {
+  "detail": "Managed storage exceeds the workspace cap. Raise the cap in Settings (`storage set --cap-bytes <bytes>`) or plan a cleanup (`storage plan`) for a person to confirm.",
+  "next_action": "RAISE_THE_CAP_OR_PLAN_A_CLEANUP"
+ },
+ "strategy_activation.refused": {
+  "detail": "The activation could not read what this book's installation recorded, so nothing was bound: prepare and install the strategy again from current studies, run its book over its whole support and activate that run.",
+  "next_action": "PREPARE_AND_INSTALL_THE_STRATEGY_AGAIN"
+ },
+ "strategy_book.strategy_package_required": {
+  "detail": "The book document did not select a strategy: give `strategy_package_id` from the installed packages and save its controls declaration before previewing it.",
+  "next_action": "SELECT_STRATEGY_PACKAGE_FROM_CONTROLS"
+ },
+ "strategy_calibration.strategy_package_required": {
+  "detail": "This workspace holds calibration Tasks of more than one strategy, so its latest would be one of them by guess: read a strategy's own latest with --package <strategy-package-id> (`next_requests` offers each strategy's, and `strategy_package_ids` names them), or one Task with --task.",
+  "next_action": "READ_ONE_STRATEGYS_LATEST_TASK"
+ },
+ "strategy_calibration.task_of_another_strategy": {
+  "detail": "Calibration Task {subject} is another strategy's than the one --package names, so it is not read as that strategy's: read the Task without --package, or the strategy's own latest with --package alone.",
+  "next_action": "READ_THE_TASK_OR_THE_STRATEGYS_OWN_LATEST"
+ },
+ "strategy_score.alpha_artifact_unreadable": {
+  "detail": "A stored Alpha file this score reads is missing, stale or no longer matches its record, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "strategy_score.input_preparation_not_installed": {
+  "detail": "This strategy does not run forward, so nothing binds its score inputs, its calibration or its Portfolio update. A research installation is historical until a person activates one of its reviewed books, which runs its strategy forward: then the score, the calibration and the Portfolio update read that activation.",
+  "next_action": "ASK_A_PERSON_TO_ACTIVATE_A_REVIEWED_BOOK"
+ },
+ "strategy_score.package_binding_mismatch": {
+  "detail": "This strategy's package changed after a person activated it: run its book again and activate the new run.",
+  "next_action": "RUN_THE_BOOK_AGAIN_AND_ACTIVATE_IT"
+ },
+ "strategy_score.plan_required": {
+  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the score again (`score plan`) for the same package, then run the plan hash the new answer names.",
+  "next_action": "PLAN_THE_SCORE_AGAIN"
+ },
+ "strategy_score.strategy_package_required": {
+  "detail": "This workspace holds scoring Tasks of more than one strategy, so its latest would be one of them by guess: read a strategy's own latest with --package <strategy-package-id> (`next_requests` offers each strategy's, and `strategy_package_ids` names them), or one Task with --task.",
+  "next_action": "READ_ONE_STRATEGYS_LATEST_TASK"
+ },
+ "strategy_score.task_of_another_strategy": {
+  "detail": "Scoring Task {subject} is another strategy's than the one --package names, so it is not read as that strategy's: read the Task without --package, or the strategy's own latest with --package alone.",
+  "next_action": "READ_THE_TASK_OR_THE_STRATEGYS_OWN_LATEST"
+ },
+ "strategy_score.workspace_inputs_not_ready": {
+  "detail": "The workspace's data is not ready to score on ({subject}): a provider's deferral or a data case holds it, an update of it has not finished, or its features are being built. The Task that holds it goes on by its own way, a deferral once its retry time has passed; with none, a data update settles it (`data-update plan`, then run its plan) and its read names any data case. Then plan again.",
+  "next_action": "SETTLE_THE_WORKSPACE_DATA"
+ },
+ "task_control.child_start_failed": {
+  "detail": "The operating system could not start the Task's child process. Free system resources (including commit memory on Windows), then inspect this Task's recovery view and resume it there; its verified stages are kept.",
+  "next_action": "FREE_SYSTEM_RESOURCES_AND_READ_TASK_RECOVERY"
+ },
+ "task_control.tasks_waiting_invalid": {
+  "detail": "Tasks that may wait is `auto` or a whole number from 1 to 64.",
+  "next_action": "SET_AUTO_OR_A_WHOLE_NUMBER_OF_TASKS"
+ },
+ "tasks.cursor_moved_reload": {
+  "detail": "The Task the cursor named is no longer in this listing; read its first page again.",
+  "next_action": "READ_THE_FIRST_PAGE"
+ },
+ "workspace_backup.root_unwritable": {
+  "detail": "The Host cannot create or write the backup root, so no generation was made; the root is the application-data directory unless ALPHALATTICE_BACKUP_ROOT names another. Serve the Host with ALPHALATTICE_BACKUP_ROOT naming a directory it can write, outside the workspace, then back up again.",
+  "next_action": "SERVE_WITH_A_WRITABLE_BACKUP_ROOT"
+ },
+ "workspace_data_update.artifact_missing": {
+  "detail": "A file the data update's record names is missing from the workspace; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and update there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "workspace_data_update.existing_owner_action_required": {
+  "detail": "Another change to the workspace's data waits on its owner's action (a confirmation or a recovery); resolve that first, as its readback names it, then plan the update.",
+  "next_action": "RESOLVE_EXISTING_WORKSPACE_TRANSITION"
+ },
+ "workspace_data_update.not_configured": {
+  "detail": "The workspace's data update has no available binding. A fresh workspace gets that binding through its first preparation. Read `preparation show` and follow its next request; if no preparation has started, use `preparation plan`, which acquires nothing. Complete the preparation through its required confirmation before planning a data update.",
+  "next_action": "WORKSPACE_PREPARE_READBACK"
+ },
+ "workspace_data_update.panel_binding_mismatch": {
+  "detail": "The current Panel does not match the data binding required for this update. Read the data update's current record and the input state it reports; resolve that condition before planning the update again.",
+  "next_action": "DATA_UPDATE_READBACK"
+ },
+ "workspace_data_update.plan_required": {
+  "detail": "A data update's plan stays runnable for 60 minutes after its answer, across a Host restart, and a change plan until its person confirms it; this one is past that or was never planned in this workspace, so nothing ran. Plan the update again (`data-update plan`), then run the plan hash the new answer names.",
+  "next_action": "PLAN_THE_UPDATE_AGAIN"
+ },
+ "workspace_data_update.refused": {
+  "detail": "The data update was refused for a reason without a product code (`{subject}`, the same fingerprint for the same cause); its readback names the workspace's data state.",
+  "next_action": "DATA_UPDATE_READBACK"
+ },
+ "workspace_data_update.retry_not_due": {
+  "detail": "The market data provider asked to wait; the plan runs again once its retry time has passed.",
+  "next_action": "WAIT_UNTIL_THE_RETRY_TIME"
+ },
+ "workspace_data_update.source_access_not_admitted": {
+  "detail": "The update reads the market data provider over the network, which this workspace does not allow; a person allows it (`network set`), then run the plan again.",
+  "next_action": "ASK_A_PERSON_TO_ALLOW_NETWORK_ACCESS"
+ },
+ "workspace_data_update.stale_plan": {
+  "detail": "The workspace's data changed since this update was planned; plan it again and run the new plan.",
+  "next_action": "DATA_UPDATE_PLAN"
+ },
+ "workspace_preparation.preview_required": {
+  "detail": "A preparation starts from the exact preview it was planned from, and this plan has none the Host holds; plan it (`preparation plan`) and confirm the plan hash that preview names.",
+  "next_action": "PLAN_THE_PREPARATION_AGAIN"
+ },
+ "workspace_preparation.source_access_not_admitted": {
+  "detail": "Preparing the workspace reads the market data provider over the network, which this workspace does not allow or has no source for; a person allows network access (`network set`), then confirm again.",
+  "next_action": "ASK_A_PERSON_TO_ALLOW_NETWORK_ACCESS"
+ },
+ "workspace_readiness.session_close_timestamp_not_timezone_aware": {
+  "detail": "The session close has no timezone, so its daily source ready time cannot be determined. Supply the close as a timezone-aware instant and try again.",
+  "next_action": "SUPPLY_A_TIMEZONE_AWARE_SESSION_CLOSE"
+ },
+ "portfolio_application.pipeline_manifest_unreadable": {
+  "detail": "The saved result index could not be verified. Its Task and result contents are unknown. Read workspace show and backup list; restore a generation that holds this index into a new directory, then read the result there.",
+  "next_action": "INSPECT_WORKSPACE_AND_RESTORE_RESULT_INDEX"
+ },
+ "workspace_backup.generation_unreadable": {
+  "detail": "A backup-root record could not be verified. Its sealed identity, workspace association and suitability for restore are unknown. Read workspace show and backup list; restore an appropriate verified full generation hash with alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>. Do not select an unverified filename prefix.",
+  "next_action": "READ_BACKUPS_AND_RESTORE_A_VERIFIED_FULL_GENERATION_HASH"
+ },
+ "model_extension.review_unavailable": {
+  "detail": "This model's review packet could not be read. Repair its declaration, module, or required runtime, then run the model check command shown here.",
+  "next_action": "REPAIR_THE_MODEL_AND_RUN_ALPHALATTICE_MODEL_CHECK_WITH_ITS_ID"
+ },
+ "task_control.projection_unavailable": {
+  "detail": "The named Task record could not be projected. Its lifecycle, progress and artifacts are unknown. Read workspace show and backup list; restore a generation that holds this Task into a new directory before reading it there.",
+  "next_action": "INSPECT_WORKSPACE_AND_RESTORE_THE_NAMED_TASK_RECORD"
+ },
+ "alternative_evidence.artifact_missing": {
+  "detail": "The named evidence artifact is missing from this workspace. Inspect storage and backup list; restore a generation that holds this artifact into a new directory before reading it there.",
+  "next_action": "INSPECT_STORAGE_AND_RESTORE_THE_NAMED_EVIDENCE_ARTIFACT"
+ },
+ "alternative_evidence.artifact_tampered": {
+  "detail": "The named evidence artifact does not verify against its recorded identity. Inspect storage and backup list; restore a verified copy into a new directory before reading it there.",
+  "next_action": "INSPECT_STORAGE_AND_RESTORE_VERIFIED_EVIDENCE"
+ },
+ "alternative_evidence.artifact_unavailable": {
+  "detail": "The named evidence artifact could not be read. Its contents are unknown. Inspect storage and backup list; restore a generation that holds it into a new directory before reading it there.",
+  "next_action": "INSPECT_STORAGE_AND_RESTORE_READABLE_EVIDENCE"
+ },
+ "task_control.task_not_found": {
+  "detail": "The named Task is not held by Task Control in this workspace. Read workspace show and backup list; restore a generation that holds it into a new directory, or follow the offered owner action to plan new work.",
+  "next_action": "INSPECT_WORKSPACE_BACKUPS_OR_FOLLOW_THE_OFFERED_OWNER_ACTION"
+ },
+ "task_control.database_authority_unreadable": {
+  "detail": "Part of the Task Control authority could not be read, so no state or queue order is inferred from it. Inspect workspace show and backup list. Restore a kept verified generation into a new directory with alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>, then open that workspace.",
+  "next_action": "INSPECT_BACKUPS_AND_RESTORE_TASK_CONTROL_INTO_A_NEW_DIRECTORY"
+ },
+ "storage.cap_setting_invalid": {
+  "detail": "The storage cap must be auto or a positive whole byte count. Set it again (`storage set --cap-bytes auto`).",
+  "next_action": "SET_THE_STORAGE_CAP"
+ },
+ "storage.cap_setting_unreadable": {
+  "detail": "The workspace storage cap setting could not be read. Set it again through Settings or `storage set --cap-bytes auto`; retained records stay intact.",
+  "next_action": "SET_THE_STORAGE_CAP"
+ },
+ "alternative_evidence.table_view_correspondence_unproved": {
+  "detail": "The evidence table view cannot be matched to its original document. Prepare the source again before reading or analyzing this table.",
+  "next_action": "PREPARE_THE_SOURCE_AGAIN"
+ },
+ "model_store.download_interrupted": {
+  "detail": "The model download was interrupted. Run the same installation command again with its admitted network permission; it resumes the kept partial download.",
+  "next_action": "RETRY_THE_ADMITTED_MODEL_INSTALLATION"
+ },
+ "task_control.queue_full": {
+  "detail": "Every waiting Task place is occupied. Read `task list`, wait for a queued Task to finish or cancel it, or ask a person to change `tasks_waiting` before submitting another Task.",
+  "next_action": "READ_TASKS_OR_CHANGE_TASKS_WAITING"
+ },
+ "alpha_modeling.lightgbm_thread_canary_mismatch": {
+  "detail": "LightGBM on this machine grew other trees at the CPU budget's thread count than the sealed canary, so the study did not fit. Set the workspace's CPU budget to 1 (`cpu-budget set --cores 1`) and run it again: on one thread it fits as the method was sealed.",
+  "next_action": "SET_CPU_BUDGET_TO_ONE_AND_RUN_STUDY_AGAIN"
+ },
+ "alternative_evidence.delivery_budget_below_minimum_unit": {
+  "detail": "One complete item does not fit the delivery budget, so it was not cut or delivered under its old identity. Declare a larger `delivery_budget_bytes` within the allowed range and request the packet again.",
+  "next_action": "DECLARE_A_LARGER_DELIVERY_BUDGET"
+ },
+ "INVALID_MEDIA_TYPE": {
+  "detail": "The source document has a media type the Evidence owner does not admit. Supply a document declared as `text/html`, `text/plain` or `text/markdown`, then prepare the source again.",
+  "next_action": "SUPPLY_A_DOCUMENT_WITH_AN_ADMITTED_MEDIA_TYPE"
+ },
+ "data.unrepaired_split_adjustment": {
+  "detail": "The provider price history failed the Data owner's integrity checks, so it was not admitted; this provider failure is not retryable. Have the source history corrected, then prepare the source again.",
+  "next_action": "CORRECT_PROVIDER_HISTORY_AND_PREPARE_AGAIN"
+ },
+ "INVALID_EXPERIMENT": {
+  "detail": "The training input authority does not match the target, feature, row or time authority declared for this fit, so numerical model work did not begin. Plan the training inputs again from the admitted source records before running the study.",
+  "next_action": "PLAN_THE_TRAINING_INPUTS_AGAIN"
+ },
+ "knowledge.access_denied": {
+  "detail": "The system Knowledge catalog cannot resolve a resource in another namespace. Use a `SYSTEM` resource reference from the declared system catalog; this refusal grants no access to another namespace.",
+  "next_action": "USE_A_DECLARED_SYSTEM_RESOURCE_REFERENCE"
+ },
+ "live_evidence.causal_time_invalid": {
+  "detail": "The Live Evidence owner refused the causal-time input. Check the source and request contracts, correct the declared time values under those rules, then send the request again; if the condition remains unclear, report this code with the request.",
+  "next_action": "CHECK_THE_DECLARED_CAUSAL_TIME_CONTRACT"
+ },
+ "quant.black_litterman_ineligible": {
+  "detail": "The Quant owner did not admit this Black-Litterman request. Read the declared operation schema and correct its inputs; if the refusal remains, report this code with the request to the owner.",
+  "next_action": "READ_CAPABILITIES_SCHEMA"
+ },
+ "domain.invalid": {
+  "detail": "The supplied value does not meet its owner's domain contract. Read the declared operation schema, correct the input, and send the request again; if the refusal remains, report this code with the request.",
+  "next_action": "READ_CAPABILITIES_SCHEMA"
+ },
+ "workspace.conflict": {
+  "detail": "Another writer holds this workspace's write lock, so this request cannot take it. Let that writer finish and release the lock, then send the request again.",
+  "next_action": "WAIT_FOR_THE_WORKSPACE_WRITER_AND_RETRY"
+ },
+ "workspace.corruption": {
+  "detail": "The workspace or selected run is missing required recorded structure and cannot be opened as complete. Check that the correct workspace was named; if it is incomplete, inspect its backups and restore a verified backup into a new directory before working there.",
+  "next_action": "NAME_THE_WORKSPACE_OR_RESTORE_IT"
+ },
+ "workspace.path_rejected": {
+  "detail": "The requested path does not meet the workspace owner's safe-path rules. Correct it according to the request schema and choose a permitted path confined to the physical workspace; do not use a link-like or unsafe target.",
+  "next_action": "CORRECT_THE_PATH_TO_MEET_WORKSPACE_RULES"
+ },
+ "validation.artifact_invalid": {
+  "detail": "The Validation owner refused the artifact under its declared contract. Check the artifact against that contract and the request schema; correct the supplied input, or report this code with the request when no correction is offered.",
+  "next_action": "READ_THE_DECLARED_ARTIFACT_CONTRACT"
+ },
+ "product_host.evidence_review_input_incomplete": {
+  "detail": "The sealed book lacks position facts needed to project this review, so the review could not be assembled. Read the book and its publishing Task, and report the missing-input code with the book identity to Portfolio; request the review after complete inputs are available.",
+  "next_action": "READ_THE_BOOK_AND_REPORT_MISSING_INPUTS"
+ },
+ "portfolio_application.report_economic_binding_mismatch": {
+  "detail": "The saved return ledger does not match this report or its execution seal, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_application.report_window_axis_mismatch": {
+  "detail": "The saved return dates do not match the report's selected window, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_update.performance_history_binding_invalid": {
+  "detail": "The forward publication history does not match its checkpoint or parent seals, so no forward metrics are shown. Restore a verified workspace backup, then read the published update again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_UPDATE"
+ },
+ "workbench.performance_selection_invalid": {
+  "detail": "This performance selection is not supported. Choose the saved report or the latest forward performance on Portfolio.",
+  "next_action": "CHOOSE_REPORT_OR_LATEST_PERFORMANCE"
+ },
+ "native_bridge.event_invalid": {
+  "detail": "The explicit native message does not match the admitted coordination contract. Send safe text through native_research.py message with the bound session, child role, assignment recipient and answer reply-to; no transcript is imported.",
+  "next_action": "SEND_A_SCOPED_NATIVE_MESSAGE"
+ },
+ "native_bridge.files_unavailable": {
+  "detail": "The bridge cannot read or write the named local path category. For a binding or explicit message, start the workspace Host in the configured project and use session bind or native_research.py message. For configure or doctor, the person checks the named declarations from a shell that can access that project. Do not widen the agent sandbox.",
+  "next_action": "USE_THE_WORKSPACE_HOST_OR_CHECK_THE_NAMED_LOCAL_PATH"
+ },
+ "native_bridge.hook_trust_not_confirmed": {
+  "detail": "Local declarations and a binding do not confirm runtime hook trust or child observation. Inspect this exact project in the host /hooks and approve only its reviewed AlphaLattice hooks. Then start a new native specialist and verify its start, assignment and answer in Team and Sessions.",
+  "next_action": "CHECK_HOST_HOOK_TRUST_THEN_OBSERVE_A_NEW_CHILD"
+ },
+ "native_bridge.project_mismatch": {
+  "detail": "The requested project differs from the configured project found above this served workspace. Start the Host for the workspace inside that project, then run session bind from that same project.",
+  "next_action": "SERVE_AND_BIND_THE_SAME_PROJECT_WORKSPACE"
+ },
+ "native_bridge.project_path_invalid": {
+  "detail": "The native project path is relative, unbounded or a symlink alias. Use the exact configured project path printed by the workspace Host; do not redirect its metadata directory.",
+  "next_action": "USE_THE_EXACT_CONFIGURED_PROJECT_PATH"
+ },
+ "native_bridge.request_invalid": {
+  "detail": "The native attachment request must name one absolute project path and the admitted fields. Use session bind from inside the configured project; the Host reads the session from the client provenance.",
+  "next_action": "BIND_FROM_THE_CONFIGURED_PROJECT"
+ },
+ "native_bridge.workspace_mismatch": {
+  "detail": "The project binding names another workspace. The bound session or the person removes it with alphalattice session unbind, then binds this served workspace.",
+  "next_action": "UNBIND_THEN_BIND_THIS_WORKSPACE"
+ },
+ "portfolio_rolling.baseline_axis_invalid": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.cost_lane_not_recorded": {
+  "detail": "This book's declared cost has no sealed daily return lane. Daily updates record 5 or 10 bps per side; read a book with one of those declared costs, or report the unavailable lane. Do not substitute another cost.",
+  "next_action": "READ_A_BOOK_WITH_A_RECORDED_COST_LANE"
+ },
+ "portfolio_rolling.foreign_checkpoint_or_package": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.formation_axis_overlap": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.head_chain_invalid": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.head_contract_invalid": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.head_identity_invalid": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.head_increment_mismatch": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.head_publication_count_mismatch": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.head_reference_binding_invalid": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.increment_axis_invalid": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.namespace_not_public": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.outcome_axis_or_cost_invalid": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.previous_head_binding_invalid": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.previous_publication_binding_invalid": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.publication_binding_invalid": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.return_axis_overlap_or_gap": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.source_book_binding_invalid": {
+  "detail": "The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.",
+  "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_STUDY"
+ },
+ "portfolio_rolling.source_book_missing": {
+  "detail": "The daily checkpoint's source book has no readable publishing Task. Read the saved studies to confirm the Task; if its retained record is missing, restore a verified workspace backup and read again.",
+  "next_action": "READ_THE_SOURCE_BOOK_OR_RESTORE_A_VERIFIED_BACKUP"
+ },
+ "native_bridge.existing_configuration_differs": {
+  "detail": "The project is already bound to another session, workspace or usage reading. The bound session removes its binding with alphalattice session unbind, or the person does so from their own shell; then bind again through the served workspace Host.",
+  "next_action": "UNBIND_THEN_BIND_THIS_WORKSPACE"
+ },
+ "native_bridge.hook_declaration_missing": {
+  "detail": "No configured project above this served workspace declares this host's AlphaLattice hooks. The person runs native_research.py configure for this host in the intended project, then serves its workspace and retries session bind there.",
+  "next_action": "CONFIGURE_THIS_HOST_THEN_SERVE_AND_BIND_ITS_WORKSPACE"
+ },
+ "native_bridge.configuration_path_invalid": {
+  "detail": "The project declaration or binding metadata path is a symlink or leaves the exact configured project. Use ordinary local files under that project; no outside path is read or written by this attachment request.",
+  "next_action": "USE_LOCAL_DECLARATIONS_AND_METADATA_IN_THE_EXACT_PROJECT"
+ },
+ "native_bridge.not_bound": {
+  "detail": "This configured project has no native session binding. Start its workspace Host, then run alphalattice --workspace <dir> session bind inside the intended native agent session before sending a message.",
+  "next_action": "SERVE_THE_WORKSPACE_THEN_BIND_THE_NATIVE_SESSION"
+ },
+ "goal.reference_not_found": {
+  "detail": "The saved Goal revision has no reference with this ID. Read its narrative (`goal narrative --revision <goal_hash>`) and choose a reference recorded there.",
+  "next_action": "READ_THE_SAVED_REVISION_AND_CHOOSE_A_REFERENCE"
+ },
+ "operations.schema_reference_not_local": {
+  "detail": "The installed command schema refers outside its local definitions, so its command table cannot be generated. Restore the matching build's command schema and generate the table again.",
+  "next_action": "RESTORE_THE_MATCHING_COMMAND_SCHEMA"
+ }
+}

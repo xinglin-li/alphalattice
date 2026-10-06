@@ -1,0 +1,30 @@
+{
+  "schema_version": "1",
+  "resource_kind": "knowledge",
+  "namespace": "system",
+  "stable_id": "knowledge.validation",
+  "revision": "1.0.0",
+  "title": "Deterministic validation review knowledge",
+  "scope": "Evidence boundaries for split, sealed holdout, bootstrap, metrics, costs, and validation publication.",
+  "owner_refs": [
+    "openspec:validation-split-and-holdout",
+    "openspec:validation-kernel",
+    "reference:numerical-validation-protocol",
+    "reference:numerical-validation-metrics"
+  ],
+  "guidance": [
+    "Require exact split membership, availability, bootstrap commitments, and evidence partition identity.",
+    "Keep scientific ineligibility visible in complete results while integrity failures remain fail-closed.",
+    "Use the owner specifications for metrics, cost paths, evidence grades, confidence, and action constraints."
+  ],
+  "assumptions": [
+    "Holdout access has already been authorized and recorded by the sealed-holdout boundary when applicable."
+  ],
+  "warnings": [
+    "Validation evidence cannot issue final portfolio approval or relax sealed-holdout discipline."
+  ],
+  "official_sources": [
+    "https://numpy.org/doc/stable/reference/random/generator.html",
+    "https://numpy.org/doc/stable/reference/generated/numpy.percentile.html"
+  ]
+}

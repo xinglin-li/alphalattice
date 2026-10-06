@@ -1,0 +1,46 @@
+/* 09-records — Chain records: report, handoff, archive replay.
+   Files are concatenated in name order by build.py; that order is the cascade order. Edit by hand — the generator in qa/parity/css only did the migration from v3.13. */
+.record-statement {
+  font-size: var(--style-body-size);
+  line-height: var(--style-body-leading);
+  color: var(--muted);
+  margin-top: var(--space-3);
+}
+.record-bundle {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+.record-bundle:last-child {
+  border: 0;
+}
+.record-bundle>div {
+  flex: 1;
+  min-width: 0;
+}
+.record-bundle strong {
+  font-size: var(--style-callout-size);
+  display: block;
+  line-height: var(--style-callout-leading);
+  overflow-wrap: anywhere;
+}
+.record-bundle small {
+  display: block;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.record-bundle>.icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: none;
+  align-self: flex-start;
+  margin-top: calc((var(--style-callout-leading) - var(--icon-size)) / 2);
+}
+@media (width < 640px) {
+.record-statement {
+    font-size: var(--style-body-size);
+    line-height: var(--style-body-leading);
+  }
+}

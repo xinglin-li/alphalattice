@@ -1,0 +1,24 @@
+# The installed regularized linear model (EX). Its reference recipe is the Alpha campaign's ridge
+# baseline (alpha 10). Each family's strength is its own axis under `when`: ridge's alpha, the
+# sparse families' multiplier of the largest useful alpha, and the elastic net's L1 ratio. The
+# axes are the adapter's domain as a search space (V309). This wave the declaration enters no
+# identity.
+model_id: regularized_linear
+family: linear
+fit_protocol: DIRECT_FIT
+parameters:
+  family: str
+  alpha: float
+  alpha_max_multiplier: float
+  l1_ratio: float
+recipe:
+  family: ridge
+  alpha: 10.0
+  alpha_max_multiplier: null
+  l1_ratio: null
+search:
+  axes:
+    - {name: family, kind: categorical, choices: [ridge, lasso, elastic_net], default: ridge}
+    - {name: alpha, kind: float, low: 0.1, high: 100.0, log: true, default: 10.0, when: {axis: family, in: [ridge]}}
+    - {name: alpha_max_multiplier, kind: float, low: 0.01, high: 1.0, log: true, default: 0.1, when: {axis: family, in: [lasso, elastic_net]}}
+    - {name: l1_ratio, kind: float, low: 0.25, high: 0.75, default: 0.5, when: {axis: family, in: [elastic_net]}}

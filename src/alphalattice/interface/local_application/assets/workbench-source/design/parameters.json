@@ -1,0 +1,1929 @@
+{
+ "about": "Every design value of the Local Web workbench, in one place. The build writes the first stylesheet from this file (scripts/build_local_web_ui.py); scripts/check_ui_parameters.py refuses a value declared anywhere else (PR1).",
+ "modes": [
+  {
+   "name": "every-element",
+   "selector": "*"
+  },
+  {
+   "name": "base",
+   "selector": ":root, body"
+  },
+  {
+   "name": "body",
+   "selector": "body"
+  },
+  {
+   "name": "light",
+   "selector": "html[data-theme=light], html[data-theme=light] body"
+  },
+  {
+   "name": "dark",
+   "selector": "html[data-theme=dark], html[data-theme=dark] body"
+  },
+  {
+   "name": "contrast",
+   "selector": ":root, body, html[data-theme], html[data-theme] body",
+   "media": "(prefers-contrast: more)"
+  },
+  {
+   "name": "light-contrast",
+   "selector": "html[data-theme=light], html[data-theme=light] body",
+   "media": "(prefers-contrast: more)"
+  },
+  {
+   "name": "dark-contrast",
+   "selector": "html[data-theme=dark], html[data-theme=dark] body",
+   "media": "(prefers-contrast: more)"
+  },
+  {
+   "name": "zh",
+   "selector": "html[lang=zh-CN], html[lang=zh-CN] body"
+  },
+  {
+   "name": "dark-fields",
+   "selector": "html[data-theme=dark], html[data-theme=dark] :is(input,select,textarea)"
+  },
+  {
+   "name": "zh-body",
+   "selector": "html[lang=zh-CN] body"
+  },
+  {
+   "name": "root",
+   "selector": ":root"
+  },
+  {
+   "name": "root-narrow",
+   "selector": ":root",
+   "media": "(width < 768px)"
+  },
+  {
+   "name": "opaque",
+   "selector": "html body.opaque-controls"
+  },
+  {
+   "name": "reduced-focus",
+   "selector": "html body.reduced-focus"
+  },
+  {
+   "name": "glass-parts",
+   "selector": "body:not(.opaque-controls) :is([data-layer=detail], dialog, .menu)"
+  }
+ ],
+ "breakpoints": {
+  "about": "Named breakpoint scales for viewport width, container width and viewport height (PR1, PG10). Range syntax such as `width < 900px` and `width >= 1180px` gives adjacent rules an explicit boundary. `window` defines @media steps; `container` defines @container steps for the reading lane or a component; `height` defines viewport-height steps. scripts/check_ui_parameters.py rejects unregistered widths, and the build exports the same steps as `BREAKPOINTS`.",
+  "window": {
+   "phone": {
+    "width": 640,
+    "about": "Compact viewport layout: bottom-anchored sheets, one content column and lists below their titles."
+   },
+   "narrow": {
+    "width": 768,
+    "about": "Reduced-width frame layout: 16 px gutters and full-width dialogs."
+   },
+   "pane": {
+    "width": 900,
+    "about": "Below this breakpoint, the inspector overlays the lane; at and above it, the inspector occupies an adjacent column."
+   },
+   "laptop": {
+    "width": 1024,
+    "about": "Viewport threshold below which two-column grids stack."
+   },
+   "dock": {
+    "width": 1180,
+    "about": "Viewport threshold for docking the sidebar as a column. The inspector docks at the pane breakpoint (N3, 2026-09-24)."
+   },
+   "wide": {
+    "width": 1440,
+    "about": "the frame at its full width"
+   }
+  },
+  "container": {
+   "box": {
+    "width": 420,
+    "about": "a small box (a card, a properties list, the command menu) stacks its pairs"
+   },
+   "lane-narrow": {
+    "width": 640,
+    "about": "Narrow-lane layout: row facts move below the title and statistics strips wrap into two columns."
+   },
+   "strip": {
+    "width": 800,
+    "about": "a strip of six tiles of 132 (the measures), a four-up strip on one line"
+   },
+   "lane-compact": {
+    "width": 900,
+    "about": "Container threshold for two-column layouts, including Overview properties and the Team dock (round 31)."
+   },
+   "lane-medium": {
+    "width": 1080,
+    "about": "a medium lane: the ledger at its full width, the Task's log beside its pipeline"
+   }
+  }
+ },
+ "scripts": [
+  "viewport-inset",
+  "popover-gap",
+  "space-1",
+  "space-2",
+  "width-xs",
+  "width-sm",
+  "width-md",
+  "control-xl",
+  "row-regular",
+  "side-min",
+  "side-max",
+  "side-fold",
+  "side-default",
+  "space-4",
+  "chart-width",
+  "chart-width-narrow",
+  "chart-module",
+  "chart-featured",
+  "chart-pad-top",
+  "chart-pad-right",
+  "chart-pad-bottom",
+  "chart-pad-left",
+  "chart-tick-gap",
+  "chart-chip-height",
+  "chart-chip-inset",
+  "chart-text-shift",
+  "chart-marker",
+  "empty-top"
+ ],
+ "counts": [
+  "lobby-rows",
+  "table-rows",
+  "session-title-chars"
+ ],
+ "tones": [
+  "meaning-failure",
+  "meaning-attention",
+  "meaning-decision",
+  "meaning-done",
+  "meaning-active",
+  "meaning-stopped",
+  "meaning-rest"
+ ],
+ "groups": {
+  "scale.space": {
+   "about": "Spacing scale based on multiples of 4 with a 2 px half step (round 38). All gaps, padding and margins use the steps 2, 4, 8, 12, 16, 20, 24, 32, 40, 48 and 64. component.boxes owns named component gaps and insets; role.frame owns the frame gutter.",
+   "tokens": {
+    "space-05": {
+     "base": "2px"
+    },
+    "space-1": {
+     "base": "4px"
+    },
+    "space-2": {
+     "base": "8px"
+    },
+    "space-3": {
+     "base": "12px"
+    },
+    "space-4": {
+     "base": "16px"
+    },
+    "space-5": {
+     "base": "20px"
+    },
+    "space-6": {
+     "base": "24px"
+    },
+    "space-8": {
+     "base": "32px"
+    },
+    "space-10": {
+     "base": "40px"
+    },
+    "space-12": {
+     "base": "48px"
+    },
+    "space-16": {
+     "base": "64px"
+    }
+   }
+  },
+  "scale.type": {
+   "about": "Shared typography scale (law 75, P1), expressed as font size / line height: chrome 12 / 16 for captions, badges, keycaps and chart ticks; UI 13 / 18 for callouts, row text, labels, controls and field values; reading 14 / 22 for introductory text, fact values and table cells, with prose using its dedicated line height; title-3 15 / 20; title-2 17 / 22; title-1 22 / 28 for figure values; large title 26 / 32. Footnote and headline are aliases of the UI style; heading emphasis uses font weight. Font size and line height come from the same style, enforced by the parameter gate. Chinese typography (round 24, 2026-09-20) accounts for CJK glyphs filling the em box: section title 18, body 15, every line height increased by 2, and no letter spacing. Strong text uses weight 600 because the Windows CJK face supplies Regular and Bold only.",
+   "tokens": {
+    "font-ui": {
+     "base": "\"Geist\",-apple-system,BlinkMacSystemFont,\"Segoe UI Variable\",\"Segoe UI\",\"PingFang SC\",\"Hiragino Sans GB\",\"Microsoft YaHei UI\",\"Microsoft YaHei\",\"Noto Sans CJK SC\",Arial,sans-serif"
+    },
+    "font-mono": {
+     "base": "\"Geist Mono\",ui-monospace,SFMono-Regular,Consolas,\"Liberation Mono\",\"PingFang SC\",\"Hiragino Sans GB\",\"Microsoft YaHei UI\",\"Microsoft YaHei\",\"Noto Sans CJK SC\",monospace"
+    },
+    "style-large-title-size": {
+     "base": "26px"
+    },
+    "style-large-title-leading": {
+     "base": "32px"
+    },
+    "style-large-title-tracking": {
+     "base": "-.5px",
+     "zh": "0"
+    },
+    "style-title-1-size": {
+     "base": "22px"
+    },
+    "style-title-1-leading": {
+     "base": "28px",
+     "zh": "30px"
+    },
+    "style-title-1-tracking": {
+     "base": "-.3px",
+     "zh": "0"
+    },
+    "style-title-2-size": {
+     "base": "17px",
+     "zh": "18px"
+    },
+    "style-title-2-leading": {
+     "base": "22px",
+     "zh": "26px"
+    },
+    "style-title-2-tracking": {
+     "base": "-.2px",
+     "zh": "0"
+    },
+    "style-title-3-size": {
+     "base": "15px"
+    },
+    "style-title-3-leading": {
+     "base": "20px",
+     "zh": "22px"
+    },
+    "style-title-3-tracking": {
+     "base": "-.1px",
+     "zh": "0"
+    },
+    "style-headline-size": {
+     "base": "var(--style-callout-size)"
+    },
+    "style-headline-leading": {
+     "base": "var(--style-callout-leading)"
+    },
+    "style-headline-tracking": {
+     "base": "0"
+    },
+    "style-body-size": {
+     "base": "14px",
+     "zh": "15px"
+    },
+    "style-body-leading": {
+     "base": "22px",
+     "zh": "24px"
+    },
+    "style-callout-size": {
+     "base": "13px"
+    },
+    "style-callout-leading": {
+     "base": "18px",
+     "zh": "20px"
+    },
+    "style-footnote-size": {
+     "base": "var(--style-callout-size)",
+     "about": "Minimum readable font size for facts, timestamps, identifiers and notes, based on Apple's 13 pt footnote style (round 89b)."
+    },
+    "style-footnote-leading": {
+     "base": "var(--style-callout-leading)"
+    },
+    "style-footnote-tracking": {
+     "base": "0"
+    },
+    "style-caption-size": {
+     "base": "12px"
+    },
+    "style-caption-leading": {
+     "base": "16px",
+     "zh": "18px"
+    },
+    "style-caption-tracking": {
+     "base": ".5px",
+     "zh": "0"
+    },
+    "style-figure-size": {
+     "base": "22px"
+    },
+    "style-figure-leading": {
+     "base": "28px",
+     "zh": "30px"
+    },
+    "style-figure-tracking": {
+     "base": "-.2px",
+     "zh": "0"
+    },
+    "style-prose-leading": {
+     "base": "24px",
+     "zh": "28px"
+    },
+    "weight-body": {
+     "base": "400"
+    },
+    "weight-label": {
+     "base": "500"
+    },
+    "weight-strong": {
+     "base": "600",
+     "zh": "600"
+    }
+   }
+  },
+  "scale.radius": {
+   "about": "Shared radius scale (P4): micro 4 for keycaps, code and placeholders; control 6 for buttons, fields and row highlights; block 8 for nested boxes, empty states, setup cards and tiles; card 12 for cards, panels, verdicts, findings, menus, popovers and details; lg 22 for dialogs (round 80); pill for chips, badges, switches and primary buttons; rule 2 for the rounded end of a 2 px rule.",
+   "tokens": {
+    "radius-micro": {
+     "base": "4px"
+    },
+    "radius-control": {
+     "base": "6px"
+    },
+    "radius-block": {
+     "base": "8px"
+    },
+    "radius-card": {
+     "base": "12px"
+    },
+    "radius-pill": {
+     "base": "999px"
+    },
+    "radius-lg": {
+     "base": "22px"
+    },
+    "radius-rule": {
+     "base": "2px",
+     "about": "a 2 px rule's round end (the exchange rail, the lab start)"
+    }
+   }
+  },
+  "scale.control": {
+   "about": "Control-height scale: 24, 28, 32, 40 and 48, based on GitHub Primer (MIT; law 106, P2). The control context determines its height step. Vertical padding is derived as (height step - UI line height - two 1 px borders) / 2, so label length does not change control height.",
+   "tokens": {
+    "control-xs": {
+     "base": "24px",
+     "about": "a control inside a row or a table cell, a chip, a menu's step"
+    },
+    "control-sm": {
+     "base": "28px",
+     "about": "a toolbar's control, a filter, a segment, a compact button, a sidebar row"
+    },
+    "control-md": {
+     "base": "32px",
+     "about": "a button, a field, a picker, an icon button, a menu row"
+    },
+    "control-lg": {
+     "base": "40px",
+     "about": "a first-use or empty-state action, a narrow screen's touch size"
+    },
+    "control-xl": {
+     "base": "48px",
+     "about": "the command menu's field"
+    },
+    "control-pad-xs": {
+     "base": "calc((var(--control-xs) - var(--style-callout-leading) - 2px) / 2)"
+    },
+    "control-pad-sm": {
+     "base": "calc((var(--control-sm) - var(--style-callout-leading) - 2px) / 2)"
+    },
+    "control-pad-md": {
+     "base": "calc((var(--control-md) - var(--style-callout-leading) - 2px) / 2)"
+    }
+   }
+  },
+  "scale.motion": {
+   "about": "Motion parameters for feedback, in-place changes and surface entrances (round 41). Three durations and two curves, arrive and move, define transitions; highlights use a longer fade. Reduced motion makes transitions immediate (11-accessibility.css).",
+   "tokens": {
+    "dur-1": {
+     "base": "100ms",
+     "about": "Short transition duration for menus, previews, cards and compact-control feedback, based on Linear measurements (round 59)."
+    },
+    "dur-2": {
+     "base": "150ms",
+     "about": "a panel, the sheet, the command menu"
+    },
+    "dur-3": {
+     "base": "240ms",
+     "about": "Transition duration for page changes and the drawer."
+    },
+    "dur-linger": {
+     "base": "1200ms"
+    },
+    "curve-arrive": {
+     "base": "cubic-bezier(.2,.7,.2,1)"
+    },
+    "curve-move": {
+     "base": "cubic-bezier(.4,0,.2,1)"
+    },
+    "dur-pulse": {
+     "base": "2.6s",
+     "about": "Shared slow pulse cycle for live and busy indicators and skeleton shimmer."
+    },
+    "press-shift": {
+     "base": ".5px",
+     "about": "Displacement of a control while pressed."
+    }
+   }
+  },
+  "role.frame": {
+   "about": "Shared CSS frame geometry: maximum width 1440 px, with a 32 px inset reduced to 16 px below 768 px. Viewport lengths are divided by the text-size scale because root CSS zoom does not scale viewport units; applyZoom sets --zoom on the root only (round 84).",
+   "tokens": {
+    "vh": {
+     "base": "calc(100dvh / var(--zoom, 1))"
+    },
+    "vw": {
+     "base": "calc(100vw / var(--zoom, 1))"
+    },
+    "layout-max": {
+     "root": "1440px"
+    },
+    "layout-pad": {
+     "root": "32px",
+     "root-narrow": "16px"
+    },
+    "viewport-inset": {
+     "base": "16px",
+     "about": "Minimum distance between an overlay and the viewport edge, replacing independently selected offsets of 28, 32, 36, 40 and 22 px."
+    },
+    "side-min": {
+     "base": "180px",
+     "about": "Minimum sidebar width during resizing. The earlier 236 px minimum provided insufficient adjustment below the default (2026-09-25). At reduced widths, labels shortened by shortcut chords remain available in tooltips beside the dock."
+    },
+    "side-max": {
+     "base": "400px",
+     "about": "the side's widest dragged width"
+    },
+    "side-fold": {
+     "base": "160px",
+     "about": "a drag under this width folds the side to the rail"
+    },
+    "side-default": {
+     "base": "216px",
+     "about": "Initial sidebar width before manual resizing. It keeps row labels fully visible at rest; the previous 240 px default was reduced after repeated narrowing in the 2026-09-25 review. Validated by dock_tips_probe."
+    },
+    "lane-foot": {
+     "base": "112px",
+     "about": "Bottom clearance after the final page box, preventing overlap with toast notifications."
+    },
+    "resize-grip": {
+     "base": "6px",
+     "about": "the sidebar's drag edge"
+    },
+    "toast-offset": {
+     "base": "var(--space-16)",
+     "about": "Toast offset from the bottom edge of the viewport, replacing independently selected offsets of 62 and 56 px."
+    },
+    "document-max": {
+     "base": "calc(var(--vh) * .7)",
+     "about": "a code document's height in its dialog"
+    },
+    "kv-key": {
+     "base": "152px",
+     "about": "a Properties section's key column: a worded key of three words on one or two lines (the dialog's facts' width, round 86), one width down a column so the values align"
+    },
+    "kv-column": {
+     "base": "360px",
+     "about": "a Properties section's column (N2, 2026-09-24): the narrowest a fact keeps its label and a value's first words on one line; two fit from a lane of 752, one below"
+    },
+    "quick-height": {
+     "base": "720px",
+     "about": "Maximum Quick Open height in a tall viewport, based on Raycast measurements, to keep the command list within a compact scanning area."
+    },
+    "quick-cover": {
+     "base": "calc(var(--vh) * .76)",
+     "about": "Quick Open's height on a short window"
+    },
+    "quick-top": {
+     "base": "calc(var(--vh) * .2)",
+     "about": "Top offset positioning Quick Open in the upper viewport."
+    }
+   }
+  },
+  "role.ground": {
+   "about": "Achromatic surface hierarchy for both appearances: canvas, lane, box and overlay (rounds 39, 68 and 82). Dark uses canvas L 16, lane L 20, box L 24, raised surface L 26 and overlay L 30. Light uses canvas L 96.2 and lane L 99.2, with white boxes, overlays and fields; the 2026-09-24 revision increased the earlier L 95.2/L 98.2 values while preserving layer separation. Wells use translucent ink to appear inset. Group headers use the brighter surface-bar level; subtle cards sit between the lane and box levels.",
+   "tokens": {
+    "surface-page": {
+     "base": "var(--bg)",
+     "dark": "var(--bg)"
+    },
+    "surface-face": {
+     "base": "oklch(99.2% 0 0)",
+     "dark": "var(--content-surface)"
+    },
+    "surface-box": {
+     "base": "var(--surface-raised)",
+     "dark": "oklch(24% 0 0)",
+     "glass-parts": "transparent",
+     "about": "Shared box fill (law 147). In Dark, L 24 lies above the lane at L 20 and below the raised surface at L 26; the border and resting shadow preserve separation. Inside glass layers, the fill is transparent so boxes share the surrounding glass material and retain only their outlines (law 150)."
+    },
+    "surface-raised": {
+     "base": "#ffffff",
+     "dark": "oklch(26% 0 0)"
+    },
+    "surface-overlay": {
+     "base": "#ffffff",
+     "dark": "oklch(30% 0 0)"
+    },
+    "surface-well": {
+     "base": "color-mix(in srgb,var(--text) 4%,transparent)",
+     "dark": "rgba(0,0,0,.22)"
+    },
+    "surface-bar": {
+     "base": "color-mix(in srgb,var(--text) 4%,transparent)",
+     "dark": "rgba(255,255,255,.05)",
+     "about": "Group-header surface for list groups and table group rows. It is brighter than its background to distinguish a header from an inset well: translucent white below the 6% hover level in Dark, and 4% text ink in Light (2026-09-25)."
+    },
+    "field-face": {
+     "base": "#ffffff",
+     "dark": "rgba(255,255,255,.06)",
+     "glass-parts": "var(--glass-control)",
+     "about": "Field tint inside glass layers, including details, dialogs and menus. It shares the glass material rather than introducing an opaque white field (law 150)."
+    },
+    "content-surface": {
+     "base": "var(--surface-face)",
+     "dark": "oklch(20% 0 0)"
+    },
+    "ground": {
+     "base": "var(--surface-face)",
+     "about": "Local background used by elements that must cover underlying content, including chart markers, navigator handles, map nodes and exchange marks. The lane is the default; boxes, overlays and panels define their own background. Ordinary elements remain transparent to prevent mismatched surfaces, such as a lane-colored table inside a white box (2026-09-23)."
+    },
+    "subtle-surface": {
+     "base": "color-mix(in srgb,white 70%,var(--surface-face))",
+     "dark": "color-mix(in srgb,white 4%,var(--content-surface))"
+    },
+    "ui-face": {
+     "body": "var(--surface-face)",
+     "dark": "rgba(255,255,255,.08)",
+     "glass-parts": "var(--glass-control)",
+     "about": "Shared control tint inside glass layers. Chips and control faces retain the surrounding translucent material (law 150)."
+    },
+    "bg": {
+     "light": "oklch(96.2% 0 0)",
+     "dark": "oklch(16% 0 0)"
+    }
+   }
+  },
+  "role.ink": {
+   "about": "Text and interface inks (rounds 82, 89b and 90). The text ink is L 13 in Light and L 92.5 in Dark. Muted ink mixes text ink into the local ground using --muted-mix: 72%, or 80% in increased contrast; boxes recompute that mix against their own ground. Link ink is adjusted from the accent to reach 4.5:1 contrast. Primary buttons use text ink.",
+   "tokens": {
+    "faint": {
+     "base": "color-mix(in srgb,var(--muted) 84%,var(--surface-face))"
+    },
+    "disabled-ink": {
+     "base": "color-mix(in srgb,var(--text) 58%,var(--surface-page))"
+    },
+    "disabled-surface": {
+     "base": "var(--subtle-surface)"
+    },
+    "ink-link": {
+     "base": "color-mix(in srgb,var(--accent) 55%,var(--text))",
+     "light": "oklch(50% 0.2 257)",
+     "dark": "oklch(66% 0.2 255)",
+     "light-contrast": "color-mix(in srgb, var(--accent) 45%, var(--text))",
+     "about": "one step lighter than the accent: 4.5:1 on the box step (L 26)"
+    },
+    "action-bg": {
+     "base": "color-mix(in srgb,var(--accent) 80%,#081125)",
+     "light": "var(--text)",
+     "dark": "var(--text)"
+    },
+    "action-ink": {
+     "base": "white",
+     "light": "#ffffff",
+     "dark": "var(--bg)"
+    },
+    "counter-ink": {
+     "base": "oklch(24% 0.05 var(--hue-warning))",
+     "about": "Ink for attention counters: dark amber-black on the solid warning mark in both appearances, providing clear separation on the Dark dock."
+    },
+    "muted-mix": {
+     "base": "72%",
+     "contrast": "80%",
+     "light": "80%",
+     "light-contrast": "86%",
+     "about": "Text-ink mix for sustained readability. The round 89b revision increased contrast; the 2026-09-23 Light reference mixed the softer text ink at 80% to match measured Linear secondary ink at lch 38-39."
+    },
+    "muted": {
+     "base": "color-mix(in srgb, var(--text) var(--muted-mix), var(--surface-page))"
+    },
+    "text": {
+     "light": "oklch(30.7% 0 0)",
+     "dark": "oklch(92.5% 0 0)",
+     "about": "Light: Linear's body ink, measured (lch 19.6), not near-black on a near-white lane"
+    },
+    "title-ink": {
+     "light": "oklch(22% 0 0)",
+     "dark": "var(--text)",
+     "about": "an object's title, a step deeper than the body (Linear's title ink, lch 9.8, measured)"
+    },
+    "accent": {
+     "light": "oklch(60% 0.218 257)",
+     "dark": "oklch(62.4% 0.206 255)"
+    }
+   }
+  },
+  "role.line": {
+   "about": "The lines: a hairline of the text ink between rows (7 %) and a box's edge (7 % in Light; in Dark a lit 4 % hairline over the box's ring); the strong edge for a hover or a chosen outline; increased contrast makes every edge read (>= 3:1). V657: Light needs 55%; the 45% contrast floor also covers a Dark field composited over the overlay ground (42% read 2.977:1).",
+   "tokens": {
+    "edge-card": {
+     "base": "color-mix(in srgb,var(--text) 7%,transparent)",
+     "dark": "rgba(255,255,255,.04)",
+     "contrast": "color-mix(in srgb, var(--text) 45%, transparent)",
+     "light-contrast": "color-mix(in srgb, var(--text) 55%, transparent)",
+     "about": "a box's and the lane's hairline; Dark's a step lighter than the fill (Linear's dark theme, measured: lch +4.3 on the lane, +3.7 on a box)"
+    },
+    "edge-hair": {
+     "base": "color-mix(in srgb,var(--text) 7%,transparent)",
+     "dark": "rgba(255,255,255,.06)",
+     "contrast": "color-mix(in srgb, var(--text) 45%, transparent)",
+     "light-contrast": "color-mix(in srgb, var(--text) 55%, transparent)"
+    },
+    "edge-strong": {
+     "base": "color-mix(in srgb,var(--text) 14%,transparent)",
+     "dark": "rgba(255,255,255,.12)",
+     "contrast": "color-mix(in srgb, var(--text) 60%, transparent)"
+    },
+    "edge-stat": {
+     "base": "color-mix(in srgb, var(--edge-hair) var(--tint-strong), transparent)",
+     "contrast": "var(--edge-hair)",
+     "about": "V657: the statistic's ordinary soft divider keeps its tint; increased contrast reads the hairline without a second alpha reduction"
+    },
+    "edge-row": {
+     "base": "color-mix(in srgb, var(--text) var(--tint-faint), transparent)",
+     "contrast": "var(--edge-hair)",
+     "about": "V657: a table's inset row divider keeps its ordinary tint; increased contrast reads the same hairline as every row"
+    },
+    "thread-axis": {
+     "base": "color-mix(in srgb,var(--text) 10%,transparent)",
+     "dark": "rgba(255,255,255,.09)",
+     "contrast": "color-mix(in srgb, var(--text) 45%, transparent)",
+     "light-contrast": "color-mix(in srgb, var(--text) 55%, transparent)",
+     "about": "a conversation's one axis down its marks and replies (law 139; C0: YouTube's thread line, measured 1 px #e5e5e5 on white, at the comment avatar's centre) -- lighter than a box's edge, darker than a row's hairline"
+    },
+    "rim-top": {
+     "base": "inset 0 1px 0 rgba(255,255,255,.6)",
+     "dark": "0 0 0 0 transparent",
+     "glass-parts": "0 0 0 0 transparent",
+     "contrast": "0 0 0 0 transparent",
+     "about": "Decorative inner highlight. Glass layers provide their own illumination, so this highlight is removed there (law 150). Increased contrast removes it while preserving the outer edge at 3:1 (V657)."
+    },
+    "ui-line": {
+     "body": "var(--edge-card)",
+     "dark": "rgba(255,255,255,.12)",
+     "contrast": "var(--edge-card)"
+    },
+    "ui-soft-line": {
+     "body": "var(--edge-hair)",
+     "dark": "rgba(255,255,255,.07)",
+     "contrast": "var(--edge-hair)"
+    },
+    "line": {
+     "light": "color-mix(in srgb,var(--text) 8%,transparent)",
+     "dark": "rgba(255,255,255,0.08)",
+     "contrast": "var(--edge-hair)"
+    },
+    "rule-width": {
+     "base": "2px",
+     "about": "a rule: the current tab's indicator, a quote's left rule"
+    }
+   }
+  },
+  "role.fill": {
+   "about": "The fills: the selected row neutral (the text ink at 8 %), the option under the pointer in a picker the accent at 12 % (round 91), a pressed segment the text ink at 8 % (round 24).",
+   "tokens": {
+    "ds-control-hover": {
+     "body": "var(--surface-well)",
+     "dark": "rgba(255,255,255,.06)"
+    },
+    "fill-selected": {
+     "light": "color-mix(in srgb,var(--text) 8%,transparent)",
+     "dark": "rgba(255,255,255,.08)"
+    },
+    "fill-highlight": {
+     "light": "color-mix(in srgb,var(--accent) 12%,transparent)",
+     "dark": "color-mix(in srgb,var(--accent) 18%,transparent)",
+     "about": "round 91: the option under the pointer or the keys, in a picker only"
+    },
+    "switch-knob": {
+     "base": "#fff",
+     "about": "a switch's knob is white in both appearances"
+    }
+   }
+  },
+  "component.rail": {
+   "about": "Shared selection and exchange rail (2026-09-22). A bar at the row start indicates the selected Lab mode or an exchange kind. Its width uses the rule parameter; its inset uses row padding. Selection uses link blue, with row color assigned through --rail (04-surfaces.css). A border aligns the rail to device pixels at every text size.",
+   "tokens": {
+    "rail-width": {
+     "base": "var(--rule-width)",
+     "about": "the bar's width: the rule's, as a tab's indicator"
+    },
+    "rail-inset": {
+     "base": "var(--space-2)",
+     "about": "the bar's distance from the row's top and bottom: the row's own pad, so it spans the words"
+    },
+    "rail-on": {
+     "base": "var(--ink-link)",
+     "about": "the chosen row's bar: the link blue"
+    }
+   }
+  },
+  "role.tint": {
+   "about": "Shared color-mix strengths (Q1): faint 6% for subtle lines, tracks and hover fills; wash 12% for tinted surfaces; soft 24% for selections and placeholders; edge 40% for rings, borders and connectors; strong 64% for marks and scrims. These five steps replace independently specified strengths.",
+   "tokens": {
+    "tint-faint": {
+     "base": "6%"
+    },
+    "tint-wash": {
+     "base": "12%"
+    },
+    "tint-soft": {
+     "base": "24%"
+    },
+    "tint-edge": {
+     "base": "40%"
+    },
+    "tint-strong": {
+     "base": "64%"
+    }
+   }
+  },
+  "role.opacity": {
+   "about": "Shared opacity levels (Q1): subtle .35 for indeterminate-meter stripes; faded .55 for folded or disabled surfaces, idle glyphs and busy lanes; secondary .7 for secondary series, busy controls and past log entries. Text uses muted ink rather than opacity to reduce emphasis.",
+   "tokens": {
+    "opacity-subtle": {
+     "base": ".35"
+    },
+    "opacity-faded": {
+     "base": ".55"
+    },
+    "opacity-secondary": {
+     "base": ".7"
+    }
+   }
+  },
+  "role.focus": {
+   "about": "The keyboard's ring (round 51): 2 px of the accent 2 px outside the control; inside a strip that clips (a tab strip scrolls sideways) the ring is drawn inside by the same width.",
+   "tokens": {
+    "focus-ring-width": {
+     "base": "2px"
+    },
+    "focus-ring-offset": {
+     "base": "2px"
+    },
+    "focus-ring-inset": {
+     "base": "calc(0px - var(--focus-ring-width))",
+     "about": "the ring drawn inside a control whose box clips (a tab, a row, a scroller)"
+    },
+    "underline-offset": {
+     "base": "3px",
+     "about": "a link's underline under its words"
+    }
+   }
+  },
+  "role.depth": {
+   "about": "Surface shadows and stacking levels (round 39, P4, law 138). Resting boxes use measured Linear references: two soft shadow layers in Light and a tight 30% black ring in Dark. Raised surfaces and overlays use ambient and key-shadow layers. Glass modals reduce backdrop dimming and add blur (law 150). Named z-index levels are raised 1, sticky 2, float 3, top 5, side 6, inspector 30, menu 40, toast 80, peek 96 and skip 100.",
+   "tokens": {
+    "shadow-rest": {
+     "base": "0 3px 6px -2px rgba(0,0,0,.02), 0 1px 1px 0 rgba(0,0,0,.04)",
+     "dark": "0 .5px 1px 1px rgba(0,0,0,.3)",
+     "glass-parts": "0 0 0 0 transparent",
+     "about": "Resting shadow for boxes and the lane, based on measured Linear surfaces: two faint layers in Light; a tight 30% black ring with the edge-card highlight in Dark. Inside glass layers, no separate resting shadow is applied, keeping internal boxes within the shared material (law 150)."
+    },
+    "shadow-raised": {
+     "base": "0 1px 2px color-mix(in srgb,var(--text) 6%,transparent),0 8px 24px -12px color-mix(in srgb,var(--text) 18%,transparent)",
+     "dark": "0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6)"
+    },
+    "shadow-overlay": {
+     "base": "0 4px 12px color-mix(in srgb,var(--text) 8%,transparent),0 24px 64px -24px color-mix(in srgb,var(--text) 30%,transparent)",
+     "dark": "0 4px 12px rgba(0,0,0,.5),0 24px 64px -24px rgba(0,0,0,.8)"
+    },
+    "layer-raised": {
+     "base": "1"
+    },
+    "layer-sticky": {
+     "base": "2"
+    },
+    "layer-float": {
+     "base": "3"
+    },
+    "layer-top": {
+     "base": "5"
+    },
+    "layer-side": {
+     "base": "6"
+    },
+    "layer-inspector": {
+     "base": "30"
+    },
+    "layer-menu": {
+     "base": "40"
+    },
+    "layer-toast": {
+     "base": "80"
+    },
+    "layer-peek": {
+     "base": "96"
+    },
+    "layer-skip": {
+     "base": "100"
+    },
+    "backdrop": {
+     "light": "rgba(18,25,38,.12)",
+     "dark": "rgba(0,0,0,.22)",
+     "opaque": "var(--backdrop-solid)",
+     "reduced-focus": "transparent",
+     "about": "Backdrop for modal dialogs such as the research map, confirmations and Quick Open. Glass uses half the opaque configuration's dimming with backdrop-blur to separate the dialog from underlying content (2026-09-24). Opaque controls retains the full dimming; Reduce focus effects disables both dimming and blur. Read-only sheets such as Keyboard shortcuts use neither."
+    },
+    "backdrop-solid": {
+     "light": "rgba(18,25,38,.24)",
+     "dark": "rgba(0,0,0,.42)",
+     "about": "Full modal-backdrop dimming used by the Opaque controls configuration."
+    },
+    "backdrop-blur": {
+     "base": "blur(10px) saturate(115%)",
+     "opaque": "none",
+     "reduced-focus": "none",
+     "about": "Background blur behind a modal dialog, preserving page structure while obscuring underlying text. Disabled by Opaque controls and Reduce focus effects."
+    }
+   }
+  },
+  "role.tone": {
+   "about": "The tones (round 82, decision A of phase 12): green, orange, red, purple, cyan and grey as marks (a dot, a glyph, a switch, a chart series) and as inks (the same hue at a lightness that reads as text: Light one step deeper, Dark the mark itself); a tint is the mark at 12 %. Colour gives meaning and appears nowhere else. Increased contrast deepens the inks. Code (round 61): a key in the green, a string in a deep blue, a constant in the brighter blue. Chart series: the accent, then a second hue per appearance, validated for colour vision.",
+   "tokens": {
+    "hue-good": {
+     "base": "147"
+    },
+    "hue-warning": {
+     "base": "65"
+    },
+    "hue-danger": {
+     "base": "29"
+    },
+    "hue-review": {
+     "base": "312"
+    },
+    "hue-neutral": {
+     "base": "286"
+    },
+    "hue-code": {
+     "base": "257"
+    },
+    "hue-cyan": {
+     "base": "230"
+    },
+    "good-soft": {
+     "base": "color-mix(in srgb, var(--good) 12%, transparent)"
+    },
+    "danger-soft": {
+     "base": "color-mix(in srgb, var(--danger) 12%, transparent)"
+    },
+    "series-1": {
+     "base": "var(--accent)"
+    },
+    "series-2": {
+     "light": "#bf7a1c",
+     "dark": "#b87a22"
+    },
+    "good": {
+     "light": "oklch(73% 0.194 var(--hue-good))",
+     "dark": "oklch(75.6% 0.208 var(--hue-good))"
+    },
+    "warning": {
+     "light": "oklch(76.5% 0.175 var(--hue-warning))",
+     "dark": "oklch(78.2% 0.171 var(--hue-warning))"
+    },
+    "danger": {
+     "light": "oklch(65.4% 0.232 var(--hue-danger))",
+     "dark": "oklch(66.3% 0.224 var(--hue-danger))"
+    },
+    "review": {
+     "light": "oklch(61.5% 0.213 var(--hue-review))",
+     "dark": "oklch(65.6% 0.227 var(--hue-review))"
+    },
+    "neutral": {
+     "light": "oklch(64.8% 0.007 var(--hue-neutral))",
+     "dark": "oklch(68.1% 0.007 var(--hue-neutral))"
+    },
+    "good-ink": {
+     "light": "oklch(50% 0.16 var(--hue-good))",
+     "dark": "var(--good)",
+     "light-contrast": "oklch(40% 0.12 var(--hue-good))",
+     "dark-contrast": "oklch(88% 0.15 var(--hue-good))"
+    },
+    "warning-ink": {
+     "light": "oklch(56% 0.15 var(--hue-warning))",
+     "dark": "var(--warning)",
+     "light-contrast": "oklch(42% 0.11 var(--hue-warning))",
+     "dark-contrast": "oklch(88% 0.13 var(--hue-warning))"
+    },
+    "danger-ink": {
+     "light": "oklch(54% 0.2 var(--hue-danger))",
+     "dark": "var(--danger)",
+     "light-contrast": "oklch(42% 0.17 var(--hue-danger))",
+     "dark-contrast": "oklch(86% 0.10 var(--hue-danger))"
+    },
+    "review-ink": {
+     "light": "oklch(50% 0.2 var(--hue-review))",
+     "dark": "var(--review)",
+     "light-contrast": "oklch(42% 0.17 var(--hue-review))",
+     "dark-contrast": "oklch(86% 0.09 var(--hue-review))"
+    },
+    "neutral-ink": {
+     "light": "oklch(48% 0.01 var(--hue-neutral))",
+     "dark": "var(--neutral)",
+     "light-contrast": "oklch(40% 0.03 var(--hue-neutral))",
+     "dark-contrast": "oklch(88% 0.03 var(--hue-neutral))"
+    },
+    "cyan": {
+     "light": "oklch(78.9% 0.122 var(--hue-cyan))",
+     "dark": "oklch(81.7% 0.119 var(--hue-cyan))"
+    },
+    "cyan-ink": {
+     "light": "oklch(52% 0.12 var(--hue-cyan))",
+     "dark": "var(--cyan)",
+     "light-contrast": "oklch(42% 0.12 var(--hue-cyan))",
+     "dark-contrast": "oklch(88% 0.10 var(--hue-cyan))"
+    },
+    "role-alpha": {
+     "base": "var(--cyan-ink)"
+    },
+    "code-key": {
+     "light": "oklch(45% 0.12 var(--hue-good))",
+     "dark": "oklch(82% 0.14 var(--hue-good))",
+     "light-contrast": "oklch(38% 0.12 var(--hue-good))",
+     "dark-contrast": "oklch(90% 0.13 var(--hue-good))"
+    },
+    "code-string": {
+     "light": "oklch(40% 0.10 var(--hue-code))",
+     "dark": "oklch(85% 0.07 var(--hue-code))",
+     "light-contrast": "oklch(32% 0.10 var(--hue-code))",
+     "dark-contrast": "oklch(92% 0.06 var(--hue-code))"
+    },
+    "code-constant": {
+     "light": "oklch(50% 0.16 var(--hue-code))",
+     "dark": "oklch(78% 0.13 var(--hue-code))",
+     "light-contrast": "oklch(42% 0.16 var(--hue-code))",
+     "dark-contrast": "oklch(88% 0.11 var(--hue-code))"
+    }
+   }
+  },
+  "role.meaning": {
+   "about": "Semantic color mapping: seven meanings reference role.tone and are exported to scripts through `tones`. States and callers use meanings rather than color names (status.js TONE). Attention uses amber; red is reserved for failure (2026-09-25).",
+   "tokens": {
+    "meaning-failure": {
+     "base": "danger",
+     "about": "work that ran and failed, a read or a render that could not complete, a check whose object did not hold (a missing or tampered index): the only red"
+    },
+    "meaning-attention": {
+     "base": "warning",
+     "about": "States requiring attention or further action: blocked, refused, deferred, recovery required, cancelling, blocking findings, exceeded budgets, partial or expired records, and HIGH severity. A decision-based stop is distinct from failure."
+    },
+    "meaning-decision": {
+     "base": "review",
+     "about": "a person's decision is awaited"
+    },
+    "meaning-done": {
+     "base": "good",
+     "about": "completed, verified, published, available"
+    },
+    "meaning-active": {
+     "base": "accent",
+     "about": "Active work or informative standing: running, planned, reused and fetched."
+    },
+    "meaning-stopped": {
+     "base": "stopped",
+     "about": "stopped by a person: a fact, not the plain record (cancelled)"
+    },
+    "meaning-rest": {
+     "base": "neutral",
+     "about": "Neutral states without a semantic color: queued, draft, recorded and not started."
+    }
+   }
+  },
+  "role.scroll": {
+   "about": "The scrollbar's thumb, its hover and (Dark) its track.",
+   "tokens": {
+    "scroll-thumb": {
+     "light": "oklch(72% 0 0)",
+     "dark": "oklch(52% 0 0)"
+    },
+    "scroll-hover": {
+     "light": "oklch(48% 0 0)",
+     "dark": "oklch(74% 0 0)"
+    },
+    "scroll-track": {
+     "dark-fields": "transparent"
+    },
+    "scrollbar-size": {
+     "base": "8px",
+     "about": "a scrollbar's thickness"
+    },
+    "scrollbar-wide": {
+     "base": "14px",
+     "about": "the wide scrollbar a reader chose in Settings"
+    }
+   }
+  },
+  "role.grid": {
+   "about": "Shared grid families (round 38). The four templates using variables are declared on each element because var() references inside a custom property are resolved where that property is declared. Each grid defines --lead, --aside, --cols or --card-min beside its template. Page grids use one of these shared families.",
+   "tokens": {
+    "grid-equal": {
+     "every-element": "repeat(var(--cols, 2), minmax(0, 1fr))"
+    },
+    "grid-aside": {
+     "every-element": "minmax(0, 1fr) var(--aside, var(--width-sm))"
+    },
+    "grid-master": {
+     "every-element": "var(--lead, 240px) minmax(0, 1fr)"
+    },
+    "grid-cards": {
+     "every-element": "repeat(auto-fit, minmax(var(--card-min, 240px), 1fr))"
+    },
+    "grid-1": {
+     "base": "minmax(0, 1fr)"
+    },
+    "grid-2": {
+     "base": "repeat(2, minmax(0, 1fr))"
+    },
+    "grid-3": {
+     "base": "repeat(3, minmax(0, 1fr))"
+    },
+    "grid-4": {
+     "base": "repeat(4, minmax(0, 1fr))"
+    },
+    "grid-5": {
+     "base": "repeat(5, minmax(0, 1fr))"
+    },
+    "grid-facts": {
+     "base": "fit-content(40%) minmax(0, 1fr)"
+    },
+    "grid-side-props": {
+     "base": "fit-content(60%) minmax(0, 1fr)",
+     "about": "a side column's properties: the label up to three fifths (a state's words, `Checked, with findings`), the value the rest"
+    },
+    "share-crumb": {
+     "base": "40%",
+     "about": "a crumb's segment before the last: the last (the object) keeps the rest"
+    },
+    "share-field": {
+     "base": "60%",
+     "about": "a form's control beside its label"
+    },
+    "share-facts": {
+     "base": "44%",
+     "about": "an activity row's facts beside its operation"
+    },
+    "share-lede-reserve": {
+     "base": "18%",
+     "about": "what a head's lede keeps clear at its right for the head's tools"
+    },
+    "share-chip": {
+     "base": "40%",
+     "about": "Quick Open's context chip beside the query"
+    }
+   }
+  },
+  "role.spine": {
+   "about": "Shared row alignment (law 107, P4). Leading dots, glyphs and marks occupy one lead column; the title starts one gap after that column, independent of the leading element. List titles and wrapped fact lines therefore share the same alignment.",
+   "tokens": {
+    "slot-lead": {
+     "base": "24px",
+     "about": "the lead column: a mark's width, a dot or a glyph centred in it"
+    },
+    "slot-gap": {
+     "base": "var(--space-3)",
+     "about": "from the lead to the title"
+    }
+   }
+  },
+  "component.rows": {
+   "about": "Rows (P2): a dense row 36 (one UI line + 9 + 9: a list row, a disclosure, a menu section), a regular row 44 (a table row, a form row: one line + 13 + 13, or a medium control + 6 + 6), a table's head 44; a row of two lines takes its lines and the same pads. The icon ladder 12 / 14 / 16 / 18 / 20 (icon-xs, icon-sm, icon-size, icon-lg, icon-lead -- the 20 lead a row's glyph sits in).",
+   "tokens": {
+    "row-dense": {
+     "base": "36px"
+    },
+    "row-head": {
+     "base": "44px"
+    },
+    "icon-xs": {
+     "base": "12px"
+    },
+    "icon-sm": {
+     "base": "14px"
+    },
+    "icon-size": {
+     "base": "16px"
+    },
+    "icon-lg": {
+     "base": "18px"
+    },
+    "icon-lead": {
+     "base": "20px"
+    },
+    "row-regular": {
+     "base": "44px",
+     "about": "a table row, a form row, a comfortable list row: one UI line + 13 + 13, or a medium control + 6 + 6"
+    },
+    "row-title-floor": {
+     "base": "96px",
+     "about": "Minimum title width for list rows below 640 px. Facts, timestamps and adjacent actions wrap before reducing the title below this floor, avoiding the earlier 1-50 px title widths observed at 375 px (2026-09-23)."
+    },
+    "time-slot": {
+     "base": "5.5em",
+     "about": "a row's time: an instant in the footnote (Aug 12 19:40)"
+    }
+   }
+  },
+  "component.marks": {
+   "about": "Shared sizes for round and square marks, including state, badge and live indicators (S1, 2026-09-22). Pages do not assign independent 6, 7, 8 or 9 px sizes. Meter-bar geometry belongs to component.meter.",
+   "tokens": {
+    "dot": {
+     "base": "8px",
+     "about": "a state's dot, the live dot, a skeleton's dot, a meter legend's swatch"
+    },
+    "dot-sm": {
+     "base": "6px",
+     "about": "a badge's dot, a log line's dot, the busy dot inside a control"
+    },
+    "mark-box": {
+     "base": "22px",
+     "about": "a glyph's box in a row (the feature icon) and on the rail (the side's mark in the rail layout)"
+    },
+    "info-mark-gap": {
+     "base": "calc(var(--space-1) + var(--space-05))",
+     "about": "Shared gap before an information mark following a label, sentence or value. The mark owns the spacing; containers do not define independent gaps (2026-09-23)."
+    }
+   }
+  },
+  "component.meter": {
+   "about": "Shared geometry for progress, share and composition meters (law 89). The 2026-09-23 review replaced independently defined 16 px composition bars, 96 px sector bars and inconsistent tracks. All meters use one bar height, rounded ends, one track and shared segment spacing. Progress and share fills use blue; composition slices use one hue with progressively lower opacity in slice order. Width is shared, except that a tile meter spans its tile through meter-max. Pages do not set separate meter geometry.",
+   "tokens": {
+    "meter-height": {
+     "base": "6px",
+     "about": "every meter's bar; an unknown extent's dashes are one bar-length each"
+    },
+    "meter-radius": {
+     "base": "var(--radius-pill)",
+     "about": "a meter's ends and every segment's"
+    },
+    "meter-track": {
+     "base": "var(--line)",
+     "about": "the part of the whole that is not filled"
+    },
+    "meter-fill": {
+     "base": "var(--accent)",
+     "about": "Shared blue fill for progress and share meters."
+    },
+    "meter-width": {
+     "base": "480px",
+     "about": "a progress's or a share's width where its container allows; a composition is a figure and spans it (one part draws no bar)"
+    },
+    "meter-gap": {
+     "base": "var(--space-05)",
+     "about": "between two segments or slices: the surface shows through"
+    },
+    "meter-slice": {
+     "base": "var(--series-1)",
+     "about": "a composition's slices: one hue"
+    },
+    "meter-slice-step": {
+     "base": "0.12",
+     "about": "each later slice of a composition is this much fainter"
+    },
+    "meter-slice-floor": {
+     "base": "0.22",
+     "about": "the faintest slice"
+    },
+    "meter-legend-column": {
+     "base": "240px",
+     "about": "a composition's legend is read down columns of about this width, as many as the figure holds"
+    }
+   }
+  },
+  "component.columns": {
+   "about": "Shared minimum table-column widths by content type (S1, 2026-09-22): index, compact numeric value, numeric value, date or identity, and text. The table's minimum width determines when horizontal scrolling begins (law 90). Slotted lists use content-sized grid columns instead of these minimum widths (06-pages.css).",
+   "tokens": {
+    "col-index": {
+     "base": "48px",
+     "about": "the row number's column; a trailing link column"
+    },
+    "col-tight": {
+     "base": "84px",
+     "about": "a short figure (a weight, a change, a count)"
+    },
+    "col-num": {
+     "base": "112px",
+     "about": "a figure in a grid table"
+    },
+    "col-wide": {
+     "base": "140px",
+     "about": "a figure in a report table; a date, an identity or a state in a grid table"
+    },
+    "col-text": {
+     "base": "180px",
+     "about": "a text column's floor in a report table"
+    },
+    "col-absorb": {
+     "base": "112px",
+     "about": "the substance column's floor in a report table: it takes the slack and wraps down to about two words, never a word per line, before a table over its floor rolls (law 90)"
+    },
+    "table-min": {
+     "base": "660px",
+     "about": "a table rolls sideways under this width (law 90)"
+    },
+    "table-min-wide": {
+     "base": "710px",
+     "about": "the holdings table's floor: nine columns"
+    }
+   }
+  },
+  "component.lines": {
+   "about": "Text-region heights derived from the number of visible lines and the corresponding line height (S1, 2026-09-22). This replaces independent pixel heights, including nine log heights from 210 to 450 px and four editor heights.",
+   "tokens": {
+    "log-line": {
+     "base": "calc(var(--style-footnote-leading) + 2 * var(--space-1))",
+     "about": "a log line: the footnote's line and its pad"
+    },
+    "log-lines": {
+     "base": "12",
+     "about": "the Task log's lines"
+    },
+    "log-lines-min": {
+     "base": "8",
+     "about": "the Task log's fewest lines"
+    },
+    "log-lines-max": {
+     "base": "17",
+     "about": "the Task log's most lines"
+    },
+    "log-box-lines": {
+     "base": "10",
+     "about": "the log box's lines beside a narrow pipeline"
+    },
+    "step-log-lines": {
+     "base": "9",
+     "about": "a step's own log"
+    },
+    "code-lines": {
+     "base": "20",
+     "about": "a code block before it scrolls"
+    },
+    "code-lines-short": {
+     "base": "12",
+     "about": "a Task's JSON before it scrolls"
+    },
+    "excerpt-lines": {
+     "base": "16",
+     "about": "an evidence excerpt before it scrolls"
+    },
+    "reply-lines": {
+     "base": "9",
+     "about": "the reviewer's answer editor: its floor, in the editor's lines"
+    },
+    "composer-lines": {
+     "base": "4",
+     "about": "a message composer's body"
+    },
+    "editor-line": {
+     "base": "24px",
+     "about": "the YAML editor's line: the numbers and the code share it"
+    },
+    "editor-lines": {
+     "base": "18",
+     "about": "the YAML editor's floor; the controls beside it match it"
+    },
+    "editor-lines-min": {
+     "base": "14",
+     "about": "the docked editor's fewest lines"
+    },
+    "editor-lines-max": {
+     "base": "22",
+     "about": "the docked editor's most lines"
+    },
+    "editor-reserve": {
+     "base": "520px",
+     "about": "what the Lab keeps above and below the docked editor in a tall window"
+    },
+    "map-lead": {
+     "base": "112px",
+     "about": "the research map's label column"
+    },
+    "map-lead-narrow": {
+     "base": "84px",
+     "about": "the map's label column in the dialog under a laptop's width"
+    },
+    "log-box-height": {
+     "base": "calc(var(--log-box-lines) * var(--log-line))",
+     "about": "Height of the log box beside a narrow pipeline, replacing the previous fixed 270 px height."
+    },
+    "clamp-short": {
+     "base": "2",
+     "about": "a title in a narrow head, a finding's line, an owner's words in a cell, a division's note"
+    },
+    "clamp-note": {
+     "base": "3",
+     "about": "a peek's note; a folded rationale"
+    },
+    "clamp-long": {
+     "base": "7",
+     "about": "Exchange preview length in a single-column thread: seven lines at the prose measure accommodate most of the retained 500-character preview, reducing separate disclosures for each exchange (C4, 2026-09-24)."
+    },
+    "copy-lines": {
+     "base": "8",
+     "about": "the copy dialog's field when the clipboard is refused"
+    }
+   }
+  },
+  "component.controls": {
+   "about": "The control faces of the v3.12 contract: a pill face, a quiet control's radius.",
+   "tokens": {
+    "ui-control-radius": {
+     "body": "var(--radius-pill)"
+    },
+    "ui-quiet-radius": {
+     "body": "var(--radius-control)"
+    }
+   }
+  },
+  "component.tabs": {
+   "about": "Underline-tab geometry for alternate views of one object (law 110). The 2026-09-22 revision replaced pill-shaped view selectors. The current tab uses text ink and a 2 px indicator; other tabs use muted ink. Measurements reference GitHub UnderlineNav, Vercel and Sentry. Height follows the dense-row parameter, with derived vertical padding and 24 px between adjacent labels including inline padding.",
+   "tokens": {
+    "tab-height": {
+     "base": "var(--row-dense)",
+     "about": "the strip's height, its hairline inside it"
+    },
+    "tab-indicator-width": {
+     "base": "var(--rule-width)",
+     "about": "the current tab's underline"
+    },
+    "tab-pad-block": {
+     "base": "calc((var(--tab-height) - var(--style-callout-leading) - var(--tab-indicator-width)) / 2)"
+    },
+    "tab-pad-inline": {
+     "base": "var(--space-05)",
+     "about": "Shared inline padding extending the tab indicator beyond its label."
+    },
+    "tab-gap": {
+     "base": "var(--space-5)"
+    },
+    "tab-content-gap": {
+     "base": "var(--gap-block)",
+     "about": "Shared separation between the tab strip's hairline and the content it controls (2026-09-23)."
+    }
+   }
+  },
+  "component.head": {
+   "about": "Shared object-header geometry (P3, law 110): spacing from the title, state and action band to the context line, and from the header to its tabs and content. Parameters also define object-title line limits, the object's breadcrumb width, table page size and lobby-group row limits.",
+   "tokens": {
+    "head-band-gap": {
+     "base": "var(--space-3)",
+     "about": "the band to the context line"
+    },
+    "head-content-gap": {
+     "base": "var(--gap-block)",
+     "about": "the head to the content"
+    },
+    "object-title-lines": {
+     "base": "2",
+     "about": "Maximum object-title line count, with the full title available on hover. It limits excessive vertical space from titles derived from complete assignments (2026-09-23)."
+    },
+    "crumb-object": {
+     "base": "320px",
+     "about": "an object's name in the path is cut at this width, whole on hover, so the path never runs the width of the screen"
+    },
+    "table-rows": {
+     "base": "50",
+     "about": "Shared default of 50 rows for paged lists and tables; pages use this parameter instead of independent row counts (law 92)."
+    },
+    "lobby-rows": {
+     "base": "6",
+     "about": "a lobby group's rows before `Show n more` opens the rest in place (law 136; the F0 decision 3)"
+    },
+    "session-title-chars": {
+     "base": "28",
+     "about": "a session's title where no rule of the verb table holds: its first sentence on one line, cut here (the F0 decision 2; the owner's whole text stays the conversation's first entry)"
+    }
+   }
+  },
+  "component.status": {
+   "about": "The status box (E1): the checks' name column -- a stage's name at the UI step, the longest (`Analysed`, `Reported`, zh `复核`) with room.",
+   "tokens": {
+    "status-name-width": {
+     "base": "7.5em"
+    }
+   }
+  },
+  "component.sizes": {
+   "about": "Each component's height as a step of the control ladder or the row ladder (P2; item 3 of 2026-09-22 put the frame's and the marks' heights on them). Two keep a size of their own, said beside them: the switch's track and the pipeline's odd node. A square control's width reads the same parameter as its height.",
+   "tokens": {
+    "shell-tool-size": {
+     "base": "var(--control-sm)"
+    },
+    "shell-head-height": {
+     "base": "var(--control-md)"
+    },
+    "shell-row-height": {
+     "base": "var(--control-sm)"
+    },
+    "rail-item-size": {
+     "base": "var(--control-md)"
+    },
+    "badge-height": {
+     "base": "var(--control-xs)"
+    },
+    "counter-height": {
+     "base": "18px",
+     "about": "a count in the dock (Primer's Counter): its pill's height and least width, one digit a round pill"
+    },
+    "counter-pad": {
+     "base": "6px",
+     "about": "Inline padding for dock counters, maintaining pill proportions for two-digit counts."
+    },
+    "counter-rail-height": {
+     "base": "15px",
+     "about": "Height of an attention counter at the top-right corner of an 18 px rail glyph. The earlier 16 px counter and ring matched the glyph's visual prominence; the counter is smaller to preserve that hierarchy (2026-09-25)."
+    },
+    "counter-rail-pad": {
+     "base": "3px",
+     "about": "a rail counter's inline padding"
+    },
+    "counter-rail-mask": {
+     "base": "radial-gradient(circle at calc(100% + var(--counter-cut)) calc(0% - var(--counter-cut)), transparent calc(var(--counter-rail-height) / 2 + var(--counter-cut)), #000 calc(var(--counter-rail-height) / 2 + var(--counter-cut) + .5px))",
+     "about": "Shared mask around a rail counter: a transparent disc uses the counter radius plus clearance; the remaining glyph is opaque, with an antialiased half-pixel boundary."
+    },
+    "counter-cut": {
+     "base": "2px",
+     "about": "Clearance cut from the rail glyph around its counter, exposing the current background. This avoids a fixed-ground ring disrupting the selected fill; the counter extends beyond the glyph corner by the same distance."
+    },
+    "toast-button-size": {
+     "base": "var(--control-xs)"
+    },
+    "switch-height": {
+     "base": "22px",
+     "about": "a switch is its own geometry: a 22 track, 38 wide, the knob inset 2 on every side and travelling the width less the height"
+    },
+    "filter-chip-height": {
+     "base": "var(--control-sm)"
+    },
+    "filter-chip-part-height": {
+     "base": "calc(var(--control-sm) - 2px)"
+    },
+    "icon-button-size": {
+     "base": "var(--control-md)"
+    },
+    "field-height": {
+     "base": "var(--control-md)"
+    },
+    "icon-control-size": {
+     "base": "var(--control-md)"
+    },
+    "ui-field-height": {
+     "base": "var(--control-md)"
+    },
+    "segment-height": {
+     "base": "var(--control-sm)"
+    },
+    "navigation-height": {
+     "base": "var(--control-md)"
+    },
+    "disclosure-row-height": {
+     "base": "var(--row-dense)"
+    },
+    "icon-button-reading-size": {
+     "base": "var(--control-md)"
+    },
+    "icon-button-compact-size": {
+     "base": "var(--control-xs)"
+    },
+    "quick-search-narrow-height": {
+     "base": "var(--control-lg)"
+    },
+    "segment-narrow-height": {
+     "base": "var(--control-md)"
+    },
+    "button-narrow-height": {
+     "base": "var(--control-lg)"
+    },
+    "button-compact-narrow-height": {
+     "base": "var(--control-md)"
+    },
+    "form-row-height": {
+     "base": "var(--row-regular)"
+    },
+    "form-picker-height": {
+     "base": "var(--control-md)"
+    },
+    "object-header-height": {
+     "base": "calc(var(--control-md) + 2 * var(--space-3))",
+     "about": "the band: a medium control and the band's two pads"
+    },
+    "table-control-height": {
+     "base": "var(--control-xs)"
+    },
+    "menu-step-size": {
+     "base": "var(--control-xs)"
+    },
+    "menu-tile-size": {
+     "base": "var(--control-md)"
+    },
+    "menu-segment-height": {
+     "base": "var(--control-xs)"
+    },
+    "quick-search-height": {
+     "base": "var(--control-xl)"
+    },
+    "display-prop-height": {
+     "base": "var(--control-sm)"
+    },
+    "quick-result-height": {
+     "base": "var(--row-dense)"
+    },
+    "button-height": {
+     "base": "var(--control-md)"
+    },
+    "navigator-rail-height": {
+     "base": "var(--row-regular)"
+    },
+    "metric-open-height": {
+     "base": "var(--control-lg)"
+    },
+    "editor-header-height": {
+     "base": "var(--row-head)",
+     "about": "Height of the editor header containing the filename and two tabs, replacing the previous independently selected 55 px height."
+    },
+    "choice-search-height": {
+     "base": "var(--control-md)"
+    },
+    "stage-mark-size": {
+     "base": "var(--control-lg)"
+    },
+    "pipeline-node-size": {
+     "base": "27px",
+     "about": "Odd node dimension aligning the 1 px connector with an integer-pixel center."
+    },
+    "exchange-mark-height": {
+     "base": "var(--control-sm)"
+    },
+    "reply-mark-size": {
+     "base": "20px",
+     "about": "a reply's mark at the thread's second level (law 139; C0 measured a reply's avatar at 0.6 to 0.67 of its comment's: YouTube 24 / 36, bilibili 24 / 40) -- 20 beside the comment's 28 keeps its glyph legible"
+    },
+    "mark-size": {
+     "base": "var(--slot-lead)",
+     "about": "a row's mark fills the lead column (law 107)"
+    },
+    "empty-mark-size": {
+     "base": "56px",
+     "about": "Shared empty-state mark size (N6, law 130). It preserves separation between the mark's twenty lines at 1x, which was lost at the earlier 44 px size (2026-09-23)."
+    },
+    "empty-mark-line": {
+     "base": "1.25px",
+     "about": "Non-scaling stroke width for empty-state marks, preserving line clarity at 1x across display sizes."
+    },
+    "empty-top": {
+     "base": "180px",
+     "about": "Consistent empty-state mark offset from the UI top edge across pages and viewport heights. Placement is at least as low as the tabbed-list position and may adjust downward only (2026-09-23)."
+    },
+    "empty-pad": {
+     "base": "var(--space-8)",
+     "about": "Vertical spacing defining the empty-state boundary without a surrounding frame."
+    },
+    "empty-pad-tight": {
+     "base": "var(--space-4)",
+     "about": "a search's or a filter's empty result: a line under the field"
+    },
+    "empty-gap": {
+     "base": "var(--space-3)",
+     "about": "the mark to the line"
+    },
+    "empty-way-gap": {
+     "base": "var(--space-4)",
+     "about": "the line to its one way"
+    },
+    "tile-size": {
+     "base": "var(--control-md)"
+    },
+    "button-compact-height": {
+     "base": "var(--control-sm)"
+    },
+    "menu-row-height": {
+     "base": "var(--control-md)"
+    },
+    "shell-top-height": {
+     "base": "var(--control-lg)",
+     "about": "Top-row height derived from a 28 px control with 6 px padding above and below, replacing the previous independently selected 38 px height (P2, item 3)."
+    },
+    "switch-width": {
+     "base": "38px"
+    },
+    "switch-inset": {
+     "base": "2px"
+    },
+    "next-step-narrow-height": {
+     "base": "var(--control-xl)",
+     "about": "a two-line study handoff at a narrow reading column"
+    }
+   }
+  },
+  "component.boxes": {
+   "about": "Shared box geometry (P4): card inset 16 for headers, bodies and padded panels, based on GitHub boxes and Primer's normal stack; block gap 20; stack spacing (TY4, 04-surfaces) of 8 between text blocks, 12 before a control, 16 before or after a box, and 20 before a heading; gap below a card header 16; sheet inset 24; reading measures 68ch and 36em in Chinese. The component's own edge, --ds-edge, uses the card edge normally and muted ink in increased contrast.",
+   "tokens": {
+    "inset-card": {
+     "base": "16px"
+    },
+    "gap-block": {
+     "base": "20px"
+    },
+    "stack-text": {
+     "base": "var(--space-2)"
+    },
+    "stack-control": {
+     "base": "var(--space-3)"
+    },
+    "stack-box": {
+     "base": "var(--space-4)"
+    },
+    "stack-heading": {
+     "base": "var(--space-5)"
+    },
+    "gap-card-head": {
+     "base": "16px"
+    },
+    "sheet-inset": {
+     "base": "24px"
+    },
+    "ds-edge": {
+     "body": "var(--edge-card)",
+     "contrast": "var(--muted)"
+    },
+    "ds-prose-measure": {
+     "body": "68ch",
+     "zh-body": "36em"
+    },
+    "measure-short": {
+     "body": "58ch",
+     "zh-body": "30em",
+     "about": "a short measure: a lede beside a control, a question"
+    },
+    "measure-id": {
+     "base": "24ch",
+     "about": "an identifier's visible head before its ellipsis"
+    },
+    "measure-hash": {
+     "base": "13ch",
+     "about": "a hash's short form on a line: its first twelve characters (SHORT.hash) and the ellipsis -- the object head's id, beside the facts"
+    },
+    "popover-gap": {
+     "base": "6px",
+     "about": "a menu, a picker, a peek or a tip stands this far off its trigger"
+    },
+    "measure-code": {
+     "base": "40ch",
+     "about": "a code or a path in a line of the log before its ellipsis"
+    },
+    "measure-name": {
+     "base": "32ch",
+     "about": "a Task's name said by a toast before its ellipsis"
+    },
+    "measure-line": {
+     "body": "72ch",
+     "zh-body": "40em",
+     "about": "the cap on any paragraph in the lane (wider than the reading measure: a note, a banner's words)"
+    },
+    "dialog-button-min": {
+     "base": "92px",
+     "about": "Minimum dialog-button width supporting at least two words across viewport sizes, replacing the independently selected 100 px minimum at tablet widths."
+    }
+   }
+  },
+  "component.widths": {
+   "about": "Shared overlay-width scale (Q1): xs 240 for menus, search fields and chart tooltips; sm 320 for popovers, tooltips, previews, side columns and field pickers; md 480 for sheets, alerts and overlay inspectors; lg 640 for dialogs, Quick Open and document facts; xl 880 for code dialogs and form columns; 2xl 1024 for the research map. Overlays retain the viewport inset on both sides.",
+   "tokens": {
+    "width-xs": {
+     "base": "240px"
+    },
+    "width-sm": {
+     "base": "320px"
+    },
+    "width-md": {
+     "base": "480px"
+    },
+    "width-lg": {
+     "base": "640px"
+    },
+    "width-xl": {
+     "base": "880px"
+    },
+    "width-2xl": {
+     "base": "1024px"
+    }
+   }
+  },
+  "component.detail": {
+   "about": "Shared floating-detail geometry beside a list, or over the lane when no list hosts it (law 149, 2026-09-24). Parameters define the top and edge clearances and the width limit. Text wraps at that limit; wider non-wrapping content scrolls horizontally. Height follows content up to the available viewport below the top row, then scrolls. Floating details use material.glass (law 150).",
+   "tokens": {
+    "detail-gap": {
+     "base": "var(--space-2)",
+     "about": "the layer's distance from the window's edges, the top row and the lane"
+    },
+    "detail-width": {
+     "base": "min(var(--width-md), 40%)",
+     "about": "Shared detail width: the smaller of 480 px and 40% of its host, leaving at least 60% for an adjacent list. The 480 px limit accommodates a 40-digit version or binding and a readable passage. Overlay details use the viewport as their host. This scales with text size and available width, including 125% text size. Width is independent of arriving content so opening a detail and loading its record do not resize the list twice (2026-09-24)."
+    }
+   }
+  },
+  "material.glass": {
+   "about": "Shared glass material for both appearances, floating layers and warning boxes (law 150, 2026-09-24). It combines a translucent fill, backdrop blur, internal illumination, an inward perimeter highlight, a 1 px rim, an outer hairline and a floating shadow, with shared control tints and inset surfaces. Glass is enabled by default. Opaque controls selects each token's recorded opaque value, retaining a complete non-glass configuration.",
+   "tokens": {
+    "glass-fill": {
+     "base": "rgba(255,255,255,.5)",
+     "dark": "color-mix(in srgb, oklch(30% 0 0) 58%, transparent)",
+     "opaque": "var(--surface-overlay)",
+     "about": "Translucent glass fill: Light uses a white center with silver perimeter shading; increased transparency avoids the opaque-card appearance of the earlier 74% fill. Dark uses charcoal. The fill defines the layer's --ground. Opaque: the overlay surface."
+    },
+    "glass-blur": {
+     "base": "blur(24px) saturate(190%) contrast(105%)",
+     "dark": "blur(24px) saturate(170%)",
+     "opaque": "none",
+     "about": "Backdrop blur for glass layers, obscuring underlying text while preserving background definition and color saturation. The Light material also uses layered ambient shadows and translucent internal surfaces. Opaque: none."
+    },
+    "glass-glow": {
+     "base": "radial-gradient(closest-side, rgba(255,255,255,.35), rgba(255,255,255,0)), linear-gradient(180deg, rgba(255,255,255,.25), rgba(255,255,255,0) 22%)",
+     "dark": "radial-gradient(140% 90% at 0% 0%, rgba(255,255,255,.05), transparent 44%), radial-gradient(90% 60% at 100% 100%, rgba(255,255,255,.02), transparent 52%)",
+     "opaque": "none",
+     "about": "Internal illumination: Light uses a white central highlight with illumination from above; Dark uses restrained upper-left illumination and a weaker lower-right highlight. Opaque: none."
+    },
+    "glass-sheen": {
+     "base": "inset 0 -1px 1px rgba(0,0,0,.03), inset 1px 1px 1px rgba(255,255,255,1), inset 0 0 1px 1.5px rgba(255,255,255,.75), inset 0 0 8px 1px rgba(146,156,174,.22), inset 0 0 26px rgba(146,156,174,.15), inset 0 0 60px rgba(168,177,194,.1)",
+     "dark": "inset 1px 1px 1px rgba(255,255,255,.075), inset 0 0 20px rgba(255,255,255,.025), inset 16px 16px 32px -16px rgba(255,255,255,.05)",
+     "opaque": "var(--rim-top)",
+     "about": "Perimeter highlight extending inward beneath content. Dark uses stronger white illumination at the upper left. Light uses a bright inner rim and silver shading that fades in three steps toward the white center, avoiding the inset appearance of shading starting directly at the outer edge. Opaque: the overlay's top rim."
+    },
+    "glass-rim": {
+     "base": "linear-gradient(150deg, rgba(255,255,255,1), rgba(237,240,245,.95) 20%, rgba(198,206,219,.8) 50%, rgba(181,190,205,.85) 80%, rgba(241,243,247,.95))",
+     "dark": "linear-gradient(150deg, rgba(255,255,255,.22), rgba(255,255,255,.1) 16%, rgba(255,255,255,.045) 38%, rgba(255,255,255,.02) 64%, rgba(255,255,255,.03) 86%, rgba(255,255,255,.1))",
+     "opaque": "linear-gradient(var(--edge-card), var(--edge-card))",
+     "contrast": "linear-gradient(var(--edge-card), var(--edge-card))",
+     "about": "A 1 px rim brightest at the upper left, decreasing along the edge, with a secondary lower-right highlight. Light uses a silver rim with white highlights. Opaque: a uniform overlay edge."
+    },
+    "glass-rim-mask": {
+     "base": "linear-gradient(#000 0 0)",
+     "about": "an opaque layer the rim's mask cuts its 1 px ring from (content box out of border box)"
+    },
+    "glass-edge": {
+     "base": "0 0 0 1px rgba(30,41,59,.07)",
+     "dark": "0 0 0 1px rgba(0,0,0,.4)",
+     "opaque": "0 0 0 0 transparent",
+     "contrast": "0 0 0 1px var(--edge-card)",
+     "about": "Outer glass hairline separating the layer from its background. On light backgrounds, a dark line complements the illuminated inner rim; on dark backgrounds, an outer shadow defines the perimeter. Opaque: none; the rim provides the edge."
+    },
+    "glass-shadow": {
+     "base": "0 1px 2px rgba(15,23,42,.06), 0 4px 8px -2px rgba(15,23,42,.06), 0 24px 48px -12px rgba(15,23,42,.14)",
+     "dark": "var(--shadow-overlay)",
+     "opaque": "var(--shadow-overlay)",
+     "about": "Floating shadow: Light uses a contact line, a near shadow and a broad cool ambient layer to convey separation and thickness. Dark uses the shared floating-layer shadow for previews, menus and dialogs. Opaque: the overlay shadow."
+    },
+    "glass-control": {
+     "base": "rgba(0,0,0,.03)",
+     "dark": "rgba(255,255,255,.06)",
+     "about": "Low-opacity control tint inside glass layers, preserving translucent material. Opaque: this rule is inactive and controls retain their own surfaces."
+    },
+    "glass-control-edge": {
+     "base": "rgba(0,0,0,.06)",
+     "dark": "rgba(255,255,255,.08)",
+     "contrast": "var(--edge-card)",
+     "about": "a control's edge on the glass. V672: increased contrast consumes role.line's edge-card, including its Light contrast value, without a second alpha reduction. Opaque: the control's own"
+    },
+    "glass-control-hover": {
+     "base": "rgba(0,0,0,.07)",
+     "dark": "rgba(255,255,255,.12)",
+     "about": "Glass-control hover surface with a clear luminance change from the resting tint. The earlier Light .04/.03 and Dark .06/.06 hover/rest pairs provided insufficient distinction (2026-09-24). Opaque: this rule is inactive and controls retain their own hover styles."
+    },
+    "glass-well": {
+     "base": "transparent",
+     "dark": "var(--surface-well)",
+     "opaque": "var(--surface-well)",
+     "about": "Inset excerpt surface on glass: Light uses the glass material itself, avoiding a separate opaque white card; Dark uses the lane well. Opaque: the lane well."
+    }
+   }
+  },
+  "component.chart": {
+   "about": "The chart's geometry (Q2; the Portfolio's featured chart and a card's module chart): its heights, the width it is drawn at before its box measures it (then it is re-drawn at the box's width, so the other values are px), the pads around the plot, the gap from the plot to a tick's label, the last value's chip and the hover marker.",
+   "tokens": {
+    "chart-featured": {
+     "base": "320px"
+    },
+    "chart-module": {
+     "base": "180px"
+    },
+    "chart-width": {
+     "base": "1100px"
+    },
+    "chart-width-narrow": {
+     "base": "440px",
+     "about": "under the phone step"
+    },
+    "chart-pad-top": {
+     "base": "24px"
+    },
+    "chart-pad-right": {
+     "base": "50px",
+     "about": "room for the ticks' labels"
+    },
+    "chart-pad-bottom": {
+     "base": "34px",
+     "about": "room for the first and last dates"
+    },
+    "chart-pad-left": {
+     "base": "18px"
+    },
+    "chart-tick-gap": {
+     "base": "10px"
+    },
+    "chart-chip-height": {
+     "base": "16px"
+    },
+    "chart-chip-inset": {
+     "base": "4px"
+    },
+    "chart-text-shift": {
+     "base": "3px",
+     "about": "a label's baseline under its line's y"
+    },
+    "chart-marker": {
+     "base": "4px"
+    }
+   }
+  },
+  "component.kit": {
+   "about": "The workshop page's own layout (#page=kit, law 106): the least width of a specimen card.",
+   "tokens": {
+    "kit-specimen-min": {
+     "base": "320px"
+    }
+   }
+  }
+ },
+ "arguments": {
+  "zoom": "the text-size scale; `applyZoom` (window.js) and the prelude set it on the root",
+  "empty-shift": "a page's empty state's move down to `--empty-center` (components.js, `placeEmpty`)",
+  "side-width": "the sidebar's dragged width (window.js)",
+  "picker-top": "a picker's position (components.js)",
+  "picker-left": "a picker's position (components.js)",
+  "picker-width": "a picker's width (components.js)",
+  "picker-max": "a picker's height limit (components.js; a sheet's default)",
+  "menu-x": "a menu's position (components.js)",
+  "menu-y": "a menu's position (components.js)",
+  "menu-limit": "a menu's height limit (components.js)",
+  "detail-top": "a lane reading's top in the window, its height limit until it pins (controls.js, Geometry; law 149)",
+  "detail-under": "the page head's foot in the window, where a detail over the lane stands until the head scrolls away (controls.js, Geometry; law 149)",
+  "detail-at": "a detail over the lane's top: under the page's head, then under the top row (02-shell; law 149)",
+  "lead": "a grid family's lead column",
+  "aside": "a grid family's aside column",
+  "cols": "a grid family's column count",
+  "card-min": "a card grid's minimum card width",
+  "console-a": "the console's first share",
+  "console-b": "the console's second share",
+  "tone": "a mark's tone (badge, state, dot, mark)",
+  "tone-ink": "a mark's ink",
+  "role-ink": "a team role's ink",
+  "tile-ink": "a tile's ink",
+  "icon-stroke": "an icon's stroke width",
+  "row-indent": "a list row's indent after its lead",
+  "fv-step-pad": "a pipeline step's pad",
+  "fv-node": "a pipeline node's size",
+  "fv-line-gap": "a pipeline line's gap",
+  "fv-stage-count": "a pipeline's stage count",
+  "meter-max": "a meter's maximum width",
+  "slice": "a composition slice's order (0 first), set by the meter on the slice and its legend swatch",
+  "es-edge": "an evidence page's edge",
+  "es-paper": "an evidence page's paper",
+  "rail": "a row's rail colour (04-surfaces.css, the rail): none unless the row sets it",
+  "exchange-pad": "a conversation's space above and below each comment (07-tasks.css): the Display's density sets it, the hairlines and the axis read it (C3, law 142)"
+ },
+ "overrides": {
+  "muted": {
+   "files": [
+    "04-surfaces.css",
+    "07-tasks.css",
+    "12-material.css"
+   ],
+   "why": "a box re-mixes the muted ink against its own ground (round 90)"
+  },
+  "layout-max": {
+   "files": [
+    "04-surfaces.css"
+   ],
+   "why": "a page of forms is one column centred in the lane (round 85)"
+  },
+  "ground": {
+   "files": [
+    "02-shell.css",
+    "04-surfaces.css",
+    "05-overlays.css",
+    "07-tasks.css",
+    "12-material.css"
+   ],
+   "why": "a box, an overlay and a panel returned to the lane name the ground their parts stand on (2026-09-23)"
+  }
+ }
+}

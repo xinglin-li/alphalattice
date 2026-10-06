@@ -1,0 +1,33 @@
+# A second Desk kind reached through the same envelope and dispatcher.
+experiment:
+  kind: factor.screening-development
+  schema_id: research-experiment-envelope
+  data_snapshot_handle: current
+  universe_handle: us-current-index-research
+  sessions:
+    start: 2024-02-01
+    end: 2024-03-01
+    # A decision event, not a date: a daily Feature for session T exists
+    # only after close(T), so an unstated phase is refused rather than
+    # assumed closed.
+    as_of:
+      session: 2024-03-15
+      phase: OFFICIAL_CLOSE
+  budget:
+    maximum_candidates: 8
+    maximum_numerical_calls: 5000
+  determinism:
+    seed: 20260816
+    thread_limit: 1
+    network_disabled: true
+  output_workspace: workspaces/research/factor-development
+  baseline_workspace: workspaces/research/factor-baseline
+  publication_intent: DEVELOPMENT_EVIDENCE_ONLY
+
+factor:
+  factor_ids:
+    - factor.desktop.momentum_12_1
+    - factor.desktop.short_reversal
+    - factor.desktop.liquidity_amihud
+  screening_policy: BENJAMINI_YEKUTIELI_FDR
+  redundancy_policy: ABSOLUTE_CORRELATION_CLUSTER

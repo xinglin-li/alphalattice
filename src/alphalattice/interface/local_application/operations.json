@@ -1,0 +1,3185 @@
+{
+ "alternatives": {
+  "EXPERIMENT_PLAN": [
+   [
+    "experiment_yaml"
+   ],
+   [
+    "experiment_document"
+   ]
+  ]
+ },
+ "collections": [
+  "ACTIVITY_LIST",
+  "ACTIVITY_RECENT",
+  "ACTIVITY_REFUSALS",
+  "DATA_ISSUES",
+  "EVIDENCE_DOCUMENTS",
+  "EVIDENCE_LEDGER",
+  "EXPERIMENTS",
+  "EXPERIMENT_FOUNDATIONS",
+  "EXPERIMENT_RISK_LINKS",
+  "FEATURE_EXTENSIONS",
+  "FEATURE_TRIALS",
+  "GOAL_LIST",
+  "MODEL_EXTENSIONS",
+  "OPERATION_LIST",
+  "PENDING_DECISIONS",
+  "RESEARCH_HISTORY",
+  "RESEARCH_INPUTS",
+  "RESULTS",
+  "TASKS",
+  "TASK_GUARDIAN",
+  "TASK_INCIDENTS",
+  "WORKSPACE_BACKUPS"
+ ],
+ "commands": {
+  "activity list": [
+   "ACTIVITY_LIST"
+  ],
+  "activity recent": [
+   "ACTIVITY_RECENT"
+  ],
+  "activity refusals": [
+   "ACTIVITY_REFUSALS"
+  ],
+  "automation set": [
+   "RESEARCH_UPDATE_AUTOMATION_CONFIGURE"
+  ],
+  "automation show": [
+   "RESEARCH_UPDATE_AUTOMATION_READBACK"
+  ],
+  "backup list": [
+   "WORKSPACE_BACKUPS"
+  ],
+  "backup run": [
+   "WORKSPACE_BACKUP"
+  ],
+  "book draft": [
+   "EXPERIMENT_PORTFOLIO_DRAFT"
+  ],
+  "book export": [
+   "EXPERIMENT_DELIVERY_EXPORT"
+  ],
+  "bundle prepare": [
+   "AGENT_BUNDLE_PREPARE"
+  ],
+  "bundle submit": [
+   "AGENT_ANSWER_SUBMIT"
+  ],
+  "calibration plan": [
+   "STRATEGY_CALIBRATION_PLAN"
+  ],
+  "calibration run": [
+   "STRATEGY_CALIBRATION_RUN"
+  ],
+  "calibration show": [
+   "STRATEGY_CALIBRATION_READBACK"
+  ],
+  "candidate compare": [
+   "EXPERIMENT_ALPHA_COMPARE"
+  ],
+  "cpu-budget set": [
+   "CPU_BUDGET_SET"
+  ],
+  "cpu-budget show": [
+   "CPU_BUDGET_SHOW"
+  ],
+  "curation show": [
+   "EXPERIMENT_CURATION"
+  ],
+  "curation submit": [
+   "EXPERIMENT_CURATE"
+  ],
+  "data-update confirm": [
+   "DATA_CHANGE_CONFIRM"
+  ],
+  "data-update plan": [
+   "DATA_UPDATE_PLAN"
+  ],
+  "data-update run": [
+   "DATA_UPDATE_RUN"
+  ],
+  "data-update show": [
+   "DATA_UPDATE_READBACK"
+  ],
+  "decision list": [
+   "PENDING_DECISIONS"
+  ],
+  "event declare": [
+   "EVENT_DECLARE"
+  ],
+  "evidence continue": [
+   "EVIDENCE_CONTINUE"
+  ],
+  "evidence documents": [
+   "EVIDENCE_DOCUMENTS"
+  ],
+  "evidence export": [
+   "EVIDENCE_CRO_EXPORT"
+  ],
+  "evidence ledger": [
+   "EVIDENCE_LEDGER"
+  ],
+  "evidence packet": [
+   "EVIDENCE_PACKET"
+  ],
+  "evidence preview": [
+   "EVIDENCE_PREVIEW"
+  ],
+  "evidence refresh": [
+   "EVIDENCE_REFRESH"
+  ],
+  "evidence run": [
+   "EVIDENCE_PREPARE"
+  ],
+  "evidence select": [
+   "EVIDENCE_SELECT"
+  ],
+  "evidence show": [
+   "EVIDENCE_CRO"
+  ],
+  "evidence submit": [
+   "EVIDENCE_ANALYSIS_SUBMIT"
+  ],
+  "feature activate": [
+   "FEATURE_ACTIVATE"
+  ],
+  "feature controls": [
+   "FEATURE_CATALOG_CONTROLS"
+  ],
+  "feature deactivate": [
+   "FEATURE_DEACTIVATE"
+  ],
+  "feature list": [
+   "FEATURE_EXTENSIONS"
+  ],
+  "feature plan": [
+   "FEATURE_CATALOG_PLAN"
+  ],
+  "feature review": [
+   "FEATURE_REVIEW"
+  ],
+  "feature run": [
+   "FEATURE_CATALOG_BUILD"
+  ],
+  "feature show": [
+   "FEATURE_CATALOG_BUILD_READBACK",
+   "FEATURE_CATALOG_READBACK"
+  ],
+  "foundation draft": [
+   "EXPERIMENT_FOUNDATION_DRAFT"
+  ],
+  "foundation export": [
+   "EXPERIMENT_FOUNDATION_EXPORT"
+  ],
+  "foundation list": [
+   "EXPERIMENT_FOUNDATIONS"
+  ],
+  "foundation preview": [
+   "EXPERIMENT_FOUNDATION_PREVIEW"
+  ],
+  "foundation seal": [
+   "EXPERIMENT_FOUNDATION_SEAL"
+  ],
+  "foundation show": [
+   "EXPERIMENT_FOUNDATION_READBACK"
+  ],
+  "foundation summary": [
+   "EXPERIMENT_FOUNDATION_SUMMARY"
+  ],
+  "goal abandon": [
+   "GOAL_ABANDON"
+  ],
+  "goal attach": [
+   "GOAL_ATTACH"
+  ],
+  "goal continue": [
+   "GOAL_CONTINUE"
+  ],
+  "goal export": [
+   "GOAL_EXPORT"
+  ],
+  "goal list": [
+   "GOAL_LIST"
+  ],
+  "goal narrative": [
+   "GOAL_NARRATIVE"
+  ],
+  "goal note": [
+   "GOAL_NOTE"
+  ],
+  "goal open": [
+   "GOAL_OPEN"
+  ],
+  "goal reference": [
+   "GOAL_REFERENCE"
+  ],
+  "goal revise": [
+   "GOAL_REVISE"
+  ],
+  "goal schema": [
+   "GOAL_SCHEMA"
+  ],
+  "goal show": [
+   "GOAL_SHOW"
+  ],
+  "goal submit": [
+   "GOAL_SUBMIT"
+  ],
+  "goal take": [
+   "GOAL_TAKE"
+  ],
+  "handoff preview": [
+   "EXPERIMENT_HANDOFF_PREVIEW"
+  ],
+  "history list": [
+   "RESEARCH_HISTORY"
+  ],
+  "incident list": [
+   "TASK_INCIDENTS"
+  ],
+  "incident remediate": [
+   "TASK_REMEDIATE"
+  ],
+  "input confirm": [
+   "RESEARCH_INPUT_CONFIRM"
+  ],
+  "input list": [
+   "RESEARCH_INPUTS"
+  ],
+  "input plan": [
+   "RESEARCH_INPUT_PLAN"
+  ],
+  "input show": [
+   "RESEARCH_INPUT_READBACK"
+  ],
+  "issue confirm": [
+   "DATA_ISSUE_CONFIRM"
+  ],
+  "issue delegate": [
+   "DATA_ISSUE_DELEGATE"
+  ],
+  "issue list": [
+   "DATA_ISSUES"
+  ],
+  "issue preview": [
+   "DATA_ISSUE_PREVIEW"
+  ],
+  "issue revoke": [
+   "DATA_ISSUE_REVOKE"
+  ],
+  "model activate": [
+   "MODEL_ACTIVATE"
+  ],
+  "model deactivate": [
+   "MODEL_DEACTIVATE"
+  ],
+  "model list": [
+   "MODEL_EXTENSIONS"
+  ],
+  "network set": [
+   "NETWORK_ACCESS_SET"
+  ],
+  "network show": [
+   "NETWORK_ACCESS"
+  ],
+  "operation list": [
+   "OPERATION_LIST"
+  ],
+  "portfolio-update plan": [
+   "PORTFOLIO_UPDATE_PLAN"
+  ],
+  "portfolio-update run": [
+   "PORTFOLIO_UPDATE_RUN"
+  ],
+  "portfolio-update show": [
+   "PORTFOLIO_UPDATE_READBACK"
+  ],
+  "preparation confirm": [
+   "WORKSPACE_PREPARE_CONFIRM"
+  ],
+  "preparation plan": [
+   "WORKSPACE_PREPARE_PLAN"
+  ],
+  "preparation show": [
+   "WORKSPACE_PREPARE_READBACK"
+  ],
+  "recovery list": [
+   "TASK_GUARDIAN"
+  ],
+  "recovery run": [
+   "RECOVER"
+  ],
+  "recovery show": [
+   "TASK_RECOVERY"
+  ],
+  "release freeze": [
+   "FREEZE"
+  ],
+  "release show": [
+   "FINALIZATION"
+  ],
+  "research-update plan": [
+   "RESEARCH_UPDATE_PLAN"
+  ],
+  "research-update run": [
+   "RESEARCH_UPDATE_RUN"
+  ],
+  "research-update show": [
+   "RESEARCH_UPDATE_READBACK"
+  ],
+  "result compare": [
+   "COMPARE"
+  ],
+  "result export": [
+   "EXPORT"
+  ],
+  "result list": [
+   "RESULTS"
+  ],
+  "result show": [
+   "REPORT"
+  ],
+  "review dossier": [
+   "CRO_REVIEW_DOSSIER"
+  ],
+  "review finding": [
+   "CRO_REVIEW_FINDING"
+  ],
+  "review request": [
+   "CRO_REVIEW"
+  ],
+  "review submit": [
+   "CRO_REVIEW_SUBMIT"
+  ],
+  "risk-link add": [
+   "EXPERIMENT_LINK_RISK"
+  ],
+  "risk-link export": [
+   "EXPERIMENT_RISK_EXPORT"
+  ],
+  "risk-link list": [
+   "EXPERIMENT_RISK_LINKS"
+  ],
+  "score plan": [
+   "STRATEGY_SCORE_PLAN"
+  ],
+  "score run": [
+   "STRATEGY_SCORE_RUN"
+  ],
+  "score show": [
+   "STRATEGY_SCORE_READBACK"
+  ],
+  "storage cap": [
+   "STORAGE_CAP_SHOW"
+  ],
+  "storage confirm": [
+   "STORAGE_CONFIRM"
+  ],
+  "storage pin": [
+   "STORAGE_PIN"
+  ],
+  "storage plan": [
+   "STORAGE_PLAN"
+  ],
+  "storage rebuild": [
+   "STORAGE_EVIDENCE_REBUILD"
+  ],
+  "storage set": [
+   "STORAGE_CAP_SET"
+  ],
+  "storage show": [
+   "STORAGE_READBACK"
+  ],
+  "strategy activate": [
+   "STRATEGY_ACTIVATE"
+  ],
+  "strategy controls": [
+   "RESEARCH_STRATEGY_CONTROLS"
+  ],
+  "strategy deactivate": [
+   "STRATEGY_DEACTIVATE"
+  ],
+  "strategy install": [
+   "RESEARCH_STRATEGY_INSTALL"
+  ],
+  "strategy plan": [
+   "RESEARCH_STRATEGY_PLAN"
+  ],
+  "strategy run": [
+   "RESEARCH_STRATEGY_PREPARE"
+  ],
+  "strategy show": [
+   "RESEARCH_STRATEGY_READBACK"
+  ],
+  "strategy-book controls": [
+   "CONTROLS"
+  ],
+  "strategy-book preview": [
+   "PLAN"
+  ],
+  "strategy-book run": [
+   "RUN"
+  ],
+  "study compare": [
+   "EXPERIMENT_COMPARE"
+  ],
+  "study continue": [
+   "EXPERIMENT_CONTINUE"
+  ],
+  "study controls": [
+   "EXPERIMENT_CONTROLS"
+  ],
+  "study draft": [
+   "EXPERIMENT_DRAFT"
+  ],
+  "study export": [
+   "EXPERIMENT_EXPORT"
+  ],
+  "study list": [
+   "EXPERIMENTS"
+  ],
+  "study plan": [
+   "EXPERIMENT_PLAN"
+  ],
+  "study promote": [
+   "EXPERIMENT_PROMOTE"
+  ],
+  "study run": [
+   "EXPERIMENT_RUN"
+  ],
+  "study show": [
+   "EXPERIMENT_PREVIEW_READBACK",
+   "EXPERIMENT_READBACK"
+  ],
+  "study summary": [
+   "EXPERIMENT_SUMMARY"
+  ],
+  "study verify": [
+   "EXPERIMENT_REPLAY"
+  ],
+  "study verify-all": [
+   "EXPERIMENT_VERIFY_ALL"
+  ],
+  "task cancel": [
+   "CANCEL"
+  ],
+  "task list": [
+   "TASKS"
+  ],
+  "task show": [
+   "STATUS"
+  ],
+  "training plan": [
+   "MODEL_TRAINING_INPUT_PLAN"
+  ],
+  "training run": [
+   "MODEL_TRAINING_INPUT_PREPARE"
+  ],
+  "training show": [
+   "MODEL_TRAINING_INPUT_READBACK"
+  ],
+  "trial list": [
+   "FEATURE_TRIALS"
+  ],
+  "trial run": [
+   "FEATURE_TRIAL"
+  ],
+  "trial show": [
+   "FEATURE_TRIAL_READBACK"
+  ],
+  "upgrade acknowledge": [
+   "UPGRADE_ACKNOWLEDGE"
+  ],
+  "upgrade show": [
+   "UPGRADE_OVERVIEW"
+  ],
+  "workspace show": [
+   "WORKSPACE_SHOW"
+  ]
+ },
+ "common_path": [
+  "workspace show",
+  "goal take",
+  "study controls",
+  "study plan",
+  "study run",
+  "study show",
+  "goal submit"
+ ],
+ "descriptions": {
+  "after": "Where the activity feed reads on: the cursor its previous page answered.",
+  "agent_answer": "An answer to the named bundle as written.",
+  "agent_role": "Whose bundle to prepare: `ANALYST`, `CRO`, `ALPHA`, `DATA`, `FACTOR`, `PORTFOLIO` or `RISK`.",
+  "agent_session": "An agent session: a Task listing shows the Tasks it submitted, 50 to a page, and a goal listing the goals whose record names it.",
+  "analysis_answer": "The Analyst's answer to an Evidence packet.",
+  "analysis_context_hash": "The Evidence packet's context an analysis answers, by its hash.",
+  "analysis_publication_hash": "A published Evidence analysis, by its hash.",
+  "automation_enabled": "true lets the daily research update run by itself; false stops it.",
+  "automation_package_ids": "The strategy packages the automatic research update covers.",
+  "backup_generations_kept": "How many backup generations to keep: seven unless a request keeps another count.",
+  "bundle_directory": "Where the agent's bundle is written, and its answer read back.",
+  "calibration_plan_hash": "A calibration plan, by the hash its PLAN answered.",
+  "candidate_hash": "The frozen candidate to finalize, by its hash.",
+  "candidate_id": "The Alpha candidate a Portfolio draft is built from.",
+  "change_reason": "Why the goal changes, kept in its record beside the change.",
+  "citation_entity_id": "The entity whose citation to open.",
+  "citation_page": "Which page of the cited source to read, from 1.",
+  "citation_unit_id": "The Evidence unit the citation belongs to.",
+  "component_id": "The strategy component, by its id.",
+  "continuation_of": "The prepared packet a continuation reads on from, by the receipt it sealed.",
+  "continuation_spans": "The packet's sealed span set, by its hash.",
+  "cpu_budget": "`auto`, or a whole number of cores a book's preparation may use.",
+  "curation_receipt_hash": "The Factor curation decision, by its receipt hash.",
+  "data_issue_case_token": "The data issue, by the case token the issue list gave.",
+  "data_issue_evidence_hash": "The evidence the issue was shown with; an issue that moved is refused.",
+  "data_issue_grant_hash": "A person's recorded grant for a data decision, by its hash.",
+  "data_issue_option_hash": "The chosen option's hash as offered; a changed option is refused.",
+  "data_issue_option_id": "The option chosen for the data issue, one of those it offered.",
+  "delivery_budget_bytes": "The most bytes one delivered part may hold.",
+  "delivery_commentary": "The researcher's comments a delivery carries, each on the part it names.",
+  "delivery_part": "Which part of an answer delivered in parts to read, from 1.",
+  "delivery_question": "The research question a delivery answers, in the researcher's words.",
+  "documents_page": "Which page of the workspace's retained documents to read, from 1.",
+  "event": "The event this client declares about its own work (`ExternalActivityEventDocument`).",
+  "evidence_as_of": "The time Evidence is prepared as of, in ISO 8601.",
+  "evidence_detail": "Which detail of the packet to read: `litigation_inventory`, `session_windows`, `topic_coverage` or `time_view`; `EVIDENCE_CRO` also takes `time_view` for the published reading.",
+  "evidence_index_id": "The Evidence retrieval index to rebuild, by the id the storage view listed.",
+  "evidence_unit_id": "One Evidence unit, by its id (u01, u02 ...).",
+  "expected_task_hash": "The Task's version as last read; a Task that moved since refuses the request.",
+  "experiment_curation": "The Factor curation decision: which factors go on, and why.",
+  "experiment_document": "The study's declaration as a document, as `study controls` or `study draft` writes it.",
+  "experiment_kind": "The study kind whose controls to show, as `study controls` lists them; Factor when omitted.",
+  "experiment_plan_hash": "A saved plan, by the hash its PLAN answered.",
+  "experiment_receipt_hash": "The Portfolio study's result, by its receipt hash.",
+  "experiment_task_id": "The Portfolio study Task a book comes from.",
+  "experiment_yaml": "The study's declaration as YAML text; send it or `experiment_document`, not both.",
+  "extensions_page": "Which page of the declared formula factors to read, from 1.",
+  "factor_task_id": "The Factor study an Alpha or Foundation plan builds on, by its Task.",
+  "feature_document": "A Feature definition as a document, for the Feature catalog to plan.",
+  "feature_factor_id": "A formula factor a research plan declares, which its review and activation name.",
+  "feature_output": "What a Feature build writes: `RAW_VALUES`, or `PREPROCESSED_VALUES` after the catalog's preprocessing.",
+  "feature_plan_hash": "A Feature catalog plan, by the hash its PLAN answered.",
+  "feature_preparation_hash": "The prepared Feature input whose controls a study reads, by its hash.",
+  "feature_trial_id": "A feature trial, by the ID its request answered with.",
+  "finding_handle": "A CRO finding, by its handle (FIND-...).",
+  "formation_session": "The session the scores are formed on, as YYYY-MM-DD.",
+  "foundation_admission_hash": "The Foundation, by its admission hash.",
+  "goal_declaration": "The goal as written: its statement, scope and completion rule (`goal schema`).",
+  "goal_hash": "The goal's version as last read; a goal that moved since refuses the change.",
+  "goal_id": "The goal, by the id its GOAL_OPEN answered with.",
+  "goal_reference": "What to attach to the goal: a Task, a study, a result or a publication, by reference.",
+  "goal_reference_id": "The reference ID saved in the exact goal revision; only that reference is verified.",
+  "goal_statement": "A note for the goal's record, written by the agent working for it.",
+  "goal_submission": "The completion document claiming the goal is met, naming its evidence.",
+  "handoff_hash": "The research handoff a book comes from.",
+  "history_cursor": "Where a list reads on: the `next_cursor` its previous page answered.",
+  "history_entry_id": "One research history entry, by the id the history listed.",
+  "history_kind": "Only the history entries of this kind.",
+  "history_limit": "How many entries one page reads, 1 to 50.",
+  "incident_key": "The Guanyin incident, by the key TASK_INCIDENTS listed.",
+  "input_binding_hash": "The research input's version, by its binding hash; with `research_input_id` it names the data a study reads.",
+  "input_pinned": "true keeps the research input's version from clean-up; false lets clean-up release it.",
+  "ledger_page": "Which page of the Evidence ledger to read, from 1.",
+  "left_candidate_id": "The first of two Alpha candidates to compare.",
+  "left_result_hash": "The first of two Portfolio results to compare.",
+  "left_task_id": "The first of two studies to compare, by its Task.",
+  "limit": "The most a page reads: 1 to 200 rows of the activity feed, 1 to 50 recent groups.",
+  "model_id": "An Alpha model, by the id its declaration names (`model list` lists them).",
+  "network_enabled": "true lets this workspace reach the network; false keeps it offline.",
+  "observed_through": "The last session the update observes, as YYYY-MM-DD.",
+  "operation": "The operation asked for; `alphalattice schema show <name>` lists its fields.",
+  "origin_task_id": "The study a new plan continues from, by its Task.",
+  "portfolio_session": "The session a dated view reads, as YYYY-MM-DD; for a book, names the book with the other book fields, as a book's offered requests fill them.",
+  "position_basis": "The positions a book's update published them on.",
+  "preparation_binding_hash": "The Evidence preparation's binding, by its hash.",
+  "preparation_plan_hash": "The workspace preparation plan to confirm, by the hash its PLAN answered.",
+  "prepared_input_hash": "The prepared input a Portfolio update reads, by its hash.",
+  "prior_review_publication_hash": "An earlier CRO review the export compares with.",
+  "remedy": "The remedy to perform, one the incident offers: `CANCEL`, `RECOVER` or `REPLAN`.",
+  "research_input_id": "The research input, by its id (RESEARCH_INPUTS lists them).",
+  "research_input_plan_hash": "The research input plan to confirm, by the hash its PLAN answered.",
+  "result_hash": "A Portfolio result, by its hash; for a book, names the book with the other book fields, as a book's offered requests fill them.",
+  "review_answer": "The schema is the answer's, so capabilities describe it; an answer the schema would refuse is still carried, as written, for the Host to name each problem by item.",
+  "review_dossier_hash": "The CRO dossier a review answers, by its hash.",
+  "review_policy_hash": "The review policy the CRO answers under, as the dossier named it.",
+  "review_publication_hash": "A published CRO review, by its hash.",
+  "review_read_at": "When the review's dossier was read, as its bundle or first part sealed it.",
+  "review_schema_hash": "The review answer's schema, as the dossier named it.",
+  "right_candidate_id": "The second of two Alpha candidates to compare.",
+  "right_result_hash": "The second of two Portfolio results to compare.",
+  "right_task_id": "The second of two studies to compare, by its Task.",
+  "risk_report_hash": "A Risk report, by its hash, to export or deliver.",
+  "risk_report_scope": "`POST_OBSERVED_PORTFOLIO_WINDOW` links the Risk report over the Portfolio's observed window.",
+  "risk_task_id": "The Risk study to link, by its Task.",
+  "score_plan_hash": "A score plan, by the hash its PLAN answered.",
+  "score_snapshot_hash": "The scores a calibration reads, by their snapshot hash.",
+  "session_limit": "The most reading sessions the continued chain may hold.",
+  "spec": "The Portfolio book's controls (`strategy-book controls` lists them); those left out keep their defaults.",
+  "storage_cap_bytes": "`auto`, or a positive whole byte cap for managed writes; changes no result identity.",
+  "storage_plan_hash": "The storage clean-up plan to confirm, by the hash its PLAN answered.",
+  "strategy_package_id": "The installed strategy package, by its id.",
+  "task_id": "The Task, by its id.",
+  "tasks_waiting": "`auto`, or how many Tasks may wait behind the running one.",
+  "update_plan_hash": "An update plan, by the hash its PLAN answered.",
+  "update_publication_hash": "The Portfolio update's publication a book comes from.",
+  "update_task_id": "The Portfolio update Task a book comes from.",
+  "upgrade_set_hash": "The installed identity set an upgrade overview showed, when acknowledging it.",
+  "view_entity_id": "Only this entity's Evidence.",
+  "view_from": "The first day read, as YYYY-MM-DD.",
+  "view_last_days": "Only the last this many days.",
+  "view_to": "The last day read, as YYYY-MM-DD.",
+  "view_topic": "Only this topic's Evidence.",
+  "wait_seconds": "How long a Task's status may wait for the Task to move on; at most 20 seconds.",
+  "watch": "Tasks, by id, whose current projection the activity page joins; a short id the compact display gave reads as its whole id.",
+  "window_limit": "The most windows the continued chain may read."
+ },
+ "fields": {
+  "ACTIVITY_LIST": {
+   "allowed": [
+    "after",
+    "limit",
+    "watch"
+   ],
+   "required": []
+  },
+  "ACTIVITY_RECENT": {
+   "allowed": [
+    "limit"
+   ],
+   "required": []
+  },
+  "ACTIVITY_REFUSALS": {
+   "allowed": [
+    "view_last_days"
+   ],
+   "required": []
+  },
+  "AGENT_ANSWER_SUBMIT": {
+   "allowed": [
+    "agent_answer",
+    "bundle_directory"
+   ],
+   "required": [
+    "agent_answer",
+    "bundle_directory"
+   ]
+  },
+  "AGENT_BUNDLE_PREPARE": {
+   "allowed": [
+    "agent_role",
+    "bundle_directory",
+    "evidence_unit_id",
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "task_id",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": [
+    "agent_role",
+    "bundle_directory"
+   ]
+  },
+  "CANCEL": {
+   "allowed": [
+    "expected_task_hash",
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "COMPARE": {
+   "allowed": [
+    "left_result_hash",
+    "right_result_hash"
+   ],
+   "required": [
+    "left_result_hash",
+    "right_result_hash"
+   ]
+  },
+  "CONTROLS": {
+   "allowed": [
+    "strategy_package_id"
+   ],
+   "required": []
+  },
+  "CPU_BUDGET_SET": {
+   "allowed": [
+    "cpu_budget",
+    "tasks_waiting"
+   ],
+   "required": []
+  },
+  "CPU_BUDGET_SHOW": {
+   "allowed": [],
+   "required": []
+  },
+  "CRO_REVIEW": {
+   "allowed": [
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": []
+  },
+  "CRO_REVIEW_DOSSIER": {
+   "allowed": [
+    "delivery_budget_bytes",
+    "delivery_part",
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "review_dossier_hash",
+    "review_read_at",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": []
+  },
+  "CRO_REVIEW_FINDING": {
+   "allowed": [
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "finding_handle",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "review_dossier_hash",
+    "review_publication_hash",
+    "review_read_at",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": [
+    "finding_handle"
+   ]
+  },
+  "CRO_REVIEW_SUBMIT": {
+   "allowed": [
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "review_answer",
+    "review_dossier_hash",
+    "review_policy_hash",
+    "review_read_at",
+    "review_schema_hash",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": [
+    "review_answer",
+    "review_dossier_hash",
+    "review_policy_hash",
+    "review_schema_hash"
+   ]
+  },
+  "DATA_CHANGE_CONFIRM": {
+   "allowed": [
+    "update_plan_hash"
+   ],
+   "required": [
+    "update_plan_hash"
+   ]
+  },
+  "DATA_ISSUES": {
+   "allowed": [
+    "history_cursor",
+    "history_limit"
+   ],
+   "required": []
+  },
+  "DATA_ISSUE_CONFIRM": {
+   "allowed": [
+    "data_issue_case_token",
+    "data_issue_evidence_hash",
+    "data_issue_grant_hash",
+    "data_issue_option_hash",
+    "data_issue_option_id"
+   ],
+   "required": [
+    "data_issue_case_token",
+    "data_issue_evidence_hash",
+    "data_issue_option_hash",
+    "data_issue_option_id"
+   ]
+  },
+  "DATA_ISSUE_DELEGATE": {
+   "allowed": [
+    "data_issue_case_token",
+    "data_issue_evidence_hash",
+    "data_issue_option_hash",
+    "data_issue_option_id",
+    "task_id"
+   ],
+   "required": [
+    "data_issue_case_token",
+    "data_issue_evidence_hash",
+    "data_issue_option_hash",
+    "data_issue_option_id",
+    "task_id"
+   ]
+  },
+  "DATA_ISSUE_PREVIEW": {
+   "allowed": [
+    "data_issue_case_token",
+    "data_issue_evidence_hash",
+    "data_issue_option_hash",
+    "data_issue_option_id"
+   ],
+   "required": [
+    "data_issue_case_token",
+    "data_issue_evidence_hash",
+    "data_issue_option_hash",
+    "data_issue_option_id"
+   ]
+  },
+  "DATA_ISSUE_REVOKE": {
+   "allowed": [
+    "data_issue_grant_hash"
+   ],
+   "required": [
+    "data_issue_grant_hash"
+   ]
+  },
+  "DATA_UPDATE_PLAN": {
+   "allowed": [],
+   "required": []
+  },
+  "DATA_UPDATE_READBACK": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": []
+  },
+  "DATA_UPDATE_RUN": {
+   "allowed": [
+    "update_plan_hash"
+   ],
+   "required": [
+    "update_plan_hash"
+   ]
+  },
+  "EVENT_DECLARE": {
+   "allowed": [
+    "event"
+   ],
+   "required": [
+    "event"
+   ]
+  },
+  "EVIDENCE_ANALYSIS_SUBMIT": {
+   "allowed": [
+    "analysis_answer",
+    "analysis_context_hash",
+    "evidence_unit_id",
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "task_id",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": [
+    "analysis_answer",
+    "analysis_context_hash",
+    "task_id"
+   ]
+  },
+  "EVIDENCE_CONTINUE": {
+   "allowed": [
+    "continuation_of",
+    "continuation_spans",
+    "evidence_unit_id",
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "session_limit",
+    "task_id",
+    "update_publication_hash",
+    "update_task_id",
+    "window_limit"
+   ],
+   "required": [
+    "continuation_of",
+    "continuation_spans",
+    "session_limit",
+    "task_id",
+    "window_limit"
+   ]
+  },
+  "EVIDENCE_CRO": {
+   "allowed": [
+    "citation_entity_id",
+    "citation_page",
+    "citation_unit_id",
+    "evidence_detail",
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "review_publication_hash",
+    "update_publication_hash",
+    "update_task_id",
+    "view_entity_id",
+    "view_last_days",
+    "view_topic"
+   ],
+   "required": []
+  },
+  "EVIDENCE_CRO_EXPORT": {
+   "allowed": [
+    "citation_entity_id",
+    "citation_page",
+    "citation_unit_id",
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "prior_review_publication_hash",
+    "result_hash",
+    "review_publication_hash",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": []
+  },
+  "EVIDENCE_DOCUMENTS": {
+   "allowed": [
+    "documents_page"
+   ],
+   "required": []
+  },
+  "EVIDENCE_LEDGER": {
+   "allowed": [
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "ledger_page",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": []
+  },
+  "EVIDENCE_PACKET": {
+   "allowed": [
+    "analysis_context_hash",
+    "delivery_budget_bytes",
+    "delivery_part",
+    "evidence_detail",
+    "evidence_unit_id",
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "task_id",
+    "update_publication_hash",
+    "update_task_id",
+    "view_entity_id",
+    "view_from",
+    "view_last_days",
+    "view_to",
+    "view_topic"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "EVIDENCE_PREPARE": {
+   "allowed": [
+    "evidence_as_of",
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "preparation_binding_hash",
+    "result_hash",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": []
+  },
+  "EVIDENCE_PREVIEW": {
+   "allowed": [
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": []
+  },
+  "EVIDENCE_REFRESH": {
+   "allowed": [
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": []
+  },
+  "EVIDENCE_SELECT": {
+   "allowed": [
+    "analysis_publication_hash",
+    "experiment_receipt_hash",
+    "experiment_task_id",
+    "handoff_hash",
+    "portfolio_session",
+    "position_basis",
+    "result_hash",
+    "update_publication_hash",
+    "update_task_id"
+   ],
+   "required": [
+    "analysis_publication_hash"
+   ]
+  },
+  "EXPERIMENTS": {
+   "allowed": [],
+   "required": []
+  },
+  "EXPERIMENT_ALPHA_COMPARE": {
+   "allowed": [
+    "left_candidate_id",
+    "left_task_id",
+    "right_candidate_id",
+    "right_task_id"
+   ],
+   "required": [
+    "left_candidate_id",
+    "left_task_id",
+    "right_candidate_id",
+    "right_task_id"
+   ]
+  },
+  "EXPERIMENT_COMPARE": {
+   "allowed": [
+    "left_task_id",
+    "portfolio_session",
+    "right_task_id"
+   ],
+   "required": [
+    "left_task_id",
+    "right_task_id"
+   ]
+  },
+  "EXPERIMENT_CONTINUE": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_CONTROLS": {
+   "allowed": [
+    "component_id",
+    "experiment_kind",
+    "feature_preparation_hash",
+    "input_binding_hash",
+    "research_input_id"
+   ],
+   "required": []
+  },
+  "EXPERIMENT_CURATE": {
+   "allowed": [
+    "experiment_curation",
+    "task_id"
+   ],
+   "required": [
+    "experiment_curation",
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_CURATION": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_DELIVERY_EXPORT": {
+   "allowed": [
+    "delivery_commentary",
+    "delivery_question",
+    "experiment_receipt_hash",
+    "left_task_id",
+    "portfolio_session",
+    "review_publication_hash",
+    "right_task_id",
+    "risk_report_hash",
+    "task_id"
+   ],
+   "required": [
+    "experiment_receipt_hash",
+    "portfolio_session",
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_DRAFT": {
+   "allowed": [
+    "input_binding_hash",
+    "research_input_id",
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_EXPORT": {
+   "allowed": [
+    "portfolio_session",
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_FOUNDATIONS": {
+   "allowed": [],
+   "required": []
+  },
+  "EXPERIMENT_FOUNDATION_DRAFT": {
+   "allowed": [
+    "foundation_admission_hash"
+   ],
+   "required": [
+    "foundation_admission_hash"
+   ]
+  },
+  "EXPERIMENT_FOUNDATION_EXPORT": {
+   "allowed": [
+    "foundation_admission_hash"
+   ],
+   "required": [
+    "foundation_admission_hash"
+   ]
+  },
+  "EXPERIMENT_FOUNDATION_PREVIEW": {
+   "allowed": [
+    "curation_receipt_hash",
+    "input_binding_hash",
+    "research_input_id",
+    "task_id"
+   ],
+   "required": [
+    "curation_receipt_hash",
+    "input_binding_hash",
+    "research_input_id",
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_FOUNDATION_READBACK": {
+   "allowed": [
+    "foundation_admission_hash"
+   ],
+   "required": [
+    "foundation_admission_hash"
+   ]
+  },
+  "EXPERIMENT_FOUNDATION_SEAL": {
+   "allowed": [
+    "foundation_admission_hash"
+   ],
+   "required": [
+    "foundation_admission_hash"
+   ]
+  },
+  "EXPERIMENT_FOUNDATION_SUMMARY": {
+   "allowed": [
+    "foundation_admission_hash"
+   ],
+   "required": [
+    "foundation_admission_hash"
+   ]
+  },
+  "EXPERIMENT_HANDOFF_PREVIEW": {
+   "allowed": [
+    "curation_receipt_hash",
+    "experiment_document",
+    "experiment_yaml",
+    "input_binding_hash",
+    "research_input_id",
+    "task_id"
+   ],
+   "required": [
+    "curation_receipt_hash",
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_LINK_RISK": {
+   "allowed": [
+    "risk_report_scope",
+    "risk_task_id",
+    "task_id"
+   ],
+   "required": [
+    "risk_task_id",
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_PLAN": {
+   "allowed": [
+    "curation_receipt_hash",
+    "experiment_document",
+    "experiment_yaml",
+    "factor_task_id",
+    "input_binding_hash",
+    "origin_task_id",
+    "research_input_id"
+   ],
+   "required": []
+  },
+  "EXPERIMENT_PORTFOLIO_DRAFT": {
+   "allowed": [
+    "candidate_id",
+    "task_id"
+   ],
+   "required": [
+    "candidate_id",
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_PREVIEW_READBACK": {
+   "allowed": [
+    "experiment_plan_hash"
+   ],
+   "required": [
+    "experiment_plan_hash"
+   ]
+  },
+  "EXPERIMENT_PROMOTE": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_READBACK": {
+   "allowed": [
+    "portfolio_session",
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_REPLAY": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_RISK_EXPORT": {
+   "allowed": [
+    "risk_report_hash",
+    "task_id"
+   ],
+   "required": [
+    "risk_report_hash",
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_RISK_LINKS": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_RUN": {
+   "allowed": [
+    "experiment_plan_hash"
+   ],
+   "required": [
+    "experiment_plan_hash"
+   ]
+  },
+  "EXPERIMENT_SUMMARY": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "EXPERIMENT_VERIFY_ALL": {
+   "allowed": [],
+   "required": []
+  },
+  "EXPORT": {
+   "allowed": [
+    "result_hash"
+   ],
+   "required": [
+    "result_hash"
+   ]
+  },
+  "FEATURE_ACTIVATE": {
+   "allowed": [
+    "feature_factor_id",
+    "feature_plan_hash"
+   ],
+   "required": [
+    "feature_factor_id",
+    "feature_plan_hash"
+   ]
+  },
+  "FEATURE_CATALOG_BUILD": {
+   "allowed": [
+    "feature_output",
+    "feature_plan_hash"
+   ],
+   "required": [
+    "feature_plan_hash"
+   ]
+  },
+  "FEATURE_CATALOG_BUILD_READBACK": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "FEATURE_CATALOG_CONTROLS": {
+   "allowed": [
+    "feature_plan_hash",
+    "input_binding_hash"
+   ],
+   "required": [
+    "input_binding_hash"
+   ]
+  },
+  "FEATURE_CATALOG_PLAN": {
+   "allowed": [
+    "feature_document"
+   ],
+   "required": [
+    "feature_document"
+   ]
+  },
+  "FEATURE_CATALOG_READBACK": {
+   "allowed": [
+    "feature_plan_hash"
+   ],
+   "required": [
+    "feature_plan_hash"
+   ]
+  },
+  "FEATURE_DEACTIVATE": {
+   "allowed": [
+    "feature_factor_id"
+   ],
+   "required": [
+    "feature_factor_id"
+   ]
+  },
+  "FEATURE_EXTENSIONS": {
+   "allowed": [
+    "extensions_page"
+   ],
+   "required": []
+  },
+  "FEATURE_REVIEW": {
+   "allowed": [
+    "feature_factor_id",
+    "feature_plan_hash"
+   ],
+   "required": [
+    "feature_factor_id",
+    "feature_plan_hash"
+   ]
+  },
+  "FEATURE_TRIAL": {
+   "allowed": [
+    "feature_plan_hash",
+    "task_id"
+   ],
+   "required": [
+    "feature_plan_hash",
+    "task_id"
+   ]
+  },
+  "FEATURE_TRIALS": {
+   "allowed": [],
+   "required": []
+  },
+  "FEATURE_TRIAL_READBACK": {
+   "allowed": [
+    "feature_trial_id"
+   ],
+   "required": [
+    "feature_trial_id"
+   ]
+  },
+  "FINALIZATION": {
+   "allowed": [
+    "candidate_hash"
+   ],
+   "required": [
+    "candidate_hash"
+   ]
+  },
+  "FREEZE": {
+   "allowed": [
+    "result_hash"
+   ],
+   "required": [
+    "result_hash"
+   ]
+  },
+  "GOAL_ABANDON": {
+   "allowed": [
+    "change_reason",
+    "goal_id"
+   ],
+   "required": [
+    "change_reason"
+   ]
+  },
+  "GOAL_ATTACH": {
+   "allowed": [
+    "change_reason",
+    "goal_hash",
+    "goal_id",
+    "goal_reference"
+   ],
+   "required": [
+    "change_reason",
+    "goal_reference"
+   ]
+  },
+  "GOAL_CONTINUE": {
+   "allowed": [
+    "goal_hash",
+    "input_binding_hash",
+    "research_input_id",
+    "task_id"
+   ],
+   "required": [
+    "goal_hash",
+    "task_id"
+   ]
+  },
+  "GOAL_EXPORT": {
+   "allowed": [
+    "goal_hash",
+    "goal_id"
+   ],
+   "required": []
+  },
+  "GOAL_LIST": {
+   "allowed": [
+    "agent_session",
+    "history_cursor",
+    "history_limit"
+   ],
+   "required": []
+  },
+  "GOAL_NARRATIVE": {
+   "allowed": [
+    "goal_hash",
+    "goal_id"
+   ],
+   "required": []
+  },
+  "GOAL_NOTE": {
+   "allowed": [
+    "change_reason",
+    "goal_hash",
+    "goal_id",
+    "goal_statement"
+   ],
+   "required": [
+    "change_reason",
+    "goal_statement"
+   ]
+  },
+  "GOAL_OPEN": {
+   "allowed": [
+    "change_reason",
+    "goal_declaration",
+    "goal_id"
+   ],
+   "required": [
+    "goal_declaration"
+   ]
+  },
+  "GOAL_REFERENCE": {
+   "allowed": [
+    "goal_hash",
+    "goal_reference_id"
+   ],
+   "required": [
+    "goal_hash",
+    "goal_reference_id"
+   ]
+  },
+  "GOAL_REVISE": {
+   "allowed": [
+    "change_reason",
+    "goal_declaration",
+    "goal_hash",
+    "goal_id"
+   ],
+   "required": [
+    "change_reason",
+    "goal_declaration"
+   ]
+  },
+  "GOAL_SCHEMA": {
+   "allowed": [],
+   "required": []
+  },
+  "GOAL_SHOW": {
+   "allowed": [
+    "goal_hash",
+    "goal_id"
+   ],
+   "required": []
+  },
+  "GOAL_SUBMIT": {
+   "allowed": [
+    "goal_hash",
+    "goal_id",
+    "goal_submission"
+   ],
+   "required": [
+    "goal_submission"
+   ]
+  },
+  "GOAL_TAKE": {
+   "allowed": [
+    "goal_id"
+   ],
+   "required": [
+    "goal_id"
+   ]
+  },
+  "MODEL_ACTIVATE": {
+   "allowed": [
+    "model_id"
+   ],
+   "required": [
+    "model_id"
+   ]
+  },
+  "MODEL_DEACTIVATE": {
+   "allowed": [
+    "model_id"
+   ],
+   "required": [
+    "model_id"
+   ]
+  },
+  "MODEL_EXTENSIONS": {
+   "allowed": [],
+   "required": []
+  },
+  "MODEL_TRAINING_INPUT_PLAN": {
+   "allowed": [
+    "component_id",
+    "input_binding_hash",
+    "research_input_id"
+   ],
+   "required": [
+    "component_id",
+    "research_input_id"
+   ]
+  },
+  "MODEL_TRAINING_INPUT_PREPARE": {
+   "allowed": [
+    "experiment_plan_hash"
+   ],
+   "required": [
+    "experiment_plan_hash"
+   ]
+  },
+  "MODEL_TRAINING_INPUT_READBACK": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "NETWORK_ACCESS": {
+   "allowed": [],
+   "required": []
+  },
+  "NETWORK_ACCESS_SET": {
+   "allowed": [
+    "network_enabled"
+   ],
+   "required": [
+    "network_enabled"
+   ]
+  },
+  "OPERATION_LIST": {
+   "allowed": [
+    "strategy_package_id"
+   ],
+   "required": []
+  },
+  "PENDING_DECISIONS": {
+   "allowed": [],
+   "required": []
+  },
+  "PLAN": {
+   "allowed": [
+    "spec"
+   ],
+   "required": [
+    "spec"
+   ]
+  },
+  "PORTFOLIO_UPDATE_PLAN": {
+   "allowed": [
+    "observed_through",
+    "prepared_input_hash",
+    "strategy_package_id"
+   ],
+   "required": [
+    "strategy_package_id"
+   ]
+  },
+  "PORTFOLIO_UPDATE_READBACK": {
+   "allowed": [
+    "strategy_package_id",
+    "task_id"
+   ],
+   "required": []
+  },
+  "PORTFOLIO_UPDATE_RUN": {
+   "allowed": [
+    "update_plan_hash"
+   ],
+   "required": [
+    "update_plan_hash"
+   ]
+  },
+  "RECOVER": {
+   "allowed": [
+    "expected_task_hash",
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "REPORT": {
+   "allowed": [
+    "portfolio_session",
+    "result_hash"
+   ],
+   "required": [
+    "result_hash"
+   ]
+  },
+  "RESEARCH_HISTORY": {
+   "allowed": [
+    "history_cursor",
+    "history_entry_id",
+    "history_kind",
+    "history_limit",
+    "input_binding_hash",
+    "research_input_id",
+    "strategy_package_id"
+   ],
+   "required": []
+  },
+  "RESEARCH_INPUTS": {
+   "allowed": [],
+   "required": []
+  },
+  "RESEARCH_INPUT_CONFIRM": {
+   "allowed": [
+    "research_input_plan_hash"
+   ],
+   "required": [
+    "research_input_plan_hash"
+   ]
+  },
+  "RESEARCH_INPUT_PLAN": {
+   "allowed": [
+    "research_input_id"
+   ],
+   "required": [
+    "research_input_id"
+   ]
+  },
+  "RESEARCH_INPUT_READBACK": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "RESEARCH_STRATEGY_CONTROLS": {
+   "allowed": [],
+   "required": []
+  },
+  "RESEARCH_STRATEGY_INSTALL": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "RESEARCH_STRATEGY_PLAN": {
+   "allowed": [
+    "experiment_document"
+   ],
+   "required": [
+    "experiment_document"
+   ]
+  },
+  "RESEARCH_STRATEGY_PREPARE": {
+   "allowed": [
+    "experiment_plan_hash"
+   ],
+   "required": [
+    "experiment_plan_hash"
+   ]
+  },
+  "RESEARCH_STRATEGY_READBACK": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "RESEARCH_UPDATE_AUTOMATION_CONFIGURE": {
+   "allowed": [
+    "automation_enabled",
+    "automation_package_ids"
+   ],
+   "required": [
+    "automation_enabled",
+    "automation_package_ids"
+   ]
+  },
+  "RESEARCH_UPDATE_AUTOMATION_READBACK": {
+   "allowed": [],
+   "required": []
+  },
+  "RESEARCH_UPDATE_PLAN": {
+   "allowed": [
+    "observed_through",
+    "strategy_package_id"
+   ],
+   "required": [
+    "strategy_package_id"
+   ]
+  },
+  "RESEARCH_UPDATE_READBACK": {
+   "allowed": [
+    "strategy_package_id",
+    "task_id"
+   ],
+   "required": []
+  },
+  "RESEARCH_UPDATE_RUN": {
+   "allowed": [
+    "update_plan_hash"
+   ],
+   "required": [
+    "update_plan_hash"
+   ]
+  },
+  "RESULTS": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": []
+  },
+  "RUN": {
+   "allowed": [
+    "spec"
+   ],
+   "required": [
+    "spec"
+   ]
+  },
+  "STATUS": {
+   "allowed": [
+    "task_id",
+    "wait_seconds"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "STORAGE_CAP_SET": {
+   "allowed": [
+    "storage_cap_bytes"
+   ],
+   "required": [
+    "storage_cap_bytes"
+   ]
+  },
+  "STORAGE_CAP_SHOW": {
+   "allowed": [],
+   "required": []
+  },
+  "STORAGE_CONFIRM": {
+   "allowed": [
+    "storage_plan_hash"
+   ],
+   "required": [
+    "storage_plan_hash"
+   ]
+  },
+  "STORAGE_EVIDENCE_REBUILD": {
+   "allowed": [
+    "evidence_index_id"
+   ],
+   "required": [
+    "evidence_index_id"
+   ]
+  },
+  "STORAGE_PIN": {
+   "allowed": [
+    "input_binding_hash",
+    "input_pinned"
+   ],
+   "required": [
+    "input_binding_hash",
+    "input_pinned"
+   ]
+  },
+  "STORAGE_PLAN": {
+   "allowed": [],
+   "required": []
+  },
+  "STORAGE_READBACK": {
+   "allowed": [],
+   "required": []
+  },
+  "STRATEGY_ACTIVATE": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "STRATEGY_CALIBRATION_PLAN": {
+   "allowed": [
+    "score_snapshot_hash",
+    "strategy_package_id"
+   ],
+   "required": [
+    "score_snapshot_hash",
+    "strategy_package_id"
+   ]
+  },
+  "STRATEGY_CALIBRATION_READBACK": {
+   "allowed": [
+    "strategy_package_id",
+    "task_id"
+   ],
+   "required": []
+  },
+  "STRATEGY_CALIBRATION_RUN": {
+   "allowed": [
+    "calibration_plan_hash"
+   ],
+   "required": [
+    "calibration_plan_hash"
+   ]
+  },
+  "STRATEGY_DEACTIVATE": {
+   "allowed": [
+    "strategy_package_id"
+   ],
+   "required": [
+    "strategy_package_id"
+   ]
+  },
+  "STRATEGY_SCORE_PLAN": {
+   "allowed": [
+    "component_id",
+    "formation_session",
+    "strategy_package_id"
+   ],
+   "required": [
+    "strategy_package_id"
+   ]
+  },
+  "STRATEGY_SCORE_READBACK": {
+   "allowed": [
+    "strategy_package_id",
+    "task_id"
+   ],
+   "required": []
+  },
+  "STRATEGY_SCORE_RUN": {
+   "allowed": [
+    "score_plan_hash"
+   ],
+   "required": [
+    "score_plan_hash"
+   ]
+  },
+  "TASKS": {
+   "allowed": [
+    "agent_session",
+    "history_cursor",
+    "history_limit"
+   ],
+   "required": []
+  },
+  "TASK_GUARDIAN": {
+   "allowed": [],
+   "required": []
+  },
+  "TASK_INCIDENTS": {
+   "allowed": [],
+   "required": []
+  },
+  "TASK_RECOVERY": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
+  "TASK_REMEDIATE": {
+   "allowed": [
+    "expected_task_hash",
+    "incident_key",
+    "remedy",
+    "task_id"
+   ],
+   "required": [
+    "incident_key",
+    "remedy",
+    "task_id"
+   ]
+  },
+  "UPGRADE_ACKNOWLEDGE": {
+   "allowed": [
+    "upgrade_set_hash"
+   ],
+   "required": [
+    "upgrade_set_hash"
+   ]
+  },
+  "UPGRADE_OVERVIEW": {
+   "allowed": [],
+   "required": []
+  },
+  "WORKSPACE_BACKUP": {
+   "allowed": [
+    "backup_generations_kept"
+   ],
+   "required": []
+  },
+  "WORKSPACE_BACKUPS": {
+   "allowed": [],
+   "required": []
+  },
+  "WORKSPACE_PREPARE_CONFIRM": {
+   "allowed": [
+    "data_issue_grant_hash",
+    "preparation_plan_hash"
+   ],
+   "required": [
+    "preparation_plan_hash"
+   ]
+  },
+  "WORKSPACE_PREPARE_PLAN": {
+   "allowed": [],
+   "required": []
+  },
+  "WORKSPACE_PREPARE_READBACK": {
+   "allowed": [
+    "task_id"
+   ],
+   "required": []
+  },
+  "WORKSPACE_SHOW": {
+   "allowed": [],
+   "required": []
+  }
+ },
+ "first_use": [
+  "DATA_ISSUE_CONFIRM",
+  "NETWORK_ACCESS_SET",
+  "WORKSPACE_PREPARE_CONFIRM"
+ ],
+ "flags": {
+  "after": "after",
+  "agent_answer": "file",
+  "agent_role": "role",
+  "agent_session": "session-id",
+  "analysis_answer": "file",
+  "analysis_context_hash": "context",
+  "analysis_publication_hash": "analysis",
+  "automation_enabled": "enabled",
+  "automation_package_ids": "packages",
+  "backup_generations_kept": "keep",
+  "bundle_directory": "dir",
+  "calibration_plan_hash": "plan",
+  "candidate_hash": "candidate",
+  "candidate_id": "candidate",
+  "change_reason": "reason",
+  "citation_entity_id": "citation-entity",
+  "citation_page": "citation-page",
+  "citation_unit_id": "citation-unit",
+  "component_id": "component",
+  "continuation_of": "continues",
+  "continuation_spans": "spans",
+  "cpu_budget": "cores",
+  "curation_receipt_hash": "receipt",
+  "data_issue_case_token": "case",
+  "data_issue_evidence_hash": "evidence-hash",
+  "data_issue_grant_hash": "grant",
+  "data_issue_option_hash": "option-hash",
+  "data_issue_option_id": "option",
+  "delivery_budget_bytes": "budget",
+  "delivery_commentary": "commentary",
+  "delivery_part": "part",
+  "delivery_question": "question",
+  "documents_page": "page",
+  "event": "file",
+  "evidence_as_of": "as-of",
+  "evidence_detail": "detail",
+  "evidence_index_id": "index",
+  "evidence_unit_id": "unit",
+  "expected_task_hash": "expected",
+  "experiment_curation": "file",
+  "experiment_document": "file",
+  "experiment_kind": "kind",
+  "experiment_plan_hash": "plan",
+  "experiment_receipt_hash": "receipt",
+  "experiment_task_id": "study",
+  "experiment_yaml": "file",
+  "extensions_page": "page",
+  "factor_task_id": "factor-study",
+  "feature_document": "file",
+  "feature_factor_id": "factor",
+  "feature_output": "output-dir",
+  "feature_plan_hash": "plan",
+  "feature_preparation_hash": "preparation",
+  "feature_trial_id": "trial",
+  "finding_handle": "finding",
+  "formation_session": "session",
+  "foundation_admission_hash": "admission",
+  "goal_declaration": "file",
+  "goal_hash": "revision",
+  "goal_id": "goal",
+  "goal_reference": "file",
+  "goal_reference_id": "reference",
+  "goal_statement": "file",
+  "goal_submission": "file",
+  "handoff_hash": "handoff",
+  "history_cursor": "cursor",
+  "history_entry_id": "entry",
+  "history_kind": "kind",
+  "history_limit": "limit",
+  "incident_key": "incident",
+  "input_binding_hash": "binding",
+  "input_pinned": "pinned",
+  "ledger_page": "page",
+  "left_candidate_id": "left-candidate",
+  "left_result_hash": "left",
+  "left_task_id": "left",
+  "limit": "limit",
+  "model_id": "model",
+  "network_enabled": "enabled",
+  "observed_through": "through",
+  "operation": "operation",
+  "origin_task_id": "origin",
+  "portfolio_session": "session",
+  "position_basis": "basis",
+  "preparation_binding_hash": "preparation",
+  "preparation_plan_hash": "plan",
+  "prepared_input_hash": "prepared-input",
+  "prior_review_publication_hash": "prior-review",
+  "remedy": "remedy",
+  "research_input_id": "input",
+  "research_input_plan_hash": "plan",
+  "result_hash": "result",
+  "review_answer": "file",
+  "review_dossier_hash": "dossier",
+  "review_policy_hash": "policy",
+  "review_publication_hash": "review",
+  "review_read_at": "read-at",
+  "review_schema_hash": "schema-hash",
+  "right_candidate_id": "right-candidate",
+  "right_result_hash": "right",
+  "right_task_id": "right",
+  "risk_report_hash": "risk-report",
+  "risk_report_scope": "scope",
+  "risk_task_id": "risk-study",
+  "score_plan_hash": "plan",
+  "score_snapshot_hash": "snapshot",
+  "session_limit": "session-limit",
+  "spec": "file",
+  "storage_cap_bytes": "cap-bytes",
+  "storage_plan_hash": "plan",
+  "strategy_package_id": "package",
+  "task_id": "task",
+  "tasks_waiting": "queue",
+  "update_plan_hash": "plan",
+  "update_publication_hash": "update-publication",
+  "update_task_id": "update",
+  "upgrade_set_hash": "upgrade-set",
+  "view_entity_id": "view-entity-id",
+  "view_from": "view-from",
+  "view_last_days": "days",
+  "view_to": "view-to",
+  "view_topic": "view-topic",
+  "wait_seconds": "wait-seconds",
+  "watch": "watch",
+  "window_limit": "window-limit"
+ },
+ "help_groups": [
+  [
+   "Start and follow the work",
+   [
+    [
+     "workspace",
+     "The workspace: its inputs, recent studies and Tasks, what flows need."
+    ],
+    [
+     "session",
+     "An agent session's binding to its workspace: bind, unbind."
+    ],
+    [
+     "goal",
+     "A goal an agent works for: open or take it, note it, submit it."
+    ],
+    [
+     "task",
+     "A Task, the work a command started: show it, wait on it, cancel it."
+    ],
+    [
+     "activity",
+     "The activity feed, and a wait on a Task or a goal."
+    ],
+    [
+     "decision",
+     "Everything waiting on a person, each with its request."
+    ],
+    [
+     "recovery",
+     "Unfinished Tasks: what stopped one and how it resumes."
+    ]
+   ]
+  ],
+  [
+   "Studies: Factor, then Alpha; Risk beside them",
+   [
+    [
+     "study",
+     "A Factor, Alpha or Risk study: controls, plan, run, show, compare."
+    ],
+    [
+     "curation",
+     "A Factor study's curation: which factors go on."
+    ],
+    [
+     "foundation",
+     "A curated Factor study sealed as an Alpha's foundation."
+    ],
+    [
+     "handoff",
+     "The Alpha declaration a curated Factor study hands on."
+    ],
+    [
+     "feature",
+     "Formula factors an agent declares and a person activates."
+    ],
+    [
+     "trial",
+     "A formula factor tried against a completed study."
+    ],
+    [
+     "candidate",
+     "Alpha candidates compared from their stored evidence."
+    ],
+    [
+     "model",
+     "Alpha models an agent scaffolds, checks and sandboxes."
+    ],
+    [
+     "training",
+     "A component's model-training inputs."
+    ]
+   ]
+  ],
+  [
+   "Portfolio",
+   [
+    [
+     "book",
+     "A Portfolio book: its draft from a candidate, its delivery report."
+    ],
+    [
+     "risk-link",
+     "The Risk reports linked to a Portfolio book."
+    ],
+    [
+     "strategy",
+     "A strategy prepared from promoted Alpha and Risk studies."
+    ],
+    [
+     "strategy-book",
+     "An installed strategy's book: controls, preview, run."
+    ],
+    [
+     "result",
+     "The saved results of installed strategies."
+    ],
+    [
+     "release",
+     "A development result frozen as a release candidate."
+    ]
+   ]
+  ],
+  [
+   "Evidence and CRO",
+   [
+    [
+     "evidence",
+     "A book's evidence: its preview, sources, ledger and packets."
+    ],
+    [
+     "review",
+     "A CRO review of a book: request, dossier, findings, answer."
+    ],
+    [
+     "bundle",
+     "A specialist's prepared bundle and the answer to it."
+    ]
+   ]
+  ],
+  [
+   "Data and updates",
+   [
+    [
+     "preparation",
+     "The workspace's first-use preparation."
+    ],
+    [
+     "input",
+     "Research inputs and their sealed versions."
+    ],
+    [
+     "data-update",
+     "A data update: due source checks, Data and Feature upkeep."
+    ],
+    [
+     "issue",
+     "Data issues: their evidence, options and decisions."
+    ],
+    [
+     "research-update",
+     "A research update: data, scores, calibration and books."
+    ],
+    [
+     "score",
+     "The scoring of a package's models for a session."
+    ],
+    [
+     "calibration",
+     "The calibration of a package's Portfolio input."
+    ],
+    [
+     "portfolio-update",
+     "A Portfolio update settling observed sessions."
+    ],
+    [
+     "automation",
+     "The daily research update, on or off."
+    ],
+    [
+     "history",
+     "Past studies, results, updates and reviews."
+    ]
+   ]
+  ],
+  [
+   "The workspace's care",
+   [
+    [
+     "storage",
+     "Storage clean-up, pins and rebuilds."
+    ],
+    [
+     "backup",
+     "Backups of what the workspace cannot rebuild, and restores."
+    ],
+    [
+     "network",
+     "Whether the workspace may reach the network."
+    ],
+    [
+     "cpu-budget",
+     "The CPU budget and how many Tasks run at once."
+    ],
+    [
+     "incident",
+     "The supervisor's incidents and their remedies."
+    ],
+    [
+     "upgrade",
+     "What an installed upgrade changed."
+    ]
+   ]
+  ],
+  [
+   "The CLI itself",
+   [
+    [
+     "serve",
+     "Start the Local Web Host on this workspace."
+    ],
+    [
+     "request",
+     "Send one whole request, or a saved answer's next request."
+    ],
+    [
+     "schema",
+     "A command's request schema, its answer's and a template."
+    ],
+    [
+     "operation",
+     "Every operation with its fields."
+    ],
+    [
+     "event",
+     "An event this client declares about its own work."
+    ]
+   ]
+  ]
+ ],
+ "inner_required": {
+  "experiment_curation": [
+   "choices",
+   "expected_receipt_hash",
+   "limitations_acknowledged"
+  ]
+ },
+ "limits": {
+  "agent_role": "one of ALPHA, ANALYST, CRO, DATA, FACTOR, PORTFOLIO, RISK",
+  "backup_generations_kept": "from 1 to 100",
+  "citation_page": "from 1 to 100000",
+  "delivery_budget_bytes": "from 1",
+  "delivery_part": "from 1 to 100000",
+  "documents_page": "from 1 to 100000",
+  "extensions_page": "from 1 to 100000",
+  "feature_output": "one of RAW_VALUES, PREPROCESSED_VALUES",
+  "history_limit": "from 1 to 50",
+  "ledger_page": "from 1 to 100000",
+  "limit": "from 1 to 200",
+  "operation": "one of GOAL_SCHEMA, GOAL_LIST, GOAL_OPEN, GOAL_REVISE, GOAL_SHOW, GOAL_NARRATIVE, GOAL_REFERENCE, GOAL_ATTACH, GOAL_NOTE, GOAL_EXPORT, GOAL_CONTINUE, GOAL_TAKE, GOAL_SUBMIT, GOAL_ABANDON, RESEARCH_HISTORY, EXPERIMENT_COMPARE, EXPERIMENT_ALPHA_COMPARE, EXPERIMENT_DELIVERY_EXPORT, RESEARCH_INPUTS, RESEARCH_INPUT_PLAN, RESEARCH_INPUT_CONFIRM, RESEARCH_INPUT_READBACK, MODEL_TRAINING_INPUT_PLAN, MODEL_TRAINING_INPUT_PREPARE, MODEL_TRAINING_INPUT_READBACK, FEATURE_CATALOG_CONTROLS, FEATURE_CATALOG_PLAN, FEATURE_CATALOG_READBACK, FEATURE_CATALOG_BUILD, FEATURE_CATALOG_BUILD_READBACK, FEATURE_TRIAL, FEATURE_REVIEW, FEATURE_ACTIVATE, FEATURE_DEACTIVATE, FEATURE_EXTENSIONS, FEATURE_TRIAL_READBACK, FEATURE_TRIALS, RESEARCH_STRATEGY_PLAN, RESEARCH_STRATEGY_CONTROLS, RESEARCH_STRATEGY_PREPARE, RESEARCH_STRATEGY_READBACK, RESEARCH_STRATEGY_INSTALL, EXPERIMENT_DRAFT, EXPERIMENT_PROMOTE, EXPERIMENT_CONTINUE, WORKSPACE_PREPARE_READBACK, WORKSPACE_PREPARE_PLAN, WORKSPACE_PREPARE_CONFIRM, STORAGE_CAP_SHOW, STORAGE_CAP_SET, STORAGE_READBACK, STORAGE_PLAN, STORAGE_CONFIRM, STORAGE_PIN, STORAGE_EVIDENCE_REBUILD, EXPERIMENT_CONTROLS, EXPERIMENT_LINK_RISK, EXPERIMENT_RISK_LINKS, EXPERIMENT_RISK_EXPORT, EXPERIMENT_PLAN, EXPERIMENT_PREVIEW_READBACK, EXPERIMENT_RUN, EXPERIMENTS, EXPERIMENT_READBACK, EXPERIMENT_SUMMARY, EXPERIMENT_REPLAY, EXPERIMENT_EXPORT, EXPERIMENT_CURATION, EXPERIMENT_CURATE, EXPERIMENT_HANDOFF_PREVIEW, EXPERIMENT_FOUNDATIONS, EXPERIMENT_FOUNDATION_PREVIEW, EXPERIMENT_FOUNDATION_SEAL, EXPERIMENT_FOUNDATION_READBACK, EXPERIMENT_FOUNDATION_SUMMARY, EXPERIMENT_FOUNDATION_EXPORT, EXPERIMENT_FOUNDATION_DRAFT, EXPERIMENT_PORTFOLIO_DRAFT, EXPERIMENT_VERIFY_ALL, CONTROLS, PLAN, RUN, STATUS, TASK_RECOVERY, TASK_GUARDIAN, TASK_INCIDENTS, TASK_REMEDIATE, RECOVER, TASKS, UPGRADE_OVERVIEW, UPGRADE_ACKNOWLEDGE, NETWORK_ACCESS, NETWORK_ACCESS_SET, PENDING_DECISIONS, ACTIVITY_REFUSALS, CANCEL, RESULTS, REPORT, COMPARE, FREEZE, FINALIZATION, EXPORT, EVIDENCE_CRO, EVIDENCE_CRO_EXPORT, EVIDENCE_REFRESH, EVIDENCE_PREPARE, EVIDENCE_PREVIEW, EVIDENCE_PACKET, EVIDENCE_LEDGER, EVIDENCE_DOCUMENTS, EVIDENCE_CONTINUE, EVIDENCE_ANALYSIS_SUBMIT, EVIDENCE_SELECT, CRO_REVIEW, CRO_REVIEW_DOSSIER, CRO_REVIEW_FINDING, CRO_REVIEW_SUBMIT, AGENT_BUNDLE_PREPARE, AGENT_ANSWER_SUBMIT, DATA_UPDATE_PLAN, DATA_UPDATE_RUN, DATA_UPDATE_READBACK, DATA_CHANGE_CONFIRM, DATA_ISSUES, DATA_ISSUE_PREVIEW, DATA_ISSUE_CONFIRM, DATA_ISSUE_DELEGATE, DATA_ISSUE_REVOKE, STRATEGY_SCORE_PLAN, STRATEGY_SCORE_RUN, STRATEGY_SCORE_READBACK, STRATEGY_CALIBRATION_PLAN, STRATEGY_CALIBRATION_RUN, STRATEGY_CALIBRATION_READBACK, PORTFOLIO_UPDATE_PLAN, PORTFOLIO_UPDATE_RUN, PORTFOLIO_UPDATE_READBACK, RESEARCH_UPDATE_PLAN, RESEARCH_UPDATE_RUN, RESEARCH_UPDATE_READBACK, RESEARCH_UPDATE_AUTOMATION_READBACK, RESEARCH_UPDATE_AUTOMATION_CONFIGURE, WORKSPACE_SHOW, OPERATION_LIST, ACTIVITY_LIST, ACTIVITY_RECENT, EVENT_DECLARE, CPU_BUDGET_SHOW, CPU_BUDGET_SET, WORKSPACE_BACKUP, WORKSPACE_BACKUPS, MODEL_EXTENSIONS, MODEL_ACTIVATE, MODEL_DEACTIVATE, STRATEGY_ACTIVATE, STRATEGY_DEACTIVATE",
+  "remedy": "one of CANCEL, RECOVER, REPLAN",
+  "session_limit": "from 1 to 99",
+  "view_last_days": "from 1 to 3660",
+  "wait_seconds": "above 0 to 20",
+  "window_limit": "from 1 to 4096"
+ },
+ "person_only": [
+  "DATA_CHANGE_CONFIRM",
+  "DATA_ISSUE_DELEGATE",
+  "DATA_ISSUE_REVOKE",
+  "FEATURE_ACTIVATE",
+  "FEATURE_DEACTIVATE",
+  "MODEL_ACTIVATE",
+  "MODEL_DEACTIVATE",
+  "NETWORK_ACCESS_SET",
+  "RESEARCH_INPUT_CONFIRM",
+  "RESEARCH_UPDATE_AUTOMATION_CONFIGURE",
+  "STORAGE_CONFIRM",
+  "STORAGE_PIN",
+  "STRATEGY_ACTIVATE",
+  "STRATEGY_DEACTIVATE"
+ ],
+ "positional": {
+  "CANCEL": "task_id",
+  "CRO_REVIEW_FINDING": "finding_handle",
+  "DATA_ISSUE_CONFIRM": "data_issue_case_token",
+  "DATA_ISSUE_DELEGATE": "data_issue_case_token",
+  "DATA_ISSUE_PREVIEW": "data_issue_case_token",
+  "EXPERIMENT_CONTINUE": "task_id",
+  "EXPERIMENT_CURATE": "task_id",
+  "EXPERIMENT_CURATION": "task_id",
+  "EXPERIMENT_DRAFT": "task_id",
+  "EXPERIMENT_EXPORT": "task_id",
+  "EXPERIMENT_FOUNDATION_DRAFT": "foundation_admission_hash",
+  "EXPERIMENT_FOUNDATION_EXPORT": "foundation_admission_hash",
+  "EXPERIMENT_FOUNDATION_READBACK": "foundation_admission_hash",
+  "EXPERIMENT_FOUNDATION_SEAL": "foundation_admission_hash",
+  "EXPERIMENT_PROMOTE": "task_id",
+  "EXPERIMENT_READBACK": "task_id",
+  "EXPERIMENT_REPLAY": "task_id",
+  "EXPERIMENT_SUMMARY": "task_id",
+  "EXPORT": "result_hash",
+  "FEATURE_ACTIVATE": "feature_factor_id",
+  "FEATURE_DEACTIVATE": "feature_factor_id",
+  "FEATURE_REVIEW": "feature_factor_id",
+  "FEATURE_TRIAL_READBACK": "feature_trial_id",
+  "FINALIZATION": "candidate_hash",
+  "GOAL_ABANDON": "goal_id",
+  "GOAL_ATTACH": "goal_id",
+  "GOAL_EXPORT": "goal_id",
+  "GOAL_NARRATIVE": "goal_id",
+  "GOAL_NOTE": "goal_id",
+  "GOAL_OPEN": "goal_id",
+  "GOAL_REVISE": "goal_id",
+  "GOAL_SHOW": "goal_id",
+  "GOAL_SUBMIT": "goal_id",
+  "GOAL_TAKE": "goal_id",
+  "MODEL_ACTIVATE": "model_id",
+  "MODEL_DEACTIVATE": "model_id",
+  "RECOVER": "task_id",
+  "REPORT": "result_hash",
+  "RESEARCH_INPUT_PLAN": "research_input_id",
+  "STATUS": "task_id",
+  "STRATEGY_ACTIVATE": "task_id",
+  "STRATEGY_DEACTIVATE": "strategy_package_id",
+  "TASK_RECOVERY": "task_id",
+  "TASK_REMEDIATE": "incident_key",
+  "UPGRADE_ACKNOWLEDGE": "upgrade_set_hash"
+ },
+ "primary": [
+  "experiment_yaml",
+  "experiment_document",
+  "feature_document",
+  "goal_declaration",
+  "goal_submission",
+  "goal_reference",
+  "goal_statement",
+  "experiment_curation",
+  "spec",
+  "agent_answer",
+  "analysis_answer",
+  "review_answer",
+  "event"
+ ],
+ "purposes": {
+  "ACTIVITY_LIST": "Reads one page of the activity feed, with the state of any watched Tasks.",
+  "ACTIVITY_RECENT": "Lists the newest requests grouped by agent session and goal, each with its read.",
+  "ACTIVITY_REFUSALS": "Counts refusals over the last days (30 by default), most frequent first.",
+  "AGENT_ANSWER_SUBMIT": "Submits an agent's answer to its bundle; the Host accepts it or names each problem.",
+  "AGENT_BUNDLE_PREPARE": "Writes a specialist's complete bundle into a new directory; names its answer file.",
+  "CANCEL": "Requests cancellation of a Task, optionally against the Task version you read.",
+  "COMPARE": "Compares two saved installed-strategy results: which controls differ and how metrics compare; no winner.",
+  "CONTROLS": "Lists the controls of an installed strategy's Portfolio book, with defaults and limits.",
+  "CPU_BUDGET_SET": "Sets the CPU budget (auto or a core count) or how many Tasks may wait.",
+  "CPU_BUDGET_SHOW": "Shows the CPU budget, the machine's load and how many Tasks may wait.",
+  "CRO_REVIEW": "Requests a CRO review of a book; the product runs no model, so use `bundle prepare`.",
+  "CRO_REVIEW_DOSSIER": "Delivers a book's CRO dossier and answer contract, in parts when it is large.",
+  "CRO_REVIEW_FINDING": "Delivers one CRO finding with its verified cited evidence.",
+  "CRO_REVIEW_SUBMIT": "Submits a CRO's answer to its dossier; accepted risks publish as a Task.",
+  "DATA_CHANGE_CONFIRM": "Approves a proposed data change by plan hash, admitting its Task; `run` then applies it.",
+  "DATA_ISSUES": "Lists data issues with their evidence, options, decisions and grants, a page at a time.",
+  "DATA_ISSUE_CONFIRM": "Records a data issue's chosen option; from the CLI only under a person's grant.",
+  "DATA_ISSUE_DELEGATE": "Grants automation the right to confirm one option for a preparation blocked on data review.",
+  "DATA_ISSUE_PREVIEW": "Previews one data-issue option's consequences; nothing is applied.",
+  "DATA_ISSUE_REVOKE": "Revokes a data-issue grant by its hash.",
+  "DATA_UPDATE_PLAN": "Plans a data update: due source checks, Data and Feature upkeep, any membership change; fetches nothing.",
+  "DATA_UPDATE_READBACK": "Shows the workspace's data state and the latest data update Task, or the one named.",
+  "DATA_UPDATE_RUN": "Runs a planned data update as a Task, within the workspace's network access.",
+  "EVENT_DECLARE": "Records an event this client declares about its own work in the activity feed.",
+  "EVIDENCE_ANALYSIS_SUBMIT": "Submits an Analyst's answer to a prepared packet; accepted findings publish as a Task.",
+  "EVIDENCE_CONTINUE": "Admits one more bounded source-reading session over a prepared packet, as a Task.",
+  "EVIDENCE_CRO": "Shows a book's Evidence and CRO state, from preparation to published review.",
+  "EVIDENCE_CRO_EXPORT": "Exports a published CRO review with its dossier and verified evidence spans.",
+  "EVIDENCE_DOCUMENTS": "Lists the workspace's retained SEC documents, newest first, a page at a time; fetches nothing.",
+  "EVIDENCE_LEDGER": "Reads a book's issuer-topic reading ledger from its sealed packets, twenty groups a page.",
+  "EVIDENCE_PACKET": "Delivers one prepared evidence packet for an Analyst, whole, in parts or as a chosen detail.",
+  "EVIDENCE_PREPARE": "Prepares a book's evidence packets as a Task: acquires, reads and seals sources; no findings.",
+  "EVIDENCE_PREVIEW": "Previews a book's evidence preparation: scope, sources and prerequisites; no Task or acquisition.",
+  "EVIDENCE_REFRESH": "Requests an evidence refresh; the product runs no model, so use `bundle prepare`.",
+  "EVIDENCE_SELECT": "Records which published analysis a book's review reads; refuses one that is not eligible.",
+  "EXPERIMENTS": "Lists every study Task with its kind, input and declared choices.",
+  "EXPERIMENT_ALPHA_COMPARE": "Compares two saved Alpha candidates from stored evidence; names no winner, recomputes nothing.",
+  "EXPERIMENT_COMPARE": "Compares two completed Portfolio books on the same input and support; names no winner.",
+  "EXPERIMENT_CONTINUE": "Continues a saved study by drafting, planning and running its next version in one request.",
+  "EXPERIMENT_CONTROLS": "Shows the controls and an editable declaration for a new study on a research input.",
+  "EXPERIMENT_CURATE": "Records a Factor study's curation decision: which factors go on, and why; no Task.",
+  "EXPERIMENT_CURATION": "Shows a completed Factor study's curation choices and what a decision must name.",
+  "EXPERIMENT_DELIVERY_EXPORT": "Exports one delivery report binding a selected book with its comparison, Risk link and review.",
+  "EXPERIMENT_DRAFT": "Copies a completed study's declaration for editing, onto its own input or a chosen one.",
+  "EXPERIMENT_EXPORT": "Exports a verified study as JSON, YAML and HTML with an export hash.",
+  "EXPERIMENT_FOUNDATIONS": "Lists Foundation admissions with each current, historical or refused read.",
+  "EXPERIMENT_FOUNDATION_DRAFT": "Drafts the Alpha declaration that builds on a sealed Foundation.",
+  "EXPERIMENT_FOUNDATION_EXPORT": "Exports a sealed Foundation admission as JSON.",
+  "EXPERIMENT_FOUNDATION_PREVIEW": "Previews the Foundation a curated Factor study would seal; nothing is sealed.",
+  "EXPERIMENT_FOUNDATION_READBACK": "Shows one sealed Foundation by its admission hash, read from its recorded graph.",
+  "EXPERIMENT_FOUNDATION_SEAL": "Seals the Foundation admission just previewed, named by its admission hash.",
+  "EXPERIMENT_FOUNDATION_SUMMARY": "Reads one sealed admission's label metadata without verifying its source graph.",
+  "EXPERIMENT_HANDOFF_PREVIEW": "Previews the Alpha declaration built on a curated Factor decision; nothing is planned or run.",
+  "EXPERIMENT_LINK_RISK": "Attaches a completed Risk study's report to a Portfolio book as evidence; weights unchanged.",
+  "EXPERIMENT_PLAN": "Plans a study from its declaration and keeps the plan for an hour; nothing runs.",
+  "EXPERIMENT_PORTFOLIO_DRAFT": "Drafts a Portfolio book declaration from one candidate of a completed Alpha study.",
+  "EXPERIMENT_PREVIEW_READBACK": "Shows a kept plan by its hash: available, expired, invalid or missing, and what follows.",
+  "EXPERIMENT_PROMOTE": "Runs an explored study's declaration on its whole universe as a Task, or reuses it.",
+  "EXPERIMENT_READBACK": "Shows a saved study verified against its sealed evidence, its standing first.",
+  "EXPERIMENT_REPLAY": "Checks a saved study still matches the installed code and evidence; recomputes nothing, admits no Task.",
+  "EXPERIMENT_RISK_EXPORT": "Exports one linked Risk report of a Portfolio book as HTML with its hash.",
+  "EXPERIMENT_RISK_LINKS": "Lists the Risk reports linked to a Portfolio book, each with its export request.",
+  "EXPERIMENT_RUN": "Runs a kept plan as a Task, or reuses the identical completed study.",
+  "EXPERIMENT_SUMMARY": "Shows a completed Alpha study's recorded model, training facts and metrics, without re-verifying evidence.",
+  "EXPERIMENT_VERIFY_ALL": "Verifies every saved study's sealed evidence in full, as a Task that yields to waiting work.",
+  "EXPORT": "Returns the export manifest of a saved result; recomputes nothing.",
+  "FEATURE_ACTIVATE": "Activates a reviewed formula factor into the workspace's daily feature catalog.",
+  "FEATURE_CATALOG_BUILD": "Builds a planned feature's raw or preprocessed values as a Task.",
+  "FEATURE_CATALOG_BUILD_READBACK": "Shows a feature build Task: its verified columns, counts and what they can feed.",
+  "FEATURE_CATALOG_CONTROLS": "Shows the formula language, admitted recipes and an editable feature declaration for an input.",
+  "FEATURE_CATALOG_PLAN": "Plans a feature change from its declaration and saves the plan; nothing is built.",
+  "FEATURE_CATALOG_READBACK": "Shows a saved feature plan: its changes, work and next requests.",
+  "FEATURE_DEACTIVATE": "Removes an activated formula factor from the workspace's daily feature catalog.",
+  "FEATURE_EXTENSIONS": "Lists the formula factors the workspace's plans declare, with activation and latest trial.",
+  "FEATURE_REVIEW": "Shows a formula factor's review packet: contract, trials, build coverage and activation.",
+  "FEATURE_TRIAL": "Starts or reopens a trial: builds a planned feature, screens it, reruns a finished study.",
+  "FEATURE_TRIALS": "Lists feature trials with their state and current step.",
+  "FEATURE_TRIAL_READBACK": "Shows a feature trial's steps and, once complete, its comparison; changes nothing.",
+  "FINALIZATION": "Shows a frozen candidate's release state and next permitted action; grants nothing.",
+  "FREEZE": "Freezes a saved development result, by its hash, as a candidate for finalization.",
+  "GOAL_ABANDON": "Closes an open goal as abandoned, recording why.",
+  "GOAL_ATTACH": "Attaches an exact read to the goal as evidence under a stage.",
+  "GOAL_CONTINUE": "Returns the draft that continues a study linked to the goal; plans and runs nothing.",
+  "GOAL_EXPORT": "Exports a goal's verified record, with the book deliveries it names, as JSON, YAML or HTML.",
+  "GOAL_LIST": "Lists goals newest first, a page at a time, or those of one agent session.",
+  "GOAL_NARRATIVE": "Shows a goal's saved revision as recorded, without re-verifying its evidence.",
+  "GOAL_NOTE": "Records a decision or conclusion in the goal's record; a conclusion must cite evidence.",
+  "GOAL_OPEN": "Opens a goal from its declaration and binds this agent session to it.",
+  "GOAL_REFERENCE": "Verifies one named reference of an exact saved goal revision at its owner.",
+  "GOAL_REVISE": "Revises an open goal's declaration with a reason; a changed objective marks earlier evidence post hoc.",
+  "GOAL_SCHEMA": "Prints the goal declaration, reference, note and submission schemas, with a starter declaration.",
+  "GOAL_SHOW": "Shows a goal's latest or a chosen revision, re-verifying every reference at its owner.",
+  "GOAL_SUBMIT": "Submits the completion document; the Host seals the goal complete or lists what is missing.",
+  "GOAL_TAKE": "Binds this agent session to an open goal, so its requests are recorded under it.",
+  "MODEL_ACTIVATE": "Activates a reviewed Alpha model for this workspace's research.",
+  "MODEL_DEACTIVATE": "Removes an activated Alpha model from this workspace's catalog.",
+  "MODEL_EXTENSIONS": "Lists installed and extension Alpha models, each with its review packet.",
+  "MODEL_TRAINING_INPUT_PLAN": "Plans model-training inputs for a component on a research input; no model is fit.",
+  "MODEL_TRAINING_INPUT_PREPARE": "Prepares a planned component's training inputs as a Task, or reuses them.",
+  "MODEL_TRAINING_INPUT_READBACK": "Shows a training-input Task and the prepared sources and support it published.",
+  "NETWORK_ACCESS": "Shows whether this workspace may reach the network and what decided it.",
+  "NETWORK_ACCESS_SET": "Turns this workspace's network access on or off.",
+  "OPERATION_LIST": "Lists every operation with its required and allowed fields, and the request schema.",
+  "PENDING_DECISIONS": "Lists everything waiting on a person, each with the request that takes it.",
+  "PLAN": "Previews an installed strategy's book from its controls: window, reuse and work; nothing runs.",
+  "PORTFOLIO_UPDATE_PLAN": "Plans a Portfolio update that settles observed sessions for an installed package; fits nothing.",
+  "PORTFOLIO_UPDATE_READBACK": "Shows a Portfolio update Task, or a strategy's latest, with the book it published.",
+  "PORTFOLIO_UPDATE_RUN": "Runs a planned Portfolio update as a Task, or reuses the identical published one.",
+  "RECOVER": "Resumes a Task that needs recovery, or retries a blocked study whose artifact was repaired.",
+  "REPORT": "Opens a saved result's report: window, book, controls and readouts; reruns nothing.",
+  "RESEARCH_HISTORY": "Lists past studies, installed results, updates and CRO reviews, a page at a time.",
+  "RESEARCH_INPUTS": "Lists each research input and its versions, naming any that cannot be read.",
+  "RESEARCH_INPUT_CONFIRM": "Confirms a planned research input capture, which seals a new input version as a Task.",
+  "RESEARCH_INPUT_PLAN": "Plans sealing a new version of a research input from the local sources; no network.",
+  "RESEARCH_INPUT_READBACK": "Shows an input capture Task and the input version it published.",
+  "RESEARCH_STRATEGY_CONTROLS": "Shows the strategy-preparation declaration schema and the completed Alpha and Risk studies it can use.",
+  "RESEARCH_STRATEGY_INSTALL": "Installs a prepared strategy as non-default research in this workspace; the service must restart.",
+  "RESEARCH_STRATEGY_PLAN": "Plans a strategy preparation from promoted Alpha and Risk studies; nothing runs.",
+  "RESEARCH_STRATEGY_PREPARE": "Prepares the planned strategy's Portfolio inputs from its Alpha and Risk studies, as a Task.",
+  "RESEARCH_STRATEGY_READBACK": "Shows a strategy preparation Task, what it prepared and what is still missing.",
+  "RESEARCH_UPDATE_AUTOMATION_CONFIGURE": "Turns the daily research update on or off for named packages.",
+  "RESEARCH_UPDATE_AUTOMATION_READBACK": "Shows whether the daily research update is on, its packages and next due time.",
+  "RESEARCH_UPDATE_PLAN": "Plans a research update bringing data, scores, calibration and the book to the latest completed session.",
+  "RESEARCH_UPDATE_READBACK": "Shows a research update Task, or a strategy's latest, with the book it published.",
+  "RESEARCH_UPDATE_RUN": "Runs a planned research update as one Task, or reuses the identical completed one.",
+  "RESULTS": "Lists result metadata, for one Task when selected; opens no reports.",
+  "RUN": "Runs an installed strategy's book from its controls, or reuses an identical saved result.",
+  "STATUS": "Shows one Task's state, stages, timing and incident; may wait for it to move on.",
+  "STORAGE_CAP_SET": "Sets the workspace storage cap to auto or a positive whole byte count; preserves retained work.",
+  "STORAGE_CAP_SHOW": "Shows the operator storage cap, its automatic estimate and free disk.",
+  "STORAGE_CONFIRM": "Applies a storage clean-up plan, deleting the input copies it names.",
+  "STORAGE_EVIDENCE_REBUILD": "Rebuilds an evicted evidence index from its committed vectors, with a receipt.",
+  "STORAGE_PIN": "Pins or unpins a research input or evidence index against storage clean-up.",
+  "STORAGE_PLAN": "Plans a storage clean-up of unpinned input copies and saves it for confirmation.",
+  "STORAGE_READBACK": "Shows storage use, retained inputs and evidence indexes, pins and pending clean-up.",
+  "STRATEGY_ACTIVATE": "Runs a reviewed book's installed research strategy forward: the daily update scores, calibrates and gives its next positions; a person's.",
+  "STRATEGY_CALIBRATION_PLAN": "Plans calibration of a package's Portfolio input from a published score snapshot; fits nothing.",
+  "STRATEGY_CALIBRATION_READBACK": "Shows a calibration Task, or a strategy's latest, and the Portfolio input it published.",
+  "STRATEGY_CALIBRATION_RUN": "Prepares a package's Portfolio input from a calibration plan as a Task, or reuses it.",
+  "STRATEGY_DEACTIVATE": "Stops an installed research strategy running forward; its history stays readable; a person's.",
+  "STRATEGY_SCORE_PLAN": "Plans scoring of a package's models for a formation session; nothing is scored yet.",
+  "STRATEGY_SCORE_READBACK": "Shows a scoring Task, or a strategy's latest, and the score snapshot it published.",
+  "STRATEGY_SCORE_RUN": "Runs a planned scoring as a Task, or reuses the identical published score.",
+  "TASKS": "Lists the workspace's Tasks with their states, or one agent session's, a page at a time.",
+  "TASK_GUARDIAN": "Reads every unfinished Task: liveness, stages, kept work, incidents and permitted recovery.",
+  "TASK_INCIDENTS": "Lists the supervisor's incident records, open first, with what was done about each.",
+  "TASK_RECOVERY": "Shows what stopped a Task, what stays verified and what recovery its owner permits.",
+  "TASK_REMEDIATE": "Performs one remedy the Host offers for an open incident: cancel, recover or re-plan.",
+  "UPGRADE_ACKNOWLEDGE": "Records the installed identities you saw on the upgrade overview, by their set hash.",
+  "UPGRADE_OVERVIEW": "Shows what the installed upgrade changed: saved studies, reviews and waiting Tasks.",
+  "WORKSPACE_BACKUP": "Backs up what the workspace cannot rebuild, outside it, keeping the newest generations.",
+  "WORKSPACE_BACKUPS": "Lists the kept backup generations and the backup root; makes none.",
+  "WORKSPACE_PREPARE_CONFIRM": "Starts a planned workspace preparation: the CLI starts one under the workspace's first-use goal, or resumes one under a person's grant.",
+  "WORKSPACE_PREPARE_PLAN": "Plans first-use workspace preparation, or recovery of a stopped one; acquires nothing.",
+  "WORKSPACE_PREPARE_READBACK": "Shows the latest preparation Task, or the one named, and the inputs it published.",
+  "WORKSPACE_SHOW": "Shows the workspace's inputs, recent studies and Tasks, data state, and next steps."
+ },
+ "reads": [
+  "ACTIVITY_LIST",
+  "ACTIVITY_RECENT",
+  "ACTIVITY_REFUSALS",
+  "COMPARE",
+  "CONTROLS",
+  "CPU_BUDGET_SHOW",
+  "CRO_REVIEW_DOSSIER",
+  "CRO_REVIEW_FINDING",
+  "DATA_ISSUES",
+  "DATA_UPDATE_READBACK",
+  "EVIDENCE_CRO",
+  "EVIDENCE_CRO_EXPORT",
+  "EVIDENCE_DOCUMENTS",
+  "EVIDENCE_LEDGER",
+  "EVIDENCE_PACKET",
+  "EXPERIMENTS",
+  "EXPERIMENT_ALPHA_COMPARE",
+  "EXPERIMENT_COMPARE",
+  "EXPERIMENT_CONTROLS",
+  "EXPERIMENT_CURATION",
+  "EXPERIMENT_DELIVERY_EXPORT",
+  "EXPERIMENT_DRAFT",
+  "EXPERIMENT_EXPORT",
+  "EXPERIMENT_FOUNDATIONS",
+  "EXPERIMENT_FOUNDATION_DRAFT",
+  "EXPERIMENT_FOUNDATION_EXPORT",
+  "EXPERIMENT_FOUNDATION_READBACK",
+  "EXPERIMENT_FOUNDATION_SUMMARY",
+  "EXPERIMENT_PORTFOLIO_DRAFT",
+  "EXPERIMENT_PREVIEW_READBACK",
+  "EXPERIMENT_READBACK",
+  "EXPERIMENT_REPLAY",
+  "EXPERIMENT_RISK_EXPORT",
+  "EXPERIMENT_RISK_LINKS",
+  "EXPERIMENT_SUMMARY",
+  "EXPORT",
+  "FEATURE_CATALOG_BUILD_READBACK",
+  "FEATURE_CATALOG_CONTROLS",
+  "FEATURE_CATALOG_READBACK",
+  "FEATURE_EXTENSIONS",
+  "FEATURE_REVIEW",
+  "FEATURE_TRIALS",
+  "FEATURE_TRIAL_READBACK",
+  "FINALIZATION",
+  "GOAL_CONTINUE",
+  "GOAL_EXPORT",
+  "GOAL_LIST",
+  "GOAL_NARRATIVE",
+  "GOAL_REFERENCE",
+  "GOAL_SCHEMA",
+  "GOAL_SHOW",
+  "MODEL_EXTENSIONS",
+  "MODEL_TRAINING_INPUT_READBACK",
+  "NETWORK_ACCESS",
+  "OPERATION_LIST",
+  "PENDING_DECISIONS",
+  "PORTFOLIO_UPDATE_READBACK",
+  "REPORT",
+  "RESEARCH_HISTORY",
+  "RESEARCH_INPUTS",
+  "RESEARCH_INPUT_READBACK",
+  "RESEARCH_STRATEGY_CONTROLS",
+  "RESEARCH_STRATEGY_READBACK",
+  "RESEARCH_UPDATE_AUTOMATION_READBACK",
+  "RESEARCH_UPDATE_READBACK",
+  "RESULTS",
+  "STATUS",
+  "STORAGE_CAP_SHOW",
+  "STORAGE_READBACK",
+  "STRATEGY_CALIBRATION_READBACK",
+  "STRATEGY_SCORE_READBACK",
+  "TASKS",
+  "TASK_GUARDIAN",
+  "TASK_INCIDENTS",
+  "TASK_RECOVERY",
+  "UPGRADE_OVERVIEW",
+  "WORKSPACE_BACKUPS",
+  "WORKSPACE_PREPARE_READBACK",
+  "WORKSPACE_SHOW"
+ ],
+ "references": [
+  "analysis_context_hash",
+  "analysis_publication_hash",
+  "calibration_plan_hash",
+  "candidate_hash",
+  "continuation_of",
+  "continuation_spans",
+  "curation_receipt_hash",
+  "data_issue_case_token",
+  "data_issue_evidence_hash",
+  "data_issue_grant_hash",
+  "data_issue_option_hash",
+  "evidence_index_id",
+  "expected_task_hash",
+  "experiment_plan_hash",
+  "experiment_task_id",
+  "factor_task_id",
+  "feature_plan_hash",
+  "feature_preparation_hash",
+  "feature_trial_id",
+  "foundation_admission_hash",
+  "goal_hash",
+  "goal_id",
+  "handoff_hash",
+  "history_entry_id",
+  "incident_key",
+  "input_binding_hash",
+  "left_result_hash",
+  "left_task_id",
+  "origin_task_id",
+  "preparation_binding_hash",
+  "preparation_plan_hash",
+  "prepared_input_hash",
+  "prior_review_publication_hash",
+  "research_input_plan_hash",
+  "result_hash",
+  "review_dossier_hash",
+  "review_policy_hash",
+  "review_publication_hash",
+  "review_schema_hash",
+  "right_result_hash",
+  "right_task_id",
+  "risk_task_id",
+  "score_plan_hash",
+  "score_snapshot_hash",
+  "storage_plan_hash",
+  "task_id",
+  "update_plan_hash",
+  "update_publication_hash",
+  "update_task_id",
+  "watch"
+ ],
+ "schema": "alphalattice.local-application.operations",
+ "types": {
+  "after": [
+   "string"
+  ],
+  "agent_answer": [
+   "object"
+  ],
+  "agent_role": [
+   "string"
+  ],
+  "agent_session": [
+   "string"
+  ],
+  "analysis_answer": [
+   "object"
+  ],
+  "analysis_context_hash": [
+   "string"
+  ],
+  "analysis_publication_hash": [
+   "string"
+  ],
+  "automation_enabled": [
+   "boolean"
+  ],
+  "automation_package_ids": [
+   "array"
+  ],
+  "backup_generations_kept": [
+   "integer"
+  ],
+  "bundle_directory": [
+   "string"
+  ],
+  "calibration_plan_hash": [
+   "string"
+  ],
+  "candidate_hash": [
+   "string"
+  ],
+  "candidate_id": [
+   "string"
+  ],
+  "change_reason": [
+   "string"
+  ],
+  "citation_entity_id": [
+   "string"
+  ],
+  "citation_page": [
+   "integer"
+  ],
+  "citation_unit_id": [
+   "string"
+  ],
+  "component_id": [
+   "string"
+  ],
+  "continuation_of": [
+   "string"
+  ],
+  "continuation_spans": [
+   "string"
+  ],
+  "cpu_budget": [
+   "string"
+  ],
+  "curation_receipt_hash": [
+   "string"
+  ],
+  "data_issue_case_token": [
+   "string"
+  ],
+  "data_issue_evidence_hash": [
+   "string"
+  ],
+  "data_issue_grant_hash": [
+   "string"
+  ],
+  "data_issue_option_hash": [
+   "string"
+  ],
+  "data_issue_option_id": [
+   "string"
+  ],
+  "delivery_budget_bytes": [
+   "integer"
+  ],
+  "delivery_commentary": [
+   "array"
+  ],
+  "delivery_part": [
+   "integer"
+  ],
+  "delivery_question": [
+   "string"
+  ],
+  "documents_page": [
+   "integer"
+  ],
+  "event": [
+   "object"
+  ],
+  "evidence_as_of": [
+   "string"
+  ],
+  "evidence_detail": [
+   "string"
+  ],
+  "evidence_index_id": [
+   "string"
+  ],
+  "evidence_unit_id": [
+   "string"
+  ],
+  "expected_task_hash": [
+   "string"
+  ],
+  "experiment_curation": [
+   "object"
+  ],
+  "experiment_document": [
+   "object"
+  ],
+  "experiment_kind": [
+   "string"
+  ],
+  "experiment_plan_hash": [
+   "string"
+  ],
+  "experiment_receipt_hash": [
+   "string"
+  ],
+  "experiment_task_id": [
+   "string"
+  ],
+  "experiment_yaml": [
+   "string"
+  ],
+  "extensions_page": [
+   "integer"
+  ],
+  "factor_task_id": [
+   "string"
+  ],
+  "feature_document": [
+   "object"
+  ],
+  "feature_factor_id": [
+   "string"
+  ],
+  "feature_output": [
+   "string"
+  ],
+  "feature_plan_hash": [
+   "string"
+  ],
+  "feature_preparation_hash": [
+   "string"
+  ],
+  "feature_trial_id": [
+   "string"
+  ],
+  "finding_handle": [
+   "string"
+  ],
+  "formation_session": [
+   "string"
+  ],
+  "foundation_admission_hash": [
+   "string"
+  ],
+  "goal_declaration": [
+   "object"
+  ],
+  "goal_hash": [
+   "string"
+  ],
+  "goal_id": [
+   "string"
+  ],
+  "goal_reference": [
+   "object"
+  ],
+  "goal_reference_id": [
+   "string"
+  ],
+  "goal_statement": [
+   "object"
+  ],
+  "goal_submission": [
+   "object"
+  ],
+  "handoff_hash": [
+   "string"
+  ],
+  "history_cursor": [
+   "string"
+  ],
+  "history_entry_id": [
+   "string"
+  ],
+  "history_kind": [
+   "string"
+  ],
+  "history_limit": [
+   "integer"
+  ],
+  "incident_key": [
+   "string"
+  ],
+  "input_binding_hash": [
+   "string"
+  ],
+  "input_pinned": [
+   "boolean"
+  ],
+  "ledger_page": [
+   "integer"
+  ],
+  "left_candidate_id": [
+   "string"
+  ],
+  "left_result_hash": [
+   "string"
+  ],
+  "left_task_id": [
+   "string"
+  ],
+  "limit": [
+   "integer"
+  ],
+  "model_id": [
+   "string"
+  ],
+  "network_enabled": [
+   "boolean"
+  ],
+  "observed_through": [
+   "string"
+  ],
+  "operation": [
+   "string"
+  ],
+  "origin_task_id": [
+   "string"
+  ],
+  "portfolio_session": [
+   "string"
+  ],
+  "position_basis": [
+   "string"
+  ],
+  "preparation_binding_hash": [
+   "string"
+  ],
+  "preparation_plan_hash": [
+   "string"
+  ],
+  "prepared_input_hash": [
+   "string"
+  ],
+  "prior_review_publication_hash": [
+   "string"
+  ],
+  "remedy": [
+   "string"
+  ],
+  "research_input_id": [
+   "string"
+  ],
+  "research_input_plan_hash": [
+   "string"
+  ],
+  "result_hash": [
+   "string"
+  ],
+  "review_answer": [
+   "object"
+  ],
+  "review_dossier_hash": [
+   "string"
+  ],
+  "review_policy_hash": [
+   "string"
+  ],
+  "review_publication_hash": [
+   "string"
+  ],
+  "review_read_at": [
+   "string"
+  ],
+  "review_schema_hash": [
+   "string"
+  ],
+  "right_candidate_id": [
+   "string"
+  ],
+  "right_result_hash": [
+   "string"
+  ],
+  "right_task_id": [
+   "string"
+  ],
+  "risk_report_hash": [
+   "string"
+  ],
+  "risk_report_scope": [
+   "string"
+  ],
+  "risk_task_id": [
+   "string"
+  ],
+  "score_plan_hash": [
+   "string"
+  ],
+  "score_snapshot_hash": [
+   "string"
+  ],
+  "session_limit": [
+   "integer"
+  ],
+  "spec": [
+   "object"
+  ],
+  "storage_cap_bytes": [
+   "string"
+  ],
+  "storage_plan_hash": [
+   "string"
+  ],
+  "strategy_package_id": [
+   "string"
+  ],
+  "task_id": [
+   "string"
+  ],
+  "tasks_waiting": [
+   "string"
+  ],
+  "update_plan_hash": [
+   "string"
+  ],
+  "update_publication_hash": [
+   "string"
+  ],
+  "update_task_id": [
+   "string"
+  ],
+  "upgrade_set_hash": [
+   "string"
+  ],
+  "view_entity_id": [
+   "string"
+  ],
+  "view_from": [
+   "string"
+  ],
+  "view_last_days": [
+   "integer"
+  ],
+  "view_to": [
+   "string"
+  ],
+  "view_topic": [
+   "string"
+  ],
+  "wait_seconds": [
+   "number"
+  ],
+  "watch": [
+   "array"
+  ],
+  "window_limit": [
+   "integer"
+  ]
+ }
+}

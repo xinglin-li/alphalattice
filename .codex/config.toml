@@ -1,0 +1,46 @@
+# Bundle specialists use native ExecCommand only to read their exact listed files;
+# ApplyPatch is limited by the card to its nominated answer file. The writable sandbox
+# is needed for that patch; it does not authorize product CLI, shell writes or other paths.
+[agents.alphalattice_cro]
+description = "Challenge one AlphaLattice book against the Analyst's findings in a bundle the lead prepared; write the real major negatives to its answer file for the lead to submit, never a route or weights."
+config_file = "agents/alphalattice_cro.toml"
+
+[agents.alphalattice_data]
+description = "Advise on one product-exported Data/Feature issue or update state, preserving its evidence and permission limits."
+config_file = "agents/alphalattice_data.toml"
+
+[agents.alphalattice_factor]
+description = "Analyze a supplied Factor report and its exact product-generated curation choices."
+config_file = "agents/alphalattice_factor.toml"
+
+[agents.alphalattice_alpha]
+description = "Analyze installed Alpha experiment candidates, fold support and predictive evidence."
+config_file = "agents/alphalattice_alpha.toml"
+
+[agents.alphalattice_risk]
+description = "Analyze an exact Risk model/diagnostic projection, distinct from downstream CRO judgment."
+config_file = "agents/alphalattice_risk.toml"
+
+[agents.alphalattice_portfolio]
+description = "Analyze exact Portfolio research results and legal construction alternatives."
+config_file = "agents/alphalattice_portfolio.toml"
+
+[agents.alphalattice_evidence_analyst]
+description = "Read one AlphaLattice evidence bundle the lead prepared and write cited issuer findings to its answer file for the lead to submit; never a Portfolio judgment."
+config_file = "agents/alphalattice_evidence_analyst.toml"
+
+# Optional visibility only. Review/trust these definitions in the active Codex
+# project before use; the hook is silent until an explicit session binding exists.
+[[hooks.SubagentStart]]
+matcher = "^alphalattice_.*$"
+[[hooks.SubagentStart.hooks]]
+type = "command"
+command = "uv run --no-sync --offline --no-cache python -c \"from pathlib import Path; import runpy; p=next(p for p in (Path.cwd(),*Path.cwd().parents) if (p/'scripts/native_research.py').is_file()); runpy.run_path(str(p/'scripts/native_research.py'),run_name='__main__')\" hook || exit 0"
+timeout = 5
+
+[[hooks.SubagentStop]]
+matcher = "^alphalattice_.*$"
+[[hooks.SubagentStop.hooks]]
+type = "command"
+command = "uv run --no-sync --offline --no-cache python -c \"from pathlib import Path; import runpy; p=next(p for p in (Path.cwd(),*Path.cwd().parents) if (p/'scripts/native_research.py').is_file()); runpy.run_path(str(p/'scripts/native_research.py'),run_name='__main__')\" hook || exit 0"
+timeout = 5

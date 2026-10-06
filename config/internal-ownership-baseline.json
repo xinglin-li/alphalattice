@@ -1,0 +1,47 @@
+{
+  "active_source_harnesses": [],
+  "alpha_reusable_package_closure": [
+    "actor_execution",
+    "alpha_modeling",
+    "alpha_research",
+    "causal_inputs",
+    "causal_outcomes",
+    "data",
+    "factor_research",
+    "feature_engine",
+    "knowledge",
+    "market_data_ops",
+    "portfolio_backtesting",
+    "portfolio_management",
+    "quant",
+    "research_authoring",
+    "research_foundation",
+    "sector_research",
+    "shared_kernel",
+    "validation",
+    "workspace_runtime"
+  ],
+  "base_sha": "196823ad43eddef7a648d88249d620622839c066",
+  "direct_mutual_package_dependencies": [],
+  "module_proof_reach": {
+    "no_executable_evidence": [],
+    "reached_only_by_a_case_helper": [
+      "task_control.projection"
+    ],
+    "reached_only_by_a_script": [
+      "playpen_governance.evidence_bindings"
+    ]
+  },
+  "nontrivial_module_dependency_components": [],
+  "nontrivial_package_dependency_components": [],
+  "packaged_system_resource_identity": {
+    "resource_count": 24,
+    "resource_identity_hash": "a5eb382c0ee3809323930fdb7f827d121d32caf99d8be98c3c2450272a64f6bb",
+    "resource_kind_counts": {
+      "knowledge": 4,
+      "package_arg_spec": 20,
+      "prompt": 0,
+      "skill": 0
+    }
+  }
+}

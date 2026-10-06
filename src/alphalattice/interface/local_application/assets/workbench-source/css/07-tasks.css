@@ -1,0 +1,950 @@
+/* 07-tasks — Task panels (dock, drawer, inline slots, task pages) and Full View.
+   Files are concatenated in name order by build.py; that order is the cascade order. Edit by hand — the generator in qa/parity/css only did the migration from v3.13. */
+/* Task and issue components */
+/* Busy does not mean queued, running, or a computed result. */
+.tp-caption {
+  color: var(--muted);
+}
+.tp-number {
+  letter-spacing: var(--style-figure-tracking);
+}
+.tp-number {
+  color: var(--text);
+}
+.tp-denom {
+  color: var(--muted);
+  letter-spacing: 0;
+}
+.tp-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-block);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  font-size: var(--style-footnote-size);
+}
+.tp-callout>.icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  margin-top: var(--space-1);
+  color: var(--warning-ink);
+}
+.tp-callout p {
+  margin: 0;
+}
+/* The Task's actions (round 58): one row, the explanation folded under it. */
+.tp-actions { margin: var(--space-4) 0 var(--space-2); }
+.tp-why { display: grid; gap: var(--space-3); margin: 0; }
+.tp-why dt { color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+.tp-why dd { margin: var(--space-05) 0 0; font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+.tp-why dd > small { display: block; margin-top: var(--space-05); }
+.tp-retained {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--line);
+  margin-top: 1px;
+}
+.tp-retained>.icon {
+  color: var(--muted);
+  width: var(--icon-size);
+  height: var(--icon-size);
+  margin-top: var(--space-05);
+}
+.tp-retained span {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  display: block;
+}
+.tp-retained strong {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  display: block;
+  margin-top: var(--space-1);
+}
+.tp-retained small {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  display: block;
+  margin-top: var(--space-1);
+}
+.tp-identity {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+.tp-identity>div {
+  display: grid;
+  --lead: 100px;
+  grid-template-columns: var(--grid-master);
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.tp-identity dt {
+  color: var(--muted);
+}
+.tp-identity dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.tp-identity code {
+  font: var(--style-footnote-size)/var(--style-footnote-leading) var(--font-mono);
+}
+.tp-json {
+  padding: var(--space-3) 0;
+}
+.tp-json pre {
+  font: var(--style-footnote-size)/var(--style-footnote-leading) var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--subtle-surface);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  max-height: calc(var(--code-lines-short) * var(--style-footnote-leading) + 2 * var(--space-3));
+  overflow: auto;
+  margin-top: var(--space-2);
+}
+.tp-confirm-object {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--space-1);
+}
+.tp-confirm-object strong {
+  font-size: var(--style-title-3-size);
+  line-height: var(--style-title-3-leading);
+  letter-spacing: var(--style-title-3-tracking);
+}
+.tp-confirm-object p {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  margin-top: var(--space-2);
+}
+.tp-confirm>.tp-caption {
+  margin-top: var(--space-4);
+}
+@media (width < 768px) {
+.tp-detail > .tp-truth {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.tp-callout {
+    font-size: var(--style-callout-size);
+    line-height: var(--style-callout-leading);
+  }
+.tp-identity>div {
+    --lead: 96px; grid-template-columns: var(--grid-master);
+  }
+}
+body[data-page] :is(.grid-2) {
+  gap: var(--space-6);
+}
+/* Typography by job, not by how many wrappers a page accumulated. */
+:is(.object-header h1) {
+  font-weight: var(--weight-label);
+  letter-spacing: var(--style-large-title-tracking);
+  overflow-wrap: anywhere;
+}
+:is(.tp-identity,.kv) {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+body[data-page] :is(.stat-value,.tp-number) {
+  font-weight: var(--weight-label);
+  letter-spacing: var(--style-figure-tracking);
+}
+/* In-page task summaries deliberately do not repeat the full stage roster. */
+.tp-section {
+  overflow: hidden;
+  container-type: inline-size;
+}
+.tp-section .tp-denom {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.tp-task-list {
+  padding: 0 var(--space-3);
+}
+.tp-detail {
+  padding: 0; /* the inspector's body is the inset (round 66) */
+}
+:is(.caption,.tp-caption,.object-meta,.stat-label,.table-note) {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+body[data-page] :is(.tp-detail .tp-caption,.tp-identity) {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+/* The stage rail: one line of nodes with the words always below them. A step is its node, its
+   words under it and the connector from just past the node to just short of the next one
+   (none after the last), so there is one horizontal line and nothing trails past the final
+   stage. A finished stage is a tinted node with a heavy check; the owner's current stage wears
+   a soft halo (and the working pulse) only while it is not finished; a stage the reader
+   inspects wears a crisp ring. Nothing is underlined like a tab. */
+.fv-pipeline {
+  display: grid;
+  --cols: var(--fv-stage-count, 5);
+  grid-template-columns: var(--grid-equal);
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+body[data-page] .fv-step {
+  --fv-step-pad: var(--space-4);
+  --fv-node: 27px;
+  --fv-line-gap: var(--space-2);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 0 var(--fv-step-pad) var(--space-4);
+  text-align: left;
+  min-width: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  transform: none;
+}
+/* the connector: at node-centre height, from just past this node through both steps' paddings
+   to just short of the next node (clear of a ring or halo); none after the last */
+body[data-page] .fv-step::before {
+  content: "";
+  position: absolute;
+  top: calc((var(--pipeline-node-size) - 1px) / 2);
+  left: calc(var(--fv-step-pad) + var(--fv-node) + var(--fv-line-gap));
+  right: calc(var(--fv-line-gap) - var(--fv-step-pad));
+  height: 1px;
+  background: var(--line);
+  pointer-events: none;
+}
+body[data-page] .fv-step:last-child::before {
+  content: none;
+}
+body[data-page] .fv-step.is-complete::before {
+  background: color-mix(in srgb,var(--good-ink) var(--tint-edge),var(--line)); /* round 95 (the user's reading): a verified stage is good, not the accent's blue (law 65) */
+}
+.fv-step-node {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--edge-strong);
+  border-radius: 50%;
+  /* the surface the rail sits on: the theater names its own, the shared live work area is
+     the ui face its container paints */
+  background: var(--ui-face);
+  color: var(--muted);
+  z-index: var(--layer-raised);
+  position: relative;
+  font: var(--style-footnote-size)/var(--style-footnote-leading) var(--font-mono);
+  flex: none;
+}
+.fv-step-node>.icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  }
+.fv-step-copy {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-05);
+}
+/* a wrapped title or count breaks evenly ("Verified ·" / "1 evidence"), not on its last word */
+.fv-step-copy>* {
+  text-wrap: balance;
+}
+.fv-step strong {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+body[data-page] .fv-step.is-current {
+  background: none;
+}
+.fv-step.is-current strong,
+.fv-step.is-complete strong {
+  color: var(--text);
+}
+/* the current step is the text ink, not a tone (the user, 2026-09-25: a green done step beside a
+   blue current one did not pair; CO3): its place is its ink and halo, its state its word. Weighed
+   under a stopped stage's tone (`:where`), which wins (ST2). */
+.fv-step:where(.is-current:not(.is-complete)) .fv-step-node {
+  color: var(--text);
+  border-color: color-mix(in srgb,var(--text) var(--tint-strong),var(--line));
+  box-shadow: 0 0 0 var(--space-1) color-mix(in srgb,var(--fill-selected) var(--tint-edge),transparent);
+}
+/* a stage its owner stopped wears its state's tone, current or not (ST2: one state, one tone) */
+.fv-step[data-tone=danger] .fv-step-node {
+  color: var(--danger-ink);
+  border-color: color-mix(in srgb,var(--danger-ink) var(--tint-edge),var(--line));
+}
+.fv-step[data-tone=warning] .fv-step-node {
+  color: var(--warning-ink);
+  border-color: color-mix(in srgb,var(--warning-ink) var(--tint-edge),var(--line));
+}
+.fv-step[data-tone=review] .fv-step-node {
+  color: var(--review-ink);
+  border-color: color-mix(in srgb,var(--review-ink) var(--tint-edge),var(--line));
+}
+/* the working node's motion is the work area's (06-pages: the turning arc) */
+/* finished: a tinted node with a dark, heavier check (a light check on a solid fill is lost at
+   this size and stroke); the good tone -- a verified stage is done, the working one keeps the accent */
+.fv-step.is-complete .fv-step-node {
+  color: var(--good-ink);
+  background: color-mix(in srgb,var(--good-ink) var(--tint-wash),var(--ui-face));
+  border-color: color-mix(in srgb,var(--good-ink) var(--tint-edge),var(--line));
+}
+body[data-page] .fv-step:focus-visible {
+  outline: var(--focus-ring-width) solid var(--accent);
+  outline-offset: var(--focus-ring-inset);
+  border-radius: var(--radius-control);
+}
+.fv-body {
+  display: grid;
+  align-items: stretch;
+  gap: 0;
+}
+.run-log {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+/* the head's tools keep their words on one line; the label gives way (N6) */
+.run-log-head > :is(button, .text-btn) {
+  flex: none;
+  white-space: nowrap;
+}
+.fv-log-row p {
+  overflow-wrap: anywhere;
+}
+.fv-log-row small {
+  display: block;
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  margin-top: var(--space-1);
+}
+.fv-log-row.attention strong {
+  color: var(--warning-ink);
+}
+@container reading-lane (width < 1080px) {
+body[data-page] .fv-main {
+    padding: var(--space-6) var(--space-6);
+  }
+body[data-page] .fv-work {
+    padding-inline: var(--space-5);
+  }
+}
+@container reading-lane (width < 800px) {
+body[data-page] .fv-body {
+    grid-template-columns: var(--grid-1);
+  }
+body[data-page] .fv-work {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: var(--grid-facts);
+    gap: var(--space-5);
+    align-items: center;
+    padding: var(--space-5);
+  }
+body[data-page] .run-log {
+    height: var(--log-box-height);
+    min-height: 0;
+  }
+body[data-page] .fv-pipeline {
+    padding-inline: var(--space-2);
+  }
+body[data-page] .fv-step {
+    --fv-step-pad: var(--space-2);
+    gap: var(--space-2);
+  }
+body[data-page] .fv-step strong {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+}
+@media (width < 768px) {
+body[data-page] .fv-work {
+    grid-template-columns: var(--grid-1);
+  }
+body[data-page] .run-log {
+    height: var(--log-box-height);
+  }
+}
+.run-log-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+@media (width < 768px) {
+.fv-pipeline {
+    grid-template-columns: var(--grid-1);
+    display: flex;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x proximity;
+    gap: 0;
+  }
+body[data-page] .fv-step {
+    --fv-step-pad: var(--space-2);
+    flex: 0 0 135px;
+    padding: 0 var(--fv-step-pad) var(--space-3);
+    scroll-snap-align: start;
+  }
+.fv-step-copy {
+    justify-content: space-between;
+    align-items: start;
+    width: 100%;
+  }
+.fv-step strong {
+    font-size: var(--style-callout-size);
+    line-height: var(--style-callout-leading);
+  }
+}
+:is(.caption,.tp-caption,.sub-cell,.object-meta,.table-note) {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+/* One reusable task section; three fact groups, single stage progress. */
+.tp-section {
+  padding: var(--space-5) var(--space-6) 0;
+  margin-block: 0;
+  background: var(--ui-face);
+}
+.tp-section h2 {
+  letter-spacing: var(--style-title-2-tracking);
+  margin: var(--space-1) 0;
+  overflow-wrap: anywhere;
+  font-size: var(--style-title-2-size);
+  line-height: var(--style-title-2-leading);
+  font-weight: var(--weight-strong);
+}
+.tp-section .tp-caption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  margin-top: var(--space-1);
+}
+.fv-surface {
+  overflow: hidden;
+  background: var(--ui-face);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--ui-line);
+  box-shadow: none;
+}
+.fv-body {
+  grid-template-columns: var(--grid-2);
+  background: transparent;
+}
+.fv-main {
+  padding: var(--space-6) var(--space-8);
+  min-width: 0;
+  background: transparent;
+}
+.fv-pipeline {
+  padding: var(--space-5) var(--space-6) 0;
+  border-color: var(--ui-soft-line);
+}
+.fv-step {
+  padding-bottom: var(--space-4);
+}
+.fv-step strong {
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  font-weight: var(--weight-label);
+}
+.fv-step small {
+  color: var(--muted);
+}
+.fv-step-node {
+  width: var(--pipeline-node-size);
+  height: var(--pipeline-node-size);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  box-shadow: none;
+}
+.fv-kicker {
+  line-height: var(--style-footnote-leading);
+  color: var(--muted);
+  margin: 0 0 var(--space-3);
+  font-size: var(--style-footnote-size);
+  letter-spacing: var(--style-footnote-tracking);
+  margin-bottom: var(--space-2);
+}
+.fv-work {
+  background: transparent;
+  border-left: 1px solid var(--ui-soft-line);
+  padding: var(--space-6) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+.ui-log-rail {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-5);
+  margin-bottom: var(--space-4);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--ui-soft-line);
+}
+.ui-log-rail>div {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.ui-log-rail>div:last-child {
+  text-align: right;
+}
+.ui-log-rail span {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+}
+.ui-log-rail strong {
+  font-size: var(--style-callout-size);
+  font-weight: var(--weight-label);
+  line-height: var(--style-callout-leading);
+}
+.ui-log-rail .is-stale {
+  color: var(--warning-ink);
+}
+.run-log {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: calc((var(--log-lines) + 1) * var(--log-line));
+  flex: 1;
+}
+.run-log-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex: none;
+  padding: 0 0 var(--space-3);
+  border: 0;
+  align-items: center;
+}
+.run-log-head h3 { margin: 0; white-space: nowrap; }
+.run-log-head h3 > span { color: var(--muted); font-weight: var(--weight-body); }
+details.run-log { padding-bottom: 0; }
+details.run-log:not([open]) { min-height: 0; } /* a folded log is its one line (law 149: a detail is as tall as what it holds; the log's lines keep their height when it opens) */
+/* The fold's one grey line (round 83, Codex's `Worked for 3 min ›`): the summary and the count, a › that turns when open. */
+.run-log-fold { justify-content: flex-start; list-style: none; color: var(--muted); font-weight: var(--weight-body); }
+.run-log-fold::-webkit-details-marker { display: none; }
+.run-log-fold::after { content: '›'; margin-left: var(--space-2); display: inline-block; transition: transform var(--dur-1) var(--curve-move); }
+details[open] > .run-log-fold::after { transform: rotate(90deg); }
+/* The run's body (round 72): the summary line, the steps, the receipt, the log's lines. */
+.run-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0; }
+/* The steps (round 92, GitHub Actions' shape): one folded row per step, its body under it. */
+.run-steps { list-style: none; margin: 0; padding: 0; }
+.run-steps > li + li { box-shadow: inset 0 1px 0 var(--edge-hair); }
+.run-step { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+.run-step-head { display: flex; align-items: center; gap: var(--space-2); min-height: var(--row-dense); padding: var(--space-1) 0; cursor: pointer; list-style: none; }
+.run-step-head::-webkit-details-marker { display: none; }
+.run-step-head > .icon { width: var(--icon-xs); height: var(--icon-xs); flex: none; color: var(--muted); transform: rotate(-90deg); transition: transform var(--dur-2) var(--curve-move); }
+.run-step[open] > .run-step-head > .icon { transform: none; }
+.run-step[data-empty=true] > .run-step-head { cursor: default; }
+.run-step[data-empty=true] > .run-step-head > .icon { visibility: hidden; }
+.run-step-num { flex: none; width: var(--icon-lead); font-family: var(--font-mono); color: var(--muted); }
+.run-step-head > .row-dot { flex: none; }
+.run-step-head > strong { font-weight: var(--weight-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run-step[data-mark=VERIFIED] > .run-step-head > strong { color: var(--muted); font-weight: var(--weight-body); }
+.run-step-word { color: var(--muted); flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run-step-at { flex: none; margin-left: auto; color: var(--faint); font-variant-numeric: tabular-nums; }
+.run-step-body { padding: 0 0 var(--space-3) var(--space-12); display: grid; gap: var(--space-2); }
+.run-step-body > p { margin: 0; color: var(--muted); }
+.run-step-refs { display: grid; gap: var(--space-05); }
+.run-ref { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.run-ref-kind { color: var(--muted); }
+.run-ref .icon-btn { opacity: 0; }
+.run-ref:is(:hover, :focus-within) .icon-btn { opacity: 1; }
+/* CT8: every press answers. A step's head opens its step, so its muted words and glyph take the text ink under
+   the pointer (an empty step's head presses nothing); the reference's Copy answers its own pointer, not only
+   its row's, with the control's hover fill -- on the glass, the glass's own. */
+.run-step:not([data-empty=true]) > .run-step-head:hover,
+.run-step:not([data-empty=true]) > .run-step-head:hover :is(.run-step-word, strong, .icon) { color: var(--text); }
+.run-ref .icon-btn:hover { color: var(--text); background: var(--ds-control-hover); }
+body:not(.opaque-controls)[data-page] [data-layer="detail"] .run-ref .icon-btn:hover { background: var(--glass-control-hover); }
+.run-log-lines.run-step-log { height: auto; min-height: 0; max-height: calc(var(--step-log-lines) * var(--log-line)); overflow: auto; } /* a step's lines take their own height, one line one line, not a log's viewport (the user, 2026-09-26); over `.run-log-lines`, which follows */
+.run-steps { container-type: inline-size; }
+@container (width < 420px) { .run-step-word { display: none; } }
+.run-receipt .kv { padding: var(--space-2) 0; }
+/* 2026-09-22 (the user's reading of the Task Center): a reference in the receipt is the same row
+   as in a step -- the kind, a gap, the short hash, the glyph -- wrapping as words when the column
+   is narrow (the block override that glued the kind to its hash is gone); an identity in mono is
+   a property and wears the muted ink (law 75); an identity is its reference, never a line that rolls (WD3). */
+.run-receipt .run-ref { flex-wrap: wrap; }
+:is(.run-receipt, .run-step-refs) .mono { color: var(--muted); }
+details.run-log > summary { list-style: none; cursor: pointer; }
+details.run-log > summary::-webkit-details-marker { display: none; }
+.run-log-tools { display: flex; align-items: center; gap: var(--space-2); flex: none; padding: 0 0 var(--space-3); }
+.run-log-tools .log-search { max-width: var(--width-xs); }
+.log-line { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-1) 0; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+.log-line > .mark { width: var(--icon-size); height: var(--icon-size); } .log-line > .mark .icon { width: var(--icon-sm); height: var(--icon-sm); }
+.log-line + .log-line { box-shadow: inset 0 1px 0 var(--edge-hair); }
+.log-line > time { font-family: var(--font-mono); color: var(--muted); white-space: nowrap; }
+.log-by { color: var(--muted); }
+.log-by::after { content: " · "; }
+.log-words { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.log-code { font-family: var(--font-mono); color: var(--muted); }
+/* A log narrower than a lane (a step's lines in a Task's detail): a line's words go under its instant and
+   its author, never beside them in a row that rolls sideways (WD3, FT5; the user, 2026-09-26). */
+.run-log-lines { container-type: inline-size; }
+@container (width < 640px) {
+  .log-line { display: grid; grid-template-columns: var(--icon-size) auto minmax(0, 1fr); column-gap: var(--space-2); align-items: baseline; }
+  .log-line > .log-words { grid-column: 2 / -1; }
+  .log-by::after { content: none; }
+}
+.run-log-lines {
+  overflow-y: auto;
+  min-height: calc(var(--log-lines-min) * var(--log-line));
+  height: calc(var(--log-lines) * var(--log-line));
+  max-height: calc(var(--log-lines-max) * var(--log-line));
+  flex: 1;
+  padding: 0 var(--space-2) 0 0;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+.fv-log-row {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  display: grid;
+  --lead: max-content;
+  grid-template-columns: var(--grid-master);
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--ui-soft-line);
+  background: transparent;
+  position: relative;
+}
+.fv-log-time time {
+  font: var(--style-footnote-size)/var(--style-footnote-leading) var(--font-mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* The marker is the row's bullet, before its time, on one line with it. */
+.fv-log-dot {
+  width: var(--dot-sm);
+  height: var(--dot-sm);
+  margin: 0;
+  order: -1;
+  flex: none;
+  background: color-mix(in srgb,var(--ink-link) var(--tint-strong),var(--ui-face));
+  border-radius: 50%;
+  box-shadow: none;
+}
+.fv-log-row.attention .fv-log-dot {
+  background: var(--warning-ink);
+}
+.fv-log-entry>strong {
+  display: block;
+  font-size: var(--style-headline-size);
+  font-weight: var(--weight-label);
+  line-height: var(--style-headline-leading);
+}
+.fv-log-object {
+  font: var(--style-body-size)/var(--style-body-leading) var(--font-ui);
+  color: var(--text);
+  margin-top: var(--space-1);
+  overflow-wrap: anywhere;
+}
+.run-log-status {
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  flex: none;
+  border: 0;
+  padding: var(--space-3) 0 0;
+  font-size: var(--style-footnote-size);
+}
+/* the Task the activity follows: a state with its control, above the rows */
+.run-log-following {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+}
+@media (width < 1024px) {
+.fv-body {
+    grid-template-columns: var(--grid-1);
+  }
+.fv-work {
+    border-left: 0;
+    border-top: 1px solid var(--ui-soft-line);
+  }
+.run-log {
+    min-height: calc((var(--log-lines) + 1) * var(--log-line));
+  }
+}
+@media (width < 640px) {
+.tp-section {
+    padding: var(--space-4) var(--space-5) 0;
+  }
+.fv-main {
+    padding: var(--space-6) var(--space-5);
+  }
+.fv-work {
+    padding: var(--space-5);
+  }
+.run-log-tools {
+    width: auto;
+  }
+.run-log-head {
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+.run-log-lines {
+    height: calc(var(--log-lines) * var(--log-line));
+    max-height: calc(var(--log-lines-max) * var(--log-line));
+    flex: auto;
+  }
+.fv-log-row {
+    --lead: max-content;
+    grid-template-columns: var(--grid-master);
+    gap: var(--space-3);
+  }
+.ui-log-rail {
+    gap: var(--space-3);
+  }
+}
+.fv-log-time {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+  align-self: start;
+}
+/* The document's scroll padding already clears the sticky header; this is the breathing space
+   below it when the explicit Team scene entry brings the heading into view. */
+#teamSceneHeading {
+  scroll-margin-top: var(--space-6);
+}
+/* Research Team: one scene over the existing feed, not a second task console. */
+.team-scene { padding: 0 0 var(--space-8); }
+.team-head { margin-bottom: var(--space-5); }
+.team-head h1:focus-visible { outline-offset: var(--focus-ring-offset); border-radius: var(--radius-micro); }
+/* The conversation (N5, law 125): a thread of comments on one line of marks, the hooks and the
+   product's observations one-line events between them; beside it the boxes (the contribution, the
+   properties, the members). The page is the one scroller (law 113): no box scrolls on its own. */
+.team-conversation { min-width: 0; }
+/* C3: the head's tools -- mark seen and the Display -- stand together at its end */
+.team-head-tools { display: inline-flex; flex: 0 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--space-2); } /* W: the members' chips wrap inside the head at a phone's width, never past the lane */
+/* C3 (law 142, X's new-posts pill): the arrivals below the reader's place, one pill held at the
+   thread's top while the thread is in view; it takes no room of its own */
+.team-new-bar { position: sticky; top: calc(var(--shell-top-height) + var(--space-2)); z-index: var(--layer-sticky); display: flex; justify-content: center; height: 0; overflow: visible; }
+/* the pill floats over the thread's words: the glass (law 150, 12-material; #main there: above the
+   control contract's face), a pill's radius */
+#main .team-new-bar > .team-new-pill { border-radius: var(--radius-pill); }
+.team-new-bar > .team-new-pill > .icon { transform: rotate(90deg); color: var(--accent); }
+.team-event { display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-4); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+.team-event-mark { display: grid; place-items: center; flex: 0 0 var(--exchange-mark-height); color: var(--muted); }
+.team-event-mark .icon { width: var(--icon-sm); height: var(--icon-sm); }
+.team-event-line { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.team-event-line strong { color: var(--text); font-weight: var(--weight-label); }
+.team-mention { color: var(--ink-link); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); white-space: nowrap; }
+.team-topic { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border: 1px solid var(--edge-hair); border-radius: var(--radius-control); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); white-space: nowrap; }
+/* C1 (law 139): the replies flat at the second level, the words' column; their marks smaller (C0's
+   measured ratio), no line of their own -- the comment's axis runs down beside them. */
+.team-replies { margin-top: var(--space-1); }
+.team-replies > .team-reply { padding: var(--space-1) var(--space-3); }
+.team-replies > .team-reply > .team-exchange-icon { flex-basis: var(--reply-mark-size); height: var(--reply-mark-size); }
+.team-replies > .team-reply > .team-exchange-icon .icon { width: var(--icon-xs); height: var(--icon-xs); }
+/* C1 (law 141): the Main PM's recorded response is an inset under what it answers -- neutral, its
+   colour on the mark only, no rail (bilibili's uploader reply, drawn with the product's well). */
+.team-replies > .team-reply.is-pm-response { margin: var(--space-1) 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-block); background: var(--surface-well); }
+/* C2 (law 140): the folded middle of a run of replies -- one line at the replies' column (every
+   reply's mark, the Main PM's inset's too, stands one --space-3 in from the words) */
+.team-replies-more { padding: var(--space-1) var(--space-3); }
+/* a clamped exchange opens where it stands; `Show more` stands only where the clamp hides words
+   (the page's measured marks set its `hidden`) */
+.team-exchange-body > .team-words[data-clamp="open"] { display: block; -webkit-line-clamp: unset; line-clamp: none; overflow: visible; }
+.team-exchange-body > .team-words-more { justify-self: start; }
+/* the thread's quiet ways keep their words on the column they belong to: the control's inline
+   padding and edge bleed outward (its hover fill), never push the words in */
+.team-exchange-body > .team-words-more, .team-replies-more > .text-btn, .team-hook-toggle { margin-inline-start: calc(0px - var(--space-2) - 1px); }
+/* a run of hook events is one line; its count opens it in place, the chevron says which way */
+.team-hook-toggle { text-align: start; }
+.team-hook-toggle > .icon { width: var(--icon-xs); height: var(--icon-xs); transition: transform var(--dur-1) var(--curve-move); }
+.team-hook-toggle[aria-expanded="false"] > .icon { transform: rotate(-90deg); }
+/* a reply read in the side opens with the exchange it answers, one quoted line */
+.team-question-card { min-width: 0; margin: 0 0 var(--space-3); }
+ /* round 95: a fold's units sit one unit in */
+.team-thread, .team-replies { list-style: none; margin: 0; padding: 0; }
+.team-exchange { position: relative; display: flex; gap: var(--space-3); padding: var(--exchange-pad, var(--space-2)) var(--space-3) var(--exchange-pad, var(--space-2)) var(--space-4); border-radius: var(--radius-block); }
+/* C3 (law 142): the Display's density -- the same thread with less air round each comment, the
+   words to the short clamp; the hairlines and the axis move with the padding */
+.team-thread { --exchange-pad: var(--space-2); }
+.team-thread.density-compact { --exchange-pad: var(--space-1); }
+.team-thread.density-compact .team-exchange-body > .team-words:not([data-clamp="open"]) { -webkit-line-clamp: var(--clamp-short); line-clamp: var(--clamp-short); }
+/* C1: the hairline between two comments starts at the words' column; the marks' column stays one
+   clean spine (bilibili and Douyin, measured). An event's runs over its time as a comment's does (the
+   user's stills, 2026-09-30: it stopped before the time), its time's slot closing the row's gap. */
+.team-thread > .team-exchange + .team-exchange > .team-exchange-body,
+.team-thread > .team-exchange + .team-event > :is(.team-event-line, .team-exchange-end) { margin-top: calc(0px - var(--exchange-pad)); padding-top: var(--exchange-pad); border-top: 1px solid var(--edge-hair); }
+.team-thread > .team-exchange + .team-event > .team-exchange-end { margin-left: calc(0px - var(--space-3)); padding-left: var(--space-3); }
+.team-exchange.is-selected { background: var(--fill-selected); --rail: var(--rail-on); } /* C4: the exchange the inspector shows keeps the fill and takes the rail (LS3: the link blue) */
+/* Round 20e: the node carries the actor's role colour; the kind is in words and an objection's
+   state in its dot -- the kind's rail (blue on a question, a PM response and an assignment, amber on
+   an objection, none on an answer) cut the thread in two where a Task met its answer (the user's
+   reading, 2026-09-25): only the exchange being read wears the rail. The timeline joins the nodes. */
+.team-exchange-icon { display: grid; place-items: center; flex: 0 0 var(--exchange-mark-height); height: var(--exchange-mark-height); border: 1px solid color-mix(in srgb, var(--role-ink, var(--muted)) var(--tint-edge), transparent); border-radius: 50%; color: var(--role-ink, var(--muted)); background: color-mix(in srgb, var(--role-ink, var(--muted)) var(--tint-wash), var(--ground)); z-index: var(--layer-raised); }
+/* The row's mark (round 85, Linear's coloured glyph; the user's word: no circle): the glyph alone in its tone's colour. */
+.mark { display: grid; place-items: center; flex: none; width: var(--mark-size); height: var(--mark-size); color: var(--tone); }
+.mark .icon { width: var(--icon-lg); height: var(--icon-lg); }
+/* the axis (C1, law 139): one light line down the comments' marks, past their replies -- no
+   branch, no elbow; a reply draws none of its own */
+.team-thread > .team-exchange:not(:last-child)::after, .team-thread > .team-exchange:last-child:has(.team-replies)::after { content: ''; position: absolute; left: calc(var(--space-4) + var(--exchange-mark-height) / 2 - 1px); top: calc(2 * var(--exchange-pad) + var(--exchange-mark-height)); bottom: calc(0px - var(--exchange-pad)); width: 1px; background: var(--thread-axis); }
+.team-thread > .team-exchange:last-child:has(.team-replies)::after { bottom: var(--exchange-pad); }
+/* an event line (a hook) carries the axis through its whole height, its glyph on the ground the line passes behind */
+.team-thread > .team-exchange.team-event:not(:last-child)::after { top: 0; }
+.team-thread > .team-event > .team-event-mark { position: relative; z-index: var(--layer-raised); background: var(--ground); }
+/* a reply draws no rail of the comment it stands under, which `--rail` would hand it by inheritance */
+.team-replies > .team-exchange.team-reply { --rail: transparent; }
+/* an avatar is its speaker's colour wherever it stands (CO3; the user, 2026-09-25: a Main PM reply
+   under an objection drew the objection's orange): an objection is its word and its state */
+[data-role="lead"] { --role-ink: var(--ink-link); }
+[data-role="alpha"] { --role-ink: var(--role-alpha); }
+[data-role="portfolio"] { --role-ink: var(--good-ink); }
+[data-role="cro"] { --role-ink: var(--review-ink); } /* round 89: one tone per domain -- the review family is purple, as History's CRO mark */
+[data-role="risk"] { --role-ink: var(--warning-ink); } /* Risk is orange, as History's Risk mark */
+[data-role="factor"] { --role-ink: var(--review-ink); }
+[data-role="data"] { --role-ink: var(--neutral-ink); }
+[data-role="neutral"] { --role-ink: var(--neutral-ink); }
+[data-role="none"] { --role-ink: var(--neutral); } /* the grey mark is a tone (the user's word, round 85) */
+/* the body is a grid (C1): the head line with the time at its end, then the words, the relations and
+   the replies across. The time stays at the head's end at every width, as an event line's does (the user's
+   stills, 2026-09-30: under 640 px it stood under the words while the hooks' stood at the right); the head
+   wraps in its own column. */
+.team-exchange-body { min-width: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-2); align-items: baseline; }
+.team-exchange-body > * { grid-column: 1 / -1; }
+.team-exchange-body > .team-exchange-line { grid-column: 1; grid-row: 1; }
+.team-exchange-body > .team-exchange-end { grid-column: 2; grid-row: 1; }
+.team-exchange-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); min-width: 0; } /* N5: the head wraps between its parts at a narrow width, never past the edge */
+.team-exchange-line strong { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); font-weight: var(--weight-strong); }
+.team-exchange-end time { white-space: nowrap; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); }
+.team-kind { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); white-space: normal; min-width: 0; }
+.team-exchange-body > p { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); margin: var(--space-1) 0 0; display: -webkit-box; -webkit-line-clamp: var(--clamp-long); -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+/* The exchange is read where it is pressed (the user, 2026-09-23: a `Read` button at the head's end
+   was too small to hit): the whole comment is the target, the innermost one under the pointer -- a
+   reply its own -- takes the hover's fill; the time alone stands at the head's end. */
+.team-exchange-end { display: flex; flex: none; margin-left: auto; align-items: baseline; }
+.team-thread [data-read] { cursor: pointer; }
+.team-thread [data-read]:hover:not(:has([data-read]:hover)):not(.is-selected) { background: var(--ds-control-hover); }
+.team-thread [data-read]:focus-visible { outline: var(--focus-ring-width) solid var(--accent); outline-offset: var(--focus-ring-inset); }
+/* The Record's exchanges (the inspector's column, round 87, the user's still): the head wraps. */
+.team-record .team-exchange-line { flex-wrap: wrap; }
+.team-unread { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--ink-link); font-weight: var(--weight-strong); }
+#teamContributionHeading { scroll-margin-top: 130px; }
+.team-product { overflow-wrap: anywhere; border-radius: var(--radius-card); overflow: hidden; }
+@keyframes team-arrival { from { box-shadow: inset var(--rail-width) 0 var(--accent); background: var(--fill-selected); } to { box-shadow: inset 0 0 transparent; } }
+.team-exchange.just-arrived { animation: team-arrival var(--dur-linger) var(--curve-arrive) 1; }
+/* The strip: every participant as a chip; a chip filters the workroom to that member. */
+@keyframes team-halo { 0% { transform: scale(.85); opacity: .9; } 70% { transform: scale(1.35); opacity: 0; } 100% { transform: scale(1.35); opacity: 0; } }
+/* The workroom's evidence line and the evidence view. */
+.team-current-states { padding: 0 var(--space-6) var(--space-6); display: grid; gap: var(--space-3); }
+/* The feed's condition on the page: a live dot that breathes while the feed is current. */
+.team-live { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: var(--weight-label); }
+.live-dot { display: inline-block; width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--good-ink); flex: none; position: relative; }
+[data-feed=live] .live-dot { animation: live-breathe var(--dur-pulse) ease-in-out infinite; }
+[data-feed=live] .live-dot::after { content: ''; position: absolute; inset: calc(0px - var(--space-1)); border-radius: 50%; border: 1px solid var(--good-ink); opacity: 0; animation: live-ring var(--dur-pulse) ease-out infinite; }
+[data-feed=stale] .live-dot { background: var(--warning-ink); }
+[data-feed=unreachable] .live-dot { background: var(--danger-ink); }
+@keyframes live-breathe { 0%, 100% { opacity: .55; transform: scale(.9); } 50% { opacity: 1; transform: scale(1.1); } }
+@keyframes live-ring { 0% { transform: scale(.6); opacity: .7; } 100% { transform: scale(1.6); opacity: 0; } }
+/* A research question is a sentence set for reading at size (Title 2, the one face — round 37
+   retired the display cut), balanced across its lines. */
+.team-question-source { margin: 0; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+.team-question-ref { margin: var(--space-2) 0 0; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); overflow-wrap: anywhere; }
+.team-question-choice { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-2); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); }
+.team-question-choice li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); overflow-wrap: anywhere; }
+.team-question-choice .text-btn { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); margin: 0; }
+.team-question-related { margin: var(--space-2) 0 0; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); overflow-wrap: anywhere; }
+.team-question-related span { display: inline-block; margin-right: var(--space-2); }
+/* Explicit relationships and the objection's standing, said in the thread itself. */
+.team-relation { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); margin: var(--space-1) 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.team-relation .text-btn { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); margin: 0; }
+.team-objection-status { color: var(--muted); } /* round 90: a state is a dot and a regular word; the count is never coloured (law 65) */
+span.team-objection-status { display: inline-flex; align-items: center; gap: var(--space-1); } /* round 95 (the user's stills): the dot leads the slot so the dots stand in a column, centred on the line; a row without one keeps the dot's place */
+.team-objection-status > .row-dot { display: inline-grid; vertical-align: middle; margin-right: var(--space-1); }
+span.team-objection-status > .row-dot { margin-right: 0; }
+span.team-objection-status > .row-dot.neutral { visibility: hidden; }
+.team-ambiguous { color: var(--warning-ink); }
+.team-exchange.is-pm-response > .team-exchange-icon { background: color-mix(in srgb, var(--role-ink, var(--accent)) var(--tint-soft), var(--ground)); }
+@keyframes team-verified { from { box-shadow: inset var(--rail-width) 0 var(--good-ink); background: var(--good-soft); } to { box-shadow: inset 0 0 transparent; } }
+.team-product li.just-verified { animation: team-verified var(--dur-linger) var(--curve-arrive) 1; }
+/* An identifier inside an uppercase eyebrow keeps its case; a code read as words shows the code on hover. */
+.coded, .hint { text-decoration: underline dotted color-mix(in srgb, var(--muted) var(--tint-edge), transparent); text-underline-offset: var(--underline-offset); cursor: help; }
+.hint-more { display: inline-flex; vertical-align: middle; flex: none; width: var(--icon-sm); height: var(--icon-sm); margin-inline-start: var(--info-mark-gap); padding: 0; border: 0; background: none; color: var(--muted); cursor: help; } /* round 90: the rest of a folded line; N6: the space before it is its own */
+.hint-more:is(:hover, :focus-visible) { color: var(--text); }
+:is(.stat-value,h1,h2,h3,.badge,.state) :is(.coded,.hint) { text-decoration: none; }
+/* The Overview's research-in-context card. */
+@media (width < 768px) {
+.team-current-states { padding-left: var(--space-4); padding-right: var(--space-4); }
+.team-product { padding: var(--space-5); }
+.team-product > summary > span { display: block; margin: var(--space-2) 0 0; }
+}
+
+/* C4: the members are the thread head's filter -- one chip a member, its role's mark in its colour */
+.team-members { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
+/* a toggle chip (the members, Observations' kinds): a hairline pill, quiet; pressed, it is filled -- never
+   the dashed chip of an unset lobby filter */
+#main .team-chip { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--filter-chip-height); padding: 0 var(--space-3); border: 1px solid var(--edge-hair); border-radius: var(--radius-pill); background: transparent; color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); font-weight: var(--weight-label); }
+#main .team-chip:hover { color: var(--text); background: var(--ds-control-hover); }
+#main .team-chip[aria-pressed=true] { color: var(--text); background: var(--fill-selected); border-color: var(--edge-strong); }
+#main .team-chip > .icon { width: var(--icon-sm); height: var(--icon-sm); }
+#main .team-chip > .num { color: var(--muted); }
+.team-member-chip > .icon, .team-member-mark > .icon { color: var(--role-ink, var(--muted)); } /* a member's glyph in its role's tone, the chip's and the Participants row's (U51) */
+/* the exchange the inspector shows takes the accent rail over its kind's (and a reply's none) */
+.team-thread .team-exchange.is-selected, .team-thread .team-replies > .team-exchange.team-reply.is-selected { --rail: var(--rail-on); }
+/* what the product recorded outside the conversation, said once at the thread's top */
+.team-outside { display: flex; align-items: flex-start; gap: var(--space-2); margin: 0 0 var(--space-3); color: var(--muted); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+.team-outside > .icon { flex: none; width: var(--icon-sm); height: var(--icon-sm); margin-top: calc((1lh - var(--icon-sm)) / 2); }
+/* an exchange's verification in place, under its words (C4 item 7): a hairline, then its lines, muted */
+.team-record-inline { margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--edge-hair); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); }
+.team-record-inline .run-ref { display: inline-flex; vertical-align: baseline; }
+.team-event > .team-record-inline { flex-basis: 100%; }
+/* An objection awaiting the Main PM says what the page waits for, under its words. */
+.team-awaiting-note { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+#main .team-reference { display: inline; }
+#main .team-reference + .team-reference { margin-left: var(--space-3); } /* the declared references, one apart */
+/* Observations: its kinds are the list's filter, one row of chips above it */
+.team-fact-kinds { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-4); }
+.team-record-inline > p { margin: 0 0 var(--space-2); } /* T4: a record's caveat or identity note over its grid */
+/* T4 at a phone's lane: the record sits under the thread's indent in under 300 px, so a row says its label
+   over its value -- side by side the value kept 72 px and broke `Task` and an id letter by letter. */
+@container reading-lane (width < 420px) {
+  .team-record-inline .facts-properties > div { grid-template-columns: minmax(0, 1fr); row-gap: 0; }
+}

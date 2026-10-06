@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="AlphaLattice local research workbench.">
+<title>AlphaLattice · Local Web</title>
+{{head}}
+</head>
+<body class="theme-titanium">
+<a class="skip" href="#main" data-i18n="text">Skip to research content</a>
+<div class="window" id="window" data-side="open">
+  <aside class="side" id="side" aria-label="Navigation" data-i18n="aria-label"></aside>
+  <div class="rest" id="rest" data-inspector="closed">
+    <div class="lane-frame">
+      <header class="top" id="top"></header>
+      <main id="main" tabindex="-1"></main>
+    </div>
+    <aside class="inspector" id="inspector" data-layer="detail" aria-label="Inspector" data-i18n="aria-label" tabindex="-1" hidden></aside>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastIcon" aria-hidden="true"></span><span id="toastText"></span><span id="toastAction"></span><button id="toastClose" aria-label="Dismiss notification" data-i18n="aria-label"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+</div>
+<dialog id="dialog" aria-labelledby="dialogTitle" data-surface="overlay"></dialog>
+<div class="sr-only" id="tpLive" role="status" aria-live="polite"></div>
+<div class="sr-only" id="esLiveAnnouncement" role="status" aria-live="polite"></div>
+<div class="object-peek" id="objectPeek" hidden></div>
+{{scripts}}
+</body>
+</html>

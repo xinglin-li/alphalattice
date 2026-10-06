@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.statsmodels.cov-hac",
+  "revision": "1.0.0",
+  "title": "statsmodels cov_hac adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "statsmodels", "version": "0.14.6"},
+  "companion_distributions": [],
+  "callable": "statsmodels.stats.sandwich_covariance.cov_hac",
+  "arguments": [
+    {"schema_version": "1", "name": "nlags", "value_kind": "integer", "required": true, "minimum": 0.0},
+    {"schema_version": "1", "name": "use_correction", "value_kind": "boolean", "has_default": true, "default": true}
+  ],
+  "interactions": ["The owner computes the frozen automatic lag and HLN correction outside this call."],
+  "assumptions": ["The supplied regression result represents the committed aggregate loss differential."],
+  "warnings": ["HAC evidence is auxiliary and cannot override directional Alpha guards."],
+  "failure_modes": ["Unsupported argument or unavailable locked statsmodels distribution."],
+  "owner_policy_ref": "openspec:return-model-candidates-and-evaluation",
+  "official_source_url": "https://www.statsmodels.org/stable/generated/statsmodels.stats.sandwich_covariance.cov_hac.html"
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": "1",
+  "resource_kind": "knowledge",
+  "namespace": "system",
+  "stable_id": "knowledge.covariance",
+  "revision": "1.0.0",
+  "title": "Covariance model review knowledge",
+  "scope": "Evidence and package boundaries for deterministic covariance candidates and diagnostics.",
+  "owner_refs": [
+    "openspec:quant-risk-estimation",
+    "reference:numerical-risk-estimation"
+  ],
+  "guidance": [
+    "Require stable symbol order, matrix identity, diagnostics, and candidate eligibility before downstream use.",
+    "Preserve failed or ineligible candidates without repair or silent substitution.",
+    "Use the owner specification for estimators, matrix units, tolerances, and downstream eligibility."
+  ],
+  "assumptions": [
+    "The deterministic Quant port owns numerical matrix computation and validation."
+  ],
+  "warnings": [
+    "A package-reported success state does not replace independent project diagnostics."
+  ],
+  "official_sources": [
+    "https://scikit-learn.org/stable/modules/generated/sklearn.covariance.LedoitWolf.html",
+    "https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.eigvalsh.html"
+  ]
+}

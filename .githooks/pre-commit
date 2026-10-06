@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+# Keep the nested Playpen hook independent of user-level caches and Unix helper
+# discovery. POSIX parameter expansion replaces the generated hook's `dirname`
+# dependency, which is not reliably present in sandboxed Git-for-Windows PATHs.
+# The interpreter is this workspace's own locked environment (`uv.lock` beside
+# `pyproject.toml`); a parent checkout is never a fallback.
+repo_root="$(git rev-parse --show-toplevel)"
+
+if [ -x "$repo_root/.venv/Scripts/python.exe" ]; then
+    python_exe="$repo_root/.venv/Scripts/python.exe"
+elif [ -x "$repo_root/.venv/bin/python" ]; then
+    python_exe="$repo_root/.venv/bin/python"
+else
+    echo "Playpen workspace .venv is unavailable; run 'uv sync --locked --all-extras' in $repo_root (see README.md)." >&2
+    exit 1
+fi
+
+exec "$python_exe" "$repo_root/scripts/run_playpen_precommit.py" "$@"

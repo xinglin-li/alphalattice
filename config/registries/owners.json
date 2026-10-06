@@ -1,0 +1,8 @@
+{
+"entries": {
+"installed_frozen_strategies": "src/alphalattice/investment/portfolio_strategy_lab/policies/installed_strategies.py",
+"public_portfolio_declared_path": "src/alphalattice/investment/portfolio_strategy_lab/application/resolution.py"
+},
+"note": "",
+"schema": "alphalattice.playpen.registry.owners"
+}

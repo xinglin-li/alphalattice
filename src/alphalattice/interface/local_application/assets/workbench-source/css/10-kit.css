@@ -1,0 +1,90 @@
+/* 10-kit — the workshop page (#page=kit, law 106): its own layout only. The specimens are the
+   product's components, drawn by their own sheets; every value here reads design/parameters.json. */
+.kit-section {
+  margin: 0 0 var(--space-8);
+}
+.kit-section > h2 {
+  margin: 0 0 var(--space-4);
+}
+.kit-grid {
+  --card-min: min(100%, var(--kit-specimen-min));
+  display: grid;
+  grid-template-columns: var(--grid-cards);
+  gap: var(--space-4);
+  align-items: start;
+}
+.kit-specimen {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--edge-hair);
+  border-radius: var(--radius-card);
+  min-width: 0;
+}
+.kit-wide {
+  grid-column: 1 / -1;
+}
+.kit-stage {
+  max-width: 100%;
+  overflow-x: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.kit-stage > .card-list,
+.kit-stage > .form-group,
+.kit-stage > .table-scroll,
+.kit-stage > .panel,
+.kit-stage > .banner,
+.kit-stage > .stat-strip,
+.kit-stage > .group-head,
+.kit-stage > .facts-properties,
+.kit-stage > .meter,
+.kit-stage > .status-box,
+.kit-stage > .es-measures-box,
+.kit-stage > .reveal-details,
+.kit-stage > .table-foot,
+.kit-stage > .holdings-toolbar {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.kit-specimen figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--style-caption-size);
+  line-height: var(--style-caption-leading);
+  color: var(--muted);
+}
+.kit-specimen figcaption > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.kit-specimen figcaption strong {
+  color: var(--text);
+  font-weight: var(--weight-label);
+}
+.kit-measure {
+  font-family: var(--font-mono);
+}
+.kit-menu {
+  display: grid;
+  min-width: min(100%, var(--kit-specimen-min));
+  max-width: 100%;
+}
+.kit-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 var(--space-3) 0 0;
+}
+.kit-swatch i {
+  width: var(--space-6);
+  height: var(--space-6);
+  border: 1px solid var(--edge-hair);
+  border-radius: var(--radius-control);
+}

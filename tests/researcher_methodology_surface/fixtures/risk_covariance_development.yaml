@@ -1,0 +1,35 @@
+# Compose an experiment from already-installed methods. No Python is written,
+# no identity is asserted, and no current/Holdout/CRO authority is requested.
+experiment:
+  kind: risk.covariance-development
+  schema_id: research-experiment-envelope
+  data_snapshot_handle: current
+  universe_handle: us-current-index-research
+  sessions:
+    start: 2024-02-01
+    end: 2024-03-01
+    # A decision event, not a date: a daily Feature for session T exists
+    # only after close(T), so an unstated phase is refused rather than
+    # assumed closed.
+    as_of:
+      session: 2024-03-15
+      phase: OFFICIAL_CLOSE
+  budget:
+    maximum_candidates: 4
+    maximum_numerical_calls: 5000
+  determinism:
+    # The canonical no-randomness seed. This capability declares
+    # randomness_policy = NONE, so any other value is refused rather than
+    # silently accepted -- see test_a_seed_is_refused_by_a_deterministic_method.
+    seed: 0
+    thread_limit: 1
+    network_disabled: true
+  output_workspace: workspaces/research/risk-development
+  baseline_workspace: workspaces/research/risk-baseline
+  publication_intent: DEVELOPMENT_EVIDENCE_ONLY
+
+risk:
+  estimator:
+    capability: EWMA_STANDARDIZED_LEDOIT_WOLF_CORRELATION
+    parameters:
+      ewma_decay: 0.94

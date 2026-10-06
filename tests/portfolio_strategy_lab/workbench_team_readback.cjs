@@ -1,0 +1,68 @@
+// Feed real activity pages (as the Host returned them) through the real consumer modules and
+// print what the team scene derives, so a Python test over the booted product can assert on the
+// consumer's reading of its own rows. Usage: node workbench_team_readback.cjs <modules dir>
+// <input json> [team session] [actor]. The input holds `pages` (activity pages in order) and,
+// optionally, `history` (the Host's research-history entries) and `reads` (path prefix -> body,
+// the Host's own answers to owner readbacks) plus `resolve`/`verify` (references to ask about).
+// Only presentation helpers and routing state are mocked; transport answers only from `reads`.
+// `html` is the Research Team page for the selection (its thread with its members' filter, the pinned
+// exchange's reader and the product evidence); `readers` is every retained exchange of that
+// selection as the page reads it (the exchange selected through `showEvent`: its line, its words and
+// its verification opened in place under it), keyed by the exchange's observation id.
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const library=require('./workbench_library.cjs'); // the library's constants, the page chrome and the builders, from the source (the harnesses' one way)
+const [root,inputPath,team='',actor='']=process.argv.slice(2);
+const input=JSON.parse(fs.readFileSync(inputPath,'utf8'));
+const pages=Array.isArray(input)?input:input.pages;
+const reads=(input.reads)||{},requested=[];
+const kindName=(k)=>k;
+const history=(input.history||[]).map(e=>({id:e.entry_id,name:kindName(e.kind),task_id:e.task_id,raw:e}));
+const hash={value:'#page=tasks'+(team?'&team='+encodeURIComponent(team):'')+(actor?'&actor='+encodeURIComponent(actor):'')};
+const c={console,URLSearchParams,Date,Number,Math,Set,Map,Object,Array,String,Promise,JSON,Boolean,Error,PAGES:{},ROUTES:{team:['Research Team','Workroom'],'team-members':['Research Team','Participants'],'team-sessions':['Research Team','Sessions'],'team-evidence':['Research Team','Team evidence']}, // the page words (2026-09-21: one word per page, ROUTES owns it)
+  app:{page:'tasks',book:null},document:{hidden:false,addEventListener(){},querySelector:()=>null,getElementById:()=>null},window:{addEventListener(){}},
+  setTimeout:()=>0,clearTimeout(){},hashParams:()=>new URLSearchParams(hash.value.slice(1)),
+  replaceHash:(u)=>{const q=new URLSearchParams(hash.value.slice(1));for(const [k,v] of Object.entries(u))q.set(k,v);hash.value='#'+q;},
+  objectEntry:()=>true,patchMain(){},count:(n)=>String(n),when:(value)=>String(value ?? '—'),tile:(n)=>`{${n}}`,tabStrip:(label,items)=>items.map(x=>(x.on?'*':'')+x.word+' ').join(''),
+  navigate(){},render(){},notify(){},openDialog(){},
+  Data:{read:async(p)=>{requested.push(p);const key=Object.keys(reads).find(k=>p.startsWith(k));if(!key)throw Error('no answer recorded for '+p);const body=reads[key];if(body&&body.__refused)throw Error(body.__refused);return body;},mergeTasks(){},installedResult:async(task)=>{const results=(await c.Data.read('/api/results')).results||[],first=results.find(r=>r.task_id===task);for(const listed of first?[first]:results){const report=await c.Data.read('/api/report?'+new URLSearchParams({result_hash:listed.result_hash}));if(report.result_hash!==listed.result_hash)throw new Error('portfolio_application.result_readback_mismatch');if((report.used_by_task_ids||[]).includes(task))return report;if(first)throw new Error('portfolio_application.result_readback_mismatch');}return null;},history:()=>history,refreshHistory:async()=>{requested.push('/api/research-history');},openEntry(){},tasks:()=>input.tasks||[]},
+  LiveTasks:{paintActivity(){},select(){},openResult(){},close(){}},requestAnimationFrame(){},LiveViews:{taskDock(){},savedObjectLink:(l,e)=>l+':'+e},LiveResearch:{dirty:()=>false,inspectShared(){}},
+  html:(s,...v)=>s.reduce((a,p,i)=>a+p+(Array.isArray(v[i])?v[i].join(''):v[i]??''),''),t:(s,vars)=>String(s).replace(/\{(\w+)\}/g,(_,k)=>String(vars?.[k]??'')),
+  notRead:(title,error,words='',action='')=>`<div class="warning">${title}:${error}${words?' '+words:''}${action}</div>`,noteLine:(title,body='',tone='',action='')=>`<p class="note-line">${title}${body?' · '+body:''}${action||''}</p>`,hint:(term)=>term,factsRef:(title,body)=>`<p>${title}</p>${body}`,codeRef:(title,text)=>'<p>'+title+'</p><template>'+(typeof text==='string' ? text : JSON.stringify(text))+'</template>',refCell:(uri)=>'<span>'+uri+'</span>',hashCell:(h)=>'<span>'+(h||'—')+'</span>',readingPane:(title,kind,body,close)=>'<aside>'+title+body+'</aside>',sourceRows:(rows)=>rows.map((r)=>[r.label,r.value]),badge:(tone,label)=>`[${tone}:${label}]`,stateLine:(x,o={})=>`[${(typeof x==='string'?x:(x?.lifecycle??x?.state??x?.status??''))}:${o.word??''}]`,skeleton:(shape='rows')=>'SKELETON('+shape+')',emptyState:(s,a='')=>'EMPTY('+s+')'+(a||''),railTools:()=>'',groupHead:(label,count)=>'GROUP('+label+':'+count+')',listFoot:()=>'',evidenceRow:(type,x,o={})=>{const r=typeof type==='object'?type:{type,subject:String(x?.entity_id||x?.issue_handle||x?.span_handle||x?.finding_handle||x?.reference?.label||x?.title||''),state:String(x?.state||''),word:'',why:''};return '<div class="list-row evidence-row '+(o.cls||'')+'" data-kind="'+(r.type||'')+'">ROW('+[o.named?r.kind+' · '+r.subject:r.subject,'['+r.state+':'+(r.word||'')+']',o.why??r.why,...((o.brief?[]:(r.props||[])).concat(o.props||[])).filter(Boolean).map(p=>Array.isArray(p)?p[1]:p),o.time,o.actions,o.attrs].filter(Boolean).join('|')+')</div>';},citePill:(h)=>'<span class="es-cite">'+h+'</span>',objectRow:(s={},x)=>'ROW('+[s.name,s.why,...(((x&&x.props)||[]).filter(Boolean).map(p=>Array.isArray(p)?p[1]:p)),x&&x.time,x&&x.actions].filter(Boolean).join('|')+')'+((x&&x.under)||''),statusDot:(s,l)=>'['+s+(l?':'+l:'')+']',btn:(label,action,value)=>`<${action}:${value}>{${label}}`,btnAttrs:(label,action,value,cls,attrs)=>(['team-actor','team-fold'].includes(action)?`<${action}:${value}>{${label}}${attrs||''}`:''),banner:(a,b,tone,action)=>`(${a}|${b}|${action||''})`,icon:(n)=>`{${n}}`,panel:(title,sub,body)=>`<<${title}>>`+(Array.isArray(body)?body.join(''):body),kv:(rows)=>rows.map(r=>r.join(': ')).join(' | '), // the record in place is a grid (T4): its rows as the builder lists them
+  subjectChoice:(label,id,choices,o={})=>`<picker id="${id}">`+choices.map(c=>`<button data-value="${c.value}" aria-selected="${c.value===o.selected}">${c.title}<small>${c.meta||''}</small></button>`).join('')+'</picker>',objectHead:(name,meta,actions,state,tools,details={})=>`<header class="object-header"><h1${details.headingId?` id="${details.headingId}"`:''}>${name}</h1>${state||''}${meta||''}${actions||''}</header>`+(details.subject?`<div class="object-subject">${details.subject}</div>`:''),
+  routeUrl:(page)=>'#page='+page,NAV_ATTR:'',controlAttrs:()=>'',codeWords:(code)=>String(code ?? '—'),short:(v,n=8)=>String(v||'').slice(0,n),mono:(v,n=12)=>v?'<span class="mono">'+String(v).slice(0,n)+'</span>':'—',coded:(code)=>`<span class="mono">${code ?? '—'}</span>`,actorWords:(caller)=>String(caller ?? '—'),whenText:(value)=>String(value ?? '—'),pluralText:(n,one,many,args={})=>String(Number(n)===1?one:many).replace(/\{(\w+)\}/g,(m,k)=>args&&args[k]!==undefined?args[k]:m),countText:(n,one,many)=>(Number(n)===1 ? one : many).replace('{n}',String(n)),table:(headers,rows)=>'<table>'+(Array.isArray(rows)?rows.join(''):rows)+'</table>',tr:(cells)=>'<tr>'+cells.map(String).join('|')+'</tr>'};
+c.Data.readShared = (...args) => c.Data.read(...args);
+vm.createContext(library.into(c,root));vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);
+for(const name of ['live-activity.js','live-team.js'])vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),c);
+vm.runInContext('globalThis.A=LiveActivity;globalThis.TM=LiveTeam;',c);
+(async()=>{
+  for(const page of pages)c.A.absorbPage(page);
+  for(const ref of input.resolve||[])await c.TM.resolve(ref);
+  for(const ref of input.verify||[])await c.TM.verify(ref);
+  const scene=c.TM.scene();
+  // the places round (law 123): a session's pages read a chosen session -- without one, the reader picks the newest from Sessions
+  {const q=new URLSearchParams(hash.value.slice(1));if(!q.get('team')&&scene.sessions[0]){q.set('team',scene.sessions[0].id);hash.value='#'+q;}}
+  // the workroom (the thread, its members' filter and its reader), then the evidence view, as the reader would page
+  // (the Participants page retired into the thread's head in C4; its old address opens the thread)
+  c.app.page='team';const workroom=c.TM.section();c.app.page='team-evidence';const evidence=c.TM.section();c.app.page='team';
+  const html=workroom+evidence;
+  const readers={};
+  const readIn=(markup,id)=>{const at=markup.indexOf(`id="team-event-${id}"`);if(at<0)return '';const start=markup.lastIndexOf('<li',at),tag=/<(\/?)li(?=[\s>])/g;let depth=0,end=markup.length;tag.lastIndex=start;for(let m;(m=tag.exec(markup));){depth+=m[1]?-1:1;if(!depth){end=m.index+5;break;}}const li=markup.slice(start,end),cut=li.indexOf('<ol class="team-replies">');return cut<0?li:li.slice(0,cut);};
+  {
+    const saved=hash.value,q=new URLSearchParams(saved.slice(1)),chosenActor=q.get('actor')||'';
+    const s=q.get('team')?scene.sessions.find(v=>v.id===q.get('team')):scene.sessions[0];
+    for(const e of s?[...s.entries.values()].sort((a,b)=>a.ordinal-b.ordinal):[]){
+      if(e.replayOf||(chosenActor&&e.actor!==chosenActor&&e.recipient!==chosenActor))continue;
+      c.TM.showEvent(e.id);
+      // the exchange as the page reads it (C4 item 7): its line, its words and its verification opened in place under it, the replies beneath it left out
+      readers[e.id]=readIn(c.TM.section(),e.id);
+    }
+    hash.value=saved;
+  }
+  const out={feed:c.A.state(),html,readers,requested,unknown:scene.unknown.length,
+    resolved:Object.fromEntries([...c.TM.resolved()].map(([k,v])=>[k,{level:v.level,owner:v.owner||null,note:v.note||null,open:v.open||null,link:v.link||null,target:v.target||null,failure:v.failure||null,limit:v.limit||null}])),
+    sessions:scene.sessions.map(s=>({id:s.id,producers:[...s.producers],references:[...s.references],derived:[...(s.derived||new Map())].map(([k,v])=>({ref:k,...v})),unknownKinds:s.unknownKinds.map(u=>u.item.payload.event_kind),
+      participants:[...s.participants.values()].map(p=>({id:p.id,roles:[...p.roles],state:c.TM.participantState(p).label,messages:p.messages.length,hooks:p.hooks.length})),
+      entries:[...s.entries.values()].sort((a,b)=>a.ordinal-b.ordinal).map(e=>({observation:e.id,kind:e.kind,messageKind:e.messageKind||null,declaredKind:e.declaredKind||null,actor:e.actor,role:e.role,recipient:e.recipient||null,reference:e.reference||null,qualified:e.qualified?e.qualified.kind:null,truncated:e.truncated||false,bytes:e.bytes||null,textLength:(e.text||'').length,replayOf:e.replayOf,replays:e.replays||[],conflictsWith:e.conflictsWith,hookEvent:e.hookEvent||null,terminal:e.terminal||null,stopActive:e.stopActive||null,channel:e.channel,timeKind:e.timeKind,taskId:e.taskId,authority:e.authority})),
+      facts:s.facts.map(f=>({observation:f.item.observation_id,schema:f.item.schema_kind,operation:f.item.payload.operation||null,phase:f.item.payload.phase||null,status:f.item.payload.status||null,failure_code:f.item.payload.failure_code||null,lifecycle:f.item.payload.task_lifecycle||null,artifact:f.item.payload.artifact_kind||null,task:f.group.task_id,named:f.named,followed:f.followed||[]}))}))};
+  process.stdout.write(JSON.stringify(out));
+})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -1,0 +1,790 @@
+/* 03-controls — Controls: button family, segmented controls, fields, status labels, unavailable-reason notes.
+   Files are concatenated in name order by build.py; that order is the cascade order. Edit by hand — the generator in qa/parity/css only did the migration from v3.13. */
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+a {
+  color: var(--ink-link);
+  text-underline-offset: var(--underline-offset);
+}
+button,
+a,
+summary,
+select,
+input,
+textarea {
+  outline-offset: var(--focus-ring-offset);
+}
+/* The keyboard's focus ring (round 51, one rule): 2 px of the link ink at 2 px, on every control
+   the keyboard lands on. A focus ring is a keyboard's (round 24h): after a pointer interaction,
+   the ring the browser draws for a focus the page restored on repaint is noise; text fields keep
+   theirs, and the first key press brings every ring back. */
+:where(button,a,summary,select,input,textarea,[tabindex]):focus-visible {
+  outline: var(--focus-ring-width) solid var(--accent);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
+}
+body[data-input="pointer"] :where(button,a,summary,[tabindex]):focus-visible {
+  outline-color: transparent;
+}
+/* A pointer's focus on a field (round 89, the user's stills: a blue border after a click): the
+   field's own border takes the accent at one pixel, not the keyboard's ring; a key press brings
+   the ring back. */
+body[data-page][data-input="pointer"] :is(input,select,textarea):focus-visible,
+body[data-page][data-input="pointer"] :is(.input-with-icon,.search-wrap,.es-search):focus-within {
+  outline-color: transparent;
+  border-color: var(--accent);
+}
+body[data-input="pointer"] :is(.list-row:has(> .list-row-main:focus-visible), .navigator-handle:focus-visible, .fv-step:focus-visible) {
+  outline-color: transparent; /* the other rings a pointer's focus would draw (round 89's search) */
+}
+button {
+  cursor: pointer;
+  background: none;
+  border: 0;
+  transition: background var(--dur-1) var(--curve-move), border-color var(--dur-1) var(--curve-move), box-shadow var(--dur-1) var(--curve-move);
+}
+button:not(:disabled):active {
+  transform: translateY(var(--press-shift));
+}
+/* Six tones, two variables (round 71, round 82): the tone's mark (Apple's colour) on a state line's
+   dot or a row's dot and behind a badge, the tone's ink (text-safe) on the badge's word. */
+:is(.badge,.state,.row-dot,.mark) { --tone-ink: var(--neutral-ink); --tone: var(--neutral); }
+:is(.badge,.state,.row-dot,.mark).warning { --tone-ink: var(--warning-ink); --tone: var(--warning); }
+:is(.badge,.state,.row-dot,.mark).danger { --tone-ink: var(--danger-ink); --tone: var(--danger); }
+:is(.badge,.state,.row-dot,.mark).review { --tone-ink: var(--review-ink); --tone: var(--review); }
+:is(.badge,.state,.row-dot,.mark).good { --tone-ink: var(--good-ink); --tone: var(--good); }
+:is(.badge,.state,.row-dot,.mark).accent { --tone-ink: var(--ink-link); --tone: var(--accent); }
+:is(.badge,.state,.row-dot,.mark).cyan { --tone-ink: var(--cyan-ink); --tone: var(--cyan); }
+/* The badge is the tinted pill, kept where a word alone would mislead: the tone's dot and the
+   word in the text ink on 12% of the tone's mark (round 85: a word is never coloured, Linear's). */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--badge-height);
+  padding: var(--space-05) var(--space-2);
+  border-radius: var(--radius-pill);
+  font: var(--weight-label) var(--style-caption-size)/var(--style-caption-leading) var(--font-ui);
+  color: var(--text);
+  background: color-mix(in srgb,var(--tone) var(--tint-wash),transparent);
+}
+.badge::before {
+  content: '';
+  width: var(--dot-sm);
+  height: var(--dot-sm);
+  border-radius: 50%;
+  background: var(--tone);
+}
+.banner .button {
+  flex: none;
+  align-self: center;
+}
+.feature-row .button {
+  margin-left: auto;
+  align-self: center;
+}
+.field {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+/* An inline field aligns its unit and input with neighbouring controls (V680, PR1/PR2). */
+.field.inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.field.inline > label {
+  margin-bottom: 0;
+  flex: none;
+}
+.flow > .field.inline {
+  flex: 1 1 0;
+}
+.field input,
+.field select,
+.field textarea,
+.search-input {
+  width: 100%;
+  min-width: 0;
+}
+.field.invalid input,
+.field.invalid textarea {
+  border-color: var(--danger-ink);
+}
+.field.wide {
+  grid-column: 1/-1;
+}
+.data-table input[type=checkbox] {
+  accent-color: var(--accent);
+}
+.dialog-body .button {
+  max-width: 100%;
+}
+.dialog-list-btn .badge {
+  margin-left: auto;
+}
+.toast button {
+  min-width: var(--toast-button-size);
+  min-height: var(--toast-button-size);
+  display: grid;
+  place-items: center;
+}
+.object-meta .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.object-meta .badge {
+  margin: 0;
+}
+.session-controls .picker-anchor { flex: 0 1 auto; min-width: 0; } /* round 94: the next arrow stays beside the word at every width */
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+/* A key cap (round 51): the footnote mono on the well with a hairline, 20 px at least. */
+kbd {
+  font: var(--style-caption-size)/var(--style-caption-leading) var(--font-mono);
+  color: var(--muted);
+  border: 1px solid var(--edge-hair); background: var(--surface-well);
+  border-radius: var(--radius-micro);
+  padding: 0 var(--space-1);
+  min-width: var(--icon-lead);
+  text-align: center;
+  white-space: nowrap;
+}
+/* A boolean is a switch (round 82, macOS; round 84 at Codex's size): 38 × 22, the knob white, the
+   track blue when on; the native checkbox underneath keeps its keys, its label and its change event. */
+.switch {
+  appearance: none;
+  position: relative;
+  width: var(--switch-width);
+  height: var(--switch-height);
+  margin: 0;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--edge-strong);
+  transition: background var(--dur-1) var(--curve-move);
+}
+.switch::before {
+  content: "";
+  position: absolute;
+  top: var(--switch-inset);
+  left: var(--switch-inset);
+  width: calc(var(--switch-height) - 2 * var(--switch-inset));
+  height: calc(var(--switch-height) - 2 * var(--switch-inset));
+  border-radius: 50%;
+  background: var(--switch-knob);
+  box-shadow: var(--shadow-raised);
+  transition: transform var(--dur-1) var(--curve-move);
+}
+.switch:checked { background: var(--accent); }
+.switch:checked::before { transform: translateX(calc(var(--switch-width) - var(--switch-height))); }
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+html[lang=zh-CN] .button,
+html[lang=zh-CN] .text-btn {
+  letter-spacing: 0;
+}
+button,
+input,
+select,
+textarea {
+  font-kerning: normal;
+  font-synthesis: none;
+  letter-spacing: normal;
+}
+:where(button,a,input,select,textarea):focus:not(:focus-visible) {
+  outline: none;
+}
+:where(button,select,input,textarea):disabled,
+:where(button)[aria-disabled=true] {
+  cursor: not-allowed;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+:where(select,input,textarea):disabled {
+  background: var(--disabled-surface);
+  color: var(--disabled-ink);
+}
+.control-reason {
+  display: block;
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  margin: var(--space-2) 0 0;
+  max-width: var(--ds-prose-measure);
+  flex-basis: 100%;
+  text-align: start;
+}
+.dialog-foot>.control-reason {
+  order: -1;
+  flex: 1 0 100%;
+  margin: 0 0 var(--space-05);
+}
+.dialog-foot .button {
+  max-width: 100%;
+  min-width: var(--dialog-button-min);
+}
+.field small {
+  color: var(--muted);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.field-error {
+  color: var(--danger-ink);
+}
+:where(input[type=checkbox],input[type=radio]) {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: none;
+}
+.check-row input {
+  margin-top: var(--space-1);
+  accent-color: var(--accent);
+  margin-block-start: var(--space-1);
+}
+.input-with-icon .search-input {
+  width: 100%;
+}
+/* Native disabled controls retain readable text; do not fade an entire labelled surface. */
+.button:disabled,
+.button[aria-disabled=true],
+.icon-btn:disabled,
+select:disabled,
+input:disabled,
+textarea:disabled {
+  opacity: 1;
+}
+/* Stripe-style filters: a suggested dashed chip becomes one stated label/value chip. A chip is a control (round 90): the control's line and face in both appearances (Dark: the 12 % hairline, the 8 % face), never the box edge Dark leaves transparent. */
+.filter-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--filter-chip-height);
+  border: 1px dashed var(--muted);
+  border-radius: var(--radius-pill);
+  background: var(--ui-face);
+}
+.filter-chip.is-active {
+  border-style: solid;
+  border-color: var(--ui-line);
+}
+body[data-page][data-reading] :is(.filter-chip-main,.filter-chip-clear) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--filter-chip-part-height);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: var(--weight-body) var(--style-footnote-size)/var(--style-footnote-leading) var(--font-ui);
+}
+.filter-chip-label {
+  color: var(--muted);
+}
+.filter-chip-main > i {
+  height: var(--space-4);
+  border-left: 1px solid var(--edge-hair);
+}
+.filter-chip-main > strong {
+  font-weight: var(--weight-label);
+}
+.filter-chip-clear {
+  padding-left: 0;
+  font-size: var(--style-callout-size); line-height: var(--style-callout-leading);
+}
+.filter-chip :is(.filter-chip-main,.filter-chip-clear):hover,
+.filter-chip :is(.filter-chip-main,.filter-chip-clear):focus-visible {
+  color: var(--text);
+}
+.filter-chip .menu {
+  right: auto;
+  left: 0;
+  transform-origin: top left;
+}
+.filter-chip.is-pending { border-style: solid; border-color: var(--ui-line); } /* round 95: a clause awaiting its values is already a stated chip */
+/* Round 56: a property chip — the filter chip's shape holding a value, its key cap shown on
+   hover or focus; a row of them under an object's title; a read-only property in the muted ink. */
+.property-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.property-chip { border-style: solid; border-color: var(--ui-line); }
+.property-chip > .filter-chip-main > .icon { width: var(--icon-sm); height: var(--icon-sm); color: var(--muted); }
+.property-chip > .filter-chip-main > .keycap { display: none; }
+.property-chip > .filter-chip-main:is(:hover, :focus-visible) > .keycap { display: inline-flex; }
+.property-chip > .filter-chip-main > strong { font-weight: var(--weight-body); }
+.property-chip .menu { min-width: min(var(--width-sm), calc(var(--vw) - 2 * var(--viewport-inset))); }
+.menu-context { padding: var(--space-1) var(--space-2) var(--space-2); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); border-bottom: 1px solid var(--edge-hair); }
+.menu-note { padding: var(--space-2); color: var(--muted); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+.record-bundle input {
+  accent-color: var(--accent);
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: none;
+  margin-top: var(--space-1);
+}
+.es-page button,
+.es-page input {
+  font-family: var(--font-ui);
+}
+.button.critical {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+  border-color: color-mix(in srgb,var(--danger-ink) var(--tint-edge),var(--line));
+}
+body[data-page] .text-btn:hover {
+  text-decoration: none;
+}
+.field label {
+  letter-spacing: 0;
+}
+body[data-page] .tp-section .tp-caption .text-btn {
+  text-decoration: underline;
+  text-underline-offset: var(--underline-offset);
+}
+.input-with-icon input[type=search] {
+  outline: none;
+}
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  padding: var(--space-2);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  min-height: var(--icon-button-size);
+}
+:is(.field input:not([type=checkbox]):not([type=range]),.field select,.search-input) {
+  border: 1px solid var(--ds-edge);
+  border-radius: var(--radius-control);
+  background: var(--field-face);
+  padding: var(--control-pad-md) var(--space-3);
+  font-family: var(--font-ui);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  min-height: var(--field-height);
+  min-width: 0;
+  max-width: 100%;
+}
+/* The one picker (round 91): a pill by its content in a form row, the field's width in a field;
+   `picker-text` reads as a word until hovered (the Lab's input version, the desk's book and reading);
+   `picker-chip` is a filter chip's face. The trigger stays neutral after a choice. */
+.picker-anchor { position: relative; min-width: 0; }
+.field .picker-anchor { max-width: var(--width-sm); }
+body[data-page] .picker-trigger.picker-text { width: auto; max-width: 100%; background-color: transparent; border-color: transparent; box-shadow: none; padding-left: 0; font-weight: var(--weight-strong); } /* round 93: over the field's own line and face */
+body[data-page] .picker-trigger.picker-text:is(:hover, :focus-visible, [aria-expanded=true]) { background-color: var(--field-face); border-color: var(--edge-strong); box-shadow: var(--rim-top); padding-left: var(--space-3); }
+.picker-trigger { display: flex; align-items: center; gap: var(--space-2); width: 100%; color: var(--text); text-align: left; }
+.picker-trigger-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A glyph and its word (the user, 2026-09-25: "字前面的图标感觉跟字对不齐"): one pair centred on its
+   line -- an inline svg on the text's baseline sat on the x-height, a pixel and more below the words */
+.glyph-word { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; vertical-align: top; }
+.glyph-word > .icon { flex: none; }
+.glyph-word > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.picker-chevron { display: grid; place-items: center; margin-left: auto; color: var(--muted); transition: transform var(--dur-2) var(--curve-move); }
+.picker-chevron .icon { width: var(--icon-sm); height: var(--icon-sm); }
+.picker-trigger[aria-expanded=true] .picker-chevron { transform: rotate(180deg); }
+.table-sort { display: inline-flex; align-items: center; justify-content: inherit; gap: var(--space-2); width: 100%; color: inherit; font: inherit; text-align: inherit; }
+.table-sort:hover,
+.table-sort:focus-visible {
+  color: var(--text);
+}
+.table-sort-indicator { color: var(--muted); }
+th[aria-sort="none"] .table-sort-indicator { opacity: 0; }
+/* the glyph belongs to the sorted column; the others show it on hover */
+th[aria-sort="none"] .table-sort:is(:hover, :focus-visible) .table-sort-indicator { opacity: 1; }
+.data-table th.col-num .table-sort { justify-content: flex-end; } /* a numeric head sits over its figures (`col-num` is generated; round 86) */
+/* One standard: semantic action, navigation, status, identity — not one shape for all. */
+body[data-page][data-reading] [data-control="action"],
+body[data-page][data-reading] [data-control="primary"],
+body[data-page][data-reading] [data-control="critical"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  min-height: var(--button-height);
+  padding: var(--control-pad-md) var(--space-4);
+  border-radius: var(--ui-control-radius);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  font-weight: var(--weight-label);
+  letter-spacing: 0;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-face);
+  color: var(--text);
+  text-decoration: none;
+  box-shadow: var(--rim-top);
+  white-space: nowrap; /* a button's words stay on one line (2026-09-22: a banner's pill broke into three at 900 px in zh); its container wraps it to a line of its own */
+  max-width: 100%;
+  transition: background-color var(--dur-2) var(--curve-move),border-color var(--dur-2) var(--curve-move),color var(--dur-2) var(--curve-move),box-shadow var(--dur-2) var(--curve-move);
+}
+body[data-page][data-reading] :is([data-control="action"],[data-control="primary"],[data-control="critical"])[data-size="compact"] {
+  min-height: var(--button-compact-height);
+  padding: var(--control-pad-sm) var(--space-3);
+}
+body[data-page][data-reading] [data-control="primary"] {
+  background: var(--action-bg);
+  border-color: transparent;
+  color: var(--action-ink);
+  box-shadow: none;
+}
+[data-control="critical"] {
+  color: var(--danger-ink);
+}
+body[data-page][data-reading] [data-control="quiet"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--button-compact-height);
+  padding: var(--control-pad-sm) var(--space-2);
+  border-radius: var(--ui-quiet-radius);
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  font-size: var(--style-callout-size);
+  font-weight: var(--weight-label);
+  line-height: var(--style-callout-leading);
+  text-decoration: none;
+  letter-spacing: 0;
+  white-space: normal;
+}
+[data-control="icon"] {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--icon-control-size);
+  width: var(--icon-control-size);
+  min-height: var(--icon-control-size);
+  height: var(--icon-control-size);
+  padding: var(--space-2);
+  border-radius: var(--radius-control); /* round 84: a glyph button is the glyph alone (Codex); the fill comes on hover */
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  flex: none;
+}
+[data-control="icon"] .icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+:is([data-control="action"],[data-control="primary"],[data-control="critical"],[data-control="quiet"])>.icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+:is([data-control="action"],[data-control="primary"],[data-control="critical"],[data-control="quiet"],[data-control="icon"]):hover:not(:disabled):not([aria-disabled=true]) {
+  background: var(--ds-control-hover);
+  border-color: var(--edge-strong);
+  filter: none;
+}
+[data-control="primary"]:hover:not(:disabled):not([aria-disabled=true]) {
+  background: color-mix(in srgb, var(--action-ink) var(--tint-faint), var(--action-bg));
+  color: var(--action-ink);
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-control="critical"]:hover:not(:disabled):not([aria-disabled=true]) {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+:is([data-control="action"],[data-control="primary"],[data-control="quiet"],[data-control="critical"],[data-control="icon"]):active:not(:disabled):not([aria-disabled=true]) {
+  transform: translateY(var(--press-shift));
+  box-shadow: none;
+}
+body[data-page][data-reading] [data-control]:is(:disabled,[aria-disabled=true]) {
+  color: var(--disabled-ink);
+  background: var(--disabled-surface);
+  border-color: var(--ui-line);
+  opacity: 1;
+  box-shadow: none;
+  transform: none;
+  cursor: not-allowed;
+  filter: none;
+}
+[data-control="quiet"]:is(:disabled,[aria-disabled=true]) {
+  background: transparent;
+  border-color: transparent;
+}
+/* Loading (round 15): the control keeps its label, dimmed, with the live dot before it; it takes
+   no pointer while the owner answers; no spinner, no overlay. */
+[data-control][aria-busy=true] {
+  cursor: progress;
+  pointer-events: none;
+  opacity: var(--opacity-secondary);
+}
+[aria-busy=true] > .busy-dot {
+  display: inline-block;
+  width: var(--dot-sm);
+  height: var(--dot-sm);
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+  animation: live-breathe var(--dur-pulse) ease-in-out infinite;
+}
+/* One field (round 21, Linear's settings and Stripe's forms): a 36 px control at 13 px text. */
+body[data-page] .ui-field {
+  min-height: var(--ui-field-height);
+  padding: var(--control-pad-md) var(--space-3);
+  border: 1px solid var(--ui-line);
+  background: var(--field-face);
+  border-radius: var(--radius-control);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  box-shadow: var(--rim-top);
+}
+body[data-page] textarea.ui-field {
+  line-height: var(--style-body-leading);
+  resize: vertical;
+}
+:is(.field, .subject-choice, .session-selector) > label { /* round 90: one field label -- muted, the term's 500 */
+  font-size: var(--style-callout-size);
+  font-weight: var(--weight-label);
+  line-height: var(--style-callout-leading);
+  margin-bottom: var(--space-1);
+  color: var(--muted);
+}
+.field:focus-within>label {
+  color: var(--text);
+}
+body[data-page] :is(.input-with-icon,.search-wrap,.quick-search,.es-search)>input {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  border-radius: 0;
+  font-size: var(--style-body-size);
+  line-height: var(--style-body-leading);
+  min-width: 0;
+  min-height: var(--field-height);
+}
+body[data-page] :is(.input-with-icon,.search-wrap,.quick-search,.es-search)>input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+/* Segmented controls: one selection primitive across pages. */
+.ui-segments {
+  display: inline-flex;
+  align-items: stretch;
+  gap: var(--space-05);
+  max-width: 100%;
+}
+body[data-page][data-reading] [data-control="segment"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--segment-height);
+  padding: var(--control-pad-sm) var(--space-3);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  letter-spacing: 0;
+  font-weight: var(--weight-label);
+  border-radius: var(--radius-pill);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  transform: none;
+  white-space: normal;
+}
+body[data-page][data-reading] [data-control="segment"][aria-pressed=true] {
+  color: var(--text);
+  background: var(--fill-selected);
+}
+[data-control="segment"]:hover:not(:disabled):not([aria-pressed=true]) {
+  color: var(--text);
+  background: var(--ds-control-hover);
+}
+body[data-page][data-reading] [data-control="segment"][aria-pressed=true]:hover:not(:disabled):not([aria-disabled=true]) {
+  background: linear-gradient(var(--ds-control-hover),var(--ds-control-hover)),var(--fill-selected);
+}
+/* Tabs (law 110; the user's reading of 2026-09-22): the views of one thing -- words over the
+   strip's hairline, the current one in the ink over the indicator, the others muted; one height
+   (--tab-height) whatever the words; a strip never wraps (it scrolls sideways before it breaks its
+   line). The hairline is an inset shadow, so the indicator paints over it inside the strip's own
+   box and the keyboard's ring sits inside the tab. A value's choice is a segmented control. */
+body[data-page] .tabs {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+  box-shadow: inset 0 -1px 0 var(--edge-hair);
+}
+/* The content a strip switches starts one gap under its hairline (the user's reading 2026-09-23);
+   the editor's strip is its header's and the pane's its sticky head's, so neither adds it. */
+body[data-page] .tabs:not(.editor-tabs, .inspector-tabs) {
+  margin-bottom: var(--tab-content-gap);
+}
+body[data-page] .tabs-list {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  gap: var(--tab-gap);
+  min-width: 0;
+  overflow: hidden; /* what does not fit is in More (fitTabs), never under a scrollbar */
+}
+body[data-page] .tab-more-anchor { position: relative; display: flex; flex: none; margin-left: var(--tab-gap); }
+body[data-page] .tab-more > .icon { width: var(--icon-sm); height: var(--icon-sm); }
+body[data-page] [data-control="tab"] {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  min-height: 0;
+  margin: 0;
+  padding: var(--tab-pad-block) var(--tab-pad-inline);
+  border: 0;
+  border-bottom: var(--tab-indicator-width) solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  font-weight: var(--weight-label);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+body[data-page] [data-control="tab"]:focus-visible { outline-offset: var(--focus-ring-inset); }
+body[data-page] button[data-control="tab"]:hover:not(:disabled) { color: var(--text); background: transparent; }
+body[data-page] [data-control="tab"][aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); }
+body[data-page] button[data-control="tab"][aria-selected="true"]:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--ds-control-hover); }
+body[data-page] [data-control="tab"]:is(:disabled, [aria-disabled="true"]) { color: var(--disabled-ink); cursor: default; }
+body[data-page] .tab-count {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  font-weight: var(--weight-body);
+}
+[data-control="navigation"] {
+  min-height: var(--navigation-height);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+  box-shadow: none;
+}
+/* Round 34, one control system: a navigation link drawn as a compact button is the compact size. */
+.button.compact[data-control="navigation"] {
+  min-height: var(--button-compact-height);
+  padding: var(--control-pad-sm) var(--space-3);
+}
+/* Text buttons are words at the meta size, wherever they sit. */
+body[data-page] #main .text-btn { font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+/* Content disclosures are one line: 13 px / 500 in the text ink, a muted chevron, one hairline
+   above; the (i) notes keep their circle. */
+body[data-page][data-reading] .reveal-details > summary {
+  min-height: var(--disclosure-row-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  list-style: none;
+  color: var(--text);
+  font-size: var(--style-callout-size);
+  font-weight: var(--weight-label);
+  line-height: var(--style-callout-leading);
+  cursor: pointer;
+}
+.reveal-details > summary::-webkit-details-marker { display: none; }
+body[data-page][data-reading] .reveal-details > summary:not(.run-log-fold)::before { /* a log's fold line keeps its one chevron after its words (law 72); this one lost to it on the reading pages */
+  content: '›';
+  color: var(--muted);
+  font-size: var(--style-title-2-size);
+  line-height: var(--style-title-2-leading);
+  letter-spacing: var(--style-title-2-tracking);
+  display: inline-block;
+  flex: none;
+  transition: transform var(--dur-2) var(--curve-move);
+}
+.reveal-details[open] > summary::before { transform: rotate(90deg); }
+body[data-page][data-reading] .reveal-details > summary:hover { color: var(--ink-link); }
+/* Icon buttons: 36 px in heads and toolbars, 32 px compact in rows and code blocks. */
+body[data-page][data-reading] .icon-btn { width: var(--icon-button-reading-size); height: var(--icon-button-reading-size); min-width: var(--icon-button-reading-size); min-height: var(--icon-button-reading-size); padding: 0; display: inline-grid; place-items: center; }
+/* A row's icon button is 28, so a one-line row is the regular row (44) and a two-line row 64 (round 38). */
+body[data-page][data-reading] :is(.icon-btn.compact, .icon-btn.code-copy, .list-row .icon-btn, .data-table .icon-btn) { width: var(--icon-button-compact-size); height: var(--icon-button-compact-size); min-width: var(--icon-button-compact-size); min-height: var(--icon-button-compact-size); }
+/* Fields and selects are one height — the button's — with one face. */
+#main :is(input.ui-field, select.ui-field, .search-input) { min-height: var(--field-height); height: var(--field-height); padding-top: 0; padding-bottom: 0; font-size: var(--style-callout-size); line-height: var(--style-callout-leading); border-radius: var(--radius-control); }
+#main textarea.ui-field { height: auto; }
+#main .search-field { min-height: var(--field-height); }
+/* Local input affordances retain the same 40px chassis in comparative layouts. */
+@media (width < 640px) {
+.field.wide {
+    grid-column: auto;
+  }
+.banner .button {
+    margin-left: var(--space-6);
+  }
+.controls-content .field input {
+    font-size: var(--style-title-3-size);
+    line-height: var(--style-title-3-leading);
+    letter-spacing: var(--style-title-3-tracking);
+  }
+.chart-toolbar .segmented {
+    margin-left: auto;
+  }
+.search-field input {
+    width: 100%;
+  }
+.feature-row .button {
+    margin-left: var(--space-10);
+  }
+.quick-search input {
+    min-height: var(--quick-search-narrow-height);
+  }
+.dialog-foot .button {
+    flex: 1 1 auto;
+  }
+}
+@media (width < 768px) {
+.dialog-foot .button {
+    min-width: var(--dialog-button-min);
+  }
+}
+@media (width < 768px) {
+.ui-segments {
+    flex-wrap: wrap;
+  }
+[data-control="segment"] {
+    padding-inline: var(--space-2);
+    min-height: var(--segment-narrow-height);
+  }
+}
+@media (width < 640px) {
+body[data-page][data-reading] :is([data-control="action"],[data-control="primary"],[data-control="critical"]) {
+    min-height: var(--button-narrow-height);
+    padding: var(--space-2) var(--space-3);
+  }
+body[data-page][data-reading] :is([data-control="action"],[data-control="primary"],[data-control="critical"])[data-size="compact"] {
+    min-height: var(--button-compact-narrow-height);
+  }
+}
+
+/* V639: all study handoffs keep their actions inside the reading column.
+   At a narrow column, the two-line action chooses the existing 48px step. */
+.next-step-actions { min-width: 0; max-width: 100%; }
+.banner > .next-step-actions { flex: 1 1 100%; }
+@container reading-lane (width < 420px) {
+  body[data-page][data-reading] .next-step-actions :is([data-control="action"], [data-control="primary"], [data-control="critical"], [data-control="quiet"]) {
+    min-width: 0;
+    max-width: 100%;
+    height: var(--next-step-narrow-height);
+    min-height: var(--next-step-narrow-height);
+    padding-block: 0;
+    margin-left: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}

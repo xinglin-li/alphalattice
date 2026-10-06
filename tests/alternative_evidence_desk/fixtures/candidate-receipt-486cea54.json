@@ -1,0 +1,992 @@
+{
+ "request_hash": "8b1952ca0b1871350abfd95d4fc2ef9529cd02a313361e4cd80721587a84c013",
+ "document_set_hash": "7f234edd31a3358b45bfaae7b54fc1248848b4aa31306fcf64a9781427586a8e",
+ "retrieval_generation_hash": "24dc2e10546b01deb436cddc60b7cc5b868667a1a4d8070dafad6ec9f5a2b325",
+ "query_program_hash": "69e9be7db766bf077daf3ff882cca2d8fabc5cc78490e83b95f14a9fe35f7b2f",
+ "queries": [
+  {
+   "query_id": "Q-LIQUIDITY",
+   "topic": "LIQUIDITY_GOING_CONCERN",
+   "text": "Is there substantial doubt about the company's ability to continue as a going concern, a covenant breach or waiver, or a draw on its credit facility?",
+   "hit_span_handles": [
+    "SPAN-S01-R01",
+    "SPAN-S01-R02",
+    "SPAN-S01-R03",
+    "SPAN-S01-R04",
+    "SPAN-S01-R05",
+    "SPAN-S01-R06",
+    "SPAN-S01-R07",
+    "SPAN-S01-R08",
+    "SPAN-S01-R09",
+    "SPAN-S01-R10"
+   ]
+  },
+  {
+   "query_id": "Q-DILUTION",
+   "topic": "CAPITAL_DILUTION",
+   "text": "Did the company issue shares, sell convertible notes, or take an action that dilutes existing holders?",
+   "hit_span_handles": [
+    "SPAN-S02-R01",
+    "SPAN-S02-R02",
+    "SPAN-S02-R03",
+    "SPAN-S02-R04",
+    "SPAN-S02-R05",
+    "SPAN-S02-R06",
+    "SPAN-S02-R07",
+    "SPAN-S02-R08",
+    "SPAN-S02-R09",
+    "SPAN-S02-R10"
+   ]
+  },
+  {
+   "query_id": "Q-LEGAL",
+   "topic": "LEGAL_REGULATORY",
+   "text": "Was a lawsuit or class action filed against the company, and in which court?",
+   "hit_span_handles": [
+    "SPAN-S03-R01",
+    "SPAN-S03-R02",
+    "SPAN-S03-R03",
+    "SPAN-S03-R04",
+    "SPAN-S03-R05",
+    "SPAN-S03-R06",
+    "SPAN-S03-R07",
+    "SPAN-S03-R08",
+    "SPAN-S03-R09",
+    "SPAN-S03-R10"
+   ]
+  },
+  {
+   "query_id": "Q-OPERATIONS",
+   "topic": "OPERATIONS_SUPPLY",
+   "text": "Did the company record an impairment or write-down of a facility, asset group or disposal group, or was production interrupted, curtailed or idled by a supplier interruption or supply constraint?",
+   "hit_span_handles": [
+    "SPAN-S04-R01",
+    "SPAN-S04-R02",
+    "SPAN-S04-R03",
+    "SPAN-S04-R04",
+    "SPAN-S04-R05",
+    "SPAN-S04-R06",
+    "SPAN-S04-R07",
+    "SPAN-S04-R08",
+    "SPAN-S04-R09",
+    "SPAN-S04-R10"
+   ]
+  },
+  {
+   "query_id": "Q-PRODUCT",
+   "topic": "PRODUCT_SAFETY_CYBER",
+   "text": "Did the company recall a product, report injuries, or suffer a cybersecurity incident or data breach?",
+   "hit_span_handles": [
+    "SPAN-S05-R01",
+    "SPAN-S05-R02",
+    "SPAN-S05-R03",
+    "SPAN-S05-R04",
+    "SPAN-S05-R05",
+    "SPAN-S05-R06",
+    "SPAN-S05-R07",
+    "SPAN-S05-R08",
+    "SPAN-S05-R09",
+    "SPAN-S05-R10"
+   ]
+  },
+  {
+   "query_id": "Q-GOVERNANCE",
+   "topic": "GOVERNANCE_CONTROLS",
+   "text": "Did the company identify a material weakness, restate results, or have an executive or auditor resign?",
+   "hit_span_handles": [
+    "SPAN-S06-R01",
+    "SPAN-S06-R02",
+    "SPAN-S06-R03",
+    "SPAN-S06-R04",
+    "SPAN-S06-R05",
+    "SPAN-S06-R06",
+    "SPAN-S06-R07",
+    "SPAN-S06-R08",
+    "SPAN-S06-R09",
+    "SPAN-S06-R10"
+   ]
+  },
+  {
+   "query_id": "Q-COMMERCIAL",
+   "topic": "COMMERCIAL_COUNTERPARTY",
+   "text": "Did a significant customer terminate its contract, or did a counterparty default or file for bankruptcy?",
+   "hit_span_handles": [
+    "SPAN-S07-R01",
+    "SPAN-S07-R02",
+    "SPAN-S07-R03",
+    "SPAN-S07-R04",
+    "SPAN-S07-R05",
+    "SPAN-S07-R06",
+    "SPAN-S07-R07",
+    "SPAN-S07-R08",
+    "SPAN-S07-R09",
+    "SPAN-S07-R10"
+   ]
+  },
+  {
+   "query_id": "Q-CORPORATE",
+   "topic": "CORPORATE_ACTION_LISTING",
+   "text": "Did the company complete or announce an acquisition, divestiture, spin-off, delisting notice or reverse split?",
+   "hit_span_handles": [
+    "SPAN-S08-R01",
+    "SPAN-S08-R02",
+    "SPAN-S08-R03",
+    "SPAN-S08-R04",
+    "SPAN-S08-R05",
+    "SPAN-S08-R06",
+    "SPAN-S08-R07",
+    "SPAN-S08-R08",
+    "SPAN-S08-R09",
+    "SPAN-S08-R10"
+   ]
+  },
+  {
+   "query_id": "Q-LIQUIDITY-COVENANTS",
+   "topic": "LIQUIDITY_GOING_CONCERN",
+   "text": "Does the company state that it was in compliance with the financial covenants under its credit agreement and indentures as of the end of the period?",
+   "hit_span_handles": [
+    "SPAN-S09-R01",
+    "SPAN-S09-R02",
+    "SPAN-S09-R03",
+    "SPAN-S09-R04",
+    "SPAN-S09-R05",
+    "SPAN-S09-R06",
+    "SPAN-S09-R07",
+    "SPAN-S09-R08",
+    "SPAN-S09-R09",
+    "SPAN-S09-R10"
+   ],
+   "kind": "STATE"
+  },
+  {
+   "query_id": "Q-LIQUIDITY-CAPACITY",
+   "topic": "LIQUIDITY_GOING_CONCERN",
+   "text": "What borrowing capacity, undrawn commitments, cash or liquidity does the company report as available, and did it amend or extend a credit facility or securitization program?",
+   "hit_span_handles": [
+    "SPAN-S10-R01",
+    "SPAN-S10-R02",
+    "SPAN-S10-R03",
+    "SPAN-S10-R04",
+    "SPAN-S10-R05",
+    "SPAN-S10-R06",
+    "SPAN-S10-R07",
+    "SPAN-S10-R08",
+    "SPAN-S10-R09",
+    "SPAN-S10-R10"
+   ],
+   "kind": "STATE"
+  },
+  {
+   "query_id": "Q-CAPITAL-FINANCING",
+   "topic": "CAPITAL_DILUTION",
+   "text": "Did the company enter into a new credit agreement, term loan, mortgage loan or notes offering, and at what principal amount, interest rate and maturity?",
+   "hit_span_handles": [
+    "SPAN-S11-R01",
+    "SPAN-S11-R02",
+    "SPAN-S11-R03",
+    "SPAN-S11-R04",
+    "SPAN-S11-R05",
+    "SPAN-S11-R06",
+    "SPAN-S11-R07",
+    "SPAN-S11-R08",
+    "SPAN-S11-R09",
+    "SPAN-S11-R10"
+   ],
+   "kind": "STATE"
+  },
+  {
+   "query_id": "Q-CAPITAL-RETURN",
+   "topic": "CAPITAL_DILUTION",
+   "text": "Did the company repurchase shares, authorize or expand a share repurchase program, or declare, increase or suspend a dividend?",
+   "hit_span_handles": [
+    "SPAN-S12-R01",
+    "SPAN-S12-R02",
+    "SPAN-S12-R03",
+    "SPAN-S12-R04",
+    "SPAN-S12-R05",
+    "SPAN-S12-R06",
+    "SPAN-S12-R07",
+    "SPAN-S12-R08",
+    "SPAN-S12-R09",
+    "SPAN-S12-R10"
+   ],
+   "kind": "STATE"
+  },
+  {
+   "query_id": "Q-LEGAL-DERISK",
+   "topic": "LEGAL_REGULATORY",
+   "text": "Was a lawsuit, claim or regulatory proceeding settled, dismissed or resolved, or does the company state that it does not expect a pending matter to have a material adverse effect?",
+   "hit_span_handles": [
+    "SPAN-S13-R01",
+    "SPAN-S13-R02",
+    "SPAN-S13-R03",
+    "SPAN-S13-R04",
+    "SPAN-S13-R05",
+    "SPAN-S13-R06",
+    "SPAN-S13-R07",
+    "SPAN-S13-R08",
+    "SPAN-S13-R09",
+    "SPAN-S13-R10"
+   ],
+   "kind": "STATE"
+  },
+  {
+   "query_id": "Q-OPERATIONS-PROGRAM",
+   "topic": "OPERATIONS_SUPPLY",
+   "text": "Did the company complete or wind down a restructuring, transformation or cost program, and what charges were recorded for it or are no longer expected?",
+   "hit_span_handles": [
+    "SPAN-S14-R01",
+    "SPAN-S14-R02",
+    "SPAN-S14-R03",
+    "SPAN-S14-R04",
+    "SPAN-S14-R05",
+    "SPAN-S14-R06",
+    "SPAN-S14-R07",
+    "SPAN-S14-R08",
+    "SPAN-S14-R09",
+    "SPAN-S14-R10"
+   ],
+   "kind": "STATE"
+  },
+  {
+   "query_id": "Q-PRODUCT-RESOLVED",
+   "topic": "PRODUCT_SAFETY_CYBER",
+   "text": "Does the company state that a product recall, safety matter or cybersecurity incident was remediated, closed or had no material effect on its operations?",
+   "hit_span_handles": [
+    "SPAN-S15-R01",
+    "SPAN-S15-R02",
+    "SPAN-S15-R03",
+    "SPAN-S15-R04",
+    "SPAN-S15-R05",
+    "SPAN-S15-R06",
+    "SPAN-S15-R07",
+    "SPAN-S15-R08",
+    "SPAN-S15-R09",
+    "SPAN-S15-R10"
+   ],
+   "kind": "STATE"
+  },
+  {
+   "query_id": "Q-GOVERNANCE-CONTROLS",
+   "topic": "GOVERNANCE_CONTROLS",
+   "text": "Did management conclude that the company's disclosure controls and procedures and internal control over financial reporting were effective, with no material changes?",
+   "hit_span_handles": [
+    "SPAN-S16-R01",
+    "SPAN-S16-R02",
+    "SPAN-S16-R03",
+    "SPAN-S16-R04",
+    "SPAN-S16-R05",
+    "SPAN-S16-R06",
+    "SPAN-S16-R07",
+    "SPAN-S16-R08",
+    "SPAN-S16-R09",
+    "SPAN-S16-R10"
+   ],
+   "kind": "STATE"
+  },
+  {
+   "query_id": "Q-GOVERNANCE-MEETING",
+   "topic": "GOVERNANCE_CONTROLS",
+   "text": "Did the company amend its bylaws or charter, or report the results of shareholder votes on directors, the auditor or shareholder proposals at a meeting?",
+   "hit_span_handles": [
+    "SPAN-S17-R01",
+    "SPAN-S17-R02",
+    "SPAN-S17-R03",
+    "SPAN-S17-R04",
+    "SPAN-S17-R05",
+    "SPAN-S17-R06",
+    "SPAN-S17-R07",
+    "SPAN-S17-R08",
+    "SPAN-S17-R09",
+    "SPAN-S17-R10"
+   ],
+   "kind": "STATE"
+  },
+  {
+   "query_id": "Q-CORPORATE-LIABILITY-MANAGEMENT",
+   "topic": "CORPORATE_ACTION_LISTING",
+   "text": "Did the company launch a tender offer or exchange offer for its debt securities, or redeem, repurchase or repay its notes before maturity?",
+   "hit_span_handles": [
+    "SPAN-S18-R01",
+    "SPAN-S18-R02",
+    "SPAN-S18-R03",
+    "SPAN-S18-R04",
+    "SPAN-S18-R05",
+    "SPAN-S18-R06",
+    "SPAN-S18-R07",
+    "SPAN-S18-R08",
+    "SPAN-S18-R09",
+    "SPAN-S18-R10"
+   ],
+   "kind": "STATE"
+  },
+  {
+   "query_id": "Q-CORPORATE-VENTURE",
+   "topic": "CORPORATE_ACTION_LISTING",
+   "text": "Did the company form a joint venture or partnership with another party, or record noncontrolling interests from a new venture?",
+   "hit_span_handles": [
+    "SPAN-S19-R01",
+    "SPAN-S19-R02",
+    "SPAN-S19-R03",
+    "SPAN-S19-R04",
+    "SPAN-S19-R05",
+    "SPAN-S19-R06",
+    "SPAN-S19-R07",
+    "SPAN-S19-R08",
+    "SPAN-S19-R09",
+    "SPAN-S19-R10"
+   ],
+   "kind": "STATE"
+  },
+  {
+   "query_id": "Q-COMMERCIAL-AGREEMENTS",
+   "topic": "COMMERCIAL_COUNTERPARTY",
+   "text": "Did the company sign, renew, extend or amend a significant customer, supplier, distribution or offtake agreement, or report a concentration of revenue?",
+   "hit_span_handles": [
+    "SPAN-S20-R01",
+    "SPAN-S20-R02",
+    "SPAN-S20-R03",
+    "SPAN-S20-R04",
+    "SPAN-S20-R05",
+    "SPAN-S20-R06",
+    "SPAN-S20-R07",
+    "SPAN-S20-R08",
+    "SPAN-S20-R09",
+    "SPAN-S20-R10"
+   ],
+   "kind": "STATE"
+  }
+ ],
+ "read_span_handles": [
+  "SPAN-S13-R01",
+  "SPAN-S03-R01",
+  "SPAN-S09-R01",
+  "SPAN-S16-R03",
+  "SPAN-S02-R01",
+  "SPAN-S03-R02",
+  "SPAN-S13-R02",
+  "SPAN-S09-R05",
+  "SPAN-S03-R03",
+  "SPAN-S13-R06"
+ ],
+ "search_call_count": 20,
+ "span_read_call_count": 3,
+ "litigation_matters": {
+  "rules_id": "alternative-evidence.litigation-matter-inventory.v3",
+  "allocation_rules_id": "alternative-evidence.matter-evidence-allocation.unmet-needs.v1",
+  "plan_hash": "2525f5047d4b9d948a9c96be81ba0636b7ecf160182a15552f85f256d4fda1b5",
+  "plan_offset": 0,
+  "cumulative_read_windows": 4,
+  "window_allowance": 64,
+  "read_allowance": 16,
+  "window_byte_ceiling": 3900,
+  "documents_inspected": 1,
+  "documents_skipped_by_form": 0,
+  "documents": [
+   {
+    "document_handle": "DOC-AAPL-001",
+    "entity_id": "AAPL",
+    "document_type": "10-Q",
+    "revision_label": "10-q-2026",
+    "report_period_end": "2026-06-30",
+    "regions": [
+     {
+      "kind": "NOTE",
+      "heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "character_start": 323,
+      "character_end": 2921,
+      "end_basis": "next NOTE heading: NOTE 8. SEGMENT INFORMATION",
+      "end_uncertain": false
+     },
+     {
+      "kind": "ITEM",
+      "heading": "ITEM 1. LEGAL PROCEEDINGS",
+      "character_start": 3053,
+      "character_end": 3255,
+      "end_basis": "next ITEM heading: ITEM 6. EXHIBITS",
+      "end_uncertain": false
+     }
+    ],
+    "matters": [
+     {
+      "handle": "M-AAPL-001-001",
+      "title": "Washtenaw County Employees' Retirement System v. Dollar General Corporation, et al.",
+      "basis": "italic caption",
+      "named": true,
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "group": "Legal proceedings",
+      "character_start": 611,
+      "character_end": 1144,
+      "source_bytes": 533,
+      "aliases": [
+       "Securities Litigation"
+      ],
+      "case_numbers": [
+       "Case No. 3:23-cv-01250"
+      ],
+      "courts": [
+       "United States District Court for the Middle District of Tennessee"
+      ],
+      "planned_windows": 1,
+      "read_windows": 1
+     },
+     {
+      "handle": "M-AAPL-001-002",
+      "title": "Nathan Silva v. Todd J. Vasos, et al.",
+      "basis": "italic caption",
+      "named": true,
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "group": "Legal proceedings",
+      "character_start": 1146,
+      "character_end": 1418,
+      "source_bytes": 272,
+      "aliases": [
+       "Silva"
+      ],
+      "case_numbers": [
+       "Case No. 3:24-cv-00083"
+      ],
+      "courts": [
+       "United States District Court for the Middle District of Tennessee"
+      ],
+      "planned_windows": 1,
+      "read_windows": 1
+     },
+     {
+      "handle": "M-AAPL-001-003",
+      "title": "class action on behalf of Washington employees",
+      "basis": "dated filing",
+      "named": true,
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "group": "Legal proceedings",
+      "character_start": 1582,
+      "character_end": 1873,
+      "source_bytes": 291,
+      "aliases": [],
+      "case_numbers": [],
+      "courts": [],
+      "planned_windows": 1,
+      "read_windows": 1
+     },
+     {
+      "handle": "M-AAPL-001-004",
+      "title": "Howell v. Costco Wholesale Corp.",
+      "basis": "second filing",
+      "named": true,
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "group": "Legal proceedings",
+      "character_start": 1873,
+      "character_end": 2165,
+      "source_bytes": 292,
+      "aliases": [],
+      "case_numbers": [],
+      "courts": [],
+      "planned_windows": 1,
+      "read_windows": 1
+     },
+     {
+      "handle": "M-AAPL-001-005",
+      "title": "Commissioner of the Department of Licensing and Consumer Affairs and the Government of the United States Virgin Islands",
+      "basis": "dated filing",
+      "named": true,
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "group": "Legal proceedings",
+      "character_start": 2167,
+      "character_end": 2536,
+      "source_bytes": 369,
+      "aliases": [],
+      "case_numbers": [
+       "Case No. ST-2025-CV-00123"
+      ],
+      "courts": [],
+      "planned_windows": 1,
+      "read_windows": 1
+     }
+    ],
+    "unassigned": [
+     {
+      "character_start": 348,
+      "character_end": 609,
+      "reason": "no signpost opened this text"
+     },
+     {
+      "character_start": 1420,
+      "character_end": 1580,
+      "reason": "region-level statement"
+     },
+     {
+      "character_start": 2538,
+      "character_end": 2919,
+      "reason": "region-level statement"
+     },
+     {
+      "character_start": 3055,
+      "character_end": 3066,
+      "reason": "lead-in or boilerplate (no litigation cue)"
+     },
+     {
+      "character_start": 3068,
+      "character_end": 3138,
+      "reason": "no signpost opened this text"
+     },
+     {
+      "character_start": 3140,
+      "character_end": 3253,
+      "reason": "lead-in or boilerplate (no litigation cue)"
+     }
+    ],
+    "inspection": "COMPLETE",
+    "qualifications": [
+     "6 unassigned range(s) no signpost claimed"
+    ],
+    "planned_windows": 11,
+    "read_windows": 4,
+    "pending_windows": 0,
+    "region_source_bytes": 2794,
+    "read_source_bytes": 2767,
+    "pending_source_bytes": 0
+   }
+  ],
+  "windows": [
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "UNASSIGNED",
+    "part": 1,
+    "part_count": 1,
+    "character_start": 348,
+    "character_end": 1580,
+    "source_bytes": 1232,
+    "status": "READ",
+    "span_handle": "SPAN-M01-R0001",
+    "delivered_whole": true,
+    "attributions": [
+     {
+      "role": "REGION_STATEMENT",
+      "scope": "REGION",
+      "basis": "planned window; lead_in statement; refers to the matters: 'matters described below'",
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "character_start": 348,
+      "character_end": 609
+     },
+     {
+      "matter_handle": "M-AAPL-001-001",
+      "role": "CORE",
+      "scope": "MATTER",
+      "basis": "planned window",
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "character_start": 611,
+      "character_end": 1144
+     },
+     {
+      "matter_handle": "M-AAPL-001-002",
+      "role": "CORE",
+      "scope": "MATTER",
+      "basis": "planned window",
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "character_start": 1146,
+      "character_end": 1418
+     },
+     {
+      "role": "REGION_STATEMENT",
+      "scope": "REGION",
+      "basis": "planned window; between statement; refers to the matters: 'these matters'",
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "character_start": 1420,
+      "character_end": 1580
+     }
+    ]
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "UNASSIGNED",
+    "part": 1,
+    "part_count": 1,
+    "character_start": 2167,
+    "character_end": 2919,
+    "source_bytes": 754,
+    "status": "READ",
+    "span_handle": "SPAN-M01-R0002",
+    "delivered_whole": true,
+    "attributions": [
+     {
+      "matter_handle": "M-AAPL-001-005",
+      "role": "CORE",
+      "scope": "MATTER",
+      "basis": "planned window",
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "character_start": 2167,
+      "character_end": 2536
+     },
+     {
+      "role": "REGION_STATEMENT",
+      "scope": "REGION",
+      "basis": "planned window; trailing statement; refers to the matters: 'any pending claim'",
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "character_start": 2538,
+      "character_end": 2919
+     }
+    ]
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "UNASSIGNED",
+    "part": 1,
+    "part_count": 1,
+    "character_start": 3055,
+    "character_end": 3253,
+    "source_bytes": 198,
+    "status": "READ",
+    "span_handle": "SPAN-M01-R0003",
+    "delivered_whole": true,
+    "attributions": [
+     {
+      "role": "REGION_STATEMENT",
+      "scope": "UNRESOLVED",
+      "basis": "planned window; whole statement; scope not stated",
+      "region_heading": "ITEM 1. LEGAL PROCEEDINGS",
+      "character_start": 3055,
+      "character_end": 3066
+     },
+     {
+      "role": "REGION_STATEMENT",
+      "scope": "REGION",
+      "basis": "planned window; whole statement; refers to the matters: 'these proceedings'",
+      "region_heading": "ITEM 1. LEGAL PROCEEDINGS",
+      "character_start": 3068,
+      "character_end": 3138
+     },
+     {
+      "role": "REGION_STATEMENT",
+      "scope": "UNRESOLVED",
+      "basis": "planned window; whole statement; scope not stated",
+      "region_heading": "ITEM 1. LEGAL PROCEEDINGS",
+      "character_start": 3140,
+      "character_end": 3253
+     }
+    ]
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-003",
+    "part": 1,
+    "part_count": 1,
+    "character_start": 1582,
+    "character_end": 2165,
+    "source_bytes": 583,
+    "status": "READ",
+    "span_handle": "SPAN-M01-R0004",
+    "delivered_whole": true,
+    "attributions": [
+     {
+      "matter_handle": "M-AAPL-001-003",
+      "role": "CORE",
+      "scope": "MATTER",
+      "basis": "planned window",
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "character_start": 1582,
+      "character_end": 1873
+     },
+     {
+      "matter_handle": "M-AAPL-001-004",
+      "role": "CORE",
+      "scope": "MATTER",
+      "basis": "planned window",
+      "region_heading": "NOTE 7. COMMITMENTS AND CONTINGENCIES",
+      "character_start": 1873,
+      "character_end": 2165
+     }
+    ]
+   }
+  ],
+  "span_handles": [
+   "SPAN-M01-R0001",
+   "SPAN-M01-R0002",
+   "SPAN-M01-R0003",
+   "SPAN-M01-R0004"
+  ],
+  "read_call_count": 1,
+  "planned_windows": 4,
+  "read_windows": 4,
+  "pending_windows": 0,
+  "prior_windows": 0,
+  "planned_source_bytes": 2767,
+  "read_source_bytes": 2767,
+  "pending_source_bytes": 0,
+  "needs": [
+   {
+    "document_handle": "DOC-AAPL-001",
+    "kind": "REGION_STATEMENT",
+    "status": "PROVIDED_SHARED",
+    "character_start": 348,
+    "character_end": 609,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "lead_in statement; refers to the matters: 'matters described below'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-001",
+    "kind": "LEAD",
+    "status": "PROVIDED_SHARED",
+    "character_start": 611,
+    "character_end": 1144,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "italic caption: Washtenaw County Employees' Retirement System v. Dollar General Corporation, et "
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-002",
+    "kind": "LEAD",
+    "status": "PROVIDED_SHARED",
+    "character_start": 1146,
+    "character_end": 1418,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "italic caption: Nathan Silva v. Todd J. Vasos, et al."
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "kind": "REGION_STATEMENT",
+    "status": "PROVIDED_SHARED",
+    "character_start": 1420,
+    "character_end": 1580,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "between statement; refers to the matters: 'these matters'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-003",
+    "kind": "LEAD",
+    "status": "PROVIDED_SHARED",
+    "character_start": 1582,
+    "character_end": 1873,
+    "span_handle": "SPAN-M01-R0004",
+    "detail": "dated filing: class action on behalf of Washington employees"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-004",
+    "kind": "LEAD",
+    "status": "PROVIDED_SHARED",
+    "character_start": 1873,
+    "character_end": 2165,
+    "span_handle": "SPAN-M01-R0004",
+    "detail": "second filing: Howell v. Costco Wholesale Corp."
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-005",
+    "kind": "LEAD",
+    "status": "PROVIDED_SHARED",
+    "character_start": 2167,
+    "character_end": 2536,
+    "span_handle": "SPAN-M01-R0002",
+    "detail": "dated filing: Commissioner of the Department of Licensing and Consumer Affairs and the Governm"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "kind": "REGION_STATEMENT",
+    "status": "PROVIDED_SHARED",
+    "character_start": 2538,
+    "character_end": 2919,
+    "span_handle": "SPAN-M01-R0002",
+    "detail": "trailing statement; refers to the matters: 'any pending claim'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "kind": "REGION_STATEMENT",
+    "status": "PROVIDED_SHARED",
+    "character_start": 3055,
+    "character_end": 3066,
+    "span_handle": "SPAN-M01-R0003",
+    "detail": "whole statement; scope not stated"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "kind": "REGION_STATEMENT",
+    "status": "PROVIDED_SHARED",
+    "character_start": 3068,
+    "character_end": 3138,
+    "span_handle": "SPAN-M01-R0003",
+    "detail": "whole statement; refers to the matters: 'these proceedings'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "kind": "REGION_STATEMENT",
+    "status": "PROVIDED_SHARED",
+    "character_start": 3140,
+    "character_end": 3253,
+    "span_handle": "SPAN-M01-R0003",
+    "detail": "whole statement; scope not stated"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "kind": "REFERENCE",
+    "status": "PROVIDED_SHARED",
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "note reference 'Note 7' -> region: NOTE 7. COMMITMENTS AND CONTINGENCIES; the target's 7 required range(s) delivered"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "kind": "REFERENCE",
+    "status": "UNRESOLVED",
+    "detail": "title reference 'Risk Factors' -> unlocated: Risk Factors; not located by structure, no search spent"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "kind": "REFERENCE",
+    "status": "UNRESOLVED",
+    "detail": "filing reference 'Quarterly Report on Form 10-Q for the qu' -> filing: Quarterly Report on Form 10-Q for the qu; referenced filing not held in the document set"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-001",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 348,
+    "character_end": 609,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "lead_in statement of the region: 'matters described below'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-002",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 348,
+    "character_end": 609,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "lead_in statement of the region: 'matters described below'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-003",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 348,
+    "character_end": 609,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "lead_in statement of the region: 'matters described below'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-004",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 348,
+    "character_end": 609,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "lead_in statement of the region: 'matters described below'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-005",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 348,
+    "character_end": 609,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "lead_in statement of the region: 'matters described below'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-001",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 1420,
+    "character_end": 1580,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "between statement of the region: 'these matters'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-002",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 1420,
+    "character_end": 1580,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "between statement of the region: 'these matters'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-003",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 1420,
+    "character_end": 1580,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "between statement of the region: 'these matters'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-004",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 1420,
+    "character_end": 1580,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "between statement of the region: 'these matters'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-005",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 1420,
+    "character_end": 1580,
+    "span_handle": "SPAN-M01-R0001",
+    "detail": "between statement of the region: 'these matters'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-001",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 2538,
+    "character_end": 2919,
+    "span_handle": "SPAN-M01-R0002",
+    "detail": "trailing statement of the region: 'any pending claim'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-002",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 2538,
+    "character_end": 2919,
+    "span_handle": "SPAN-M01-R0002",
+    "detail": "trailing statement of the region: 'any pending claim'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-003",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 2538,
+    "character_end": 2919,
+    "span_handle": "SPAN-M01-R0002",
+    "detail": "trailing statement of the region: 'any pending claim'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-004",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 2538,
+    "character_end": 2919,
+    "span_handle": "SPAN-M01-R0002",
+    "detail": "trailing statement of the region: 'any pending claim'"
+   },
+   {
+    "document_handle": "DOC-AAPL-001",
+    "matter_handle": "M-AAPL-001-005",
+    "kind": "QUALIFICATION",
+    "status": "PROVIDED_SHARED",
+    "character_start": 2538,
+    "character_end": 2919,
+    "span_handle": "SPAN-M01-R0002",
+    "detail": "trailing statement of the region: 'any pending claim'"
+   }
+  ]
+ },
+ "receipt_hash": "74979b04b492c9e4fcb02a0d74a091b15f2f683877ac0d66f2d4ddd109e9b2ff"
+}

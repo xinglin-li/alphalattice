@@ -1,0 +1,22 @@
+{
+ "about": "The literals the sheets still write (a px length other than 0 and 1, a raw colour, a duration, an opacity, a z-index, a mixed colour's strength, a length in em / rem / ch / vh / vw), by file, media, selector and property. The list may only shrink: scripts/check_ui_parameters.py refuses a literal that is not here; a category the gate newly counts is recorded once.",
+ "categories": [
+  "px",
+  "colour",
+  "duration",
+  "opacity",
+  "z",
+  "tint",
+  "length"
+ ],
+ "literals": {
+  "06-pages.css |  | .activity-row > .list-row-main | min-width | length 12em": 1,
+  "06-pages.css |  | .fv-step.is-working .fv-step-node::after | inset | -5px": 1,
+  "06-pages.css |  | .fv-step.just-verified .fv-step-node::after | inset | -3px": 1,
+  "06-pages.css |  | .map-node | min-height | 77px": 1,
+  "06-pages.css |  | .map-nodes:not(.parallel) .map-node:not(:last-child):after | right | -15px": 1,
+  "06-pages.css | (width < 768px) | .map-node | min-height | 75px": 1,
+  "07-tasks.css |  | #teamContributionHeading | scroll-margin-top | 130px": 1,
+  "07-tasks.css | (width < 768px) | body[data-page] .fv-step | flex | 135px": 1
+ }
+}

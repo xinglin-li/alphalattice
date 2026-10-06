@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.numpy.asarray",
+  "revision": "1.0.0",
+  "title": "NumPy asarray adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "numpy", "version": "2.5.1"},
+  "companion_distributions": [],
+  "callable": "numpy.asarray",
+  "arguments": [
+    {"schema_version": "1", "name": "dtype", "value_kind": "string_or_null", "has_default": true, "default": null, "allowed_values": [null, "<f8", "<u4", "float64"]},
+    {"schema_version": "1", "name": "order", "value_kind": "string_or_null", "has_default": true, "default": null, "allowed_values": [null, "C"]}
+  ],
+  "interactions": ["The deterministic owner supplies and validates array data separately; C order is explicit for hashed payloads."],
+  "assumptions": ["The current API slice covers float64 calculations and little-endian float64 or uint32 payloads."],
+  "warnings": ["This spec does not authorize casting unverified data."],
+  "failure_modes": ["Unsupported dtype, order, or unavailable locked NumPy distribution."],
+  "owner_policy_ref": "reference:numerical-validation-metrics",
+  "official_source_url": "https://numpy.org/doc/stable/reference/generated/numpy.asarray.html"
+}

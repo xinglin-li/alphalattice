@@ -1,0 +1,261 @@
+{
+ "schema": "gate-9c6e-grounded-casebook+sub-facts",
+ "label": "HELD_OUT_EVALUATION",
+ "document_bundle_hash": "d90801f029a419a1853811ab22ce13664fbbc8d39cdab185a4b48f2eaabe595c",
+ "evaluation_rule": "As the development casebook: a span counts only after it is resolved through the verified document set by the handle it carries, its declared issuer, document type and revision agree with that set, and its excerpt is found inside the source bytes at the range it declares. Controls are reported apart and must not be credited; the missing-source control has no range by construction; wrong-issuer and wrong-date probes are structural checks (attribution integrity and cutoff) reported by the driver.",
+ "provenance": {
+  "authored": "2026-09-17",
+  "authored_after": "the v2 selection mechanism (per-issuer top-k, exact-preview grouping) was implemented from ER3 and development evidence; before any evaluation of v2 on these cases; no tuning followed",
+  "family_overlap": {
+   "IRM": "issuer untouched by the development casebook (no IRM case there); its 10-Q is a new document",
+   "MOS": "development case MOS-IMPAIRMENT is in the MOS 10-K; the 8-K and 10-K/A here are other documents of the same issuer (issuer overlap, not document overlap)",
+   "ISRG": "development case ISRG-LITIGATION is in the ISRG 10-K/10-Q; the 8-K here is another document (issuer overlap)",
+   "DG": "development case DG-LITIGATION is in the DG 10-K/10-Q; the 8-K here is another document (issuer overlap)",
+   "time": "every document is accepted before the 2026-08-12 18:00 UTC cutoff; the MOS 8-K (2026-08-10) is the newest"
+  }
+ },
+ "annotation_history": [
+  {
+   "date": "2026-09-17",
+   "note": "authored for P3 of PORTFOLIO_EVIDENCE_COVERAGE_SPEED_AND_RELEVANCE; 7 source-confirmed cases, 5 controls"
+  }
+ ],
+ "cases": [
+  {
+   "probe_id": "IRM-COVENANT-COMPLIANCE",
+   "classification": "SOURCE_CONFIRMED",
+   "entity_id": "IRM",
+   "topic": "LIQUIDITY_GOING_CONCERN",
+   "fact": "Iron Mountain states it is in compliance with its leverage and fixed charge coverage ratios as of June 30, 2026, and that noncompliance would have a material adverse effect.",
+   "recall": "any_sub_fact",
+   "fact_ranges": [
+    {
+     "anchor_sha256": "0e80532cf0a124d087e4e4088592680356eddb9a732ffd181ebf7b9f4ce874e7",
+     "character_end": 61569,
+     "character_start": 61235,
+     "document_type": "10-Q",
+     "excerpt": "We are in compliance with our leverage and fixed charge coverage ratios under the Credit Agreement, our bond indentures and other agreements governing our indebtedness as of June 30, 2026. Noncomplian",
+     "revision": "0001020569-26-000071",
+     "sub_fact": "compliance-statement"
+    }
+   ]
+  },
+  {
+   "probe_id": "IRM-DATA-CENTER-DEBT",
+   "classification": "SOURCE_CONFIRMED",
+   "entity_id": "IRM",
+   "topic": "CAPITAL_DILUTION",
+   "fact": "New secured data-center debt in 2026: the Virginia 3 Term Loans due 2031 ($433,000 thousand, 6.3%) and the Virginia 9 Credit Agreement (up to $298,000 thousand, SOFR plus 3.00%).",
+   "recall": "any_sub_fact",
+   "fact_ranges": [
+    {
+     "anchor_sha256": "4d4aedf81e2f3559915de16ccb0d4ccdb1c23c99fa0ab129d1625c8c96c808ad",
+     "character_end": 56008,
+     "character_start": 55681,
+     "document_type": "10-Q",
+     "excerpt": "On January 9, 2026, Iron Mountain Data Centers Virginia 3, LLC and Iron Mountain Data Centers Virginia 3 Intermediate II, LLC, both wholly-owned subsidiaries of IMI, entered into a mortgage loan agree",
+     "revision": "0001020569-26-000071",
+     "sub_fact": "virginia-3"
+    },
+    {
+     "anchor_sha256": "fe2d3fb4a4afd677996232ab9709d00bf55abcfc08f6494edd7b2c87d1b6f8d8",
+     "character_end": 57015,
+     "character_start": 56619,
+     "document_type": "10-Q",
+     "excerpt": "On June 9, 2026, Iron Mountain Data Centers Virginia 9, LLC, an indirect subsidiary of IMI, entered into a credit agreement that includes a term loan facility (the \"Virginia 9 Term Loans\") and a lette",
+     "revision": "0001020569-26-000071",
+     "sub_fact": "virginia-9"
+    }
+   ]
+  },
+  {
+   "probe_id": "IRM-VIRGINIA9-OUTSTANDING",
+   "classification": "SOURCE_CONFIRMED",
+   "entity_id": "IRM",
+   "topic": "CAPITAL_DILUTION",
+   "fact": "A numbers fact: $29,595 thousand outstanding on the Virginia 9 Term Loans at June 30, 2026 at an interest rate of 6.9%.",
+   "recall": "any_sub_fact",
+   "fact_ranges": [
+    {
+     "anchor_sha256": "c4aff14acfab43af69d77548cd7b08b06492f18403167e0efd973042733c8c76",
+     "character_end": 57711,
+     "character_start": 57555,
+     "document_type": "10-Q",
+     "excerpt": "As of June 30, 2026, we had $29,595 outstanding on the Virginia 9 Term Loans and the interest rate in effect under the Virginia 9 Credit Agreement was 6.9%.",
+     "revision": "0001020569-26-000071",
+     "sub_fact": "outstanding-and-rate"
+    }
+   ]
+  },
+  {
+   "probe_id": "IRM-JV-NONCONTROLLING",
+   "classification": "SOURCE_CONFIRMED",
+   "entity_id": "IRM",
+   "topic": "CORPORATE_ACTION_LISTING",
+   "fact": "A joint venture formed in the quarter (Iron Mountain Data Centers Virginia 9 JV, LP) producing noncontrolling interests of approximately $49.9 million.",
+   "recall": "any_sub_fact",
+   "fact_ranges": [
+    {
+     "anchor_sha256": "383ec68cd381412b4c07ddf5a87b011c99f239632f259898fa5d39511e75c735",
+     "character_end": 62836,
+     "character_start": 62548,
+     "document_type": "10-Q",
+     "excerpt": "During the quarter ended June 30, 2026, we entered into an agreement with a partner to form our Iron Mountain Data Centers Virginia 9 JV, LP joint venture, which resulted in Noncontrolling interests o",
+     "revision": "0001020569-26-000071",
+     "sub_fact": "jv-notes"
+    },
+    {
+     "anchor_sha256": "cd1a094485f4acdbfd753d64bd3be8a618de73cd8a34bae5dc160df5b2001642",
+     "character_end": 95928,
+     "character_start": 95634,
+     "document_type": "10-Q",
+     "excerpt": "During the quarter ended June 30, 2026, we entered into an agreement with a partner to form our Iron Mountain Data Centers Virginia 9 JV, LP joint venture, which resulted in Noncontrolling interests o",
+     "revision": "0001020569-26-000071",
+     "sub_fact": "jv-mdna"
+    }
+   ]
+  },
+  {
+   "probe_id": "MOS-TENDER-OFFER",
+   "classification": "SOURCE_CONFIRMED",
+   "entity_id": "MOS",
+   "topic": "CORPORATE_ACTION_LISTING",
+   "fact": "Mosaic launched cash tender offers for certain of its debt securities on August 10, 2026.",
+   "recall": "any_sub_fact",
+   "fact_ranges": [
+    {
+     "anchor_sha256": "7a7ee0061b28399f2ffb89bba4594d10b17bfe452a7e25afdc229d3f610a83e3",
+     "character_end": 1277,
+     "character_start": 1136,
+     "document_type": "8-K",
+     "excerpt": "On August 10, 2026, The Mosaic Company issued a press release announcing the launch of cash tender offers for certain of its debt securities.",
+     "revision": "0001193125-26-341391",
+     "sub_fact": "tender-offer"
+    }
+   ]
+  },
+  {
+   "probe_id": "ISRG-BYLAWS-AMENDED",
+   "classification": "SOURCE_CONFIRMED",
+   "entity_id": "ISRG",
+   "topic": "GOVERNANCE_CONTROLS",
+   "fact": "Intuitive Surgical's board amended and restated the bylaws on July 23, 2026, including provisions to disregard nominee votes that do not comply with the universal proxy rules.",
+   "recall": "any_sub_fact",
+   "fact_ranges": [
+    {
+     "anchor_sha256": "9e629458a46ccbe8246316abb01a9087ad99fbb154bb13ff548db8e463df6ef3",
+     "character_end": 1555,
+     "character_start": 1333,
+     "document_type": "8-K",
+     "excerpt": "On July 23, 2026, the Board of Directors of Intuitive Surgical, Inc. (the “Company”) amended and restated the Company’s Amended and Restated Bylaws (as so amended and restated, the “Amended Bylaws”) t",
+     "revision": "0001035267-26-000063",
+     "sub_fact": "bylaws"
+    }
+   ]
+  },
+  {
+   "probe_id": "DG-SPECIAL-MEETING-PROPOSAL",
+   "classification": "SOURCE_CONFIRMED",
+   "entity_id": "DG",
+   "topic": "GOVERNANCE_CONTROLS",
+   "fact": "A shareholder proposal to reduce the ownership threshold to call a special meeting from 25% to 10% was not approved at the 2026 annual meeting.",
+   "recall": "any_sub_fact",
+   "fact_ranges": [
+    {
+     "anchor_sha256": "30aef2079ce22e356f28a9ddce9895c1ae378cf2af599c5728e1d12d9c5421b0",
+     "character_end": 3651,
+     "character_start": 3458,
+     "document_type": "8-K",
+     "excerpt": "A shareholder proposal asking the Board to take the steps necessary to reduce the minimum ownership percentage required to call a special shareholders’ meeting from 25% to 10% was not approved.",
+     "revision": "0001104659-26-069198",
+     "sub_fact": "special-meeting"
+    }
+   ]
+  },
+  {
+   "probe_id": "IRM-LITIGATION-ORDINARY",
+   "classification": "CONTROL_NEGATION",
+   "entity_id": "IRM",
+   "topic": "LEGAL_REGULATORY",
+   "fact": "Control (negation): a statement that no current litigation is expected to be material is not a litigation risk fact.",
+   "recall": "any_sub_fact",
+   "fact_ranges": [
+    {
+     "anchor_sha256": "476118c68750a52157f467d55b53ac278fbf24b07afa6f2909d7f8159b0eb245",
+     "character_end": 62023,
+     "character_start": 61812,
+     "document_type": "10-Q",
+     "excerpt": "While the outcome of litigation is inherently uncertain, we do not believe any current litigation will have a material adverse effect on our consolidated financial condition, results of operations or ",
+     "revision": "0001020569-26-000071",
+     "sub_fact": "no-material-litigation"
+    }
+   ]
+  },
+  {
+   "probe_id": "IRM-FLS-RECITAL",
+   "classification": "CONTROL_BOILERPLATE",
+   "entity_id": "IRM",
+   "topic": "LEGAL_REGULATORY",
+   "fact": "Control (boilerplate): the forward-looking statements recital names litigation and cybersecurity as words, not as events.",
+   "recall": "any_sub_fact",
+   "fact_ranges": [
+    {
+     "anchor_sha256": "434dc6224de9fce886760ea39fc07bf52549922e8c40e493c5239e8919dc7a63",
+     "character_end": 69166,
+     "character_start": 68966,
+     "document_type": "10-Q",
+     "excerpt": "We have made statements in this Quarterly Report that constitute \"forward-looking statements\" as that term is defined in the Private Securities Litigation Reform Act of 1995 and other securities laws.",
+     "revision": "0001020569-26-000071",
+     "sub_fact": "fls-recital"
+    }
+   ]
+  },
+  {
+   "probe_id": "IRM-MATTERHORN-COMPLETE",
+   "classification": "CONTROL_RESOLVED",
+   "entity_id": "IRM",
+   "topic": "OPERATIONS_SUPPLY",
+   "fact": "Control (resolved risk): the restructuring program completed in 2025 and no restructuring costs were recorded in 2026; a resolved matter, not a current one.",
+   "recall": "any_sub_fact",
+   "fact_ranges": [
+    {
+     "anchor_sha256": "695151de2622b2883e2100ddb74363a93ec99163dba2625a9c41bd94c99af5c5",
+     "character_end": 67949,
+     "character_start": 67780,
+     "document_type": "10-Q",
+     "excerpt": "As Project Matterhorn was completed as of December 31, 2025, there were no Restructuring and other transformation costs for the three and six months ended June 30, 2026.",
+     "revision": "0001020569-26-000071",
+     "sub_fact": "matterhorn-complete"
+    }
+   ]
+  },
+  {
+   "probe_id": "MOS-10KA-EXPLANATORY",
+   "classification": "CONTROL_AMENDMENT",
+   "entity_id": "MOS",
+   "topic": "GOVERNANCE_CONTROLS",
+   "fact": "Control (amendment): the 10-K/A is filed solely to add the holders-of-record count and a revised consent; it restates no risk disclosure and does not contain the original.",
+   "recall": "any_sub_fact",
+   "fact_ranges": [
+    {
+     "anchor_sha256": "a72925682362620db5e130ac82440ede2a8ad2e8b822ec2841326a36adb8489b",
+     "character_end": 6163,
+     "character_start": 6003,
+     "document_type": "10-K/A",
+     "excerpt": "Except as explicitly set forth herein, this Amendment does not otherwise change, modify or update any other disclosures, or exhibits to, the Original Form 10-K.",
+     "revision": "0001285785-26-000054",
+     "sub_fact": "amendment-scope"
+    }
+   ]
+  },
+  {
+   "probe_id": "AMP-MISSING-SOURCE",
+   "classification": "CONTROL_MISSING_SOURCE",
+   "entity_id": "AMP",
+   "topic": "LEGAL_REGULATORY",
+   "fact": "Control (missing source): AMP's retained material is one earnings 8-K cover; no annual or quarterly report is admitted, so no AMP risk fact can be credited and the packet must not present one.",
+   "recall": "any_sub_fact",
+   "fact_ranges": []
+  }
+ ]
+}

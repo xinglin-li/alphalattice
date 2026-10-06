@@ -1,0 +1,25 @@
+AlphaLattice
+Copyright 2026 Xinglin Li
+
+This product is licensed under the Apache License, Version 2.0; see LICENSE.
+
+It includes the following third-party material, each under its own license:
+
+- The Geist and Geist Mono fonts
+  (src/alphalattice/interface/local_application/assets/fonts/geist-latin.woff2 and
+  geist-mono-latin.woff2), Copyright 2024 The Geist Project Authors
+  (https://github.com/vercel/geist-font.git), licensed under the SIL Open Font License,
+  Version 1.1, whose text is src/alphalattice/interface/local_application/assets/fonts/OFL.txt.
+
+The software the product installs and the model packs it downloads are not part of this
+distribution and keep their own licenses: the Python packages pinned in uv.lock, the optional
+Playwright browser tooling pinned in third_party/playwright/package-lock.json (Apache License,
+Version 2.0, Copyright (c) Microsoft Corporation, with code derived from the Puppeteer project,
+Apache License, Version 2.0), and these model packs, each at the revision the product pins:
+
+- BAAI/bge-small-en-v1.5 (MIT License)
+- sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (Apache License, Version 2.0)
+- Qwen/Qwen3-Embedding-0.6B (Apache License, Version 2.0)
+- Qwen/Qwen3-Reranker-0.6B (Apache License, Version 2.0)
+- Xenova/ms-marco-MiniLM-L-6-v2, ONNX weights converted from
+  cross-encoder/ms-marco-MiniLM-L-6-v2 (Apache License, Version 2.0)

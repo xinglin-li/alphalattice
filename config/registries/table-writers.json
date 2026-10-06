@@ -1,0 +1,7 @@
+{
+"entries": {
+"feature_panel_snapshot_manifest::market_data_ops": "the bootstrap marks Panels SUPERSEDED (V176)"
+},
+"note": "G2: another package's data writes to a table, as the tree held them; each goes when its owner defines the write (V155, V159, V176) or the migration retires.",
+"schema": "alphalattice.playpen.registry.table-writers"
+}

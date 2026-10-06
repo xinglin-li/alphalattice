@@ -1,0 +1,244 @@
+{
+"entries": {
+"schema:alphalattice.local-application.operations": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/alphalattice/interface/local_application/operations.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.local-application.operations"
+]
+},
+"schema:alphalattice.playpen.registry.areas": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/devtools/architecture/registries.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.playpen.registry.areas"
+]
+},
+"schema:alphalattice.playpen.registry.host-modules": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/devtools/architecture/registries.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.playpen.registry.host-modules"
+]
+},
+"schema:alphalattice.playpen.registry.noun-definitions": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/devtools/architecture/registries.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.playpen.registry.noun-definitions"
+]
+},
+"schema:alphalattice.playpen.registry.owners": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/devtools/architecture/registries.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.playpen.registry.owners"
+]
+},
+"task_kind:alternative_evidence.document_intelligence": {
+"owner": "task_kind:alternative_evidence",
+"readers": [
+"src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py"
+],
+"upgraders": [],
+"version": [
+"alternative-evidence-document-intelligence-authority"
+]
+},
+"task_kind:chief_risk_officer.portfolio_review": {
+"owner": "task_kind:chief_risk_officer",
+"readers": [
+"src/alphalattice/control/product_host/composition/evidence_review_application.py",
+"src/alphalattice/oversight/chief_risk_officer/decision/submissions.py",
+"src/alphalattice/oversight/chief_risk_officer/runtime/portfolio_review_task.py"
+],
+"upgraders": [],
+"version": [
+"cro-portfolio-review-authority"
+]
+},
+"task_kind:model_training_input_preparation": {
+"owner": "task_kind:model_training_input_preparation",
+"readers": [
+"src/alphalattice/control/product_host/data_preparation/model_training.py"
+],
+"upgraders": [],
+"version": [
+"model-training-input"
+]
+},
+"task_kind:portfolio_calibration_preparation": {
+"owner": "task_kind:portfolio_calibration_preparation",
+"readers": [
+"src/alphalattice/control/product_host/composition/local_web_session.py",
+"src/alphalattice/control/product_host/composition/strategy_calibration.py"
+],
+"upgraders": [],
+"version": [
+"portfolio-calibration-input"
+]
+},
+"task_kind:portfolio_decision_update": {
+"owner": "task_kind:portfolio_decision_update",
+"readers": [
+"src/alphalattice/control/product_host/composition/local_web_session.py",
+"src/alphalattice/control/product_host/composition/portfolio_research_operations.py",
+"src/alphalattice/control/product_host/composition/portfolio_updates.py"
+],
+"upgraders": [],
+"version": [
+"portfolio-decision-update"
+]
+},
+"task_kind:portfolio_public_development_replay": {
+"owner": "task_kind:portfolio_public_development_replay",
+"readers": [
+"src/alphalattice/control/product_host/composition/local_web_session.py",
+"src/alphalattice/control/product_host/composition/portfolio_finalization.py",
+"src/alphalattice/control/product_host/composition/portfolio_research_operations.py",
+"src/alphalattice/control/product_host/composition/research_history.py",
+"src/alphalattice/investment/portfolio_strategy_lab/application/candidate_freeze.py",
+"src/alphalattice/investment/portfolio_strategy_lab/application/task.py"
+],
+"upgraders": [],
+"version": [
+"portfolio-research-durable-request"
+]
+},
+"task_kind:portfolio_public_protected_finalization": {
+"owner": "task_kind:portfolio_public_protected_finalization",
+"readers": [
+"src/alphalattice/investment/portfolio_strategy_lab/application/finalization_task.py"
+],
+"upgraders": [],
+"version": [
+"portfolio-public-protected-finalization-candidate"
+]
+},
+"task_kind:portfolio_public_watermark_advancement": {
+"owner": "task_kind:portfolio_public_watermark_advancement",
+"readers": [
+"src/alphalattice/control/product_host/composition/decision_advancement.py",
+"src/alphalattice/investment/portfolio_strategy_lab/application/advancement_task.py"
+],
+"upgraders": [],
+"version": [
+"portfolio-conditional-decision-advancement"
+]
+},
+"task_kind:research_experiment": {
+"owner": "task_kind:research_experiment",
+"readers": [
+"scripts/u0_probe.py",
+"src/alphalattice/control/product_host/composition/local_web_session.py",
+"src/alphalattice/control/product_host/composition/portfolio_research_operations.py",
+"src/alphalattice/control/product_host/composition/research_experiments.py",
+"src/alphalattice/control/product_host/composition/research_history.py",
+"src/alphalattice/control/product_host/composition/upgrade_overview.py",
+"src/alphalattice/control/product_host/composition/verification_sweep.py"
+],
+"upgraders": [],
+"version": [
+"research-experiment-task-input"
+]
+},
+"task_kind:research_feature_materialization": {
+"owner": "task_kind:research_feature_materialization",
+"readers": [
+"src/alphalattice/control/product_host/data_preparation/feature_research.py"
+],
+"upgraders": [],
+"version": [
+"research-feature-materialization"
+]
+},
+"task_kind:research_input_capture": {
+"owner": "task_kind:research_input_capture",
+"readers": [
+"src/alphalattice/control/product_host/composition/task_recovery.py",
+"src/alphalattice/control/product_host/data_preparation/input_capture.py",
+"src/alphalattice/control/product_host/research_authoring/factor_inputs.py",
+"src/alphalattice/control/product_host/research_authoring/input_revisions.py"
+],
+"upgraders": [],
+"version": [
+"research-input-capture"
+]
+},
+"task_kind:research_strategy_preparation": {
+"owner": "task_kind:research_strategy_preparation",
+"readers": [
+"src/alphalattice/control/product_host/data_preparation/research_strategy.py"
+],
+"upgraders": [],
+"version": [
+"research-strategy-input"
+]
+},
+"task_kind:strategy_score_preparation": {
+"owner": "task_kind:strategy_score_preparation",
+"readers": [
+"src/alphalattice/control/product_host/composition/local_web_session.py",
+"src/alphalattice/control/product_host/composition/strategy_scoring.py"
+],
+"upgraders": [],
+"version": [
+"strategy-score-preparation"
+]
+},
+"task_kind:study_verification_sweep": {
+"owner": "task_kind:study_verification_sweep",
+"readers": [
+"src/alphalattice/control/product_host/composition/verification_sweep.py"
+],
+"upgraders": [],
+"version": [
+"study-verification-sweep"
+]
+},
+"task_kind:workspace_data_update": {
+"owner": "task_kind:workspace_data_update",
+"readers": [
+"src/alphalattice/control/product_host/composition/local_web_session.py",
+"src/alphalattice/control/product_host/composition/task_recovery.py",
+"src/alphalattice/control/product_host/data_preparation/remediation.py",
+"src/alphalattice/control/product_host/maintenance/data_update.py"
+],
+"upgraders": [],
+"version": [
+"workspace-data-update",
+"workspace-data-update-human-confirmed"
+]
+},
+"task_kind:workspace_preparation": {
+"owner": "task_kind:workspace_preparation",
+"readers": [
+"src/alphalattice/control/product_host/composition/task_recovery.py",
+"src/alphalattice/control/product_host/data_preparation/application.py",
+"src/alphalattice/control/product_host/data_preparation/remediation.py",
+"src/alphalattice/control/product_host/research_authoring/factor_inputs.py"
+],
+"upgraders": [],
+"version": [
+"workspace-preparation-input"
+]
+}
+},
+"note": "",
+"schema": "alphalattice.playpen.registry.formats"
+}

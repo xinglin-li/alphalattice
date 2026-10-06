@@ -1,0 +1,150 @@
+{
+ "about": "The named exceptions (PR1; the goal's \"写死数值只剩带理由的例外表\"): every literal a sheet still writes, with the reason it is not a parameter -- a component's own geometry, a diagram's drawing, a wrap point. scripts/check_ui_parameters.py refuses a literal without a reason here, and a reason no sheet uses any more. Keys are the ratchet's: sheet | media | selector | property | value. The `census` list names what the census probe (handtuned_census.py) finds and the gate does not count: structure, behaviour constants, an icon's or an engine's own geometry.",
+ "reasons": {
+  "06-pages.css |  | .activity-row > .list-row-main | min-width | length 12em": "an activity row keeps twelve ems of its operation's words before its facts go under them",
+  "06-pages.css |  | .fv-step.is-working .fv-step-node::after | inset | -5px": "the working ring around the odd 27 px pipeline node (the node's own geometry; its 1 px connector sits on a whole pixel)",
+  "06-pages.css |  | .fv-step.just-verified .fv-step-node::after | inset | -3px": "the verified flash around the odd 27 px pipeline node (the node's own geometry)",
+  "06-pages.css |  | .map-node | min-height | 77px": "the research map's node holds its glyph, name and two lines of what it produces",
+  "06-pages.css |  | .map-nodes:not(.parallel) .map-node:not(:last-child):after | right | -15px": "the map's arrow sits in the middle of the 20 px gap between two nodes",
+  "06-pages.css | (width < 768px) | .map-node | min-height | 75px": "the research map's node on a tablet: two across, the name and its lines",
+  "07-tasks.css |  | #teamContributionHeading | scroll-margin-top | 130px": "the Contribution heading's scroll margin: it clears the top row and the dock's head above it",
+  "07-tasks.css | (width < 768px) | body[data-page] .fv-step | flex | 135px": "a pipeline step on a phone: the steps scroll sideways, snapped, a little more than two in view"
+ },
+ "census": [
+  {
+   "row": "len/%",
+   "match": "col-share \\{ width:",
+   "reason": "a share column is 1/N of the table: arithmetic, one rule per count"
+  },
+  {
+   "row": "len/%",
+   "match": "\\{ width: 1% \\}",
+   "reason": "a figure column shrinks to its content (the table's 1 % idiom)"
+  },
+  {
+   "row": "len/%",
+   "match": "\\.ph-|\\.ph\\b|ph-title|skeleton",
+   "reason": "a skeleton's bars are its own drawing: a placeholder's lengths"
+  },
+  {
+   "row": "nudge (negative offset)",
+   "match": "control-reason \\{ margin: -1px",
+   "reason": "visually hidden: the 1 px box and its -1 px margin (structure)"
+  },
+  {
+   "row": "nudge (translate)",
+   "match": "\\.skip \\{ transform",
+   "reason": "the skip link waits off screen until it is focused (structure)"
+  },
+  {
+   "row": "nudge (translate)",
+   "match": "rotate\\(-35deg\\)",
+   "reason": "the arrow glyph tilts toward its target on hover: the glyph's own geometry"
+  },
+  {
+   "row": "several files",
+   "match": "11-accessibility",
+   "reason": "the accessibility sheet's scoped overrides (forced colours, reduced motion) are excepted (plan, C1)"
+  },
+  {
+   "row": "important",
+   "match": "11-accessibility",
+   "reason": "forced colours and reduced motion must win (plan: stays)"
+  },
+  {
+   "row": "important",
+   "match": "02-shell",
+   "reason": "[hidden] always hides: the attribute's meaning (structure)"
+  },
+  {
+   "row": "constant",
+   "match": "^js/engines/",
+   "reason": "an engine's own drawing (the lattice art): its geometry, as an icon's"
+  },
+  {
+   "row": "constant",
+   "match": "^js/app/",
+   "reason": "a named constant in its owner -- a cadence, a cap, a page, a retention, a window, a step list -- is behaviour, not a design value (plan: stays); the display lengths are the library's (SHORT, LIST_PAGE)"
+  },
+  {
+   "row": "svg/chart geometry",
+   "match": "^js/app/icons\\.js",
+   "reason": "an icon's own 24-grid geometry (plan: stays)"
+  },
+  {
+   "row": "timer",
+   "match": ".",
+   "reason": "a timer is behaviour: a debounce, a chord window, a clock's tick (plan: stays)"
+  },
+  {
+   "row": "offset",
+   "match": "top: 0|: 0\\b|\\? [^:]*: 0",
+   "reason": "0 is structure: a scroll to the top, a measure from the origin"
+  },
+  {
+   "row": "inline style",
+   "match": "'0px'",
+   "reason": "measured at the origin: 0 is structure"
+  },
+  {
+   "row": "truncation",
+   "match": "slice\\(0, ?(10|16|4)\\)|slice\\(5, ?7\\)",
+   "reason": "an ISO instant's own parts: the date (10), to the minute (16), the year (4), the month"
+  },
+  {
+   "row": "truncation",
+   "match": "randomUUID\\(\\)\\.slice\\(0,8\\)",
+   "reason": "a generated local id's length"
+  },
+  {
+   "row": "truncation",
+   "match": "name\\.length <= 24|s\\.length <= 22|rest\\.length > 14|slice\\(0, SHORT\\.id\\)",
+   "reason": "a middle cut (head ... tail) that CSS cannot draw: a workspace's name, a session's label"
+  },
+  {
+   "row": "truncation",
+   "match": "length>240",
+   "reason": "a rationale folds past 240 characters behind More"
+  },
+  {
+   "row": "truncation",
+   "match": "128*1024",
+   "reason": "the review answer's bounds: the service's request (web.py MAXIMUM_REQUEST_BODY_BYTES) and each answer owner's own (64*1024 the Analyst brief, 256*1024 the CRO assessment); behaviour, a test keeps the three equal to their owners'"
+  },
+  {
+   "row": "truncation",
+   "match": "length > 48",
+   "reason": "a command's label past 48 characters is not offered as a command"
+  },
+  {
+   "row": "truncation",
+   "match": "rows\\.length>40",
+   "reason": "the risk formations page by forty rows"
+  },
+  {
+   "row": "truncation",
+   "match": "slice\\(0, 60\\)",
+   "reason": "a diagnostic title in a console warning"
+  },
+  {
+   "row": "truncation",
+   "match": "slices\\.slice\\(0,6\\)",
+   "reason": "a composition shows six slices and Other: the categorical palette's size (dataviz)"
+  },
+  {
+   "row": "truncation",
+   "match": "chosen\\.slice\\(0, 8\\)",
+   "reason": "a choice list shows its first eight chosen as chips, the rest as a count"
+  },
+  {
+   "row": "truncation",
+   "match": "\\.slice\\(0, ?(2|3|5|6|12|16|24)\\)",
+   "reason": "a list shows its first few and says how many more: the owner's cap (behaviour)"
+  },
+  {
+   "row": "truncation",
+   "match": "targets\\.length>12",
+   "reason": "an exact plan's targets: the first twelve, then how many more (the rest are in the plan)"
+  }
+ ]
+}

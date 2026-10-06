@@ -1,0 +1,152 @@
+{
+  "fixture": "WORKSPACE_ACTIVITY_SEAM_FIXTURE",
+  "claim": "FIXTURE_NOT_NATIVE_PROOF: shapes for the shared producer/readback seam; no Codex host, thread or model was observed to produce them",
+  "date": "2026-09-14",
+  "routes": {
+    "read_browser": "GET /api/activity?after=<epoch>:<ordinal>&limit=<1..200>&watch=<task_id,...>",
+    "read_client": "GET /api/client/activity (same query; external-client headers)",
+    "ingress_client": "POST /api/client/activity (external-client headers; body = native_event_document)",
+    "read_disposition": "TAIL | CONTINUED | RESET | UNAVAILABLE (store could not be opened; observer.status UNAVAILABLE, cursor null)"
+  },
+  "native_event_document": {
+    "event_kind": "NATIVE_TURN_STARTED",
+    "producer_id": "codex-adapter",
+    "producer_session": "thread-8f2c1a",
+    "producer_sequence": 0,
+    "occurred_at": "2026-09-14T12:00:00+00:00",
+    "summary": "Main PM opened a turn: ask the Analyst for a bounded factor screen on the sealed input.",
+    "subject": {
+      "thread_id_hash": "4c2a7e0b1d6f9a3c5e8b2d4f6a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c",
+      "role": "analyst"
+    },
+    "correlation_ids": [
+      "turn-0001"
+    ]
+  },
+  "expected_declared_item": {
+    "schema_kind": "ExternalActivityObserved",
+    "source_kind": "EXTERNAL_CLIENT",
+    "source_id": "codex-adapter:thread-8f2c1a",
+    "source_sequence": 0,
+    "authority": "AGENT_PROPOSAL",
+    "retention_class": "TRANSIENT_OPERATIONAL",
+    "task_id": null,
+    "run_id": null,
+    "correlation_ids": [
+      "turn-0001"
+    ],
+    "payload": {
+      "event_kind": "NATIVE_TURN_STARTED",
+      "producer_id": "codex-adapter",
+      "producer_session": "thread-8f2c1a",
+      "producer_sequence": 0,
+      "summary": "Main PM opened a turn: ask the Analyst for a bounded factor screen on the sealed input.",
+      "summary_truncated": false,
+      "subject": {
+        "thread_id_hash": "4c2a7e0b1d6f9a3c5e8b2d4f6a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c",
+        "role": "analyst"
+      },
+      "task_verified": false
+    }
+  },
+  "product_operation_item_example": {
+    "schema_kind": "ProductOperationObserved",
+    "source_kind": "PRODUCT_OPERATION",
+    "source_id": "local-web:<launch instance hex>",
+    "authority": "OPERATIONAL_ASSERTION",
+    "task_id": "<task uuid>",
+    "run_id": "local-web:<task uuid>",
+    "payload": {
+      "operation": "RUN",
+      "caller": "EXTERNAL_AUTOMATION",
+      "phase": "RETURNED",
+      "operation_ref": "<32 hex>",
+      "status": "ADMITTED",
+      "task_id": "<task uuid>",
+      "task_lifecycle": "QUEUED",
+      "subject": {},
+      "request_fields": [
+        "spec"
+      ],
+      "next_read": {
+        "operation": "STATUS",
+        "task_id": "<task uuid>"
+      },
+      "latency_milliseconds": 0
+    }
+  },
+  "typed_refusals": [
+    [
+      "activity.event_invalid",
+      "document has an unknown field (authority, caller, source_kind, ...), a bad pattern or is not JSON-shaped"
+    ],
+    [
+      "activity.event_task_unknown",
+      "subject.task_id names no Task in this workspace's Task Control"
+    ],
+    [
+      "observation.source_sequence_collision",
+      "same (producer_id, producer_session, producer_sequence) with different content"
+    ],
+    [
+      "observation.redaction_failed",
+      "a payload key contains a prohibited part such as api_key, secret, raw_prompt"
+    ],
+    [
+      "activity.cursor_invalid",
+      "after= is not <32 hex>:<ordinal>"
+    ],
+    [
+      "activity.limit_invalid",
+      "limit outside 1..200"
+    ],
+    [
+      "activity.watch_invalid",
+      "watch is not a comma list of at most 16 UUIDs"
+    ],
+    [
+      "local_web.external_token_invalid",
+      "client token absent or wrong"
+    ],
+    [
+      "local_web.external_workspace_or_instance_mismatch",
+      "stale connection descriptor after a restart"
+    ],
+    [
+      "local_web.external_browser_origin_not_admitted",
+      "a browser Origin reached a client route"
+    ],
+    [
+      "activity.storage_unavailable",
+      "the activity store could not be opened at service start; events are refused, reads answer UNAVAILABLE"
+    ],
+    [
+      "activity.event_not_admitted",
+      "the observation policy refused the event for a reason that is not a typed code"
+    ],
+    [
+      "activity.failure_detail_withheld",
+      "persisted in place of any owner/exception text that is not a typed failure code"
+    ],
+    [
+      "activity.artifact_readback_failed",
+      "observer state only: the owner could not open the result the index named; no artifact observation is recorded"
+    ]
+  ],
+  "observer_state_example": {
+    "status": "DEGRADED",
+    "recording": "OK",
+    "appends": 12,
+    "missing_observations": 3,
+    "first_failure_at": "2026-09-14T12:00:07+00:00",
+    "last_failure_code": "observation.storage_busy",
+    "last_failure_type": "ObservationStorageError",
+    "hook_failures": 0,
+    "hook_failure_type": null,
+    "entry_failures": 0,
+    "entry_failure_type": null,
+    "store_failure": null,
+    "claim": "OBSERVER_STATE_NOT_EXECUTION_STATE"
+  },
+  "persistence_rule": "Only typed product failure codes (dotted lower-case, optional ':identifier' suffix) and exception class names are persisted; any other failure text is replaced by activity.failure_detail_withheld. Worker error text never enters the ledger."
+}

@@ -1,0 +1,149 @@
+/* 11-accessibility — Preference media: reduced motion, forced colors, more contrast, reduced transparency, print.
+   Files are concatenated in name order by build.py; that order is the cascade order. Edit by hand — the generator in qa/parity/css only did the migration from v3.13. */
+@media (prefers-contrast:more) {
+.muted,
+  .caption,
+  .lede,
+  .tiny,
+  .small {
+    color: var(--text);
+  }
+.caption,
+.small,
+.muted,
+.object-meta {
+    color: var(--text);
+  }
+.diff-reference,
+.diff-column-labels,
+.diff-boundary,
+.proof-footnote,
+.quick-result small,
+.chart-navigator>p {
+    color: var(--text);
+  }
+body[data-page] :is(.caption,.tp-caption) {
+    color: var(--text);
+  }
+}
+@media print {
+body {
+    background: white;
+    color: black;
+  }
+.panel {
+    break-inside: avoid;
+  }
+.object-actions {
+    display: none !important;
+  }
+.performance-surface {
+    break-inside: avoid;
+  }
+#toast {
+    filter: none !important;
+  }
+.es-page {
+    container-type: normal;
+  }
+.run-log-lines {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible;
+  }
+.fv-body {
+    display: block;
+  }
+.fv-work {
+    border: 0;
+  }
+}
+/* One reduced-motion block: every transition is instant and every animation is off; the moving-Task
+   signals (the live dot, the header count) keep a static form through their own rules below. */
+@media (prefers-reduced-motion:reduce) {
+*,
+  *::before,
+  *::after {
+    transition: none;
+    animation: none;
+  }
+.live-dot,
+.live-dot::after,
+.team-exchange.just-arrived,
+.prep-work .prep-unit.ui-arrived {
+    animation: none;
+  }
+html {
+    scroll-behavior: auto;
+  }
+#toast {
+    transition: none !important;
+    animation: none !important;
+  }
+body[data-page] *,
+  body[data-page] *::before,
+  body[data-page] *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto;
+  }
+.fv-step-node::after {
+    opacity: 0 !important;
+  }
+.ui-arrived {
+    animation: none;
+  }
+[data-control] {
+    transition: none !important;
+  }
+[data-control]:active {
+    transform: none !important;
+  }
+}
+@media (forced-colors:active) {
+html,
+  body,
+  * {
+    scrollbar-color: auto !important;
+    scrollbar-width: auto !important;
+  }
+#toast {
+    will-change: auto;
+  }
+:where(input,textarea,select)[aria-invalid=true] {
+    outline: var(--focus-ring-width) solid Highlight;
+  }
+
+  select {
+    appearance: auto;
+  }
+body[data-page] .badge {
+    border: 1px solid CanvasText;
+    color: CanvasText;
+  }
+body[data-page] :is(.selected,[aria-pressed=true]) {
+    outline: 1px solid Highlight;
+  }
+.fv-step-node {
+    border-color: CanvasText;
+  }
+.fv-step::before,
+  .meter-bar > i,
+  .meter-bar > span {
+    background: Highlight !important;
+  }
+.fv-step-node::after {
+    display: none;
+  }
+body[data-page][data-reading] [data-control],
+body[data-page][data-reading] [data-ui-role=status] {
+    forced-color-adjust: auto;
+    box-shadow: none !important;
+  }
+[data-control]:focus-visible {
+    outline: var(--focus-ring-width) solid Highlight;
+  }
+.fv-log-dot {
+    background: CanvasText;
+  }
+}

@@ -1,0 +1,11 @@
+schema: alphalattice.playpen.market-profile
+market_profile_id: us-current-index-research
+display_name: US Current Index Research
+market: US
+currency: USD
+calendar_id: XNYS_XNAS
+provider: yfinance
+# yfinance historical OHLCV observations are already split-adjusted. The
+# projection records this source basis and must not apply splits a second time.
+daily_price_basis: split_adjusted
+data_validity_class: CURRENT_UNIVERSE_RESEARCH_ONLY

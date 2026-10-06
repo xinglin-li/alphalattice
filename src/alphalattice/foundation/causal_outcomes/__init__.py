@@ -1,0 +1,1 @@
+"""Causal execution outcome authority."""

@@ -1,0 +1,1306 @@
+/* 04-surfaces — Surfaces: panels, tables, key/value lists, disclosures, object headers.
+   Files are concatenated in name order by build.py; that order is the cascade order. Edit by hand — the generator in qa/parity/css only did the migration from v3.13. */
+/* Pinned to its box's corner (2026-09-22): at its static place after the frame's last row a live
+   region added a pixel under a page that fills the window, and the page scrolled by it. */
+.sr-only {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.muted {
+  color: var(--muted);
+}
+/* The stack (round 95, the user's rule: "fixed as a rule, not tuned by hand"): inside a body -- a
+   panel's, a dialog's, a Facts section's, a well's, a reading's -- the gap between two neighbours
+   is set by what they are: text after text a half step (8); a control or a row of controls after
+   anything a step (12); a box (a panel, a list, a table, a well, a note, a field) after anything,
+   and anything after a box, a step and a half (16); a heading a section's step (20), its first
+   line a half step under it; a group head and a panel head sit on what they head. Once here; the
+   markup carries no `mt16`, `mb16` or `mt8` (retired with the rule). The steps are parameters
+   (`stack-*`, TY4); a body that stacks parts joins the list -- the Lab's guide card did not, and its
+   field and action row touched (the user, 2026-09-25) -- and `stack_census` names any that has not. */
+:is(.panel-body, .panel.pad, .dialog-body, .es-page, .team-scene, .lane-main, .controls-content, .inspector-section, .subpanel, .reading-pane-body, .detail-section > div, .section-empty, .lab-guide-option, .form-group, .overview-main, .first-use, [data-overview=reading]) > * + * { margin-top: var(--stack-text); }
+:is(.panel-body, .panel.pad, .dialog-body, .es-page, .team-scene, .lane-main, .controls-content, .inspector-section, .subpanel, .reading-pane-body, .detail-section > div, .section-empty, .lab-guide-option, .form-group, .overview-main, .first-use, [data-overview=reading], .banner > .grow, .review-banner-words) > * + :is(.button, .text-btn, .flow, .ui-segments, .actions) { margin-top: var(--stack-control); }
+:is(.panel-body, .panel.pad, .dialog-body, .es-page, .team-scene, .lane-main, .controls-content, .inspector-section, .subpanel, .reading-pane-body, .detail-section > div, .section-empty, .lab-guide-option, .form-group, .overview-main, .first-use, [data-overview=reading]) > :is(* + :is([data-box], [data-stack-box], .panel, .subpanel, .verdict, .review-stage, .card-list, .table-scroll, table, .kv, .term-list, .stat-strip, .banner, .note-line, .refusal, .section-empty, .choice-list, .code-block, pre, details, .field, .form-grid, .feature-row, .list-row, .grid-2, .diff-header, .tp-identity, article, .team-current-states), :is([data-box], [data-stack-box], .panel, .subpanel, .verdict, .review-stage, .card-list, .table-scroll, table, .kv, .term-list, .stat-strip, .banner, .note-line, .refusal, .section-empty, .choice-list, .code-block, pre, details, .field, .form-grid, .feature-row, .list-row, .grid-2, .diff-header, .tp-identity, article, .team-current-states) + *) { margin-top: var(--stack-box); }
+:is(.panel-body, .panel.pad, .dialog-body, .es-page, .team-scene, .lane-main, .controls-content, .inspector-section, .subpanel, .reading-pane-body, .detail-section > div, .section-empty, .lab-guide-option, .form-group, .overview-main, .first-use, [data-overview=reading]) > * + :is(h2, h3, h4) { margin-top: var(--stack-heading); }
+:is(.panel-body, .panel.pad, .dialog-body, .es-page, .team-scene, .lane-main, .controls-content, .inspector-section, .subpanel, .reading-pane-body, .detail-section > div, .section-empty, .lab-guide-option, .form-group, .overview-main, .first-use, [data-overview=reading]) > :is(h2, h3, h4) + * { margin-top: var(--stack-text); }
+:is(.panel-body, .panel.pad, .dialog-body, .es-page, .team-scene, .lane-main, .controls-content, .inspector-section, .subpanel, .reading-pane-body, .detail-section > div, .section-empty, .lab-guide-option, .form-group, .overview-main, .first-use, [data-overview=reading]) > :is(.group-head, .panel-head, .table-toolbar, .form-label) + * { margin-top: 0; }
+/* A figure's owner marks a caption beside a box or compound field. The marker describes
+   their stack relation and gives no material to the figure or its structural wrappers. */
+figure[data-stack-caption] { row-gap: var(--stack-box); }
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+.panel {
+  min-width: 0;
+  overflow: hidden;
+}
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+}
+.panel-head .caption {
+  margin-top: var(--space-1);
+}
+/* N3: the label and its (i) on one line; the (i) brings its own space (N6) */
+.panel-label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+/* Forms as inset grouped lists (round 83: macOS's form list, Codex's settings): a label on the
+   ground, one box of rows; a row is a title and one line at the left and one control at the
+   right; hairlines between rows; 32 px between groups; the box fills the lane to 940 px. A form
+   is a workspace box (`data-box="workspace"`, law 148); foreign content inside it keeps the row inset. */
+.form-group {
+  max-width: var(--width-xl);
+  margin: 0 0 var(--space-8);
+}
+/* A page of forms is one column centred in the lane (Codex's settings; the user's word, round 85): the
+   lane's measure narrows to the column and the head sits over it. */
+body[data-page=settings],
+body[data-page=advanced] {
+  --layout-max: 1004px;
+}
+.form-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 0 var(--space-3);
+  color: var(--text);
+  font-size: var(--style-title-3-size);
+  line-height: var(--style-title-3-leading);
+  letter-spacing: var(--style-title-3-tracking);
+  font-weight: var(--weight-strong);
+}
+.form-label > .group-head-tools {
+  margin-left: auto;
+}
+.form-box {
+  overflow: hidden;
+}
+.form-box > * + * {
+  border-top: 1px solid var(--edge-hair);
+}
+.form-box > :not(.form-row) {
+  padding: var(--space-3) var(--space-4);
+}
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: var(--form-row-height);
+  padding: calc((var(--row-regular) - var(--control-md)) / 2) var(--space-4);
+  font-size: var(--style-callout-size); /* a form row is UI text: its title, value and line (law 75) */
+  line-height: var(--style-callout-leading);
+  color: var(--text);
+  text-align: left;
+  text-decoration: none;
+}
+@container reading-lane (width < 640px) {
+  .form-row { flex-wrap: wrap; row-gap: var(--space-1); } /* W at 375: the control goes under the title, its detail whole */
+  .form-row > .form-control { flex: 1 1 100%; max-width: none; }
+}
+.form-row-open:hover {
+  background: var(--ds-control-hover);
+}
+/* V618 (UX06): the box clips what stands outside it, so a row the keyboard lands on draws its ring inside --
+   all four sides, as a status row's -- not two lines across the box. */
+.form-box > .form-row-open:focus-visible { outline-offset: var(--focus-ring-inset); }
+.form-words {
+  display: grid;
+  gap: var(--space-05);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.form-title {
+  font-weight: var(--weight-label); /* round 89: a row's title is medium (Codex's) */
+}
+.form-line {
+  color: var(--muted);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.form-row-mono .form-line {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.form-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  max-width: var(--share-field);
+}
+.form-detail,
+.form-tail {
+  color: var(--muted);
+}
+.form-detail {
+  min-width: 0; /* W: a detail wraps rather than cut (item 6) */
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.form-detail .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.form-note {
+  margin: var(--space-2) var(--space-4) 0;
+  color: var(--muted);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.form-row .picker-anchor,
+.form-row .picker-trigger {
+  width: auto;
+}
+.form-row .picker-trigger {
+  min-height: var(--form-picker-height);
+  border-radius: var(--radius-pill);
+}
+.stepper .num {
+  font-weight: var(--weight-label); /* round 89: a pill's value is medium */
+}
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.caption {
+  color: var(--muted);
+}
+/* Wells (strips inside cards, table heads, inputs at rest) sit a shade below the face. */
+.subpanel {
+  padding: var(--space-4);
+  min-width: 0;
+  background-color: var(--surface-well);
+}
+.grid-2 {
+  display: grid;
+  grid-template-columns: var(--grid-2);
+}
+.split {
+  display: grid;
+  grid-template-columns: var(--grid-2);
+  align-items: start;
+}
+/* A split is two columns, one under a pane's width (its one step; the pages' 1180 step only
+   re-said the two). */
+@media (width < 900px) {
+.split,
+.split.reverse {
+    grid-template-columns: var(--grid-1);
+  }
+}
+.banner>.icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  color: var(--ink-link);
+  margin-top: calc((var(--style-callout-leading) - var(--icon-size)) / 2);
+}
+/* A notice stands on the neutral ground; only its mark wears the tone (N6, the user: 提示框中性底，只有标记带色). */
+.banner.warning {
+  --tone-ink: var(--warning-ink);
+}
+.banner.warning>.icon {
+  color: var(--warning-ink);
+}
+.banner.danger {
+  --tone-ink: var(--danger-ink);
+}
+.banner.danger>.icon {
+  color: var(--danger-ink);
+}
+.banner.review {
+  --tone-ink: var(--review-ink);
+}
+.banner.review>.icon {
+  color: var(--review-ink);
+}
+.banner > .grow {
+  /* V655: the explanation keeps a reading measure before an action gets a row. */
+  flex: 1 0 min(var(--width-xs), calc(100% - var(--icon-size) - var(--space-3)));
+  min-width: 0;
+}
+.stat {
+  border-right: 1px solid var(--edge-stat);
+  min-width: 0;
+}
+.stat:last-child {
+  border-right: 0;
+}
+.stat-figure {
+  margin-top: var(--space-2);
+}
+/* A figure that opens its page (N6): the whole tile is the way; its figure takes the link's ink on
+   hover and focus, nothing else moves. */
+.stat-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  text-align: left;
+  font: inherit;
+  background: none;
+  border-top: 0;
+  border-bottom: 0;
+  border-left: 0;
+  border-radius: 0;
+  cursor: pointer;
+}
+/* TY4: every figure stacks its label and value with the label's existing space-2 gap. */
+.stat > :is(.stat-label, .stat-value) {
+  display: block;
+}
+.stat-link:is(:hover, :focus-visible) .stat-value {
+  color: var(--ink-link);
+}
+/* An unnoted tile label has its whole word on hover (`data-tip="@overflow"). A hinted label's
+   tip carries its explanation, so the caption itself wraps and stays whole (WD3). */
+.stat-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stat-label.hint {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+/* A line cut by the sheet (Q2: scripts cut words at 12, 16, 24, 40, 80, 120 and 240 characters):
+   a reference or a line of words at its measure with an ellipsis, whole on hover; an owner's
+   excerpt clamped to its lines. */
+.line-cut {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+.line-cut:is(code, .mono) { max-width: var(--measure-id); } /* a reference: its head, whole on hover */
+.log-code.line-cut { max-width: min(var(--measure-code), 100%); }
+/* A locator by its ends (`locatorCell`, WD3): mono, shrinking with its column, cut at its edge only if its ends are too long. */
+.locator { font-family: var(--font-mono); min-width: 0; }
+/* A literal the person types in a sentence (a process switch, CLI-15): mono, breaking anywhere at a phone's width
+   rather than leaving its box (MA4); the walk reads it as a literal, not an owner's code in the words. */
+code.literal { font-family: var(--font-mono); overflow-wrap: anywhere; }
+:is(.object-peek > .peek-note, .data-table .owner-text) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.data-table .owner-text { -webkit-line-clamp: var(--clamp-short); }
+.feature-row {
+  display: flex;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--line);
+}
+.feature-row:last-child {
+  border-bottom: 0;
+}
+.feature-row p {
+  margin-top: var(--space-1);
+  color: var(--muted);
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: var(--grid-2);
+  gap: var(--space-4) var(--space-5);
+}
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 0 var(--space-4); /* a control line on the section, not a faced bar */
+  background: transparent;
+}
+/* a table's search is the product's one search field at the head's end, a short one -- sized as a
+   whole, never its bare input (the user, 2026-09-24: the input ran the head's width over the
+   label's (i); the field rule's :is() outweighed the input's own cap) */
+.table-toolbar > .search-field {
+  flex: 0 1 var(--width-xs);
+  min-width: 0;
+}
+.table-note code {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.facts-properties { display: grid; grid-template-columns: var(--grid-facts); column-gap: var(--space-4); container-type: inline-size; }
+.kv {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.kv:last-child {
+  border-bottom: 0;
+}
+.kv dt {
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: anywhere; /* round 86: a key longer than its column wraps, never runs under the value */
+}
+.kv :is(dt,dd) > small {
+  display: block;
+  margin-top: var(--space-05);
+  color: var(--muted);
+  font: var(--style-footnote-size)/var(--style-footnote-leading) var(--font-ui);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.code-block {
+  overflow-wrap: anywhere;
+  padding: var(--space-3);
+  background: var(--subtle-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  font: var(--style-footnote-size)/var(--style-footnote-leading) var(--font-mono);
+  white-space: pre-wrap;
+}
+.reveal-details summary {
+  cursor: pointer;
+  color: var(--ink-link);
+  font-weight: var(--weight-label);
+}
+.issue-row .caption {
+  margin-top: var(--space-1);
+}
+.dialog-foot .small {
+  margin-right: auto;
+  flex-basis: 100%;
+}
+.dialog-body .facts-properties {
+  --lead: 152px; grid-template-columns: var(--grid-master); /* round 86: a worded key of three words fits on one or two lines */
+}
+.dialog-body .code-block {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+@media (width < 640px) {
+.grid-2,
+.form-grid {
+    grid-template-columns: var(--grid-1);
+  }
+.stat-strip {
+    grid-template-columns: var(--grid-2);
+  }
+.banner>.icon {
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
+.banner .grow {
+    flex-basis: calc(100% - var(--icon-size) - var(--space-3) - var(--space-05));
+  }
+.banner .mono {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.feature-row {
+    flex-wrap: wrap;
+  }
+.feature-row .grow {
+    flex-basis: calc(100% - var(--tile-size) - var(--space-4));
+  }
+.table-toolbar {
+    flex-wrap: wrap;
+  }
+.table-toolbar .grow {
+    flex-basis: 100%;
+  }
+.table-toolbar > .search-field {
+    flex-basis: 100%;
+  }
+}
+.small,
+.caption {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.object-header {
+  min-height: var(--object-header-height);
+}
+/* P3 (law 106, the frame): the band -- the title with its state, the actions -- is one row of the
+   head's height; the context line under it -- the lede, the id, the facts, the choosers -- is one
+   wrapping row; an object's views are the tab strip under both (law 110); then the content. The
+   three gaps are the head's parameters (component.head). */
+.object-heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.object-heading > .title-line { flex: 0 1 auto; min-width: 0; }
+.object-heading > .object-actions { flex: 0 0 auto; margin-left: auto; }
+/* N1 (law 129): the page's chooser (the book's Reading) is the content's first row, the same on
+   every view; its gap to what follows is the head's. */
+.page-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: 0 0 var(--head-content-gap); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+.object-context { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+/* The line's controls are its compact size (W): a picker that reads as a word stands as tall as the
+   copy and the opener beside it, so the tabs under the line sit at one height on every view. */
+.object-context .picker-trigger.picker-text { min-height: var(--control-xs); padding-top: var(--control-pad-xs); padding-bottom: var(--control-pad-xs); }
+/* The context line's facts (E1): words, not boxes -- the label muted, the value in the ink, a
+   middle dot between; the name's switch is a quiet chevron beside the title. */
+.context-facts { display: inline; min-width: 0; color: var(--muted); } /* one line of words: the facts wrap between them, never inside one */
+.context-fact { display: inline-block; max-width: 100%; overflow-wrap: anywhere; } /* one box with its dot: whole on a line, wrapping inside only when longer than the line (W, 375 at 125 %) */
+.context-fact > b { color: var(--text); font-weight: var(--weight-body); }
+.context-sep { margin: 0 var(--space-2); color: var(--faint); }
+.title-line .picker-switch { color: var(--muted); }
+/* The status box (E1; GitHub's merge box, measured; law 66: the Overview's one box): the verdict
+   with its mark, the checks on the spine (the mark in the lead slot, the name, its line, its day),
+   the requirement that blocks at the foot. */
+.status-box { margin: 0 0 var(--gap-block); overflow: hidden; } /* a box: its material is the one box's */
+.status-head { display: grid; grid-template-columns: var(--slot-lead) minmax(0, 1fr); column-gap: var(--slot-gap); align-items: start; padding: var(--inset-card); }
+.status-head h2 { margin: 0; font-size: var(--style-title-3-size); line-height: var(--style-title-3-leading); letter-spacing: var(--style-title-3-tracking); font-weight: var(--weight-label); }
+.status-caption, .status-reasons { margin: var(--space-1) 0 0; color: var(--muted); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+.status-reasons { color: var(--text); }
+.status-mark { display: grid; place-items: center; width: var(--slot-lead); height: var(--style-title-3-leading); }
+.status-mark .icon { width: var(--icon-lg); height: var(--icon-lg); }
+.status-mark.good { color: var(--good-ink); }
+.status-mark.warning { color: var(--warning-ink); }
+.status-mark.danger { color: var(--danger-ink); }
+.status-mark.accent { color: var(--ink-link); }
+.status-mark.neutral { color: var(--muted); }
+.status-mark.review { color: var(--review-ink); }
+.status-checks { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--edge-hair); }
+.status-checks > li + li { border-top: 1px solid var(--edge-hair); }
+.status-row { display: grid; grid-template-columns: var(--slot-lead) var(--status-name-width) minmax(0, 1fr) auto; column-gap: var(--slot-gap); align-items: center; width: 100%; min-height: var(--row-dense); margin: 0; padding: 0 var(--inset-card); border: 0; border-radius: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--style-callout-size); line-height: var(--style-callout-leading); text-align: left; }
+button.status-row { cursor: pointer; }
+button.status-row:hover { background: var(--ds-control-hover); }
+button.status-row[aria-pressed="true"] { background: var(--fill-selected); }
+button.status-row:focus-visible { outline-offset: var(--focus-ring-inset); }
+.status-row .status-mark, .status-foot .status-mark { height: auto; }
+.status-row .status-mark .icon, .status-foot .status-mark .icon { width: var(--icon-size); height: var(--icon-size); }
+.status-name { font-weight: var(--weight-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-why { min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-row time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The rail (component.rail): the bar at a row's left edge -- the exchange being read.
+   One width, one inset, the colour the row gives it (`--rail`, none by default). A border, so it
+   snaps to whole device pixels: a 2 px fill at a 125 % text size is 2.5 px and was drawn 2 or 3
+   wide by where the row fell (the user's still, 2026-09-22). */
+.team-exchange::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--rail-inset);
+  bottom: var(--rail-inset);
+  border-left: var(--rail-width) solid var(--rail, transparent);
+  border-radius: var(--radius-rule);
+}
+/* A narrow box (a phone): a status check keeps its mark, name and day; its line is the pane's. */
+@container (width < 640px) {
+.status-row { grid-template-columns: var(--slot-lead) minmax(0, 1fr) auto; }
+.status-row > .status-why { display: none; }
+}
+.status-foot { display: grid; grid-template-columns: var(--slot-lead) minmax(0, 1fr) auto; column-gap: var(--slot-gap); align-items: center; min-height: var(--row-regular); padding: var(--space-2) var(--inset-card); border-top: 1px solid var(--edge-hair); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+.status-foot p { margin: 0; }
+.status-foot b { font-weight: var(--weight-label); margin-right: var(--space-1); }
+.status-foot b.danger { color: var(--danger-ink); }
+.status-foot b.warning { color: var(--warning-ink); }
+/* The Properties column (E1; Linear's properties panel, measured): a label on the left and its
+   value on the right, one dense row each; the column is narrow, so it measures its rows by the
+   lane, not by itself. */
+.facts-properties.side-props { container-type: normal; grid-template-columns: var(--grid-side-props); }
+/* An object's Properties after its content (N2 of the open-issues plan, law 126 amended): the facts flow
+   down the lane's columns -- two from a wide lane, one below -- each row whole, a value wrapping, never cut. */
+.facts-properties.kv-columns { display: block; columns: 2 var(--kv-column); column-gap: var(--space-8); container-type: normal; }
+.kv-columns > .kv { --lead: var(--kv-key); grid-template-columns: var(--grid-master); break-inside: avoid; } /* one key width down a column: the values align */
+.kv-columns > .kv:last-child { border-bottom: 1px solid var(--line); }
+.side-props > .kv { align-items: center; min-height: var(--row-dense); padding: 0; border-bottom-color: var(--edge-hair); }
+.side-props > .kv > :is(dt, dd) { margin: 0; min-width: 0; font-size: var(--style-callout-size); line-height: var(--style-callout-leading); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+/* a value that is a way (a source by its name) is cut by the line like any value, never wrapped (N6) */
+.side-props > .kv > dd > .text-btn { display: inline; padding-inline: 0; white-space: nowrap; }
+/* The ways out (E1): one row each, the word and its arrow. */
+.activity-more { margin-top: var(--space-2); }
+.object-context > :is(.object-meta, .object-properties, .object-subject) { margin: 0; }
+/* The head's rhythm, the one owner (2026-09-22: four files set a head's margin and the `#main >`
+   ones missed a page that wraps its head, so the Sources tabs sat on their content): */
+:is(.object-header, .object-context) { margin: 0 0 var(--head-content-gap); }
+.object-header:has(+ .object-context) { margin-bottom: var(--head-band-gap); }
+.title-line > .object-ident { margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-4); }
+.object-subject { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); margin: 0 0 var(--space-5); }
+.subject-choice { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; }
+.subject-choice > label { flex: none; }
+.subject-choice > .picker-anchor { min-width: 0; }
+.object-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+  color: var(--muted);
+}
+.object-meta>span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.object-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  position: relative;
+}
+.object-step { display: inline-flex; align-items: center; gap: var(--space-05); color: var(--muted); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+.object-step > b { margin-right: var(--space-1); font-weight: var(--weight-body); }
+.object-step .step-up > .icon { transform: rotate(180deg); }
+.object-id { display:inline-flex; align-items:center; gap:var(--space-2); color:var(--muted); }
+.object-id > .code-copy { position: static; opacity: 1; color: var(--faint); }
+.object-id:hover > .code-copy, .object-id > .code-copy:focus-visible { color: var(--text); }
+.object-id code { max-width: var(--measure-hash); overflow:hidden; text-overflow:ellipsis; font:var(--style-callout-size)/var(--style-callout-leading) var(--font-mono); white-space:nowrap; }
+.object-properties { margin: var(--space-3) 0 var(--space-5); }
+/* Round 64: a note is one line — an icon and a sentence on a hairline, the successor of the
+   informational banner; a refusal or a call for attention keeps the banner. */
+.note-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--edge-hair);
+  border-radius: var(--radius-control);
+  color: var(--muted);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.note-line > .icon {
+  flex: none;
+  margin-top: calc((1lh - var(--icon-size)) / 2);
+}
+.note-line > span { flex: 1 0 min(var(--width-xs), calc(100% - var(--icon-size) - var(--space-2))); min-width: 0; } /* V655: an offered action wraps before it squeezes the explanation */
+.note-line strong {
+  color: var(--text);
+  font-weight: var(--weight-label);
+}
+/* A fact section's opener (the fold's successor): a text link in the body's size. */
+.facts-ref {
+  margin: var(--space-2) 0;
+}
+/* In a list's facts slot the opener is an inline fact, not a body paragraph. */
+.list-row-props .facts-ref {
+  margin: 0;
+}
+/* The kind line above a dialog's title, a diff's head and the editor's declaration label; the
+   page's lede is the head's one line. */
+.dialog-kind,
+.diff-kind,
+.editor-kind {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.object-lede {
+  color: var(--muted);
+}
+.facts-properties.num dd {
+  text-align: right;
+}
+.banner { /* a notice with a tone is a decision box (law 148), its tone its mark (law 128); a warning wears the glass (law 150, 12-material), any other the box's material */
+  --tone-ink: var(--ink-link);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.banner strong {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.banner p {
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  font-size: var(--style-footnote-size);
+}
+.banner .mono {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  overflow-wrap: anywhere;
+}
+.banner .refusal-code { color: var(--muted); }
+.grid-2,
+.split {
+  gap: var(--space-5);
+}
+.stat-strip {
+  display: grid;
+  grid-template-columns: var(--grid-4);
+  margin-top: 0;
+}
+.reveal-details>div {
+  margin-top: var(--space-2);
+  color: var(--muted);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  font-size: var(--style-footnote-size);
+}
+.kv {
+  gap: var(--space-4);
+}
+.kv .mono,
+.code-block {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+/* One meter (law 89, the user's rule, 2026-09-22; parameterized N6, the user's reading 2026-09-23):
+   every bar is this -- a progress, a share or a composition -- one bar of the meter's height on its
+   track, round ends, at most the meter's width (a tile's spans the tile), left under its words; a
+   progress's and a share's fill is the meter's blue, a share's remainder the track; a composition's
+   slices one hue stepped fainter by their order; the same gap between segments and slices; the
+   mark for a required minimum is the ink; an unknown extent is a dashed track that never travels
+   (law 16). Every value is the meter group's in parameters.json. */
+.meter {
+  --meter-max: var(--meter-width);
+  display: block;
+  max-width: var(--meter-max);
+  min-width: 0;
+}
+.meter-words {
+  display: block;
+  margin-bottom: var(--space-2);
+}
+.meter-bar {
+  position: relative;
+  display: flex;
+  gap: var(--meter-gap);
+  height: var(--meter-height);
+  border-radius: var(--meter-radius);
+  background: var(--meter-track);
+  overflow: hidden;
+}
+.meter-bar > i,
+.meter-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--meter-fill);
+}
+.meter-share .meter-bar > i.neutral {
+  background: none;
+}
+.meter-progress .meter-bar > span { transition: width var(--dur-2) var(--curve-move); }
+.meter-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--rule-width);
+  background: var(--text);
+}
+/* B1: a share that names its mark above the bar and its parts under it (the book's coverage figure):
+   each name at its segment's width, the bar's gap between them; a name wraps inside its part. */
+.meter-mark-row { position: relative; display: block; height: var(--style-footnote-leading); margin-bottom: var(--space-1); }
+.meter-mark-label { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); }
+.meter-mark-label[data-edge="end"] { transform: translateX(-100%); }
+.meter-mark-label[data-edge="start"] { transform: none; }
+/* A gauge's ends (the coverage figure): the whole's 0 % and 100 % under the bar, in the caption's ink. */
+.meter-ends { display: flex; justify-content: space-between; margin-top: var(--space-1); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
+.meter-bar.indeterminate { background: repeating-linear-gradient(90deg, var(--meter-track) 0 var(--meter-height), transparent var(--meter-height) calc(2 * var(--meter-height))); }
+.meter-bar.indeterminate > span { width: 0; }
+.prep-area[data-moving=true] .meter-bar.indeterminate > span { width: 100%; opacity: var(--opacity-subtle); }
+/* A composition: the slices of one whole on the one bar, one hue stepped fainter by their order
+   (`--slice`, the slice's index), then a legend of the same slices in columns. */
+/* a figure, not a progress: its bar and its legend span it (the user, 2026-09-24: 这个东西并不是进度条,
+   不应该限制长度); a composition of one part draws no bar -- its legend line is the whole */
+.meter-composition { margin: var(--space-3) 0 var(--space-2); max-width: none; }
+.meter-bar.composition > i,
+.meter-legend i {
+  background: var(--meter-slice);
+  opacity: max(var(--meter-slice-floor), calc(1 - var(--slice, 0) * var(--meter-slice-step)));
+}
+/* The legend is read down its columns -- the largest first, as many columns as the figure holds
+   (the user's reading 2026-09-23: 右边空了一大块 ... 几十个sectors); past its first rows the rest is one
+   fold, the bar's own `Other` slice, opened to read each. */
+.meter-legend {
+  column-width: var(--meter-legend-column);
+  column-gap: var(--space-6);
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.meter-legend li {
+  break-inside: avoid;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--edge-hair);
+}
+.meter-legend li > span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meter-legend i {
+  display: block;
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+}
+.meter-legend b {
+  font-weight: var(--weight-label);
+  font-variant-numeric: tabular-nums;
+}
+.meter-legend-rest > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: var(--meter-legend-column);
+  padding: var(--space-2) 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.meter-legend-rest > summary > span { flex: 1; }
+.meter-legend-rest > summary > b { color: var(--text); font-weight: var(--weight-label); font-variant-numeric: tabular-nums; }
+.meter-legend-rest > .meter-legend { margin-top: 0; }
+.kv dd {
+  margin: 0;
+  color: var(--text);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+/* A kv stacked by its narrow container (the Lab's aside, a phone) reads left, label over value. */
+@container (width < 420px) {
+.kv {
+    grid-template-columns: var(--grid-1);
+    gap: var(--space-05);
+  }
+.kv dd {
+    text-align: left;
+  }
+}
+/* A note beside a fact (its count, its date, its source's state) reads as a note, not as a second
+   value -- beside the value, never a caption under it (N3, the user: 数值下不跟说明); what explains
+   a value is its (i). */
+.kv dd .sub-cell {
+  display: inline;
+  margin-left: var(--space-2);
+  color: var(--muted);
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.editor-statusbar #validationNotice .banner {
+  margin: 0;
+}
+.editor-statusbar>.mono {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  white-space: nowrap;
+}
+.performance-surface .stat-strip {
+  margin: 0;
+}
+.chart-tooltip .muted {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+}
+.feature-icon .icon {
+  width: var(--icon-lead);
+  height: var(--icon-lead);
+  --icon-stroke: 1.6;
+}
+.table-note {
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding: var(--space-3) var(--space-6);
+}
+.dialog-body .small {
+  font-size: var(--style-body-size);
+  line-height: var(--style-body-leading);
+}
+@media (width < 900px) {
+.object-actions {
+    gap: var(--space-2);
+  }
+}
+@media (width < 640px) {
+.object-header {
+    min-height: 0;
+  }
+.object-meta {
+    margin-top: var(--space-2);
+  }
+.object-meta .mono {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.caption,
+  .small {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.banner {
+    flex-wrap: wrap;
+    padding: var(--space-3);
+    gap: var(--space-2);
+  }
+.banner strong {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.banner p {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.kv .mono {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+.grid-2 {
+    grid-template-columns: var(--grid-1);
+  }
+.editor-statusbar>.mono {
+    display: none;
+  }
+.performance-surface .stat-strip {
+    grid-template-columns: var(--grid-2);
+  }
+.performance-surface .stat {
+    border-color: var(--line);
+  }
+.performance-surface .stat-value {
+    margin-top: var(--space-05);
+  }
+.stat-strip .stat:nth-child(2) {
+    border-right: 0;
+  }
+.stat-strip .stat:nth-child(-n+2) {
+    border-bottom: 1px solid var(--line);
+  }
+.table-note {
+    padding: var(--space-3) var(--space-4);
+  }
+.dialog-body .kv {
+    grid-template-columns: var(--grid-1);
+    gap: var(--space-1);
+  }
+.code-block {
+    font-size: var(--style-footnote-size);
+    line-height: var(--style-footnote-leading);
+    letter-spacing: var(--style-footnote-tracking);
+  }
+}
+.object-meta {
+  gap: var(--space-2) var(--space-3);
+}
+.feature-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 0;
+  height: var(--mark-box);
+  width: var(--mark-box);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted); /* round 82: a row's glyph is grey; a tone on it means something (a role, a state) */
+  border-color: var(--line);
+  box-shadow: var(--rim-top);
+}
+@media (width < 640px) {
+.object-actions {
+    margin-top: var(--space-4);
+    justify-content: flex-start;
+    gap: var(--space-2);
+    row-gap: var(--space-2);
+  }
+}
+.panel h2 {
+  font-size: var(--style-title-2-size);
+  line-height: var(--style-title-2-leading);
+  font-weight: var(--weight-label);
+  letter-spacing: var(--style-title-2-tracking);
+}
+.caption,
+.lede {
+  font-weight: var(--weight-body);
+  text-wrap: pretty;
+}
+@media (width < 640px) {
+.panel h2 {
+    font-size: var(--style-title-2-size);
+    line-height: var(--style-title-2-leading);
+    letter-spacing: var(--style-title-2-tracking);
+  }
+}
+.panel-head h2 {
+  font-size: var(--style-title-2-size);
+  line-height: var(--style-title-2-leading);
+  font-weight: var(--weight-strong);
+  letter-spacing: var(--style-title-2-tracking);
+}
+.object-header h1 {
+  color: var(--title-ink);
+  overflow-wrap: anywhere;
+  word-break: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--object-title-lines);
+  line-clamp: var(--object-title-lines);
+  overflow: hidden;
+}
+/* The band keeps its pads; its top rule went (2026-09-22: a second hairline 17 px under the top
+   row's, since round 85b grouped the band with the disclosure). */
+.object-heading {
+  padding: var(--space-3) 0;
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.reveal-details {
+  border-top: 1px solid var(--line);
+  padding: var(--space-3) 0;
+  font-size: var(--style-callout-size);
+  line-height: var(--style-callout-leading);
+}
+.reveal-details>summary {
+  min-height: var(--disclosure-row-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  list-style: none;
+  padding-inline-end: var(--space-2);
+}
+.reveal-details>summary::-webkit-details-marker {
+  display: none;
+}
+.reveal-details>summary:not(.run-log-fold):before {
+  content: '›';
+  font-size: var(--style-title-1-size);
+  line-height: var(--style-title-1-leading);
+  letter-spacing: var(--style-title-1-tracking);
+  display: inline-block;
+  transition: transform var(--dur-2) var(--curve-move);
+  flex: none;
+}
+.reveal-details[open]>summary:before {
+  transform: rotate(90deg);
+}
+@media (width < 1024px) {
+.object-actions {
+    max-width: 100%;
+  }
+}
+@media (width < 768px) {
+.data-readiness-strip .stat:nth-child(2) {
+    border-right: 0;
+  }
+.data-readiness-strip .stat:nth-child(-n+2) {
+    border-bottom: 1px solid var(--line);
+  }
+}
+.tp-json summary {
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+  letter-spacing: var(--style-footnote-tracking);
+  color: var(--muted);
+  cursor: pointer;
+}
+.object-heading {
+  min-width: 0;
+}
+:is(.panel h3) {
+  font-size: var(--style-headline-size);
+  font-weight: var(--weight-label);
+  letter-spacing: var(--style-headline-tracking);
+  line-height: var(--style-headline-leading);
+}
+:is(.caption,.tp-caption,.object-meta,.stat-label,.table-note) {
+  letter-spacing: 0;
+}
+body[data-page] :is(code,pre,.mono) {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+  font-weight: var(--weight-body);
+}
+/* One box (law 147; the user, 2026-09-24, on the Overview's status box beside its coverage figure: 下面那个
+   box做的对, 有一个很淡的阴影以及边界 ... 以后所有的box都按照这个参数做): the box's fill, a 1 px `edge-card` border,
+   `radius-card` and the rest shadow. Law 148 (the same day): a box is declared with its purpose -- a figure,
+   a decision or blocker, a workspace (`data-box`) -- and nothing else is one; no box holds a box. */
+body[data-page] [data-box] {
+  background: var(--surface-box);
+  border: 1px solid var(--edge-card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--rim-top), var(--shadow-rest);
+  --muted: color-mix(in srgb, var(--text) var(--muted-mix), var(--surface-box));
+  --ground: var(--surface-box);
+}
+/* Law 148, canvas by default: a section lies on the page's ground on every page -- its head a label over a
+   hairline, its body unpadded, space between sections -- with no page list and no exception; only a
+   declared box stands up from it. */
+body[data-page] #main .panel:not([data-box]) {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+  --muted: color-mix(in srgb, var(--text) var(--muted-mix), var(--surface-page));
+  --ground: var(--surface-face);
+}
+body[data-page] #main .panel:not([data-box]) > .panel-head { padding: 0 0 var(--space-3); border-bottom: 1px solid var(--edge-hair); margin-bottom: var(--space-4); }
+body[data-page] #main .panel:not([data-box]) > .panel-body { padding: 0; }
+/* Law 148 amended (the user, 2026-09-24: 表格类内容, 可能最好都用上这种box. 就用这里的参数就行 -- the
+   Overview's status and Coverage boxes): a table's section is a box, `data-box="table"`, law 147's
+   material. Its head (the label, the count, the (i), its tools), its notes and its foot stand at the
+   box's inset; the table runs across the box, its header's rule and its rows' hairlines edge to edge,
+   its first and last columns at the inset. */
+body[data-page] #main [data-box="table"] { padding: var(--inset-card) var(--inset-card) var(--space-3); }
+body[data-page] #main [data-box="table"] > :is(.panel-head, .table-toolbar, .holdings-toolbar) { padding: 0 0 var(--space-3); margin: 0; border: 0; }
+body[data-page] #main [data-box="table"] > .panel-body { padding: 0; }
+body[data-page] #main [data-box="table"] .table-scroll { margin-inline: calc(-1 * var(--inset-card)); width: calc(100% + 2 * var(--inset-card)); max-width: none; scrollbar-gutter: auto; } /* a table's box never scrolls it down: no gutter held at its right (the rows and the head's rule stopped 10 px short of the box's edge; 这里 ... 左右也没对齐) */
+body[data-page] #main [data-box="table"] .data-table :is(th, td):first-child { padding-left: var(--inset-card); }
+body[data-page] #main [data-box="table"] .data-table :is(th, td):last-child { padding-right: var(--inset-card); }
+:is(.panel.pad) {
+  padding: var(--inset-card);
+}
+.code-block {
+  max-height: calc(var(--code-lines) * var(--style-footnote-leading) + 2 * var(--space-3));
+  overflow: auto;
+}
+/* Code coloured as GitHub colours it (round 61): keys, strings, numbers and constants, comments;
+   the punctuation stays in the text ink. */
+.c-key { color: var(--code-key); }
+.c-str { color: var(--code-string); }
+:is(.c-num, .c-const) { color: var(--code-constant); }
+.c-cmt { color: var(--muted); }
+/* ---- Tables (round 60, read against Stripe's): one owner block. The head is one line of the
+   callout size at the strong weight in the text ink, a hairline under it and no fill (it stays
+   put where the card scrolls); a unit is a sub-line under its label, never a wrap. Rows are one
+   line at the regular row (the dense row for `compact`), figures tabular; the first column is
+   the identity at the label weight, other text and dates in the muted ink; numbers and actions
+   sit right and take only their width, text takes the space. A hairline between rows, a tint
+   on hover, the held and open rows of round 52. A `grid` (a numeric report) adds column rules;
+   a foot row is the total. A card's table grows to a reading height then scrolls; a report is
+   read whole; a region that still overflows fades its overflowing edge. ---- */
+.data-table { width: 100%; min-width: var(--table-min); border-collapse: separate; border-spacing: 0; white-space: nowrap; font: var(--style-body-size)/var(--style-body-leading) var(--font-ui); font-variant-numeric: tabular-nums; background: transparent; }
+/* a table takes the ground it stands on, the lane or a box (the user, 2026-09-23: a table painted the
+   lane's colour stood in a white box as a grey block ringed with white) */
+.data-table th { padding: var(--space-2) var(--space-3); text-align: left; vertical-align: bottom; font: var(--weight-label) var(--style-callout-size)/var(--style-callout-leading) var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--muted); background: transparent; border-bottom: 1px solid var(--ds-edge); }
+.data-table th > small { display: block; font-weight: var(--weight-body); color: var(--muted); }
+.data-table th > .table-sort { display: inline-flex; min-height: 0; padding: 0; line-height: inherit; vertical-align: baseline; }
+/* a sortable head sits on the same line as the others */
+.data-table thead tr { height: var(--row-head); }
+.data-table tbody tr { height: var(--row-regular); }
+/* 40: the row of a list (the reader's law), the dense row for `compact` */
+.data-table td { padding: var(--space-2) var(--space-3); vertical-align: middle; color: var(--text); font-weight: var(--weight-body); background: transparent; box-shadow: inset 0 -1px 0 var(--edge-row); }
+/* a divider fainter than the words */
+.data-table tr:last-child td { box-shadow: none; }
+.data-table td:first-child, .data-table .main-cell { font-weight: var(--weight-label); }
+.data-table :is(th, td):is(.col-num, .num) { text-align: right; white-space: nowrap; }
+/* Column geometry (round 60, the reader's law). Every table spans its card; the index and the
+   action are fixed 48 columns at its edges; figures align right, on the decimal. In a list the
+   identity column keeps to its content, a figure column keeps to its content with a breath of 140
+   and a word column is never narrower than 180; the slack goes to the substance column (the last
+   word column, or the one the producer names) -- or, in a list whose words are all short
+   (`spread`), it is shared evenly between the facts, a word column right before a figure column
+   keeping to its content so no seam doubles. A grid shares its width evenly across all its data
+   columns, with a breath of 112 on a figure and 140 on a word. The sharing columns are counted in
+   `data-share` (below). */
+.data-table:not(.grid) :is(th, td):is(.col-num, .num) { width: 1%; min-width: var(--col-wide); }
+.data-table:not(.grid) :is(th, td):is(.col-num, .num).col-tight { min-width: var(--col-tight); } /* round H1: a short figure (a percentage, bps, a count) */
+.data-table:not(.grid) :is(th, td).col-tight:not(.col-absorb) { width: 1%; } /* a tight column keeps to its content, a word column as much as a figure: the slack is the absorbing column's (the Reading's Cited by took 371 px of it, its topics 172, and left the passage 137) */
+.data-table:not(.grid) :is(th, td):is(.col-text, .col-id, .col-date, .col-status, .col-link):not(.col-absorb, .col-index, .col-identity, .col-tight, .col-link:last-child) { min-width: var(--col-text); }
+.data-table:not(.grid) :is(th, td).col-absorb { width: 100%; min-width: var(--col-absorb); white-space: normal; } /* W (law 90): the substance column wraps before a table over its floor rolls sideways -- down to about two words, never a word per line (N6: Storage at 375) */
+.data-table:not(.grid) :is(th, td):is(.col-index) { width: var(--col-index); min-width: var(--col-index); color: var(--muted); }
+.data-table :is(th, td).col-link:last-child { width: var(--col-index); text-align: right; white-space: nowrap; }
+/* the row's action; a leading link column is the identity */
+.data-table.grid :is(th, td):is(.col-num, .num) { min-width: var(--col-num); }
+.data-table.grid :is(th, td):is(.col-date, .col-id, .col-text, .col-status) { min-width: var(--col-wide); }
+.data-table.grid :is(th, td).col-tight { min-width: var(--col-tight); } /* a short column keeps its tight floor in a grid too (W: the Alpha folds at 1673 x 1186 @ 125 %) */
+.data-table[data-share="1"] :is(th, td).col-share { width: 100.0000%; }
+.data-table[data-share="2"] :is(th, td).col-share { width: 50.0000%; }
+.data-table[data-share="3"] :is(th, td).col-share { width: 33.3333%; }
+.data-table[data-share="4"] :is(th, td).col-share { width: 25.0000%; }
+.data-table[data-share="5"] :is(th, td).col-share { width: 20.0000%; }
+.data-table[data-share="6"] :is(th, td).col-share { width: 16.6667%; }
+.data-table[data-share="7"] :is(th, td).col-share { width: 14.2857%; }
+.data-table[data-share="8"] :is(th, td).col-share { width: 12.5000%; }
+.data-table[data-share="9"] :is(th, td).col-share { width: 11.1111%; }
+.data-table[data-share="10"] :is(th, td).col-share { width: 10.0000%; }
+.data-table[data-share="11"] :is(th, td).col-share { width: 9.0909%; }
+.data-table[data-share="12"] :is(th, td).col-share { width: 8.3333%; }
+.data-table :is(th, td).col-date { white-space: nowrap; }
+.data-table td.col-id { font-family: var(--font-mono); letter-spacing: 0; }
+.data-table .sub-cell { display: block; margin-top: var(--space-05); color: var(--muted); font: var(--weight-body) var(--style-footnote-size)/var(--style-footnote-leading) var(--font-ui); letter-spacing: var(--style-footnote-tracking); }
+.data-table td > :is(.main-cell, .sub-cell, .text-cell) { white-space: normal; }
+body[data-page][data-reading] .data-table td:not(.col-absorb) :is([data-control], [data-ui-role="status"]) { white-space: nowrap; overflow-wrap: normal; }
+/* over the control system's wrapping; the substance column's words wrap before the table rolls (W, law 90) */
+.data-table td.col-id > .main-cell, .data-table td:first-child > .main-cell { white-space: nowrap; }
+/* an identity is one line; a name may wrap in a text column */
+body[data-page][data-reading] .data-table td [data-control] { min-height: var(--table-control-height); padding-block: var(--control-pad-xs); }
+/* a control in a row is the row's height */
+body[data-page] .data-table td > .cell-opener { padding-inline: 0; font-weight: var(--weight-label); color: var(--text); } /* over the quiet control's inset: the opener's words stand on the column's line (Fold 1 stood 9 px in from its head) */
+/* the identity that opens: the row's words, an arrow after them */
+.data-table.compact { font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
+.data-table.compact tbody tr { height: var(--row-dense); }
+.data-table tbody tr:hover td { background: var(--ds-control-hover); }
+.data-table tbody tr[data-held] td { background: var(--surface-raised); }
+.data-table tbody tr[data-held] { outline: 1px solid var(--ink-link); outline-offset: -1px; }
+.data-table tbody tr[aria-current="true"] td { background: var(--fill-selected); }
+.data-table.grid :is(th, td) + :is(th, td) { border-left: 1px solid var(--edge-hair); }
+.data-table.grid :is(th, td) { padding-inline: var(--space-2); }
+/* a numeric grid is dense */
+.data-table tfoot td { padding: var(--space-3); border-top: 1px solid var(--edge-hair); background: var(--surface-well); color: var(--text); font-weight: var(--weight-label); }
+.table-scroll { overflow: auto; width: 100%; scrollbar-width: thin; overscroll-behavior-inline: contain; max-width: 100%; min-width: 0; scrollbar-gutter: stable; scrollbar-color: var(--scroll-thumb) transparent; box-shadow: none; background: transparent; }
+.table-scroll * { scrollbar-color: var(--scroll-thumb) transparent; }
+.table-scroll:focus-visible { outline-offset: var(--focus-ring-inset); }
+.panel > .table-scroll, .portfolio-detail-surface > .table-scroll { border: 0; border-radius: 0; } /* one scroller per region (2026-09-22): a table's page is bounded by its pager, not by a box that scrolls inside the page; it still rolls sideways (law 90) */
+.report-scroll, .panel > .table-scroll.report-scroll, .portfolio-detail-surface .table-scroll.report-scroll { max-height: none; }
+.report-count { margin: 0; padding: var(--space-3) var(--space-3) var(--space-2); color: var(--muted); }
+/* Law 90 (the user's rule, 2026-09-22): a table wider than its lane rolls sideways on a visible
+   thin scrollbar over a tinted track -- never clipped, never squeezed. The bar is the hint: nothing
+   dims the content (law 112). The tint appears only while there is something to roll
+   (markScrollEdges sets the edge), so a table that fits shows no bar. */
+.table-scroll[data-edge] { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) color-mix(in srgb, var(--text) var(--tint-faint), transparent); padding-bottom: var(--space-1); }
+body[data-page] .stat-strip {
+  padding: var(--space-4) 0;
+}
+body[data-page] .stat {
+  padding: 0 var(--space-4);
+}
+.stat-label {
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+  text-transform: none;
+  letter-spacing: 0;
+}
+body[data-page] .stat-value {
+  font-size: var(--style-figure-size);
+  line-height: var(--style-figure-leading);
+  letter-spacing: var(--style-figure-tracking);
+}
+/* Split view first (round 20b, law 21; round 33): a four-up strip is one line down to the strip
+   step (800 px since Q1; the phase-5 rail is a line of facts, not tiles) and two by two under it;
+   a five-up strip has its own steps, and the Evidence measures their own six-or-three switch. */
+@container reading-lane (width < 800px) {
+body[data-page] .stat-strip:not(.five, .es-measures):has(> :nth-child(4)) {
+    grid-template-columns: var(--grid-2);
+    row-gap: var(--space-4);
+  }
+body[data-page] .stat-strip:not(.five, .es-measures):has(> :nth-child(4)) > .stat:nth-child(2) {
+    border-right: 0;
+  }
+body[data-page] .stat-strip:not(.five, .es-measures):has(> :nth-child(4)) > .stat:nth-child(-n + 2) {
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--edge-hair);
+  }
+}
+@container reading-lane (width < 640px) {
+body[data-page] .stat-strip {
+    padding: var(--space-4) 0;
+  }
+body[data-page] .stat {
+    padding: 0 var(--space-4);
+  }
+body[data-page] .stat:nth-child(2) {
+    border-right: 0;
+  }
+body[data-page] .stat:nth-child(-n/**/+2) {
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--line);
+  }
+body[data-page] .stat-value {
+    font-size: var(--style-figure-size);
+    line-height: var(--style-figure-leading);
+    letter-spacing: var(--style-figure-tracking);
+  }
+}
+/* No nested rounded container around an existing performance summary. */
+body[data-page] .performance-surface .stat-strip {
+  border: 0;
+  border-bottom: 1px solid var(--ds-edge);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  margin-top: 0;
+}
+/* Theater: one composition, a crisp optical object, factual work remains in the foreground. */
+:is(.panel-head) {
+  padding: var(--inset-card) var(--inset-card) 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+}
+/* a box's label and its state are one line each (a prop never wraps): where both do not fit -- a
+   side box -- the state goes under the label, never a label or a date broken in two (N6) */
+.panel-head > .panel-label { min-width: 0; max-width: 100%; }
+.panel-head > .panel-label > h2, .panel-head > :is(.state, [data-ui-role="status"]) > * { white-space: nowrap; }
+.panel-head > :is(.state, [data-ui-role="status"]) { flex-wrap: wrap; row-gap: 0; } /* narrower still, the state's time goes under its word; neither is broken */
+.panel-head > .panel-label > h2 { overflow: hidden; text-overflow: ellipsis; }
+:is(.panel-body) {
+  padding: var(--gap-card-head) var(--inset-card) var(--inset-card);
+}
+.panel.pad {
+  padding: var(--inset-card);
+}
+.feature-row {
+  padding: var(--space-5) 0;
+  border-color: var(--ui-soft-line);
+  gap: var(--space-4);
+}
+.feature-row h3 {
+  font-size: var(--style-title-3-size);
+  line-height: var(--style-title-3-leading);
+  letter-spacing: var(--style-title-3-tracking);
+  font-weight: var(--weight-strong);
+}
+.feature-row p {
+  font-size: var(--style-body-size);
+  line-height: var(--style-body-leading);
+  max-width: var(--measure-short);
+}
+.section-gap {
+  margin-top: var(--space-8);
+}
+/* TY4 applies before or after every box in the page's flow. Its owner marks structural
+   carriers with data-stack-box: box for a declared box, section for a canvas section, field
+   for a compound field. These stack relations add no material. */
+#main > :is(.panel, .subpanel, .field, .choice-list, [data-box], [data-stack-box]) + :not(.section-gap),
+#main > * + :is(.panel, .subpanel, .field, .choice-list, [data-box], [data-stack-box]):not(.section-gap) { margin-top: var(--stack-box); }
+/* Canvas sections and their carriers keep the section step (law 149). A declared box on
+   either side gives the seam TY4's box step, including through its marked carrier. */
+#main > :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]) + :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]):not(.section-gap) {
+  margin-top: var(--gap-block);
+}
+#main > :is([data-box], [data-stack-box="box"]) + :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]):not(.section-gap),
+#main > :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]) + :is([data-box], [data-stack-box="box"]):not(.section-gap) { margin-top: var(--stack-box); }
+/* A long saved-object name or identifier breaks inside its own column, never across the next. */
+body[data-page][data-reading][data-work-first] .performance-surface .stat-strip {
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+/* A box after a row of controls keeps its gap, whatever page composes them (the user's reading,
+   2026-09-22: a pill button sat on the verdict box; the rule was prose until now). */
+:is(.flow, .actions) + :is(.panel, .verdict, .card-list, .setup-card, .form-box, section) { margin-top: var(--space-4); }

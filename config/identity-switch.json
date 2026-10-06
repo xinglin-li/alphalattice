@@ -1,0 +1,186 @@
+{
+ "components": {
+  "DEVELOPMENT_PANEL_PREPROCESSING:development": {
+   "byte": "11395654f0fa5698bbf6e76f73dee7b508327fc2fe18564c2a5422b708a6f2ea",
+   "rule": "550fd092725203532520a67eb72d0f37dafd7be907720e8e4db6e91791869f4c"
+  },
+  "DEVELOPMENT_PANEL_PREPROCESSING:joint_primary_interaction": {
+   "byte": "8a300c075ef1eb96837209b4e7c2ffc77a1265b2ed635664e97bb40e899d349d",
+   "rule": "4f69a29bd9090193a85fc2db4ebfae09b456b6b03c3ca17f18255cfeed54062e"
+  },
+  "FACTOR_VALUE:ABSOLUTE_STATE": {
+   "byte": "a1de91dedaeef1fe3541e5f47012275e268aec247e710a84f866944da3a4459f",
+   "rule": "51a8db5772381ad5c2dd501340270bf6409aa7c01da6cac5da7331411473a979"
+  },
+  "FACTOR_VALUE:DOWNSIDE_TAIL": {
+   "byte": "867e92696d39bbcd48dc2d2ab0a775dac56f4c8c2c15cb668b9008433091d671",
+   "rule": "347815fa4e8184f95ff7500f82a29ce330ef7d8befb1ae8e01adf026d3005ef2"
+  },
+  "FACTOR_VALUE:OPEN_INTRADAY": {
+   "byte": "ff066e626d0f8559279244e898f4dd2d6a28f712fea0147ed204dfab15bd323f",
+   "rule": "d0bd9bee3f68cd0998a7fc28c6c2e8d7bc6cc0f33617328f05b24899e27421c5"
+  },
+  "FACTOR_VALUE:RESIDUAL_REVERSAL": {
+   "byte": "0c6e57d8ffa1ad1bec0336df76f62c4a147d4a994a6ebee905cecc61be9fb00f",
+   "rule": "768d647b35cc7de5bbf093aaf313cbbc7ea808274c2a380c6c0e0f76908b5e0c"
+  },
+  "FACTOR_VALUE:SECTOR_LEADER_LAG": {
+   "byte": "5bcb86f1da2bd12391ffdc750b6d14889aabe6527117cdb480c0ca5e9eb80053",
+   "rule": "1aa9cfcc736958ed8a9a2464ba505af9bfcd5b565b9fdad3c874a84087f0e776"
+  },
+  "FACTOR_VALUE:SESSION_LIQUIDITY": {
+   "byte": "b7890906838600960bc3d699de786f71283049ea57853f9167e6f1d3a65c3757",
+   "rule": "0f926879f54c281e6fa0cc79ec36a059ebfd8f3efe88e2bef5de0bfc082aede5"
+  },
+  "FACTOR_VALUE:SESSION_OBSERVATION": {
+   "byte": "62e2f10ce60719b6d92860bb2dd0aa69f4a9f4d7f4c688ed74a66daf6b2d9114",
+   "rule": "2ed4755c7656262fba1309add714dcd4671eaa1e55291818c725b9462b9bfa71"
+  },
+  "FACTOR_VALUE:STATE_INTERACTION": {
+   "byte": "8afb9f9cccb0f1855b41e6ab0ef515d667294e9055727a23d0b30a8deda0d630",
+   "rule": "d5814ed8644e79f2905d18e446901738d8ce2643e5c508c54306ee3e150e18eb"
+  },
+  "FACTOR_VALUE:controls": {
+   "byte": "1f5161c92133ca2c3d958aead06625b33d5866a3822e4311659ec31607d96158",
+   "rule": "b2f8683e079e2f5d166a8b6ed987f767a98a44b0a2a5b6292eb49b291b84f96a"
+  },
+  "PANEL_PREPROCESSING:joint_primary_relative": {
+   "byte": "40fe0451d6ab33ae8461d14e5361d65452890a17085c90d83b30587f26330897",
+   "rule": "77b63241602549622f03bce2a45c520e1c94d4b515adcf46890553a0c7feafb3"
+  },
+  "PANEL_PREPROCESSING:robust_sector_neutral_z": {
+   "byte": "428747bd4aba9fd2839358aee4c90a8b968f8bd493bca6968bd9f75d25fe11c1",
+   "rule": "acea5b7e939fdd208b44084ff90f8b3b13f4d8a0583ba0d2589627450a9d2e0d"
+  },
+  "alpha_research.calibration:return-unit-calibration:e0df1f88a6b808eb": {
+   "byte": "42ea83349fcaaf77847bdd2816254629f2378b0ed874dcc78b7c988ae183301a",
+   "rule": "3fdcd09a5c08cb1f0e4028394117b1a87c5c55ddc7ce596918fba8c026f2c569"
+  },
+  "alpha_research.evaluation:CURRENT_REFIT_STABILITY_GATE:7af496fd48334caa": {
+   "byte": "a1647a1b99ada43796162f2825100e672399ab5680f447754d7eb72600470309",
+   "rule": "45f3d050615a84c32d7a0d406810402df1074f5a60e1f66710302420a78d0cff"
+  },
+  "alpha_research.scaling:CROSS_SECTIONAL_SCALE:33a379bbdbead5b6": {
+   "byte": "0da876fca087cb54c564483f63d003c33cd2e2333d69b93d208fdee8da6e93f8",
+   "rule": "7fa32e4b153edd9ea467d7e1b28e33e7675878e76e79dcc30bc648d68ba58653"
+  },
+  "alpha_research.verification:ARRAY_VALUES:8ace481a37dcb24f": {
+   "byte": "2c9ec748e5651c95fcaf807dcdb1e0d9061ceb85b8a7cdc577ed17aea30cfa26",
+   "rule": "e10824eaa3a9076bb657f0dc58e55b01489c5b7732b0b9ce5c6764c49eb54741"
+  },
+  "alpha_research.verification:FOUNDATION_INPUT:48718b8cd40be0be": {
+   "byte": "ba474759bc0a0e53f581394cdb28bd5ffd8523438a5fa086d51cb1e4e1c4dc53",
+   "rule": "69431cd4514fdebe7660855de81e9137ecc3cc177e34bcc7f052fa7c4e0fd644"
+  },
+  "alpha_research.verification:METRICS:c9d2fb01022dea75": {
+   "byte": "e5110a127da68786c118f66f0f3ca94d947106b3df93a005f878607e5b11f466",
+   "rule": "caf8139766395c714e90dfa135e22ecf849b6c037dfd6f3924ac0a822cf4a875"
+  },
+  "alpha_research.verification:MODEL_KERNEL:7a8453bd71322c67": {
+   "byte": "b5b4b25f9099290db26cf15856a69fad5fcb698fd5bea19fb6d0526eb39b4b70",
+   "rule": "4ddad20f415ca71e056c4651319bb5e37ff6ccea9032d7de11b12445016a4693"
+  },
+  "alpha_research.verification:QUALIFICATION_POLICY:f98ecd1335402c6f": {
+   "byte": "56b070500286ff4f37916c99c721133d8e76ba33d6fb0d4e4d8a8797f43eadd9",
+   "rule": "b8238e14e321eb847e686801998122346070e7ac6a95ef6d54136db971d4524b"
+  },
+  "alpha_research:PAIRED_PANEL_PORTFOLIO_RESEARCH:e34499698864e607": {
+   "byte": "a2405c98aa91df085c2e1545fd94514d6ac34db323952478bf869d11b4c97538",
+   "rule": "e97f9ab327ccb481f712a8c13cedf1ccc5cb8255631cf1b601c65e7b044f172d"
+  },
+  "alpha_research:simple-signed-score:584185bac2ead003": {
+   "byte": "2d1e6e49fbb2f315986d75d53a3b3f833eaac3f63cca69f2cc14ee69525c6a64",
+   "rule": "b4012bef4dd728bd22329e23e9472a6b5182b0e65e4405e4a2c4d070075e39cb"
+  },
+  "installed_frozen_strategies:score_source_and_book_policy:21678290813cf97e": {
+   "byte": "d9dd5f6990db5146967ae88b06d71b3280b6ecd3e99222fdd917afe52357463f",
+   "rule": "db8acedb44d73936f13ffdf9a952ce2ef1a6fa6a253d90159ea94ccb8f984d38"
+  },
+  "portfolio_backtesting:PORTFOLIO_STATE_TRANSITION:a5ac1e2b491d6c8c": {
+   "byte": "46e97253ccc2ba77860449d81575e3265caa99efb92c240a523c9ed3e9aa40ee",
+   "rule": "21a8cc9985e78afd332decf2f011bcc3071b975556cc30b916362130ce4bf7c3"
+  },
+  "portfolio_strategy_lab:portfolio-policy-adapter:2356f0394374313e": {
+   "byte": "885bac1bcdc15fbb3bccf3cf94c3ada12393ebfd5143011500931c2271bb00df",
+   "rule": "9beaf9481f577a75173cf02f9659d102d7704689dfb0359aad16c474e1572d5f"
+  },
+  "portfolio_strategy_lab:portfolio-policy-adapter:62f3cd8f80337409": {
+   "byte": "3aff0760bb1c4ded632e3a18a894ec0d4beb10b9b9ad8b58246ed2847250d8bb",
+   "rule": "83228f042aec0ffc806abaf9b20a9900952444a0b8ff760ffe8d161113318b4d"
+  },
+  "portfolio_strategy_lab:portfolio-policy-adapter:74e496388175f112": {
+   "byte": "ecf8248e5e12cf71a1c3d60adaae62ea03d0afae3bee4014366b58ae73b3c7e3",
+   "rule": "bd6235b5a8349e7c8970ad201772db021424b671a3000c45671a5fbf9b267739"
+  },
+  "portfolio_strategy_lab:portfolio-policy-adapter:8321af38f8cfb47b": {
+   "byte": "7d74ed77c4121ea3dacba71b9cee47ed5afe6939031d8f24a88a20a7873abd19",
+   "rule": "b815d829bc19daca4cb617e9fa027b1a7c48936ceebb16c17c6e696ef759f73e"
+  },
+  "portfolio_strategy_lab:portfolio-policy-adapter:918d9766cb0c1160": {
+   "byte": "2a463434a3bbc87e3c04cc1534022a94faf50c5a98168b3e2080f3b7a63c7890",
+   "rule": "3d90629ffb4097072367f767094b31e13a302389829721010bfdec37aa426f44"
+  },
+  "portfolio_strategy_lab:portfolio-policy-adapter:9a81be4b95dfafbf": {
+   "byte": "75a52120b8c5d262988421e68c3d449a738a392dc6f4b90aed9f655676c291de",
+   "rule": "73a71ac92e190cffbcc41e68c96e360de60a2b822a3c0a5271bc9bafba9aab70"
+  },
+  "portfolio_strategy_lab:portfolio-policy-adapter:ba0416c9af8410d8": {
+   "byte": "da6bea316efb5c33fb8872c6b54ebff3e322dc75f6cb82f0514f03a8e7ec5eeb",
+   "rule": "e76fe641b20e8e7637e420fc9be9f767f5e46f1e8a266d8d0828d035d74472b6"
+  },
+  "portfolio_strategy_lab:portfolio-policy-adapter:bae4933379974fa1": {
+   "byte": "db62a756be6833db62f4f5ff699618c07d9f1644ace00c95cac907d97709e13f",
+   "rule": "0f50420dfe58824cd61b8fb63396c3ff27d7a4e44c9c8a397035e633d98d45ef"
+  },
+  "portfolio_strategy_lab:portfolio-policy-adapter:ca44189206c8f922": {
+   "byte": "f8de0292162ad688a330237a62f76a93e5e13da504699de97d183028580f1e53",
+   "rule": "e0b1f4c9d9c1e5721d66e32a51d53842ba12b6e922602591ab86bf7a9624b318"
+  },
+  "portfolio_strategy_lab:portfolio-policy-adapter:ca57b087e848e5b6": {
+   "byte": "ebae61d3bac25c904bb35ceea2dad4c17fac6872aaf453ba518971d17446c6ff",
+   "rule": "713023ad0790e95f2f0c311bb0835cd54ea3c5d73649311a44aa754eefe0a990"
+  },
+  "risk_research.estimators:RISK_ESTIMATOR_IMPLEMENTATION:184afe79428fc7b0": {
+   "byte": "6e79ccbf77c10583a3a0414b5479b4dfaf55d76e060b437c39482409e313f335",
+   "rule": "0b87262ad0ca24c41bc55a0e9fe616d6da85c6c9895f0aff2b333394bde0c8a7"
+  },
+  "risk_research.estimators:RISK_ESTIMATOR_IMPLEMENTATION:3e2d9041b6317b51": {
+   "byte": "0f828b3e2a42422b686b7c977210b3255f1280cb331054d3b36851e6516288cf",
+   "rule": "0a213944442c4a94332d5c1befa10c0c8c63a251ce9e54c9167e1bc36e4ed9b5"
+  },
+  "risk_research.estimators:RISK_ESTIMATOR_IMPLEMENTATION:dc825cb7c654580f": {
+   "byte": "d4b16568dce6e3edf0c017dba3f43438abe282baa9d702973738ad0032023384",
+   "rule": "12bf23332fdac9dc9d18914983f78bd7b38565798a17c15c6f22b2111a378a05"
+  },
+  "risk_research:RISK_CAMPAIGN_MEASUREMENT:3505e7929bfd013c": {
+   "byte": "5c496f8de0d4336a8b8851b6ab2d41d1c3aff7c2c555ae3101f90f2e3daaeb94",
+   "rule": "6ca3ccc7cdff0cfa9e9d21912c930e2a0333fff520e1d4e82fb2dbda1e2a59a8"
+  },
+  "sector_research:SECTOR_CAMPAIGN_DECISION_POLICY:2318697407dd19b7": {
+   "byte": "a06686025a5e43a8ee05b3b4da3eef0f2696167826107fdecc97442594db02b9",
+   "rule": "9686435f5eebe8d114b9de3fae9d0d1559eb226dd45cd1005c499f82e1d38223"
+  },
+  "sector_research:SECTOR_DEVELOPMENT_EXECUTION:85fdda1db7a509b7": {
+   "byte": "204bdc702df58ebd416d72e42d13e57e471362a0ccf1e421ee370104403e8233",
+   "rule": "29167a760e8853292da602ee798a95b8fd00059d2df6d2f73187173a52ee2429"
+  },
+  "sector_research:SECTOR_FORECAST:37739bdc39256b57": {
+   "byte": "9091dd6de86fd13e6f976e1a8a14d9dd06d30bc4aa1d03f37e96712c23c3fcfc",
+   "rule": "622e8ce88a3ef90f798b2eeeece157293d63f58cf72346843a38ec72ce435ee7"
+  },
+  "sector_research:SECTOR_FORECAST:5e5fb53158e87075": {
+   "byte": "9d59caba1e853e5085d9837a1f54b425231ac52f1e96217f32b9a3dfb2da187c",
+   "rule": "da1ea4f421adf315b0a39c6929be5b8a82b0ccc58ed09fd04f7e6aaafe65cd59"
+  },
+  "sector_research:SECTOR_FORECAST:853c26e05e5f3c22": {
+   "byte": "e01597d7b96e855442ee37ea329f204a9f4835f4d0403db23505afa541a63cc7",
+   "rule": "9379952acd1bcca5f114abca29eb28ac05c40044db77d87a41c8ccbc9ff106b2"
+  },
+  "sector_research:SECTOR_FORECAST:b0bef947d1817342": {
+   "byte": "b9a9b3c2bdb7bb0edf3dcb469e19c2e430ca9a23242325c5ea60c71079f5f75f",
+   "rule": "d03cac3abfecaf094e0c245467f6a9695498532d521f4152e339f940fd0c2c39"
+  }
+ },
+ "note": "Each byte closure the rule replaced (LAWS.md ID3; V70, V231, V232 for the Feature components, W9b's sites for the rest): its rule value and the byte value it had at the switch. While a closure's rule value is the one recorded here, it keeps the byte value everything was sealed under; a comment or docstring moves nothing, and a changed rule is a new identity.",
+ "schema": "alphalattice.playpen.identity-switch"
+}
