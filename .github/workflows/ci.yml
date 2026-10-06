@@ -1,0 +1,97 @@
+name: Verify
+
+# Both legs a person can install: the source checkout and the built wheel. Runs only in a public
+# repository, for its main branch and pull requests against it; actions are pinned to the commit
+# of the named release.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ALPHALATTICE_NETWORK_DISABLED: "1"
+
+jobs:
+  checkout:
+    name: Source checkout
+    if: ${{ !github.event.repository.private }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.11.28"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Install the locked environment
+        run: uv sync --locked --all-extras
+      - name: Build Local Web
+        run: uv run python scripts/build_local_web_ui.py --product
+      - name: Check Python
+        run: uv run python scripts/check_playpen.py --all-python --fast
+      - name: Check Local Web freshness and syntax
+        run: uv run python scripts/build_local_web_ui.py --product --check
+      - name: Run the offline Local Web and Evidence tests
+        run: >-
+          uv run python -m pytest
+          tests/portfolio_strategy_lab/test_local_web_product.py
+          tests/alternative_evidence_desk/test_evidence_review_http_route.py
+          tests/structural/test_local_web_build.py
+          -n auto -m "not real_evidence"
+          --basetemp "${{ runner.temp }}/alphalattice-public-tests"
+
+  wheel:
+    name: Installed wheel
+    if: ${{ !github.event.repository.private }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.11.28"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Install the locked environment
+        run: uv sync --locked --all-extras
+      - name: Build Local Web
+        run: uv run python scripts/build_local_web_ui.py --product
+      - name: Build the wheel
+        run: uv build --wheel --out-dir "${{ runner.temp }}/dist"
+      - name: Install the wheel as the setup guide does
+        env:
+          UV_TOOL_DIR: ${{ runner.temp }}/uv-tools
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/uv-bin
+        run: |
+          $wheel = (Get-ChildItem "${{ runner.temp }}/dist/alphalattice-*-py3-none-any.whl").FullName
+          $requirements = "${{ runner.temp }}/alphalattice-runtime-requirements.txt"
+          uv run python -c "import sys, zipfile, pathlib; pathlib.Path(sys.argv[2]).write_bytes(zipfile.ZipFile(sys.argv[1]).read('alphalattice/_runtime/config/release/runtime-requirements.txt'))" $wheel $requirements
+          uv tool install --python 3.12 $wheel --with-requirements $requirements --constraints $requirements
+          "ALPHALATTICE_TEST_WHEEL=$wheel" >> $env:GITHUB_ENV
+      - name: Smoke the installed command in fresh PowerShell and Git Bash
+        shell: bash
+        run: |
+          temp="${RUNNER_TEMP//\\//}"
+          for shell in powershell bash; do
+            uv run python scripts/release/wheel_smoke.py --command "$temp/uv-bin/alphalattice.exe" --output "$temp/smoke-$shell.json" --fresh-shell "$shell"
+          done
+      - name: Run the wheel runtime tests
+        run: >-
+          uv run python -m pytest tests/release/test_wheel_runtime.py -n auto
+          --basetemp "${{ runner.temp }}/alphalattice-wheel-tests"

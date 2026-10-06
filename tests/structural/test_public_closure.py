@@ -304,6 +304,34 @@ def test_a_generated_output_requires_its_public_declaration_and_actual_write(fam
     assert _failures(blobs, public) == {undeclared}
 
 
+@pytest.mark.parametrize("mapping", ("whole", "copied", "renamed", "filtered", "opaque"))
+def test_a_generated_output_follows_only_a_key_preserving_local_renderer(mapping):
+    """A build's renderer is part of its proof; an unresolved or changed return is not."""
+    from release.public_outputs import generated_outputs
+
+    blobs, public, producer, _, targets = _generated_fixture("assets")
+    returns = {
+        "whole": b"    return outputs\n",
+        "copied": b"    return {name: data for name, data in outputs.items()}\n",
+        "renamed": b"    return {'other-' + name: data for name, data in outputs.items()}\n",
+        "filtered": (
+            b"    return {name: data for name, data in outputs.items() if name != MANIFEST}\n"
+        ),
+        "opaque": b"    return unknown(outputs)\n",
+    }
+    blobs[producer] = blobs[producer].replace(b"def build():\n", b"def render_assets():\n")
+    blobs[producer] = blobs[producer].replace(
+        b"    for name, data in outputs.items():\n",
+        returns[mapping]
+        + b"def build():\n"
+        + b"    outputs = render_assets()\n"
+        + b"    for name, data in outputs.items():\n",
+    )
+    expected = targets if mapping in {"whole", "copied"} else set()
+    assert set(generated_outputs(blobs, public)) == expected
+    assert _failures(blobs, public) == targets - expected
+
+
 @pytest.mark.parametrize("availability", ["absent", "private"])
 @pytest.mark.parametrize(
     ("family", "part"),

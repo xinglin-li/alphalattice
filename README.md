@@ -1,9 +1,10 @@
 # AlphaLattice
 Date: 2026-10-03
 
-AlphaLattice is a local quantitative research workstation for you and your Codex
-or Claude Code agent. You give the question; the product computes and records
-studies. Local Web shows their Tasks, results and reviews.
+AlphaLattice is a local multi-agent quantitative research workstation. Your
+Codex or Claude Code agent leads seven specialists: Data, Factor, Alpha, Risk,
+Portfolio, Evidence Analyst and CRO. You give the question; the product computes
+and records studies. Local Web shows their Tasks, results and reviews.
 
 This checkout is yours and your agent's to change: fix bugs and add strategies, models and features through the [source-change path](docs/public-source/extending.md#change-the-code).
 
@@ -88,3 +89,15 @@ or [xinglin789@outlook.com](mailto:xinglin789@outlook.com).
 material. Downloaded models and acquired data keep their own terms. The first
 release accepts no outside contributions; [contributing](CONTRIBUTING.md) states
 the agreement required before others join.
+
+## Verify a source checkout
+
+After `uv sync --locked --all-extras`, build Local Web with
+`uv run python scripts/build_local_web_ui.py --product` before running the
+[public checks](CONTRIBUTING.md). Tests also check the built output at session
+start and build it once if it is missing or stale; a failed build fails the run.
+
+## Development history
+
+AlphaLattice has been developed privately since August 2026. This repository
+starts at the 0.1.0 release and continues in the open.

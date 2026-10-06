@@ -2348,7 +2348,16 @@ def test_an_answer_is_credited_over_the_whole_ledger_never_its_newest_page(
         )
 
     def delivered(binding: bridge.NativeResearchBinding, event: dict[str, Any]) -> None:
-        answer = bridge.deliver(project, binding, event)
+        # This pins ledger attribution, not the native hook's two-second transport budget.
+        # Keep real bridge reservations and the Host's event door, independent of load.
+        answer = bridge.deliver_owned(
+            project,
+            binding,
+            event,
+            publish=lambda document: run_one(
+                service, {"operation": "EVENT_DECLARE", "event": document}
+            ),
+        )
         assert answer["status"] == "DELIVERED", answer
 
     def start(binding: bridge.NativeResearchBinding, agent: str) -> None:
@@ -2437,6 +2446,16 @@ def test_an_answer_is_credited_over_the_whole_ledger_never_its_newest_page(
     assert author("lead-two").agent_id is None
     # The store fills: retention empties the session's oldest events, the first assignment
     # among them, and what is left would name one Analyst -- the record is not whole.
+    # Automatic capacity follows free disk; other workers may increase it between this
+    # measurement and append. Use the operator's real fixed-cap door for this boundary.
+    configured = run_one(
+        service,
+        {
+            "operation": "STORAGE_CAP_SET",
+            "storage_cap_bytes": str(ledger._retention_policy.workspace_managed_cap_bytes),
+        },
+    )
+    assert configured["status"] == "CONFIGURED", configured
     full_store = ledger._retention_policy.high_water_bytes + 1
     monkeypatch.setattr(ledger, "physical_store_bytes", lambda: full_store)
     start(second, "one-more")

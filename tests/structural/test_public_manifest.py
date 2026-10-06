@@ -15,6 +15,8 @@ from release.public_manifest import RULES, classify, generate, scan_public, vali
         ("NOTICE", "PUBLIC", "PUBLIC_LEGAL"),
         ("README.md", "PUBLIC", "PUBLIC_DOC"),
         ("CONTRIBUTING.md", "PUBLIC", "PUBLIC_DOC"),
+        (".github/workflows/ci.yml", "PUBLIC", "PUBLIC_BUILD"),
+        (".github/workflows/internal.yml", "UNSETTLED", None),
         ("benchmark/measure.py", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("case-study/readme.md", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("probe/measure.py", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),

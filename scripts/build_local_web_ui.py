@@ -225,8 +225,8 @@ def dictionary(source: str) -> str:
     return body + "\nwindow.ALPHA_ZH_READY = true;\n"
 
 
-def build(*, product: bool = True):
-    """Assemble the product's workbench assets from the named sources.
+def render_outputs(*, product: bool = True) -> dict[str, bytes]:
+    """Render every built asset without writing it, from the named sources.
 
     Source CSS order and JavaScript semantics are preserved; trusted code is
     served as local assets under the Host's strict CSP. `product` is kept for
@@ -284,17 +284,23 @@ def build(*, product: bool = True):
 
     manifest_text = json.dumps(manifest, indent=1, sort_keys=True) + "\n"
     outputs[MANIFEST] = manifest_text.encode("utf-8")
+    return {name: data.replace(b"\r\n", b"\n") for name, data in outputs.items()}
+
+
+def build(*, product: bool = True):
+    """Write the rendered assets whole; the manifest is published last."""
+    outputs = render_outputs(product=product)
     try:
         for name, data in outputs.items():
             # each file whole or not at all: two test workers may build at once, and a reader
             # (the served page, a test reading the bundle) must never see half a file
             partial = ASSETS / f"{name}.{os.getpid()}.partial"
-            partial.write_bytes(data.replace(b"\r\n", b"\n"))
+            partial.write_bytes(data)
             # Windows refuses to replace a file a request holds open; the Host reads it briefly.
             replace_with_retry(partial, ASSETS / name, delays=REPLACE_DELAYS)
     except OSError as error:
         raise AssetsUnwritable(f"local_web.assets_unwritable:{type(error).__name__}") from error
-    return {"workbench.html": html}
+    return {"workbench.html": outputs["workbench.html"].decode("utf-8")}
 
 
 def check():
@@ -315,24 +321,56 @@ def check():
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Build the assets, printing each page's size, or the refusal in words (V539).
+    """Build the assets, or check that every output is current without writing.
 
     Args:
         argv: The command line, else the process's.
 
     Returns:
-        0 once built; 2 when the assets could not be written.
+        0 once built or current; 1 when missing or stale; 2 for a build or check failure.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--check", action="store_true", help="Also check JavaScript syntax with node."
+        "--check",
+        action="store_true",
+        help="Read only: check every built output is current, plus syntax and design values.",
     )
     parser.add_argument("--product", action="store_true", help="Accepted; the only build.")
     arguments = parser.parse_args(argv)
     try:
-        out = build(product=arguments.product)
         if arguments.check:
             check()
+            expected = render_outputs(product=arguments.product)
+            stale = [
+                name
+                for name, data in expected.items()
+                if not (ASSETS / name).is_file() or (ASSETS / name).read_bytes() != data
+            ]
+            if stale:
+                print(
+                    json.dumps(
+                        {
+                            "status": "STALE",
+                            "failure_code": "local_web.assets_stale",
+                            "detail": (
+                                "The Local Web's built outputs are missing or differ from their "
+                                "sources. Build them before serving or testing."
+                            ),
+                            "outputs": stale,
+                            "next_commands": {
+                                "build": [
+                                    sys.executable,
+                                    "scripts/build_local_web_ui.py",
+                                    "--product",
+                                ]
+                            },
+                        }
+                    )
+                )
+                return 1
+            out = {"workbench.html": expected["workbench.html"].decode("utf-8")}
+        else:
+            out = build(product=arguments.product)
     except AssetsUnwritable as error:
         refusal = {
             **setup_failure(error),
@@ -349,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(refusal, indent=1))
         return 2
     except Exception as error:
-        # Its way on is its help: the build itself is the check, and it writes (V590).
+        # A build or check failure names its help without exposing a command's payload.
         help_command = [sys.executable, "scripts/build_local_web_ui.py", "--help"]
         print(
             json.dumps(

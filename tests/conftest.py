@@ -14,6 +14,7 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from collections.abc import Iterator
@@ -348,6 +349,45 @@ def pytest_configure_node(node: object) -> None:
     workers = node.config.getoption("numprocesses", 0)  # type: ignore[attr-defined]
     batch = node.config.getoption("maxschedchunk", None)  # type: ignore[attr-defined]
     node.workerinput.update(recorded_workers=workers, recorded_batch=batch)  # type: ignore[attr-defined]
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Every Local Web reader shares current assets before workers collect or start a Host.
+
+    The tests' root is their narrowest common ancestor: other case directories also start
+    the Host. Only the controller runs this prerequisite, so xdist workers never race a
+    build. A read-only check decides freshness, including a removed output; no old marker
+    or manifest alone can stand in for the actual files.
+    """
+    if hasattr(session.config, "workerinput") or session.config.option.collectonly:
+        return
+    checkout = Path(__file__).resolve().parents[1]
+    command = [sys.executable, str(checkout / "scripts/build_local_web_ui.py"), "--product"]
+
+    def run(*flags: str) -> subprocess.CompletedProcess[str]:
+        result = subprocess.run(
+            [*command, *flags],
+            cwd=checkout,
+            capture_output=True,
+            encoding="utf-8",
+            check=False,
+        )
+        if result.returncode not in {0, 1} or (result.returncode == 1 and not flags):
+            raise pytest.UsageError(
+                "The Local Web prerequisite failed:\n" + result.stdout + result.stderr
+            )
+        return result
+
+    checked = run("--check")
+    if checked.returncode == 1:
+        run()
+        checked = run("--check")
+        if checked.returncode:
+            raise pytest.UsageError(
+                "The Local Web build did not produce current outputs:\n"
+                + checked.stdout
+                + checked.stderr
+            )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

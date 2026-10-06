@@ -160,6 +160,66 @@ def _asset_writer(build: ast.FunctionDef, tree: ast.Module, persistence: ast.Mod
     return None
 
 
+def _output_declarations(
+    scope: ast.FunctionDef, tree: ast.Module, limit: int, seen: tuple[str, ...] = ()
+) -> list[ast.Assign]:
+    """Follow the writer's mapping through an explicit, key-preserving local render.
+
+    An unknown call, recursive helper, conditional return, changed key or filtered mapping
+    supplies no output permission. The write still belongs to the original PUBLIC builder.
+    """
+    resets = [
+        node
+        for node in ast.walk(scope)
+        if isinstance(node, ast.Assign | ast.AnnAssign)
+        and node.lineno < limit
+        and any(
+            _parts(target) == ("$outputs",)
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        )
+    ]
+    reset = max(resets, key=lambda node: node.lineno, default=None)
+    if reset is not None and isinstance(reset.value, ast.Call):
+        call = reset.value
+        if not isinstance(call.func, ast.Name) or call.func.id in seen:
+            return []
+        helper = _function(tree, call.func.id)
+        if helper is None:
+            return []
+        returns = [node for node in ast.walk(helper) if isinstance(node, ast.Return)]
+        if len(returns) != 1:
+            return []
+        returned = returns[0]
+        value = returned.value
+        preserves_keys = _parts(value) == ("$outputs",)
+        if isinstance(value, ast.DictComp) and len(value.generators) == 1:
+            generator = value.generators[0]
+            preserves_keys = (
+                isinstance(generator.target, ast.Tuple)
+                and len(generator.target.elts) == 2
+                and all(isinstance(item, ast.Name) for item in generator.target.elts)
+                and isinstance(value.key, ast.Name)
+                and value.key.id == generator.target.elts[0].id
+                and ast.unparse(generator.iter) == "outputs.items()"
+                and not generator.ifs
+                and not generator.is_async
+            )
+        # An opaque function handed this mutable mapping could remove its declared keys.
+        opaque_mutation = any(
+            isinstance(node, ast.Call) and any(_parts(arg) == ("$outputs",) for arg in node.args)
+            for node in ast.walk(helper)
+        )
+        if not preserves_keys or opaque_mutation:
+            return []
+        return _output_declarations(helper, tree, returned.lineno, (*seen, call.func.id))
+    first = reset.lineno if reset is not None else 0
+    return [
+        node
+        for node in ast.walk(scope)
+        if isinstance(node, ast.Assign) and first < node.lineno < limit
+    ]
+
+
 def generated_outputs(blobs: Mapping[str, bytes], public: Collection[str]) -> dict[str, str]:
     """Missing Workbench assets and native binding, each proved by its PUBLIC writer.
 
@@ -177,22 +237,7 @@ def generated_outputs(blobs: Mapping[str, bytes], public: Collection[str]) -> di
         if build is not None and assets == "/__checkout__/" + _ASSETS:
             writer = _asset_writer(build, builder, _tree(_PERSISTENCE, blobs, public))
             if writer is not None:
-                resets = [
-                    node.lineno
-                    for node in ast.walk(build)
-                    if isinstance(node, ast.Assign | ast.AnnAssign)
-                    and node.lineno < writer
-                    and any(
-                        _parts(target) == ("$outputs",)
-                        for target in (
-                            node.targets if isinstance(node, ast.Assign) else [node.target]
-                        )
-                    )
-                ]
-                reset = max(resets, default=0)
-                for node in ast.walk(build):
-                    if not isinstance(node, ast.Assign) or not reset < node.lineno < writer:
-                        continue
+                for node in _output_declarations(build, builder, writer):
                     for target in node.targets:
                         if not isinstance(target, ast.Subscript) or _parts(target.value) != (
                             "$outputs",

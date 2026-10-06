@@ -307,6 +307,7 @@ RULES = [
             ".python-version",
             ".pre-commit-config.yaml",
             ".githooks/**",
+            ".github/workflows/ci.yml",
             "pyproject.toml",
             "uv.lock",
             "LAWS.md",
