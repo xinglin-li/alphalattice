@@ -1,5 +1,5 @@
 # AlphaLattice: guide for your research agent
-Date: 2026-10-06
+Date: 2026-10-07
 
 AlphaLattice computes and records local quantitative research. You state the
 question, follow the product's answers and explain the evidence to the person.
@@ -78,7 +78,9 @@ with `--goal`. Confirm only the plan the preview offers. While the goal is open,
 for 24 hours from opening, you may open the preparation's network, confirm its
 preparation and resumes, and preview/decide its data issues within that first
 use's scope. Read the decisions in `goal show`'s `record.delegated_steps`.
-This goal is never revised. Submission, abandonment or expiry ends delegation
+The `FIRST_USE` declaration is never revised. Evidence attachments, notes and
+an accepted submission may create record revisions; none restarts its original
+24-hour delegation window. Accepted submission, abandonment or expiry ends delegation
 and closes the network it opened. A normal research goal grants none of it.
 
 The person may interrupt with `goal abandon <goal-id> --reason <reason>` or close

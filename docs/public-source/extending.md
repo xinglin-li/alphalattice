@@ -1,5 +1,5 @@
 # Change and extend the workspace
-Date: 2026-10-03
+Date: 2026-10-07
 
 Extensions begin as declared research proposals. Inspect each plan, contract, run and review before requesting the person's activation. Activation and qualification are different decisions. [Formula factors](formula-factors.md) owns the complete language, parameters, supported recipes and trial evidence; this page summarizes the extension paths.
 
@@ -8,8 +8,8 @@ Extensions begin as declared research proposals. Inspect each plan, contract, ru
 The checkout is the person's workspace to change. Your agent is encouraged to
 fix runtime bugs and add strategies, models and features in source. Use the
 editable checkout and locked environment from [setup](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch).
-Read the failed Task or refusal and its cause, reproduce the failure, then fix
-the owner that caused it. Add a regression test and run the request again.
+Before changing code, follow the [failure and recovery procedure](../../.agents/skills/alphalattice-research/references/operating.md).
+Keep the original Goal, Task and error; a lawful refusal is not a defect to remove.
 The person chooses the lead agent's model; retain the inexpensive specialist
 defaults in the shipped cards.
 
@@ -46,8 +46,10 @@ $env:ALPHALATTICE_NETWORK_DISABLED = '1'
 .venv/Scripts/python.exe -m pytest tests/feature_engine/test_factor_arithmetic_identity.py
 ```
 
-In the editable install, source edits are live; restart an idle Host you own
-before running with the changed code. Keep the earlier sealed result to compare
+In the editable install, source edits are live; restart only an idle Host you own
+in the same workspace, open its new launch link and recheck the session binding.
+Read the original Task before taking its current owner-offered resume or replan.
+Keep the earlier sealed result to compare
 with the new run. Computation identities bind the method's numerical source,
 declaration and parameters; execution evidence records the Program, method and
 input bindings and artifact references. Changing the computation produces a new

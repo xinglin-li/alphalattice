@@ -1,5 +1,5 @@
 # Goals
-Date: 2026-10-03
+Date: 2026-10-07
 
 A goal is the Host's durable record of a multi-step objective. It records requests and Tasks from the bound session and checks a submission against the declaration and evidence (LAWS OP13). One exact read needs no goal. Goal UUIDs identify goals; content hashes identify revisions.
 
@@ -28,11 +28,11 @@ research:
 
 ## First use
 
-Only a person's one sentence may open the one-per-workspace `FIRST_USE` goal, before the first preparation. It may delegate only opening network access for that preparation, confirming that preparation and its resumes, and deciding its data issues, while the goal is open and within its hours. Record these as the person's delegated acts. The person can stop it at any time; its network grant closes at the delegation's end or earlier submission/abandonment. Activation, storage, automation, revocation and paid actions remain theirs. The book draft's declared unavailable-return quarantine is allowed only under its declared policy; keep original inputs and report the effective population, never select exclusions to improve results.
+Only a person's one sentence may open the one-per-workspace `FIRST_USE` goal, before the first preparation. It may delegate only opening network access for that preparation, confirming that preparation and its resumes, and deciding its scoped data issues, while the goal is open within 24 hours of its original opening. Record these as the person's delegated acts. Its declaration is immutable; evidence attachments, notes and an accepted submission may create record revisions, retaining that opening time and never restarting delegation. The person can stop it at any time; its network grant closes at the delegation's end or earlier accepted submission/abandonment. Activation, storage, automation, revocation and paid actions remain theirs. The book draft's declared unavailable-return quarantine is allowed only under its declared policy; keep original inputs and report the effective population, never select exclusions to improve results.
 
 ## Record and submit work
 
-The Host records every request and Task; do not log steps yourself. `goal attach` adds an exact read under DATA_FEATURES, FACTOR_FOUNDATION, ALPHA, RISK, PORTFOLIO or EVIDENCE_CRO (a feature trial/review uses FEATURE_TRIAL_READBACK/FEATURE_REVIEW under DATA_FEATURES), never a RUN, latest-input default or declared completion. `goal note` records a decision or conclusion; SUPPORTS/DOES_NOT_SUPPORT needs evidence. Revising the objective or criteria marks earlier evidence POST_HOC. For existing results declare `EXISTING_RESULTS`; do not claim preregistration.
+The Host records every request and Task; do not log steps yourself. `goal attach` adds an exact read under DATA_FEATURES, FACTOR_FOUNDATION, ALPHA, RISK, PORTFOLIO or EVIDENCE_CRO (a feature trial/review uses FEATURE_TRIAL_READBACK/FEATURE_REVIEW under DATA_FEATURES), never a RUN, latest-input default or declared completion. `goal note` records a decision or conclusion; SUPPORTS/DOES_NOT_SUPPORT needs evidence. For other goals whose declarations can be revised, changing the objective or criteria marks earlier evidence POST_HOC. For existing results declare `EXISTING_RESULTS`; do not claim preregistration.
 
 Prefer `goal show --save-declaration "<out>/submission.yaml"`: fill the owner-provided criterion and deliverable slots and submit that whole declaration with `request --file "<out>/submission.yaml"`. The declaration is bound to that goal revision. A hand-written submission uses `goal submit <id> --file "<out>/submission.yaml"`; it names outcome, summary, each criterion as MET/NOT_MET with evidence or NOT_ASSESSED with a note, deliverable slots, references, files, findings, problems and follow-ups. Cite held evidence by its id; declare only new reads once. Name every Task still waiting on a person in `problems`. `INCOMPLETE` returns missing items and their next requests. `COMPLETE` means the record and evidence are verified, not that the objective succeeded. A NOT_ACHIEVED goal may be complete; ACHIEVED with a NOT_MET criterion is refused. Do not overstate.
 

@@ -1,5 +1,5 @@
 # Pipeline issues
-Date: 2026-10-03
+Date: 2026-10-07
 
 Use this guide when preparation or an update stops for data review, or when checking input coverage. Start from the exact Task and owner answer; a failure code alone is not a root cause. Review decisions through their offered path, not through code repair or a second quality policy.
 
@@ -14,7 +14,7 @@ Use this guide when preparation or an update stops for data review, or when chec
 
 1. Take the current exact preview request from `next_requests`; never rebuild its case, evidence or hashes.
 2. Preview validates but applies nothing. `CONFIRMATION_REQUIRED` and `effect_applied: false` are not success. If evidence or case changed, read the current issue and reassess.
-3. A person confirms a data issue, unless the person issued the exact grant for automation; automation uses its own provenance.
+3. A person confirms a data issue. For the admitted first preparation and its scoped data issues, an agent under the workspace's open `FIRST_USE` goal may confirm within 24 hours of its original opening; the Host records the person's delegation and the actual agent session. Outside that delegation, automation needs the person's exact grant and keeps its own actor provenance. Activation, storage, automation settings and revocation remain the person's.
 4. Read the applied effect and refreshed issues, then follow the original Task's offered continuation. Use `RECOVER` only when recovery is required. Keep valid stages and source captures; never recreate a workspace to escape a stop.
 5. Read the continuing Task and current readiness and input publication. A receipt, `CONFIRMED_PENDING_REVALIDATION` or `NO_PENDING_CASE_CATALOG` alone does not prove a usable input; more cases may remain.
 

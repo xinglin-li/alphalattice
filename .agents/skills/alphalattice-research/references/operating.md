@@ -1,5 +1,5 @@
 # Operating the CLI
-Date: 2026-10-06
+Date: 2026-10-07
 
 ## Setup and launch
 Date: 2026-10-03
@@ -67,6 +67,15 @@ A refusal leaves its owner's stable code, detail and legal way on. Follow only t
 
 A timeout or lost connection is a transport event: check the known Task before retrying; if no Task is known, ask the lead. `activity wait` waits across Host restarts and ends on one `wait_event` naming what happened and how to read it; `task show` reads state. `--wait` follows admitted work until it ends, needs a decision, is deferred, reports an incident or reaches `--max-wait`. A cancellation request is not a cancellation result. If a local output write fails after the owner answered, read stdout or the Task; never resubmit the work. `local_web_url` is navigation, not evidence. Do not poll or use a detached waiter your host cannot track. A lead may wait in its host-tracked background command; a subagent waits in its own turn or hands the Task back to the lead.
 
+## Failure and recovery
+
+Keep the original Goal, Task and error. Distinguish a malformed request, a legal permission refusal, a data decision, a transport event and a reproducible product defect before changing anything:
+
+1. Correct a malformed request's named command, document or field within scope. A legal permission refusal is a stop, not a bug to remove; a code fix grants no authority and must not weaken scientific or integrity checks.
+2. Take a data decision through its offered preview and confirmation under the authority in [pipeline issues](pipeline-issues.md). After a transport event, read the known Task before repeating work; absence of an answer does not prove that no work was admitted.
+3. Reproduce a product defect, fix its existing owner and add a regression at the affected boundary. For changed editable source, restart only an idle Host you own in the same workspace, open its new printed launch link and recheck the session binding; a restart alone does not require rebinding.
+4. Read the original Task before taking its current owner-offered resume or replan. If a changed method or input requires new evidence, keep the earlier result and follow the owner's new-plan path; never rewrite its stored bindings or assume every stop can resume.
+
 ## Inspect and continue answers
 
 The compact view is the default. It shortens ids and hashes to twelve characters, shows state and limits, and marks omitted sections; it is not an authority document. Use the value as shown only when unique. Read an omitted part with `--section <path>` (for example `items.3:` or `items.3:40`); page long lists with `--list-next --next-from <N>`, or save the whole answer with `--output`. `--view full` prints it all and may exceed the host's output limit. A saved output keeps the owner's full answer, whatever the display, and `--from` reads JSON or YAML. A compact omission is not an empty value.
@@ -87,7 +96,7 @@ A fresh checkout uses its own locked environment and local UI build. When Eviden
 
 `activity wait` has no timer; `--goal` also wakes for its goal's messages and closing. A Codex turn that must end may use `--notify codex-queue` when `codex` and `CODEX_THREAD_ID` are available; its wake is a user message, not an instruction. A subagent waits in its own turn or hands the Task to the lead. Use `--max-wait` only when the command needs a cap. `activity recent` reads the last events by session and goal. `recovery list` shows unfinished Tasks and their owner-permitted recovery. A late heartbeat is not a dead Task. `--request-timeout` defaults to 120 seconds and caps at 600; it bounds only HTTP wait, not the Task. Cancellation must be followed to its actual state.
 
-After a restart, rediscover Tasks and plan current work from its declaration. Reuse completed research; never rebuild data, retrain or rewrite an old identity just to display or export it. Historical evidence reuse and a new replay that refuses a changed execution binding are different claims. Counts describe the read unless the owner gives an execution count. For exact reuse, `task_id: null` means no new Task; read the named existing publication. `study verify <task>` verifies an existing execution without admitting work. PLAN's expected calls describe potential work; `EXISTING_EXECUTION_CANDIDATE` does not promise a zero-work RUN. A code fix or authority grant is not a declaration edit.
+After a restart, read the original Task and follow the failure and recovery procedure above. Reuse completed research; never rebuild data, retrain or rewrite an old identity just to display or export it. Historical evidence reuse and a new replay that refuses a changed execution binding are different claims. Counts describe the read unless the owner gives an execution count. For exact reuse, `task_id: null` means no new Task; read the named existing publication. `study verify <task>` verifies an existing execution without admitting work. PLAN's expected calls describe potential work; `EXISTING_EXECUTION_CANDIDATE` does not promise a zero-work RUN. A code fix or authority grant is not a declaration edit.
 
 On every fresh session, read `workspace show`, then `strategy-book controls --package <package>` for the exact installed package and its `activation` before planning forward work. If `INACTIVE`, open the exact Portfolio activation action for the person; follow a held reason when no activation is offered. Installation, person activation and daily automation are separate decisions ([leading research](research-lead.md)).
 
