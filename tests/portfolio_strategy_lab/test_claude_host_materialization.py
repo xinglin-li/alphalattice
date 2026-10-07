@@ -187,15 +187,13 @@ def test_the_skill_carries_every_command_its_paths_use(materialize):
     assert not listed & persons, listed & persons
 
 
-def test_hooks_run_the_same_command_as_codex(materialize):
+def test_both_default_hosts_register_no_product_hooks(materialize):
     settings = json.loads((ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
     with (ROOT / ".codex" / "config.toml").open("rb") as stream:
-        codex = tomllib.load(stream)["hooks"]
+        codex = tomllib.load(stream).get("hooks", {})
     for event in ("SubagentStart", "SubagentStop"):
-        groups = [g for g in settings["hooks"][event] if g["matcher"] == "^alphalattice_.*$"]
-        assert len(groups) == 1
-        assert groups[0]["hooks"][0]["command"] == codex[event][0]["hooks"][0]["command"]
-        assert groups[0]["hooks"][0]["type"] == "command"
+        for hooks in (settings.get("hooks", {}), codex):
+            assert not any(g.get("matcher") == "^alphalattice_.*$" for g in hooks.get(event, []))
 
 
 def test_skill_copy_is_byte_exact(materialize):
@@ -207,7 +205,7 @@ def test_skill_copy_is_byte_exact(materialize):
         assert (copy / relative).read_bytes() == (source / relative).read_bytes()
 
 
-def test_settings_merge_keeps_unrelated_keys_and_replaces_only_this_matcher(materialize):
+def test_settings_merge_keeps_unrelated_keys_and_removes_only_product_matcher(materialize):
     existing = json.dumps(
         {
             "permissions": {"allow": ["Read"]},
@@ -225,9 +223,9 @@ def test_settings_merge_keeps_unrelated_keys_and_replaces_only_this_matcher(mate
     merged = json.loads(materialize.settings_document(existing))
     assert merged["permissions"] == {"allow": ["Read"]}
     starts = merged["hooks"]["SubagentStart"]
-    assert [g["matcher"] for g in starts] == ["Explore", "^alphalattice_.*$"]
-    assert starts[1]["hooks"][0]["command"] != "old"
-    assert merged["hooks"]["SubagentStop"][0]["matcher"] == "^alphalattice_.*$"
+    assert [g["matcher"] for g in starts] == ["Explore"]
+    assert starts[0]["hooks"][0]["command"] == "keep"
+    assert "SubagentStop" not in merged["hooks"]
     with pytest.raises(materialize.MaterializationError, match="hooks_invalid"):
         materialize.settings_document(json.dumps({"hooks": []}).encode())
 

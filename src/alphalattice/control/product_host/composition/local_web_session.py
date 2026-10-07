@@ -16,13 +16,15 @@ operation owner, so the browser and the generic Agent tool share them.
 from __future__ import annotations
 
 import json
+import re
 import secrets
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from http import HTTPStatus
 from pathlib import Path
 from threading import Event
+from time import monotonic
 from typing import Any, Final, Literal, cast, get_args
 from uuid import UUID
 
@@ -157,6 +159,10 @@ from alphalattice.interface.local_application.activity import (
     refusal_code,
     returned_status,
 )
+from alphalattice.interface.local_application.cli_contract import (
+    REQUEST_PROVENANCE,
+    RequestProvenance,
+)
 from alphalattice.interface.local_application.client import (
     LocalResearchConnection,
     workspace_connection_key,
@@ -170,6 +176,29 @@ from alphalattice.interface.local_application.failure_codes import (
     located_failure,
     owner_failure_code,
     safe_failure_code,
+)
+from alphalattice.interface.local_application.native_bridge import (
+    HOSTS,
+    LEAD_ROLE,
+    PRODUCERS,
+    USAGE_READ_BYTES,
+    NativeBridgeError,
+    NativeResearchBinding,
+    deliver_child_usage_owned,
+    deliver_lead_usage_owned,
+    producer_scope,
+    role_pin,
+)
+from alphalattice.interface.local_application.native_runtime import retained_history
+from alphalattice.interface.local_application.native_setup import (
+    admitted_session_project,
+    session_project,
+)
+from alphalattice.interface.local_application.native_usage import (
+    canonical_agent_path,
+    claude_thread_spawn,
+    codex_assigned_spawn,
+    session_file,
 )
 from alphalattice.interface.local_application.portfolio_research import (
     FinalizationStatusProjection,
@@ -210,6 +239,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.publication.finalization_ledger import (
     PortfolioFinalizationStore,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTickerAuthority,
@@ -410,6 +440,396 @@ class EvidenceReviewAuthority:
     selected_analysis_publication_hash: str | None = None
 
 
+class NativeUsageObserver:
+    """Observe admitted usage while this Host lives, independently of lifecycle hooks.
+
+    Participant and per-file read bounds are hard limits. The two-second checkpoints and
+    aggregate pre-stat byte budget defer work between operations; they do not cancel a read
+    already admitted, and a file may grow after its stat. Large or incomplete native logs
+    remain unavailable rather than becoming truncated or zero usage totals.
+    """
+
+    INTERVAL = timedelta(seconds=3)
+    MAX_PARTICIPANTS = 32
+    CYCLE_SECONDS = 2.0
+
+    def __init__(
+        self, operations: PortfolioResearchOperations, activity: WorkspaceActivity
+    ) -> None:
+        """Retain the served workspace's binding, Goal and observation owners.
+
+        Args:
+            operations: This Host's admitted operation and Goal owners.
+            activity: This Host's bounded external observation reader.
+        """
+        self.operations, self.activity = operations, activity
+        self.workspace = operations.workspace_session.workspace.resolve()
+        self.clock = operations.dispatcher.clock
+        self._wake = MaintenanceWakeController()
+        self._stopping = Event()
+        self._started = False
+        self._last_error_code: str | None = None
+        self._status = "NOT_BOUND"
+        self._readings: dict[tuple[str, ...], tuple[int, ...]] = {}
+        self._next_binding = 0
+        self._host = MaintenanceBackgroundHost(
+            wake=self._wake, run_once=self._cycle, clock=self.clock
+        )
+
+    def start(self) -> None:
+        """Start optional observation without preventing the Host from serving research."""
+        try:
+            self._host.start()
+            self._started = True
+            self._wake.set_next_due(self.clock())
+            self._wake.event.set()
+        except Exception:
+            self._last_error_code = "native_bridge.lead_usage_read_failed"
+
+    def close(self, *, timeout: float | None = None) -> bool:
+        """Stop observation and join before the ledger or workspace lease is released.
+
+        Args:
+            timeout: Bounded join allowance, or None to wait for an admitted read to finish.
+
+        Returns:
+            Whether no background observer remains live.
+        """
+        self._stopping.set()
+        if not self._started:
+            return True
+        quiet = self._host.close(timeout=0.0 if timeout is None else timeout)
+        if timeout is None and not quiet:
+            self._host.wait_stopped()
+            return True
+        return quiet
+
+    @property
+    def last_error_code(self) -> str | None:
+        """Read the bounded optional observation failure without native content."""
+        return self._last_error_code or self._host.last_error_code
+
+    def state(self) -> dict[str, object]:
+        """Read optional observer health, never native lifecycle or completeness proof.
+
+        Returns:
+            Bounded observer status and failure code without participant ids or file paths.
+        """
+        reason = self.last_error_code
+        return {
+            "status": "STOPPED"
+            if self._stopping.is_set()
+            else ("UNAVAILABLE" if reason is not None else self._status),
+            "reason": reason,
+        }
+
+    def _note_failure(self, code: str) -> None:
+        # A later healthy source, or a different source's failure, cannot erase the first
+        # typed collection diagnostic. No unreadable filename is promoted to a Session.
+        if self._last_error_code is None:
+            self._last_error_code = (
+                safe_failure_code(code) or "native_bridge.lead_usage_read_failed"
+            )
+
+    def _bindings(self) -> tuple[tuple[Path, NativeResearchBinding], ...]:
+        found: list[tuple[Path, NativeResearchBinding]] = []
+        for host in HOSTS:
+            try:
+                project = session_project(self.workspace, host)
+                project = admitted_session_project(self.workspace, project, host)
+                bindings, diagnostics = NativeResearchBinding.binding_entries(project)
+                for diagnostic in diagnostics:
+                    self._note_failure(diagnostic["failure_code"])
+                found.extend(
+                    (project, binding)
+                    for binding in bindings
+                    if binding.host == host and binding.workspace.resolve() == self.workspace
+                )
+            except NativeBridgeError as error:
+                if str(error) in {
+                    "native_bridge.hook_declaration_missing",
+                    "native_bridge.project_declaration_missing",
+                }:
+                    continue
+                self._note_failure(str(error))
+            except Exception as error:
+                self._note_failure(
+                    owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
+                )
+        return tuple(found)
+
+    def _children(
+        self, project: Path, binding: NativeResearchBinding, goal_id: str | None, deadline: float
+    ) -> list[tuple[str, str]]:
+        # An exact assignment selects a child; only that host's own metadata supplies its
+        # specialist role and direct parent. A role, time, card pin or filename selects none.
+        if binding.observation_started_at is None:
+            return []
+
+        def read_page(*, before: int | None) -> Mapping[str, Any]:
+            if self._stopping.is_set() or monotonic() >= deadline:
+                raise ValueError("native_bridge.history_unavailable")
+            return self.activity.read_external(ExternalActivityReadQuery(before=before))
+
+        rows, _diagnostic = retained_history(read_page)
+        if rows is None:
+            self._note_failure("native_bridge.history_unavailable")
+            return []
+        scope = producer_scope(project, binding)
+        source = f"{PRODUCERS[binding.host]}:{scope}"
+        assigned: set[str] = set()
+        for row in rows:
+            if (
+                row.get("payload") is None
+                and row.get("source_id") == source
+                and binding.session_id in (row.get("correlation_ids") or ())
+            ):
+                self._note_failure("native_bridge.history_unavailable")
+                return []
+            payload = row.get("payload")
+            if not isinstance(payload, Mapping):
+                continue
+            subject = payload.get("subject")
+            if (
+                row.get("schema_kind") != "ExternalActivityObserved"
+                or row.get("authority") != "AGENT_PROPOSAL"
+                or row.get("source_id") != source
+                or binding.session_id not in (row.get("correlation_ids") or ())
+                or not isinstance(subject, Mapping)
+                or payload.get("producer_id") != PRODUCERS[binding.host]
+                or payload.get("producer_session") != scope
+                or payload.get("event_kind") != "NATIVE_COORDINATION_MESSAGE"
+                or subject.get("native_host") != binding.host
+                or subject.get("native_session_id") != binding.session_id
+                or subject.get("native_agent_id") != binding.session_id
+                or subject.get("role") != LEAD_ROLE
+                or subject.get("input_channel") != "ACTOR_DECLARED"
+                or subject.get("message_kind") != "assignment"
+                or subject.get("goal_id") != goal_id
+            ):
+                continue
+            child = subject.get("recipient_id")
+            try:
+                occurred = datetime.fromisoformat(str(row.get("occurred_at")))
+                # An exact current Goal retains its assignment across a Session rebind;
+                # without a Goal, only this binding's observed assignments select children.
+                if (
+                    occurred.utcoffset() is None
+                    or (goal_id is None and occurred < binding.observation_started_at)
+                    or not isinstance(child, str)
+                    or child == binding.session_id
+                ):
+                    continue
+                if binding.host == "codex":
+                    if canonical_agent_path(child) is None and str(UUID(child)) != child:
+                        continue
+                elif re.fullmatch(r"[A-Za-z0-9_-]{1,128}", child) is None:
+                    continue
+            except ValueError:
+                continue
+            assigned.add(child)
+            if len(assigned) >= self.MAX_PARTICIPANTS:
+                self._note_failure("native_bridge.child_usage_binding_unverified")
+                return []
+        result = []
+        for child in sorted(assigned):
+            if self._stopping.is_set() or monotonic() >= deadline:
+                break
+            spawn = (
+                codex_assigned_spawn(binding.session_id, child)
+                if binding.host == "codex"
+                else claude_thread_spawn(binding.session_id, child)
+            )
+            if (
+                spawn is not None
+                and spawn.parent_thread_id == binding.session_id
+                and spawn.agent_role in binding.roles
+            ):
+                result.append((child, spawn.agent_role))
+            else:
+                self._note_failure("native_bridge.child_usage_binding_unverified")
+        return result
+
+    def _cycle(self) -> None:
+        if self._stopping.is_set():
+            return
+        try:
+            self._last_error_code = None
+            self._read_once()
+        except Exception as error:
+            self._note_failure(owner_failure_code(error) or "native_bridge.lead_usage_read_failed")
+        finally:
+            if not self._stopping.is_set():
+                self._wake.set_next_due(self.clock() + self.INTERVAL)
+
+    def _read_once(self) -> None:
+        found = self._bindings()
+        # OFF is checked before any native file or child metadata discovery for that source.
+        active = tuple(item for item in found if item[1].usage != "OFF")
+        if not active:
+            self._status = "NOT_BOUND" if not found else "OFF"
+            self._readings.clear()
+            return
+        self._status = "OBSERVING"
+        scopes = {
+            (
+                str(project),
+                str(self.workspace),
+                binding.host,
+                binding.session_id,
+                str(binding.observation_started_at),
+            )
+            for project, binding in active
+        }
+        self._readings = {key: stamp for key, stamp in self._readings.items() if key[:5] in scopes}
+        # Keep the existing cycle and byte bounds while rotating the first source so a
+        # slow admitted read cannot permanently prevent another source from being read.
+        start = self._next_binding % len(active)
+        self._next_binding = (start + 1) % len(active)
+        deadline = monotonic() + self.CYCLE_SECONDS
+        remaining = USAGE_READ_BYTES
+        for project, binding in active[start:] + active[:start]:
+            if self._stopping.is_set() or monotonic() >= deadline:
+                break
+            scope = (
+                str(project),
+                str(self.workspace),
+                binding.host,
+                binding.session_id,
+                str(binding.observation_started_at),
+            )
+            retained: dict[tuple[str, ...], tuple[int, ...]] = {}
+            try:
+                retained, remaining = self._read_binding(project, binding, deadline, remaining)
+            except Exception as error:
+                self._note_failure(
+                    owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
+                )
+            self._readings = {
+                key: stamp for key, stamp in self._readings.items() if key[:5] != scope
+            }
+            self._readings.update(retained)
+
+    def _read_binding(
+        self, project: Path, binding: NativeResearchBinding, deadline: float, remaining: int
+    ) -> tuple[dict[tuple[str, ...], tuple[int, ...]], int]:
+        provenance = RequestProvenance(vendor=binding.host, session=binding.session_id)
+        goal = self.operations.goals.attributed_goal(provenance)
+        goal_id = None if goal is None else str(goal.goal_id)
+
+        def participants() -> Iterable[tuple[str, str]]:
+            # Read the admitted parent even when retained child history is unavailable.
+            yield binding.session_id, LEAD_ROLE
+            try:
+                yield from self._children(project, binding, goal_id, deadline)
+            except Exception as error:
+                self._note_failure(
+                    owner_failure_code(error) or "native_bridge.child_usage_binding_unverified"
+                )
+
+        def publish(document: dict[str, Any]) -> dict[str, Any]:
+            # Pin even an explicitly absent Goal through first filing. The same-store RLock
+            # prevents a concurrent Goal take from changing file_event's fallback binding.
+            with (
+                self.operations.workspace_session.mutation_gate.hold(),
+                self.operations.goals.store.lock,
+            ):
+                current = self.operations.goals.attributed_goal(provenance)
+                current_id = None if current is None else str(current.goal_id)
+                if (
+                    self._stopping.is_set()
+                    or current_id != goal_id
+                    or NativeResearchBinding.read(
+                        project, session=(binding.host, binding.session_id)
+                    )
+                    != binding
+                ):
+                    return {
+                        "status": "REFUSED",
+                        "failure_code": "native_bridge.event_scope_invalid",
+                    }
+                token = REQUEST_PROVENANCE.set(
+                    None if goal_id is None else RequestProvenance(goal_id=goal_id)
+                )
+                try:
+                    return self.operations.execute(
+                        PortfolioResearchRequestDocument(
+                            operation="EVENT_DECLARE", event=document
+                        ).to_operation_request(),
+                        caller="EXTERNAL_AUTOMATION",
+                    )
+                finally:
+                    REQUEST_PROVENANCE.reset(token)
+
+        retained: dict[tuple[str, ...], tuple[int, ...]] = {}
+        for agent_id, role in participants():
+            if self._stopping.is_set() or monotonic() >= deadline:
+                break
+            child_id = None if agent_id == binding.session_id else agent_id
+            read_failed = (
+                "native_bridge.lead_usage_read_failed"
+                if child_id is None
+                else "native_bridge.child_usage_read_failed"
+            )
+            try:
+                path = session_file(binding.host, binding.session_id, child_id)
+                if path is None:
+                    self._note_failure(
+                        "native_bridge.lead_usage_file_missing"
+                        if child_id is None
+                        else "native_bridge.child_usage_file_missing"
+                    )
+                    continue
+                stat = path.stat()
+                stamp = (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino)
+                key = (
+                    str(project),
+                    str(self.workspace),
+                    binding.host,
+                    binding.session_id,
+                    str(binding.observation_started_at),
+                    goal_id or "",
+                    agent_id,
+                    role,
+                    str(path),
+                    ""
+                    if child_id is None
+                    else canonical_hash(role_pin(project, binding.host, role)),
+                )
+                if self._readings.get(key) == stamp:
+                    retained[key] = stamp
+                    continue
+                if stat.st_size > remaining:
+                    self._note_failure(read_failed)
+                    continue
+                remaining -= stat.st_size
+                if child_id is None:
+                    receipt = deliver_lead_usage_owned(
+                        project, binding, publish=publish, goal_id=goal_id
+                    )
+                else:
+                    receipt = deliver_child_usage_owned(
+                        project,
+                        binding,
+                        agent_id=agent_id,
+                        role=role,
+                        publish=publish,
+                        goal_id=goal_id,
+                    )
+                if receipt.get("status") != "DELIVERED" or receipt.get("incomplete") != 0:
+                    self._note_failure(safe_failure_code(receipt.get("reason")) or read_failed)
+                    continue
+                # A file that grew during reading, or a new rollout replacing it, is tried again.
+                if session_file(binding.host, binding.session_id, child_id) != path:
+                    continue
+                after = path.stat()
+                if stamp == (after.st_size, after.st_mtime_ns, after.st_ctime_ns, after.st_ino):
+                    retained[key] = stamp
+            except Exception as error:
+                self._note_failure(owner_failure_code(error) or read_failed)
+        return retained, remaining
+
+
 class PortfolioForwardPrewarm:
     """One coalescing background reader for the latest active book in this Host."""
 
@@ -546,6 +966,7 @@ class LocalPortfolioWebSession:
     operations: PortfolioResearchOperations | None = field(default=None, init=False)
     activity: WorkspaceActivity | None = field(default=None, init=False)
     forward_prewarm: PortfolioForwardPrewarm | None = field(default=None, init=False)
+    native_usage_observer: NativeUsageObserver | None = field(default=None, init=False)
     web: LocalWebService | None = field(default=None, init=False)
     client_connection: LocalResearchConnection | None = field(default=None, init=False, repr=False)
     review: EvidenceReviewApplication | None = field(default=None, init=False)
@@ -757,6 +1178,27 @@ class LocalPortfolioWebSession:
         # Guanyin's Supervisor reads the unfinished Tasks from here on (GY2).
         self.operations.supervisor.start()
         self.forward_prewarm.start()
+        # Optional observation owns no research authority and must not prevent serving it.
+        constructor_failure: str | None = None
+        try:
+            self.native_usage_observer = NativeUsageObserver(self.operations, activity)
+            self.native_usage_observer.start()
+        except Exception as error:
+            self.native_usage_observer = None
+            constructor_failure = (
+                owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
+            )
+
+        def native_usage_state() -> dict[str, object]:
+            """Keep observer health visible through the activity owner's existing readback."""
+            if self.native_usage_observer is not None:
+                return self.native_usage_observer.state()
+            return {
+                "status": "UNAVAILABLE",
+                "reason": constructor_failure or "native_bridge.lead_usage_read_failed",
+            }
+
+        activity.native_usage_state = native_usage_state
         return url
 
     def resume(
@@ -921,6 +1363,8 @@ class LocalPortfolioWebSession:
         """Stop the socket, then the worker, then the lease. True when complete."""
 
         quiet = True
+        if self.native_usage_observer is not None:
+            quiet = self.native_usage_observer.close(timeout=timeout) and quiet
         if self.forward_prewarm is not None:
             quiet = self.forward_prewarm.close(timeout=timeout) and quiet
         if self.operations is not None:
@@ -959,6 +1403,7 @@ class LocalPortfolioWebSession:
         self.service = None
         self.operations = None
         self.forward_prewarm = None
+        self.native_usage_observer = None
         # The review application holds this session's registry and its adapter,
         # both of which are now closed. Keeping it would leave a stopped service
         # able to answer questions about a workspace it no longer holds.
@@ -2236,56 +2681,89 @@ def _native_session_routes(
             request = NativeEventDeliveryRequest.model_validate(payload)
         except ValidationError:
             return refusal("native_bridge.request_invalid")
+        provenance = REQUEST_PROVENANCE.get()
+        if (
+            provenance is None
+            or provenance.vendor is None
+            or provenance.vendor not in HOSTS
+            or provenance.session is None
+        ):
+            return refusal("native_bridge.event_scope_invalid")
         project: Path | None = None
         try:
-            # Inspect only projects derived from the Host's workspace; the supplied path
-            # cannot select another project's binding or metadata.
-            missing = "native_bridge.hook_declaration_missing"
-            for host in ("codex", "claude-code"):
-                try:
-                    project = native_setup.admitted_session_project(
-                        workspace, request.project, host
-                    )
-                    break
-                except NativeBridgeError as error:
-                    if str(error) not in {
-                        "native_bridge.hook_declaration_missing",
-                        "native_bridge.project_mismatch",
-                    }:
-                        raise
-                    if str(error) == "native_bridge.project_mismatch":
-                        missing = str(error)
-            if project is None:
-                raise NativeBridgeError(missing)
-            binding = NativeResearchBinding.read(project)
-            if binding is None:
+            # The real caller selects an exact binding or its native-verified parent within
+            # this admitted project. The event body cannot select a Session or workspace.
+            selected_project = native_setup.admitted_session_project(
+                workspace, request.project, provenance.vendor
+            )
+            project = selected_project
+            found = NativeResearchBinding.find(
+                selected_project, session=(provenance.vendor, provenance.session)
+            )
+            if found is None:
                 raise NativeBridgeError("native_bridge.not_bound")
-            native_setup.admitted_session_project(workspace, project, binding.host)
+            bound_project, binding = found
+            if bound_project != selected_project:
+                raise NativeBridgeError("native_bridge.project_mismatch")
             if binding.workspace.resolve() != workspace:
                 raise NativeBridgeError("native_bridge.workspace_mismatch")
+            parent_provenance = RequestProvenance(
+                vendor=binding.host,
+                session=binding.session_id,
+                goal_id=provenance.goal_id,
+            )
+            goal = operations.goals.attributed_goal(parent_provenance)
+            goal_id = None if goal is None else str(goal.goal_id)
 
             def publish(document: dict[str, Any]) -> dict[str, Any]:
-                return operations.execute(
-                    PortfolioResearchRequestDocument(
-                        operation="EVENT_DECLARE", event=document
-                    ).to_operation_request(),
-                    caller="EXTERNAL_AUTOMATION",
-                )
+                with (
+                    operations.workspace_session.mutation_gate.hold(),
+                    operations.goals.store.lock,
+                ):
+                    current = operations.goals.attributed_goal(parent_provenance)
+                    current_id = None if current is None else str(current.goal_id)
+                    caller_goal = operations.goals.attributed_goal(provenance)
+                    if (
+                        current_id != goal_id
+                        or (goal_id is None and caller_goal is not None)
+                        or NativeResearchBinding.read(
+                            selected_project, session=(binding.host, binding.session_id)
+                        )
+                        != binding
+                    ):
+                        return refusal("native_bridge.event_scope_invalid")
+                    token = REQUEST_PROVENANCE.set(
+                        RequestProvenance(
+                            vendor=provenance.vendor,
+                            session=provenance.session,
+                            goal_id=goal_id,
+                            delegation=provenance.delegation,
+                        )
+                    )
+                    try:
+                        return operations.execute(
+                            PortfolioResearchRequestDocument(
+                                operation="EVENT_DECLARE", event=document
+                            ).to_operation_request(),
+                            caller="EXTERNAL_AUTOMATION",
+                        )
+                    finally:
+                        REQUEST_PROVENANCE.reset(token)
 
             if request.event == {"source": "native_usage_read"}:
-                provenance = REQUEST_PROVENANCE.get()
-                if provenance is None or (provenance.vendor, provenance.session) != (
-                    binding.host,
-                    binding.session_id,
-                ):
+                if (provenance.vendor, provenance.session) != (binding.host, binding.session_id):
                     return refusal("native_bridge.event_scope_invalid")
-                goal = operations.goals.attributed_goal(provenance)
                 return deliver_lead_usage_owned(
                     project,
                     binding,
                     publish=publish,
-                    goal_id=None if goal is None else str(goal.goal_id),
+                    goal_id=goal_id,
                 )
+            if (provenance.vendor, provenance.session) != (
+                binding.host,
+                binding.session_id,
+            ) and request.event.get("agent_id") != provenance.session:
+                return refusal("native_bridge.event_scope_invalid")
             return deliver_owned(
                 project,
                 binding,

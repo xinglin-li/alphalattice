@@ -44,4 +44,4 @@ The Alpha owner qualifies Alpha question families, not the goal: use `ALPHA_FAMI
 
 ## Team record
 
-With the bridge bound, Team messages and hooks belong to the goal held by the session. Assignment is a Team message; the assignee answers or the lead closes it with `pm_response`. Evidence Analysts and CROs run no command; the lead submits their prepared bundle. The bundle's exact reference credits its child. An unanswered assignment blocks submission. With no bridge there is no Team record. Notes mark decisions, never raw reasoning; product Task/result facts establish completion.
+With the Session bound, public Team messages belong to its exact Goal without product hooks. Only a matching product acceptance or the lead's explicit terminal decision closes an assignment; ordinary replies do not. Open assignments block submission. Evidence Analysts and CROs remain commandless; the lead submits their nominated answers. Missing native authorship stays `NOT_OBSERVED`. See [native sessions](native-visibility.md) for the message and closure procedure. Product Task/result facts establish completion; public notes record decisions, never hidden reasoning.

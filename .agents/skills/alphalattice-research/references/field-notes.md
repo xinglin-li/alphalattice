@@ -1,17 +1,17 @@
 # Research field notes
-Date: 2026-10-05
+Date: 2026-10-06
 
 Read the task you are doing. These notes connect observed stops to the maintained procedures; use the current answer for its exact choices and permitted continuation.
 
 ## Start a workspace and bind its session
 
-Choose the workspace inside the configured project and serve and bind from that project ([launch and bind](operating.md), [native setup](native-visibility.md)). Finish an earlier session scope with `session unbind` before binding another workspace.
+Choose the workspace inside the configured project and serve and bind from that project ([launch and bind](operating.md), [native setup](native-visibility.md)). Each actual host/Session binds independently; a new Session needs no earlier Session's cleanup and replaces no record. To change workspace, usage or roles within the same Session, run `alphalattice session unbind` yourself before binding again. Run it at the end too; it removes only your own binding and keeps research and history.
 
 Binding checks the configured project above the served workspace. A workspace under another checkout can return `native_bridge.project_mismatch`; follow its request to serve and bind the same project workspace.
 
-For `native_bridge.configuration_path_invalid` in a linked worktree, read `hook_declarations_effective`: Codex can read that worktree's hooks from the main checkout. Use an independent ordinary project, configure there, and have the person review the actual definitions in `/hooks` ([native setup](native-visibility.md)). `recorded_agent.basis: NOT_OBSERVED` means native observation was not established, even when the review Task succeeds ([review receipt](cro-handoff.md)).
+For optional native proof in a linked worktree, read `hook_declarations_effective`: Codex can read its hooks from the main checkout. Use an independent ordinary project and explicitly configure native proof there; the person reviews actual definitions in `/hooks` ([native setup](native-visibility.md)). Default research needs no product hook or trust approval. `recorded_agent.basis: NOT_OBSERVED` means native authorship was not established, even when the review Task succeeds ([review receipt](cro-handoff.md)).
 
-If the bound session's public `session unbind` returns `native_bridge.files_unavailable:PermissionError`, the host's write sandbox can block removal of local binding metadata. Use that same session's host permission flow for the authorized unbind command, then retry the public door. Hook trust and research checks remain in force ([native setup](native-visibility.md)).
+If the bound Session's public `session unbind` returns `native_bridge.files_unavailable:PermissionError`, its write sandbox can block removal of local binding metadata. Use that Session's host permission flow for the authorized unbind command, then retry the public door. Default research needs no product hook; optional native proof retains the host's trust review ([native setup](native-visibility.md)).
 
 ## Begin the first preparation
 

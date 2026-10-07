@@ -187,6 +187,9 @@ def make_owner_exception(cls: type[Exception]) -> tuple[Exception, str]:
         return cls(()), "task_control.database_authority_unreadable"
     if name == "TaskQueueHeadAuthorityError":
         return cls(), "task_control.database_authority_unreadable"
+    if name == "NativeUsageReadLimitError":
+        # Use the parser's public byte-bound name and its fixed refusal code.
+        return cls(limit="max_bytes"), "native_usage.read_limit_exceeded"
     if name == "AlphaTrainingInputAuthorityError":
         return cls(
             "FEATURE_AXIS_AUTHORITY_MISMATCH"

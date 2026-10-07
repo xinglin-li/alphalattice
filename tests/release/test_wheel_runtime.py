@@ -298,23 +298,102 @@ def test_installed_configure_copies_guidance_unchanged_and_refuses_an_overwrite(
     _assert_guidance_links_resolve(project, configured_guidance)
     _assert_guidance_links_resolve(project, ["AGENTS.md"], public_pages=True)
     if host == "codex":
-        hooks = tomllib.loads((project / ".codex/config.toml").read_text(encoding="utf-8"))["hooks"]
+        hooks = tomllib.loads((project / ".codex/config.toml").read_text(encoding="utf-8")).get(
+            "hooks", {}
+        )
     else:
         assert (project / "CLAUDE.md").read_bytes() == (ROOT / "CLAUDE.md").read_bytes()
-        hooks = json.loads((project / ".claude/settings.json").read_text(encoding="utf-8"))["hooks"]
-    assert all(
-        "-m alphalattice.interface.local_application.native_setup" in group["hooks"][0]["command"]
-        for groups in hooks.values()
-        for group in groups
-    )
+        hooks = json.loads((project / ".claude/settings.json").read_text(encoding="utf-8")).get(
+            "hooks", {}
+        )
+    assert not hooks
+    assert native_setup.session_project(project, host) == project
+    marker = project / host_directory / native_setup.PROJECT_DECLARATION_NAME
+    assert json.loads(marker.read_bytes()) == {
+        "schema": native_setup.PROJECT_DECLARATION_SCHEMA,
+        "host": host,
+    }
     assert native_setup.main() == 0
     capsys.readouterr()
+    declaration = project / (".codex/config.toml" if host == "codex" else ".claude/settings.json")
+    foreign = {"matcher": "Explore", "hooks": [{"type": "command", "command": "foreign-hook"}]}
+    if host == "claude-code":
+        declaration.write_text(
+            json.dumps({"permissions": {"allow": ["Read"]}, "hooks": {"SubagentStart": [foreign]}}),
+            encoding="utf-8",
+        )
+    else:
+        with declaration.open("a", encoding="utf-8") as stream:
+            stream.write(
+                '\n[[hooks.SubagentStart]]\nmatcher = "Explore"\n'
+                '[[hooks.SubagentStart.hooks]]\ntype = "command"\ncommand = "foreign-hook"\n'
+            )
+    foreign_bytes = declaration.read_bytes()
+    assert native_setup.main() == 0
+    assert not json.loads(capsys.readouterr().out)["product_hooks_requested"]
+    assert declaration.read_bytes() == foreign_bytes
+    monkeypatch.setattr(
+        native_setup.sys, "argv", ["native", "configure", "--host", host, "--native-proof"]
+    )
+    assert native_setup.main() == 0
+    optional = json.loads(capsys.readouterr().out)
+    assert optional["product_hooks_requested"] and not optional["trust_changed"]
+    parsed = (
+        json.loads(declaration.read_bytes())
+        if host == "claude-code"
+        else tomllib.loads(declaration.read_text())
+    )
+    assert parsed["hooks"]["SubagentStart"][0] == foreign
+    for event in ("SubagentStart", "SubagentStop"):
+        owned = [
+            group for group in parsed["hooks"][event] if group["matcher"] == "^alphalattice_.*$"
+        ]
+        assert len(owned) == 1
+        assert (
+            "-m alphalattice.interface.local_application.native_setup"
+            in owned[0]["hooks"][0]["command"]
+        )
+    before = declaration.read_bytes()
+    assert native_setup.main() == 0
+    capsys.readouterr()
+    assert declaration.read_bytes() == before
     (project / "AGENTS.md").write_text("A person's own guide", encoding="utf-8")
     assert native_setup.main() == 2
     refused = json.loads(capsys.readouterr().out)
     assert refused["reason"] == "native_bridge.existing_configuration_differs"
     assert refused["detail"] and refused["next_action"]
     assert (project / "AGENTS.md").read_text(encoding="utf-8") == "A person's own guide"
+    doctor = [
+        native_setup.sys.executable,
+        "-m",
+        "alphalattice.interface.local_application.native_setup",
+        "--project",
+        str(project),
+        "doctor",
+    ]
+    assert refused["next_commands"]["doctor"] == [*doctor, "--native-proof", "--host", host]
+    monkeypatch.setattr(native_setup.sys, "argv", ["native", "configure", "--host", host])
+    assert native_setup.main() == 2
+    default_refused = json.loads(capsys.readouterr().out)
+    assert default_refused["reason"] == "native_bridge.existing_configuration_differs"
+    assert default_refused["next_commands"]["doctor"] == doctor
+    assert (project / "AGENTS.md").read_text(encoding="utf-8") == "A person's own guide"
+
+    binding_path = project / ".codex/native-research.local.json"
+    binding_path.parent.mkdir(exist_ok=True)
+    binding_path.write_text("{", encoding="utf-8")
+    for native_proof in (False, True):
+        argv = ["native", "doctor", "--host", host]
+        if native_proof:
+            argv.append("--native-proof")
+        monkeypatch.setattr(native_setup.sys, "argv", argv)
+        assert native_setup.main() == 2
+        refused = json.loads(capsys.readouterr().out)
+        assert refused["reason"] == "native_bridge.binding_invalid"
+        assert refused["next_commands"]["doctor"] == (
+            [*doctor, "--native-proof", "--host", host] if native_proof else doctor
+        )
+    assert binding_path.read_text(encoding="utf-8") == "{"
 
 
 def test_installed_scaffolding_refuses_before_writing_source(

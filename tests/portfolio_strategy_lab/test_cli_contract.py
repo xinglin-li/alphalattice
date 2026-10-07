@@ -2199,6 +2199,56 @@ def test_a_compact_answer_shows_references_short_and_they_can_be_sent_so(
     assert body["short_reference"]["field"] == "goal_hash" and "--from" in body["detail"]
 
 
+def test_a_saved_goal_completion_runs_as_a_whole_request(live, tmp_path: Path) -> None:
+    """P2-NH: the native lead submits GOAL_SHOW's file through request --file.
+
+    The file already binds the Goal and revision. Passing it as goal submit's
+    body would nest a whole request in GoalSubmission and refuse real completion.
+    """
+    import yaml
+
+    from alphalattice.interface.local_application.goals import GoalSubmission
+
+    declaration = tmp_path / "goal.json"
+    declaration.write_text(
+        json.dumps(
+            {
+                "title": "Read the completion request",
+                "objective": "Check the saved request without research execution",
+                "kind": "OPERATIONS",
+                "criteria": [{"criterion_id": "read", "text": "Record what was read"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    code, opened, _ = _cli(live.workspace, "goal", "open", "--file", str(declaration))
+    assert code == 0, opened
+    goal_id = opened["data"]["goal_id"]
+    completion = tmp_path / "completion.yaml"
+    code, shown, _ = _cli(
+        live.workspace, "goal", "show", goal_id, "--save-declaration", str(completion)
+    )
+    assert code == 0, shown
+    saved = yaml.safe_load(completion.read_text("utf-8"))
+    assert saved["operation"] == "GOAL_SUBMIT" and saved["goal_id"] == goal_id
+    assert saved["goal_hash"] == shown["data"]["goal_hash"]
+    saved["goal_submission"].update(
+        outcome="NOT_ACHIEVED", summary="The saved request was read; no research was executed."
+    )
+    saved["goal_submission"]["criteria"][0].update(
+        answer="NOT_ASSESSED", note="This transport check makes no research judgment."
+    )
+    completion.write_text(yaml.safe_dump(saved, sort_keys=False), encoding="utf-8", newline="\n")
+    code, submitted, _ = _cli(live.workspace, "request", "--file", str(completion))
+    assert code == 0 and submitted["operation"] == "GOAL_SUBMIT", submitted
+    assert submitted["data"]["goal_id"] == goal_id and submitted["data"]["state"] == "COMPLETE"
+    code, readback, _ = _cli(live.workspace, "goal", "show", goal_id)
+    assert code == 0, readback
+    assert readback["data"]["goal"]["submission"] == GoalSubmission.model_validate(
+        saved["goal_submission"]
+    ).model_dump(mode="json")
+
+
 def test_an_item_action_takes_its_id_as_shown(
     live: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:
@@ -3935,8 +3985,10 @@ def test_a_readback_saved_before_its_first_task_reads_again() -> None:
 
 
 def _agent_project(tmp_path: Path, *, project: Path | None = None) -> Path:
-    """A Claude Code agent project as `configure` leaves one: the product's hooks and a card."""
+    """A default Claude Code project with its configure-owned declaration and role card."""
     import shutil
+
+    from alphalattice.interface.local_application.native_setup import declare_project
 
     checkout = SCRIPT.parents[1]
     project = tmp_path / "project" if project is None else project
@@ -3945,6 +3997,7 @@ def _agent_project(tmp_path: Path, *, project: Path | None = None) -> Path:
     shutil.copyfile(checkout / ".claude/settings.json", project / ".claude/settings.json")
     card = ".claude/agents/alphalattice_cro.md"
     shutil.copyfile(checkout / card, project / card)
+    declare_project(project, "claude-code")
     return project
 
 
@@ -3980,7 +4033,7 @@ def test_a_workspace_left_out_is_the_bound_sessions_and_any_other_is_refused_in_
     folder of the project the bound session's commands then work in its workspace, and every
     answer names how its workspace was chosen. A session not bound, another session, or none, is
     refused in words naming the full form and the bind, never given another workspace; and no
-    session, or another one bound already, binds nothing."""
+    unnamed session binds nothing. Another named Session may bind its own workspace."""
 
     from alphalattice.interface.local_application.native_bridge import BINDING_NAME
 
@@ -3996,15 +4049,18 @@ def test_a_workspace_left_out_is_the_bound_sessions_and_any_other_is_refused_in_
     assert (code, body["failure_code"]) == (1, "local_client.session_unnamed")
     assert not (project / ".codex" / BINDING_NAME).exists()
     code, body = run("--workspace", str(workspace), "session", "bind", session=lead)
-    assert (code, body["data"]["status"]) == (0, "BOUND_NOT_ATTACHED")
+    assert (code, body["data"]["status"]) == (0, "BOUND")
+    assert body["data"]["foreground_attachment"] == "NOT_REQUESTED"
     assert (body["data"]["project"], body["data"]["session_id"]) == (str(project), lead)
-    code, body = run("--workspace", str(workspace), "session", "bind", session=other)
-    assert body["failure_code"] == (
-        "local_client.session_bind_refused:native_bridge.existing_configuration_differs"
-    )
     code, body = run("task", "list", session=other)
-    assert (code, body["failure_code"]) == (1, "local_client.workspace_bound_to_another_session")
+    assert (code, body["failure_code"]) == (1, "local_client.workspace_unbound")
     assert "alphalattice --workspace <dir>" in body["detail"]
+    code, body = run("--workspace", str(workspace), "session", "bind", session=other)
+    assert (code, body["data"]["status"]) == (0, "BOUND")
+    code, body = run("task", "list", session=other)
+    assert body["outcome"] == "OK", body
+    assert body["context"]["workspace"] == str(workspace.resolve())
+    assert body["context"]["workspace_from"] == "BINDING"
     code, body = run("task", "list", session=None)
     assert (code, body["failure_code"]) == (1, "local_client.workspace_unbound")
     # The bound session's own served workspace, from below the project.
@@ -4074,12 +4130,10 @@ def test_session_unbind_removes_this_projects_binding_for_its_session_or_the_per
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """requirement (V586): on the package leg no product command removed a binding, so a project
-    bound to an ended session refused every later bind. Through the real CLI: a session binds;
-    a second session's bind is refused, naming `session unbind` as the way on; its unbind of the
-    first's binding is refused in words, a session removing only its own; the bound session
-    unbinds, and the second binds; the person, outside any agent session, unbinds whichever
-    session the project's binding names; and an inner project's unbind never reaches an outer
-    project's binding."""
+    bound to an ended session refused every later bind. P2-NH keeps a slot per real host/Session:
+    a second Session binds without detaching the first, but never removes the first's record.
+    A person detaches the sole record; multiple records require exact ownership. An inner
+    project's unbind never reaches an outer project's binding."""
 
     from alphalattice.interface.local_application.native_bridge import BINDING_NAME
 
@@ -4090,18 +4144,31 @@ def test_session_unbind_removes_this_projects_binding_for_its_session_or_the_per
     first, second = str(uuid4()), str(uuid4())
     bind = ("--workspace", str(workspace), "session", "bind")
     assert run(*bind, session=first)[0] == 0
-    code, body = run(*bind, session=second)
-    assert (code, body["failure_code"]) == (
-        2,
-        "local_client.session_bind_refused:native_bridge.existing_configuration_differs",
-    )
-    assert "alphalattice session unbind" in body["detail"]
+    before = (project / ".codex" / BINDING_NAME).read_bytes()
     code, body = run("session", "unbind", session=second)
     assert (code, body["failure_code"]) == (
         2,
         "local_client.session_unbind_refused:native_bridge.session_mismatch",
     )
-    assert "removes only its own" in body["detail"]
+    assert "other Sessions' bindings stay" in body["detail"]
+    assert "alphalattice --workspace <dir> session bind" in body["detail"]
+    assert run(*bind, session=second)[0] == 0
+    assert (project / ".codex" / BINDING_NAME).read_bytes() == before
+    code, body = run("session", "unbind", session=None)
+    assert (code, body["failure_code"]) == (
+        2,
+        "local_client.session_unbind_refused:native_bridge.binding_ambiguous",
+    )
+    assert "alphalattice session unbind" in body["detail"]
+    assert body["next_action"] == "RESOLVE_THE_NAMED_CAUSE_THEN_UNBIND"
+    code, body = run("session", "unbind", session=second)
+    assert (code, body["data"]["status"], body["data"]["session_id"]) == (0, "DETACHED", second)
+    assert (project / ".codex" / BINDING_NAME).read_bytes() == before
+    code, body = run("session", "unbind", session=second)
+    assert (code, body["failure_code"]) == (
+        2,
+        "local_client.session_unbind_refused:native_bridge.session_mismatch",
+    )
     code, body = run("session", "unbind", session=first)
     assert (code, body["data"]["status"], body["data"]["session_id"]) == (0, "DETACHED", first)
     assert run("session", "unbind", session=first)[1]["data"]["status"] == "NOT_BOUND"
@@ -4212,6 +4279,27 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
     full_form_refusals = {
         "research_workspace.manifest_unreadable": "the folder cannot identify its workspace",
         "native_bridge.not_bound": "the initial session bind must explicitly name its workspace",
+        "native_usage.read_limit_exceeded": (
+            "unbind removes the implicit workspace; changing optional usage requires a fresh "
+            "bind with that exact workspace, not a clean command against an absent binding"
+        ),
+        "native_bridge.existing_configuration_differs": (
+            "changing this Session's scope first removes its implicit workspace"
+        ),
+        "native_bridge.binding_ambiguous": (
+            "an unnamed Session cannot select another Session's implicit workspace"
+        ),
+        "native_bridge.binding_invalid": "an invalid record supplies no implicit workspace",
+        "native_bridge.binding_limit_exceeded": (
+            "an unbound Session can continue with an explicit workspace without replacing records"
+        ),
+        "native_bridge.binding_path_invalid": (
+            "an unsafe record path supplies no implicit workspace"
+        ),
+        "native_bridge.binding_unreadable": "an unreadable record supplies no implicit workspace",
+        "native_bridge.workspace_mismatch": (
+            "another workspace cannot borrow this Session's binding; rebinding names its new scope"
+        ),
     }
     assert naming == set(full_form_refusals)
 

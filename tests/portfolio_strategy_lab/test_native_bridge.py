@@ -33,6 +33,10 @@ from alphalattice.interface.local_application.native_observation_sequence import
     NativeSequenceError,
     reserve_sequence,
 )
+from alphalattice.interface.local_application.native_setup import (
+    declare_project,
+    native_proof_hooks,
+)
 from tests.portfolio_strategy_lab.local_web_support import _json
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -83,6 +87,78 @@ def test_host_refusal_is_named_at_the_bridge_entry(live, tmp_path):
     assert len(_json(live, "/api/activity/external")["items"]) == 1
 
 
+@pytest.mark.parametrize("host", ("codex", "claude-code"))
+def test_complete_usage_snapshot_fits_public_event_subject_and_retries_exactly(
+    live, tmp_path, host
+):
+    project = tmp_path / "usage-project"
+    (project / ".codex").mkdir(parents=True)
+    binding = NativeResearchBinding(
+        session_id="parent", workspace=live.workspace, roles=("alphalattice_cro",), host=host
+    )
+    usage = {
+        "session_id": "parent",
+        "agent_id": "child",
+        "role": "alphalattice_cro",
+        "host": host,
+        "model": "synthetic-model",
+        "efforts": ["medium", "high"],
+        "pin_differs": ["model", "effort"],
+        "last_at": "2026-10-06T12:00:00+00:00",
+        "responses": 2,
+        "input_tokens": 15,
+        "cache_read_tokens": 3,
+        "cache_write_tokens": 4,
+        "output_tokens": 5,
+    }
+    event = {"source": "native_usage", "usage": usage}
+    with WorkspaceLock(project / ".codex" / LOCK_NAME):
+        document = observation_request(project, binding, event)
+    subject = document["subject"]
+    assert len(subject) == 15
+    assert "native_event_id" not in subject
+    assert subject["model"] == usage["model"]
+    assert subject["efforts"] == "medium,high"
+    assert subject["pin_differs"] == "model,effort"
+    assert subject["last_at"] == usage["last_at"]
+    assert subject["sample_time_kind"] == "LATEST_USAGE_RECORD_AT"
+    assert "source_kind" not in subject
+    assert subject["input_channel"] == (
+        "CODEX_SESSION_FILE" if host == "codex" else "CLAUDE_CODE_SESSION_FILE"
+    )
+    for count in (
+        "responses",
+        "input_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "output_tokens",
+    ):
+        assert subject[count] == str(usage[count])
+
+    client = LocalResearchClient(live.workspace)
+    refused = client.publish_event(
+        {
+            **document,
+            "subject": {**subject, "unexpected_field": "extra", "another_field": "extra"},
+        }
+    )
+    assert refused["status"] == "REFUSED"
+    assert refused["failure_code"] == "activity.event_invalid"
+    assert refused["reasons"] == {"": "activity.event_subject_too_large"}
+    assert refused["next_action"] == "READ_ACTIVITY_EVENT_CONTRACT"
+    appended = client.publish_event(document)
+    assert appended["status"] == "APPENDED"
+    receipt = deliver(project, binding, event)
+    assert receipt["status"] == "DELIVERED"
+    assert receipt["observation_id"] == appended["observation_id"]
+    assert receipt["source_sequence"] == document["producer_sequence"]
+    assert receipt["authority"] == "AGENT_PROPOSAL"
+    assert deliver(project, binding, event) == receipt
+    (stored,) = _json(live, "/api/activity/external")["items"]
+    assert stored["observation_id"] == appended["observation_id"]
+    assert stored["payload"]["subject"] == subject
+
+
 def _entry():
     spec = importlib.util.spec_from_file_location(
         "native_entry", ROOT / "src/alphalattice/interface/local_application/native_setup.py"
@@ -97,6 +173,71 @@ def _bind(project, workspace):
     value = {"session_id": "parent", "workspace": str(workspace), "roles": ["alphalattice_cro"]}
     (project / ".codex" / BINDING_NAME).write_text(json.dumps(value))
     return NativeResearchBinding.read(project)
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"terminal_decision": "COMPLETED"},
+        {"terminal_reason": "Done."},
+        {"terminal_decision": "OPEN", "terminal_reason": "Done."},
+        {"terminal_decision": [], "terminal_reason": "Done."},
+        {"terminal_decision": "COMPLETED", "terminal_reason": " "},
+        {"terminal_decision": "COMPLETED", "terminal_reason": "Done.", "reply_to": None},
+        {"terminal_decision": "COMPLETED", "terminal_reason": "Done.", "kind": "plan"},
+        {
+            "terminal_decision": "COMPLETED",
+            "terminal_reason": "Done.",
+            "agent_id": "child",
+            "role": "alphalattice_cro",
+        },
+    ],
+)
+def test_terminal_fields_require_an_explicit_lead_resolution(tmp_path, options):
+    binding = _bind(tmp_path, tmp_path)
+    arguments = {
+        "kind": "decision",
+        "reply_to": "assigned",
+        "message": b"An explicit terminal decision.",
+        **options,
+    }
+    with pytest.raises(NativeBridgeError, match="assignment_terminal_invalid"):
+        coordination_event(binding, **arguments)
+
+
+def test_terminal_declaration_identity_preserves_retry_and_distinguishes_reason(tmp_path):
+    binding = _bind(tmp_path, tmp_path)
+    arguments = {
+        "kind": "decision",
+        "reply_to": "assigned",
+        "message": b"Resolved the exact dispatch.",
+        "terminal_decision": "WITHDRAWN",
+        "terminal_reason": "A later explicit decision withdrew it.",
+    }
+    event = coordination_event(binding, **arguments)
+    assert coordination_event(binding, **arguments) == event
+    changed = coordination_event(
+        binding, **{**arguments, "terminal_reason": "The scope has changed."}
+    )
+    assert changed["message_id"] != event["message_id"]
+    subject = observation_request(tmp_path, binding, event)["subject"]
+    assert subject["terminal_decision"] == "WITHDRAWN"
+    assert subject["terminal_reason"] == arguments["terminal_reason"]
+    assert "closure_source" not in subject
+
+
+def test_off_binding_admits_only_its_exact_lead_without_native_discovery(tmp_path, monkeypatch):
+    from alphalattice.interface.local_application import native_bridge as bridge
+
+    binding = NativeResearchBinding("parent", tmp_path, ("alphalattice_cro",), usage="OFF")
+
+    def no_native_access(*_args):
+        pytest.fail("OFF binding discovered a native Session file.")
+
+    monkeypatch.setattr(bridge, "codex_thread_spawn", no_native_access)
+    assert binding.serves(("codex", "parent"))
+    assert not binding.serves(("codex", "child"))
+    assert not binding.serves(("claude-code", "parent"))
 
 
 @pytest.mark.parametrize("stop_active", (False, True, None))
@@ -526,6 +667,7 @@ def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypa
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.setattr(entry, "_roles", lambda host="codex", root=None: ["alphalattice_cro"])
+    declare_project(tmp_path, "codex")
     monkeypatch.setattr(
         entry.sys,
         "argv",
@@ -565,7 +707,9 @@ def test_linked_worktree_setup_refuses_before_writing_or_claiming_local_hooks(
     before = {path: path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
     entry = _entry()
     monkeypatch.setattr(entry, "INSTALLED", True)
-    monkeypatch.setattr(entry.sys, "argv", ["native", "--project", str(project), command])
+    monkeypatch.setattr(
+        entry.sys, "argv", ["native", "--project", str(project), command, "--native-proof"]
+    )
     assert entry.main() == 2
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "REFUSED"
@@ -576,6 +720,7 @@ def test_linked_worktree_setup_refuses_before_writing_or_claiming_local_hooks(
     assert result["foreground_attachment"] == "NOT_PROVED"
     assert result["trust_changed"] is False
     assert "independent ordinary project" in result["detail"] and "/hooks" in result["detail"]
+    assert "native_research.py configure --host codex --native-proof" in result["detail"]
     assert result["next_action"] == "USE_LOCAL_DECLARATIONS_AND_METADATA_IN_THE_EXACT_PROJECT"
     assert "next_commands" not in result
     assert {path: path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()} == before
@@ -601,7 +746,9 @@ def test_ordinary_project_setup_still_validates_local_declarations_without_trust
         ("configure", "LOCAL_DECLARATIONS_VALIDATED", 0),
         ("doctor", "REFUSED", 2),
     ):
-        monkeypatch.setattr(entry.sys, "argv", ["native", "--project", str(project), command])
+        monkeypatch.setattr(
+            entry.sys, "argv", ["native", "--project", str(project), command, "--native-proof"]
+        )
         before = {path: path.read_bytes() for path in project.rglob("*") if path.is_file()}
         assert entry.main() == code
         result = json.loads(capsys.readouterr().out)
@@ -612,7 +759,16 @@ def test_ordinary_project_setup_still_validates_local_declarations_without_trust
             assert result["foreground_attachment"] == "NOT_PROVED"
             assert result["hook_declarations_present"] is True
             assert {"alphalattice_evidence_analyst", "alphalattice_cro"} <= set(result["roles"])
-            assert result["session_bound"] is False and result["observation_started_at"] is None
+            assert result["session_bound"] is False
+            assert result["attachment_preflight"]["failure_code"] == "native_bridge.not_bound"
+            assert result["attachment_preflight"]["foreground_attachment"] == "NOT_REQUESTED"
+            assert result["attachment_preflight"]["missing"] == ["native_session_binding"]
+            proof = result["native_proof"]
+            assert proof["status"] == "REFUSED"
+            assert proof["failure_code"] == "native_bridge.readiness_incomplete"
+            assert proof["host_trust"] == "NOT_CHECKED"
+            assert proof["foreground_attachment"] == "NOT_PROVED"
+            assert proof["observation_started_at"] is None
             assert {
                 "actual_runtime_definitions_and_trust",
                 "active_native_session_attachment",
@@ -620,9 +776,9 @@ def test_ordinary_project_setup_still_validates_local_declarations_without_trust
                 "prospective_observation_checkpoint",
                 "native_history",
                 "complete_fresh_native_chain",
-            } <= set(result["missing"])
-            assert result["attachment_preflight"]["evidence"] == []
-            for role in result["attachment_preflight"]["roles"].values():
+            } <= set(proof["missing"])
+            assert proof["evidence"] == []
+            for role in proof["roles"].values():
                 assert role["status"] == "NOT_PROVED" and role["chains"] == []
                 assert {
                     "fresh_same_definition_start",
@@ -667,6 +823,9 @@ def test_a_lead_names_only_the_kind_and_a_message_is_named_by_its_content(
     with pytest.raises(NativeBridgeError, match="message_kind_or_role_invalid"):
         coordination_event(binding, agent_id="child", kind="answer", message=b"Held.")
     # Through the command, the answer names the id a reply sends back.
+    # This is labelled fixture provenance, never credit for a live native Session.
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    monkeypatch.setenv("CODEX_THREAD_ID", "parent")
     monkeypatch.setattr(entry, "ROOT", tmp_path)
     monkeypatch.setattr(
         entry, "deliver", lambda _root, _binding, _event, **_kwargs: {"status": "DELIVERED"}
@@ -696,7 +855,7 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     python.parent.mkdir(parents=True)
     python.touch()
     (project / ".codex").mkdir()
-    workspace = tmp_path / "workspace"
+    workspace = project / "workspace"
     workspace.mkdir()
     entry = _entry()
     monkeypatch.setattr(entry, "ROOT", project)
@@ -708,21 +867,40 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
 
     cards = sorted(path.stem for path in (ROOT / ".claude/agents").glob("alphalattice_*.md"))
     assert {"alphalattice_evidence_analyst_medium", "alphalattice_cro_medium"} <= set(cards)
-    assert run("configure", "--host", "claude-code")[1]["status"] == "LOCAL_DECLARATIONS_VALIDATED"
+    assert (
+        run("configure", "--host", "claude-code", "--native-proof")[1]["status"]
+        == "LOCAL_DECLARATIONS_VALIDATED"
+    )
+    configured_settings = (project / ".claude/settings.json").read_bytes()
     code, bound = run(
         "bind", "--host", "claude-code", "--session-id", "parent", "--workspace", str(workspace)
     )
-    assert (code, bound["status"]) == (0, "BOUND_NOT_ATTACHED")
+    assert (code, bound["status"]) == (0, "BOUND")
     assert NativeResearchBinding.read(project).roles == tuple(cards)
     binding_before_doctor = (project / ".codex" / BINDING_NAME).read_bytes()
-    code, report = run("doctor")
+    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "parent")
+    code, default_report = run("doctor")
+    assert (code, default_report["status"], default_report["native_proof"]["status"]) == (
+        0,
+        "READY",
+        "NOT_REQUESTED",
+    )
+    code, report = run("doctor", "--native-proof")
     assert (code, report["host"], report["roles"]) == (2, "claude-code", cards)
     assert report["status"] == "REFUSED"
     assert report["failure_code"] == "native_bridge.readiness_incomplete"
+    assert report["foreground_attachment"] == "NOT_PROVED"
+    assert report["attachment_preflight"]["status"] == "READY"
+    assert report["attachment_preflight"]["failure_code"] is None
+    assert report["attachment_preflight"]["foreground_attachment"] == "NOT_REQUESTED"
+    proof = report["native_proof"]
+    assert proof["status"] == "REFUSED"
+    assert proof["failure_code"] == "native_bridge.readiness_incomplete"
     assert report["hook_declarations_present"] is True
     assert report["session_bound"] is True and report["session_id"] == "parent"
     assert (
-        report["observation_started_at"]
+        proof["observation_started_at"]
         == NativeResearchBinding.read(project).observation_started_at.isoformat()
     )
     assert {
@@ -730,11 +908,11 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
         "active_native_session_attachment",
         "native_history",
         "complete_fresh_native_chain",
-    } <= set(report["missing"])
-    assert "native_session_binding" not in report["missing"]
-    assert "prospective_observation_checkpoint" not in report["missing"]
-    assert report["attachment_preflight"]["evidence"] == []
-    for role in report["attachment_preflight"]["roles"].values():
+    } <= set(proof["missing"])
+    assert "native_session_binding" not in proof["missing"]
+    assert "prospective_observation_checkpoint" not in proof["missing"]
+    assert proof["evidence"] == []
+    for role in proof["roles"].values():
         assert role["status"] == "NOT_PROVED" and role["chains"] == []
         assert {
             "fresh_same_definition_start",
@@ -743,15 +921,14 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
         } <= set(role["missing"])
     assert report["research_nonblocking"] is True and report["trust_changed"] is False
     assert (project / ".codex" / BINDING_NAME).read_bytes() == binding_before_doctor
-    assert (project / ".claude/settings.json").read_bytes() == settings
+    assert (project / ".claude/settings.json").read_bytes() == configured_settings
     assert not (project / ".codex/config.toml").exists()
     # The Codex host still reads its own file, and refuses without it.
     assert run("configure")[1]["status"] == "REFUSED"
 
 
 def test_hook_bootstrap_failure_cannot_request_subagent_continuation(tmp_path):
-    config = tomllib.loads((ROOT / ".codex/config.toml").read_text())
-    command = config["hooks"]["SubagentStop"][0]["hooks"][0]["command"]
+    command = native_proof_hooks(ROOT)["SubagentStop"][0]["hooks"][0]["command"]
     fake_uv = tmp_path / ("uv.cmd" if os.name == "nt" else "uv")
     fake_uv.write_text("@exit /b 2\n" if os.name == "nt" else "#!/bin/sh\nexit 2\n")
     fake_uv.chmod(0o700)
@@ -856,10 +1033,11 @@ def test_claude_hook_contract_examples_replay_through_host_and_credit_exact_assi
     (project / ".claude/agents").mkdir(parents=True)
     for relative in ("settings.json", "agents/alphalattice_cro.md"):
         (project / ".claude" / relative).write_bytes((ROOT / ".claude" / relative).read_bytes())
+    declare_project(project, "claude-code")
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "parent")
     client = LocalResearchClient(live.workspace)
-    assert client.bind_native_session(project, usage="off")["status"] == "BOUND_NOT_ATTACHED"
+    assert client.bind_native_session(project, usage="off")["status"] == "BOUND"
     binding = NativeResearchBinding.read(project)
     assert binding is not None and binding.host == "claude-code"
 
@@ -1127,6 +1305,12 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
             max(len(roles) for roles in shipped.values()),
             "a binding's roles: the cards a host ships",
         ),
+        "BINDING_RECORDS": (
+            bridge.BINDING_RECORDS,
+            "==",
+            128,
+            "the bounded exact host/Session collection; overflow refuses without replacing records",
+        ),
         "TEXT_CHARACTERS": (
             bridge.TEXT_CHARACTERS,
             ">=",
@@ -1139,6 +1323,24 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
             2,
             "the rollouts a Codex specialist's spawn chain reads, a first record each: its "
             "lead's own and a specialist's specialist's (V568)",
+        ),
+        "USAGE_READ_BYTES": (
+            bridge.USAGE_READ_BYTES,
+            "==",
+            512 * 1024 * 1024,
+            "a complete optional native session scan; overflow publishes no prefix",
+        ),
+        "USAGE_LINE_BYTES": (
+            bridge.USAGE_LINE_BYTES,
+            "==",
+            8 * 1024 * 1024,
+            "one complete native JSONL record; an overbound record publishes no prefix",
+        ),
+        "USAGE_MODEL_ROWS": (
+            bridge.USAGE_MODEL_ROWS,
+            "==",
+            32,
+            "one complete per-participant model projection; overflow publishes no rows",
         ),
     }
     relations = {"==": int.__eq__, "<=": int.__le__, ">=": int.__ge__}
@@ -1237,7 +1439,7 @@ def test_a_binding_is_found_up_from_any_folder_and_serves_its_session_and_specia
 ) -> None:
     """requirement (V568): one bind, the one `native_setup bind` and `session bind` share, writes
     the binding in the project holding its host's declarations, the nearest up from where it
-    runs, making a Claude Code project's `.codex` folder; a project bound otherwise refuses it.
+    runs, making a Claude Code project's `.codex` folder; a changed scope for that Session refuses.
     The binding is found from any folder within the project, as git finds its .git, and serves
     the bound session, a Claude Code subagent that carries its id, and a Codex specialist whose
     own rollout names a spawn chain reaching the bound session within `SPAWN_HOPS`; no other
@@ -1259,18 +1461,23 @@ def test_a_binding_is_found_up_from_any_folder_and_serves_its_session_and_specia
     shutil.copyfile(ROOT / ".claude/settings.json", claude / ".claude/settings.json")
     shutil.copyfile(ROOT / ".claude/agents/alphalattice_cro.md", claude / ".claude/agents/c.md")
     (claude / ".claude/agents/c.md").rename(claude / ".claude/agents/alphalattice_cro.md")
+    declare_project(claude, "claude-code")
     below = claude / "deep" / "er"
     below.mkdir(parents=True)
     lead = str(uuid4())
     assert session_project(below, "claude-code") == claude
-    with pytest.raises(NativeBridgeError, match="hook_declaration_missing"):
+    with pytest.raises(NativeBridgeError, match="project_declaration_missing"):
         session_project(below, "codex")
     written = bind_session(claude, host="claude-code", session_id=lead, workspace=workspace)
     assert written["workspace"] == str(workspace.resolve()) and (claude / ".codex").is_dir()
     assert bind_session(claude, host="claude-code", session_id=lead, workspace=workspace)
-    with pytest.raises(NativeBridgeError, match="existing_configuration_differs"):
-        bind_session(claude, host="claude-code", session_id=str(uuid4()), workspace=workspace)
-    found = bridge.NativeResearchBinding.find(below)
+    second = str(uuid4())
+    before = (claude / ".codex" / BINDING_NAME).read_bytes()
+    assert bind_session(claude, host="claude-code", session_id=second, workspace=workspace)
+    assert (claude / ".codex" / BINDING_NAME).read_bytes() == before
+    with pytest.raises(NativeBridgeError, match="binding_ambiguous"):
+        bridge.NativeResearchBinding.find(below)
+    found = bridge.NativeResearchBinding.find(below, session=("claude-code", lead))
     assert found is not None and found[0] == claude
     binding = found[1]
     assert binding.serves(("claude-code", lead)) and not binding.serves(("codex", lead))
@@ -1304,10 +1511,132 @@ def test_a_binding_is_found_up_from_any_folder_and_serves_its_session_and_specia
     assert not codex.serves(("claude-code", chain[1]))
 
 
+def _declared_binding_project(tmp_path):
+    """A labelled fixture project; bindings confer no live native credit or trust."""
+    project = tmp_path / "project"
+    (project / ".codex").mkdir(parents=True)
+    (project / ".codex/config.toml").write_bytes((ROOT / ".codex/config.toml").read_bytes())
+    (project / ".claude/agents").mkdir(parents=True)
+    (project / ".claude/settings.json").write_bytes((ROOT / ".claude/settings.json").read_bytes())
+    card = ".claude/agents/alphalattice_cro.md"
+    (project / card).write_bytes((ROOT / card).read_bytes())
+    for host in ("codex", "claude-code"):
+        declare_project(project, host)
+    workspace = project / "workspace"
+    workspace.mkdir()
+    return project, workspace
+
+
+@pytest.mark.parametrize("problem", ("malformed_json", "wrong_key", "unknown_file", "oversized"))
+def test_binding_collection_keeps_exact_readable_slots_and_reports_each_bad_record(
+    tmp_path, problem
+):
+    """TE12: one malformed metadata item cannot erase another Session or select its scope."""
+    from alphalattice.interface.local_application.native_bridge import (
+        BINDING_BYTES,
+        BINDING_DIRECTORY,
+    )
+    from alphalattice.interface.local_application.native_setup import bind_session
+
+    project, workspace = _declared_binding_project(tmp_path)
+    for session in ("fixture-first", "fixture-second"):
+        assert bind_session(project, host="codex", session_id=session, workspace=workspace)
+    selected = NativeResearchBinding.read(project, session=("codex", "fixture-second"))
+    before = selected.record_path(project).read_bytes()
+    directory = project / ".codex" / BINDING_DIRECTORY
+    bad = directory / ("0" * 64 + ".json")
+    if problem == "malformed_json":
+        bad.write_bytes(b"{broken")
+    elif problem == "oversized":
+        bad.write_bytes(b"x" * (BINDING_BYTES + 1))
+    elif problem == "unknown_file":
+        bad = directory / "unknown.json"
+        bad.write_bytes(before)
+    else:
+        bad.write_bytes(before)
+    bindings, refusals = NativeResearchBinding.binding_entries(project)
+    assert {(each.host, each.session_id) for each in bindings} == {
+        ("codex", "fixture-first"),
+        ("codex", "fixture-second"),
+    }
+    assert len(refusals) == 1
+    assert refusals[0]["binding_key"] == bad.name
+    assert refusals[0]["failure_code"] == (
+        "native_bridge.binding_path_invalid"
+        if problem == "unknown_file"
+        else "native_bridge.binding_invalid"
+    )
+    assert NativeResearchBinding.read(project, session=("codex", "fixture-second")) == selected
+    assert selected.record_path(project).read_bytes() == before
+    with pytest.raises(NativeBridgeError, match=r"binding_(path_)?invalid"):
+        NativeResearchBinding.read(project)
+
+
+@pytest.mark.parametrize("inner_host", ("codex", "claude-code"))
+def test_binding_discovery_stops_at_the_nearest_configured_project_even_when_unbound(
+    tmp_path, inner_host
+):
+    """An outer exact Session record grants no implicit workspace to an inner project."""
+    from alphalattice.interface.local_application.native_setup import bind_session
+
+    outer, workspace = _declared_binding_project(tmp_path)
+    assert bind_session(outer, host="codex", session_id="fixture-parent", workspace=workspace)
+    before = (outer / ".codex" / BINDING_NAME).read_bytes()
+    inner = outer / "inner"
+    inner.mkdir()
+    declare_project(inner, inner_host)
+    below = inner / "notes"
+    below.mkdir()
+    if inner_host == "codex":
+        assert NativeResearchBinding.find(below, session=("codex", "fixture-parent")) is None
+    else:
+        with pytest.raises(NativeBridgeError, match="project_mismatch"):
+            NativeResearchBinding.find(below, session=("codex", "fixture-parent"))
+    assert NativeResearchBinding.find(below) is None
+    assert (outer / ".codex" / BINDING_NAME).read_bytes() == before
+    assert NativeResearchBinding.find(outer, session=("codex", "fixture-parent"))[0] == outer
+
+
+def test_an_unrelated_read_binding_cannot_discover_an_off_parents_child(tmp_path, monkeypatch):
+    """OFF is a project privacy boundary for unknown children, independent of other slots."""
+    from alphalattice.interface.local_application.native_setup import bind_session
+
+    project, workspace = _declared_binding_project(tmp_path)
+    assert bind_session(
+        project, host="codex", session_id="fixture-off-parent", workspace=workspace, usage="off"
+    )
+    assert bind_session(
+        project, host="codex", session_id="fixture-unrelated-read", workspace=workspace
+    )
+    home = tmp_path / "synthetic-codex-home"
+    home.mkdir()
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    scan = os.scandir
+    opening = Path.open
+
+    def no_discovery(path):
+        assert not Path(path).is_relative_to(home), "OFF must not discover native files"
+        return scan(path)
+
+    def no_native_open(path, mode="r", *args, **kwargs):
+        assert not path.is_relative_to(home), "OFF must not open a child or parent native file"
+        return opening(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(os, "scandir", no_discovery)
+    monkeypatch.setattr(Path, "open", no_native_open)
+    assert NativeResearchBinding.find(project, session=("codex", "fixture-unbound-child")) is None
+    exact = NativeResearchBinding.find(project, session=("codex", "fixture-unrelated-read"))
+    assert exact[1].session_id == "fixture-unrelated-read"
+    assert (
+        NativeResearchBinding.read(project, session=("codex", "fixture-off-parent")).usage == "OFF"
+    )
+
+
 @pytest.mark.parametrize("kind", ("SubagentStart", "SubagentStop"))
 @pytest.mark.parametrize("relation", ("direct", "ancestor", "wrong_parent", "wrong_role"))
-def test_new_hook_path_uses_exact_header_role_and_admitted_ancestry_with_usage_off(
-    tmp_path, monkeypatch, kind, relation
+@pytest.mark.parametrize("usage", ["READ", "OFF"])
+def test_new_hook_path_uses_exact_header_role_only_when_native_reads_are_enabled(
+    tmp_path, monkeypatch, kind, relation, usage
 ):
     from uuid import uuid4
 
@@ -1329,7 +1658,7 @@ def test_new_hook_path_uses_exact_header_role_and_admitted_ancestry_with_usage_o
         workspace=tmp_path / "workspace",
         roles=(role,),
         host="codex",
-        usage="OFF",
+        usage=usage,
     )
     (project / ".codex" / BINDING_NAME).write_text(
         json.dumps(
@@ -1338,7 +1667,7 @@ def test_new_hook_path_uses_exact_header_role_and_admitted_ancestry_with_usage_o
                 "workspace": str(binding.workspace),
                 "roles": [role],
                 "host": "codex",
-                "usage": "OFF",
+                "usage": usage,
             }
         ),
         encoding="utf-8",
@@ -1378,7 +1707,9 @@ def test_new_hook_path_uses_exact_header_role_and_admitted_ancestry_with_usage_o
     def no_usage(*_, **__):
         pytest.fail("Usage OFF must never read responses or the session body")
 
-    monkeypatch.setattr(bridge, "read_session", no_usage)
+    if usage == "OFF":
+        monkeypatch.setattr(bridge, "read_session", no_usage)
+        monkeypatch.setattr(bridge, "codex_thread_spawn", no_usage)
     delivered = []
 
     def capture(_project, _binding, event):
@@ -1415,7 +1746,7 @@ def test_new_hook_path_uses_exact_header_role_and_admitted_ancestry_with_usage_o
     assert {"native_agent_path_scope", "native_parent_thread_id", "native_spawn_role"}.isdisjoint(
         subject
     )
-    if relation in {"direct", "ancestor"}:
+    if usage == "READ" and relation in {"direct", "ancestor"}:
         assert subject["native_agent_path"] == path
         assert subject["native_agent_path_basis"] == "CODEX_SESSION_META"
         assert len(subject) == 16

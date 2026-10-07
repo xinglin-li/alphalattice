@@ -1,5 +1,8 @@
 {
 "entries": {
+"activity.accepted_answer_binding_mismatch": {
+"owner": "activity"
+},
 "activity.cursor_invalid": {
 "owner": "activity"
 },
@@ -5820,6 +5823,9 @@
 "goal.already_open_revise_it": {
 "owner": "goal"
 },
+"goal.assignment_closure_invalid": {
+"owner": "goal"
+},
 "goal.attribution_invalid": {
 "owner": "goal"
 },
@@ -6426,19 +6432,58 @@
 "model_training.training_source_axis_mismatch": {
 "owner": "model_training"
 },
+"native_bridge.accepted_answer_not_recorded": {
+"owner": "native_bridge"
+},
+"native_bridge.accepted_author_mismatch": {
+"owner": "native_bridge"
+},
+"native_bridge.accepted_author_not_observed": {
+"owner": "native_bridge"
+},
+"native_bridge.accepted_bundle_unavailable": {
+"owner": "native_bridge"
+},
+"native_bridge.accepted_delivery_failed": {
+"owner": "native_bridge"
+},
+"native_bridge.accepted_delivery_unavailable": {
+"owner": "native_bridge"
+},
+"native_bridge.activity_client_unavailable": {
+"owner": "native_bridge"
+},
 "native_bridge.activity_correlation_invalid": {
 "owner": "native_bridge"
 },
 "native_bridge.activity_subject_invalid": {
 "owner": "native_bridge"
 },
+"native_bridge.assignment_ambiguous": {
+"owner": "native_bridge"
+},
 "native_bridge.assignment_is_not_a_reply": {
+"owner": "native_bridge"
+},
+"native_bridge.assignment_not_observed": {
 "owner": "native_bridge"
 },
 "native_bridge.assignment_recipient_required": {
 "owner": "native_bridge"
 },
+"native_bridge.assignment_terminal_invalid": {
+"owner": "native_bridge"
+},
+"native_bridge.binding_ambiguous": {
+"owner": "native_bridge"
+},
 "native_bridge.binding_invalid": {
+"owner": "native_bridge"
+},
+"native_bridge.binding_limit_exceeded": {
+"owner": "native_bridge"
+},
+"native_bridge.binding_mismatch": {
 "owner": "native_bridge"
 },
 "native_bridge.binding_path_invalid": {
@@ -6447,7 +6492,19 @@
 "native_bridge.binding_unreadable": {
 "owner": "native_bridge"
 },
-"native_bridge.accepted_answer_not_recorded": {
+"native_bridge.child_usage_binding_unverified": {
+"owner": "native_bridge"
+},
+"native_bridge.child_usage_file_missing": {
+"owner": "native_bridge"
+},
+"native_bridge.child_usage_incomplete": {
+"owner": "native_bridge"
+},
+"native_bridge.child_usage_not_observed": {
+"owner": "native_bridge"
+},
+"native_bridge.child_usage_read_failed": {
 "owner": "native_bridge"
 },
 "native_bridge.configuration_path_invalid": {
@@ -6474,10 +6531,31 @@
 "native_bridge.files_unavailable": {
 "owner": "native_bridge"
 },
+"native_bridge.history_not_retained": {
+"owner": "native_bridge"
+},
+"native_bridge.history_unavailable": {
+"owner": "native_bridge"
+},
 "native_bridge.hook_declaration_missing": {
 "owner": "native_bridge"
 },
+"native_bridge.hook_model_not_observed": {
+"owner": "native_bridge"
+},
 "native_bridge.hook_trust_not_confirmed": {
+"owner": "native_bridge"
+},
+"native_bridge.lead_usage_file_missing": {
+"owner": "native_bridge"
+},
+"native_bridge.lead_usage_incomplete": {
+"owner": "native_bridge"
+},
+"native_bridge.lead_usage_not_observed": {
+"owner": "native_bridge"
+},
+"native_bridge.lead_usage_read_failed": {
 "owner": "native_bridge"
 },
 "native_bridge.local_environment_missing": {
@@ -6504,7 +6582,22 @@
 "native_bridge.message_size_invalid": {
 "owner": "native_bridge"
 },
+"native_bridge.native_event_delivery_unverified": {
+"owner": "native_bridge"
+},
 "native_bridge.not_bound": {
+"owner": "native_bridge"
+},
+"native_bridge.observation_busy": {
+"owner": "native_bridge"
+},
+"native_bridge.parent_session_mismatch": {
+"owner": "native_bridge"
+},
+"native_bridge.product_contract_unavailable": {
+"owner": "native_bridge"
+},
+"native_bridge.project_declaration_missing": {
 "owner": "native_bridge"
 },
 "native_bridge.project_mismatch": {
@@ -6513,10 +6606,34 @@
 "native_bridge.project_path_invalid": {
 "owner": "native_bridge"
 },
+"native_bridge.readiness_incomplete": {
+"owner": "native_bridge"
+},
 "native_bridge.request_invalid": {
 "owner": "native_bridge"
 },
 "native_bridge.roles_missing": {
+"owner": "native_bridge"
+},
+"native_bridge.runtime_attachment_unproved": {
+"owner": "native_bridge"
+},
+"native_bridge.runtime_connection_unavailable": {
+"owner": "native_bridge"
+},
+"native_bridge.runtime_definition_unproved": {
+"owner": "native_bridge"
+},
+"native_bridge.runtime_not_checked": {
+"owner": "native_bridge"
+},
+"native_bridge.runtime_read_only": {
+"owner": "native_bridge"
+},
+"native_bridge.runtime_request_refused": {
+"owner": "native_bridge"
+},
+"native_bridge.runtime_response_invalid": {
 "owner": "native_bridge"
 },
 "native_bridge.sequence_capacity_reached": {
@@ -6534,6 +6651,12 @@
 "native_bridge.session_mismatch": {
 "owner": "native_bridge"
 },
+"native_bridge.start_not_observed": {
+"owner": "native_bridge"
+},
+"native_bridge.transport_unavailable": {
+"owner": "native_bridge"
+},
 "native_bridge.workspace_mismatch": {
 "owner": "native_bridge"
 },
@@ -6544,6 +6667,9 @@
 "owner": "native_hook"
 },
 "native_hook.cwd_mismatch": {
+"owner": "native_hook"
+},
+"native_hook.definition_unreadable": {
 "owner": "native_hook"
 },
 "native_hook.duplicate_field": {
@@ -6563,6 +6689,15 @@
 },
 "native_hook.session_mismatch": {
 "owner": "native_hook"
+},
+"native_usage.read_limit_exceeded": {
+"owner": "native_usage"
+},
+"observation.correlation_ambiguous": {
+"owner": "observation"
+},
+"observation.correlation_selector_invalid": {
+"owner": "observation"
 },
 "observation.cursor_invalid": {
 "owner": "observation"
@@ -6596,6 +6731,9 @@
 },
 "observation.tampered": {
 "owner": "observation"
+},
+"operations.schema_reference_not_local": {
+"owner": "operations"
 },
 "portfolio_advancement.correction_did_not_supersede": {
 "owner": "portfolio_advancement"
@@ -12974,102 +13112,6 @@
 },
 "workspace_readiness.target_not_available_at_approval": {
 "owner": "workspace_readiness"
-},
-"operations.schema_reference_not_local": {
-"owner": "operations"
-},
-"native_bridge.accepted_author_mismatch": {
-"owner": "native_bridge"
-},
-"native_bridge.accepted_author_not_observed": {
-"owner": "native_bridge"
-},
-"native_bridge.accepted_bundle_unavailable": {
-"owner": "native_bridge"
-},
-"native_bridge.accepted_delivery_failed": {
-"owner": "native_bridge"
-},
-"native_bridge.accepted_delivery_unavailable": {
-"owner": "native_bridge"
-},
-"native_bridge.activity_client_unavailable": {
-"owner": "native_bridge"
-},
-"native_bridge.assignment_ambiguous": {
-"owner": "native_bridge"
-},
-"native_bridge.assignment_not_observed": {
-"owner": "native_bridge"
-},
-"native_bridge.binding_mismatch": {
-"owner": "native_bridge"
-},
-"native_bridge.history_not_retained": {
-"owner": "native_bridge"
-},
-"native_bridge.history_unavailable": {
-"owner": "native_bridge"
-},
-"native_bridge.hook_model_not_observed": {
-"owner": "native_bridge"
-},
-"native_bridge.lead_usage_file_missing": {
-"owner": "native_bridge"
-},
-"native_bridge.lead_usage_incomplete": {
-"owner": "native_bridge"
-},
-"native_bridge.lead_usage_not_observed": {
-"owner": "native_bridge"
-},
-"native_bridge.lead_usage_read_failed": {
-"owner": "native_bridge"
-},
-"native_bridge.observation_busy": {
-"owner": "native_bridge"
-},
-"native_bridge.parent_session_mismatch": {
-"owner": "native_bridge"
-},
-"native_bridge.product_contract_unavailable": {
-"owner": "native_bridge"
-},
-"native_bridge.readiness_incomplete": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_attachment_unproved": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_connection_unavailable": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_definition_unproved": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_not_checked": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_read_only": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_request_refused": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_response_invalid": {
-"owner": "native_bridge"
-},
-"native_bridge.start_not_observed": {
-"owner": "native_bridge"
-},
-"native_bridge.transport_unavailable": {
-"owner": "native_bridge"
-},
-"native_hook.definition_unreadable": {
-"owner": "native_hook"
-},
-"native_bridge.native_event_delivery_unverified": {
-"owner": "native_bridge"
 }
 },
 "note": "",

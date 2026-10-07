@@ -10,6 +10,16 @@
 "alphalattice.local-application.operations"
 ]
 },
+"schema:alphalattice.native-project.v1": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/alphalattice/interface/local_application/native_setup.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.native-project.v1"
+]
+},
 "schema:alphalattice.playpen.registry.areas": {
 "owner": "schema:alphalattice",
 "readers": [

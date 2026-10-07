@@ -309,6 +309,12 @@ class ObservationLedger:
             )
             self._writer.execute(
                 """
+                CREATE INDEX IF NOT EXISTS unified_observation_run_kind_idx
+                ON unified_observation(run_id, schema_kind)
+                """
+            )
+            self._writer.execute(
+                """
                 INSERT INTO observation_store_metadata VALUES ('schema', ?)
                 ON CONFLICT(metadata_key) DO NOTHING
                 """,
@@ -583,6 +589,44 @@ class ObservationLedger:
                 [run_id],
             ).fetchall()
             return tuple(self._require_row(connection, str(row[0])) for row in rows)
+
+        return self._read(operation)
+
+    def unique_correlated_observation(
+        self, run_id: str, schema_kind: str, correlation_id: str
+    ) -> ObservationEnvelope | None:
+        """Read one exact run/schema/correlation link, refusing an ambiguous link.
+
+        Only the selected run and schema are searched, using exact membership in
+        the envelope's correlation array. At most two identifiers are returned;
+        a unique result receives the same integrity verification as ``read``.
+
+        Raises:
+            ValueError: A selector is empty, the link is ambiguous, or the row is tampered.
+            ObservationStorageError: The store cannot be read.
+        """
+        if any(
+            not isinstance(value, str) or not value
+            for value in (run_id, schema_kind, correlation_id)
+        ):
+            raise ValueError("observation.correlation_selector_invalid")
+
+        def operation(connection: Any) -> ObservationEnvelope | None:
+            rows = connection.execute(
+                """
+                SELECT observation_id FROM unified_observation
+                WHERE run_id = ? AND schema_kind = ?
+                  AND EXISTS (
+                    SELECT 1 FROM json_each(envelope_json, '$.correlation_ids')
+                    WHERE type = 'text' AND value = ?
+                  )
+                LIMIT 2
+                """,
+                [run_id, schema_kind, correlation_id],
+            ).fetchall()
+            if len(rows) > 1:
+                raise ValueError("observation.correlation_ambiguous")
+            return None if not rows else self._require_row(connection, str(rows[0][0]))
 
         return self._read(operation)
 

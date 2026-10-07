@@ -3,10 +3,12 @@
 import json
 import os
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 from alphalattice.interface.local_application import client as client_module
+from alphalattice.interface.local_application.failure_codes import owner_failure_code
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
     NativeResearchBinding,
@@ -15,16 +17,181 @@ from alphalattice.interface.local_application.native_bridge import (
     pin_differs,
 )
 from alphalattice.interface.local_application.native_observation_sequence import SEQUENCE_NAME
+from alphalattice.interface.local_application.native_setup import declare_project
 from alphalattice.interface.local_application.native_usage import (
     HOST_CLAUDE_CODE,
     HOST_CODEX,
     ModelUsage,
+    NativeUsageReadLimitError,
     admitted_session_file,
+    claude_thread_spawn,
+    codex_assigned_spawn,
     codex_session_file,
     read_session,
+    session_file,
 )
 
 SECRET = "SECRET-TRANSCRIPT-TEXT"
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        "alphalattice_data",
+        "alphalattice_factor",
+        "alphalattice_alpha",
+        "alphalattice_risk",
+        "alphalattice_portfolio",
+        "alphalattice_evidence_analyst",
+        "alphalattice_cro",
+    ],
+)
+@pytest.mark.parametrize(
+    "problem", ["exact", "escaped", "parent", "path", "top_path", "id", "duplicate"]
+)
+def test_codex_canonical_assignment_uses_exact_unique_metadata_only(
+    tmp_path, monkeypatch, role, problem
+):
+    native = tmp_path / "synthetic-codex"
+    monkeypatch.setenv("CODEX_HOME", str(native))
+    parent, child = str(uuid4()), str(uuid4())
+    task = "/root/synthetic_exact_child"
+    spawn = {
+        "parent_thread_id": str(uuid4()) if problem == "parent" else parent,
+        "agent_role": role,
+        "agent_path": "/root/another_child" if problem == "path" else task,
+    }
+    metadata = {
+        "id": str(uuid4()) if problem == "id" else child,
+        "source": {"subagent": {"thread_spawn": spawn}},
+        "base_instructions": SECRET,
+    }
+    if problem == "top_path":
+        metadata["agent_path"] = "/root/another_child"
+    first = json.dumps({"type": "session_meta", "payload": metadata})
+    if problem == "escaped":
+        first = (
+            first.replace(parent, "\\u0030" + parent[1:])
+            if parent.startswith("0")
+            else first.replace("/root/", "\\/root\\/")
+        )
+    path = native / "sessions/2026/10/07" / f"rollout-synthetic-{child}.jsonl"
+    path.parent.mkdir(parents=True)
+    # Invalid UTF-8 after the first record must never be read for this association.
+    path.write_bytes(first.encode() + b"\n\xff" + SECRET.encode())
+    if problem == "duplicate":
+        other = str(uuid4())
+        duplicate = {"type": "session_meta", "payload": {**metadata, "id": other}}
+        path.with_name(f"rollout-synthetic-{other}.jsonl").write_text(
+            json.dumps(duplicate) + "\n", encoding="utf-8"
+        )
+    found = codex_assigned_spawn(parent, task)
+    selected = session_file(HOST_CODEX, parent, task)
+    if problem in {"exact", "escaped"}:
+        assert selected == path and found is not None
+        assert (found.parent_thread_id, found.agent_role, found.agent_path) == (parent, role, task)
+        assert SECRET not in repr(found)
+    else:
+        assert selected is None and found is None
+    assert session_file(HOST_CODEX, str(uuid4()), task) is None
+    assert session_file(HOST_CLAUDE_CODE, parent, task) is None
+
+
+def test_codex_canonical_metadata_census_refuses_its_actual_file_bound(tmp_path, monkeypatch):
+    from alphalattice.interface.local_application.native_usage import CODEX_ASSIGNMENT_FILES
+
+    native = tmp_path / "synthetic-codex"
+    monkeypatch.setenv("CODEX_HOME", str(native))
+    directory = native / "sessions/2026/10/07"
+    directory.mkdir(parents=True)
+    for number in range(CODEX_ASSIGNMENT_FILES + 1):
+        (directory / f"rollout-synthetic-{number}.jsonl").write_bytes(b"")
+    with pytest.raises(NativeUsageReadLimitError) as error:
+        session_file(HOST_CODEX, str(uuid4()), "/root/synthetic_exact_child")
+    assert error.value.limit == "child_metadata_files"
+
+
+@pytest.mark.parametrize(
+    "problem",
+    [
+        "exact",
+        "session",
+        "agent",
+        "sidechain",
+        "role",
+        "nested",
+        "parent_agent",
+        "missing_meta",
+        "invalid_meta",
+        "large_meta",
+        "large_header",
+        "duplicate_lead",
+    ],
+)
+def test_claude_child_metadata_names_one_exact_direct_parent_and_explicit_role(
+    tmp_path, monkeypatch, problem
+):
+    """Only bounded sidecar/header metadata binds the exact assigned child's count source."""
+    native = tmp_path / "synthetic-claude"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(native))
+    lead = _write(native / "projects/fixture-project/lead-session.jsonl", _lead_records())
+    child = _write(
+        lead.parent / "lead-session/subagents/agent-exact-child.jsonl",
+        [
+            {
+                "type": "user",
+                "sessionId": "lead-session",
+                "agentId": "exact-child",
+                "isSidechain": True,
+                "message": {"content": SECRET},
+            },
+            _assistant("response", "synthetic-model", output=3, at="2026-10-06T00:00:00Z"),
+        ],
+    )
+    header = json.loads(child.read_text().splitlines()[0])
+    meta = {
+        "agentType": "alphalattice_risk",
+        "spawnDepth": 1,
+        "toolUseId": "synthetic-tool-use",
+        "description": SECRET,
+    }
+    if problem in {"session", "agent", "sidechain"}:
+        field, value = {
+            "session": ("sessionId", "another-parent"),
+            "agent": ("agentId", "another-child"),
+            "sidechain": ("isSidechain", False),
+        }[problem]
+        header[field] = value
+    elif problem == "role":
+        del meta["agentType"]
+    elif problem == "nested":
+        meta["spawnDepth"] = 2
+    elif problem == "parent_agent":
+        meta["parentAgentId"] = "another-child"
+    elif problem == "large_meta":
+        meta["description"] = SECRET * 2000
+    elif problem == "large_header":
+        header["message"] = {"content": SECRET * 100_000}
+    elif problem == "duplicate_lead":
+        _write(native / "projects/other-project/lead-session.jsonl", _lead_records())
+    child.write_text(json.dumps(header) + "\n", encoding="utf-8")
+    if problem != "missing_meta":
+        child.with_suffix(".meta.json").write_text(
+            "{" if problem == "invalid_meta" else json.dumps(meta), encoding="utf-8"
+        )
+    result = claude_thread_spawn("lead-session", "exact-child")
+    if problem == "exact":
+        assert result is not None
+        assert (result.parent_thread_id, result.agent_role, result.agent_path) == (
+            "lead-session",
+            "alphalattice_risk",
+            None,
+        )
+        assert SECRET not in repr(result)
+    else:
+        assert result is None
+    assert claude_thread_spawn("lead-session", "/root/alias") is None
+    assert claude_thread_spawn("lead-session", "lead-session") is None
 
 
 @pytest.mark.parametrize("ambiguous", [False, True])
@@ -207,6 +374,103 @@ def test_a_codex_rollout_names_the_model_by_turn_and_leaves_the_uncached_input(t
     assert SECRET not in repr(usage)
 
 
+@pytest.mark.parametrize("host", [HOST_CODEX, HOST_CLAUDE_CODE])
+def test_malformed_selected_usage_is_incomplete_instead_of_a_complete_prefix(tmp_path, host):
+    """An unfinished host usage JSON record cannot turn earlier counts into a full reading."""
+    if host == HOST_CLAUDE_CODE:
+        records = [_assistant("first", "synthetic-model", output=3, at="2026-10-06T00:00:00Z")]
+        malformed = b'{"type":"assistant","message":{"usage":'
+    else:
+        records = [
+            {"type": "turn_context", "payload": {"model": "synthetic-model"}},
+            {
+                "type": "token_usage_record",
+                "payload": {
+                    "response_id": "first",
+                    "usage": {
+                        "input_tokens": 3,
+                        "cached_input_tokens": 0,
+                        "cache_write_input_tokens": 0,
+                        "output_tokens": 3,
+                    },
+                },
+            },
+        ]
+        malformed = b'{"type":"token_usage_record","payload":'
+    path = _write(tmp_path / "synthetic-session.jsonl", records)
+    with path.open("ab") as stream:
+        stream.write(malformed)
+    reading = read_session(path, host=host)
+    assert len(reading.responses) == 1 and reading.incomplete == 1
+    assert reading.responses[0].output_tokens == 3
+
+
+@pytest.mark.parametrize("host", [HOST_CODEX, HOST_CLAUDE_CODE])
+def test_bounded_usage_admits_a_large_valid_native_line_and_preserves_legacy_totals(tmp_path, host):
+    """BEHAVIOUR: a valid private line larger than 1 MiB does not erase complete usage."""
+    ignored = {
+        "type": "response_item" if host == HOST_CODEX else "user",
+        "payload": {"content": SECRET * 60000},
+    }
+    records = (
+        [
+            {"type": "turn_context", "payload": {"model": "gpt-6-luna", "effort": "high"}},
+            {
+                "type": "token_usage_record",
+                "timestamp": "2026-10-06T00:00:00Z",
+                "payload": {
+                    "response_id": "complete-response",
+                    "usage": {
+                        "input_tokens": 20,
+                        "cached_input_tokens": 5,
+                        "cache_write_input_tokens": 0,
+                        "output_tokens": 3,
+                    },
+                },
+            },
+        ]
+        if host == HOST_CODEX
+        else [
+            _assistant(
+                "complete-response", "claude-sonnet-5-5", output=3, at="2026-10-06T00:00:00Z"
+            )
+        ]
+    )
+    path = _write(tmp_path / "session.jsonl", [ignored, *records])
+    maximum_line = max(len(line) for line in path.read_bytes().splitlines(keepends=True))
+    assert 1024 * 1024 < maximum_line < 8 * 1024 * 1024
+    bounded = read_session(
+        path, host=host, max_bytes=path.stat().st_size, max_line_bytes=maximum_line
+    )
+    assert bounded == read_session(path, host=host)
+    assert bounded.incomplete == 0 and len(bounded.responses) == 1
+    assert bounded.responses[0].response_id == "complete-response"
+    assert SECRET not in repr(bounded)
+
+
+@pytest.mark.parametrize("limit", ["max_bytes", "max_line_bytes"])
+def test_an_incomplete_bounded_usage_scan_returns_no_prefix_totals(tmp_path, limit):
+    """BEHAVIOUR: even a complete usage prefix gives no totals when a later byte bound fails."""
+    records = [
+        _assistant("complete-response", "claude-sonnet-5-5", output=3, at="2026-10-06T00:00:00Z"),
+        {"type": "user", "payload": {"content": SECRET * 100}},
+    ]
+    path = _write(tmp_path / "session.jsonl", records)
+    data = path.read_bytes()
+    limits = {
+        "max_bytes": len(data),
+        "max_line_bytes": max(map(len, data.splitlines(keepends=True))),
+    }
+    assert read_session(path, host=HOST_CLAUDE_CODE, **limits).incomplete == 0
+    limits[limit] -= 1
+    with pytest.raises(NativeUsageReadLimitError) as caught:
+        read_session(path, host=HOST_CLAUDE_CODE, **limits)
+    assert caught.value.limit == limit and SECRET not in str(caught.value)
+    assert str(caught.value) == "native_usage_limit_exceeded"
+    assert owner_failure_code(caught.value) == "native_usage.read_limit_exceeded"
+    assert read_session(path, host=HOST_CLAUDE_CODE).responses[0].response_id == "complete-response"
+
+
 def test_only_the_hosts_own_file_of_that_session_is_admitted(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
@@ -278,6 +542,7 @@ def test_a_subagent_stop_delivers_what_it_and_the_lead_spent_without_text(
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
     project = tmp_path / "project"
     (project / ".codex").mkdir(parents=True)
+    declare_project(project, HOST_CLAUDE_CODE)
     binding = {
         "session_id": "lead-session",
         "workspace": str(tmp_path / "workspace"),
@@ -333,8 +598,15 @@ def test_a_subagent_stop_delivers_what_it_and_the_lead_spent_without_text(
     assert led["subject"]["role"] == "research_lead"
     assert led["subject"]["input_channel"] == "CLAUDE_CODE_SESSION_FILE"
     assert (led["subject"]["responses"], led["subject"]["output_tokens"]) == ("2", "47")
-    # Room is left for the goal the Host files the event under (16 keys at most).
+    # Exact source/time fields leave room for the owner's Goal within its 16-key cap.
     assert all(len(item["subject"]) <= 15 for item in receiver)
+    assert len(spent["subject"]) == 15
+    assert spent["subject"]["input_channel"] == "CLAUDE_CODE_SESSION_FILE"
+    assert spent["subject"]["sample_time_kind"] == "LATEST_USAGE_RECORD_AT"
+    assert spent["subject"]["last_at"] == "2026-09-29T01:00:08Z"
+    assert led["subject"]["last_at"] == "2026-09-29T01:00:09Z"
+    assert all("native_event_id" not in item["subject"] for item in (spent, led))
+    assert all("source_kind" not in item["subject"] for item in (spent, led))
     sent = json.dumps(receiver).encode() + (project / ".codex" / SEQUENCE_NAME).read_bytes()
     assert SECRET.encode() not in sent
     assert str(config).encode() not in sent and b"transcript" not in sent
@@ -429,6 +701,7 @@ def test_a_lone_lead_is_read_by_its_own_command_under_its_binding(tmp_path, monk
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
     project = tmp_path / "project"
     (project / ".codex").mkdir(parents=True)
+    declare_project(project, HOST_CLAUDE_CODE)
     binding = {
         "session_id": "lead-session",
         "workspace": str(tmp_path / "workspace"),
@@ -445,7 +718,19 @@ def test_a_lone_lead_is_read_by_its_own_command_under_its_binding(tmp_path, monk
     assert session_file(HOST_CLAUDE_CODE, "../lead-session") is None
     assert lead_readings(project, {"CLAUDE_CODE_SESSION_ID": "another-session"}) == []
     assert receiver == []
-    lead_readings(project, {"CLAUDE_CODE_SESSION_ID": "lead-session"})
+    assert lead_readings(project, {"CLAUDE_CODE_SESSION_ID": "lead-session"}) == [
+        {
+            "status": "UNAVAILABLE",
+            "reason": "native_bridge.lead_usage_incomplete",
+            "incomplete": 1,
+        }
+    ]
+    assert receiver == []
+    # The parser fixture's final empty-usage response is incomplete. Removing only that
+    # synthetic record gives a complete source with the same two actual response counts.
+    _write(lead, _lead_records()[:-1])
+    (receipt,) = lead_readings(project, {"CLAUDE_CODE_SESSION_ID": "lead-session"})
+    assert receipt["status"] == "DELIVERED" and receipt["incomplete"] == 0
     [reading] = receiver
     assert reading["event_kind"] == "NATIVE_AGENT_USAGE"
     subject = reading["subject"]

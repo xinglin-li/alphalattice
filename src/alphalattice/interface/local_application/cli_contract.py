@@ -1153,11 +1153,11 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "REFUSED",
             "RESOLVE_THE_NAMED_CAUSE_THEN_BIND",
             "The binding was refused for the reason its code names after the colon, and nothing "
-            "was written: `native_bridge.hook_declaration_missing`, no folder up from here holds "
-            "this host's agent declarations (configure the project, as the guide opens, then "
-            "bind); `native_bridge.existing_configuration_differs`, the project is bound to "
-            "another session or workspace: the session it names removes it with `alphalattice "
-            "session unbind`, as the person can from their own shell, and then bind again; "
+            "was written: `native_bridge.project_declaration_missing`, no folder up from here "
+            "holds this host's AlphaLattice project declaration (configure the project, then "
+            "bind); `native_bridge.existing_configuration_differs`, this exact host/Session "
+            "already has another workspace or usage scope: run `alphalattice session unbind` "
+            "inside this Session, then bind again. A new Session binds independently; "
             "`native_bridge.workspace_missing`, the workspace named is not a folder; "
             "`native_bridge.files_unavailable`, the project's `.codex` folder cannot be written.",
         ),
@@ -1168,11 +1168,13 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "REFUSED",
             "RESOLVE_THE_NAMED_CAUSE_THEN_UNBIND",
             "The binding was not removed, for the reason its code names after the colon: "
-            "`native_bridge.session_mismatch`, the project's binding names another agent session, "
-            "and a session removes only its own: the session it names unbinds, or the person "
-            "does from their own shell, outside any agent session; "
-            "`native_bridge.hook_declaration_missing`, no folder up from here holds the "
-            "product's agent declarations, so there is no project here to unbind; "
+            "`native_bridge.session_mismatch`, this Session has no binding to remove and other "
+            "Sessions' bindings stay. To continue, run `alphalattice --workspace <dir> session "
+            "bind` in this Session; no earlier Session needs to detach. "
+            "`native_bridge.binding_ambiguous`, several bindings exist and this shell names no "
+            "single owner: run `alphalattice session unbind` inside the intended bound Session; "
+            "`native_bridge.project_declaration_missing`, no folder up from here holds the "
+            "AlphaLattice project declaration, so there is no project here to unbind; "
             "`native_bridge.files_unavailable`, the binding file could not be removed.",
         ),
     ),

@@ -36,6 +36,8 @@ from alphalattice.interface.local_application.failure_codes import located_failu
 from alphalattice.interface.local_application.goals import (
     FIRST_USE_HOURS,
     Goal,
+    GoalAcceptedAnswerContext,
+    GoalAcceptedAnswerReceipt,
     GoalCompletion,
     GoalDeclaration,
     GoalReference,
@@ -93,9 +95,8 @@ COMPARISON_REFUSALS = frozenset(
         "alpha_research.saved_comparison_score_support_mismatch",
     }
 )
-# Team messages that close an assignment named by `reply_to`: the assignee's answer or
-# objection, or the assigner's own response (a withdrawal, say, once its assignee is gone).
-CLOSING_KINDS = frozenset({"answer", "objection", "pm_response"})
+TERMINAL_DECISIONS = frozenset({"COMPLETED", "WITHDRAWN", "DECLINED"})
+CLOSURE_SOURCES = frozenset({"PRODUCT_ACCEPTED_ANSWER", "LEAD_TERMINAL_DECISION"})
 CONVERSATION_SHOWN = 50
 """A shown record keeps the newest messages; the narrative used by waiters keeps them all."""
 
@@ -132,6 +133,15 @@ _EVENT_FIELDS = (
     ("bundle_reference", "bundle_reference"),
     ("answer_reference", "answer_reference"),
     ("authorship_basis", "authorship_basis"),
+    ("bundle_role", "bundle_role"),
+    ("terminal_decision", "terminal_decision"),
+    ("terminal_reason", "terminal_reason"),
+    ("closure_source", "closure_source"),
+    ("closure_reason", "closure_reason"),
+    ("assignment_message_id", "assignment_message_id"),
+    ("assignment_packet_hash", "assignment_packet_hash"),
+    ("assigned_agent_id", "assigned_agent_id"),
+    ("closure_diagnostic", "closure_diagnostic"),
 )
 _PACKET_FIELDS = ("message_id", "agent_id", "role", "recipient_id", "message_sha256", "reference")
 USAGE_EVENT = "NATIVE_AGENT_USAGE"
@@ -142,27 +152,64 @@ _USAGE_COUNTS = (
     "cache_write_tokens",
     "output_tokens",
 )
-_USAGE_FIELDS = ("model", "efforts", "pin_differs", *_USAGE_COUNTS, "last_at")
+_USAGE_FIELDS = (
+    "model",
+    "efforts",
+    "pin_differs",
+    *_USAGE_COUNTS,
+    "last_at",
+    "source_kind",
+    "sample_time_kind",
+    "sampled_at",
+)
+_NATIVE_USAGE_CHANNELS = frozenset({"CODEX_SESSION_FILE", "CLAUDE_CODE_SESSION_FILE"})
+
+
+def _usage_metadata(entry: Mapping[str, object]) -> dict[str, object]:
+    """Project the recorded source once and retain the actual latest usage-record time."""
+    metadata = {
+        name: entry[name]
+        for name in ("source_kind", "sample_time_kind", "sampled_at")
+        if name in entry
+    }
+    channel = entry.get("input_channel")
+    if (
+        "source_kind" not in metadata
+        and isinstance(channel, str)
+        and channel in _NATIVE_USAGE_CHANNELS
+    ):
+        metadata["source_kind"] = channel
+    if (
+        metadata.get("sample_time_kind") == "LATEST_USAGE_RECORD_AT"
+        and isinstance(entry.get("last_at"), str)
+        and entry["last_at"]
+    ):
+        metadata["sampled_at"] = entry["last_at"]
+    return metadata
 
 
 def open_assignments(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The assignments in a goal's conversation that no later reply names."""
-    closed = {m.get("reply_to") for m in messages if m.get("message_kind") in CLOSING_KINDS}
+    """Only an owner-sealed terminal link closes the exact session's assignment."""
+    closed = {
+        (m.get("agent_vendor"), m.get("agent_session"), m.get("assignment_packet_hash"))
+        for m in messages
+        if m.get("closure_source") in CLOSURE_SOURCES and m.get("assignment_packet_hash")
+    }
     return [
         {"message_id": m["message_id"], "recipient_id": m.get("recipient_id")}
         for m in messages
-        if m.get("message_kind") == "assignment" and m.get("message_id") not in closed
+        if m.get("message_kind") == "assignment"
+        and (m.get("agent_vendor"), m.get("agent_session"), m.get("packet_hash")) not in closed
     ]
 
 
 def session_usage(entries: Sequence[Mapping[str, object]]) -> list[dict[str, Any]]:
-    """Each session's agents with their latest reading by model, and its totals by model (AU).
+    """Each session's agents with their latest reading by model, without an unproved sum (AU).
 
-    A reading is what an agent had run and spent when its host's session file was read at a
-    subagent's stop, so the latest reading of each agent and model counts and a session's total
-    is its total so far, whatever else the session worked on; a goal's record shows its
-    sessions' totals, not a share of them. Where a reading differs from the agent's role
-    card, the bridge that read both says so (``pin_differs``).
+    A reading is the cumulative count from one participant's admitted session file; the
+    latest reading replaces the previous one for that participant and model. Parent and
+    child readings have no established disjointness, so they are never added. Where a reading
+    differs from the agent's role card, the bridge that read both says so (``pin_differs``).
     """
     readings: dict[tuple[str, str, str, str], Mapping[str, object]] = {}
     for entry in entries:
@@ -176,10 +223,12 @@ def session_usage(entries: Sequence[Mapping[str, object]]) -> list[dict[str, Any
     sessions: dict[tuple[str, str], dict[str, Any]] = {}
     for (vendor, session, agent, model), entry in sorted(readings.items()):
         texts = {name: str(entry.get(name, "")) for name in _USAGE_COUNTS}
-        counts = {name: int(text) if text.isdigit() else 0 for name, text in texts.items()}
+        counts = {
+            name: int(text) for name, text in texts.items() if text.isascii() and text.isdigit()
+        }
         held = sessions.setdefault(
             (vendor, session),
-            {"vendor": vendor, "session_id": session, "participants": {}, "by_model": {}},
+            {"vendor": vendor, "session_id": session, "participants": {}},
         )
         participant = held["participants"].setdefault(
             agent,
@@ -191,19 +240,17 @@ def session_usage(entries: Sequence[Mapping[str, object]]) -> list[dict[str, Any
                 "efforts": [e for e in str(entry.get("efforts") or "").split(",") if e],
                 **counts,
                 "last_at": entry.get("last_at"),
+                **_usage_metadata(entry),
             }
         )
         differs = {*participant["pin_differs"], *str(entry.get("pin_differs") or "").split(",")}
         participant["pin_differs"] = sorted(differs - {""})
-        total = held["by_model"].setdefault(model, dict.fromkeys(_USAGE_COUNTS, 0))
-        for name in _USAGE_COUNTS:
-            total[name] += counts[name]
     return [
         {
             "vendor": held["vendor"],
             "session_id": held["session_id"],
             "participants": list(held["participants"].values()),
-            "by_model": [{"model": m, **t} for m, t in sorted(held["by_model"].items())],
+            "aggregation": "NOT_COMBINED",
         }
         for held in sessions.values()
     ]
@@ -487,8 +534,64 @@ class GoalApplication:
             },
         )
 
+    def accepted_answer_context(
+        self,
+        *,
+        bundle_reference: str,
+        answer_reference: str,
+        session: GoalSession,
+        first_submission: bool,
+        provenance: RequestProvenance | None,
+    ) -> GoalAcceptedAnswerContext:
+        """Keep the first accepted receipt's Goal and prior packet before optional discovery.
+
+        An older answer without this metadata records no Goal or dispatch, rather than
+        borrowing present work. The existing write-once event receipt holds this context.
+        """
+        key = canonical_hash(
+            ["PRODUCT_ACCEPTED_ANSWER", bundle_reference, answer_reference, session.model_dump()]
+        )
+
+        def decide() -> GoalAcceptedAnswerContext:
+            if not first_submission:
+                return GoalAcceptedAnswerContext(goal_id=None)
+            goal = self.attributed_goal(provenance)
+            if goal is None:
+                return GoalAcceptedAnswerContext(goal_id=None)
+            assignments = [
+                entry
+                for entry in self.store.attributed(goal.goal_id)
+                if entry.get("event_kind") == MESSAGE_EVENT
+                and entry.get("agent_vendor") == session.vendor
+                and entry.get("agent_session") == session.session_id
+                and entry.get("message_kind") == "assignment"
+                and entry.get("agent_id") == session.session_id
+                and entry.get("role") == "research_lead"
+                and entry.get("recipient_id")
+                and entry.get("recipient_id") != session.session_id
+                and entry.get("reference") == bundle_reference
+                and entry.get("packet_hash")
+            ]
+            return GoalAcceptedAnswerContext(
+                goal_id=goal.goal_id,
+                assignment_packet_hash=assignments[0]["packet_hash"]
+                if len(assignments) == 1
+                else None,
+                assignment_diagnostic=None
+                if len(assignments) == 1
+                else "native_bridge.assignment_ambiguous"
+                if assignments
+                else "native_bridge.assignment_not_observed",
+            )
+
+        return self.store.accepted_answer_context(key, decide)
+
     def file_event(
-        self, document: ExternalActivityEventDocument, provenance: RequestProvenance | None
+        self,
+        document: ExternalActivityEventDocument,
+        provenance: RequestProvenance | None,
+        *,
+        accepted_receipt: GoalAcceptedAnswerReceipt | None = None,
     ) -> tuple[ExternalActivityEventDocument, Goal | None, GoalSession | None]:
         """The event with the goal its session holds, looked up once at its first receipt.
 
@@ -498,9 +601,34 @@ class GoalApplication:
         """
         subject = dict(document.subject)
         subject.pop("goal_id", None)
+        # Public event declarations cannot attest that an answer was accepted or closed.
+        # Only the accepted scientific owner passes a receipt outside the event document.
+        for key in (
+            "closure_source",
+            "closure_reason",
+            "assignment_message_id",
+            "assignment_packet_hash",
+            "assigned_agent_id",
+            "closure_diagnostic",
+        ):
+            subject.pop(key, None)
         session = self._event_session(subject, provenance)
 
+        if accepted_receipt is not None and (
+            document.event_kind != MESSAGE_EVENT
+            or subject.get("input_channel") != "PRODUCT_ACCEPTED_ANSWER"
+            or subject.get("message_kind") != "answer"
+            or session != accepted_receipt.session
+            or subject.get("reference") != str(accepted_receipt.task_id)
+            or subject.get("bundle_reference") != accepted_receipt.bundle_reference
+            or subject.get("answer_reference") != accepted_receipt.answer_reference
+            or subject.get("bundle_role") != accepted_receipt.bundle_role
+        ):
+            raise ValueError("goal.assignment_closure_invalid")
+
         def decide() -> UUID | None:
+            if accepted_receipt is not None:
+                return accepted_receipt.goal_id
             if provenance is not None and provenance.goal_id is not None:
                 named = self.attributed_goal(RequestProvenance(goal_id=provenance.goal_id))
                 return None if named is None else named.goal_id
@@ -511,9 +639,30 @@ class GoalApplication:
             [document.producer_id, document.producer_session, document.producer_sequence]
         )
         goal_id = self.store.event_goal(key, decide)
+        if accepted_receipt is not None and goal_id != accepted_receipt.goal_id:
+            raise ValueError("goal.assignment_closure_invalid")
         goal = None if goal_id is None else self.store.head(goal_id)
         if goal is not None:
             subject["goal_id"] = str(goal.goal_id)
+            entries = self.store.attributed(goal.goal_id)
+            same_session = [
+                entry
+                for entry in entries
+                if session is not None
+                and entry.get("agent_vendor") == session.vendor
+                and entry.get("agent_session") == session.session_id
+                and entry.get("event_kind") == MESSAGE_EVENT
+            ]
+            first_receipt = next(
+                (
+                    entry
+                    for entry in same_session
+                    if entry.get("producer_id") == document.producer_id
+                    and entry.get("producer_session") == document.producer_session
+                    and entry.get("producer_sequence") == document.producer_sequence
+                ),
+                None,
+            )
             if (
                 document.event_kind == MESSAGE_EVENT
                 and subject.get("reply_to")
@@ -524,14 +673,108 @@ class GoalApplication:
                 parent = next(
                     (
                         entry
-                        for entry in reversed(self.store.attributed(goal.goal_id))
-                        if entry.get("event_kind") == MESSAGE_EVENT
-                        and entry.get("message_id") == subject["reply_to"]
+                        for entry in reversed(same_session)
+                        if entry.get("message_id") == subject["reply_to"]
                     ),
                     None,
                 )
                 if parent is not None and parent.get("agent_id"):
                     subject["recipient_id"] = str(parent["agent_id"])
+            assignments = [
+                entry
+                for entry in same_session
+                if entry.get("message_kind") == "assignment"
+                and session is not None
+                and entry.get("agent_id") == session.session_id
+                and entry.get("role") == "research_lead"
+                and entry.get("recipient_id")
+                and entry.get("recipient_id") != session.session_id
+                and entry.get("packet_hash")
+            ]
+            terminal = subject.get("terminal_decision")
+            note = subject.get("terminal_reason")
+            if terminal is not None or note is not None:
+                if (
+                    terminal not in TERMINAL_DECISIONS
+                    or not note
+                    or session is None
+                    or subject.get("native_agent_id") != session.session_id
+                    or subject.get("role") != "research_lead"
+                    or subject.get("message_kind") not in {"decision", "pm_response"}
+                    or subject.get("input_channel") != "ACTOR_DECLARED"
+                    or not subject.get("reply_to")
+                ):
+                    raise ValueError("goal.assignment_closure_invalid")
+                matching = (
+                    [
+                        e
+                        for e in assignments
+                        if e.get("packet_hash") == first_receipt.get("assignment_packet_hash")
+                    ][:1]
+                    if first_receipt is not None
+                    and first_receipt.get("closure_source") == "LEAD_TERMINAL_DECISION"
+                    else [e for e in assignments if e.get("message_id") == subject["reply_to"]]
+                )
+                if len(matching) != 1:
+                    raise ValueError("goal.assignment_closure_invalid")
+                if (
+                    document.subject.get("recipient_id") is not None
+                    and document.subject["recipient_id"] != matching[0]["recipient_id"]
+                ):
+                    raise ValueError("goal.assignment_closure_invalid")
+                subject["recipient_id"] = str(matching[0]["recipient_id"])
+                subject.update(closure_source="LEAD_TERMINAL_DECISION", closure_reason=terminal)
+            elif accepted_receipt is not None:
+                matching = [
+                    e
+                    for e in assignments
+                    if e.get("reference") == accepted_receipt.bundle_reference
+                    and e.get("packet_hash") == accepted_receipt.assignment_packet_hash
+                    and (not subject.get("reply_to") or e.get("message_id") == subject["reply_to"])
+                ]
+                # More than one dispatch of the same bundle is not an exact closure.
+                if len(matching) == 1:
+                    subject.update(
+                        closure_source="PRODUCT_ACCEPTED_ANSWER", closure_reason="ACCEPTED_ANSWER"
+                    )
+                    subject["reply_to"] = str(matching[0]["message_id"])
+                else:
+                    subject["closure_diagnostic"] = accepted_receipt.assignment_diagnostic or (
+                        "native_bridge.assignment_ambiguous"
+                        if matching
+                        else "native_bridge.assignment_not_observed"
+                    )
+            else:
+                matching = []
+            if subject.get("closure_source"):
+                assigned = matching[0]
+                subject.update(
+                    assignment_message_id=str(assigned["message_id"]),
+                    assignment_packet_hash=str(assigned["packet_hash"]),
+                    assigned_agent_id=str(assigned["recipient_id"]),
+                )
+            if accepted_receipt is not None and first_receipt is not None:
+                # Replays keep the first owner's closure decision even if later dispatches
+                # changed the conversation. The activity owner still checks all other bytes.
+                for field in (
+                    "closure_source",
+                    "closure_reason",
+                    "assignment_message_id",
+                    "assignment_packet_hash",
+                    "assigned_agent_id",
+                    "closure_diagnostic",
+                    "reply_to",
+                ):
+                    value = first_receipt.get(field)
+                    if value is None:
+                        subject.pop(field, None)
+                    else:
+                        subject[field] = str(value)
+        elif (
+            subject.get("terminal_decision") is not None
+            or subject.get("terminal_reason") is not None
+        ):
+            raise ValueError("goal.assignment_closure_invalid")
         return document.model_copy(update={"subject": subject}), goal, session
 
     def record_event(
@@ -557,11 +800,15 @@ class GoalApplication:
             "agent_vendor": session.vendor if session else None,
             "agent_session": session.session_id if session else None,
             "goal_hash": goal.goal_hash,
+            "producer_id": document.producer_id,
+            "producer_session": document.producer_session,
+            "producer_sequence": document.producer_sequence,
             **{name: subject.get(key) for name, key in _EVENT_FIELDS},
             "summary": document.retained_summary()[0],
         }
         if document.event_kind == USAGE_EVENT:  # a reading keeps its counts (AU)
             entry.update({name: subject[name] for name in _USAGE_FIELDS if name in subject})
+            entry.update(_usage_metadata(entry))
         if entry["message_kind"] == "assignment":
             entry["packet_hash"] = canonical_hash(
                 {
@@ -570,14 +817,18 @@ class GoalApplication:
                     "assignment": {name: entry[name] for name in _PACKET_FIELDS},
                 }
             )
+        elif entry.get("assignment_packet_hash") is not None:
+            entry["packet_hash"] = entry["assignment_packet_hash"]
         elif entry["reply_to"] is not None:
             assigned = [
                 e
                 for e in self.store.attributed(goal.goal_id)
                 if e.get("message_kind") == "assignment"
                 and e.get("message_id") == entry["reply_to"]
+                and e.get("agent_vendor") == entry["agent_vendor"]
+                and e.get("agent_session") == entry["agent_session"]
             ]
-            entry["packet_hash"] = assigned[-1]["packet_hash"] if assigned else None
+            entry["packet_hash"] = assigned[0]["packet_hash"] if len(assigned) == 1 else None
         self.store.attribute(goal.goal_id, entry)
         return {
             "goal_id": str(goal.goal_id),

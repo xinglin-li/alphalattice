@@ -141,6 +141,120 @@ def test_correction_appends_and_retains_prior(tmp_path: Path) -> None:
     assert ledger.read(first.observation_id).availability is ObservationAvailability.AVAILABLE
 
 
+def test_unique_correlation_read_uses_exact_run_schema_and_array_membership(tmp_path: Path) -> None:
+    """An exact RETURNED-envelope link cannot follow a prefix, payload, or another run."""
+    ledger, port = _runtime(tmp_path)
+    correlation = 'answer-"quoted"-\\handle'
+    exact = port.emit(_draft(sequence=1).model_copy(update={"correlation_ids": (correlation,)}))
+    port.emit(
+        _draft(sequence=2, run_id="other-run").model_copy(
+            update={"correlation_ids": (correlation,)}
+        )
+    )
+    port.emit(_draft(sequence=3).model_copy(update={"correlation_ids": (correlation + "-later",)}))
+    port.emit(_draft(sequence=4, status=correlation).model_copy(update={"correlation_ids": ()}))
+    other_schema = "TaskCommandObserved"
+    other = port.emit(
+        _draft(sequence=5).model_copy(
+            update={
+                "schema_kind": other_schema,
+                "policy_hash": port.policies.policy(other_schema, 1).policy_hash,
+                "correlation_ids": (correlation,),
+            }
+        )
+    )
+
+    assert ledger.unique_correlated_observation(
+        "run-1", "TaskControlTransition", correlation
+    ) == ledger.read(exact.observation_id)
+    assert ledger.unique_correlated_observation("run-1", other_schema, correlation) == ledger.read(
+        other.observation_id
+    )
+    for run_id, schema_kind, correlation_id in (
+        ("missing-run", "TaskControlTransition", correlation),
+        ("run-1", "OtherSchema", correlation),
+        ("run-1", "TaskControlTransition", "answer-"),
+        ("run-1", "TaskControlTransition", "missing-answer"),
+    ):
+        assert ledger.unique_correlated_observation(run_id, schema_kind, correlation_id) is None
+    ledger.close()
+
+
+def test_unique_correlation_read_refuses_multiple_envelopes(tmp_path: Path) -> None:
+    """A reused correlation does not select the newest record or credit either candidate."""
+    ledger, port = _runtime(tmp_path)
+    for sequence in (1, 2, 3):
+        port.emit(_draft(sequence=sequence))
+    with pytest.raises(ValueError, match=r"^observation\.correlation_ambiguous$"):
+        ledger.unique_correlated_observation("run-1", "TaskControlTransition", "task-1")
+    ledger.close()
+
+
+@pytest.mark.parametrize("selector", ["run", "schema"])
+def test_unique_correlation_read_does_not_decode_outside_its_scope(
+    tmp_path: Path, selector: str
+) -> None:
+    """An unreadable envelope outside the exact run/schema cannot poison this link."""
+    ledger, port = _runtime(tmp_path)
+    exact = port.emit(_draft(sequence=1))
+    unrelated = port.emit(_draft(sequence=2, run_id="other-run"))
+    with sqlite3.connect(ledger.database_path) as writer:
+        writer.execute(
+            "UPDATE unified_observation SET run_id = ?, schema_kind = ?, envelope_json = ? "
+            "WHERE observation_id = ?",
+            (
+                "other-run" if selector == "run" else "run-1",
+                "OtherSchema" if selector == "schema" else "TaskControlTransition",
+                "not-json",
+                unrelated.observation_id,
+            ),
+        )
+    assert ledger.unique_correlated_observation(
+        "run-1", "TaskControlTransition", "task-1"
+    ) == ledger.read(exact.observation_id)
+    ledger.close()
+
+
+@pytest.mark.parametrize("corruption", ["indexed_column", "envelope_json"])
+def test_unique_correlation_read_preserves_store_integrity_refusals(
+    tmp_path: Path, corruption: str
+) -> None:
+    """A matching row is verified through the ledger's existing read contract."""
+    ledger, port = _runtime(tmp_path)
+    exact = port.emit(_draft(sequence=1))
+    with sqlite3.connect(ledger.database_path) as writer:
+        if corruption == "indexed_column":
+            writer.execute(
+                "UPDATE unified_observation SET source_id = ? WHERE observation_id = ?",
+                ["altered-source", exact.observation_id],
+            )
+        else:
+            writer.execute(
+                "UPDATE unified_observation SET envelope_json = ? WHERE observation_id = ?",
+                ["not-json", exact.observation_id],
+            )
+    if corruption == "indexed_column":
+        with pytest.raises(ValueError, match=r"^observation\.tampered$"):
+            ledger.unique_correlated_observation("run-1", "TaskControlTransition", "task-1")
+    else:
+        with pytest.raises(ObservationStorageError) as caught:
+            ledger.unique_correlated_observation("run-1", "TaskControlTransition", "task-1")
+        assert caught.value.failure_code == "observation.storage_open_failed"
+    ledger.close()
+
+
+@pytest.mark.parametrize(
+    "selectors", [("", "schema", "correlation"), ("run", "", "correlation"), ("run", "schema", "")]
+)
+def test_unique_correlation_read_refuses_empty_selectors(
+    tmp_path: Path, selectors: tuple[str, str, str]
+) -> None:
+    ledger, _port = _runtime(tmp_path)
+    with pytest.raises(ValueError, match=r"^observation\.correlation_selector_invalid$"):
+        ledger.unique_correlated_observation(*selectors)
+    ledger.close()
+
+
 def test_unknown_fields_and_secret_like_fields_fail_before_append(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     draft = _draft(sequence=1).model_copy(

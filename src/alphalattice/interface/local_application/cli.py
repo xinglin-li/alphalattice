@@ -315,8 +315,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             "--usage",
             choices=("read", "off"),
             default="read",
-            help="off: a subagent's stop reads no session file of the host for what it ran and "
-            "spent.",
+            help="off: do not discover or read native Session files for model and token usage.",
         )
     elif (noun, verb) == ("backup", "restore"):
         child.add_argument(
@@ -1243,7 +1242,7 @@ def _workspace(named: Path | None) -> tuple[Path, Path | None, Literal["OPTION",
         )
 
         with suppress(NativeBridgeError, OSError):
-            found = NativeResearchBinding.find(Path.cwd())
+            found = NativeResearchBinding.find(Path.cwd(), session=session)
         if found is not None and found[1].serves(session):
             bound = found[1].workspace.resolve()
     if named is not None:
@@ -1356,6 +1355,7 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
         answer = unbind_session(
             session_project(Path.cwd(), None if session is None else session[0]),
             session_id=None if session is None else session[1],
+            host=None if session is None else session[0],
         )
     except NativeBridgeError as error:
         return _refused(f"local_client.session_unbind_refused:{error}", started)
@@ -1379,7 +1379,7 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
 
 def _bind(args: argparse.Namespace, started: float) -> int:
     """Bind this agent session to the workspace named (`session bind`, V568): the binding the
-    bridge's hooks read and every later command of the session, or of its own specialists,
+    bridge reads and every later command of the session, or of its own specialists,
     finds from any folder of its project."""
     from alphalattice.interface.local_application.native_bridge import NativeBridgeError
     from alphalattice.interface.local_application.native_setup import (

@@ -28,19 +28,3 @@ config_file = "agents/alphalattice_portfolio.toml"
 [agents.alphalattice_evidence_analyst]
 description = "Read one AlphaLattice evidence bundle the lead prepared and write cited issuer findings to its answer file for the lead to submit; never a Portfolio judgment."
 config_file = "agents/alphalattice_evidence_analyst.toml"
-
-# Optional visibility only. Review/trust these definitions in the active Codex
-# project before use; the hook is silent until an explicit session binding exists.
-[[hooks.SubagentStart]]
-matcher = "^alphalattice_.*$"
-[[hooks.SubagentStart.hooks]]
-type = "command"
-command = "uv run --no-sync --offline --no-cache python -c \"from pathlib import Path; import runpy; p=next(p for p in (Path.cwd(),*Path.cwd().parents) if (p/'scripts/native_research.py').is_file()); runpy.run_path(str(p/'scripts/native_research.py'),run_name='__main__')\" hook || exit 0"
-timeout = 5
-
-[[hooks.SubagentStop]]
-matcher = "^alphalattice_.*$"
-[[hooks.SubagentStop.hooks]]
-type = "command"
-command = "uv run --no-sync --offline --no-cache python -c \"from pathlib import Path; import runpy; p=next(p for p in (Path.cwd(),*Path.cwd().parents) if (p/'scripts/native_research.py').is_file()); runpy.run_path(str(p/'scripts/native_research.py'),run_name='__main__')\" hook || exit 0"
-timeout = 5

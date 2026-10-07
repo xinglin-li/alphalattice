@@ -30,16 +30,21 @@ configuration. Use a new workspace for new research. Keep its service attached
 to stdin and open its exact launch link in your browser so the person can watch;
 after a restart, open the new link. A bare address grants no browser session.
 
-Bind once from the checkout or configured agent project; the command reads the native host and session id:
+Bind your actual Session from the checkout or configured agent project; the command reads its native host and session id:
 
 ```powershell
 alphalattice --workspace "workspaces/my-research" session bind
 ```
 
-Then use `alphalattice <object> <action>`: this session and its own specialists
-find the workspace from any checkout folder, and printed commands omit it.
-An unbound shell adds the same `--workspace` flag to each command. Finish with
-`alphalattice session unbind`; the person may also unbind from their own shell.
+Each host/Session has its own binding. A new Session binds independently without
+cleaning up or replacing earlier records. Then use `alphalattice <object> <action>`:
+this Session and its admitted specialists find their workspace from any checkout
+folder, and printed commands omit it. An unbound shell adds `--workspace` to each
+command. To change your own Session's workspace, usage or roles, run
+`alphalattice session unbind` first. Run it yourself at the end; it removes only
+your own binding and keeps research and history.
+A person outside an agent Session may unbind one unambiguous record; the command
+refuses to choose among multiple records.
 Enter `stop` on service stdin to close it after its workers join.
 
 Use new `<out>/` files inside the selected workspace for every example below.
@@ -241,7 +246,7 @@ question; declarations in `.codex/agents/` or `.claude/agents/` do not prove it
 ran. Give an executor the exact workspace, permitted operations, result
 references, goal and budget; it takes that goal in its own session. Use the
 Skill's [native visibility](.agents/skills/alphalattice-research/references/native-visibility.md)
-for configure/doctor and host trust. Configuration, binding, Team observations
+for configuration, binding and permitted usage. Configuration, binding, Team observations
 and a subagent stop grant no authority and prove no Task success.
 
 Name each person-only decision, scope and page; wait for their answer. Factor

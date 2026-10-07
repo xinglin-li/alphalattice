@@ -11,21 +11,25 @@ off`); every other observation goes on as before.
 from __future__ import annotations
 
 import json
+import os
 import re
+import stat
 import tomllib
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from hashlib import sha256
+from itertools import islice
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
 from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.interface.local_application.cli_contract import agent_session, refusal_words
-from alphalattice.interface.local_application.failure_codes import safe_failure_code
+from alphalattice.interface.local_application.failure_codes import public_failure, safe_failure_code
 from alphalattice.interface.local_application.native_hook_input import (
+    MAX_HOOK_INPUT_BYTES,
     NativeHookInputError,
     definition_digest,
     read_subagent_lifecycle,
@@ -38,7 +42,10 @@ from alphalattice.interface.local_application.native_observation_sequence import
 )
 from alphalattice.interface.local_application.native_usage import (
     ModelUsage,
+    NativeUsageReadLimitError,
     canonical_agent_path,
+    claude_thread_spawn,
+    codex_assigned_spawn,
     codex_thread_spawn,
     hook_session_files,
     read_session,
@@ -49,6 +56,9 @@ from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, An
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
 BINDING_NAME = "native-research.local.json"
+BINDING_DIRECTORY = "native-research.local.d"
+BINDING_RECORDS = 128
+"""The bounded collection of exact host/Session bindings in one configured project."""
 # Every bound the bridge applies is the contract of what it carries, so it never refuses what
 # that contract admits nor passes what the Host then refuses under another word; the table
 # beside its tests pins each against its contract (V574).
@@ -83,6 +93,12 @@ HOSTS = ("codex", "claude-code")
 USAGE_READINGS = ("READ", "OFF")
 """Whether a subagent's stop reads the host's session files for what it ran and spent (AU):
 the binding's ``usage``, ``READ`` when it names none."""
+USAGE_READ_BYTES = 512 * 1024 * 1024
+"""The complete optional scan's 512 MiB cap leaves room beyond a measured 112 MiB session."""
+USAGE_LINE_BYTES = 8 * 1024 * 1024
+"""The optional scan's 8 MiB line cap admits a measured valid native line larger than 2 MiB."""
+USAGE_MODEL_ROWS = 32
+"""The most model rows a complete optional reading publishes; overflow publishes no rows."""
 PRODUCERS = {"codex": "codex-native", "claude-code": "claude-code-native"}
 CHANNELS = {"codex": "CODEX_HOOK", "claude-code": "CLAUDE_CODE_HOOK"}
 USAGE_CHANNELS = {"codex": "CODEX_SESSION_FILE", "claude-code": "CLAUDE_CODE_SESSION_FILE"}
@@ -134,31 +150,39 @@ class NativeResearchBinding:
     observation_started_at: datetime | None = None
 
     @classmethod
-    def read(cls, project: Path) -> NativeResearchBinding | None:
-        """Read and validate the project's native research binding.
+    def slot_path(cls, project: Path, session: tuple[str, str]) -> Path:
+        """The exact owner slot; a host/Session is never a path supplied by a caller."""
+        host, session_id = session
+        if host not in HOSTS:
+            raise NativeBridgeError("native_bridge.binding_invalid")
+        _text(session_id, CORRELATION_CHARACTERS)
+        key = sha256(f"{host}\0{session_id}".encode()).hexdigest()
+        return project / ".codex" / BINDING_DIRECTORY / f"{key}.json"
 
-        Args:
-            project: The admitted project root.
-
-        Returns:
-            The binding, or ``None`` when no binding file exists.
-
-        Raises:
-            NativeBridgeError: If the file is unsafe, unreadable, or invalid.
-        """
-        path = project / ".codex" / BINDING_NAME
+    @classmethod
+    def _read_path(cls, project: Path, path: Path) -> NativeResearchBinding | None:
+        """Read one bounded regular owner record, rejecting links and aliases."""
         try:
-            if (
-                path.parent.is_symlink()
-                or path.is_symlink()
-                or not path.resolve().is_relative_to(project.resolve())
-            ):
+            parents = (
+                path,
+                *(
+                    parent
+                    for parent in path.parents
+                    if parent == project or parent.is_relative_to(project)
+                ),
+            )
+            if any(
+                parent.is_symlink() or (os.name == "nt" and parent.is_junction())
+                for parent in parents
+            ) or not path.resolve().is_relative_to(project.resolve()):
+                raise NativeBridgeError("native_bridge.binding_path_invalid")
+            if not stat.S_ISREG(path.stat().st_mode):
                 raise NativeBridgeError("native_bridge.binding_path_invalid")
             with path.open("rb") as stream:
                 data = stream.read(BINDING_BYTES + 1)
         except FileNotFoundError:
             return None
-        except OSError:
+        except (OSError, RuntimeError):
             raise NativeBridgeError("native_bridge.binding_unreadable") from None
         if len(data) > BINDING_BYTES:
             raise NativeBridgeError("native_bridge.binding_invalid")
@@ -166,7 +190,118 @@ class NativeResearchBinding:
             value = json.loads(data)
         except (ValueError, RecursionError):
             raise NativeBridgeError("native_bridge.binding_invalid") from None
-        return cls.from_document(value)
+        binding = cls.from_document(value)
+        if path.name != BINDING_NAME and path != cls.slot_path(
+            project, (binding.host, binding.session_id)
+        ):
+            raise NativeBridgeError("native_bridge.binding_invalid")
+        return binding
+
+    @classmethod
+    def binding_entries(
+        cls, project: Path
+    ) -> tuple[tuple[NativeResearchBinding, ...], tuple[dict[str, str], ...]]:
+        """Enumerate owner records without making one bad item erase readable bindings.
+
+        Diagnostics retain the bounded record key and typed code, never a guessed Session.
+        Native session files are not discovered or read by this collection.
+        """
+        paths = [project / ".codex" / BINDING_NAME]
+        directory = project / ".codex" / BINDING_DIRECTORY
+        if directory.is_symlink() or (os.name == "nt" and directory.is_junction()):
+            raise NativeBridgeError("native_bridge.binding_path_invalid")
+        if directory.exists():
+            if (
+                not directory.is_dir()
+                or directory.parent.is_symlink()
+                or (os.name == "nt" and directory.parent.is_junction())
+            ):
+                raise NativeBridgeError("native_bridge.binding_path_invalid")
+            try:
+                children = list(islice(directory.iterdir(), BINDING_RECORDS + 1))
+            except OSError:
+                raise NativeBridgeError("native_bridge.binding_unreadable") from None
+            if len(children) > BINDING_RECORDS:
+                raise NativeBridgeError("native_bridge.binding_limit_exceeded")
+            paths.extend(sorted(children))
+        values: dict[tuple[str, str], NativeResearchBinding] = {}
+        refusals: list[dict[str, str]] = []
+        for path in paths:
+            try:
+                if (
+                    path.name != BINDING_NAME
+                    and re.fullmatch(r"[0-9a-f]{64}\.json", path.name) is None
+                ):
+                    raise NativeBridgeError("native_bridge.binding_path_invalid")
+                binding = cls._read_path(project, path)
+                if binding is None:
+                    continue
+                key = (binding.host, binding.session_id)
+                if key in values:
+                    raise NativeBridgeError("native_bridge.binding_invalid")
+                values[key] = binding
+            except NativeBridgeError as error:
+                refusals.append(
+                    {
+                        "binding_key": path.name[:72],
+                        "failure_code": public_failure(error, "native_bridge.binding_invalid"),
+                    }
+                )
+        if len(values) > BINDING_RECORDS:
+            raise NativeBridgeError("native_bridge.binding_limit_exceeded")
+        return tuple(values.values()), tuple(refusals)
+
+    @classmethod
+    def bindings(cls, project: Path) -> tuple[NativeResearchBinding, ...]:
+        """The strict bounded collection; readers needing per-item refusals use entries."""
+        bindings, refusals = cls.binding_entries(project)
+        if refusals:
+            raise NativeBridgeError(refusals[0]["failure_code"])
+        return bindings
+
+    @classmethod
+    def read(
+        cls, project: Path, *, session: tuple[str, str] | None = None
+    ) -> NativeResearchBinding | None:
+        """Read an exact host/Session; an omitted selector admits only one record.
+
+        Args:
+            project: The admitted project root.
+            session: The real host/Session selector; no newest or first selection.
+
+        Returns:
+            The binding, or ``None`` when no binding file exists.
+
+        Raises:
+            NativeBridgeError: For an unsafe record or an ambiguous omitted selector.
+        """
+        if session is None:
+            bindings = cls.bindings(project)
+            if len(bindings) > 1:
+                raise NativeBridgeError("native_bridge.binding_ambiguous")
+            return bindings[0] if bindings else None
+        binding = cls._read_path(project, cls.slot_path(project, session))
+        try:
+            legacy = cls._read_path(project, project / ".codex" / BINDING_NAME)
+        except NativeBridgeError:
+            if binding is None:
+                raise
+            legacy = None
+        if legacy is not None and (legacy.host, legacy.session_id) == session:
+            if binding is not None:
+                raise NativeBridgeError("native_bridge.binding_invalid")
+            return legacy
+        return binding
+
+    def record_path(self, project: Path) -> Path:
+        """The selected existing record; compatibility records are never migrated silently."""
+        slot_path = self.slot_path(project, (self.host, self.session_id))
+        if self._read_path(project, slot_path) == self:
+            return slot_path
+        legacy_path = project / ".codex" / BINDING_NAME
+        if self._read_path(project, legacy_path) != self:
+            raise NativeBridgeError("native_bridge.binding_invalid")
+        return legacy_path
 
     @classmethod
     def from_document(cls, value: Any) -> NativeResearchBinding:
@@ -225,13 +360,16 @@ class NativeResearchBinding:
         )
 
     @classmethod
-    def find(cls, start: Path) -> tuple[Path, NativeResearchBinding] | None:
+    def find(
+        cls, start: Path, *, session: tuple[str, str] | None = None
+    ) -> tuple[Path, NativeResearchBinding] | None:
         """The nearest binding from a directory upward, as git finds its `.git` (V568).
 
         A checkout is one such project; an installed agent project is another.
 
         Args:
             start: The directory a command runs in.
+            session: The actual host/Session; exact binding precedes bounded ancestry.
 
         Returns:
             The project holding the nearest binding, with it; None when no folder up holds one.
@@ -239,12 +377,45 @@ class NativeResearchBinding:
         Raises:
             NativeBridgeError: If the nearest binding is unsafe, unreadable or invalid.
         """
-        for folder in (start, *start.parents):
+        # The configure owner supplies the project boundary. Importing at call time
+        # avoids the setup/bridge module cycle; legacy records predate declarations.
+        from alphalattice.interface.local_application.native_setup import session_project
+
+        configured = None
+        try:
+            configured = session_project(start, None)
+        except NativeBridgeError as error:
+            if str(error) != "native_bridge.project_declaration_missing":
+                raise
+        if configured is not None and session is not None:
+            try:
+                host_project = session_project(start, session[0])
+            except NativeBridgeError as error:
+                if str(error) != "native_bridge.project_declaration_missing":
+                    raise
+                raise NativeBridgeError("native_bridge.project_mismatch") from None
+            if host_project != configured:
+                raise NativeBridgeError("native_bridge.project_mismatch")
+        folders = (configured,) if configured is not None else (start, *start.parents)
+        for folder in folders:
             path = folder / ".codex" / BINDING_NAME
-            if path.is_symlink() or path.exists():
-                binding = cls.read(folder)
+            directory = folder / ".codex" / BINDING_DIRECTORY
+            if path.is_symlink() or path.exists() or directory.is_symlink() or directory.exists():
+                binding = cls.read(folder, session=session)
                 if binding is not None:
                     return folder, binding
+                if session is not None:
+                    bindings = cls.bindings(folder)
+                    # OFF is a privacy choice, not permission to discover this child's
+                    # parent through another Session that happens to allow reading.
+                    if any(each.usage == "OFF" for each in bindings):
+                        return None
+                    serving = [each for each in bindings if each.serves(session)]
+                    if len(serving) > 1:
+                        raise NativeBridgeError("native_bridge.binding_ambiguous")
+                    if serving:
+                        return folder, serving[0]
+                    return None
         return None
 
     def serves(self, session: tuple[str, str]) -> bool:
@@ -266,7 +437,7 @@ class NativeResearchBinding:
             return False
         if thread == self.session_id:
             return True
-        if vendor != "codex":
+        if vendor != "codex" or self.usage == "OFF":
             return False
         for _hop in range(SPAWN_HOPS):
             spawn = codex_thread_spawn(thread)
@@ -305,7 +476,7 @@ def lifecycle_event(
     # The real lifecycle observation survives; readiness names the unproved definition.
     with suppress(NativeHookInputError):
         event["definition_digest"] = definition_digest(project, observed.host)
-    if observed.host == binding.host == "codex":
+    if observed.host == binding.host == "codex" and binding.usage != "OFF":
         # An alias leaves only the admitted first-record owner, never hook input or a turn.
         spawn = codex_thread_spawn(observed.agent_id)
         if (
@@ -448,11 +619,13 @@ def coordination_event(
     reference: str | None = None,
     recipient_id: str | None = None,
     reply_to: str | None = None,
+    terminal_decision: str | None = None,
+    terminal_reason: str | None = None,
 ) -> dict[str, object]:
     """Explicitly supplied user-safe text; never read an arbitrary transcript.
 
-    A reply names the message it answers (``reply_to``); an answer, an objection or the
-    lead's response naming an assignment closes it in the goal the Host files it under.
+    A reply names the message it answers (``reply_to``), without closing its assignment.
+    Only the lead's explicit terminal decision or an exact product accepted receipt closes it.
     The lead names neither itself nor its role: a message naming no sender is the bound
     session's, as ``research_lead``. A message naming no id is named by its own content, so
     the same message sent again is the same message and a changed text a new one (V420).
@@ -472,6 +645,7 @@ def coordination_event(
         "reference": reference,
         "recipient_id": recipient_id,
         "reply_to": reply_to,
+        "terminal_reason": terminal_reason,
     }
     for name, value in fields.items():
         if value is not None:
@@ -480,6 +654,17 @@ def coordination_event(
         raise NativeBridgeError("native_bridge.assignment_recipient_required")
     if kind == "assignment" and reply_to is not None:
         raise NativeBridgeError("native_bridge.assignment_is_not_a_reply")
+    if (terminal_decision is not None or terminal_reason is not None) and (
+        agent_id != binding.session_id
+        or role != LEAD_ROLE
+        or kind not in {"decision", "pm_response"}
+        or reply_to is None
+        or not isinstance(terminal_decision, str)
+        or terminal_decision not in {"COMPLETED", "WITHDRAWN", "DECLINED"}
+        or not isinstance(terminal_reason, str)
+        or not terminal_reason.strip()
+    ):
+        raise NativeBridgeError("native_bridge.assignment_terminal_invalid")
     if not message or len(message) > MAX_MESSAGE_BYTES:
         raise NativeBridgeError("native_bridge.message_size_invalid")
     try:
@@ -494,6 +679,8 @@ def coordination_event(
         raise NativeBridgeError("native_bridge.long_message_reference_required")
     if message_id is None:
         content = [agent_id, role, kind, body, reference, recipient_id, reply_to]
+        if terminal_decision is not None:
+            content.extend([terminal_decision, terminal_reason])
         message_id = "m-" + _digest(content)[:24]
     return {
         "source": "actor_declared",
@@ -507,6 +694,11 @@ def coordination_event(
         "reference": reference,
         "recipient_id": recipient_id,
         "reply_to": reply_to,
+        **(
+            {"terminal_decision": terminal_decision, "terminal_reason": terminal_reason}
+            if terminal_decision is not None
+            else {}
+        ),
     }
 
 
@@ -530,6 +722,8 @@ def admitted_coordination_event(
             reference=event.get("reference"),
             recipient_id=event.get("recipient_id"),
             reply_to=event.get("reply_to"),
+            terminal_decision=event.get("terminal_decision"),
+            terminal_reason=event.get("terminal_reason"),
         )
     except (KeyError, TypeError, AttributeError):
         raise NativeBridgeError("native_bridge.event_invalid") from None
@@ -612,7 +806,8 @@ def _activity_content(
                 bundle_reference=event["bundle_reference"],
                 answer_reference=event["answer_reference"],
                 submitted_by=event["submitted_by"],
-                authorship_basis="HOOK",
+                authorship_basis=event["authorship_basis"],
+                bundle_role=event["bundle_role"],
             )
         else:
             subject.update(
@@ -620,7 +815,13 @@ def _activity_content(
                 message_sha256=event["message_sha256"],
                 message_bytes=str(len(summary.encode("utf-8"))),
             )
-        for name in ("reference", "recipient_id", "reply_to"):
+        for name in (
+            "reference",
+            "recipient_id",
+            "reply_to",
+            "terminal_decision",
+            "terminal_reason",
+        ):
             if event.get(name) is not None:
                 subject[name] = event[name]
     elif event["source"] == "native_usage":
@@ -639,7 +840,7 @@ def _activity_content(
 def _usage_content(
     binding: NativeResearchBinding, usage: dict[str, Any]
 ) -> tuple[str, str, dict[str, str]]:
-    """One agent's counts for one model, read so far; no time kind, the counts carry theirs."""
+    """One agent's counts for one model, with their actual source and latest record time."""
     if usage["session_id"] != binding.session_id or usage["host"] != binding.host:
         raise NativeBridgeError("native_bridge.event_scope_invalid")
     subject = {
@@ -648,6 +849,9 @@ def _usage_content(
         "role": usage["role"],
         "native_host": usage["host"],
         "input_channel": USAGE_CHANNELS[usage["host"]],
+        "sample_time_kind": "LATEST_USAGE_RECORD_AT"
+        if usage["last_at"] is not None
+        else "NOT_OBSERVED",
         "model": usage["model"],
         **{name: str(usage[name]) for name in _USAGE_COUNTS},
     }
@@ -671,6 +875,19 @@ def _usage_content(
     return "NATIVE_AGENT_USAGE", summary, subject
 
 
+def producer_scope(project: Path, binding: NativeResearchBinding) -> str:
+    """Read this exact project's native producer scope, shared by writers and readers.
+
+    Args:
+        project: The admitted project whose producer sequence is retained.
+        binding: The exact native parent and served workspace.
+
+    Returns:
+        The existing stable producer scope without changing observation identity.
+    """
+    return _digest([str(project.resolve()), binding.session_id, str(binding.workspace.resolve())])
+
+
 def observation_request(
     project: Path,
     binding: NativeResearchBinding,
@@ -689,7 +906,7 @@ def observation_request(
         raise NativeBridgeError("native_bridge.activity_correlation_invalid")
     # Sequence reservations belong to this checkout, not to every checkout that
     # observes the same session/workspace. Keep independent senders disjoint.
-    scope = _digest([str(project.resolve()), binding.session_id, str(binding.workspace.resolve())])
+    scope = producer_scope(project, binding)
     # A repeated hook callback has no independent event id in the native input.
     # Deduplicate its declared turn/child/state; do not invent a new host event.
     # A usage event is a reading so far, scoped to the Goal the Host resolved. Canonical
@@ -710,7 +927,9 @@ def observation_request(
     sequence, occurred_at = reserve_sequence(
         project, scope=scope, event_id=event_id, fingerprint=_digest(event)
     )
-    if event["source"] != "product_accepted":
+    # Usage's complete normalized snapshot already determines this producer sequence.
+    # Keep its actual model, counters, source and time within the public subject bound.
+    if event["source"] in {"native_hook", "actor_declared"}:
         subject["native_event_id"] = event_id
     return {
         "event_kind": kind,
@@ -829,7 +1048,11 @@ def deliver_owned(
         "authority": response["authority"],
         "summary_truncated": response.get("summary_truncated"),
         # The goal the Host filed the event under, and an assignment's packet (GR2).
-        **{key: response[key] for key in ("goal_id", "packet_hash") if response.get(key)},
+        **{
+            key: response[key]
+            for key in ("goal_id", "packet_hash", "assignment_closure")
+            if response.get(key)
+        },
     }
 
 
@@ -850,10 +1073,10 @@ def deliver_accepted_answer(
     """Publish one accepted deliverable without a role-specific answer interpretation.
 
     The caller supplies its sealed generic answer, screened accepted contribution and
-    immutable Task admission. The saved author must still have exact HOOK/assignment
-    proof for this bundle and original parent. This is a product record relayed by the
-    parent, never a native spoken transcript. It uses the existing producer sequence,
-    observation and Goal owners; optional observation failure preserves acceptance.
+    immutable Task admission. A saved HOOK author retains the exact native proof checks;
+    an unobserved author stays unknown while the parent relays the screened contribution.
+    This is a product record, never a native spoken transcript. It uses the existing producer
+    sequence, observation and Goal owners; optional observation failure preserves acceptance.
     """
     run = answer.agent_run
     if answer.verdict not in {AnswerVerdict.ACCEPTED, AnswerVerdict.DONE}:
@@ -890,30 +1113,32 @@ def deliver_accepted_answer(
             run.basis == "HOOK" and run.role not in binding.roles
         ):
             return unavailable("native_bridge.binding_mismatch", "native_binding")
-        decision = judgment_agent_evidence(
-            events,
-            host=run.host,
-            session_id=run.session_id,
-            bundle_role=bundle.role,
-            bundle_reference=bundle.record_hash,
+        agent_id, role, basis = run.session_id, LEAD_ROLE, "NOT_OBSERVED"
+        diagnostic = unavailable(
+            "native_bridge.accepted_author_not_observed",
+            "hook_authorship",
+            stored_basis=run.basis,
         )
-        diagnostic = decision["diagnostic"]
-        if diagnostic["status"] == "UNAVAILABLE":
-            return {**diagnostic, **references, "stored_basis": run.basis}
-        if run.basis != "HOOK" or run.agent_id is None or run.role is None:
-            return unavailable(
-                "native_bridge.accepted_author_not_observed",
-                "hook_authorship",
-                stored_basis=run.basis,
+        if run.basis == "HOOK":
+            decision = judgment_agent_evidence(
+                events,
+                host=run.host,
+                session_id=run.session_id,
+                bundle_role=bundle.role,
+                bundle_reference=bundle.record_hash,
             )
-        proved = decision["agent_run"]
-        if (proved.get("basis"), proved.get("agent_id"), proved.get("role")) != (
-            "HOOK",
-            run.agent_id,
-            run.role,
-        ):
-            return unavailable("native_bridge.accepted_author_mismatch", "stored_author")
-        assignments = decision["evidence"]["assignment_message_ids"]
+            diagnostic = decision["diagnostic"]
+            if diagnostic["status"] == "UNAVAILABLE":
+                return {**diagnostic, **references, "stored_basis": run.basis}
+            proved = decision["agent_run"]
+            if (
+                run.agent_id is None
+                or run.role is None
+                or (proved.get("basis"), proved.get("agent_id"), proved.get("role"))
+                != ("HOOK", run.agent_id, run.role)
+            ):
+                return unavailable("native_bridge.accepted_author_mismatch", "stored_author")
+            agent_id, role, basis = run.agent_id, run.role, "HOOK"
         parts: list[str] = []
 
         def fields(value: object, path: str) -> None:
@@ -937,8 +1162,10 @@ def deliver_accepted_answer(
         event: dict[str, Any] = {
             "source": "product_accepted",
             "session_id": run.session_id,
-            "agent_id": run.agent_id,
-            "role": run.role,
+            "agent_id": agent_id,
+            "role": role,
+            "authorship_basis": basis,
+            "bundle_role": bundle.role,
             "kind": "answer",
             "message_id": "accepted-" + identity[:24],
             "message": summary,
@@ -952,8 +1179,6 @@ def deliver_accepted_answer(
             if answer.accepted_at is not None
             else "TASK_ADMISSION",
         }
-        if len(assignments) == 1:
-            event["reply_to"] = next(iter(assignments))
 
         def file(document: dict[str, Any]) -> dict[str, Any]:
             if before_publish is not None:
@@ -967,7 +1192,7 @@ def deliver_accepted_answer(
                 "accepted_answer_delivery",
                 **{key: result[key] for key in ("detail", "next_action") if key in result},
             )
-        return result
+        return {**result, **references, "native_authorship": diagnostic}
     except Exception:
         return unavailable("native_bridge.accepted_delivery_failed", "accepted_answer_delivery")
 
@@ -995,7 +1220,17 @@ def lead_readings(
     Returns:
         The Host's aggregate receipt; none when observation is off or this is not its lead.
     """
-    found = NativeResearchBinding.find(project)
+    session = agent_session(environ)
+    if session is None:
+        return []
+    try:
+        found = NativeResearchBinding.find(project, session=session)
+    except NativeBridgeError as error:
+        # This host has no lead in the nearest configured project. Optional readings
+        # skip it; public binding requests retain the strict project refusal.
+        if str(error) == "native_bridge.project_mismatch":
+            return []
+        raise
     if found is None:
         return []
     project, binding = found
@@ -1041,10 +1276,33 @@ def deliver_lead_usage_owned(
         path = session_file(binding.host, binding.session_id)
         if path is None:
             return {"status": "UNAVAILABLE", "reason": "native_bridge.lead_usage_file_missing"}
-        reading = read_session(path, host=binding.host)
+        reading = read_session(
+            path,
+            host=binding.host,
+            max_bytes=USAGE_READ_BYTES,
+            max_line_bytes=USAGE_LINE_BYTES,
+        )
+    except NativeUsageReadLimitError as error:
+        return {
+            "status": "UNAVAILABLE",
+            "reason": "native_bridge.lead_usage_read_failed",
+            "read_limit": error.limit,
+        }
     except (OSError, ValueError):
         return {"status": "UNAVAILABLE", "reason": "native_bridge.lead_usage_read_failed"}
     rows = reading.by_model()
+    if reading.incomplete:
+        return {
+            "status": "UNAVAILABLE",
+            "reason": "native_bridge.lead_usage_incomplete",
+            "incomplete": reading.incomplete,
+        }
+    if len(rows) > USAGE_MODEL_ROWS:
+        return {
+            "status": "UNAVAILABLE",
+            "reason": "native_bridge.lead_usage_read_failed",
+            "read_limit": "models",
+        }
     if not rows:
         return {
             "status": "UNAVAILABLE",
@@ -1077,6 +1335,145 @@ def deliver_lead_usage_owned(
         "incomplete": reading.incomplete,
         **({"reason": "native_bridge.lead_usage_incomplete"} if reading.incomplete else {}),
     }
+
+
+def deliver_child_usage_owned(
+    project: Path,
+    binding: NativeResearchBinding,
+    *,
+    agent_id: str,
+    role: str,
+    publish: Callable[[dict[str, Any]], dict[str, Any]],
+    goal_id: str | None = None,
+) -> dict[str, object]:
+    """Read one assigned child's cumulative usage without requiring a lifecycle hook.
+
+    The Host selects the child and role from its exact assignment. Codex must record that
+    role and direct parent in the child's first metadata record. Claude admits only the
+    bound parent's own subagent file; the assigned role conveys no native authorship.
+    Neither path supplies a Start, Stop, hook credit or inferred model.
+
+    Args:
+        project: The admitted project whose producer sequence the Host owns.
+        binding: The exact parent Session, workspace and role scope admitted by the Host.
+        agent_id: The exact assigned child selected by the Host, never a transcript path.
+        role: The assigned role selected by the Host, verified from the native source metadata.
+        publish: The Host's existing external observation owner.
+        goal_id: The exact Goal the Host resolved for the assignment and snapshot.
+
+    Returns:
+        Delivered readings or a bounded diagnostic; optional observation never runs research.
+    """
+    if binding.usage == "OFF":
+        return {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}
+    stage = "child_binding"
+    try:
+        _carried("agent_id", agent_id)
+        if agent_id == binding.session_id or role not in binding.roles:
+            return {
+                "status": "UNAVAILABLE",
+                "reason": "native_bridge.child_usage_binding_unverified",
+            }
+        if binding.host == "codex":
+            spawn = codex_assigned_spawn(binding.session_id, agent_id)
+            if (
+                spawn is None
+                or spawn.parent_thread_id != binding.session_id
+                or spawn.agent_role != role
+            ):
+                return {
+                    "status": "UNAVAILABLE",
+                    "reason": "native_bridge.child_usage_binding_unverified",
+                }
+            path = session_file(binding.host, binding.session_id, agent_id)
+        else:
+            path = session_file(binding.host, binding.session_id, agent_id)
+            if path is None:
+                return {
+                    "status": "UNAVAILABLE",
+                    "reason": "native_bridge.child_usage_file_missing",
+                }
+            spawn = claude_thread_spawn(binding.session_id, agent_id)
+            if (
+                spawn is None
+                or spawn.parent_thread_id != binding.session_id
+                or spawn.agent_role != role
+            ):
+                return {
+                    "status": "UNAVAILABLE",
+                    "reason": "native_bridge.child_usage_binding_unverified",
+                }
+        if path is None:
+            return {"status": "UNAVAILABLE", "reason": "native_bridge.child_usage_file_missing"}
+        stage = "child_usage_read"
+        reading = read_session(
+            path,
+            host=binding.host,
+            max_bytes=USAGE_READ_BYTES,
+            max_line_bytes=USAGE_LINE_BYTES,
+        )
+        rows = reading.by_model()
+        if reading.incomplete:
+            return {
+                "status": "UNAVAILABLE",
+                "reason": "native_bridge.child_usage_incomplete",
+                "incomplete": reading.incomplete,
+                "stage": stage,
+            }
+        if len(rows) > USAGE_MODEL_ROWS:
+            return {
+                "status": "UNAVAILABLE",
+                "reason": "native_bridge.child_usage_read_failed",
+                "read_limit": "models",
+                "stage": stage,
+            }
+        if not rows:
+            return {
+                "status": "UNAVAILABLE",
+                "reason": "native_bridge.child_usage_not_observed",
+                "incomplete": reading.incomplete,
+            }
+        pins = role_pin(project, binding.host, role)
+        answers = []
+        stage = "child_usage_delivery"
+        for row in rows:
+            usage = {
+                "session_id": binding.session_id,
+                "agent_id": agent_id,
+                "role": role,
+                "host": binding.host,
+                **asdict(row),
+                "pin_differs": pin_differs(pins, row),
+            }
+            answer = deliver_owned(
+                project,
+                binding,
+                {"source": "native_usage", "usage": usage},
+                publish=publish,
+                usage_goal_id=goal_id,
+            )
+            answers.append(answer)
+            if answer["status"] != "DELIVERED":
+                return {**answer, "readings": answers, "incomplete": reading.incomplete}
+        return {
+            "status": "PARTIAL" if reading.incomplete else "DELIVERED",
+            "readings": answers,
+            "incomplete": reading.incomplete,
+            **({"reason": "native_bridge.child_usage_incomplete"} if reading.incomplete else {}),
+        }
+    except NativeUsageReadLimitError as error:
+        return {
+            "status": "UNAVAILABLE",
+            "reason": "native_bridge.child_usage_read_failed",
+            "read_limit": error.limit,
+            "stage": stage,
+        }
+    except Exception:
+        return {
+            "status": "UNAVAILABLE",
+            "reason": "native_bridge.child_usage_read_failed",
+            "stage": stage,
+        }
 
 
 JUDGMENT_ROLES = {
@@ -1294,8 +1691,31 @@ def judgment_agent_evidence(
 
 def handle_hook(project: Path, data: bytes) -> dict[str, object]:
     """One bounded attempt, no disk queue/retry and no research side effect."""
-    binding = NativeResearchBinding.read(project)
+    bindings, refusals = NativeResearchBinding.binding_entries(project)
+    if not bindings:
+        if refusals:
+            raise NativeBridgeError(refusals[0]["failure_code"])
+        return {"status": "IGNORED", "reason": "native_bridge.not_bound"}
+    if len(data) > MAX_HOOK_INPUT_BYTES:
+        raise NativeHookInputError("native_hook.input_too_large")
+    try:
+        payload = json.loads(data)
+    except (ValueError, RecursionError):
+        raise NativeHookInputError("native_hook.invalid_json") from None
+    if not isinstance(payload, dict):
+        raise NativeHookInputError("native_hook.object_required")
+    if payload.get("hook_event_name") not in ("SubagentStart", "SubagentStop"):
+        return {"status": "IGNORED", "reason": "native_bridge.event_not_selected"}
+    host = (
+        "claude-code"
+        if payload.get("turn_id") is None and payload.get("prompt_id") is not None
+        else "codex"
+    )
+    session_id = _text(payload.get("session_id"), CORRELATION_CHARACTERS)
+    binding = NativeResearchBinding.read(project, session=(host, session_id))
     if binding is None:
+        if any(each.session_id == session_id for each in bindings):
+            raise NativeBridgeError("native_bridge.event_scope_invalid")
         return {"status": "IGNORED", "reason": "native_bridge.not_bound"}
     event = lifecycle_event(project, binding, data)
     if event is None:

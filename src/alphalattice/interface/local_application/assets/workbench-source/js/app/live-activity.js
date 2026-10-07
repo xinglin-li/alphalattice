@@ -428,6 +428,7 @@ const LiveActivity = (() => {
   }
   return {section, logLines, starterOf, recordOf, refresh, markSeen, bind, facts, nextRead, absorbPage, open, openSavedResult, cadence, stop, resume, follow, pin, setFollowing, taskSettled, setNotices, noticesState,
     retained: () => [...S.groups.values()],
+    nativeUsageState: () => S.observer?.native_usage || null,
     state: () => ({cursor: S.cursor, epoch: S.epoch, groups: S.groups.size, unseen: S.unseen, error: S.error, notice: S.notice, tasks: Object.keys(S.tasks).length, watermark: S.watermark, disposition: S.disposition, stale: S.stale, stopped: S.stopped, fetching: Boolean(S.fetching), timer: S.timer !== null, following: S.following, pendingOpen: S.pendingOpen, opening: Boolean(S.opening), generation: S.followGeneration}),
     groups: ordered, unseen: () => S.unseen};
 })();

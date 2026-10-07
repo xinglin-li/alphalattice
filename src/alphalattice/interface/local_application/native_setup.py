@@ -19,7 +19,9 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.native_bridge import (
+    BINDING_DIRECTORY,
     BINDING_NAME,
+    BINDING_RECORDS,
     HOSTS,
     MAX_MESSAGE_BYTES,
     USAGE_READINGS,
@@ -35,7 +37,9 @@ from alphalattice.interface.local_application.native_hook_input import (
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PRODUCT_HOOK_MATCHER = "^alphalattice_.*$"
-"""The matcher of the hooks the product declares to a host: the mark of an agent project."""
+"""The matcher reserved for explicitly enabled legacy native proof hooks."""
+PROJECT_DECLARATION_NAME = "alphalattice-project.local.json"
+PROJECT_DECLARATION_SCHEMA = "alphalattice.native-project.v1"
 RESOURCE_ROOT = resolve_playpen_root(Path(__file__))
 INSTALLED = not (RESOURCE_ROOT / "pyproject.toml").is_file()
 ROOT = Path.cwd() if INSTALLED else RESOURCE_ROOT
@@ -104,9 +108,9 @@ def admitted_session_project(workspace: Path, requested: Path, host: str) -> Pat
     Raises:
         NativeBridgeError: The project differs, aliases a path or has unsafe declarations.
     """
-    project = session_project(workspace.resolve(), host)
     if requested.is_symlink() or requested.absolute() != requested.resolve():
         raise NativeBridgeError("native_bridge.project_path_invalid")
+    project = session_project(workspace.resolve(), host)
     if requested.resolve() != project.resolve():
         raise NativeBridgeError("native_bridge.project_mismatch")
     declaration = project / (
@@ -128,6 +132,7 @@ def attachment_preflight(
     runtime: dict[str, Any] | None = None,
     read_external: Callable[..., Mapping[str, Any]] | None = None,
     history_available: bool = True,
+    native_proof: bool = False,
 ) -> dict[str, Any]:
     """Read the common native readiness owner and attach the named way forward."""
     from alphalattice.interface.local_application.cli_contract import refusal_words
@@ -141,10 +146,19 @@ def attachment_preflight(
         runtime=runtime,
         read_external=read_external,
         history_available=history_available,
+        native_proof=native_proof,
     )
     return {
         **result,
         **(refusal_words(result["failure_code"]) if result.get("failure_code") else {}),
+        **(
+            {
+                "detail": "The Session binding is ready for research.",
+                "next_action": "Continue research with this Session binding.",
+            }
+            if not result.get("failure_code")
+            else {}
+        ),
     }
 
 
@@ -269,7 +283,8 @@ def _hook_root_refusal(host: str) -> dict[str, Any] | None:
             "Codex reads this linked worktree's hooks from the main checkout. "
             "The local declarations do not configure that hook root, which is outside "
             "this project. Use an independent ordinary project, run native_research.py "
-            "configure there, then have the person review the actual definitions in /hooks. "
+            "configure --host codex --native-proof there, then have the person review "
+            "the actual definitions in /hooks. "
             "This command has changed no declarations or trust."
         ),
         "next_action": "USE_LOCAL_DECLARATIONS_AND_METADATA_IN_THE_EXACT_PROJECT",
@@ -277,7 +292,7 @@ def _hook_root_refusal(host: str) -> dict[str, Any] | None:
 
 
 def _install_declarations(host: str) -> None:
-    """Copy shipped agent guidance unchanged, and bind hooks to this installed interpreter."""
+    """Copy shipped guidance unchanged; default host declarations register no product hooks."""
     manifest = json.loads(
         (RESOURCE_ROOT / "config/release/runtime-resources.json").read_text(encoding="utf-8")
     )
@@ -294,38 +309,15 @@ def _install_declarations(host: str) -> None:
             )
     declaration = ".claude/settings.json" if host == "claude-code" else ".codex/config.toml"
     inputs.append(declaration)
-    arguments = [
-        sys.executable,
-        "-m",
-        "alphalattice.interface.local_application.native_setup",
-        "--project",
-        str(ROOT),
-        "hook",
-    ]
-    command = shlex.join(arguments) if os.name != "nt" else subprocess.list2cmdline(arguments)
-    command += " || exit 0"
     documents: dict[Path, bytes] = {}
     for relative in sorted(set(inputs)):
         data = (RESOURCE_ROOT / relative).read_bytes()
-        if relative == declaration:
-            if host == "claude-code":
-                document = json.loads(data)
-                for groups in document["hooks"].values():
-                    for group in groups:
-                        for hook in group["hooks"]:
-                            hook["command"] = command
-                data = (json.dumps(document, indent=2) + "\n").encode()
-            else:
-                data = re.sub(
-                    r"^command = .+$",
-                    lambda _: "command = " + json.dumps(command),
-                    data.decode(),
-                    flags=re.MULTILINE,
-                ).encode()
         path = ROOT / relative
         if path.is_symlink() or not path.resolve().is_relative_to(ROOT):
             raise NativeBridgeError("native_bridge.configuration_path_invalid")
-        if path.exists() and path.read_bytes() != data:
+        if relative == declaration and path.exists():
+            data = _merge_installed_declaration(data, path.read_bytes(), host)
+        elif path.exists() and path.read_bytes() != data:
             raise NativeBridgeError("native_bridge.existing_configuration_differs")
         documents[path] = data
     for path, data in documents.items():
@@ -333,6 +325,99 @@ def _install_declarations(host: str) -> None:
         if not path.exists():
             with path.open("xb") as stream:
                 stream.write(data)
+        elif path == ROOT / declaration and path.read_bytes() != data:
+            path.write_bytes(data)
+
+
+def _merge_installed_declaration(source: bytes, existing: bytes, host: str) -> bytes:
+    """Admit product roles without replacing unrelated configuration or existing hooks."""
+    if host == "claude-code":
+        if not isinstance(json.loads(existing), dict):
+            raise NativeBridgeError("native_bridge.configuration_path_invalid")
+        return existing
+    expected = tomllib.loads(source.decode()).get("agents", {})
+    current = tomllib.loads(existing.decode()).get("agents", {})
+    if not isinstance(current, dict):
+        raise NativeBridgeError("native_bridge.configuration_path_invalid")
+    for name, profile in expected.items():
+        if name in current and current[name] != profile:
+            raise NativeBridgeError("native_bridge.existing_configuration_differs")
+    additions = []
+    for section in re.split(r"(?=^\[agents\.)", source.decode(), flags=re.MULTILINE):
+        if section.startswith("[agents."):
+            name = section.split("]", 1)[0].removeprefix("[agents.")
+            if name not in current:
+                additions.append(section)
+    return existing if not additions else existing + b"\n" + "".join(additions).encode()
+
+
+def native_proof_hooks(project: Path) -> dict[str, list[dict[str, Any]]]:
+    """Build the two optional product hooks only for an explicit native-proof request."""
+    arguments = [
+        sys.executable,
+        "-m",
+        "alphalattice.interface.local_application.native_setup",
+        "--project",
+        str(project),
+        "hook",
+    ]
+    command = shlex.join(arguments) if os.name != "nt" else subprocess.list2cmdline(arguments)
+    return {
+        event: [
+            {
+                "matcher": PRODUCT_HOOK_MATCHER,
+                "hooks": [{"type": "command", "command": command + " || exit 0", "timeout": 5}],
+            }
+        ]
+        for event in ("SubagentStart", "SubagentStop")
+    }
+
+
+def _install_native_proof(host: str) -> None:
+    """Add optional product hook groups without changing unrelated host hooks or trust."""
+    path = ROOT / (".claude/settings.json" if host == "claude-code" else ".codex/config.toml")
+    if path.is_symlink() or path.parent.is_symlink():
+        raise NativeBridgeError("native_bridge.configuration_path_invalid")
+    entries = native_proof_hooks(ROOT)
+    if host == "claude-code":
+        document = json.loads(path.read_text(encoding="utf-8"))
+        hooks = document.setdefault("hooks", {})
+        if not isinstance(hooks, dict):
+            raise NativeBridgeError("native_bridge.configuration_path_invalid")
+        for event, groups in entries.items():
+            existing = hooks.get(event, [])
+            if not isinstance(existing, list):
+                raise NativeBridgeError("native_bridge.configuration_path_invalid")
+            owned = [
+                group
+                for group in existing
+                if isinstance(group, dict) and group.get("matcher") == PRODUCT_HOOK_MATCHER
+            ]
+            if owned and owned != groups:
+                raise NativeBridgeError("native_bridge.existing_configuration_differs")
+            if not owned:
+                hooks[event] = existing + groups
+        data = json.dumps(document, indent=2) + "\n"
+    else:
+        data = path.read_text(encoding="utf-8")
+        declared = tomllib.loads(data).get("hooks", {})
+        for event, groups in entries.items():
+            existing = declared.get(event, [])
+            owned = [
+                group
+                for group in existing
+                if isinstance(group, dict) and group.get("matcher") == PRODUCT_HOOK_MATCHER
+            ]
+            if owned and owned != groups:
+                raise NativeBridgeError("native_bridge.existing_configuration_differs")
+            if not owned:
+                hook = groups[0]["hooks"][0]
+                data += (
+                    f"\n[[hooks.{event}]]\nmatcher = {json.dumps(PRODUCT_HOOK_MATCHER)}\n"
+                    f'[[hooks.{event}.hooks]]\ntype = "command"\n'
+                    f"command = {json.dumps(hook['command'])}\ntimeout = 5\n"
+                )
+    path.write_text(data, encoding="utf-8", newline="\n")
 
 
 def _roles(host: str = "codex", root: Path | None = None) -> list[str]:
@@ -349,36 +434,49 @@ def _roles(host: str = "codex", root: Path | None = None) -> list[str]:
 
 
 def _declares_product(folder: Path, host: str) -> bool:
-    """Whether a folder holds this host's declarations of the product's hooks (V568)."""
+    """Read the bounded configure-owned project declaration, never hook configuration."""
     declaration = folder / (
         ".claude/settings.json" if host == "claude-code" else ".codex/config.toml"
     )
-    if declaration.is_symlink() or declaration.parent.is_symlink():
+    marker = declaration.parent / PROJECT_DECLARATION_NAME
+    if any(
+        path.is_symlink() or (os.name == "nt" and path.is_junction())
+        for path in (folder, declaration.parent, declaration, marker)
+    ):
         raise NativeBridgeError("native_bridge.configuration_path_invalid")
     try:
-        if host == "claude-code":
-            settings = json.loads(declaration.read_text(encoding="utf-8"))
-            hooks = settings.get("hooks", {}) if isinstance(settings, dict) else {}
-        else:
-            with declaration.open("rb") as stream:
-                hooks = tomllib.load(stream).get("hooks", {})
-    except (OSError, ValueError):
+        with marker.open("rb") as stream:
+            data = stream.read(64 * 1024 + 1)
+    except FileNotFoundError:
         return False
-    return isinstance(hooks, dict) and any(
-        isinstance(group, dict) and group.get("matcher") == PRODUCT_HOOK_MATCHER
-        for groups in hooks.values()
-        if isinstance(groups, list)
-        for group in groups
+    if len(data) > 64 * 1024:
+        raise NativeBridgeError("native_bridge.configuration_path_invalid")
+    try:
+        document = json.loads(data)
+    except (ValueError, UnicodeError):
+        raise NativeBridgeError("native_bridge.configuration_path_invalid") from None
+    if document != {"schema": PROJECT_DECLARATION_SCHEMA, "host": host}:
+        raise NativeBridgeError("native_bridge.configuration_path_invalid")
+    return True
+
+
+def declare_project(project: Path, host: str) -> None:
+    """Write exact host-local project metadata; it grants neither trust nor native authorship."""
+    if host not in HOSTS:
+        raise NativeBridgeError("native_bridge.configuration_path_invalid")
+    _create_or_match(
+        PROJECT_DECLARATION_NAME,
+        {"schema": PROJECT_DECLARATION_SCHEMA, "host": host},
+        project,
+        directory=".claude" if host == "claude-code" else ".codex",
     )
 
 
 def session_project(start: Path, host: str | None) -> Path:
     """The agent project a session binds in, found up from where the binding runs (V568).
 
-    It is the nearest folder up from ``start`` whose host declarations declare the product's
-    hooks, as `configure` writes them and a checkout ships them; a host's own settings, a home
-    folder's ``.codex/config.toml`` or ``.claude/settings.json``, declare none and are no
-    project.
+    It is the nearest folder with this host's explicit configure-owned project declaration.
+    Ordinary host settings and hook matchers do not identify a product project.
 
     Args:
         start: The directory the binding command runs in.
@@ -388,38 +486,44 @@ def session_project(start: Path, host: str | None) -> Path:
         The project's folder.
 
     Raises:
-        NativeBridgeError: ``native_bridge.hook_declaration_missing`` when no folder up holds
-            them.
+        NativeBridgeError: ``native_bridge.project_declaration_missing`` when no parent declares it.
     """
     hosts = HOSTS if host is None else (host,)
     for folder in (start, *start.parents):
         if any(_declares_product(folder, each) for each in hosts):
             return folder
-    raise NativeBridgeError("native_bridge.hook_declaration_missing")
+    raise NativeBridgeError("native_bridge.project_declaration_missing")
 
 
 def bind_session(
     project: Path, *, host: str, session_id: str, workspace: Path, usage: str = "read"
 ) -> dict[str, Any]:
-    """Bind one agent session to a workspace in a project, once (V568).
+    """Bind this exact host/Session without replacing another Session's workspace (V568).
 
-    The binding is the one the bridge's hooks read and the CLI finds from any folder within
-    the project.
+    The CLI and independent usage observer find this exact binding within the project.
 
     Args:
         project: The agent project, a checkout or a configured folder.
         host: The host running the session.
         session_id: The session, as its host names it.
         workspace: The workspace's folder.
-        usage: ``off`` keeps a subagent's stop from reading the host's session files.
+        usage: ``off`` prevents native Session usage reads.
 
     Returns:
         The binding as written, with its project.
 
     Raises:
-        NativeBridgeError: For a missing workspace, an invalid binding or a project bound
-            otherwise.
+        NativeBridgeError: For a missing workspace, unsafe records, or a changed scope
+            already bound to this exact host/Session.
     """
+    if host not in HOSTS or usage not in {"read", "off"}:
+        raise NativeBridgeError("native_bridge.binding_invalid")
+    if (
+        workspace.is_symlink()
+        or (os.name == "nt" and workspace.is_junction())
+        or workspace.absolute() != workspace.resolve()
+    ):
+        raise NativeBridgeError("native_bridge.binding_path_invalid")
     if not workspace.is_dir():
         raise NativeBridgeError("native_bridge.workspace_missing")
     folder = str(workspace.resolve())
@@ -431,7 +535,8 @@ def bind_session(
         # Named only when off, so a binding written before the switch reads the same.
         **({"usage": "OFF"} if usage == "off" else {}),
     }
-    existing = NativeResearchBinding.read(project)
+    selected = (host, session_id)
+    existing = NativeResearchBinding.read(project, session=selected)
     if existing is None:
         document["observation_started_at"] = datetime.now(UTC).isoformat()
     else:
@@ -446,21 +551,60 @@ def bind_session(
         if existing.observation_started_at is not None:
             document["observation_started_at"] = existing.observation_started_at.isoformat()
     NativeResearchBinding.from_document(document)
-    _create_or_match(BINDING_NAME, document, project)
-    binding = NativeResearchBinding.read(project)
+    if existing is None:
+        bindings, refusals = NativeResearchBinding.binding_entries(project)
+        if len(bindings) + len(refusals) >= BINDING_RECORDS:
+            raise NativeBridgeError("native_bridge.binding_limit_exceeded")
+        legacy = project / ".codex" / BINDING_NAME
+        # The first binding retains the established compatibility path. A later
+        # Session gets its own slot; nothing migrates, replaces or detaches the first.
+        if not legacy.exists() and not legacy.is_symlink() and not bindings and not refusals:
+            name, directory = BINDING_NAME, ".codex"
+        else:
+            name = NativeResearchBinding.slot_path(project, selected).name
+            directory = f".codex/{BINDING_DIRECTORY}"
+        try:
+            _create_or_match(name, document, project, directory=directory)
+        except NativeBridgeError as error:
+            # A concurrent bind of this exact Session may already have admitted the
+            # same scope. Keep its checkpoint rather than generating a new one.
+            if str(error) != "native_bridge.existing_configuration_differs":
+                raise
+            winner = NativeResearchBinding.read(project, session=selected)
+            if winner is None and name == BINDING_NAME:
+                # Two distinct Sessions can both see the project's first empty
+                # record. The loser gets its own slot, preserving the winner's file.
+                try:
+                    _create_or_match(
+                        NativeResearchBinding.slot_path(project, selected).name,
+                        document,
+                        project,
+                        directory=f".codex/{BINDING_DIRECTORY}",
+                    )
+                except NativeBridgeError as slot_error:
+                    if str(slot_error) != "native_bridge.existing_configuration_differs":
+                        raise
+                winner = NativeResearchBinding.read(project, session=selected)
+            if winner is None or (
+                winner.workspace.resolve() != workspace.resolve()
+                or winner.roles != tuple(document["roles"])
+                or winner.usage != ("OFF" if usage == "off" else "READ")
+            ):
+                raise
+    binding = NativeResearchBinding.read(project, session=selected)
     preflight = attachment_preflight(
         project,
         binding,
         runtime={"status": "NOT_CHECKED", "host_trust": "NOT_CHECKED", "trust_changed": False},
     )
     return {
-        "status": "BOUND_NOT_ATTACHED",
+        "status": "BOUND",
         "session_id": session_id,
         "host": host,
         "workspace": folder,
         "project": str(project),
         "host_trust": "NOT_CHECKED",
-        "foreground_attachment": "NOT_PROVED",
+        "foreground_attachment": "NOT_REQUESTED",
         "attachment_preflight": preflight,
         "detail": preflight["detail"],
         "next_action": preflight["next_action"],
@@ -478,7 +622,7 @@ def _hooks(host: str) -> dict[str, Any]:
         return cast(dict[str, Any], tomllib.load(stream).get("hooks", {}))
 
 
-def _configuration(host: str = "codex") -> dict[str, Any]:
+def _configuration(host: str = "codex", *, native_proof: bool = False) -> dict[str, Any]:
     python = (
         Path(sys.executable)
         if INSTALLED
@@ -488,6 +632,8 @@ def _configuration(host: str = "codex") -> dict[str, Any]:
         raise NativeBridgeError("native_bridge.local_environment_missing")
     if not _roles(host):
         raise NativeBridgeError("native_bridge.roles_missing")
+    if not native_proof:
+        return {}
     if host == "claude-code":
         try:
             hooks = _hooks(host)
@@ -508,17 +654,20 @@ def _configuration(host: str = "codex") -> dict[str, Any]:
     return hooks
 
 
-def unbind_session(project: Path, *, session_id: str | None) -> dict[str, object]:
-    """Remove a project's binding, once: the bound session's own, or the person's (V586).
+def unbind_session(
+    project: Path, *, session_id: str | None, host: str | None = None
+) -> dict[str, object]:
+    """Detach this Session's own record; other Session bindings and research stay (V586).
 
-    An agent session removes only the binding that names it; the person, outside any agent
-    session (``session_id`` None), removes the project's binding whichever session it names.
+    An agent removes only its exact host/Session record. Outside any agent Session,
+    a person may detach the sole record; multiple records require an exact owning Session.
     The research is unchanged: a binding is a session's default workspace and the scope of its
     observation, never a record.
 
     Args:
         project: The agent project holding the binding.
         session_id: The session removing it; None for the person.
+        host: The actual host; older shims may omit it only for an unambiguous Session.
 
     Returns:
         ``NOT_BOUND``, or ``DETACHED`` with the session the removed binding named.
@@ -527,32 +676,57 @@ def unbind_session(project: Path, *, session_id: str | None) -> dict[str, object
         NativeBridgeError: ``native_bridge.session_mismatch`` when the binding names another
             session than the one removing it; the binding's own read refusals.
     """
-    binding = NativeResearchBinding.read(project)
+    if session_id is None:
+        binding = NativeResearchBinding.read(project)
+    elif host is not None:
+        binding = NativeResearchBinding.read(project, session=(host, session_id))
+    else:
+        # Compatibility shims did not supply a host. The Session must still name
+        # one exact record; an identifier shared by hosts cannot select either.
+        candidates = [
+            each
+            for each in NativeResearchBinding.bindings(project)
+            if each.session_id == session_id
+        ]
+        if len(candidates) > 1:
+            raise NativeBridgeError("native_bridge.binding_ambiguous")
+        binding = candidates[0] if candidates else None
     if binding is None:
+        if session_id is not None and NativeResearchBinding.bindings(project):
+            raise NativeBridgeError("native_bridge.session_mismatch")
         return {"status": "NOT_BOUND", "project": str(project)}
     if session_id is not None and binding.session_id != session_id:
         raise NativeBridgeError("native_bridge.session_mismatch")
-    (project / ".codex" / BINDING_NAME).unlink()
+    binding.record_path(project).unlink()
     return {
         "status": "DETACHED",
         "project": str(project),
         "session_id": binding.session_id,
+        "host": binding.host,
         "research_unchanged": True,
     }
 
 
-def _create_or_match(name: str, document: dict[str, Any], project: Path | None = None) -> None:
+def _create_or_match(
+    name: str,
+    document: dict[str, Any],
+    project: Path | None = None,
+    *,
+    directory: str = ".codex",
+) -> None:
     root = ROOT if project is None else project
-    path = root / ".codex" / name
-    if (
-        path.parent.is_symlink()
-        or path.is_symlink()
-        or not path.resolve().is_relative_to(root.resolve())
-    ):
+    path = root / directory / name
+    parents = (
+        path,
+        *(parent for parent in path.parents if parent == root or parent.is_relative_to(root)),
+    )
+    if any(
+        parent.is_symlink() or (os.name == "nt" and parent.is_junction()) for parent in parents
+    ) or not path.resolve().is_relative_to(root.resolve()):
         raise NativeBridgeError("native_bridge.configuration_path_invalid")
     data = (json.dumps(document, indent=2) + "\n").encode()
     # A Claude Code project configured from the installed command holds no `.codex` yet.
-    path.parent.mkdir(exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with path.open("xb") as stream:
             stream.write(data)
@@ -576,31 +750,40 @@ def main() -> int:
     )
     commands = parser.add_subparsers(dest="command", required=True)
     configure = commands.add_parser(
-        "configure", help="Check shipped hook declarations and the local environment."
+        "configure", help="Install role guidance and declare a project without product hooks."
     )
     configure.add_argument("--host", choices=HOSTS, default="codex")
+    configure.add_argument(
+        "--native-proof",
+        action="store_true",
+        help="Explicitly install legacy native proof hooks; trust remains unchanged.",
+    )
     bind = commands.add_parser("bind", help="Bind this bridge to an explicit session/workspace.")
     bind.add_argument("--session-id", required=True)
     bind.add_argument("--workspace", required=True, type=Path)
-    bind.add_argument(
-        "--host", choices=HOSTS, default="codex", help="The foreground host sending the hooks."
-    )
+    bind.add_argument("--host", choices=HOSTS, default="codex", help="The foreground native host.")
     bind.add_argument(
         "--usage",
         choices=[value.lower() for value in USAGE_READINGS],
         default="read",
-        help="off: a subagent's stop reads no session file of the host for what it ran and spent.",
+        help="off: read no native Session file for usage.",
     )
     unbind = commands.add_parser(
         "unbind", help="Detach only the named session; research is unchanged."
     )
     unbind.add_argument("--session-id", required=True)
+    unbind.add_argument("--host", choices=HOSTS, help="The exact native host of this Session.")
     doctor = commands.add_parser(
         "doctor",
-        help="Read runtime definitions and prospective native evidence; no model operation.",
+        help="Read default Session usability; strict native proof is explicit and optional.",
     )
     doctor.add_argument(
         "--host", choices=HOSTS, help="The host to inspect; by default the bound one, else codex."
+    )
+    doctor.add_argument(
+        "--native-proof",
+        action="store_true",
+        help="Inspect optional strict native lifecycle proof and actual host definitions.",
     )
     commands.add_parser("hook", help="Native lifecycle stdin; advisory success/refusal uses exit0.")
     message = commands.add_parser(
@@ -620,7 +803,12 @@ def main() -> int:
     message.add_argument("--reference")
     message.add_argument("--to", dest="recipient_id")
     message.add_argument(
-        "--reply-to", help="The message id this one answers; an answer to an assignment closes it."
+        "--reply-to",
+        help="The exact message this exchange answers; ordinary replies do not close assignments.",
+    )
+    message.add_argument("--terminal-decision", choices=("COMPLETED", "WITHDRAWN", "DECLINED"))
+    message.add_argument(
+        "--terminal-reason", help="The lead's bounded reason for the exact assignment decision."
     )
     args = parser.parse_args()
     if args.project is not None:
@@ -630,22 +818,32 @@ def main() -> int:
         data = sys.stdin.buffer.read(MAX_HOOK_INPUT_BYTES + 1)
         print(json.dumps(hook_reply(ROOT, data)))
         return 0
+    doctor_command = _doctor_command(
+        native_proof=getattr(args, "native_proof", False), host=getattr(args, "host", None)
+    )
     try:
         if args.command == "configure":
-            refusal = _hook_root_refusal(args.host)
+            refusal = _hook_root_refusal(args.host) if args.native_proof else None
             if refusal is not None:
                 print(json.dumps(refusal))
                 return 2
             if INSTALLED:
                 _install_declarations(args.host)
-            _configuration(args.host)
+            if args.native_proof:
+                _install_native_proof(args.host)
+            _configuration(args.host, native_proof=args.native_proof)
+            declare_project(ROOT, args.host)
             result = {
                 "status": "LOCAL_DECLARATIONS_VALIDATED",
                 "host": args.host,
+                "product_hooks_requested": args.native_proof,
+                "trust_changed": False,
                 "next": (
                     "Inspect actual project hook presence and trust in the host's /hooks. "
                     "No trust was changed."
-                ),
+                )
+                if args.native_proof
+                else "Bind this project's Session to its research workspace.",
             }
         elif args.command == "bind":
             result = bind_session(
@@ -657,14 +855,21 @@ def main() -> int:
             )
         elif args.command == "unbind":
             # The checkout's shim of `alphalattice session unbind`, by the session it names.
-            result = unbind_session(ROOT, session_id=args.session_id)
+            result = unbind_session(ROOT, session_id=args.session_id, host=args.host)
         elif args.command == "doctor":
+            from alphalattice.interface.local_application.cli_contract import (
+                agent_session,
+                refusal_words,
+            )
             from alphalattice.interface.local_application.client import LocalResearchClient
             from alphalattice.interface.local_application.native_runtime import retained_history
 
-            binding = NativeResearchBinding.read(ROOT)
+            session = agent_session(os.environ)
+            if session is not None and args.host is not None and args.host != session[0]:
+                raise NativeBridgeError("native_bridge.session_mismatch")
+            binding = NativeResearchBinding.read(ROOT, session=session)
             host = args.host or (binding.host if binding is not None else "codex")
-            refusal = _hook_root_refusal(host)
+            refusal = _hook_root_refusal(host) if args.native_proof else None
             if refusal is not None:
                 print(json.dumps(refusal))
                 return 2
@@ -675,8 +880,8 @@ def main() -> int:
 
             history, history_status = (
                 retained_history(read_external)
-                if binding is not None
-                else (None, {"status": "UNAVAILABLE"})
+                if binding is not None and args.native_proof
+                else (None, {"status": "NOT_REQUESTED"})
             )
             preflight = attachment_preflight(
                 ROOT,
@@ -684,10 +889,23 @@ def main() -> int:
                 history,
                 read_external=read_external if binding is not None else None,
                 history_available=history_status["status"] == "AVAILABLE",
+                native_proof=args.native_proof,
             )
             result = {
                 **preflight,
-                "hook_declarations_present": bool(_hooks(host)),
+                **(
+                    {
+                        **preflight["native_proof"],
+                        **(
+                            refusal_words(preflight["native_proof"]["failure_code"])
+                            if preflight["native_proof"].get("failure_code")
+                            else {}
+                        ),
+                    }
+                    if args.native_proof
+                    else {}
+                ),
+                "hook_declarations_present": bool(_hooks(host)) if args.native_proof else None,
                 "session_bound": binding is not None,
                 "host": binding.host if binding is not None else None,
                 "usage_reading": binding.usage if binding is not None else None,
@@ -699,12 +917,25 @@ def main() -> int:
                 ),
             }
         else:
-            binding = NativeResearchBinding.read(ROOT)
-            if binding is None:
+            from alphalattice.interface.local_application.cli_contract import agent_session
+
+            session = agent_session(os.environ)
+            if session is None:
+                raise NativeBridgeError("native_bridge.event_scope_invalid")
+            found = NativeResearchBinding.find(ROOT, session=session)
+            if found is None:
                 raise NativeBridgeError("native_bridge.not_bound")
+            project, binding = found
+            if project != ROOT:
+                raise NativeBridgeError("native_bridge.project_mismatch")
+            agent_id = args.agent_id
+            if session != (binding.host, binding.session_id):
+                if agent_id is not None and agent_id != session[1]:
+                    raise NativeBridgeError("native_bridge.event_scope_invalid")
+                agent_id = session[1]
             event = coordination_event(
                 binding,
-                agent_id=args.agent_id,
+                agent_id=agent_id,
                 role=args.role,
                 kind=args.kind,
                 message_id=args.message_id,
@@ -712,6 +943,8 @@ def main() -> int:
                 reference=args.reference,
                 recipient_id=args.recipient_id,
                 reply_to=args.reply_to,
+                terminal_decision=args.terminal_decision,
+                terminal_reason=args.terminal_reason,
             )
             # Its id, for a reply's --reply-to, whichever way the delivery went.
             result = {
@@ -723,7 +956,7 @@ def main() -> int:
     except NativeBridgeError as error:
         print(
             json.dumps(
-                {**setup_failure(error), "reason": str(error), "next_commands": _doctor_command()}
+                {**setup_failure(error), "reason": str(error), "next_commands": doctor_command}
             )
         )
         return 2
@@ -734,19 +967,19 @@ def main() -> int:
         refusal = {
             **setup_failure(error),
             **files_unavailable(error, project=ROOT, workspace=getattr(args, "workspace", None)),
-            "next_commands": _doctor_command(),
+            "next_commands": doctor_command,
         }
         print(json.dumps(refusal))
         return 2
     except Exception as error:
-        print(json.dumps({**setup_failure(error), "next_commands": _doctor_command()}))
+        print(json.dumps({**setup_failure(error), "next_commands": doctor_command}))
         return 2
 
 
-def _doctor_command() -> dict[str, list[str]]:
+def _doctor_command(*, native_proof: bool = False, host: str | None = None) -> dict[str, list[str]]:
     """The bridge's own read-only check, every refusal's way on, as the person runs it."""
-    return {
-        "doctor": [
+    command = (
+        [
             sys.executable,
             "-m",
             "alphalattice.interface.local_application.native_setup",
@@ -756,7 +989,12 @@ def _doctor_command() -> dict[str, list[str]]:
         ]
         if INSTALLED
         else [sys.executable, "scripts/native_research.py", "doctor"]
-    }
+    )
+    if native_proof:
+        command.append("--native-proof")
+        if host is not None:
+            command.extend(("--host", host))
+    return {"doctor": command}
 
 
 if __name__ == "__main__":

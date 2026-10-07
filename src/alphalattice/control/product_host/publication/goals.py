@@ -14,7 +14,11 @@ from alphalattice.control.workspace_runtime.content_store import (
 )
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.interface.local_application.goals import Goal, GoalSession
+from alphalattice.interface.local_application.goals import (
+    Goal,
+    GoalAcceptedAnswerContext,
+    GoalSession,
+)
 
 
 def _deliverables(goal: Goal) -> list[dict[str, object]] | None:
@@ -217,6 +221,31 @@ class GoalStore:
             self.content.atomic_write(
                 folder / f"{place:08d}.json", json.dumps(dict(entry), sort_keys=True).encode()
             )
+
+    def accepted_answer_context(
+        self, key: str, decide: Callable[[], GoalAcceptedAnswerContext]
+    ) -> GoalAcceptedAnswerContext:
+        """Freeze acceptance's Goal and prior exact packet in the existing event receipt.
+
+        The scientific owner supplies this callback before optional observation. Existing
+        Goal-only receipts stay readable with an unknown packet; a retry never backfills
+        them from later assignments or a new Session binding.
+        """
+        path = self.content.root / "events" / f"{key}.json"
+        with self.lock:
+            if not path.is_file():
+                context = decide()
+                self.content.atomic_write(
+                    path, json.dumps(context.model_dump(mode="json"), sort_keys=True).encode()
+                )
+                return context
+            try:
+                validated = GoalAcceptedAnswerContext.model_validate_json(path.read_bytes())
+                if not isinstance(validated, GoalAcceptedAnswerContext):
+                    raise ValueError("goal.event_filing_invalid")
+                return validated
+            except (TypeError, ValueError, OSError) as error:
+                raise ValueError("goal.event_filing_invalid") from error
 
     def goal_ids(self) -> tuple[UUID, ...]:
         """Every goal this workspace holds, by its ID."""

@@ -190,9 +190,12 @@ const LiveGoals = (() => {
    * own so far, whatever else it worked on; the Host says so. */
   function usage(sessions) {
     if (!sessions.length) return '';
-    const tokens = (x) => t('{i} in · {o} out · {r} cache read · {w} cache written', {i: count(x.input_tokens), o: count(x.output_tokens), r: count(x.cache_read_tokens), w: count(x.cache_write_tokens)});
-    const rows = sessions.map((s) => html`<h3>${codeWords(s.vendor)} <span class="mono">${short(s.session_id)}</span></h3>${kv([...s.by_model.map((m) => [html`<span class="mono">${m.model}</span>`, html`${tokens(m)} · ${countText(m.responses, '{n} response', '{n} responses')}`]), ...s.participants.map((p) => [html`${p.agent_id}${p.role ? html` · ${codeWords(p.role)}` : ''}`, html`${p.models.map((m) => html`<span class="mono">${m.model}</span>${m.efforts.length ? html` (${m.efforts.join(', ')})` : ''}`).reduce((a, x, i) => html`${a}${i ? ' · ' : ''}${x}`, '')}${p.pin_differs.length ? html` · ${badge('blocked', t('differs from its card: {what}', {what: p.pin_differs.map((x) => codeWords(x)).join(', ')}))}` : ''}`])], 'kv-columns')}`);
-    return panel(t('Sessions and usage'), t('Each session\'s totals so far, whatever else it worked on; tokens are not attributed to a goal or a Task.'), html`${rows}`);
+    const rows = sessions.map((s) => html`<h3>${codeWords(s.vendor)} <span class="mono">${short(s.session_id)}</span></h3>${kv((s.participants || []).flatMap((p) => {
+      const member = html`<span class="mono">${short(p.agent_id)}</span>${p.role ? html` · ${LiveTeam.roleName(p.role)}` : ''}`;
+      if (!p.models?.length) return [[member, t('no usage read')]];
+      return p.models.map((m) => [member, html`<span class="mono">${m.model}</span>${m.efforts?.length ? html` (${m.efforts.join(', ')})` : ''}<span class="sub-cell">${LiveTeam.usageTokenWords(m)}</span><span class="sub-cell">${LiveTeam.usageMetadata(m)}</span>${p.pin_differs?.length ? html` · ${badge('blocked', t('differs from its card: {what}', {what: p.pin_differs.map((x) => codeWords(x)).join(', ')}))}` : ''}`]);
+    }), 'kv-columns')}`);
+    return panel(t('Sessions and usage'), t('Latest readings for each member. Parent and child counts are not combined; tokens are not attributed to a goal or Task.'), html`${rows}`);
   }
   /* The conversation: the Team exchanges made under the goal, the newest first, each linking to its session;
    * the kind a filter (assignments one of them), the open assignments counted. */
@@ -214,7 +217,7 @@ const LiveGoals = (() => {
       return objectRow({name: m.summary ? html`<span class="owner-text">${m.summary}</span>` : codeWords(m.message_kind), to: m.agent_session ? {page: 'team', extra: {team: m.agent_session, actor: '', event: m.observation_id || ''}} : null}, {key: m.message_id || m.observation_id, columns: ['kind', 'actor', 'recipient', 'submitter', 'reply'], props: [accepted ? hint(t('Accepted answer'), t('Accepted structured answer · product record, not a native spoken turn')) : codeWords(m.message_kind), nameOf(m.agent_id, m), m.recipient_id ? html`${t('to')} ${nameOf(m.recipient_id, m, true)}` : '', accepted ? html`${t('Submitted by')} ${nameOf(m.submitted_by, m)}` : '', m.reply_to ? html`${t('answers')} <span class="mono">${short(m.reply_to)}</span>` : ''], time: acceptedClock(m) ? hint(when(messageTime(m)), `${t(m.source_time_kind === 'PRODUCT_ACCEPTED_AT' ? 'Answer acceptance time' : 'Task admission time')} · ${t('Recorded')} ${whenText(m.recorded_at)}`) : when(messageTime(m))});
     };
     const foot = (r.message_count ?? messages.length) > messages.length ? html`<p class="caption">${t('The newest {n} of {m} messages; the Team session holds them all.', {n: count(messages.length), m: count(r.message_count)})}</p>` : '';
-    return html`${openAssignments ? noteLine(t('Open assignments'), countText(openAssignments, '{n} assignment no reply names yet', '{n} assignments no reply names yet'), 'neutral') : ''}${Lobby.render('goal-conversation', {items: messages, row, axes: [{key: 'time', label: t('Time'), group: (m) => timeGroup(messageTime(m))}],
+    return html`${openAssignments ? noteLine(t('Open assignments'), countText(openAssignments, '{n} assignment not closed', '{n} assignments not closed'), 'neutral') : ''}${Lobby.render('goal-conversation', {items: messages, row, axes: [{key: 'time', label: t('Time'), group: (m) => timeGroup(messageTime(m))}],
       words: (m) => [m.summary, m.agent_id, m.role, m.message_kind].join(' '), placeholder: t('Words, agent or kind'),
       filters: kinds.length > 1 ? [{field: 'kind', label: t('Kind'), multiple: true, options: kinds.map((k) => [k, codeWords(k)]), test: (m, one) => m.message_kind === one}] : []})}${foot}`;
   }

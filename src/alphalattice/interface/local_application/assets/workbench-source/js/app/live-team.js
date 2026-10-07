@@ -121,8 +121,8 @@ const LiveTeam = (() => {
       s.producers.add(p.producer_id + ':' + short(p.producer_session, SHORT.hash));
       if (sub.goal_id) s.goals.add(sub.goal_id); // U25: since GR2 a row's subject names the goal the Host filed it under
       if (kind === 'usage') { // U31: what an agent had run and spent, by model; its latest reading counts, never a sum of readings
-        if (sub.native_agent_id && sub.model) { const pt = participant(s, sub.native_agent_id, sub.role), held = pt.usage.get(sub.model), n = (k) => Number(sub[k]) || 0;
-          if (!held || held.ordinal < item.ordinal) pt.usage.set(sub.model, {ordinal: item.ordinal, model: sub.model, efforts: String(sub.efforts || '').split(',').filter(Boolean), pinDiffers: String(sub.pin_differs || '').split(',').filter(Boolean), responses: n('responses'), input: n('input_tokens'), output: n('output_tokens'), cacheRead: n('cache_read_tokens'), cacheWrite: n('cache_write_tokens')}); }
+        if (sub.native_agent_id && sub.model) { const pt = participant(s, sub.native_agent_id, sub.role), held = pt.usage.get(sub.model), n = (k) => usageNumber(sub[k]);
+          if (!held || held.ordinal < item.ordinal) pt.usage.set(sub.model, {ordinal: item.ordinal, model: sub.model, efforts: String(sub.efforts || '').split(',').filter(Boolean), pinDiffers: String(sub.pin_differs || '').split(',').filter(Boolean), responses: n('responses'), input: n('input_tokens'), output: n('output_tokens'), cacheRead: n('cache_read_tokens'), cacheWrite: n('cache_write_tokens'), source_kind: sub.source_kind || (sub.input_channel === 'CODEX_SESSION_FILE' || sub.input_channel === 'CLAUDE_CODE_SESSION_FILE' ? sub.input_channel : null), sample_time_kind: sub.sample_time_kind || null, last_at: sub.last_at || null}); }
         s.last = Math.max(s.last, item.ordinal); continue;
       }
       // The observation is the identity; the client's native_event_id is a declared grouping key.
@@ -350,6 +350,18 @@ const LiveTeam = (() => {
   /* ---- rendering ---- */
   const acceptedAnswer = (e) => e.kind === 'message' && e.messageKind === 'answer' && e.channel === 'PRODUCT_ACCEPTED_ANSWER';
   const acceptedArtifact = (s, e) => acceptedAnswer(e) && e.availability === 'AVAILABLE' && e.actor && e.subject.authorship_basis === 'HOOK' && e.subject.submitted_by === s.id && HASH.test(e.subject.answer_reference || '') && HASH.test(e.subject.bundle_reference || '') && ['TASK_ADMISSION', 'PRODUCT_ACCEPTED_AT'].includes(e.timeKind);
+  // A default relay is a selection candidate; its correlated product receipt verifies content.
+  const acceptedRelay = (s, e) => acceptedAnswer(e) && e.availability === 'AVAILABLE' && e.subject.authorship_basis === 'NOT_OBSERVED' && e.actor === s.id && e.role === 'research_lead' && e.subject.submitted_by === s.id && ['codex', 'claude-code'].includes(e.subject.native_host) && ['ALPHA', 'ANALYST', 'CRO', 'DATA', 'FACTOR', 'PORTFOLIO', 'RISK'].includes(e.subject.bundle_role) && HASH.test(e.subject.answer_reference || '') && HASH.test(e.subject.bundle_reference || '') && UUID.test(e.reference || '') && ['TASK_ADMISSION', 'PRODUCT_ACCEPTED_AT'].includes(e.timeKind);
+  /* A product receipt opens its sealed contribution independently of optional native credit.
+   * It stays a product fact: no participant statement, author or lifecycle is manufactured. */
+  function productAcceptedAnswer(s, f) {
+    const item = f?.item, p = item?.payload, sub = p?.subject;
+    // ActivityItem has no stored envelope version; the selected owner checks it before content.
+    return Boolean(s && item?.schema_kind === 'ProductOperationObserved' && (item.schema_version == null || item.schema_version === 1) && item.source_kind === 'PRODUCT_OPERATION' && /^local-web:[0-9a-f]{32}$/.test(item.source_id || '') && item.authority === 'OPERATIONAL_ASSERTION' && item.availability === 'AVAILABLE' && p?.operation === 'AGENT_ANSWER_SUBMIT' && p.phase === 'RETURNED' && ['ACCEPTED', 'DONE'].includes(p.status) && sub?.agent_session === s.id && ['codex', 'claude-code'].includes(sub.agent_vendor) && UUID.test(sub.task_id || '') && item.task_id === p.task_id && p.task_id === sub.task_id && HASH.test(sub.answer_reference || '') && HASH.test(sub.bundle_reference || ''));
+  }
+  const readableAnswer = (s, m) => m?.item ? productAcceptedAnswer(s, m) : m && (acceptedArtifact(s, m) || acceptedRelay(s, m));
+  const answerObservation = (m) => m?.item?.observation_id || m?.id;
+  const selectedAnswerRecord = (s, id) => s?.entries.get(id) || s?.facts.find((f) => f.item.observation_id === id && productAcceptedAnswer(s, f));
   const acceptedArtifacts = (s) => Data.uniqueRows([...s.entries.values()].filter((e) => !e.replayOf && acceptedArtifact(s, e)), (e) => e.subject.answer_reference).sort((a, b) => b.ordinal - a.ordinal);
   const timeKindWords = (e) => t(e.timeKind === 'TASK_ADMISSION' ? 'Task admission time' : e.timeKind === 'PRODUCT_ACCEPTED_AT' ? 'Answer acceptance time' : e.timeKind === 'BRIDGE_RECEIVED' ? 'bridge receipt time' : 'time kind not declared');
   function identityNote(e) {
@@ -362,23 +374,27 @@ const LiveTeam = (() => {
   const sourceRows = (e) => [[acceptedAnswer(e) && ['TASK_ADMISSION', 'PRODUCT_ACCEPTED_AT'].includes(e.timeKind) ? timeKindWords(e) : t('Received'), html`${clock(e.at)} <span class="muted">· ${timeKindWords(e)}</span>`], [t('Channel'), t(CHANNELS[e.channel] || 'input channel not declared')], [t('Observation'), html`<span class="mono">${short(e.id)}</span>`], [t('Declared event'), e.declaredEvent ? html`<span class="mono">${short(e.declaredEvent)}</span>` : t('not declared')]];
   /* The feed keeps a bounded excerpt. Only its selected accepted record asks the sealed
    * owner for the whole contribution; one selection is held, never another history cache. */
-  const answerBindings = (s, m) => ({observation_id: m.id, native_session_id: s.id, native_agent_id: m.actor, native_host: m.subject.native_host, role: m.role, submitted_by: m.subject.submitted_by, answer_reference: m.subject.answer_reference, bundle_reference: m.subject.bundle_reference, task_id: m.reference});
+  const answerBindings = (s, m) => {
+    if (m.item) return {observation_id: m.item.observation_id, record_kind: 'PRODUCT_OPERATION', ...Object.fromEntries(['agent_role', 'agent_vendor', 'agent_session', 'goal_id', 'answer_reference', 'bundle_reference', 'task_id'].map((key) => [key, m.item.payload.subject[key] ?? null])), source_kind: m.item.source_kind, source_id: m.item.source_id, authority: m.item.authority};
+    if (acceptedRelay(s, m)) return {observation_id: m.id, record_kind: 'PRODUCT_OPERATION', agent_role: m.subject.bundle_role, agent_vendor: m.subject.native_host, agent_session: s.id, goal_id: m.subject.goal_id || null, answer_reference: m.subject.answer_reference, bundle_reference: m.subject.bundle_reference, task_id: m.reference, source_kind: 'PRODUCT_OPERATION', authority: 'OPERATIONAL_ASSERTION'};
+    return {observation_id: m.id, native_session_id: s.id, native_agent_id: m.actor, native_host: m.subject.native_host, role: m.role, submitted_by: m.subject.submitted_by, answer_reference: m.subject.answer_reference, bundle_reference: m.subject.bundle_reference, task_id: m.reference};
+  };
   const answerEpoch = () => LiveActivity.state().epoch || X.epoch;
-  const sameAnswer = (detail, s, m) => s && m && acceptedArtifact(s, m) && Object.entries(answerBindings(s, m)).every(([key, value]) => detail.bindings[key] === value);
+  const sameAnswer = (detail, s, m) => s && m && detail.session === s.id && readableAnswer(s, m) && Object.entries(answerBindings(s, m)).every(([key, value]) => detail.bindings[key] === value);
   function selectedAnswer(detail) {
     const sel = selection();
-    if (app.page !== 'team' || detail !== S.answerDetail || detail.epoch !== answerEpoch() || sel.session !== detail.bindings.native_session_id || sel.event !== detail.bindings.observation_id) return false;
+    if (app.page !== 'team' || detail !== S.answerDetail || detail.epoch !== answerEpoch() || sel.session !== detail.session || sel.event !== detail.bindings.observation_id) return false;
     const s = scene().sessions.find((s) => s.id === sel.session);
-    return sameAnswer(detail, s, s?.entries.get(sel.event));
+    return sameAnswer(detail, s, selectedAnswerRecord(s, sel.event));
   }
   function acceptedDetail(s, m) {
-    if (!acceptedArtifact(s, m)) return '';
+    if (!readableAnswer(s, m)) return '';
     if (!S.answerDetail || S.answerDetail.epoch !== answerEpoch() || !sameAnswer(S.answerDetail, s, m)) {
-      const detail = {bindings: answerBindings(s, m), epoch: answerEpoch(), pending: true, answer: null, error: ''};
+      const detail = {session: s.id, bindings: answerBindings(s, m), epoch: answerEpoch(), pending: true, answer: null, error: ''};
       S.answerDetail = detail;
-      Data.readShared('/api/activity/external?' + new URLSearchParams({observation_id: m.id})).then((body) => {
+      Data.read('/api/activity/external?' + new URLSearchParams({observation_id: answerObservation(m)})).then((body) => {
         const answer = body.accepted_answer;
-        if (body.observation_id !== m.id || body.epoch !== detail.epoch || !['AVAILABLE', 'UNAVAILABLE'].includes(answer?.status) || (answer.status === 'AVAILABLE' && (!Object.entries(detail.bindings).every(([key, value]) => answer[key] === value) || !answer.contribution || typeof answer.contribution !== 'object' || Array.isArray(answer.contribution)))) throw new Error(t('The owner answered for another accepted answer.'));
+        if (body.observation_id !== answerObservation(m) || body.epoch !== detail.epoch || !['AVAILABLE', 'UNAVAILABLE'].includes(answer?.status) || (answer.status === 'AVAILABLE' && (!Object.entries(detail.bindings).every(([key, value]) => answer[key] === value) || !answer.contribution || typeof answer.contribution !== 'object' || Array.isArray(answer.contribution)))) throw new Error(t('The owner answered for another accepted answer.'));
         detail.answer = answer;
       }).catch((e) => { detail.error = e; }).finally(() => {
         detail.pending = false;
@@ -390,7 +406,8 @@ const LiveTeam = (() => {
     if (detail.error) return notRead(title, detail.error, t('The full accepted answer is unavailable.'));
     if (detail.answer.status !== 'AVAILABLE') return notRead(title, detail.answer.reason || t('Unavailable'), t('The full accepted answer is unavailable.'));
     const contribution = detail.answer.contribution;
-    return typeof contribution.text === 'string' ? html`${noteLine(title)}<p class="owner-text">${contribution.text}</p>${Array.isArray(contribution.references) && contribution.references.length ? codeRef(t('References'), contribution.references) : ''}` : codeRef(title, contribution);
+    const attribution = m.item || acceptedRelay(s, m) ? (detail.answer.recorded_agent?.basis === 'HOOK' ? codeRef(t('Stored native attribution'), detail.answer.recorded_agent) : noteLine(t('Native author not observed'))) : '';
+    return html`${attribution}${typeof contribution.text === 'string' ? html`${noteLine(title)}<p class="owner-text">${contribution.text}</p>${Array.isArray(contribution.references) && contribution.references.length ? codeRef(t('References'), contribution.references) : ''}` : codeRef(title, contribution)}`;
   }
   function messageRecord(s, m) {
     const words = m.truncated ? html`${stateLine('partial', {word: t('the first 500 characters')})} <span class="muted">· ${t('the full original is not held by this feed')}${m.reference ? '' : ' · ' + t('no reference declared for it')}</span>` : t('complete as declared');
@@ -645,20 +662,21 @@ const LiveTeam = (() => {
   }
   /* The product's observations as one line of the thread, folded as the Evidence page folds them
    * (a request and its return one unit; units in a row that repeat one line with their count). */
-  function productEvent(fold) {
-    const last = fold.units.at(-1), f = last.response || last.request, {title, tone, state} = factFacts(f), n = fold.units.length;
+  function productEvent(s, fold) {
+    const last = fold.units.find((u) => (u.response || u.request).item.observation_id === selection().event) || fold.units.at(-1), f = last.response || last.request, {title, tone, state} = factFacts(f), n = fold.units.length;
     const fresh = fold.units.some((u) => u.facts.some((x) => S.factNew.has(x.item.observation_id)));
-    return html`<li class="team-event team-product-event" data-fact="${short(f.item.observation_id)}"><span class="team-event-mark">${statusDot(tone)}</span><span class="team-event-line">${title} · ${codeWords(state)}${n > 1 ? html` · ${countText(n, '{n} time', '{n} times')}` : ''}${fresh ? html` <span class="team-unread">${t('New')}</span>` : ''}</span><span class="team-exchange-end">${spanTime(fold.units)}</span></li>`;
+    const accepted = productAcceptedAnswer(s, f), selected = accepted && selection().event === f.item.observation_id;
+    return html`<li class="team-event team-product-event" data-fact="${short(f.item.observation_id)}" id="team-event-${f.item.observation_id}"><span class="team-event-mark">${statusDot(tone)}</span><span class="team-event-line">${title} · ${codeWords(state)}${n > 1 ? html` · ${countText(n, '{n} time', '{n} times')}` : ''}${fresh ? html` <span class="team-unread">${t('New')}</span>` : ''}${accepted ? html` ${btn(t('Accepted answer'), 'team-event', f.item.observation_id, 'text-btn')}` : ''}${selected ? html`<div class="team-record-inline">${acceptedDetail(s, f)}</div>` : ''}</span><span class="team-exchange-end">${spanTime(fold.units)}</span></li>`;
   }
   // C4 (item 1): a line's real span -- its first unit to its last, the time alone where they are one
   const spanTime = (units) => { const from = (units[0].request || units[0].response).item.occurred_at, to = (units.at(-1).response || units.at(-1).request).item.occurred_at, a = clock(from), b = clock(to); return html`<time data-tip="${whenText(from)}${from !== to ? ' – ' + whenText(to) : ''}">${a === b ? a : html`${a} – ${b}`}</time>`; };
   /* Consecutive product lines between two exchanges are one counted line that opens in place, as the
    * hooks are (C4 item 1, law 140): what they were, how many, first to last. */
-  function productRun(folds) {
-    const key = 'product:' + folds[0].key, open = S.unfolded.has(key), units = folds.flatMap((f) => f.units);
+  function productRun(s, folds) {
+    const key = 'product:' + folds[0].key, units = folds.flatMap((f) => f.units), held = units.some((u) => (u.response || u.request).item.observation_id === selection().event), open = S.unfolded.has(key) || held;
     const titles = [...new Set(folds.map((f) => factFacts(f.units.at(-1).response || f.units.at(-1).request).title))];
     const line = html`<li class="team-event team-product-event team-product-run"><span class="team-event-mark">${icon('activity')}</span><span class="team-event-line">${btnAttrs(html`<span>${countText(units.length, '{n} product operation', '{n} product operations')} · ${titles.join(', ')}</span>${icon('chevron')}`, 'team-fold', key, 'text-btn team-hook-toggle', html`aria-expanded="${open}" data-fold-count="${units.length}"`)}</span><span class="team-exchange-end">${spanTime(units)}</span></li>`;
-    return html`${line}${open ? folds.map(productEvent) : ''}`;
+    return html`${line}${open ? folds.map((f) => productEvent(s, f)) : ''}`;
   }
   /* The thread's items (N5, law 125): the exchanges and the hooks in the store's order, each reply
    * under the exchange it names (one level: a reply to a reply sits under the same comment; the
@@ -693,15 +711,22 @@ const LiveTeam = (() => {
    * Participants): one chip a member, its mark and name; pressed, the thread shows its exchanges; its
    * recorded composition and latest contribution in its tip. */
   const PLURAL_KINDS = {assignment: ['{n} assignment', '{n} assignments'], question: ['{n} question', '{n} questions'], answer: ['{n} answer', '{n} answers'], objection: ['{n} objection', '{n} objections'], pm_response: ['{n} PM response', '{n} PM responses']};
-  const tokenWords = (u) => t('{i} in · {o} out · {r} cache read · {w} cache written', {i: count(u.input), o: count(u.output), r: count(u.cacheRead), w: count(u.cacheWrite)});
-  const usageWords = (pt) => [...pt.usage.values()].map((u) => `${u.model}${u.efforts.length ? ' (' + u.efforts.join(', ') + ')' : ''} · ${tokenWords(u)}`).join(' · ');
+  const usageNumber = (value) => /^(0|[1-9][0-9]*)$/.test(String(value)) && Number.isSafeInteger(Number(value)) ? Number(value) : null;
+  const usageCount = (value) => usageNumber(value) === null ? '' : count(usageNumber(value));
+  const usageMetadata = (u) => {
+    const source = t(u.source_kind === 'CODEX_SESSION_FILE' ? 'Codex session file' : u.source_kind === 'CLAUDE_CODE_SESSION_FILE' ? 'Claude Code session file' : 'Usage source not observed');
+    const at = u.sample_time_kind === 'LATEST_USAGE_RECORD_AT' && u.last_at && Number.isFinite(Date.parse(u.last_at)) ? t('sampled {at}', {at: whenText(u.last_at)}) : t('Sample time not observed');
+    return `${source} · ${at}`;
+  };
+  // ST7: each known count has its clause; unknown counts leave no label or separator.
+  const usageTokenWords = (u) => [
+    usageNumber(u.input_tokens) === null ? '' : t('{n} in', {n: usageCount(u.input_tokens)}),
+    usageNumber(u.output_tokens) === null ? '' : t('{n} out', {n: usageCount(u.output_tokens)}),
+    usageNumber(u.cache_read_tokens) === null ? '' : t('{n} cache read', {n: usageCount(u.cache_read_tokens)}),
+    usageNumber(u.cache_write_tokens) === null ? '' : t('{n} cache written', {n: usageCount(u.cache_write_tokens)})
+  ].filter(Boolean).join(' · ');
+  const usageWords = (pt) => [...pt.usage.values()].map((u) => [`${u.model}${u.efforts.length ? ' (' + u.efforts.join(', ') + ')' : ''}`, usageTokenWords({input_tokens: u.input, output_tokens: u.output, cache_read_tokens: u.cacheRead, cache_write_tokens: u.cacheWrite})].filter(Boolean).join(' · ')).join(' · ');
   const pinWords = (pt) => pt.pins ? [pt.pins.model || pt.pins.effort ? `${t('card')} ${[pt.pins.model, pt.pins.effort].filter(Boolean).join(' ')}` : '', pt.pins.host ? `${t('host')} ${pt.pins.host}` : ''].filter(Boolean).join(' · ') : '';
-  /* U31: a session's totals by model: each member's latest reading of each model, summed; the session's own so far. */
-  function sessionUsage(s) {
-    const by = new Map();
-    for (const pt of s.participants.values()) for (const u of pt.usage.values()) { const held = by.get(u.model) || {model: u.model, input: 0, output: 0, cacheRead: 0, cacheWrite: 0}; for (const k of ['input', 'output', 'cacheRead', 'cacheWrite']) held[k] += u[k]; by.set(u.model, held); }
-    return [...by.values()].sort((a, b) => a.model.localeCompare(b.model));
-  }
   function memberChips(s, actor, all) {
     const members = [...s.participants.values()].sort((a, b) => (isLead(b, s) ? 1 : 0) - (isLead(a, s) ? 1 : 0) || a.last - b.last);
     if (members.length < 2) return '';
@@ -807,6 +832,7 @@ const LiveTeam = (() => {
     const unread = entries.filter((e) => S.incoming.has(e.id)).length;
     const unknownActor = actor && !s.participants.has(actor);
     const display = threadDisplay(s, actor), keep = KEEPS[display.show], tf = threadFacts(s, stated);
+    const chosenProduct = !actor && !keep && tf.inThread.some((f) => f.item.observation_id === chosenId && productAcceptedAnswer(s, f));
     const items = threadItems(s, entries, actor, tf.inThread).filter((it) => !keep || (it.entry?.kind === 'message' && [it.entry, ...it.replies].some(keep))), shown = items.slice(-S.visible);
     // the path says Conversation (F3): the head counts what it holds; its tools -- the members, mark seen, the Display (C3)
     const held = keep ? items.reduce((n, it) => n + 1 + it.replies.length, 0) : entries.length;
@@ -826,10 +852,10 @@ const LiveTeam = (() => {
       else if (it.fold && last?.folds) last.folds.push(it.fold);
       else runs.push(hook ? {hooks: [it.entry]} : it.fold ? {folds: [it.fold]} : it);
     }
-    const line = (it) => it.hooks ? (it.hooks.length > 1 ? hookRun(s, it.hooks, chosen) : hookEvent(s, it.hooks[0], chosen?.id === it.hooks[0].id)) : it.folds ? (it.folds.length > 1 ? productRun(it.folds) : productEvent(it.folds[0])) : exchange(s, it.entry, chosen?.id === it.entry.id, it.replies, chosen);
+    const line = (it) => it.hooks ? (it.hooks.length > 1 ? hookRun(s, it.hooks, chosen) : hookEvent(s, it.hooks[0], chosen?.id === it.hooks[0].id)) : it.folds ? (it.folds.length > 1 ? productRun(s, it.folds) : productEvent(s, it.folds[0])) : exchange(s, it.entry, chosen?.id === it.entry.id, it.replies, chosen);
     const empty = keep ? t(display.show === 'awaiting' ? 'No objection awaits the Main PM.' : 'No question or objection is recorded.') : t('Nothing retained for this selection.');
     const thread = shown.length ? html`<ol class="team-thread${display.density === 'compact' ? ' density-compact' : ''}" id="teamThread" role="log" aria-live="off">${runs.map(line)}</ol>` : emptyState(empty);
-    const missing = chosenId && !chosen ? noteLine(t('Selected exchange not retained'), t('Selected exchange is not retained for this selection.'), 'neutral') : '';
+    const missing = chosenId && !chosen && !chosenProduct ? noteLine(t('Selected exchange not retained'), t('Selected exchange is not retained for this selection.'), 'neutral') : '';
     return html`${unknownActor ? noteLine(t('Selected participant not retained'), actor, 'neutral') : ''}${missing}${questionCard(s, stated, questionOf(s, stated))}
       <section class="team-conversation" aria-label="${t('Conversation')}">${head}${filter}${actor ? '' : outsideLine(s, tf)}${items.length > S.visible ? btn(t('Show earlier exchanges'), 'team-more', '', 'button compact') : ''}${pill}${thread}</section>
       ${s.unknownKinds.length ? noteLine(t('Unknown event kinds in this session'), s.unknownKinds.map(({item}) => `${item.payload.event_kind} (${item.payload.producer_id})`).join(', '), 'neutral') : ''}`;
@@ -926,7 +952,7 @@ const LiveTeam = (() => {
     // law 123: a session's page with no session chosen opens Sessions, the Team's Home
     if (view !== 'team-sessions' && !sel.session && sessions.length) { app.page = 'team-sessions'; replaceHash({page: 'team-sessions'}); return section(); }
     const chosen = sel.session ? sessions.find((s) => s.id === sel.session) : null;
-    if (S.answerDetail && (view !== 'team' || S.answerDetail.epoch !== answerEpoch() || !sameAnswer(S.answerDetail, chosen, chosen?.entries.get(sel.event)))) S.answerDetail = null;
+    if (S.answerDetail && (view !== 'team' || S.answerDetail.epoch !== answerEpoch() || !sameAnswer(S.answerDetail, chosen, selectedAnswerRecord(chosen, sel.event)))) S.answerDetail = null;
     // What this page shows is the reader's retained selection: a global entry (the navigation
     // link, Quick Open, the Overview) returns to it until the reader chooses otherwise. A named
     // session the window no longer holds stays retained -- and visibly unavailable -- rather
@@ -939,6 +965,7 @@ const LiveTeam = (() => {
       : !chosen ? noteLine(t('Selected session not retained'), html`<span class="mono">${sessionLabel(sel.session)}</span> ${t('is not in the retained activity window (reset, gap or retention).')}`, 'neutral', btn(t('Choose a session'), 'team-select', '', 'button compact'))
       : view === 'team-evidence' ? evidenceView(chosen) : view === 'team-participants' ? participantsView(chosen) : view === 'team-outputs' ? outputsView(chosen) : sessionView(chosen, sel.actor);
     const state = LiveActivity.state();
+    const usage = LiveActivity.nativeUsageState?.(), usageFailure = usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : '';
     // The feed's own condition, said once at the top: current, not current, or unreachable.
     const feed = state.error ? ['unreachable', t('Feed unreachable')] : state.stale || ['RESET', 'UNAVAILABLE'].includes(state.disposition) ? ['stale', t('Feed not current')] : ['live', t('Live feed')];
     // the conversation is the session's object page: its research question is the title that takes
@@ -952,7 +979,7 @@ const LiveTeam = (() => {
     const marks = html`<span class="team-live" data-feed="${feed[0]}"><i class="live-dot" aria-hidden="true"></i><span class="state-word">${feed[1]}</span></span>${conversation && awaiting ? html`<span class="team-objection-status">${btn(stateLine('review_pending', {word: countText(awaiting, '{n} objection awaiting the Main PM', '{n} objections awaiting the Main PM'), next: ''}), 'team-reveal', pending[0].id, 'text-btn')}</span>` : ''}`;
     const view_ = html`<section class="team-scene" id="teamScene" data-view="${view}">${objectHead(conversation ? titleOf(conversation) : t(ROUTES[view]?.[1] || ROUTES.team[1]), html`<p class="lede">${t(LEDES[view] || LEDES.team)}${INFO[view] ? ' ' + t(INFO[view]) : ''}</p>`, '', marks, [], {cls: 'team-head', headingId: 'teamSceneHeading', object: Boolean(conversation), facts: conversation ? sessionFacts(chosen, stated, conversation) : [], id: conversation ? chosen.id : '', scope: chosen && view !== 'team-sessions' ? {name: titleOf(questionOf(chosen, stated)), href: routeUrl('team', {team: chosen.id, actor: '', event: ''}), self: view === 'team'} : null})}
       ${state.error || state.notice || state.stale || ['RESET', 'UNAVAILABLE'].includes(state.disposition) ? noteLine(t('Activity visibility limited'), state.error || state.notice || t('Retained observations are not current host state.'), 'warning') : ''}
-      ${readback}${body}${unknown.length ? noteLine(t('Events outside any declared session'), countText(unknown.length, '{n} external event without a native session id or with an unretained payload is listed in the activity feed, not here.', '{n} external events without a native session id or with an unretained payload are listed in the activity feed, not here.'), 'neutral') : ''}</section>`;
+      ${readback}${usageFailure}${body}${unknown.length ? noteLine(t('Events outside any declared session'), countText(unknown.length, '{n} external event without a native session id or with an unretained payload is listed in the activity feed, not here.', '{n} external events without a native session id or with an unretained payload are listed in the activity feed, not here.'), 'neutral') : ''}</section>`;
     // An arrival flashes once, on the view that shows it: the workroom consumes the exchanges'
     // flash, the evidence view the facts'; the other views leave both for their first sight.
     if (view === 'team-evidence') S.factFlash.clear(); else if (view !== 'team-sessions') S.flash.clear();
@@ -979,7 +1006,7 @@ const LiveTeam = (() => {
   /* U51 (the user, 2026-09-30): the session's members, one row a member and model -- the role it declared (the lead
    * marked), its exchanges by kind and its latest one; each model it ran with its efforts and its tokens (its latest
    * reading by model: never a sum of readings, never a goal's or a Task's), a mark where a reading differs from its
-   * card, the pins its hooks carry; the session's totals at the foot. A member's name opens its exchanges. */
+   * card, the pins its hooks carry. U196 keeps members separate without non-overlap evidence. A member's name opens its exchanges. */
   function participantsView(s) {
     const all = entriesOf(s).filter((e) => !e.replayOf);
     const members = [...s.participants.values()].sort((a, b) => (isLead(b, s) ? 1 : 0) - (isLead(a, s) ? 1 : 0) || a.last - b.last);
@@ -996,14 +1023,11 @@ const LiveTeam = (() => {
       return usage.map((u, i) => {
         const differs = u.pinDiffers.length ? html` <span class="team-differs" data-tip="${t('differs from its card: {what}', {what: u.pinDiffers.map((x) => codeWords(x)).join(', ')})}">${icon('warning')}</span>` : '';
         const model = html`<span class="mono">${u.model}</span>`;
-        return tr([i ? '' : member, i ? '' : exchanges, html`${pins ? hint(model, pins) : model}${u.efforts.length ? html`<span class="sub-cell">${u.efforts.join(', ')}</span>` : ''}${differs}`, count(u.input), count(u.output), count(u.cacheRead), count(u.cacheWrite)]);
+        return tr([i ? '' : member, i ? '' : exchanges, html`${pins ? hint(model, pins) : model}${u.efforts.length ? html`<span class="sub-cell">${u.efforts.join(', ')}</span>` : ''}${differs}<span class="sub-cell">${usageMetadata(u)}</span>`, usageCount(u.input), usageCount(u.output), usageCount(u.cacheRead), usageCount(u.cacheWrite)]);
       });
     });
-    const total = sessionUsage(s).reduce((a, u) => ({input: a.input + u.input, output: a.output + u.output, cacheRead: a.cacheRead + u.cacheRead, cacheWrite: a.cacheWrite + u.cacheWrite}), {input: 0, output: 0, cacheRead: 0, cacheWrite: 0});
-    const read = members.some((pt) => pt.usage.size);
-    const unread = members.filter((pt) => !pt.usage.size).length; // the total is what was recorded: a member not read is named, never a zero (the user's phase 6 reading)
     const {shown, page, pages} = pageOf(rows, S.participantsPage);
-    return html`${table([{label: t('Agent'), type: 'text'}, {label: t('Activities'), type: 'text', absorb: true}, {label: t('Model'), type: 'text'}, {label: hint(t('Input'), t('All usage values are tokens. Input excludes cache reads and cache writes.')), type: 'num'}, {label: t('Output'), type: 'num'}, {label: t('Cache read'), type: 'num'}, {label: t('Cache written'), type: 'num'}], shown, '', {report: true, countLine: false, classes: 'compact team-participants', ...(read ? {foot: [html`${t('Recorded tokens so far')}${unread ? html`<span class="sub-cell">${countText(unread, '{n} member\'s usage not read', '{n} members\' usage not read')}</span>` : ''}`, '', '', count(total.input), count(total.output), count(total.cacheRead), count(total.cacheWrite)]} : {})})}${pager({page, pages, prev: ['team-participants-page', 'prev'], next: ['team-participants-page', 'next']})}`;
+    return html`${table([{label: t('Agent'), type: 'text'}, {label: t('Activities'), type: 'text', absorb: true}, {label: t('Model'), type: 'text'}, {label: hint(t('Input'), t('All usage values are tokens. Input excludes cache reads and cache writes.')), type: 'num'}, {label: t('Output'), type: 'num'}, {label: t('Cache read'), type: 'num'}, {label: t('Cache written'), type: 'num'}], shown, '', {report: true, countLine: false, classes: 'compact team-participants'})}${pager({page, pages, prev: ['team-participants-page', 'prev'], next: ['team-participants-page', 'next']})}`;
   }
   function openMember(actorId) { navigate('team', {team: selection().session || '', actor: actorId || '', event: ''}); }
   const turnParticipants = (way) => { S.participantsPage = Math.max(0, (S.participantsPage || 0) + (way === 'next' ? 1 : -1)); paint(); };
@@ -1082,7 +1106,7 @@ const LiveTeam = (() => {
   function showEvent(eventId) {
     const sessions = scene().sessions, sid = selection().session;
     const s = sid ? sessions.find((v) => v.id === sid) : sessions[0];
-    if (!s?.entries.has(eventId)) return;
+    if (!selectedAnswerRecord(s, eventId)) return;
     S.incoming.delete(eventId); replaceHash({team: s.id, event: selection().event === eventId ? '' : eventId}); paint();
   }
   /* Instant, not the page's smooth scroll: a repaint's own scroll restoration would cancel the
@@ -1125,7 +1149,8 @@ const LiveTeam = (() => {
   }
   function refresh() {
     if (!onTeam()) { S.answerDetail = null; return; }
-    const a = LiveActivity.state(), key = [a.epoch, a.cursor, a.watermark, a.error, a.stale, a.disposition].join('|');
+    const a = LiveActivity.state(), usage = LiveActivity.nativeUsageState?.();
+    const key = [a.epoch, a.cursor, a.watermark, a.error, a.stale, a.disposition, usage?.status, usage?.reason].join('|');
     if (key !== S.paintKey) { S.paintKey = key; paint(); }
   }
   /* The explicit entry from an activity row, wherever that row lives: the Task Center drawer
@@ -1178,6 +1203,6 @@ const LiveTeam = (() => {
     // U54's 产出 carries no count: known only once both its reads answer, it would appear on one tab and move the others
     return s ? {exchanges: entriesOf(s).filter((e) => !e.replayOf).length, participants: s.participants.size, observations: s.facts.length} : {};
   }
-  return {pages: PAGES_SET, sessionLabel, roleName, recipientName, section, scene, select, counts, openMember, turnParticipants, turnOutputs, outputsOlder, outputsRead, leaveOutputs, setFactKind, readOlder, toggleWords, showActor, showEvent, revealExchange, more, toggleReplies, toggleFold, markSeen, arrivals, refresh, open, resolve, verify, sessionOf, participantState, classify, qualify, productReferences, summary, recordOf, sessionsNaming, questionSource, chooseQuestion, routeContext, runs, retained: () => S.retained, resolved: () => S.resolved};
+  return {pages: PAGES_SET, usageCount, usageTokenWords, usageMetadata, sessionLabel, roleName, recipientName, section, scene, select, counts, openMember, turnParticipants, turnOutputs, outputsOlder, outputsRead, leaveOutputs, setFactKind, readOlder, toggleWords, showActor, showEvent, revealExchange, more, toggleReplies, toggleFold, markSeen, arrivals, refresh, open, resolve, verify, sessionOf, participantState, classify, qualify, productReferences, summary, recordOf, sessionsNaming, questionSource, chooseQuestion, routeContext, runs, retained: () => S.retained, resolved: () => S.resolved};
 })();
 for (const page of LiveTeam.pages) PAGES[page] = LiveTeam.section;

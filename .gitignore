@@ -77,6 +77,7 @@ Thumbs.db
 .codex/native-sequence-*/
 .venv-gpu/
 .claude/settings.local.json
+.claude/alphalattice-project.local.json
 
 # Installed product browser dependencies and private browser evidence
 /third_party/playwright/node_modules/

@@ -193,6 +193,8 @@ class WorkspaceActivity:
     instance: str
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
     storage_cap_reader: Callable[[], int] | None = None
+    native_usage_state: Callable[[], dict[str, object]] | None = None
+    """Optional Host-owned usage health read; only its safe status and reason are exposed."""
     store_failure: str | None = field(default=None, init=False)
     """The typed code of the storage failure that left this observer UNAVAILABLE."""
 
@@ -336,6 +338,49 @@ class WorkspaceActivity:
         """
 
         def record() -> None:
+            subject = {**span.subject, **safe_references(returned_subject(body))}
+            conversation = body.get("conversation")
+            receipt = body.get("receipt")
+            if (
+                span.operation == "AGENT_ANSWER_SUBMIT"
+                and body.get("status") in {"ACCEPTED", "DONE"}
+                and isinstance(conversation, dict)
+                and conversation.get("status") == "DELIVERED"
+                and isinstance(receipt, dict)
+                and conversation.get("task_id") == receipt.get("task_id") == body.get("task_id")
+                and conversation.get("answer_reference")
+                == receipt.get("answer_reference")
+                == body.get("answer_reference")
+                and conversation.get("bundle_reference") == body.get("bundle_reference")
+                and isinstance(conversation.get("observation_id"), str)
+                and re.fullmatch(r"[0-9a-f]{64}", conversation["observation_id"]) is not None
+                and conversation.get("original_session_host") in {"codex", "claude-code"}
+                and isinstance(conversation.get("original_session_id"), str)
+                and _REFERENCE_VALUE.fullmatch(conversation["original_session_id"]) is not None
+                and "original_goal_id" in conversation
+            ):
+                original_goal = conversation["original_goal_id"]
+                if original_goal is not None and str(UUID(str(original_goal))) != original_goal:
+                    raise ValueError("activity.accepted_answer_binding_mismatch")
+                subject.update(
+                    agent_vendor=conversation["original_session_host"],
+                    agent_session=conversation["original_session_id"],
+                    goal_id=original_goal,
+                    conversation_original_goal_id=original_goal,
+                )
+                # Exact retries reuse the first actual return correlation. They remain
+                # ordinary recorded returns without adding a second purported first receipt.
+                linked = (
+                    None
+                    if self._ledger is None
+                    else self._ledger.unique_correlated_observation(
+                        task_run_id(str(body["task_id"])),
+                        PRODUCT_OPERATION_SCHEMA,
+                        conversation["observation_id"],
+                    )
+                )
+                if linked is None:
+                    subject["conversation_observation_id"] = conversation["observation_id"]
             self._record_operation(
                 span,
                 phase="RETURNED",
@@ -343,7 +388,7 @@ class WorkspaceActivity:
                 failure_code=_persisted_code(body.get("failure_code")),
                 task_id=returned_task_id(body),
                 lifecycle=safe_enum_token(body.get("lifecycle")),
-                subject={**span.subject, **safe_references(returned_subject(body))},
+                subject=subject,
                 read=next_read(span.operation, body),
             )
 
@@ -456,6 +501,8 @@ class WorkspaceActivity:
         if read is not None:
             payload["next_read"] = read
         correlations = {span.operation_ref}
+        if subject is not None and isinstance(subject.get("conversation_observation_id"), str):
+            correlations.add(subject["conversation_observation_id"])
         run_id = None
         if task_id is not None:
             run_id = task_run_id(task_id)
@@ -756,7 +803,7 @@ class WorkspaceActivity:
         }
 
     def _accepted_answer_detail(self, observation_id: str) -> dict[str, object]:
-        """Open one exact retained accepted event and ask its sealed-answer owner."""
+        """Open one selected native event or owner return and verify its sealed answer."""
         started = perf_counter()
         ledger, operations = self._ledger, self._operations
         answer: dict[str, object] = {
@@ -784,9 +831,44 @@ class WorkspaceActivity:
                     and operations is not None
                     and operations.review is not None
                 ):
+                    if subject.get("authorship_basis") == "NOT_OBSERVED":
+                        answer, checked = self._product_accepted_event_detail(
+                            observation_id, subject
+                        )
+                        observations += checked
+                    else:
+                        answer = {
+                            **operations.review.read_accepted_answer(subject),
+                            "observation_id": observation_id,
+                        }
+                elif (
+                    envelope.schema_kind == PRODUCT_OPERATION_SCHEMA
+                    and envelope.schema_version == 1
+                    and envelope.source_kind == OPERATION_SOURCE_KIND
+                    and (
+                        envelope.source_id == self.source_id
+                        or re.fullmatch(r"local-web:[0-9a-f]{32}", envelope.source_id) is not None
+                    )
+                    and envelope.authority is ObservationAuthority.OPERATIONAL_ASSERTION
+                    and envelope.availability is ObservationAvailability.AVAILABLE
+                    and payload.get("operation") == "AGENT_ANSWER_SUBMIT"
+                    and payload.get("phase") == "RETURNED"
+                    and payload.get("status") in {"ACCEPTED", "DONE"}
+                    and isinstance(subject, dict)
+                    and isinstance(subject.get("task_id"), str)
+                    and envelope.task_id == payload.get("task_id") == subject["task_id"]
+                    and envelope.run_id == task_run_id(subject["task_id"])
+                    and operations is not None
+                    and operations.review is not None
+                ):
                     answer = {
-                        **operations.review.read_accepted_answer(subject),
+                        **operations.review.read_product_accepted_answer(
+                            subject, verdict=payload["status"]
+                        ),
                         "observation_id": observation_id,
+                        "source_kind": envelope.source_kind,
+                        "source_id": envelope.source_id,
+                        "authority": envelope.authority.value,
                     }
         return {
             "workspace_id": self.workspace_id,
@@ -799,6 +881,76 @@ class WorkspaceActivity:
                 "elapsed_ms": int((perf_counter() - started) * 1000),
             },
         }
+
+    def _product_accepted_event_detail(
+        self, observation_id: str, subject: Mapping[str, object]
+    ) -> tuple[dict[str, object], int]:
+        """Read a default relay only through its actual correlated owner-return envelope."""
+        unavailable: dict[str, object] = {
+            "status": "UNAVAILABLE",
+            "reason": "activity.accepted_answer_unavailable",
+            "observation_id": observation_id,
+            "missing": ["accepted_operation_return"],
+        }
+        ledger, operations = self._ledger, self._operations
+        if ledger is None or operations is None or operations.review is None:
+            return unavailable, 0
+        try:
+            task = str(UUID(str(subject.get("reference"))))
+            if (
+                task != subject.get("reference")
+                or subject.get("native_agent_id") != subject.get("native_session_id")
+                or subject.get("role") != "research_lead"
+                or subject.get("submitted_by") != subject.get("native_session_id")
+            ):
+                return {**unavailable, "reason": "activity.accepted_answer_binding_mismatch"}, 0
+            receipt = ledger.unique_correlated_observation(
+                task_run_id(task), PRODUCT_OPERATION_SCHEMA, observation_id
+            )
+        except (ObservationStorageError, ValueError):
+            return unavailable, 0
+        if receipt is None:
+            return unavailable, 0
+        payload = receipt.inline_safe_payload or {}
+        accepted = payload.get("subject")
+        if not (
+            receipt.schema_kind == PRODUCT_OPERATION_SCHEMA
+            and receipt.schema_version == 1
+            and receipt.source_kind == OPERATION_SOURCE_KIND
+            and (
+                receipt.source_id == self.source_id
+                or re.fullmatch(r"local-web:[0-9a-f]{32}", receipt.source_id) is not None
+            )
+            and receipt.authority is ObservationAuthority.OPERATIONAL_ASSERTION
+            and receipt.availability is ObservationAvailability.AVAILABLE
+            and observation_id in receipt.correlation_ids
+            and receipt.task_id == payload.get("task_id") == task
+            and receipt.run_id == task_run_id(task)
+            and payload.get("operation") == "AGENT_ANSWER_SUBMIT"
+            and payload.get("phase") == "RETURNED"
+            and payload.get("status") in {"ACCEPTED", "DONE"}
+            and isinstance(accepted, dict)
+            and accepted.get("conversation_observation_id") == observation_id
+            and accepted.get("task_id") == task
+            and accepted.get("answer_reference") == subject.get("answer_reference")
+            and accepted.get("bundle_reference") == subject.get("bundle_reference")
+            and accepted.get("agent_role") == subject.get("bundle_role")
+            and accepted.get("agent_vendor") == subject.get("native_host")
+            and accepted.get("agent_session") == subject.get("native_session_id")
+            and "conversation_original_goal_id" in accepted
+            and accepted["conversation_original_goal_id"]
+            == accepted.get("goal_id")
+            == subject.get("goal_id")
+        ):
+            return {**unavailable, "reason": "activity.accepted_answer_binding_mismatch"}, 1
+        return {
+            **operations.review.read_product_accepted_answer(accepted, verdict=payload["status"]),
+            "observation_id": observation_id,
+            "receipt_observation_id": receipt.observation_id,
+            "source_kind": receipt.source_kind,
+            "source_id": receipt.source_id,
+            "authority": receipt.authority.value,
+        }, 1
 
     def _task_projections(self, referenced: set[str]) -> dict[str, object]:
         dispatcher, registry = self._dispatcher, self._registry
@@ -853,7 +1005,7 @@ class WorkspaceActivity:
             recording = "FAILING" if recording_failed else "OK"
         else:
             status, recording = "OK", "OK"
-        return {
+        state: dict[str, object] = {
             "status": status,
             "recording": recording,
             "appends": appends,
@@ -868,6 +1020,29 @@ class WorkspaceActivity:
             "store_failure": self.store_failure,
             "claim": "OBSERVER_STATE_NOT_EXECUTION_STATE",
         }
+        if self.native_usage_state is not None:
+            try:
+                usage = self.native_usage_state()
+                usage_status = safe_enum_token(usage.get("status"))
+                if usage_status not in {"NOT_BOUND", "OFF", "OBSERVING", "STOPPED", "UNAVAILABLE"}:
+                    usage_status = "UNAVAILABLE"
+                state["native_usage"] = {
+                    "status": usage_status,
+                    "reason": _persisted_code(usage.get("reason")),
+                }
+            except Exception:
+                state["native_usage"] = {
+                    "status": "UNAVAILABLE",
+                    "reason": "activity.observer_failed",
+                }
+            usage_state = cast(dict[str, object], state["native_usage"])
+            reason = usage_state.get("reason")
+            if isinstance(reason, str):
+                words = refusal_words(reason)
+                usage_state.update(
+                    {key: words[key] for key in ("detail", "next_action") if key in words}
+                )
+        return state
 
     # ------------------------------------------------------------- internals
 

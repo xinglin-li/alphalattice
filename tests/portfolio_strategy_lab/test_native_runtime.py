@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import errno
 import json
+import shutil
 import tomllib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,21 +14,28 @@ import pytest
 from alphalattice.interface.local_application.native_bridge import (
     JUDGMENT_ROLES,
     NativeResearchBinding,
+    role_pin,
 )
 from alphalattice.interface.local_application.native_runtime import (
     MAX_CHAIN_CANDIDATES,
     definition_digest,
+    native_proof_readiness,
     readiness,
     retained_history,
     runtime_definitions,
     validate_runtime_definitions,
+)
+from alphalattice.interface.local_application.native_setup import (
+    bind_session,
+    declare_project,
+    native_proof_hooks,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
 GOAL = "00000000-0000-0000-0000-000000000001"
 
 
-def _project(tmp_path, host="codex"):
+def _project(tmp_path, host="codex", *, native_proof=True):
     project = tmp_path / "project"
     workspace = project / "workspace"
     workspace.mkdir(parents=True)
@@ -34,7 +43,98 @@ def _project(tmp_path, host="codex"):
     declaration = project / relative
     declaration.parent.mkdir()
     declaration.write_bytes((ROOT / relative).read_bytes())
+    declare_project(project, host)
+    if native_proof:
+        hooks = native_proof_hooks(project)
+        if host == "claude-code":
+            settings = json.loads(declaration.read_text())
+            settings["hooks"] = hooks
+            declaration.write_text(json.dumps(settings), encoding="utf-8")
+        else:
+            with declaration.open("a", encoding="utf-8") as stream:
+                for event, groups in hooks.items():
+                    hook = groups[0]["hooks"][0]
+                    stream.write(
+                        f'\n[[hooks.{event}]]\nmatcher = "^alphalattice_.*$"\n'
+                        f'[[hooks.{event}.hooks]]\ntype = "command"\n'
+                        f"command = {json.dumps(hook['command'])}\ntimeout = 5\n"
+                    )
     return project, workspace
+
+
+@pytest.mark.parametrize("hook_shape", ("none", "empty", "unrelated"))
+@pytest.mark.parametrize("role", tuple(JUDGMENT_ROLES))
+@pytest.mark.parametrize("host", ("codex", "claude-code"))
+def test_default_session_readiness_never_reads_optional_native_proof(
+    tmp_path, monkeypatch, host, role, hook_shape
+):
+    project, workspace = _project(tmp_path, host, native_proof=False)
+    directory = ".codex" if host == "codex" else ".claude"
+    declaration = project / directory / ("config.toml" if host == "codex" else "settings.json")
+    shutil.copytree(ROOT / directory / "agents", project / directory / "agents")
+    if host == "claude-code":
+        settings = json.loads(declaration.read_bytes())
+        if hook_shape != "none":
+            settings["hooks"] = (
+                {}
+                if hook_shape == "empty"
+                else {
+                    "SubagentStart": [
+                        {
+                            "matcher": "Explore",
+                            "hooks": [
+                                {"type": "command", "command": "fixture-unrelated", "timeout": 19}
+                            ],
+                        }
+                    ]
+                }
+            )
+        declaration.write_bytes(json.dumps(settings, sort_keys=True).encode())
+    elif hook_shape != "none":
+        declaration.write_bytes(
+            declaration.read_bytes()
+            + (
+                b"\n[hooks]\n"
+                if hook_shape == "empty"
+                else b'\n[[hooks.SubagentStart]]\nmatcher = "Explore"\n'
+                b'[[hooks.SubagentStart.hooks]]\ntype = "command"\n'
+                b'command = "fixture-unrelated"\ntimeout = 19\n'
+            )
+        )
+    configured = declaration.read_bytes()
+    card = JUDGMENT_ROLES[role][0]
+    bind_session(project, host=host, session_id="parent", workspace=workspace)
+    binding = NativeResearchBinding.read(project)
+    assert binding is not None and card in binding.roles
+    assert (binding.host, binding.session_id, binding.workspace) == (host, "parent", workspace)
+    assert role_pin(project, host, card)["role_model"]
+
+    def no_optional_read(*args, **kwargs):
+        pytest.fail("Default readiness requested optional native proof")
+
+    opening = Path.open
+
+    def no_hook_definition_read(path, *args, **kwargs):
+        if path == declaration:
+            pytest.fail("Default readiness opened native hook definitions")
+        return opening(path, *args, **kwargs)
+
+    with monkeypatch.context() as default_reads:
+        default_reads.setattr(Path, "open", no_hook_definition_read)
+        answer = readiness(
+            project, binding, None, requester=no_optional_read, read_external=no_optional_read
+        )
+    assert answer["status"] == "READY"
+    assert answer["failure_code"] is None
+    assert answer["missing"] == []
+    assert answer["foreground_attachment"] == "NOT_REQUESTED"
+    assert answer["native_proof"] == {
+        "status": "NOT_REQUESTED",
+        "host_trust": "NOT_CHECKED",
+        "trust_changed": False,
+    }
+    assert answer["research_nonblocking"] and not answer["trust_changed"]
+    assert declaration.read_bytes() == configured
 
 
 def _rows(project, role, *, host="codex"):
@@ -165,7 +265,7 @@ def test_every_role_retains_claims_but_owner_accepted_record_never_verifies_nati
         calls.append(observation_id)
         return _accepted_readback(role, host)
 
-    answer = readiness(
+    answer = native_proof_readiness(
         project, binding, rows, runtime=runtime, goal_id=GOAL, read_external=read_external
     )
     assert answer["status"] == "REFUSED"
@@ -255,7 +355,7 @@ def test_no_configuration_or_old_or_partial_record_can_establish_readiness(tmp_p
         rows = None
     elif defect == "retained_gap":
         rows.append({"ordinal": 7, "correlation_ids": ["parent"], "payload": None})
-    answer = readiness(
+    answer = native_proof_readiness(
         project,
         binding,
         rows,
@@ -346,7 +446,7 @@ def test_forged_complete_native_claims_need_exact_selected_sealed_answer_readbac
         calls.append(observation_id)
         return selected
 
-    answer = readiness(
+    answer = native_proof_readiness(
         project,
         binding,
         rows,
@@ -371,7 +471,7 @@ def test_accepted_candidate_budget_refuses_before_unbounded_selected_owner_reads
     binding, rows = _rows(project, "RISK")
     rows.extend([rows[3]] * MAX_CHAIN_CANDIDATES)
     calls = []
-    answer = readiness(
+    answer = native_proof_readiness(
         project,
         binding,
         rows,
@@ -447,6 +547,201 @@ def test_exact_runtime_requester_reads_definitions_and_loaded_session_without_wr
     assert answer["trust_changed"] is False
 
 
+def _runtime_requester(raw, cwd, *, thread_id="parent", status="idle", loaded=("parent",)):
+    """Labelled RPC transport fixtures; no live App, lifecycle or owner authority is supplied."""
+
+    def request(method, params):
+        if method == "hooks/list":
+            return raw
+        if method == "thread/read":
+            assert params == {"threadId": "parent", "includeTurns": False}
+            return {
+                "thread": {
+                    "id": thread_id,
+                    "cwd": str(cwd),
+                    "status": {"type": status},
+                    "title": "PRIVATE TITLE",
+                }
+            }
+        assert method == "thread/loaded/list"
+        return {"data": list(loaded), "nextCursor": None}
+
+    return request
+
+
+@pytest.mark.parametrize("trusted_scope", ("project", "workspace"))
+@pytest.mark.parametrize("parent_scope", ("project", "workspace"))
+@pytest.mark.parametrize("status", ("idle", "active"))
+def test_loaded_parent_requires_only_its_own_exact_definition_scope(
+    tmp_path, trusted_scope, parent_scope, status
+):
+    """A data-workspace query need not discover hooks loaded at the actual parent's cwd."""
+    project, workspace = _project(tmp_path)
+    scopes = {"project": project, "workspace": workspace}
+    raw = _hooks_response(project, workspace)
+    empty_index = 1 if trusted_scope == "project" else 0
+    raw["data"][empty_index]["hooks"] = []
+    conservative = validate_runtime_definitions(raw, project=project, workspace=workspace)
+    assert conservative["status"] == "RUNTIME_HOOK_TRUST_UNPROVED"
+    assert conservative["definition_scope"] == "ALL_REQUESTED_CWDS"
+    assert conservative["required_cwd"] is None
+    answer = runtime_definitions(
+        project,
+        workspace,
+        "codex",
+        session_id="parent",
+        requester=_runtime_requester(raw, scopes[parent_scope], status=status),
+    )
+    assert answer["status"] == (
+        "RUNTIME_PROJECT_HOOKS_TRUSTED"
+        if trusted_scope == parent_scope
+        else "RUNTIME_HOOK_TRUST_UNPROVED"
+    )
+    assert answer["active_session_attachment"] == "PROVED"
+    assert answer["connection"] == "EXACT_RUNTIME_RPC"
+    assert answer["definition_scope"] == "REQUIRED_CWD"
+    assert answer["required_cwd"] == str(scopes[parent_scope].resolve())
+    assert {row["cwd"]: row["host_trust"] for row in answer["hooks"]} == {
+        str(scopes[trusted_scope].resolve()): "TRUSTED",
+        str(scopes["workspace" if trusted_scope == "project" else "project"].resolve()): "UNPROVED",
+    }
+    assert "PRIVATE" not in json.dumps(answer)
+    assert answer["trust_changed"] is False
+
+
+@pytest.mark.parametrize("defect", ("other_id", "other_cwd", "not_loaded", "not_active"))
+def test_required_definition_scope_is_not_selected_before_loaded_parent_admission(tmp_path, defect):
+    """A readable thread alone cannot narrow the conservative definition guard."""
+    project, workspace = _project(tmp_path)
+    raw = _hooks_response(project, workspace)
+    raw["data"][1]["hooks"] = []
+    answer = runtime_definitions(
+        project,
+        workspace,
+        "codex",
+        session_id="parent",
+        requester=_runtime_requester(
+            raw,
+            tmp_path / "other" if defect == "other_cwd" else project,
+            thread_id="other" if defect == "other_id" else "parent",
+            status="notLoaded" if defect == "not_active" else "idle",
+            loaded=() if defect == "not_loaded" else ("parent",),
+        ),
+    )
+    assert answer["status"] == "NOT_CHECKED" and answer["host_trust"] == "NOT_CHECKED"
+    assert answer["active_session_attachment"] == "NOT_PROVED"
+    assert answer["attachment_diagnostic"] == "EXACT_SESSION_NOT_LOADED_IN_PROJECT"
+    assert answer["definition_check"]["status"] == "RUNTIME_HOOK_TRUST_UNPROVED"
+    assert answer["definition_check"]["definition_scope"] == "ALL_REQUESTED_CWDS"
+    assert answer["definition_check"]["required_cwd"] is None
+    assert "PRIVATE" not in json.dumps(answer)
+    assert answer["trust_changed"] is False
+
+
+def test_managed_proxy_loaded_thread_does_not_select_actual_app_definition_scope(
+    tmp_path, monkeypatch
+):
+    """Even matching managed transport metadata does not admit an actual App requester."""
+    from alphalattice.interface.local_application import native_runtime
+
+    project, workspace = _project(tmp_path)
+    raw = _hooks_response(project, workspace)
+    raw["data"][1]["hooks"] = []
+    closed = []
+
+    class ManagedFixtureProxy:
+        def __init__(self, cwd):
+            assert cwd == project
+            self.request = _runtime_requester(raw, project)
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(native_runtime, "ManagedRuntimeRPC", ManagedFixtureProxy)
+    answer = runtime_definitions(project, workspace, "codex", session_id="parent")
+    assert answer["status"] == "NOT_CHECKED" and answer["host_trust"] == "NOT_CHECKED"
+    assert answer["active_session_attachment"] == "NOT_PROVED"
+    assert answer["connection"] == "MANAGED_CONTROL_RPC"
+    assert answer["attachment_diagnostic"] == "ACTIVE_APP_RPC_NOT_EXPOSED"
+    assert answer["definition_check"]["definition_scope"] == "ALL_REQUESTED_CWDS"
+    assert answer["definition_check"]["required_cwd"] is None
+    assert closed == [True] and answer["trust_changed"] is False
+    assert "PRIVATE" not in json.dumps(answer)
+
+
+@pytest.mark.parametrize(
+    "field, changed",
+    (
+        ("command", "PRIVATE COMMAND"),
+        ("timeoutSec", 6),
+        ("async", True),
+        ("isManaged", True),
+        ("handlerType", "prompt"),
+        ("key", "different"),
+        ("currentHash", "sha256:" + "b" * 64),
+        ("currentHash", "invalid"),
+        ("enabled", False),
+        ("trustStatus", "untrusted"),
+        ("sourcePath", "other_source"),
+    ),
+)
+def test_selected_scope_retains_every_exact_definition_check(tmp_path, field, changed):
+    """Selecting a cwd never lets hash trust override a mismatched actual definition."""
+    project, workspace = _project(tmp_path)
+    raw = _hooks_response(project, workspace)
+    expected = dict.fromkeys(("subagentStart", "subagentStop"), "sha256:" + "a" * 64)
+    assert (
+        validate_runtime_definitions(
+            raw,
+            project=project,
+            workspace=workspace,
+            required_cwd=workspace,
+            expected_hashes=expected,
+        )["status"]
+        == "RUNTIME_PROJECT_HOOKS_TRUSTED"
+    )
+    raw["data"][1]["hooks"][0][field] = (
+        str(tmp_path / "other.toml") if field == "sourcePath" else changed
+    )
+    answer = validate_runtime_definitions(
+        raw, project=project, workspace=workspace, required_cwd=workspace, expected_hashes=expected
+    )
+    assert answer["status"] == "RUNTIME_HOOK_TRUST_UNPROVED"
+    assert answer["host_trust"] == "UNPROVED"
+    assert answer["required_cwd"] == str(workspace.resolve())
+    assert answer["hooks"][0]["host_trust"] == "TRUSTED"
+    assert answer["hooks"][1]["host_trust"] == "UNPROVED"
+    assert "PRIVATE COMMAND" not in json.dumps(answer)
+    assert answer["trust_changed"] is False
+
+
+def test_unselected_hashes_do_not_replace_the_selected_exact_host_hashes(tmp_path):
+    """Hash aggregation follows the admitted scope; the direct default remains conservative."""
+    project, workspace = _project(tmp_path)
+    raw = _hooks_response(project, workspace)
+    for hook in raw["data"][1]["hooks"]:
+        hook["currentHash"] = "sha256:" + "b" * 64
+    assert validate_runtime_definitions(raw, project=project, workspace=workspace)["status"] == (
+        "RUNTIME_HOOK_TRUST_UNPROVED"
+    )
+    answer = runtime_definitions(
+        project,
+        workspace,
+        "codex",
+        session_id="parent",
+        requester=_runtime_requester(raw, project),
+    )
+    assert answer["status"] == "RUNTIME_PROJECT_HOOKS_TRUSTED"
+    assert answer["definition_hashes"] == dict.fromkeys(
+        ("subagentStart", "subagentStop"), "sha256:" + "a" * 64
+    )
+    assert answer["hooks"][1]["definition_hashes"] == dict.fromkeys(
+        ("subagentStart", "subagentStop"), "sha256:" + "b" * 64
+    )
+    assert answer["active_session_attachment"] == "PROVED"
+    assert answer["trust_changed"] is False
+
+
 def test_history_failure_and_pagination_cycle_are_unavailable_not_empty():
     assert retained_history(lambda **_: {"disposition": "UNAVAILABLE", "items": []})[0] is None
     calls = []
@@ -508,18 +803,26 @@ def test_original_host_declaration_links_never_establish_runtime_trust(tmp_path,
         )
     assert len(definition_digest(project, host)) == 64
     target_directory = tmp_path / "ordinary-target"
-    target_directory.mkdir()
     target = target_directory / declaration.name
-    target.write_bytes(declaration.read_bytes())
-    declaration.unlink()
+    if linked == "declaration":
+        target_directory.mkdir()
+        target.write_bytes(declaration.read_bytes())
+        declaration.unlink()
+        link, destination = declaration, target
+    else:
+        declaration.parent.rename(target_directory)
+        link, destination = declaration.parent, target_directory
     try:
-        if linked == "declaration":
-            declaration.symlink_to(target)
-        else:
-            declaration.parent.rmdir()
-            declaration.parent.symlink_to(target_directory, target_is_directory=True)
-    except (OSError, NotImplementedError):
-        pytest.skip("This platform cannot create this bounded symlink fixture.")
+        link.symlink_to(destination, target_is_directory=linked == "host_directory")
+    except (OSError, NotImplementedError) as error:
+        if (
+            isinstance(error, OSError)
+            and error.errno not in {errno.EPERM, errno.EACCES, errno.ENOSYS, errno.ENOTSUP}
+            and getattr(error, "winerror", None) not in {50, 1314}
+        ):
+            raise
+        pytest.skip(f"This platform cannot create this bounded symlink fixture: {error}")
+    assert link.is_symlink()
     with pytest.raises(ValueError, match=r"native_hook\.definition_unreadable"):
         definition_digest(project, host)
     if raw is not None:
@@ -545,7 +848,7 @@ def test_missing_local_declarations_are_a_named_missing_link(tmp_path):
     project, _ = _project(tmp_path)
     binding, rows = _rows(project, "RISK")
     (project / ".codex/config.toml").unlink()
-    answer = readiness(project, binding, rows, runtime={"status": "NOT_CHECKED"})
+    answer = native_proof_readiness(project, binding, rows, runtime={"status": "NOT_CHECKED"})
     assert answer["status"] == "REFUSED"
     assert "local_lifecycle_definitions" in answer["missing"]
     assert answer["local_definition_digest"] is None

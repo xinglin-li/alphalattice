@@ -528,18 +528,26 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   // that differs; a decision note reads as one; a reply names the assignment it answers (reply_to)
   c.link=(label,pg,cls,extra)=>`LINK(${pg} ${JSON.stringify(extra||{})})${label}`; // the goals' links, as the builder takes them
   const S9='sess-parent-9',G9='99999999-9999-4999-8999-999999999999';
-  const usage=(agent,role,counts)=>external('NATIVE_AGENT_USAGE',{native_session_id:S9,native_agent_id:agent,role,input_channel:'CODEX_SESSION_FILE',model:'gpt-6',efforts:'high',pin_differs:'effort',
-    responses:String(counts[0]),input_tokens:String(counts[1]),cache_read_tokens:String(counts[2]),cache_write_tokens:String(counts[3]),output_tokens:String(counts[4])},'usage so far');
+  const usage=(agent,role,counts,extra={})=>{
+    const subject={native_session_id:S9,native_agent_id:agent,role,native_host:'codex',input_channel:'CODEX_SESSION_FILE',source_kind:'CODEX_SESSION_FILE',sample_time_kind:'LATEST_USAGE_RECORD_AT',last_at:'2026-09-14T12:07:00Z',model:'gpt-6',efforts:'high',pin_differs:'effort',
+      responses:String(counts[0]),input_tokens:String(counts[1]),cache_read_tokens:String(counts[2]),cache_write_tokens:String(counts[3]),output_tokens:String(counts[4]),...extra};
+    const observed=external('NATIVE_AGENT_USAGE',Object.fromEntries(Object.entries(subject).filter(([,value])=>value!==null&&value!==undefined&&value!=='')),'usage so far');
+    delete observed.payload.subject.source_time_kind;delete observed.payload.subject.native_event_id; // usage keeps its own sample clock and canonical snapshot identity
+    if(subject.native_host==='claude-code'){observed.payload.producer_id='claude-code-native';observed.source_id='claude-code-native:scope1';}
+    return observed;
+  };
   const assign9=message(S9,S9,'research_lead','assignment','Screen the July factors.',{recipient:'a9',message_id:'as-9'});
   const reply9=message(S9,'a9','alternative_analyst','answer','Screened.',{recipient:S9,message_id:'an-9'});
   const note9=message(S9,'a9','alternative_analyst','decision','Keep the sector-neutral lane.',{message_id:'dn-9'});
   assign9.payload.subject.goal_id=G9;reply9.payload.subject.reply_to='as-9';
-  A.absorbPage(page('CONTINUED',[assign9,reply9,note9,usage('a9','alternative_analyst',[3,100,20,5,40]),usage('a9','alternative_analyst',[4,120,25,6,50])]));
+  A.absorbPage(page('CONTINUED',[assign9,reply9,note9,usage('a9','alternative_analyst',[3,100,20,5,40],{input_channel:null,source_kind:null,last_at:'2026-09-14T12:06:00Z'}),usage('a9','alternative_analyst',[4,120,25,6,50])]));
   hash.value='#page=team&team='+S9;html=TM.section();
   const s9=TM.scene().sessions.find(x=>x.id===S9);
   assert.equal(s9.unknownKinds.length,0,'a usage reading is its own kind');
   const read9=[...s9.participants.get('a9').usage.values()];
   assert.ok(read9.length===1&&read9[0].input===120&&read9[0].output===50,'the latest reading of a model counts, never a sum of readings');
+  assert.equal(read9[0].last_at,'2026-09-14T12:07:00Z','the sample time comes from the same latest snapshot as its counts');
+  assert.equal(read9[0].source_kind,'CODEX_SESSION_FILE','the source belongs to the latest snapshot, replacing a historical unknown source');
   assert.ok(html.includes('FACT(Goals=')&&html.includes('99999999'),'the session names the goal its rows were filed under: '+html.slice(html.indexOf('FACT('),html.indexOf('FACT(')+600));
   assert.ok(!html.includes('FACT(Usage='),'the head holds no usage: the Participants folder is its one place (U51)');
   assert.ok(html.includes('gpt-6 (high) · 120 in')&&/differs from its card: [Ee]ffort/.test(html),html.slice(html.indexOf('team-actor:a9'),html.indexOf('team-actor:a9')+600)+'the member\'s tip: its models, tokens and a card that differs');
@@ -548,7 +556,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const at9=html.indexOf('id="team-event-'+assignId+'"'),ol9=html.indexOf('<ol class="team-replies">',at9),rp9=html.indexOf('id="team-event-'+replyId+'"',ol9);
   assert.ok(at9>=0&&ol9>at9&&rp9>ol9&&html.slice(ol9,rp9).includes('team-reply'),'a reply sits under the assignment its reply_to names');
   // U51: the session's Participants folder -- a row a member and model: its exchanges, its model and efforts, its
-  // latest reading's tokens, a mark where it differs from its card; the session's totals at the foot
+  // latest reading's tokens, a mark where it differs from its card; U196 keeps parent and child counts separate
   const was51={table:c.table,tr:c.tr,pageOf:c.pageOf,pager:c.pager,page:c.app.page,hint:c.hint,t:c.t,I18N:c.I18N};
   countWords.I18N.set('en');Object.assign(c,{hint:countWords.hint,t:countWords.t,I18N:countWords.I18N});
   c.table=(h,rows,note,o)=>'<table>'+h.map(x=>x.label).join('|')+' '+(Array.isArray(rows)?rows.join(''):rows)+(o&&o.foot?'<tfoot>'+o.foot.map(x=>String(x??'')).join('|')+'</tfoot>':'')+'</table>';
@@ -561,11 +569,57 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(rows9[0].includes('Lead')&&rows9[0].includes('no usage read'),'the lead first; a member with no reading says so: '+rows9[0]);
   assert.ok(row9.includes('gpt-6')&&row9.includes('high')&&/120\D+50\D+25\D+6/.test(row9)&&row9.includes('differs from its card'),'a row of a member: its model, efforts, latest tokens and the card it differs from: '+row9);
   assert.ok(row9.includes('1 answer')&&row9.includes('1 message'),'its exchanges by kind: '+row9);
-  const foot9=html.slice(html.indexOf('<tfoot>'),html.indexOf('</tfoot>'));
-  assert.ok(foot9.includes('Recorded tokens so far')&&foot9.includes('1 member\'s usage not read')&&/120\D+50\D+25\D+6/.test(foot9),'the recorded totals at the foot, the member not read named, never a zero: '+foot9);
+  assert.ok(!html.includes('<tfoot>')&&!html.includes('Recorded tokens so far'),'U196: a session foot cannot add parent and child counts without non-overlap evidence');
+  assert.ok(row9.includes('Codex session file')&&row9.includes('sampled '),'the latest member reading names its source and source sample time: '+row9);
   countWords.I18N.set('zh');const zh51=TM.section();
   assert.ok(zh51.replace(/<[^>]*>/g,'').includes('智能体|活动|模型|输入|输出|缓存读取|缓存写入'),'the compact Chinese column labels keep the same meanings');
   assert.ok(zh51.includes('data-tip="所有用量的单位均为 token。输入不含缓存读取和缓存写入。" tabindex="0">输入</span>'),'the Chinese hint keeps the same token units and uncached-input definition');
+  // U196: both hosts, direct members sharing a role, absent fields, and a later cumulative
+  // snapshot are read independently. A known zero remains zero; an unknown count stays blank.
+  countWords.I18N.set('en');
+  for(const [host,source,label] of [['codex','CODEX_SESSION_FILE','Codex session file'],['claude-code','CLAUDE_CODE_SESSION_FILE','Claude Code session file']]){
+    const sid='sess-196-'+host,childA='child-196-a-'+host,childB='child-196-b-'+host,unknown='child-196-unknown-'+host;
+    const metadata={native_session_id:sid,native_host:host,input_channel:source,source_kind:null,pin_differs:''}; // the actual bridge retains source only in input_channel
+    const declared196=[
+      message(sid,sid,'research_lead','assignment','Read one exact member.',{recipient:childA}),
+      message(sid,sid,'research_lead','assignment','Read the other exact member.',{recipient:childB}),
+      usage(sid,'research_lead',[9,900,90,9,90],metadata),
+    ]; // allocate the owner page in commit order before constructing the inspected child snapshot
+    const raw196=usage(childA,'alternative_analyst',[1,11,1,0,12],metadata);
+    assert.equal(Object.hasOwn(raw196.payload.subject,'source_kind'),false,'the current raw fixture has no duplicated source field');
+    A.absorbPage(page('CONTINUED',[
+      ...declared196,
+      raw196,
+      usage(childB,'alternative_analyst',[2,21,2,0,22],metadata),
+      usage(unknown,'alphalattice_risk',[],{...metadata,model:'unknown-model',input_channel:'UNVERIFIED_SESSION_FILE',sample_time_kind:null,last_at:null}),
+    ]));
+    hash.value='#page=team-participants&team='+sid;c.app.page='team-participants';
+    const first196=TM.scene().sessions.find(s=>s.id===sid),a196=first196.participants.get(childA),b196=first196.participants.get(childB);
+    assert.equal(a196.usage.get('gpt-6').source_kind,source,'the real input_channel-only event retains its exact source');
+    assert.equal(b196.usage.get('gpt-6').source_kind,source,'the same-role sibling retains its independently projected source');
+    assert.equal(first196.participants.get(unknown).usage.get('unknown-model').source_kind,null,'an unadmitted channel cannot infer a source from the host');
+    assert.equal(a196.usage.get('gpt-6').input,11);assert.equal(b196.usage.get('gpt-6').input,21,'members sharing a role retain their exact native ids');
+    assert.equal(JSON.stringify([...first196.participants.get(unknown).usage.values()].map(u=>[u.responses,u.input,u.output,u.cacheRead,u.cacheWrite])),JSON.stringify([[null,null,null,null,null]]),'missing counters supply no measured zero');
+    let shown196=TM.section(),rows196=shown196.split('<tr>').slice(1);
+    assert.equal(rows196.filter(row=>row.includes('gpt-6')).length,3,'the parent and both same-role children each keep their own model row');
+    assert.ok(rows196.filter(row=>row.includes('gpt-6')).every(row=>row.includes(label)&&row.includes('sampled ')),'each member names this host\'s source and sample time');
+    const unknown196=rows196.find(row=>row.includes('unknown-model'))||'';
+    assert.ok(unknown196.includes('Usage source not observed')&&unknown196.includes('Sample time not observed')&&/\|\|\|\|<\/tr>/.test(unknown196),'unknown counters/source/time remain visible as unknown without zeros: '+unknown196);
+    assert.ok(!shown196.includes('<tfoot>')&&!shown196.includes('Recorded tokens so far'),'neither host receives a fabricated parent/child total');
+    A.absorbPage(page('CONTINUED',[usage(childA,'alternative_analyst',[3,31,3,0,32],{...metadata,last_at:'2026-09-14T12:08:00Z'})]));
+    const latest196=TM.scene().sessions.find(s=>s.id===sid);
+    assert.equal(latest196.participants.get(childA).usage.size,1);assert.equal(latest196.participants.get(childA).usage.get('gpt-6').input,31,'a cumulative snapshot replaces the same member/model reading');
+    assert.equal(latest196.participants.get(childA).usage.get('gpt-6').last_at,'2026-09-14T12:08:00Z');
+    assert.equal(latest196.participants.get(childB).usage.get('gpt-6').input,21,'one member\'s new snapshot does not rewrite its same-role sibling');
+    A.absorbPage(page('CONTINUED',[usage(childA,'alternative_analyst',[3,31,3,0,32],{...metadata,input_channel:null,source_kind:source,last_at:'2026-09-14T12:08:00Z'})]));
+    assert.equal(TM.scene().sessions.find(s=>s.id===sid).participants.get(childA).usage.get('gpt-6').source_kind,source,'a legacy explicit source remains readable without an input channel');
+    for(const child of [childA,childB]){TM.openMember(child);assert.equal(navigations.at(-1)[1].actor,child,'the member route keeps the exact child id');}
+  }
+  for(const value of [undefined,null,'',' ','-1','1.5','1e3','0x10','NaN','Infinity',true,Number.MAX_SAFE_INTEGER+1])assert.equal(TM.usageCount(value),'','unobserved or invalid counters cannot become zero: '+String(value));
+  assert.equal(TM.usageCount('0'),'0','a recorded zero is still a zero');assert.equal(TM.usageCount('12'),'12');
+  for(const metadata of [{},{source_kind:'UNKNOWN',sample_time_kind:'LATEST_USAGE_RECORD_AT',last_at:'not-a-time'},{source_kind:'CODEX_SESSION_FILE',sample_time_kind:'UNKNOWN',last_at:'2026-09-14T12:08:00Z'}]){
+    assert.ok(TM.usageMetadata(metadata).includes('Sample time not observed'),'a missing, malformed or unproved time does not read as sampled');
+  }
   Object.assign(c,{table:was51.table,tr:was51.tr,pageOf:was51.pageOf,pager:was51.pager,hint:was51.hint,t:was51.t,I18N:was51.I18N});c.app.page=was51.page;
   // U53: the Product record leads with the session's own work; a person's reads on the Local Web are one line, closed until
   // pressed; a group whose records differ only in time does not open
@@ -1005,5 +1059,190 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
       for(const authority of codes.authorities)assert.ok(!records.includes(authority),'no raw authority: '+authority);
     }
   }
+  // Labelled UI fixtures only: an actual owner return's public shape, not a native run proof.
+  // The sealed content is read from its selected receipt while attribution remains unobserved.
+  const productBefore={read:c.Data.read,t:c.t,page:c.app.page,hash:hash.value,tasks:c.Data.tasks};
+  const productWords=library.words(root),productReads=[],productSession='68000001-0000-4000-8000-000000000001';
+  const productGoal='68000002-0000-4000-8000-000000000001',productSource='local-web:'+'a'.repeat(32);
+  const productText='Fixture public conclusion: exact accepted owner content. '.repeat(20)+'END OF PRODUCT ANSWER';
+  const settleProduct=()=>new Promise(r=>setImmediate(r));
+  c.t=productWords.t;c.Data.tasks=()=>[];
+  c.Data.read=(url)=>{
+    if(url.startsWith('/api/tasks?'))return Promise.resolve({tasks:[],next_cursor:null});
+    if(url.startsWith('/api/goals?'))return Promise.resolve({goals:[],next_cursor:null});
+    assert.ok(url.startsWith('/api/activity/external?observation_id='),'fixture selected answer uses the page-owned exact Data.read API');
+    const q=new URLSearchParams(url.split('?')[1]);assert.deepEqual([...q.keys()],['observation_id'],'no broad content collection or fallback selector');
+    return new Promise((resolve,reject)=>productReads.push({url,resolve,reject}));
+  };
+  const productFixture=(role='RISK',status='ACCEPTED')=>{
+    const assignment=message(productSession,productSession,'research_lead','assignment','Fixture lead assigns the exact prepared bundle.',{recipient:'/root/fixture-unobserved-child',reference:P1});
+    const relay=message(productSession,productSession,'research_lead','pm_response','Fixture lead records the public receipt; native author remains unobserved.',{reference:TASK});
+    const receipt=op('AGENT_ANSWER_SUBMIT','RETURNED',{agent_role:role,agent_vendor:'codex',agent_session:productSession,goal_id:productGoal,answer_reference:RESULT,bundle_reference:P1,task_id:TASK},{status,task_id:TASK},{schema_version:1,source_id:productSource,task_id:TASK,run_id:'local-web:'+TASK});
+    delete receipt.schema_version; // the real /api/activity ActivityItem projection is versionless
+    A.absorbPage(page('RESET',[assignment,relay,receipt]));
+    return {assignment,relay,receipt};
+  };
+  const selectProduct=(receipt)=>{c.app.page='team';hash.value='#page=team&team='+productSession+(receipt?'&event='+receipt.observation_id:'');return teamSection();};
+  const productResponse=(receipt,contribution={text:productText,references:[TASK]},epoch='e1')=>({
+    workspace_id:'qa',observation_id:receipt.observation_id,epoch,
+    accepted_answer:{status:'AVAILABLE',observation_id:receipt.observation_id,record_kind:'PRODUCT_OPERATION',...receipt.payload.subject,source_kind:receipt.source_kind,source_id:receipt.source_id,authority:receipt.authority,verdict:receipt.payload.status,answer_digest:'b'.repeat(64),recorded_agent:{host:'codex',session_id:'original-sealed-session',agent_id:null,role:null,model:null,efforts:[],basis:'NOT_OBSERVED'},contribution}
+  });
+  const productRoles=['ALPHA','CRO','DATA','ANALYST','FACTOR','PORTFOLIO','RISK'];
+  for(const lang of ['en','zh']) {
+    productWords.I18N.set(lang);
+    for(const [index,role] of productRoles.entries()) {
+      const fixture=productFixture(role,index%2?'DONE':'ACCEPTED'),{receipt}=fixture,before=productReads.length;
+      const cold=selectProduct(null);
+      assert.equal(productReads.length,before,'unselected owner facts never read sealed contributions');
+      assert.ok(cold.includes('data-fact="'+receipt.observation_id.slice(0,8)+'"'),'the owner receipt remains a product event');
+      assert.ok(!cold.includes('END OF PRODUCT ANSWER'),'the receipt preview does not contain owner content');
+      const contribution=role==='CRO'?{recommendation:'HOLD',findings:[{text:productText,reference:TASK}]}:{text:productText,references:[TASK]};
+      selectProduct(receipt);selectProduct(receipt);
+      assert.equal(productReads.length,before+1,'one selected receipt owns one pending contribution read');
+      assert.equal(new URLSearchParams(productReads.at(-1).url.split('?')[1]).get('observation_id'),receipt.observation_id);
+      productReads.at(-1).resolve(productResponse(receipt,contribution));await settleProduct();
+      const shown=selectProduct(receipt);
+      assert.ok(shown.includes(productWords.t('Accepted answer'))&&shown.includes('END OF PRODUCT ANSWER'),lang+' '+role+': the exact selected public conclusion opens');
+      assert.ok(shown.includes(productWords.t('Native author not observed')),lang+' '+role+': no HOOK or child authorship is required or invented');
+      assert.ok(!shown.includes(productWords.t('Stored native attribution')),'unobserved provenance never becomes a stored native author');
+      const session=TM.scene().sessions.find(s=>s.id===productSession);
+      assert.deepEqual([...session.participants.keys()],[productSession],'the product role is not a new participant');
+      assert.equal(TM.counts().exchanges,2,'the accepted product fact is not a member statement');
+      assert.equal(TM.counts().observations,1,'the selected answer remains the same one owner operation');
+      assert.equal([...session.entries.values()].filter(e=>e.channel==='PRODUCT_ACCEPTED_ANSWER').length,0,'no native accepted artifact event is fabricated');
+      assert.equal(productReads.length,before+1,'settled repaint keeps its current exact selected detail');
+      TM.leaveOutputs();c.app.page='team-outputs';hash.value='#page=team-outputs&team='+productSession;teamSection();await settleProduct();
+      const outputs=teamSection();
+      assert.ok(!outputs.includes('END OF PRODUCT ANSWER')&&!outputs.includes('<<'+productWords.t('Accepted answers')+'>>'),'product conclusions do not become native Outputs artifacts');
+      TM.leaveOutputs();
+    }
+  }
+  productWords.I18N.set('en');
+  for(const key of ['record_kind','agent_role','agent_vendor','agent_session','goal_id','answer_reference','bundle_reference','task_id','source_kind','source_id','authority','observation_id','outer_observation','epoch']) {
+    const {receipt}=productFixture();selectProduct(receipt);
+    const body=productResponse(receipt,{text:'FOREIGN PRODUCT ANSWER'});
+    if(key==='outer_observation')body.observation_id='foreign-observation';
+    else if(key==='epoch')body.epoch='foreign-epoch';
+    else body.accepted_answer[key]='foreign-'+key;
+    productReads.at(-1).resolve(body);await settleProduct();
+    const shown=selectProduct(receipt);
+    assert.ok(!shown.includes('FOREIGN PRODUCT ANSWER'),'foreign '+key+' supplies no accepted content');
+    assert.ok(shown.includes(productWords.t('The full accepted answer is unavailable.')),'foreign '+key+' names the failed owner read');
+  }
+  for(const key of ['schema_version','source_kind','source_id','authority','status','session','task','missing_bundle']) {
+    const fixture=productFixture(),receipt=JSON.parse(JSON.stringify(fixture.receipt));
+    if(key==='schema_version')receipt.schema_version=2;
+    else if(key==='status')receipt.payload.status='CORRECT';
+    else if(key==='session')receipt.payload.subject.agent_session='foreign-session';
+    else if(key==='task')receipt.task_id=productGoal;
+    else if(key==='missing_bundle')delete receipt.payload.subject.bundle_reference;
+    else receipt[key]='foreign-'+key;
+    A.absorbPage(page('RESET',[fixture.assignment,fixture.relay,receipt]));
+    const before=productReads.length;selectProduct(receipt);
+    assert.equal(productReads.length,before,'a cold malformed '+key+' owner receipt never starts a content read');
+  }
+  const firstProduct=productFixture();selectProduct(firstProduct.receipt);const staleProduct=productReads.at(-1);
+  const currentProduct=productFixture('ALPHA');selectProduct(currentProduct.receipt);const activeProduct=productReads.at(-1),productPaints=renders.length;
+  staleProduct.resolve(productResponse(firstProduct.receipt,{text:'STALE PRODUCT ANSWER'}));await settleProduct();
+  assert.equal(renders.length,productPaints,'a previous product selection cannot repaint the current receipt');
+  assert.ok(!selectProduct(currentProduct.receipt).includes('STALE PRODUCT ANSWER'),'a previous receipt never leaks its contribution');
+  activeProduct.resolve(productResponse(currentProduct.receipt));await settleProduct();
+  const changedProduct={...page('RESET',[currentProduct.assignment,currentProduct.relay,currentProduct.receipt]),epoch:'product-e2',cursor:'product-e2:'+ordinal};
+  A.absorbPage(changedProduct);const epochReads=productReads.length;selectProduct(currentProduct.receipt);
+  assert.equal(productReads.length,epochReads+1,'a new store epoch owns a new selected product read');
+  productReads.at(-1).resolve(productResponse(currentProduct.receipt,{text:'NEW PRODUCT EPOCH'},'product-e2'));await settleProduct();
+  assert.ok(selectProduct(currentProduct.receipt).includes('NEW PRODUCT EPOCH'));
+  selectProduct(null);selectProduct(currentProduct.receipt);const leavingProduct=productReads.at(-1);
+  c.app.page='home';TM.refresh();const leftProductPaints=renders.length;
+  leavingProduct.resolve(productResponse(currentProduct.receipt,{text:'LEFT PRODUCT PAGE'},'product-e2'));await settleProduct();
+  assert.equal(renders.length,leftProductPaints,'a product detail stops repainting after leaving Team');
+  selectProduct(currentProduct.receipt);
+  assert.notEqual(productReads.at(-1),leavingProduct,'returning uses a fresh exact product selection');
+  productReads.at(-1).resolve(productResponse(currentProduct.receipt,{text:productText,references:[TASK]},'product-e2'));await settleProduct();
+  assert.ok(!selectProduct(currentProduct.receipt).includes('LEFT PRODUCT PAGE'));
+  // Usage health is an optional observer field, not an activity row or research gate.
+  const usageCode='native_bridge.lead_usage_read_failed';
+  const usageCatalog=JSON.parse(fs.readFileSync(path.join(__dirname,'../../src/alphalattice/interface/local_application/refusal_words.json'),'utf8'))[usageCode];
+  const stableFeed={...page('CONTINUED',[]),epoch:'product-e2',cursor:changedProduct.cursor,observer:{status:'OK',native_usage:{status:'OBSERVING',reason:null}}};
+  A.absorbPage(stableFeed);TM.refresh();const beforeUsageChange=renders.length;
+  A.absorbPage({...stableFeed,observer:{status:'OK',native_usage:{status:'UNAVAILABLE',reason:usageCode,detail:usageCatalog.detail,next_action:usageCatalog.next_action,body:'PRIVATE-D5-NATIVE-BODY'}}});
+  TM.refresh();
+  assert.equal(renders.length,beforeUsageChange+1,'native usage health changes repaint Team even when the activity cursor is unchanged');
+  for(const lang of ['en','zh']) {
+    productWords.I18N.set(lang);const shown=selectProduct(currentProduct.receipt),visible=shown.replace(/data-tip="[^"]*"/g,'');
+    assert.ok(shown.includes(productWords.t('Usage observation unavailable'))&&shown.includes(productWords.t(usageCatalog.detail)),lang+': usage unavailability uses the exact catalog guidance');
+    if(lang==='zh')assert.match(productWords.t(usageCatalog.detail),/[\u4e00-\u9fff]/,'the catalog guidance is translated');
+    assert.ok(!visible.includes(usageCode)&&!shown.includes('PRIVATE-D5-NATIVE-BODY'),'safe guidance keeps the code on hover and ignores raw native body');
+    assert.ok(shown.includes('END OF PRODUCT ANSWER'),'optional usage failure does not block accepted research content');
+    assert.equal(TM.counts().exchanges,2);assert.equal(TM.counts().observations,1);
+  }
+  // Default native relays are selection candidates, never HOOK artifacts. The selected
+  // owner answer binds the real correlated RETURNED receipt and keeps native authorship unknown.
+  const relayText='Fixture owner content returned for the exact default relay. '.repeat(12)+'END OF RELAY OWNER ANSWER';
+  const relayFixture=(host='codex',extra={})=>{
+    const assignment=message(productSession,productSession,'research_lead','assignment','Fixture lead assigns the exact relay bundle.',{recipient:'fixture-exact-child',reference:extra.bundle_reference||P1});
+    const relay=external('NATIVE_COORDINATION_MESSAGE',{native_session_id:productSession,native_agent_id:productSession,native_host:host,role:'research_lead',message_kind:'answer',message_id:'accepted-relay-'+ordinal,
+      input_channel:'PRODUCT_ACCEPTED_ANSWER',authorship_basis:'NOT_OBSERVED',bundle_role:'RISK',submitted_by:productSession,recipient_id:productSession,source_time_kind:'PRODUCT_ACCEPTED_AT',answer_reference:RESULT,bundle_reference:P1,reference:TASK,goal_id:productGoal,...extra},'Fixture accepted relay preview only.',{truncated:true});
+    delete relay.payload.subject.native_event_id;
+    if(host==='claude-code'){relay.payload.producer_id='claude-code-native';relay.source_id='claude-code-native:scope1';}
+    const sub=relay.payload.subject,receipt=op('AGENT_ANSWER_SUBMIT','RETURNED',{agent_role:sub.bundle_role,agent_vendor:host,agent_session:productSession,goal_id:sub.goal_id,answer_reference:sub.answer_reference,bundle_reference:sub.bundle_reference,task_id:sub.reference},
+      {status:'ACCEPTED',task_id:sub.reference},{source_id:productSource,task_id:sub.reference,run_id:'local-web:'+sub.reference});
+    A.absorbPage(page('RESET',[assignment,relay,receipt]));
+    return {assignment,relay,receipt};
+  };
+  const relayResponse=({relay,receipt},text=relayText)=>{
+    const body=productResponse(receipt,{text,references:[receipt.task_id]});
+    body.observation_id=relay.observation_id;body.accepted_answer.observation_id=relay.observation_id;
+    body.accepted_answer.owner_observation_id=receipt.observation_id;
+    body.accepted_answer.recorded_agent={host:relay.payload.subject.native_host,session_id:productSession,agent_id:null,role:null,model:null,efforts:[],basis:'NOT_OBSERVED'};
+    return body;
+  };
+  for(const lang of ['en','zh'])for(const host of ['codex','claude-code']){
+    productWords.I18N.set(lang);const fixture=relayFixture(host),before=productReads.length;
+    const cold=selectProduct(null);assert.equal(productReads.length,before,'an unselected default relay never reads owner content');
+    assert.ok(!cold.includes('END OF RELAY OWNER ANSWER'),'the native preview does not fabricate full accepted content');
+    selectProduct(fixture.relay);selectProduct(fixture.relay);
+    assert.equal(productReads.length,before+1,'a selected default relay has one exact pending owner read');
+    assert.equal(new URLSearchParams(productReads.at(-1).url.split('?')[1]).get('observation_id'),fixture.relay.observation_id,'the alias lookup selects the exact native observation');
+    productReads.at(-1).resolve(relayResponse(fixture));await settleProduct();
+    const shown=selectProduct(fixture.relay);
+    assert.ok(shown.includes('END OF RELAY OWNER ANSWER')&&shown.includes(productWords.t('Native author not observed')),lang+' '+host+': full owner content opens with unobserved native attribution');
+    assert.ok(!shown.includes(productWords.t('Stored native attribution')),'a default relay supplies no stored HOOK author');
+    const session=TM.scene().sessions.find(s=>s.id===productSession);
+    assert.deepEqual([...session.participants.keys()],[productSession],'a default relay adds no guessed child participant');
+    assert.equal(TM.counts().exchanges,2);assert.equal(TM.counts().observations,1,'the correlated RETURNED envelope stays a product fact');
+    assert.equal(productReads.length,before+1,'an exact settled relay repaint reuses its selected content');
+  }
+  productWords.I18N.set('en');
+  for(const key of ['record_kind','agent_role','agent_vendor','agent_session','goal_id','answer_reference','bundle_reference','task_id','source_kind','authority','observation_id','outer_observation','epoch']){
+    const fixture=relayFixture();selectProduct(fixture.relay);const body=relayResponse(fixture,'FOREIGN DEFAULT RELAY CONTENT');
+    if(key==='outer_observation')body.observation_id='foreign-observation';
+    else if(key==='epoch')body.epoch='foreign-epoch';
+    else body.accepted_answer[key]='foreign-'+key;
+    productReads.at(-1).resolve(body);await settleProduct();const shown=selectProduct(fixture.relay);
+    assert.ok(!shown.includes('FOREIGN DEFAULT RELAY CONTENT'),'foreign '+key+' cannot cross the default relay request/Goal binding');
+    assert.ok(shown.includes(productWords.t('The full accepted answer is unavailable.')),'a mismatched '+key+' reply keeps the failed owner read visible');
+  }
+  for(const key of ['actor','role','submitted_by','native_host','input_channel','authorship_basis','source_time_kind','answer_reference','bundle_reference','reference','missing_bundle_role','bundle_role','availability']){
+    const fixture=relayFixture(),sub=fixture.relay.payload.subject;
+    if(key==='actor')sub.native_agent_id='unproved-child';
+    else if(key==='missing_bundle_role')delete sub.bundle_role;
+    else if(key==='availability')fixture.relay.availability='EVICTED_BY_RETENTION';
+    else sub[key]='foreign-'+key;
+    A.absorbPage(page('RESET',[fixture.assignment,fixture.relay,fixture.receipt]));const before=productReads.length;
+    selectProduct(fixture.relay);assert.equal(productReads.length,before,'a malformed '+key+' relay never starts a content lookup');
+  }
+  const absentRelay=relayFixture();selectProduct(absentRelay.relay);
+  productReads.at(-1).resolve({workspace_id:'qa',observation_id:absentRelay.relay.observation_id,epoch:'e1',accepted_answer:{status:'UNAVAILABLE',reason:'native_bridge.accepted_answer_not_recorded'}});await settleProduct();
+  const absentShown=selectProduct(absentRelay.relay);
+  assert.ok(!absentShown.includes('END OF RELAY OWNER ANSWER')&&absentShown.includes(productWords.t('The full accepted answer is unavailable.')),'an absent actual RETURNED receipt supplies an explicit unavailable read and no accepted content');
+  const earlierRelay=relayFixture();selectProduct(earlierRelay.relay);const lateRelay=productReads.at(-1);
+  const nextRelay=relayFixture('codex',{goal_id:'68000003-0000-4000-8000-000000000001',answer_reference:RESULT2,bundle_reference:P2,reference:INSTALLED});
+  selectProduct(nextRelay.relay);const currentRelayRead=productReads.at(-1),relayPaints=renders.length;
+  lateRelay.resolve(relayResponse(earlierRelay,'LATE PREVIOUS GOAL RELAY'));await settleProduct();
+  assert.equal(renders.length,relayPaints,'a previous Goal relay cannot repaint the new selected receipt');
+  assert.ok(!selectProduct(nextRelay.relay).includes('LATE PREVIOUS GOAL RELAY'),'late content stays with its original request and Goal');
+  currentRelayRead.resolve(relayResponse(nextRelay));await settleProduct();assert.ok(selectProduct(nextRelay.relay).includes('END OF RELAY OWNER ANSWER'));
+  Object.assign(c,{t:productBefore.t});c.Data.read=productBefore.read;c.Data.tasks=productBefore.tasks;c.app.page=productBefore.page;hash.value=productBefore.hash;TM.refresh();
   finish();
 })().catch(e=>{console.error(e);process.exitCode=1;});

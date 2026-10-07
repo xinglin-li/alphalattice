@@ -1,21 +1,21 @@
 """Derive the Claude Code host files from the Codex-native owners.
 
 Owners: the seven role cards `.codex/agents/*.toml` (their `developer_instructions` are the
-professional role text), the PM Skill `.agents/skills/alphalattice-research/` and the hook
-command declared in `.codex/config.toml`. Derivatives: `.claude/agents/<name>.md` (one
+professional role text) and the PM Skill `.agents/skills/alphalattice-research/`.
+Derivatives: `.claude/agents/<name>.md` (one
 subagent per card: sonnet -- the evidence specialists a pinned Sonnet -- high effort, the
 tools its card's sandbox allows, no delegation),
 a medium-effort variant `<name>_medium.md` of each evidence specialist, a byte copy of the
-Skill under `.claude/skills/` (Claude Code reads only that directory) and the two lifecycle
-hooks in `.claude/settings.json` (other settings keys are preserved).
+Skill under `.claude/skills/` (Claude Code reads only that directory). Default
+`.claude/settings.json` has no product lifecycle hooks; unrelated settings are preserved.
 
 Each stage card carries its reads, EXECUTE commands and graph (V384, V386), generated
 from the operation table, request fields and CLI help. It links the Skill's shared
 command contract for syntax, answers and waits; the lead's catalog is in `## Commands`.
 
 Run it after editing an owner. `--check` reports drift without writing; the test uses it.
-Nothing here grants product authority: a subagent file is professional guidance, the hooks
-are observation only, and every submission still goes through the maintained CLI.
+Nothing here grants product authority: a subagent file is professional guidance,
+and every submission still goes through the maintained CLI.
 """
 
 from __future__ import annotations
@@ -35,7 +35,6 @@ from alphalattice.interface.local_application.failure_codes import setup_failure
 
 CARDS = ROOT / ".codex" / "agents"
 OPERATIONS = ROOT / "src" / "alphalattice" / "interface" / "local_application" / "operations.json"
-CODEX_CONFIG = ROOT / ".codex" / "config.toml"
 SKILL_NAME = "alphalattice-research"
 SKILL_SOURCE = ROOT / ".agents" / "skills" / SKILL_NAME
 CLAUDE = ROOT / ".claude"
@@ -812,27 +811,8 @@ def agent_markdown(card: dict[str, str], *, effort: str = CLAUDE_EFFORT) -> str:
     return "\n".join(lines)
 
 
-def hook_entries() -> dict[str, list[dict[str, object]]]:
-    """The same command Codex runs, under Claude Code's hook shape."""
-    with CODEX_CONFIG.open("rb") as stream:
-        hooks = tomllib.load(stream).get("hooks", {})
-    entries: dict[str, list[dict[str, object]]] = {}
-    for event in HOOK_EVENTS:
-        declared = hooks.get(event) or []
-        if len(declared) != 1 or declared[0].get("matcher") != HOOK_MATCHER:
-            raise MaterializationError(f"codex_hook.{event}_missing")
-        commands = declared[0].get("hooks") or []
-        if len(commands) != 1 or commands[0].get("type") != "command":
-            raise MaterializationError(f"codex_hook.{event}_command_missing")
-        entry: dict[str, object] = {"type": "command", "command": commands[0]["command"]}
-        if "timeout" in commands[0]:
-            entry["timeout"] = commands[0]["timeout"]
-        entries[event] = [{"matcher": HOOK_MATCHER, "hooks": [entry]}]
-    return entries
-
-
 def settings_document(existing: bytes | None) -> str:
-    """Replace only this project's two lifecycle hook groups; keep everything else."""
+    """Remove default product lifecycle groups while keeping every unrelated host setting."""
     document: dict[str, object] = {}
     if existing:
         try:
@@ -847,14 +827,20 @@ def settings_document(existing: bytes | None) -> str:
         hooks = {}
     if not isinstance(hooks, dict):
         raise MaterializationError("claude_settings.hooks_invalid")
-    for event, groups in hook_entries().items():
+    for event in HOOK_EVENTS:
         kept = [
             group
             for group in (hooks.get(event) or [])
             if not (isinstance(group, dict) and group.get("matcher") == HOOK_MATCHER)
         ]
-        hooks[event] = kept + groups
-    document["hooks"] = hooks
+        if kept:
+            hooks[event] = kept
+        else:
+            hooks.pop(event, None)
+    if hooks:
+        document["hooks"] = hooks
+    else:
+        document.pop("hooks", None)
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
 

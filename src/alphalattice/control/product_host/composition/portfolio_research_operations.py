@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
+from contextlib import nullcontext
 from dataclasses import dataclass, field, fields, replace
 from datetime import date, datetime
 from functools import partial
@@ -273,7 +274,11 @@ from alphalattice.interface.local_application.failure_codes import (
     safe_failure_code,
     typed_failures,
 )
-from alphalattice.interface.local_application.goals import Goal
+from alphalattice.interface.local_application.goals import (
+    Goal,
+    GoalAcceptedAnswerReceipt,
+    GoalSession,
+)
 from alphalattice.interface.local_application.native_bridge import (
     NativeResearchBinding,
     deliver_accepted_answer,
@@ -1552,6 +1557,8 @@ class PortfolioResearchOperations:
         bundle: AgentBundleRecord | None,
         body: Mapping[str, object],
         events: list[dict[str, Any]] | None,
+        *,
+        accepted_receipt: GoalAcceptedAnswerReceipt | None = None,
     ) -> dict[str, object] | None:
         """Wire one sealed answer to the shared native observation owner (V691)."""
         view = body.get("answer")
@@ -1587,37 +1594,48 @@ class PortfolioResearchOperations:
         if delivery.get("status") == "UNAVAILABLE":
             raise ValueError("native_bridge.accepted_delivery_unavailable")
         record = AgentAnswerRecord.model_validate(delivery["answer_record"])
+        if record.verdict.value not in {"ACCEPTED", "DONE"}:
+            return None
         references.update(answer_reference=record.record_hash, task_id=delivery["task_id"])
         run = record.agent_run
         if run is not None:
             references.update(host=run.host, session_id=run.session_id)
         if bundle is None:
             return unavailable("accepted_bundle_unavailable", "accepted_bundle")
+        if run is None:
+            return unavailable("accepted_author_not_observed", "accepted_author")
+        if provenance is None or (provenance.vendor, provenance.session) != (
+            run.host,
+            run.session_id,
+        ):
+            return unavailable("parent_session_mismatch", "parent_session")
+        task = self.workspace_session.task_control_registry.task(UUID(str(delivery["task_id"])))
+        original_session = GoalSession(vendor=run.host, session_id=run.session_id)
+        if accepted_receipt is None:
+            return unavailable("accepted_context_unavailable", "first_accepted_context")
+        receipt = accepted_receipt
+        if (
+            receipt.session != original_session
+            or receipt.task_id != task.task_id
+            or receipt.bundle_reference != bundle.record_hash
+            or receipt.answer_reference != record.record_hash
+            or receipt.bundle_role != bundle.role
+            or receipt.verdict != record.verdict.value
+        ):
+            return unavailable("accepted_context_unavailable", "first_accepted_context")
+        original_goal = receipt.goal_id
         if self.observer is None:
             return unavailable("history_unavailable", "native_history")
         observer = self.observer
-        if run is None:
-            return unavailable("accepted_author_not_observed", "accepted_author")
         workspace = self.workspace_session.workspace
         project = session_project(workspace, run.host)
         admitted_session_project(workspace, project, run.host)
-        binding = NativeResearchBinding.read(project)
+        binding = NativeResearchBinding.read(
+            project, session=(original_session.vendor, original_session.session_id)
+        )
         if binding is None or binding.workspace.resolve() != workspace.resolve():
             return unavailable("binding_mismatch", "native_binding")
-        task = self.workspace_session.task_control_registry.task(UUID(str(delivery["task_id"])))
-
-        def retain_goal(document: dict[str, Any]) -> None:
-            if not delivery.get("first_submission"):
-                key = canonical_hash(
-                    [
-                        document["producer_id"],
-                        document["producer_session"],
-                        document["producer_sequence"],
-                    ]
-                )
-                self.goals.store.event_goal(key, lambda: None)
-
-        return deliver_accepted_answer(
+        result = deliver_accepted_answer(
             project,
             binding,
             bundle=bundle,
@@ -1630,8 +1648,57 @@ class PortfolioResearchOperations:
             task_id=str(task.task_id),
             admitted_at=task.admitted_at,
             events=events,
-            publish=lambda document: self.declare_event(observer, document),
-            before_publish=retain_goal,
+            publish=lambda document: self.declare_event(
+                observer, document, accepted_receipt=receipt
+            ),
+        )
+        if result is not None and result.get("status") == "DELIVERED":
+            result.update(
+                original_session_host=original_session.vendor,
+                original_session_id=original_session.session_id,
+                original_goal_id=None if original_goal is None else str(original_goal),
+            )
+        return result
+
+    def capture_accepted_answer_context(
+        self, bundle: AgentBundleRecord | None, body: Mapping[str, object]
+    ) -> GoalAcceptedAnswerReceipt | None:
+        """Freeze the first genuine acceptance's prior packet before optional delivery.
+
+        Called while the scientific submission holds the workspace mutation gate. This
+        reads only product owner records; it never discovers native files or contacts a Host.
+        The caller isolates failures so the accepted scientific answer remains usable.
+        """
+        view = body.get("answer")
+        delivery = view.get("accepted_delivery") if isinstance(view, dict) else None
+        if bundle is None or not isinstance(delivery, dict) or "answer_record" not in delivery:
+            return None
+        record = AgentAnswerRecord.model_validate(delivery["answer_record"])
+        run, provenance = record.agent_run, REQUEST_PROVENANCE.get()
+        if (
+            record.verdict.value not in {"ACCEPTED", "DONE"}
+            or run is None
+            or provenance is None
+            or (provenance.vendor, provenance.session) != (run.host, run.session_id)
+        ):
+            return None
+        task = self.workspace_session.task_control_registry.task(UUID(str(delivery["task_id"])))
+        session = GoalSession(vendor=run.host, session_id=run.session_id)
+        context = self.goals.accepted_answer_context(
+            bundle_reference=bundle.record_hash,
+            answer_reference=record.record_hash,
+            session=session,
+            first_submission=delivery.get("first_submission") is True,
+            provenance=provenance,
+        )
+        return GoalAcceptedAnswerReceipt(
+            **context.model_dump(),
+            session=session,
+            task_id=task.task_id,
+            bundle_reference=bundle.record_hash,
+            answer_reference=record.record_hash,
+            bundle_role=bundle.role,
+            verdict="ACCEPTED" if record.verdict.value == "ACCEPTED" else "DONE",
         )
 
     def observe_accepted_answer(
@@ -1639,10 +1706,16 @@ class PortfolioResearchOperations:
         body: dict[str, object],
         bundle: AgentBundleRecord | None,
         events: list[dict[str, Any]] | None,
+        *,
+        accepted_receipt: GoalAcceptedAnswerReceipt | None = None,
     ) -> dict[str, object]:
         """Keep observation optional at every registered accepted-answer return door."""
         failures = self.observer_failures
-        conversation = self._observe(lambda: self.record_agent_answer(bundle, body, events))
+        conversation = self._observe(
+            lambda: self.record_agent_answer(
+                bundle, body, events, accepted_receipt=accepted_receipt
+            )
+        )
         if conversation is not None:
             body["conversation"] = conversation
         elif self.observer_failures > failures:
@@ -1764,9 +1837,13 @@ class PortfolioResearchOperations:
                 )
                 if bundle.role not in ANSWER_FIELDS:
                     try:
-                        generic_body = self.review.submit_specialist_answer(
-                            bundle=bundle, answer=answer, read_files=read, agent_run=agent_run
-                        )
+                        with self.workspace_session.mutation_gate.hold():
+                            generic_body = self.review.submit_specialist_answer(
+                                bundle=bundle, answer=answer, read_files=read, agent_run=agent_run
+                            )
+                            accepted_receipt = self._observe(
+                                lambda: self.capture_accepted_answer_context(bundle, generic_body)
+                            )
                     except PortfolioEvidenceReviewError as error:
                         if str(error) not in {
                             "agent_bundle.specialist_task_changed",
@@ -1774,8 +1851,12 @@ class PortfolioResearchOperations:
                         }:
                             raise
                         return agent_bundle_refusal(str(error), role=bundle.role)
-                    generic_body = self.observe_accepted_answer(generic_body, bundle, events)
+                    generic_body = self.observe_accepted_answer(
+                        generic_body, bundle, events, accepted_receipt=accepted_receipt
+                    )
                     answered = agent_answer_result(bundle.role, generic_body)
+                    if answered["status"] in {"ACCEPTED", "DONE"}:
+                        answered["bundle_reference"] = bundle.record_hash
                     if agent_run is not None and answered["status"] not in {"ACCEPTED", "DONE"}:
                         answered["recorded_agent"] = agent_run.model_dump(mode="json")
                     if "conversation" in generic_body:
@@ -2007,20 +2088,33 @@ class PortfolioResearchOperations:
                 assert request.task_id is not None
                 assert request.analysis_context_hash is not None
                 assert request.analysis_answer is not None
-                body = _review_outcome_body(
-                    self.review.submit_analysis(
-                        dispatcher=self.dispatcher,
-                        selector=selector,
-                        task_id=request.task_id,
-                        context_hash=request.analysis_context_hash,
-                        answer=request.analysis_answer,
-                        caller=caller,
-                        unit_id=request.evidence_unit_id,
-                        read_files=read_files,
-                        agent_run=agent_run,
+                with (
+                    self.workspace_session.mutation_gate.hold()
+                    if accepted_bundle is not None
+                    else nullcontext()
+                ):
+                    analysis_body = _review_outcome_body(
+                        self.review.submit_analysis(
+                            dispatcher=self.dispatcher,
+                            selector=selector,
+                            task_id=request.task_id,
+                            context_hash=request.analysis_context_hash,
+                            answer=request.analysis_answer,
+                            caller=caller,
+                            unit_id=request.evidence_unit_id,
+                            read_files=read_files,
+                            agent_run=agent_run,
+                        )
                     )
+                    accepted_receipt = self._observe(
+                        lambda: self.capture_accepted_answer_context(accepted_bundle, analysis_body)
+                    )
+                return self.observe_accepted_answer(
+                    analysis_body,
+                    accepted_bundle,
+                    accepted_events,
+                    accepted_receipt=accepted_receipt,
                 )
-                return self.observe_accepted_answer(body, accepted_bundle, accepted_events)
             case "EVIDENCE_SELECT":
                 assert request.analysis_publication_hash is not None
                 return self.evidence_select(
@@ -2058,21 +2152,31 @@ class PortfolioResearchOperations:
                 assert request.review_policy_hash is not None
                 assert request.review_schema_hash is not None
                 assert request.review_answer is not None
-                body = _review_outcome_body(
-                    self.review.submit_assessment(
-                        dispatcher=self.dispatcher,
-                        selector=selector,
-                        dossier_hash=request.review_dossier_hash,
-                        policy_hash=request.review_policy_hash,
-                        schema_hash=request.review_schema_hash,
-                        answer=request.review_answer,
-                        caller=caller,
-                        read_files=read_files,
-                        agent_run=agent_run,
-                        read_at=_read_at(request),
+                with (
+                    self.workspace_session.mutation_gate.hold()
+                    if accepted_bundle is not None
+                    else nullcontext()
+                ):
+                    body = _review_outcome_body(
+                        self.review.submit_assessment(
+                            dispatcher=self.dispatcher,
+                            selector=selector,
+                            dossier_hash=request.review_dossier_hash,
+                            policy_hash=request.review_policy_hash,
+                            schema_hash=request.review_schema_hash,
+                            answer=request.review_answer,
+                            caller=caller,
+                            read_files=read_files,
+                            agent_run=agent_run,
+                            read_at=_read_at(request),
+                        )
                     )
+                    accepted_receipt = self._observe(
+                        lambda: self.capture_accepted_answer_context(accepted_bundle, body)
+                    )
+                return self.observe_accepted_answer(
+                    body, accepted_bundle, accepted_events, accepted_receipt=accepted_receipt
                 )
-                return self.observe_accepted_answer(body, accepted_bundle, accepted_events)
         raise ValueError("portfolio_research.operation_unknown")
 
     def _refresh_prepared_inputs(self) -> None:
@@ -5370,7 +5474,11 @@ class PortfolioResearchOperations:
         return body
 
     def declare_event(
-        self, observer: OperationObserver, event: dict[str, Any] | None
+        self,
+        observer: OperationObserver,
+        event: dict[str, Any] | None,
+        *,
+        accepted_receipt: GoalAcceptedAnswerReceipt | None = None,
     ) -> dict[str, object]:
         """Record one event a client declares about its own work (`event declare`).
 
@@ -5385,8 +5493,21 @@ class PortfolioResearchOperations:
                 **located_failure(error, "activity.event_invalid"),
                 "next_action": "READ_ACTIVITY_EVENT_CONTRACT",
             }
+        with self.workspace_session.mutation_gate.hold(), self.goals.store.lock:
+            return self._file_declared_event(observer, document, accepted_receipt=accepted_receipt)
+
+    def _file_declared_event(
+        self,
+        observer: OperationObserver,
+        document: ExternalActivityEventDocument,
+        *,
+        accepted_receipt: GoalAcceptedAnswerReceipt | None,
+    ) -> dict[str, object]:
+        """File and attribute one admitted event while the existing owner locks are held."""
         try:
-            filed, goal, session = self.goals.file_event(document, REQUEST_PROVENANCE.get())
+            filed, goal, session = self.goals.file_event(
+                document, REQUEST_PROVENANCE.get(), accepted_receipt=accepted_receipt
+            )
         except ValueError as error:
             return {
                 "status": "REFUSED",
@@ -5394,10 +5515,49 @@ class PortfolioResearchOperations:
                 "next_action": "NAME_AN_OPEN_GOAL_OR_NONE",
             }
         answer = observer.admit_external_event(filed)
+        if accepted_receipt is not None and answer.get("status") in {"APPENDED", "REUSED_EXACT"}:
+            subject = filed.subject
+            closure = (
+                {
+                    "status": "CLOSED",
+                    "source": subject["closure_source"],
+                    "reason": subject["closure_reason"],
+                    "message_id": subject["assignment_message_id"],
+                    "packet_hash": subject["assignment_packet_hash"],
+                    "assigned_agent_id": subject["assigned_agent_id"],
+                }
+                if subject.get("closure_source")
+                else {
+                    "status": "NOT_CLOSED",
+                    "reason": subject.get(
+                        "closure_diagnostic", "native_bridge.assignment_not_observed"
+                    ),
+                }
+            )
+            answer = {**answer, "assignment_closure": closure}
         if goal is None or answer.get("status") not in {"APPENDED", "REUSED_EXACT"}:
             return answer
         if answer["status"] == "REUSED_EXACT":
-            return {**answer, "goal_id": str(goal.goal_id)}
+            original = next(
+                (
+                    entry
+                    for entry in self.goals.store.attributed(goal.goal_id)
+                    if entry.get("observation_id") == answer["observation_id"]
+                ),
+                None,
+            )
+            if original is not None:
+                return {
+                    **answer,
+                    "goal_id": str(goal.goal_id),
+                    **(
+                        {"packet_hash": original["packet_hash"]}
+                        if original.get("packet_hash")
+                        else {}
+                    ),
+                }
+        # The ledger can have appended before a failed Goal attribution. A verified
+        # exact retry repairs that missing projection once, without another event.
         return {
             **answer,
             **self.goals.record_event(goal, filed, str(answer["observation_id"]), session),

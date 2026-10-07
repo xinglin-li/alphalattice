@@ -160,6 +160,66 @@ def _asset_writer(build: ast.FunctionDef, tree: ast.Module, persistence: ast.Mod
     return None
 
 
+def _binding_path(setup: ast.Module, writer: ast.FunctionDef, bind: ast.FunctionDef) -> bool:
+    """Prove the one binding call uses the exact literal or unchanged default directory."""
+    calls = [
+        node
+        for node in ast.walk(setup)
+        if isinstance(node, ast.Call)
+        and ast.unparse(node.func) == "_create_or_match"
+        and any(
+            isinstance(value, ast.Name) and value.id == "BINDING_NAME"
+            for argument in (*node.args, *(keyword.value for keyword in node.keywords))
+            for value in ast.walk(argument)
+        )
+    ]
+    if (
+        len(calls) != 1
+        or calls[0] not in ast.walk(bind)
+        or len(calls[0].args) != 3
+        or _parts(calls[0].args[0]) != ("$BINDING_NAME",)
+        or calls[0].keywords
+        or any(isinstance(argument, ast.Starred) for argument in calls[0].args)
+    ):
+        return False
+    paths = [
+        _parts(node.value)
+        for node in ast.walk(writer)
+        if isinstance(node, ast.Assign)
+        and any(_parts(target) == ("$path",) for target in node.targets)
+    ]
+    if (
+        len(paths) != 1
+        or sum(
+            isinstance(node, ast.Name)
+            and node.id == "path"
+            and isinstance(node.ctx, ast.Store | ast.Del)
+            for node in ast.walk(writer)
+        )
+        != 1
+    ):
+        return False
+    if paths[0] == ("$root", ".codex", "$name"):
+        return True
+    return (
+        paths[0] == ("$root", "$directory", "$name")
+        and [argument.arg for argument in (*writer.args.posonlyargs, *writer.args.args)]
+        == ["name", "document", "project"]
+        and writer.args.vararg is None
+        and writer.args.kwarg is None
+        and [argument.arg for argument in writer.args.kwonlyargs] == ["directory"]
+        and len(writer.args.kw_defaults) == 1
+        and isinstance(writer.args.kw_defaults[0], ast.Constant)
+        and writer.args.kw_defaults[0].value == ".codex"
+        and not any(
+            isinstance(node, ast.Name)
+            and node.id == "directory"
+            and isinstance(node.ctx, ast.Store | ast.Del)
+            for node in ast.walk(writer)
+        )
+    )
+
+
 def _output_declarations(
     scope: ast.FunctionDef, tree: ast.Module, limit: int, seen: tuple[str, ...] = ()
 ) -> list[ast.Assign]:
@@ -266,19 +326,7 @@ def generated_outputs(blobs: Mapping[str, bytes], public: Collection[str]) -> di
             and _imported(
                 setup, "alphalattice.interface.local_application.native_bridge", "BINDING_NAME"
             )
-            and any(
-                isinstance(n, ast.Call)
-                and ast.unparse(n.func) == "_create_or_match"
-                and n.args
-                and _parts(n.args[0]) == ("$BINDING_NAME",)
-                for n in ast.walk(bind)
-            )
-            and any(
-                isinstance(n, ast.Assign)
-                and any(_parts(t) == ("$path",) for t in n.targets)
-                and _parts(n.value) == ("$root", ".codex", "$name")
-                for n in ast.walk(writer)
-            )
+            and _binding_path(setup, writer, bind)
         ):
             for node in ast.walk(writer):
                 if not isinstance(node, ast.With):

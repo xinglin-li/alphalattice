@@ -250,13 +250,23 @@ def validate_runtime_definitions(
     project: Path,
     workspace: Path,
     expected_hashes: Mapping[str, str] | None = None,
+    required_cwd: Path | None = None,
 ) -> dict[str, Any]:
-    """Select exact host definition facts from hooks/list; no command enters the receipt."""
+    """Check independent cwd definitions; by default every requested scope must pass.
+
+    The runtime reader selects a required cwd only after admitting its exact loaded
+    parent. An explicit cwd here checks definitions alone, never session attachment.
+    Commands remain private even when an exact definition fails its check.
+    """
     expected_cwds = {str(path.resolve()) for path in (project, workspace)}
+    selected_cwd = None if required_cwd is None else str(required_cwd.resolve())
+    required_cwds = expected_cwds if selected_cwd is None else {selected_cwd}
     config = project / ".codex/config.toml"
     groups: list[dict[str, Any]] = []
     proved: set[str] = set()
+    seen_cwds: set[str] = set()
     hashes: dict[str, set[str]] = {"subagentStart": set(), "subagentStop": set()}
+    scope_hashes: dict[str, dict[str, set[str]]] = {}
     expected: dict[str, dict[str, Any]] = {}
     try:
         if any(
@@ -317,6 +327,17 @@ def validate_runtime_definitions(
         cwd = group.get("cwd")
         safe_cwd = str(Path(cwd).resolve()) if isinstance(cwd, str) and len(cwd) <= 512 else None
         hooks = group.get("hooks")
+        scope_shape_valid = (
+            safe_cwd in expected_cwds
+            and safe_cwd not in seen_cwds
+            and isinstance(hooks, list)
+            and isinstance(group.get("errors"), list)
+            and isinstance(group.get("warnings"), list)
+        )
+        shape_valid = shape_valid and scope_shape_valid
+        if isinstance(safe_cwd, str):
+            seen_cwds.add(safe_cwd)
+        group_hashes: dict[str, set[str]] = {name: set() for name in hashes}
         hooks = (
             [
                 hook
@@ -353,8 +374,7 @@ def validate_runtime_definitions(
                 }
             )
         valid = (
-            safe_cwd in expected_cwds
-            and safe_cwd not in proved
+            scope_shape_valid
             and group.get("errors") == []
             and group.get("warnings") == []
             and len(hooks) == 2
@@ -391,12 +411,20 @@ def validate_runtime_definitions(
             )
             valid = valid and exact
             if exact:
-                hashes[str(event)].add(current)
+                group_hashes[str(event)].add(current)
         if valid:
             proved.add(str(safe_cwd))
+        if isinstance(safe_cwd, str):
+            scope_hashes[safe_cwd] = group_hashes
         groups.append(
             {
                 "cwd": safe_cwd,
+                "host_trust": "TRUSTED" if valid else "UNPROVED",
+                "definition_hashes": {
+                    name: next(iter(values))
+                    for name, values in group_hashes.items()
+                    if len(values) == 1
+                },
                 "errors_count": len(group["errors"])
                 if isinstance(group.get("errors"), list)
                 else None,
@@ -406,14 +434,20 @@ def validate_runtime_definitions(
                 "definitions": definitions,
             }
         )
+    for cwd in required_cwds:
+        for name, values in scope_hashes.get(cwd, {}).items():
+            hashes[name].update(values)
     trusted = bool(
         shape_valid
-        and proved == expected_cwds
+        and required_cwds <= expected_cwds
+        and required_cwds <= proved
         and all(len(values) == 1 for values in hashes.values())
     )
     return {
         "status": "RUNTIME_PROJECT_HOOKS_TRUSTED" if trusted else "RUNTIME_HOOK_TRUST_UNPROVED",
         "host_trust": "TRUSTED" if trusted else "UNPROVED",
+        "definition_scope": "ALL_REQUESTED_CWDS" if selected_cwd is None else "REQUIRED_CWD",
+        "required_cwd": selected_cwd,
         "hooks": groups,
         "definition_hashes": {
             name: next(iter(values)) for name, values in hashes.items() if len(values) == 1
@@ -446,8 +480,8 @@ def runtime_definitions(
             rpc = ManagedRuntimeRPC(project)
             requester = rpc.request
         raw = requester("hooks/list", {"cwds": [str(project), str(workspace)]})
-        result = validate_runtime_definitions(raw, project=project, workspace=workspace)
         attachment = "NOT_PROVED"
+        required_cwd: Path | None = None
         if session_id is not None:
             thread_result = requester(
                 "thread/read", {"threadId": session_id, "includeTurns": False}
@@ -490,6 +524,10 @@ def runtime_definitions(
                 and session_id in loaded
             ):
                 attachment = "PROVED"
+                required_cwd = Path(thread["cwd"]).resolve()
+        result = validate_runtime_definitions(
+            raw, project=project, workspace=workspace, required_cwd=required_cwd
+        )
         if attachment != "PROVED":
             return {
                 "status": "NOT_CHECKED",
@@ -643,7 +681,7 @@ def accepted_answer_metadata(
         return unproved
 
 
-def readiness(
+def native_proof_readiness(
     project: Path,
     binding: NativeResearchBinding | None,
     events: Iterable[Mapping[str, Any]] | None,
@@ -951,4 +989,72 @@ def readiness(
             "chain_candidates_per_role": MAX_CHAIN_CANDIDATES,
             "evidence_ids_per_link": MAX_EVIDENCE_IDS,
         },
+    }
+
+
+def readiness(
+    project: Path,
+    binding: NativeResearchBinding | None,
+    events: Iterable[Mapping[str, Any]] | None,
+    *,
+    goal_id: str | None = None,
+    runtime: Mapping[str, Any] | None = None,
+    requester: RuntimeRequester | None = None,
+    read_external: AcceptedAnswerReader | None = None,
+    history_available: bool = True,
+    native_proof: bool = False,
+) -> dict[str, Any]:
+    """Keep default Session usability separate from explicitly requested native proof.
+
+    Default inspection reads only project declarations and the supplied exact binding.
+    It never reads native hook definitions, starts an RPC connection or changes trust.
+    """
+    from alphalattice.interface.local_application.native_setup import session_project
+
+    host = "codex" if binding is None else binding.host
+    missing: list[str] = []
+    failure: str | None = None
+    try:
+        declared = session_project(project, host)
+        if declared.resolve() != project.resolve():
+            raise ValueError("native_bridge.project_mismatch")
+        if binding is not None and not binding.workspace.resolve().is_relative_to(
+            project.resolve()
+        ):
+            raise ValueError("native_bridge.project_mismatch")
+    except (OSError, ValueError) as error:
+        missing.append("project_declaration")
+        failure = (
+            str(error)
+            if isinstance(error, ValueError)
+            else "native_bridge.configuration_path_invalid"
+        )
+    if binding is None:
+        missing.append("native_session_binding")
+        failure = failure or "native_bridge.not_bound"
+    proof = (
+        native_proof_readiness(
+            project,
+            binding,
+            events,
+            goal_id=goal_id,
+            runtime=runtime,
+            requester=requester,
+            read_external=read_external,
+            history_available=history_available,
+        )
+        if native_proof
+        else {"status": "NOT_REQUESTED", "host_trust": "NOT_CHECKED", "trust_changed": False}
+    )
+    return {
+        "status": "READY" if not missing else "REFUSED",
+        "failure_code": failure,
+        "host": host,
+        "session_id": None if binding is None else binding.session_id,
+        "host_trust": "NOT_CHECKED",
+        "foreground_attachment": "NOT_REQUESTED",
+        "missing": missing,
+        "native_proof": proof,
+        "research_nonblocking": True,
+        "trust_changed": False,
     }

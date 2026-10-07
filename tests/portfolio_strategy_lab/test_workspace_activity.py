@@ -44,6 +44,7 @@ from alphalattice.interface.local_application.activity import (
     RECORDS_ITSELF,
     ActivityReadQuery,
 )
+from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
@@ -93,6 +94,110 @@ def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task
         assert returned["task_id"] is None
         assert page["tasks"] == {}
         assert "Owner prose" not in json.dumps(page)
+    finally:
+        observer.close()
+
+
+@pytest.mark.parametrize("status", ["NOT_BOUND", "OFF", "OBSERVING", "STOPPED", "UNAVAILABLE"])
+def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_path, status):
+    """Usage health exposes no callback identity, native path, content or supplied prose."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    calls = []
+
+    def usage_state():
+        calls.append("read")
+        return {
+            "status": status,
+            "reason": "activity.observer_failed",
+            "session_id": "PRIVATE-NATIVE-SESSION",
+            "path": "C:/PRIVATE-NATIVE-SESSION/rollout.jsonl",
+            "conversation": "PRIVATE-NATIVE-CONVERSATION",
+            "detail": "PRIVATE-CALLBACK-DETAIL",
+            "next_action": "PRIVATE-CALLBACK-ACTION",
+        }
+
+    observer = WorkspaceActivity(
+        workspace=workspace,
+        workspace_id="synthetic-usage-state",
+        gate=WorkspaceMutationGate(),
+        instance="synthetic-usage-state",
+        native_usage_state=usage_state,
+    )
+    try:
+        state = observer.observer_state()
+        assert calls == ["read"]
+        usage = state["native_usage"]
+        assert usage["status"] == status and usage["reason"] == "activity.observer_failed"
+        assert set(usage) <= {"status", "reason", "detail", "next_action"}
+        words = refusal_words("activity.observer_failed")
+        for field in ("detail", "next_action"):
+            if field in usage:
+                assert usage[field] == words[field]
+        assert "PRIVATE-" not in json.dumps(state)
+        assert state["status"] == state["recording"] == "OK"
+        assert state["missing_observations"] == state["appends"] == 0
+    finally:
+        observer.close()
+
+
+@pytest.mark.parametrize(
+    "status,reason,expected_reason",
+    [
+        ("INVENTED_READY", None, None),
+        ("OBSERVING", "PRIVATE-CALLBACK-REASON", "activity.failure_detail_withheld"),
+    ],
+)
+def test_native_usage_callback_refuses_unknown_status_or_untyped_reason(
+    tmp_path, status, reason, expected_reason
+):
+    """Unknown states and arbitrary reasons cannot become owner health or private text."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    observer = WorkspaceActivity(
+        workspace=workspace,
+        workspace_id="synthetic-usage-state",
+        gate=WorkspaceMutationGate(),
+        instance="synthetic-usage-state",
+        native_usage_state=lambda: {"status": status, "reason": reason},
+    )
+    try:
+        state = observer.observer_state()
+        usage = state["native_usage"]
+        assert usage["status"] == ("UNAVAILABLE" if status == "INVENTED_READY" else status)
+        assert usage["reason"] == expected_reason
+        assert "INVENTED_READY" not in json.dumps(state)
+        assert "PRIVATE-CALLBACK-REASON" not in json.dumps(state)
+        assert state["status"] == state["recording"] == "OK"
+        assert state["missing_observations"] == 0
+    finally:
+        observer.close()
+
+
+@pytest.mark.untyped_failure
+def test_native_usage_callback_failure_is_isolated_from_recording_health(tmp_path):
+    """A failed health read reveals its safe code without changing recording or counters."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    def failed_state():
+        raise RuntimeError("PRIVATE-NATIVE-CALLBACK-EXCEPTION")
+
+    observer = WorkspaceActivity(
+        workspace=workspace,
+        workspace_id="synthetic-usage-state",
+        gate=WorkspaceMutationGate(),
+        instance="synthetic-usage-state",
+        native_usage_state=failed_state,
+    )
+    try:
+        for _ in range(2):
+            state = observer.observer_state()
+            assert state["native_usage"]["status"] == "UNAVAILABLE"
+            assert state["native_usage"]["reason"] == "activity.observer_failed"
+            assert state["status"] == state["recording"] == "OK"
+            assert state["missing_observations"] == state["appends"] == 0
+            assert "PRIVATE-NATIVE-CALLBACK-EXCEPTION" not in json.dumps(state)
     finally:
         observer.close()
 

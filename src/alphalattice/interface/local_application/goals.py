@@ -210,6 +210,40 @@ class GoalSession(GoalContract):
     session_id: str = Field(pattern=r"^[A-Za-z0-9._:-]{1,128}$")
 
 
+class GoalAcceptedAnswerContext(GoalContract):
+    """The original Goal and prospective dispatch frozen at genuine first acceptance."""
+
+    goal_id: UUID | None
+    assignment_packet_hash: str | None = Field(default=None, pattern=_HASH)
+    assignment_diagnostic: (
+        Literal["native_bridge.assignment_not_observed", "native_bridge.assignment_ambiguous"]
+        | None
+    ) = "native_bridge.assignment_not_observed"
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def exact_or_missing(self) -> Self:
+        """An exact captured packet and a missing-link diagnostic cannot both be asserted."""
+        if (self.assignment_packet_hash is None) == (self.assignment_diagnostic is None):
+            raise ValueError("goal.assignment_closure_invalid")
+        return self
+
+
+class GoalAcceptedAnswerReceipt(GoalAcceptedAnswerContext):
+    """An owner-resolved accepted answer link, never a public event's assertion.
+
+    The scientific owner has already filed the answer and its Task. The original Goal is
+    retained separately before optional observation; an absent old receipt stays unknown.
+    This link closes an exact assignment without claiming native authorship (OP13, ID7).
+    """
+
+    session: GoalSession
+    task_id: UUID
+    bundle_reference: str = Field(pattern=_HASH)
+    answer_reference: str = Field(pattern=_HASH)
+    bundle_role: Literal["ALPHA", "ANALYST", "CRO", "DATA", "FACTOR", "PORTFOLIO", "RISK"]
+    verdict: Literal["ACCEPTED", "DONE"]
+
+
 class GoalTaskFact(GoalContract):
     """One Task a bound session started, as Task Control holds it."""
 

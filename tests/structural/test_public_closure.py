@@ -269,15 +269,22 @@ def _generated_fixture(family):
     else:
         producer = "src/alphalattice/interface/local_application/native_setup.py"
         dependency = "src/alphalattice/interface/local_application/native_bridge.py"
+        writer = (
+            b'def _create_or_match(name, document, project=None, *, directory: str = ".codex"):\n'
+            b"    root = project\n"
+            b"    path = root / directory / name\n"
+            if family == "native-default-directory"
+            else b"def _create_or_match(name, document, project):\n"
+            b"    root = project\n"
+            b'    path = root / ".codex" / name\n'
+        )
         blobs = {
             producer: (
                 b"from alphalattice.interface.local_application.native_bridge import BINDING_NAME\n"
                 b"def bind_session(project):\n"
                 b"    _create_or_match(BINDING_NAME, {}, project)\n"
-                b"def _create_or_match(name, document, project):\n"
-                b"    root = project\n"
-                b'    path = root / ".codex" / name\n'
-                b'    with path.open("xb") as stream:\n'
+                + writer
+                + b'    with path.open("xb") as stream:\n'
                 b'        stream.write(b"{}")\n'
             ),
             dependency: b'BINDING_NAME = "native-research.local.json"\n',
@@ -290,7 +297,7 @@ def _generated_fixture(family):
     return blobs, set(blobs), producer, dependency, targets
 
 
-@pytest.mark.parametrize("family", ["assets", "native"])
+@pytest.mark.parametrize("family", ["assets", "native", "native-default-directory"])
 def test_a_generated_output_requires_its_public_declaration_and_actual_write(family):
     from release.public_outputs import generated_outputs
 
@@ -335,7 +342,13 @@ def test_a_generated_output_follows_only_a_key_preserving_local_renderer(mapping
 @pytest.mark.parametrize("availability", ["absent", "private"])
 @pytest.mark.parametrize(
     ("family", "part"),
-    [("assets", "producer"), ("native", "producer"), ("native", "constant_dependency")],
+    [
+        ("assets", "producer"),
+        ("native", "producer"),
+        ("native", "constant_dependency"),
+        ("native-default-directory", "producer"),
+        ("native-default-directory", "constant_dependency"),
+    ],
 )
 def test_a_generated_output_loses_permission_when_a_required_source_is_unpublished(
     family, availability, part
@@ -366,6 +379,12 @@ def test_a_generated_output_loses_permission_when_a_required_source_is_unpublish
             b'"other.local.json"',
             "native-research.local.json",
         ),
+        (
+            "native-default-directory",
+            b'"native-research.local.json"',
+            b'"other.local.json"',
+            "native-research.local.json",
+        ),
     ],
 )
 def test_an_output_declaration_change_does_not_authorize_the_previous_path(
@@ -374,7 +393,7 @@ def test_an_output_declaration_change_does_not_authorize_the_previous_path(
     from release.public_outputs import generated_outputs
 
     blobs, public, producer, dependency, targets = _generated_fixture(family)
-    source = dependency if family == "native" else producer
+    source = producer if family == "assets" else dependency
     blobs[source] = blobs[source].replace(before, after)
     expected = {target for target in targets if target.endswith("/" + target_name)}
     assert expected.isdisjoint(generated_outputs(blobs, public))
@@ -386,6 +405,7 @@ def test_an_output_declaration_change_does_not_authorize_the_previous_path(
     [
         ("assets", b"        (ASSETS / name).write_bytes(data)\n"),
         ("native", b'        stream.write(b"{}")\n'),
+        ("native-default-directory", b'        stream.write(b"{}")\n'),
     ],
 )
 def test_an_output_declaration_without_a_write_is_still_an_omitted_dependency(family, write):
@@ -397,7 +417,7 @@ def test_an_output_declaration_without_a_write_is_still_an_omitted_dependency(fa
     assert _failures(blobs, public) == targets
 
 
-@pytest.mark.parametrize("family", ["assets", "native"])
+@pytest.mark.parametrize("family", ["assets", "native", "native-default-directory"])
 def test_a_producer_never_authorizes_an_existing_private_output_path(family):
     from release.public_outputs import generated_outputs
 
@@ -408,12 +428,58 @@ def test_a_producer_never_authorizes_an_existing_private_output_path(family):
     assert _failures(blobs, public) == {private}
 
 
-def test_a_native_binding_output_requires_bind_to_pass_the_imported_constant():
+@pytest.mark.parametrize("family", ["native", "native-default-directory"])
+def test_a_native_binding_output_requires_bind_to_pass_the_imported_constant(family):
     from release.public_outputs import generated_outputs
 
-    blobs, public, producer, _, targets = _generated_fixture("native")
+    blobs, public, producer, _, targets = _generated_fixture(family)
     blobs[producer] = blobs[producer].replace(
         b"    _create_or_match(BINDING_NAME, {}, project)\n", b"    pass\n"
     )
+    assert generated_outputs(blobs, public) == {}
+    assert _failures(blobs, public) == targets
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        (b'directory: str = ".codex"', b'directory: str = ".claude"'),
+        (b'directory: str = ".codex"', b"directory: str = choose_directory()"),
+        (b'directory: str = ".codex"', b"directory: str"),
+        (
+            b"_create_or_match(BINDING_NAME, {}, project)",
+            b'_create_or_match(BINDING_NAME, {}, project, directory=".codex")',
+        ),
+        (
+            b"_create_or_match(BINDING_NAME, {}, project)",
+            b'_create_or_match(BINDING_NAME, {}, project, directory=".claude")',
+        ),
+        (
+            b"    path = root / directory / name\n",
+            b'    directory = ".claude"\n    path = root / directory / name\n',
+        ),
+        (
+            b"    path = root / directory / name\n",
+            b'    path = root / directory / "prefix" / name\n',
+        ),
+        (
+            b"    _create_or_match(BINDING_NAME, {}, project)\n",
+            b"    _create_or_match(BINDING_NAME, {}, project)\n"
+            b'    _create_or_match(BINDING_NAME, {}, project, directory=".claude")\n',
+        ),
+        (
+            b"def bind_session(project):\n",
+            b"def other(project):\n"
+            b'    _create_or_match(BINDING_NAME, {}, project, directory=".claude")\n'
+            b"def bind_session(project):\n",
+        ),
+    ],
+)
+def test_a_native_binding_output_requires_one_unoverridden_literal_default(before, after):
+    from release.public_outputs import generated_outputs
+
+    blobs, public, producer, _, targets = _generated_fixture("native-default-directory")
+    assert before in blobs[producer]
+    blobs[producer] = blobs[producer].replace(before, after)
     assert generated_outputs(blobs, public) == {}
     assert _failures(blobs, public) == targets

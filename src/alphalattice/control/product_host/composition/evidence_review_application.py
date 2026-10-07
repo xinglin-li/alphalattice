@@ -3611,9 +3611,94 @@ class EvidenceReviewApplication:
                 or subject.get("submitted_by") != run.session_id
             ):
                 return mismatch
-            task_id = UUID(str(subject.get("reference")))
+            return self._read_accepted_contribution(
+                answer, bundle, subject.get("reference"), metadata
+            )
+        except (OSError, ValueError, TaskNotFoundError):
+            return unavailable
+
+    @verified_evidence_records()
+    def read_product_accepted_answer(
+        self, subject: Mapping[str, object], *, verdict: str
+    ) -> dict[str, object]:
+        """Read a sealed answer selected by an owner operation-return observation.
+
+        Workspace activity verifies that selected row's source and authority before
+        asking here. The submitting request's Session and Goal remain separate from
+        the answer's stored attribution; absent attribution is never reconstructed.
+        """
+        metadata = {
+            key: subject.get(key)
+            for key in (
+                "agent_role",
+                "agent_vendor",
+                "agent_session",
+                "goal_id",
+                "answer_reference",
+                "bundle_reference",
+                "task_id",
+            )
+        }
+        metadata["record_kind"] = "PRODUCT_OPERATION"
+        unavailable = {
+            **metadata,
+            "status": "UNAVAILABLE",
+            "reason": "activity.accepted_answer_unavailable",
+        }
+        mismatch = {**unavailable, "reason": "activity.accepted_answer_binding_mismatch"}
+        try:
+            answer = self.artifacts.load(
+                ANSWER_CATEGORY, str(subject.get("answer_reference")), AgentAnswerRecord
+            )
+            bundle = self.artifacts.load(
+                BUNDLE_CATEGORY, str(subject.get("bundle_reference")), AgentBundleRecord
+            )
+            if answer.verdict not in {AnswerVerdict.ACCEPTED, AnswerVerdict.DONE}:
+                return unavailable
+            if answer.verdict.value != verdict or subject.get("agent_role") != bundle.role:
+                return mismatch
+            goal = subject.get("goal_id")
+            if goal is not None and str(UUID(str(goal))) != goal:
+                return mismatch
+            vendor, session = subject.get("agent_vendor"), subject.get("agent_session")
+            if (vendor is None) != (session is None) or (
+                vendor is not None
+                and (
+                    vendor not in {"claude-code", "codex"}
+                    or not isinstance(session, str)
+                    or not 1 <= len(session) <= 128
+                )
+            ):
+                return mismatch
+            read = self._read_accepted_contribution(
+                answer, bundle, subject.get("task_id"), metadata
+            )
+            if read.get("status") == "AVAILABLE":
+                read["recorded_agent"] = (
+                    None if answer.agent_run is None else answer.agent_run.model_dump(mode="json")
+                )
+            return read
+        except (OSError, ValueError, TaskNotFoundError):
+            return unavailable
+
+    def _read_accepted_contribution(
+        self,
+        answer: AgentAnswerRecord,
+        bundle: AgentBundleRecord,
+        task_reference: object,
+        metadata: Mapping[str, object],
+    ) -> dict[str, object]:
+        """Reopen the exact Task and sealed contribution for either selected receipt."""
+        unavailable = {
+            **metadata,
+            "status": "UNAVAILABLE",
+            "reason": "activity.accepted_answer_unavailable",
+        }
+        mismatch = {**unavailable, "reason": "activity.accepted_answer_binding_mismatch"}
+        try:
+            task_id = UUID(str(task_reference))
             task = self.session.task_control_registry.task(task_id)
-            if str(task.task_id) != subject.get("reference"):
+            if str(task.task_id) != task_reference:
                 return mismatch
             submission = bundle.submission
             contribution: dict[str, object]
