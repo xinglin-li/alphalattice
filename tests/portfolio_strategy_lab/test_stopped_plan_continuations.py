@@ -75,12 +75,18 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
                 "operation": "RESEARCH_STRATEGY_PLAN",
                 "experiment_document": declaration.model_dump(mode="json"),
             }
+            # P3a binds composed recovery offers to this exact stopped Task version;
+            # the preparation owner still reads its original durable declaration.
+            recovery_source = {
+                "recovery_task_id": str(task.task_id),
+                "recovery_task_hash": task.record_hash,
+            }
             for read in (
                 live.operations.recovery_view(task.task_id),
                 live.operations.status(task.task_id),
-                owner.readback(task.task_id),
             ):
-                assert read["next_requests"]["replan"] == expected
+                assert read["next_requests"]["replan"] == {**expected, **recovery_source}
+            assert owner.readback(task.task_id)["next_requests"]["replan"] == expected
             recovery = live.operations.recovery_view(task.task_id)
             assert recovery["stop"]["detail"] == LEDGER_REBUILT_DETAIL
             assert recovery["verified_stage_count"] == 0
@@ -141,12 +147,30 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
             assert code == 2 and answer["data"]["lifecycle"] == "BLOCKED"
             assert answer["data"]["stop"]["detail"] == LEDGER_REBUILT_DETAIL
             original = registry.task(task.task_id)
-            for arguments in (
-                ("strategy", "plan", "--from", str(saved)),
-                ("request", "--from", str(saved), "--action", "replan"),
+            assert registry.recovery_links(task.task_id) == ()
+            prepare_request = {
+                "operation": "RESEARCH_STRATEGY_PREPARE",
+                "experiment_plan_hash": plan.plan_hash,
+            }
+            for index, arguments in enumerate(
+                (
+                    ("strategy", "plan", "--from", str(saved)),
+                    ("request", "--from", str(saved), "--action", "replan"),
+                )
             ):
-                code, answer = cli(*arguments)
+                preview_saved = tmp_path / f"replan-{index}.json"
+                code, answer = cli(*arguments, "--output", str(preview_saved))
                 assert code == 0 and answer["data"]["status"] == "PLANNED", answer
+                preview = json.loads(preview_saved.read_text(encoding="utf-8"))
+                assert preview["next_requests"]["prepare"] == {
+                    **prepare_request,
+                    **recovery_source,
+                }
+                (link,) = registry.recovery_links(task.task_id)
+                assert link.source_task_id == task.task_id
+                assert link.source_record_hash == original.record_hash
+                assert link.admission_request == prepare_request
+                assert link.successor_task_id is None
             assert planned == [expected["experiment_document"]] * 2
             assert registry.task(task.task_id) == original
             assert registry.tasks() == (original,)

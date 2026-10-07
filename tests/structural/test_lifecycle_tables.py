@@ -108,12 +108,6 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "QUEUED,RECOVERY_REQUIRED",
     ): RESUMABLE,
     (
-        "control/product_host/composition/pending_decisions.py",
-        "_STOPPED",
-        "BLOCKED,RECOVERY_REQUIRED",
-    ): "a stopped Task waits on a person's recovery; a deferral waits on its retry time, which "
-    "its status names (V507)",
-    (
         "control/product_host/composition/portfolio_research_operations.py",
         "PortfolioRunCommand.execute",
         "CANCELLED,CANCEL_REQUESTED",
@@ -139,6 +133,19 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "PortfolioResearchOperations._resume_refusal",
         "QUEUED,RECOVERY_REQUIRED",
     ): RESUMABLE,
+    (
+        "control/product_host/composition/portfolio_research_operations.py",
+        "PortfolioResearchOperations._task_replan",
+        "BLOCKED,CANCELLED,RECOVERY_REQUIRED",
+    ): "a distinct replan carries the exact blocked, cancelled or interrupted source id and "
+    "record hash (P3a); moving, deferred, review and succeeded states gain no stopped-source "
+    "provenance",
+    (
+        "control/product_host/composition/portfolio_research_operations.py",
+        "PortfolioResearchOperations._recovery_context",
+        "BLOCKED,CANCELLED,RECOVERY_REQUIRED",
+    ): "a recovery preview or its offered admission requires the current blocked, cancelled "
+    "or interrupted source version (P3a); every other lifecycle refuses that provenance",
     (
         "control/product_host/composition/portfolio_research_operations.py",
         "_LIVE_LIFECYCLES",
@@ -191,10 +198,25 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "DEFERRED,RECOVERY_REQUIRED,REVIEW_PENDING",
     ): "waiting on someone or on time: the Guardian's TERMINAL_DEFERRED",
     (
+        "control/product_host/composition/task_recovery.py",
+        "task_attention",
+        "BLOCKED,RECOVERY_REQUIRED",
+    ): "blocked or interrupted Tasks owe recovery attention until an exact-version successful "
+    "successor or resolved incident proves resolution (P3a); cancellation intentionally ends, "
+    "deferral waits on time, and other states owe no stopped attention; this owns the former "
+    "pending_decisions._STOPPED classification",
+    (
         "control/product_host/composition/task_supervision.py",
         "_FINISHED",
         "BLOCKED,CANCELLED,SUCCEEDED",
     ): ENDED,
+    (
+        "control/product_host/composition/task_supervision.py",
+        "TaskSupervisor.supervise_once",
+        "BLOCKED,RECOVERY_REQUIRED",
+    ): "only blocked or interrupted views may suppress reopening a finding through resolved "
+    "attention bound to that exact Task hash (P3a); queued and running liveness remain "
+    "classified, while other states gain no resolution shortcut",
     (
         "control/product_host/composition/upgrade_overview.py",
         "upgrade_overview",
@@ -304,6 +326,13 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "CANCELLED,SUCCEEDED",
     ): FINISHED,
     ("control/task_control/registry.py", "_TERMINAL_TASKS", "BLOCKED,CANCELLED,SUCCEEDED"): ENDED,
+    (
+        "control/task_control/registry.py",
+        "_RECOVERY_LINK_STOPPED",
+        "BLOCKED,CANCELLED,RECOVERY_REQUIRED",
+    ): "a new recovery preview requires the current blocked, cancelled or interrupted source "
+    "version (P3a); moving, deferred, review and succeeded sources cannot create it, while "
+    "confirmed successors retain the prior preview's source hash",
     (
         "control/task_control/registry.py",
         "_ACTIVE_TASKS",

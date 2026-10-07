@@ -4430,9 +4430,10 @@ class PortfolioResearchOperations:
         projection_batch = registry.projection_collection(task_id for task_id, _ in page)
         projected = {value.task_id: value for value in projection_batch.projections}
         refused_ids = frozenset(projection_batch.refused_task_ids)
+        canonical_refused_ids = frozenset(batch.refused_task_ids)
         rows: list[dict[str, object]] = []
         for task_id, agent in page:
-            if task_id in refused_ids:
+            if task_id in refused_ids or str(task_id) in canonical_refused_ids:
                 continue
             projection = projected.get(task_id) or self.dispatcher.status(task_id)
             final = self.dispatcher.final_lifecycle(projection)
@@ -4450,11 +4451,16 @@ class PortfolioResearchOperations:
             "tasks": rows,
             "next_cursor": str(page[-1][0]) if len(submitted) > len(page) else None,
         }
-        if projection_batch.refused_task_ids:
-            answer["refusals"] = [
-                self.task_projection_refusal(task_id)
-                for task_id in projection_batch.refused_task_ids
-            ]
+        refusals = [
+            task_record_refusal(str(task_id))
+            for task_id, _ in page
+            if str(task_id) in canonical_refused_ids and task_id not in refused_ids
+        ]
+        refusals.extend(
+            self.task_projection_refusal(task_id) for task_id in projection_batch.refused_task_ids
+        )
+        if refusals:
+            answer["refusals"] = refusals
         return answer
 
     @staticmethod

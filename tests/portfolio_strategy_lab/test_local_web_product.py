@@ -2060,6 +2060,10 @@ def test_task_record_collections_keep_readable_rows_and_offer_named_authority_ro
         TaskRecord,
     )
     from alphalattice.control.task_control.registry import TaskRecordAuthorityError
+    from alphalattice.interface.local_application.cli_contract import (
+        REQUEST_PROVENANCE,
+        RequestProvenance,
+    )
     from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
         TASK_KIND as REVIEW_TASK_KIND,
     )
@@ -2077,8 +2081,14 @@ def test_task_record_collections_keep_readable_rows_and_offer_named_authority_ro
     write_queue_setting(
         live.workspace / "runtime", "4", chosen_by="HUMAN", chosen_at=datetime.now(UTC)
     )
+    agent_session = "task-record-collection"
+    other_session = "task-record-other-session"
     tasks = []
-    for salt in ("unreadable-canonical-record", "readable-queued-peer"):
+    for salt, session in (
+        ("unreadable-canonical-record", agent_session),
+        ("readable-queued-peer", agent_session),
+        ("readable-other-session-peer", other_session),
+    ):
         envelope, goal, plan = task_contract(salt=salt)
         if salt == "readable-queued-peer":
             # A known queued review command, constructed without executing specialist work.
@@ -2099,15 +2109,19 @@ def test_task_record_collections_keep_readable_rows_and_offer_named_authority_ro
                 verifier_catalog_hash=plan.verifier_catalog_hash,
                 work_items=plan.work_items,
             )
-        tasks.append(
-            registry.admit(
-                input_envelope=envelope,
-                goal=goal,
-                plan=plan,
-                observed_at=datetime.now(UTC),
-            ).record
-        )
-    damaged, peer = tasks
+        provenance = REQUEST_PROVENANCE.set(RequestProvenance(vendor="codex", session=session))
+        try:
+            tasks.append(
+                registry.admit(
+                    input_envelope=envelope,
+                    goal=goal,
+                    plan=plan,
+                    observed_at=datetime.now(UTC),
+                ).record
+            )
+        finally:
+            REQUEST_PROVENANCE.reset(provenance)
+    damaged, peer, other_peer = tasks
     # Corrupt canonical JSON, not the QUEUED head's separate projection dependency.
     damaged, _command = registry.request_cancel(
         task_id=damaged.task_id,
@@ -2121,10 +2135,19 @@ def test_task_record_collections_keep_readable_rows_and_offer_named_authority_ro
         "TASK_GUARDIAN": "/api/tasks/guardian",
         "UPGRADE_OVERVIEW": "/api/upgrade",
         "DATA_ISSUES": "/api/workspace/data-issues",
+        "TASKS": "/api/tasks",
+        "SESSION_TASKS": f"/api/tasks?agent_session={agent_session}",
     }
     before = {operation: _json(live, path) for operation, path in reads.items()}
     assert any(row["task_id"] == healthy_result for row in before["RESEARCH_HISTORY"]["entries"])
     assert any(row["task_id"] == str(peer.task_id) for row in before["TASK_GUARDIAN"]["tasks"])
+    assert [row["task_id"] for row in before["SESSION_TASKS"]["tasks"]] == [
+        str(peer.task_id),
+        str(damaged.task_id),
+    ]
+    other_before = _json(live, f"/api/tasks?agent_session={other_session}")
+    assert [row["task_id"] for row in other_before["tasks"]] == [str(other_peer.task_id)]
+    projection_before = registry.projection_collection((damaged.task_id,))
 
     alien = TaskRecord.from_identity(
         **{**damaged.model_dump(exclude={"record_hash"}), "task_id": uuid4()}
@@ -2137,6 +2160,9 @@ def test_task_record_collections_keep_readable_rows_and_offer_named_authority_ro
         )
         stored_before = connection.execute(
             "SELECT task_id, record_json FROM workspace_task ORDER BY admission_sequence"
+        ).fetchall()
+        projections_before = connection.execute(
+            "SELECT task_id, projection_json FROM workspace_task_projection ORDER BY task_id"
         ).fetchall()
 
     def named_refusals(value):
@@ -2166,6 +2192,56 @@ def test_task_record_collections_keep_readable_rows_and_offer_named_authority_ro
             assert refusal["next_requests"]["workspace"] == {"operation": "WORKSPACE_SHOW"}
             assert refusal["next_requests"]["backups"] == {"operation": "WORKSPACE_BACKUPS"}
         assert str(alien.task_id) not in json.dumps(answer)
+    assert registry.projection_collection((damaged.task_id,)) == projection_before
+    assert _agent(live, PortfolioResearchAgentRequest(operation="TASKS")) == answers["TASKS"]
+    assert any(row["task_id"] == str(peer.task_id) for row in answers["TASKS"]["tasks"])
+    session_tasks = answers["SESSION_TASKS"]
+    assert (
+        _agent(live, PortfolioResearchAgentRequest(operation="TASKS", agent_session=agent_session))
+        == session_tasks
+    )
+    assert session_tasks["tasks"] == [before["SESSION_TASKS"]["tasks"][0]]
+    assert session_tasks["next_cursor"] is None
+    (session_refusal,) = session_tasks["refusals"]
+    assert session_refusal["task_id"] == str(damaged.task_id)
+    assert "attention" not in session_refusal
+    # Refusals belong to this page and session, while cursors retain admission order.
+    first_page = _json(live, f"/api/tasks?agent_session={agent_session}&history_limit=1")
+    assert first_page["tasks"] == session_tasks["tasks"]
+    assert first_page["next_cursor"] == str(peer.task_id)
+    assert not first_page.get("refusals")
+    assert (
+        _agent(
+            live,
+            PortfolioResearchAgentRequest(
+                operation="TASKS", agent_session=agent_session, history_limit=1
+            ),
+        )
+        == first_page
+    )
+    last_page = _json(
+        live,
+        f"/api/tasks?agent_session={agent_session}&history_limit=1"
+        f"&history_cursor={first_page['next_cursor']}",
+    )
+    assert last_page == {"tasks": [], "next_cursor": None, "refusals": [session_refusal]}
+    assert (
+        _agent(
+            live,
+            PortfolioResearchAgentRequest(
+                operation="TASKS",
+                agent_session=agent_session,
+                history_limit=1,
+                history_cursor=first_page["next_cursor"],
+            ),
+        )
+        == last_page
+    )
+    assert _json(live, f"/api/tasks?agent_session={other_session}") == other_before
+    assert (
+        _agent(live, PortfolioResearchAgentRequest(operation="TASKS", agent_session=other_session))
+        == other_before
+    )
     history = answers["RESEARCH_HISTORY"]
     assert any(row["task_id"] == healthy_result for row in history["entries"])
     assert not any(row["task_id"] == str(damaged.task_id) for row in history["entries"])
@@ -2220,6 +2296,12 @@ def test_task_record_collections_keep_readable_rows_and_offer_named_authority_ro
                 "SELECT task_id, record_json FROM workspace_task ORDER BY admission_sequence"
             ).fetchall()
             == stored_before
+        )
+        assert (
+            connection.execute(
+                "SELECT task_id, projection_json FROM workspace_task_projection ORDER BY task_id"
+            ).fetchall()
+            == projections_before
         )
 
 

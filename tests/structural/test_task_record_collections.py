@@ -99,6 +99,8 @@ STRICT_READERS = {
 # issues preserve cases, but withhold continuation grants when the complete Task scan is unknown.
 # Recovery command construction has both boundaries: compatibility reads may inspect known peers,
 # while the default actual-resume branch keeps its strict scan above.
+# P3a TASKS projects attention from readable canonical records and names unreadable IDs on
+# the selected session page; it grants no admission, control or supervision authority.
 PARTIAL_READERS = {
     COMPOSITION + "evidence_review_application.py": (
         "EvidenceReviewApplication",
@@ -108,7 +110,7 @@ PARTIAL_READERS = {
     COMPOSITION + "research_experiments.py": ("ResearchExperimentApplication", "listing"),
     COMPOSITION + "portfolio_research_operations.py": (
         "PortfolioResearchOperations",
-        "pending_decisions guardian upgrade",
+        "pending_decisions guardian upgrade tasks",
     ),
     COMPOSITION + "upgrade_overview.py": ("", "upgrade_overview"),
     PREPARATION + "remediation.py": ("WorkspaceDataIssueApplication", "readback"),
