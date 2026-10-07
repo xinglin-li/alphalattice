@@ -8,7 +8,9 @@ question, follow the product's answers and explain the evidence to the person.
 
 This checkout is the person's workspace to change. Fix runtime bugs and add
 strategies, models and Features: read the failure's cause, fix its source owner,
-add a regression test and run again. Under `src/alphalattice/`, strategies are
+add a regression test and run again. The [failure and recovery
+procedure](.agents/skills/alphalattice-research/references/operating.md#failure-and-recovery)
+tells a defect from a refusal and returns you to the original Task. Under `src/alphalattice/`, strategies are
 declared in `investment/portfolio_strategy_lab/policies/installed_strategies.py`,
 models in `capabilities/alpha_modeling/extensions/`, and Feature kernels in
 `foundation/feature_engine/producers/factors/`. Follow
@@ -209,12 +211,14 @@ The other five specialists use the same return path. As the lead, run
 `bundle prepare --role <role> --task <task-id> --dir "<out>/bundle"`
 for one retained Task. Give the loaded card its stage assignment plus the bundle's
 listed files and nominated answer path. Its existing ANALYZE/REVIEW stdout reads and
-authorized EXECUTE operations and `<out>` writes remain unchanged. As its last
-action, it writes bounded `text`, exact `references` from README.md and its `read`
-list into that answer file, then returns one line: written. This nominated write is
-the sole exception to ANALYZE/REVIEW's write-nothing rule. The child never runs
-AGENT_ANSWER_SUBMIT; you submit the file with the preparation's returned
-`submit_command`. The Host checks shape and bindings, never scientific correctness.
+authorized EXECUTE operations and `<out>` writes remain unchanged. README.md gives
+the steps and answer format; the material file lists "Exact references allowed in
+the answer". As its last action, the child writes bounded `text`, `references`
+copied from that list and its `read` list into that answer file, then returns one
+line: written. This nominated write is the sole exception to ANALYZE/REVIEW's
+write-nothing rule. The child never runs AGENT_ANSWER_SUBMIT; you submit the file
+with the preparation's returned `submit_command`. The Host checks shape and
+bindings, never scientific correctness.
 When native observation is bound, assign the exact `bundle_reference` as soon as
 the native tool returns the child id; the accepted artifact then records its proved child author in Team.
 
@@ -231,6 +235,12 @@ held reason when none is offered.
 Before asking a person to activate, review the completed historical book and its review standing, and read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
 After activation, run the offered update and review its first published forward positions at the first actionable session.
 Hold positions only from the first actionable session; sessions before it are a causal replay, inside the research window where marked.
+If the person needs positions before activation and the controls answer offers no
+pre-activation preview, report that gap and stop the activation path: run, build
+or compute nothing to fill it. Report each position with its basis, a close-marked
+conditional estimate or an entry observed at the next session's open, and the
+publication's `claim`; [reading the dates](.agents/skills/alphalattice-research/references/research-lead.md#reading-the-dates)
+works one activation through every timestamp.
 After person activation, updates advance observed
 sessions and publish research positions, not orders or investment advice. The
 horizon is about eleven months beyond the latest completed session at activation;

@@ -2523,6 +2523,13 @@ def test_a_compact_answer_holds_its_next_requests_to_the_read(
         start = page["next_left"]["list"].rsplit(" ", 1)[1]
     # Each listed once; a full view's command carries --view full and whole ids (V406, V393).
     assert set(paged) == set(listed)
+    # Each page holds to the read whatever length the workspace path adds (FLOW-0): next_left's
+    # key was left out of a page's room, a page one byte over at one temporary path's length.
+    for pad in range(1, 161):
+        command = ["--workspace", str(tmp_path / ("w" * pad)), "task", "list", "--list-next"]
+        cli.main(command, serve=lambda _: 99)
+        line = capsys.readouterr().out.strip().splitlines()[-1]
+        assert len(line.encode("utf-8")) <= client.COMPACT_ANSWER_BYTES, pad
     refused = answer("--next-from", "3")[1]
     assert (refused["outcome"], refused["failure_code"]) == (
         "INVALID_INPUT",

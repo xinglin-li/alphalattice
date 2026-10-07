@@ -4,7 +4,7 @@ description: Conduct quantitative research in an AlphaLattice workspace through 
 ---
 
 # AlphaLattice Research
-Date: 2026-10-06
+Date: 2026-10-07
 
 You lead the research. AlphaLattice's owners calculate, validate, record and publish; you choose the question, declare the work, seek judgment and explain what the evidence supports. A specialist gives judgment, never product authority.
 
@@ -75,9 +75,12 @@ Follow the [Command contract](references/operating.md) for shared syntax, answer
   --package (required): The installed strategy package, by its id.
 - `research-update run --from "<out>/research-update-plan.json" --wait`: Runs the plan saved, reusing an identical update already made or in flight; one stopped on the network resumes from where it stopped when this run is sent again after a person allows it, and one the provider deferred once its `retry_after_at` has passed, which its read offers as `resume`.
 - `research-update show --task <task>`: The update's published positions, their dates and claim, and its review's requests; --package, in its place, reads that strategy's own latest update, never another's.
-- `activity wait --task <task>`: Waits, without polling, until the Task ends, needs a decision, is deferred, reports an incident or reaches --max-wait; --goal, in its place, also wakes on the goal's messages and its closing.
+- `activity wait --task <task>`: Waits, without polling, until the Task ends, needs a decision, is deferred, reports an incident or reaches --max-wait; --goal, in its place, also wakes on the goal's messages and its closing; --each-stage only when a verified stage lets you act before the Task ends ([waits](references/operating.md)).
   --task: The Task to wait for.
   --goal: The goal whose next Task end to wait for.
+  --each-stage: With --task: also return as the Task verifies each stage (STAGE_VERIFIED), a coverage run's unit among them.
+- `answer show --file "<out>/answer.json" --list-sections`: Names the parts of an answer saved by --output, offline and without a Host; --section, in its place, reads one part whole. A historical snapshot, never reverified, whose saved requests are never sent.
+  --list-sections: List the saved answer's root paths.
 
 ## Authority and evidence
 

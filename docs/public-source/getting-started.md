@@ -4,7 +4,7 @@ Use the [setup and launch procedure](../../.agents/skills/alphalattice-research/
 
 ## First preparation
 
-Give your agent the research intent in one sentence. Before a workspace's first preparation, its agent opens the one `FIRST_USE` goal with that sentence copied word for word as `objective`. This goal opens once per workspace and is never revised. Follow the exact declaration and command sequence in [the agent guide](../../AGENTS.md#run-the-first-use-from-the-persons-sentence).
+Give your agent the research intent in one sentence. Before a workspace's first preparation, its agent opens the one `FIRST_USE` goal with that sentence copied word for word as `objective`. This goal opens once per workspace, and its declaration is never revised; evidence attachments, notes and an accepted submission may add record revisions, none of which restarts its 24-hour delegation. Follow the exact declaration and command sequence in [the agent guide](../../AGENTS.md#run-the-first-use-from-the-persons-sentence).
 
 For 24 hours after opening, the goal delegates only opening preparation network access, confirming the preparation and its resumes, and deciding its data issues. `goal show` records `record.delegated_steps` and the delegation's end/active state in `record.delegation`. Submission, abandonment or expiry ends that authority and closes a network setting still held by the delegation; a later setting made by you remains. You can stop the goal in Local Web or ask the agent to abandon it. Task cancellation is separate. Activation, storage, automation, revocation and paid choices remain yours.
 

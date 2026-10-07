@@ -2391,8 +2391,8 @@ def run(
         )
         if listing is not None and not selected:
             if compact:
-                # The listing is the data; the envelope repeats none of it (V411).
-                answer.update(dict.fromkeys(_NEXT_KEYS))
+                # The listing is the data, its page measured with next_left's key (V411).
+                answer.update(dict.fromkeys((*_NEXT_KEYS, "next_left")))
             elif next_from:
                 answer["data"] = _listing_page(listing, next_from, None)[0]
         if compact:

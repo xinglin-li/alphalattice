@@ -488,8 +488,15 @@ SKILL_COMMANDS: tuple[RoleCommand, ...] = (
         "activity wait --task <task>",
         "Waits, without polling, until the Task ends, needs a decision, is deferred, reports an "
         "incident or reaches --max-wait; --goal, in its place, also wakes on the goal's messages "
-        "and its closing.",
-        ("--goal",),
+        "and its closing; --each-stage only when a verified stage lets you act before the Task "
+        "ends ([waits](references/operating.md)).",
+        ("--goal", "--each-stage"),
+    ),
+    RoleCommand(
+        'answer show --file "<out>/answer.json" --list-sections',
+        "Names the parts of an answer saved by --output, offline and without a Host; "
+        "--section, in its place, reads one part whole. A historical snapshot, never "
+        "reverified, whose saved requests are never sent.",
     ),
 )
 """The lead's commands in the Skill's `## Commands`: every command its shortest paths use."""
@@ -670,11 +677,11 @@ def command_block(role: str) -> str:
             role,
             [
                 "# Bundle",
-                "Read README.md for the task and answer format, then every listed file whole, "
-                "one read per file (reads may run together). In Codex, use ExecCommand only for "
-                "read-only reads of exact listed paths and ApplyPatch only on the nominated "
-                "answer file; in Claude, use Read for listed files and Write only for that answer "
-                "file. The bundle is complete: fetch nothing.",
+                "Read README.md for the steps, the answer format and the procedure, then every "
+                "listed file whole, one read per file (reads may run together). In Codex, use "
+                "ExecCommand only for read-only reads of exact listed paths and ApplyPatch only on "
+                "the nominated answer file; in Claude, use Read for listed files and Write only "
+                "for that answer file. The bundle is complete: fetch nothing.",
                 "Graph (→ the next step):",
                 f"- README.md → {BUNDLE_ROLES[role]}, whole, one tool call a file (calls may run "
                 "together) → decide → the answer file, written once → one line: written",
