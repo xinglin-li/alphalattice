@@ -347,12 +347,16 @@ def test_every_command_example_writes_and_reads_under_out_or_the_workspace(mater
     assert stray == []
 
 
-def test_both_agent_guides_require_cutoff_start_and_holdings_before_activation():
-    """V589/V597: both hosts review actionable holdings and name the earlier causal replay."""
+def test_both_agent_guides_review_the_book_before_activation_and_positions_after():
+    """P1: activation precedes forward positions; both hosts keep cutoff and causal replay."""
     sentence = (
-        "Before asking a person to activate, read the strategy's "
-        "`strategy_dates.information_cutoff` and `strategy_dates.first_actionable_session`, "
-        "and review the holdings it will trade at that first actionable session."
+        "Before asking a person to activate, review the completed historical book and its "
+        "review standing, and read `strategy_dates.information_cutoff` and the conditional "
+        "`strategy_dates.first_actionable_session`."
+    )
+    forward = (
+        "After activation, run the offered update and review its first published forward "
+        "positions at the first actionable session."
     )
     hold = (
         "Hold positions only from the first actionable session; sessions before it are a "
@@ -364,4 +368,5 @@ def test_both_agent_guides_require_cutoff_start_and_holdings_before_activation()
         ROOT / ".claude/skills/alphalattice-research/SKILL.md",
     ):
         assert path.read_text(encoding="utf-8").count(sentence) == 1
+        assert path.read_text(encoding="utf-8").count(forward) == 1
         assert path.read_text(encoding="utf-8").count(hold) == 1

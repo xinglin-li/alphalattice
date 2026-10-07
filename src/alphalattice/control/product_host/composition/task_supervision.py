@@ -15,7 +15,7 @@ afterwards. It adds no power: what a person or an agent may do is what the recov
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from threading import Event, Lock, Thread
 from typing import Literal, Protocol, cast
 from uuid import UUID
@@ -33,7 +33,12 @@ from alphalattice.control.guanyin.tasks.supervision import (
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
-from alphalattice.control.task_control.contracts import TaskLifecycle, WorkItemLifecycle
+from alphalattice.control.product_host.composition.task_recovery import (
+    TaskAttentionFact,
+    task_attention,
+)
+from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord, WorkItemLifecycle
+from alphalattice.control.task_control.registry import TaskNotFoundError
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
@@ -113,15 +118,32 @@ class TaskSupervisor:
         with self._lock:
             now = self.operations.dispatcher.clock()
             registry = self.operations.workspace_session.task_control_registry
+            tasks = registry.tasks()
+            observed_hashes = {str(task.task_id): task.record_hash for task in tasks}
+            attention = self.attention(tasks)
             seen: set[str] = set()
             opened: list[IncidentRecord] = []
-            for task in registry.tasks():
+            for task in tasks:
                 if task.lifecycle in _FINISHED:
                     continue
                 view = self.operations.recovery_view(task.task_id)
-                record, items = registry.task_with_work_items(task.task_id)
+                observed_hash = view.get("task_record_hash")
+                if isinstance(observed_hash, str):
+                    observed_hashes[str(task.task_id)] = observed_hash
                 status = cast(Mapping[str, object], view["status"])
                 liveness = cast(Mapping[str, object], view["liveness"])
+                current_lifecycle = str(view["lifecycle"])
+                fact = attention.get(task.task_id)
+                if (
+                    current_lifecycle in {"BLOCKED", "RECOVERY_REQUIRED"}
+                    and fact is not None
+                    and not fact.unresolved
+                    and fact.task_record_hash == view.get("task_record_hash")
+                ):
+                    # A stopped Task with current owner proof no longer has a finding
+                    # to reopen. RUNNING and QUEUED still need liveness/parked rules.
+                    continue
+                record, items = registry.task_with_work_items(task.task_id)
                 current = cast(str | None, status.get("current_stage"))
                 started = next(
                     (
@@ -170,8 +192,69 @@ class TaskSupervisor:
                 self.store.put(kept)
             for kept in self.store.records():
                 if kept.state == "OPEN" and kept.key not in seen:
-                    self.store.put(kept.changed(state="RESOLVED", resolved_at=now))
+                    try:
+                        resolved_task_id = UUID(kept.task_id)
+                    except ValueError:
+                        resolved_task = None
+                    else:
+                        try:
+                            resolved_task = registry.task(resolved_task_id)
+                        except TaskNotFoundError:
+                            resolved_task = None
+                    observed_hash = observed_hashes.get(kept.task_id)
+                    self.store.put(
+                        kept.changed(
+                            state="RESOLVED",
+                            resolved_at=now,
+                            resolved_task_record_hash=(
+                                None
+                                if resolved_task is None
+                                or resolved_task.record_hash != observed_hash
+                                else resolved_task.record_hash
+                            ),
+                        )
+                    )
             return tuple(opened)
+
+    def attention(self, tasks: Iterable[TaskRecord]) -> dict[UUID, TaskAttentionFact]:
+        """Resolve current attention from one link read, one incident read and canonical Tasks.
+
+        Records already supplied by the caller are the canonical records for this
+        projection batch. A child outside that batch is read through Task Control;
+        a missing child or read-side OS error leaves its link unresolved. Typed Task
+        Control authority refusals remain refusals. Recovery-link read errors are
+        also allowed to retain Task Control's located refusal rather than being guessed.
+        """
+        records = tuple(tasks)
+        by_id = {record.task_id: record for record in records}
+        registry = self.operations.workspace_session.task_control_registry
+        links = registry.recovery_links()
+        incidents = self.store.records()
+        successor_ids = {
+            link.successor_task_id
+            for link in links
+            if link.successor_task_id is not None
+            and link.source_task_id in by_id
+            and link.source_record_hash == by_id[link.source_task_id].record_hash
+        }
+        successors = {
+            task_id: record for task_id, record in by_id.items() if task_id in successor_ids
+        }
+        for task_id in sorted(successor_ids - successors.keys(), key=str):
+            try:
+                successors[task_id] = registry.task(task_id)
+            except (TaskNotFoundError, OSError):
+                # No readable canonical child means the explicit link cannot prove completion.
+                continue
+        return {
+            record.task_id: task_attention(
+                record,
+                successors=successors,
+                links=links,
+                incidents=incidents,
+            )
+            for record in records
+        }
 
     def open_incident(self, task_id: UUID) -> IncidentRecord | None:
         """The Task's open incident, as the rules last found it."""

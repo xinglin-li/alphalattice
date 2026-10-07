@@ -20,6 +20,8 @@ const I18N = (() => {
 
   /* Structural templates: exact shapes only, never arbitrary substring replacement. */
   const TEMPLATES = [
+    [/^([\s\S]+) (No cumulative continuation allowance is declared\.|The declared continuation allowance is exhausted\.|The sealed reading plan has no resumable work\.|The selected analysis's preparation Task is not retained\.)$/, (m) => said(m[1]) + ' ' + t(m[2])],
+    [/^([\s\S]+) (Pending source and other unread ranges stay unread; the CRO assessment is bounded to the recorded analysis, not every source\.)$/, (m) => said(m[1]) + ' ' + t(m[2])],
     // V671: complete Evidence owner grammar; generated components recurse, authored subjects stay exact.
     [/^(\d[\d,]*) of (\d[\d,]*) finding(?:\(s\)|s)? were read by the reviewer and not named as a risk\.$/, (m) => t("{n} of {total} finding(s) were read by the reviewer and not named as a risk.", {n: m[1], total: m[2]})],
     [/^filing index read at the cutoff: (\d[\d,]*) filing(?:\(s\)|s)? in the last (\d[\d,]*) days, every one read earlier; no new filing$/, (m) => t("filing index read at the cutoff: {n} filing(s) in the last {days} days, every one read earlier; no new filing", {n: m[1], days: m[2]})],

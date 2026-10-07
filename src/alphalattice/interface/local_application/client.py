@@ -457,17 +457,28 @@ class LocalResearchClient:
                 )
             )
         if operation.startswith("GOAL_"):
-            # The research case page shows a goal until the UI pass gives goals a section (U23).
             goal_hash = body.get("goal_hash") or document.get("goal_hash")
             return (
                 self.connection.url.rstrip("/")
                 + "/#"
-                + urlencode(
-                    {"page": "lab", "case": goal_hash}
-                    if goal_hash
-                    else {"page": "history", "collection": "cases"}
-                )
+                + urlencode({"page": "goal", "goal": goal_hash} if goal_hash else {"page": "goals"})
             )
+        activation = body.get("activation")
+        if isinstance(activation, dict):
+            offered = activation.get("next_requests")
+            activate = offered.get("activate") if isinstance(offered, dict) else None
+            held = activation.get("held")
+            book_task = (
+                activation.get("book_task_id")
+                or (activate.get("task_id") if isinstance(activate, dict) else None)
+                or (held.get("task_id") if isinstance(held, dict) else None)
+            )
+            if book_task:
+                return (
+                    self.connection.url.rstrip("/")
+                    + "/#"
+                    + urlencode({"page": "portfolio", "book": book_task})
+                )
         review = body.get("review_publication_hash") or document.get("review_publication_hash")
         if review:
             query = {"history": f"review:{review}"}
@@ -539,11 +550,14 @@ class LocalResearchClient:
         """
         url = self.selected_url(document, body)
         query = parse_qs(urlsplit(url).query)
+        page = parse_qs(urlsplit(url).fragment).get("page", [""])[0]
         entry = query.get("history", [""])[0]
         if document.get("operation") == "EXPERIMENT_ALPHA_COMPARE":
             kind, label = "alpha_comparison", "Open this exact saved Alpha comparison"
         elif document.get("operation", "").startswith("GOAL_"):
-            kind, label = "goal", "Open this goal revision"
+            kind, label = "goal", "Open Goals" if page == "goals" else "Open this goal revision"
+        elif page == "portfolio":
+            kind, label = "portfolio_book", "Open this book on Portfolio"
         elif entry.startswith("review:"):
             kind, label = "published_cro_review", "Open this published CRO review"
         elif any(key.startswith("review_") for key in query):

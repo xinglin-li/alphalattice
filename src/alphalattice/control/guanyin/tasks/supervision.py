@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal, Self, cast
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from alphalattice.control.observation_runtime.guardian import RuntimeIncident
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -164,9 +164,22 @@ class IncidentRecord(_Record):
     state: Literal["OPEN", "RESOLVED"]
     last_seen_at: datetime
     resolved_at: datetime | None = None
+    resolved_task_record_hash: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+        description="The canonical Task record observed when this incident was resolved.",
+    )
     remedies: tuple[OfferedRemedy, ...]
     attempts: tuple[RecoveryAttempt, ...] = ()
     record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_serializer(mode="wrap")
+    def omit_unbound_resolution(self, handler):  # type: ignore[no-untyped-def]
+        """Keep legacy sealed JSON unchanged until a resolution binds a Task version."""
+        serialized = handler(self)
+        if self.resolved_task_record_hash is None:
+            serialized.pop("resolved_task_record_hash", None)
+        return serialized
 
     @classmethod
     def create(cls, **values: object) -> Self:

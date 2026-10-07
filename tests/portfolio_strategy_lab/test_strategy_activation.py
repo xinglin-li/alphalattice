@@ -132,10 +132,14 @@ def _publish_activation_review(live, result_hash):
 def test_every_activation_surface_reads_the_exact_books_published_review(
     tmp_path, capsys, reviewed, monkeypatch
 ):
-    """requirement (V614, TE12): a sealed synthetic installed book travels through the real CLI;
+    """requirement (P1, V614, TE12): a sealed synthetic installed book travels through the real CLI;
     every offer, activation answer and readback states the same owner review, including its
-    absence. Reading standing neither fits, publishes a review nor adds a Task.
+    absence. A fresh client finds its exact activation door, which remains a person's.
+    Reading standing neither fits, publishes a review nor adds a Task.
     """
+    from urllib.parse import parse_qs, urlsplit
+
+    from alphalattice.interface.local_application.client import LocalResearchClient
     from tests.alternative_evidence_desk.review_http_support import build_authority
     from tests.portfolio_strategy_lab.activation_review_support import activation_review_host
 
@@ -217,6 +221,60 @@ def test_every_activation_surface_reads_the_exact_books_published_review(
         shown = _activation_cli(live, capsys, "workspace", "show")
         (intent,) = [i for i in shown["intents"] if i.get("strategy_package_id") == PACKAGE]
         assert intent["activation"]["review_standing"] == standing
+        books_request = {"operation": "CONTROLS", "strategy_package_id": PACKAGE}
+        plan_request = {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": PACKAGE}
+        first = LocalResearchClient(live.workspace)
+        discovered = first.request(include_context=True)
+        (forward,) = [
+            row for row in discovered["intents"] if row.get("strategy_package_id") == PACKAGE
+        ]
+        assert forward["flow"] == "RUN_FORWARD"
+        assert forward["activation"] == offered
+        assert forward["activation"]["status"] == "INACTIVE"
+        assert forward["next_requests"] == {"books": books_request}
+        idle = first.request(plan_request)
+        assert idle["status"] == "REFUSED"
+        assert idle["failure_code"] == "portfolio_update.not_installed"
+        assert idle["detail"]
+        assert idle["next_requests"] == {"books": books_request}
+        assert idle["activation"] == offered
+        assert (
+            main(
+                [
+                    "--workspace",
+                    str(live.workspace),
+                    "--view",
+                    "full",
+                    "research-update",
+                    "plan",
+                    "--package",
+                    PACKAGE,
+                ],
+                serve=lambda _: 99,
+            )
+            == 2
+        )
+        refused_cli = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+        assert refused_cli["outcome"] == "REFUSED"
+        assert refused_cli["failure_code"] == "portfolio_update.not_installed"
+        assert refused_cli["data"]["next_requests"] == {"books": books_request}
+        assert refused_cli["data"]["activation"] == offered
+        fresh = LocalResearchClient(live.workspace)
+        book_controls = fresh.request(idle["next_requests"]["books"])
+        assert book_controls["strategy_package_id"] == PACKAGE
+        assert book_controls["activation"] == offered
+        activate_request = book_controls["activation"]["next_requests"]["activate"]
+        assert activate_request == {"operation": "STRATEGY_ACTIVATE", "task_id": task_id}
+        navigation = fresh.navigation(books_request, book_controls)
+        assert navigation["kind"] == "portfolio_book"
+        assert parse_qs(urlsplit(navigation["url"]).fragment) == {
+            "page": ["portfolio"],
+            "book": [task_id],
+        }
+        denied = fresh.request(activate_request)
+        assert denied["status"] == "REFUSED"
+        assert denied["failure_code"] == "strategy_activation.human_confirmation_required"
+        assert fresh.request(books_request)["activation"] == offered
         panel = _json(
             live,
             f"/api/workbench/portfolio?task_id={task_id}"
@@ -239,6 +297,17 @@ def test_every_activation_surface_reads_the_exact_books_published_review(
             "activation"
         ]
         assert active["status"] == "ACTIVE" and active["review_standing"] == standing
+        after = LocalResearchClient(live.workspace)
+        active_controls = after.request(books_request)
+        assert active_controls["activation"] == active
+        assert active_controls["activation"]["book_task_id"] == task_id
+        reopened = after.request(include_context=True)
+        (forward,) = [
+            row for row in reopened["intents"] if row.get("strategy_package_id") == PACKAGE
+        ]
+        assert forward["activation"] == active
+        assert forward["next_requests"] == {"update": plan_request}
+        assert activated["next_requests"] == {"update": plan_request}
 
         def no_review_read(*_args, **_kwargs):
             raise AssertionError("Automation discovery opened full review standing")
@@ -363,6 +432,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
     and its sealed last state; a research update then decides the next sessions and publishes
     the book's next positions; activating it again is refused while it runs, and a person
     stops it."""
+    from alphalattice.interface.local_application.client import LocalResearchClient
 
     root = evidence_roots.require("ls1_daily_flows")
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
@@ -419,8 +489,11 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         assert (forward["flow"], forward["activation"], forward["next_requests"]) == (
             "RUN_FORWARD",
             offered,
-            {},
+            {"books": {"operation": "CONTROLS", "strategy_package_id": PACKAGE}},
         )
+        book_controls = LocalResearchClient(workspace).request(forward["next_requests"]["books"])
+        assert book_controls["strategy_package_id"] == PACKAGE
+        assert book_controls["activation"] == offered
         daily = _json(live, "/api/research-update/automation")
         assert PACKAGE not in [row["strategy_package_id"] for row in daily["runs_forward"]]
         status, _headers, body = _request(

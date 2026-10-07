@@ -11,7 +11,14 @@ from datetime import datetime
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
@@ -209,6 +216,26 @@ class GoalTaskFact(GoalContract):
     task_id: UUID
     kind: str = Field(min_length=1, max_length=200)
     state: str = Field(min_length=1, max_length=64)
+    updated_at: datetime | None = Field(
+        default=None, description="Task Control's canonical last-update time, when available."
+    )
+
+    @model_serializer(mode="wrap")  # type: ignore[untyped-decorator]
+    def _serialize_available_update(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """Keep an absent clock absent, preserving the pre-field sealed Goal shape."""
+        serialized: dict[str, Any] = handler(self)
+        if self.updated_at is None:
+            serialized.pop("updated_at", None)
+        return serialized
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def update_time_is_aware(self) -> Self:
+        """A present Task Control update clock identifies an unambiguous instant."""
+        if self.updated_at is not None and (
+            self.updated_at.tzinfo is None or self.updated_at.utcoffset() is None
+        ):
+            raise ValueError("goal.task_updated_at_must_be_aware")
+        return self
 
 
 class GoalCompletion(GoalContract):

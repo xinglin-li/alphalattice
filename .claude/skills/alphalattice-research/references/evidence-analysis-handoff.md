@@ -1,5 +1,5 @@
 # Evidence preparation and the Analyst
-Date: 2026-10-03
+Date: 2026-10-06
 
 Use the exact book selector and the Host's requests. Never write source sets, issuer mappings or analysis publications by hand.
 
@@ -21,7 +21,13 @@ An experiment book uses `--study`, `--receipt` and `--session` instead of `--res
 
 Give each unit to its own Analyst with the bundle path, filenames and answer file, not your conclusion. Confirm permitted exposure and permissions. On Claude, bundles up to 171,877 bytes may use `alphalattice_evidence_analyst_medium`; larger bundles use `alphalattice_evidence_analyst`. This measured recall boundary is not a product limit. Codex has the high card only. Pass no model override.
 
-Run the returned `submit_command`. The Host rechecks Task, sources, scope, expiry and policy; screens findings and maps aliases back. On `CORRECT`, the same Analyst fixes only named problems, never changes judgment to win approval; make at most two corrections and rerun the same command. `ACCEPTED` admits the answer; `DONE` admits acceptable findings and records the rest as dropped. Keep the receipt, not the answer. Submissions use EXTERNAL_AUTOMATION provenance. Wait for the receipt Task, then continue to the [CRO review](cro-handoff.md). Select among eligible analyses with `evidence select`; never move files. Source-exact citations prove traceability, not truth or investment significance.
+Run the returned `submit_command`. The Host rechecks Task, sources, scope, expiry and policy; screens findings and maps aliases back. On `CORRECT`, the same Analyst fixes only named problems, never changes judgment to win approval; make at most two corrections and rerun the same command. `ACCEPTED` admits the answer; `DONE` admits acceptable findings and records the rest as dropped. Keep the receipt, not the answer. Submissions use EXTERNAL_AUTOMATION provenance. Wait for the receipt Task to publish, then read the exact book's current Evidence answer. Select among eligible analyses with `evidence select`; never move files. Source-exact citations prove traceability, not truth or investment significance.
+
+## Settle current reading scope before CRO
+
+Use the current Evidence answer's exact packet requests when offered to read `continuation_scope`, `continuation_request` and remaining allowance. A null first-reading cumulative allowance grants no continuation authority; never invent `session_limit` or `window_limit`. While scope is `PENDING` and an explicitly declared allowance has positive sessions and windows remaining, run the bound continuation under those same limits. Await its Task, prepare the successor packet's Analyst bundle, submit and await its publication, then reread current Evidence before deciding the next step. Another delivery part reads sealed excerpts, not more source; neither an old packet nor a ledger's newest Task substitutes for the selected analysis's exact lineage.
+
+`COMPLETE` means the sealed reading plan is exhausted, never that every source was read. An absent or exhausted allowance or `NOTHING_RESUMABLE` leaves every pending or unread range and `remainders` disclosed for bounded review; do not enlarge the allowance or claim full-source coverage. After required continuation within the declared allowance and publication of the current Analyst answers, take current Evidence's exact `dossier` action, then that dossier answer's `cro_bundle` action for the [CRO review](cro-handoff.md).
 
 ## First source package
 

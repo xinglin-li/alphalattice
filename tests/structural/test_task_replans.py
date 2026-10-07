@@ -14,6 +14,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from types import SimpleNamespace
 from typing import get_args, get_type_hints
+from uuid import UUID
 
 from alphalattice.control.product_host.composition.local_web_session import (
     HANDLED_OPERATION_ROUTES,
@@ -22,7 +23,7 @@ from alphalattice.control.product_host.composition.local_web_session import (
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     PortfolioResearchOperations,
 )
-from alphalattice.control.task_control.contracts import TaskReplan
+from alphalattice.control.task_control.contracts import TaskLifecycle, TaskReplan
 from alphalattice.interface.local_application.cli_contract import command_table
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
@@ -82,7 +83,7 @@ def test_every_composed_task_input_kind_reaches_recovery(plan_admission_check) -
                     _required, allowed = PortfolioResearchOperationRequest.field_contract(
                         replan.preview
                     )
-                    if allowed:
+                    if allowed - {"recovery_task_id", "recovery_task_hash"}:
                         assert callable(getattr(owner, "replan_request", None)), (
                             item.name,
                             replan.preview,
@@ -119,11 +120,27 @@ def test_every_composed_task_input_kind_reaches_recovery(plan_admission_check) -
     }
     for declared in declarations.values():
         # Every named route remains a request the Host actually accepts.
-        PortfolioResearchOperationRequest.field_contract(declared.preview or declared.admitting)
+        _required, allowed = PortfolioResearchOperationRequest.field_contract(
+            declared.preview or declared.admitting
+        )
         PortfolioResearchOperationRequest.field_contract(declared.admitting)
         assert routes[declared.admitting]["method"] == "POST", declared
         if declared.preview is None or declared.preview == declared.admitting:
             continue
+        if not allowed - {"recovery_task_id", "recovery_task_hash"}:
+            source = SimpleNamespace(
+                task_kind=declared.task_kind,
+                lifecycle=TaskLifecycle.BLOCKED,
+                task_id=UUID(int=83),
+                record_hash="a" * 64,
+            )
+            offered = operations._task_replan(source)
+            assert offered == {
+                "operation": declared.preview,
+                "recovery_task_id": str(source.task_id),
+                "recovery_task_hash": source.record_hash,
+            }, declared
+            PortfolioResearchRequestDocument.model_validate(offered)
         admission = {
             "operation": declared.admitting,
             **{
@@ -199,7 +216,7 @@ def test_a_new_composed_owner_reaches_recovery_without_a_second_owner_list() -> 
         setattr(operations, item.name, None)
     declared = TaskReplan(task_kind="synthetic.future", preview="PLAN", admitting="RUN")
     request = {"operation": "PLAN", "spec": {"strategy_package_id": "synthetic-selected"}}
-    sentinel = SimpleNamespace(task_kind=declared.task_kind)
+    sentinel = SimpleNamespace(task_kind=declared.task_kind, lifecycle=TaskLifecycle.SUCCEEDED)
     seen = []
 
     def bind(task):

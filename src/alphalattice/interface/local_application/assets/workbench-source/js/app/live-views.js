@@ -215,7 +215,8 @@ const LiveViews = (() => {
   /* A Portfolio page without a book: the workspace is open; what is missing is the study. The
    * saved Portfolio studies are offered here to open, and where there is none, the way to one. */
   function bookless() {
-    const books = Data.history().filter((x) => x.raw?.kind === 'portfolio.policy-development' && x.raw?.status === 'SUCCEEDED');
+    const entries = new Set(Data.portfolioEntries().map((x) => x.entry_id));
+    const books = Data.history().filter((x) => entries.has(x.id));
     const list = books.map((x) => ({key: x.id, state: x.raw?.status, name: x.words || x.summary || t(x.name), words: x.words || x.summary || '', ref: x.ref, interval: x.interval, input: x.input ? html`${x.input} · ${cutoffText(x)}` : '', inputKey: x.raw?.input_binding_hash || '', inputText: x.input, at: x.raw?.recorded_at, to: {action: 'history-open', value: x.id}})); // N6: the kind is the page's, never the row's prefix
     // Compare's list is the same list with Compare's sentence: the row opens the first study here
     // and the second is chosen on the page (2026-09-21, the Studies audit: the row led to Portfolio)
@@ -288,6 +289,9 @@ const LiveViews = (() => {
       case 'TASK_RECORD_UNREADABLE':
         return {lead: 'task', name: html`${t('Task')} ${hashCell(d.task_id)}`, refusal: d, key: d.task_id};
       case 'STOPPED_TASK': { // N6 (law 58): the stop said once, with its way on -- a data update's in the Data page's words
+        // P3a owns current attention for this exact version. A handled incident or succeeded
+        // successor does not rewrite its historical lifecycle; legacy decisions stay current.
+        if (d.attention?.unresolved === false) return null;
         const v = Data.tasks().find((x) => x.task_id === d.task_id) || {task_id: d.task_id, task_kind: d.task_kind, kind: d.task_kind, lifecycle: d.lifecycle, status: d.lifecycle};
         const stop = LiveWorkspace.stopWords ? LiveWorkspace.stopWords(v) : null, next = v.stop_next ? t(v.stop_next) : stop ? stop.next : wayOn(v.latest_failure_code, v.status);
         return {state: v, place: DATA_TASKS.has(v.task_kind) ? 'data' : '', name: nameOf(v).name, why: v.detail ? t(v.detail) : stop ? stop.title : t(stateOf(v.status).line), next, to: {action: 'task', value: v.task_id}, key: v.task_id, at: v.last_activity_at || ''};
@@ -332,7 +336,6 @@ const LiveViews = (() => {
   // keeps the cause on hover. A cause or way only one row has stays on that row (WD4).
   const sharedWay = (all) => { const n = new Map(); for (const w of all) if (typeof w.next === 'string' && w.next) n.set(w.next, (n.get(w.next) || 0) + 1); let best = ''; for (const [k, c] of n) if (c > 1 && c > (n.get(best) || 0)) best = k; return best; };
   const sharedCause = (all) => { const n = new Map(); for (const w of all) if (w.state?.detail && w.state.task_id) { const ids = n.get(w.state.detail) || new Set(); ids.add(w.state.task_id); n.set(w.state.detail, ids); } let best = ''; for (const [k, ids] of n) if (ids.size > 1 && ids.size > (n.get(best)?.size || 0)) best = k; return {words: best, count: n.get(best)?.size || 0}; };
-  const failedHistory = (all) => Data.history().filter((r) => r.note && !all.some((w) => w.state?.task_id === r.task_id)).slice(0, 2); // ST6: a stopped Task already has its decision row
   function decisionRows() {
     const all = waiting(), shared = sharedWay(all), cause = sharedCause(all);
     const items = all.map((w) => {
@@ -341,7 +344,6 @@ const LiveViews = (() => {
       const common = w.state?.detail && w.state.detail === cause.words, why = common ? '' : w.why;
       return objectRow({lead: w.state ? w.lead : tile(w.lead, 'warning'), state: w.state, name: common ? html`<span class="hint" data-tip="${w.why}" tabindex="0">${w.name}</span>` : w.name, why, to: w.to}, {key: w.key || '', columns: [...(w.state ? [] : ['state']), 'by', 'next'], props: [...(w.state ? [] : ['']), w.by ? html`${t('by')} ${w.by}` : '', w.next && String(w.next) !== shared ? factsRef(t('Next step'), html`<p>${w.next}</p>`) : ''], time: w.at ? when(w.at) : ''});
     });
-    for (const r of failedHistory(all)) { const task = Data.tasks().find((v) => v.task_id === r.task_id && v.latest_failure_code === r.note); items.push(objectRow({lead: tile('warning', TONE.failure), name: html`${t(r.name)} ${t('did not complete')}`, why: html`<span data-tip="${r.note}">${task?.detail ? t(task.detail) : explainCode(r.note) || t('The owner stopped the Task and recorded why.')}</span> · ${t('recorded {date}', {date: r.recordedAt ? when(r.recordedAt) : ''})}`, to: {action: 'history-open', value: r.id}}, {key: r.id, columns: ['state', 'by'], props: ['', '']})); }
     return items;
   }
   /* What is running: the moving Tasks with their stage, and the newest retained team session. */
@@ -361,7 +363,7 @@ const LiveViews = (() => {
   /* What needs you, as Home counts it (its "Needs a decision" group, the rows decisionRows draws): the
    * sidebar's attention badges and the window's title read this one count, never a list of their own
    * (the user, 2026-09-25: what waits on you apart from what merely runs); Data's share of it on Data. */
-  const needs = () => { try { const all = waiting(); return Data.workspaceStatus === 'ready' ? all.length + failedHistory(all).length : 0; } catch { return 0; } };
+  const needs = () => { try { return Data.workspaceStatus === 'ready' ? waiting().length : 0; } catch { return 0; } };
   const dataNeeds = () => { try { return Data.workspaceStatus === 'ready' ? waiting().filter((w) => w.place === 'data').length : 0; } catch { return 0; } };
   const group = (title, rows, cls = 'card-list lines slotted', total = rows.length, more = '', note = '', shown = rows.length) => {
     const rest = rows.slice(shown);

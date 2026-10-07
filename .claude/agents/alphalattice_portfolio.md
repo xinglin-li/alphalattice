@@ -42,7 +42,7 @@ EXECUTE (only as authorized):
   --task: The Task to wait for.
 Graph (→ the next step; what carries over):
 - `workspace show` → `study show` (Alpha Task id) → `book draft` (alpha.json, a candidate) → edit portfolio.yaml → `study plan` (draft.json) → `study run` (book-plan.json) → `study show` (book Task id)
-- `study run` (book-run.json) → `risk-link add` (a Risk Task) | the lead's Evidence and CRO review (the book's review, dossier and cro_bundle offers)
+- `study run` (book-run.json) → `risk-link add` (a Risk Task) | the lead's Evidence and CRO review (read the book's current Evidence before its CRO offers)
 - `study show` (two book Task ids) → `study compare` (both ids)
 - any answer: exit 2 → its `next_requests`; exit 3 → `activity wait` or `task show`
 

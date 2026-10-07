@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Lock, RLock, local
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
 from weakref import WeakValueDictionary
 
@@ -34,6 +34,7 @@ from .contracts import (
     TaskInputEnvelope,
     TaskLifecycle,
     TaskRecord,
+    TaskRecoveryLink,
     TaskSafeProjection,
     TaskStageReceipt,
     WorkItemLifecycle,
@@ -62,6 +63,10 @@ _CONNECTION_LOCK_GUARD = Lock()
 
 _TERMINAL_TASKS = frozenset(
     {TaskLifecycle.SUCCEEDED, TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED}
+)
+_RECOVERY_LINK_EVENT = "task.recovery_link"
+_RECOVERY_LINK_STOPPED = frozenset(
+    {TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED, TaskLifecycle.RECOVERY_REQUIRED}
 )
 _NORMAL_ENDS = frozenset(
     {"work_item.ready_for_verification", "work_item.verified", "work_item.blocked"}
@@ -1809,6 +1814,133 @@ class DuckDbTaskControlRegistry:
             ("task", task_id), lambda: self._read(lambda c: self._task_row(c, task_id))
         )
 
+    @staticmethod
+    def _recovery_links_from(
+        connection, task_id: UUID | None = None
+    ) -> tuple[TaskRecoveryLink, ...]:  # type: ignore[no-untyped-def]
+        """Read and verify links in one journal query, optionally by source Task."""
+        if task_id is None:
+            rows = connection.execute(
+                """
+                SELECT task_id, details_json, recorded_at FROM workspace_task_event
+                WHERE kind = ? ORDER BY recorded_at, task_id, sequence
+                """,
+                [_RECOVERY_LINK_EVENT],
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT task_id, details_json, recorded_at FROM workspace_task_event
+                WHERE kind = ? AND task_id = ? ORDER BY recorded_at, sequence
+                """,
+                [_RECOVERY_LINK_EVENT, str(task_id)],
+            ).fetchall()
+        links: list[TaskRecoveryLink] = []
+        for stored_task_id, details_json, event_time in rows:
+            try:
+                link = TaskRecoveryLink.model_validate_json(details_json)
+                if str(link.source_task_id) != str(stored_task_id):
+                    raise ValueError("task recovery link source differs from its journal row")
+                if (
+                    not isinstance(event_time, datetime)
+                    or DuckDbTaskControlRegistry._db_time(link.recorded_at) != event_time
+                ):
+                    raise ValueError("task recovery link clock differs from its journal row")
+            except (TypeError, ValueError) as error:
+                raise TaskControlDatabaseAuthorityError(
+                    "task_control.recovery_link_invalid"
+                ) from error
+            links.append(link)
+        return tuple(links)
+
+    def recovery_links(self, task_id: UUID | None = None) -> tuple[TaskRecoveryLink, ...]:
+        """Read sealed recovery provenance from the existing Task event journal.
+
+        With no Task id, one query reads the full link set for a batch projection.
+        A supplied id selects links whose source is that Task.
+        """
+        links = self._answered(
+            ("recovery_links", task_id),
+            lambda: self._read(lambda connection: self._recovery_links_from(connection, task_id)),
+        )
+        # A frozen contract can still carry a mutable request dictionary. Never expose
+        # the owner's cached seal to a caller that may edit its returned request.
+        return tuple(link.model_copy(deep=True) for link in links)
+
+    def record_recovery_link(
+        self,
+        *,
+        source_task_id: UUID,
+        source_record_hash: str,
+        admission_request: dict[str, Any],
+        successor_task_id: UUID | None = None,
+        observed_at: datetime,
+    ) -> TaskRecoveryLink:
+        """Append a sealed preview or its matching confirmed successor to the event journal.
+
+        A preview is admitted only for the current stopped source version. A confirmed
+        successor must match a prior preview and exist as a distinct canonical Task of
+        the same kind. Its source may have advanced after admission; that link retains
+        the confirmed source hash so readers can leave the newer version unresolved.
+        """
+        self._db_time(observed_at)
+        normalized_request = json.loads(self._json(admission_request))
+        if not isinstance(normalized_request, dict):
+            raise ValueError("task recovery link request must be a mapping")
+        link = TaskRecoveryLink.create(
+            source_task_id=source_task_id,
+            source_record_hash=source_record_hash,
+            admission_request=normalized_request,
+            successor_task_id=successor_task_id,
+            recorded_at=observed_at.astimezone(UTC),
+        )
+
+        def operation(connection):  # type: ignore[no-untyped-def]
+            source = self._task_row(connection, source_task_id)
+            links = self._recovery_links_from(connection, source_task_id)
+            existing = next(
+                (
+                    current
+                    for current in links
+                    if current.source_record_hash == link.source_record_hash
+                    and current.admission_request == link.admission_request
+                    and current.successor_task_id == link.successor_task_id
+                ),
+                None,
+            )
+            if successor_task_id is None:
+                if source.record_hash != source_record_hash:
+                    raise TaskVersionStale("task_control.recovery_link_source_version_stale")
+                if source.lifecycle not in _RECOVERY_LINK_STOPPED:
+                    raise TaskTransitionRejected("task_control.recovery_link_source_not_stopped")
+                if existing is not None:
+                    return existing
+            else:
+                successor = self._task_row(connection, successor_task_id)
+                if source_task_id == successor_task_id or successor.task_kind != source.task_kind:
+                    raise TaskTransitionRejected("task_control.recovery_link_successor_invalid")
+                if not any(
+                    current.successor_task_id is None
+                    and current.source_record_hash == source_record_hash
+                    and current.admission_request == normalized_request
+                    for current in links
+                ):
+                    raise TaskTransitionRejected("task_control.recovery_link_preview_required")
+                if existing is not None:
+                    return existing
+
+            self._event(
+                connection,
+                task_id=source_task_id,
+                execution_id=None,
+                kind=_RECOVERY_LINK_EVENT,
+                details=link.model_dump(mode="json"),
+                observed_at=observed_at,
+            )
+            return link
+
+        return self._write(operation, control_only=True)
+
     def submitted_by(self, task_id: UUID) -> SubmittingAgent | None:
         """The agent session that submitted a Task, where its request named one (U33)."""
 
@@ -2463,6 +2595,7 @@ __all__ = [
     "TaskControlDatabaseAuthorityError",
     "TaskQueueFull",
     "TaskQueueHeadAuthorityError",
+    "TaskRecoveryLink",
     "TaskTransitionRejected",
     "TaskVersionStale",
     "resolve_task_control_database",

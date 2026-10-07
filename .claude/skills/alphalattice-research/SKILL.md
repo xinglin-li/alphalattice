@@ -4,7 +4,7 @@ description: Conduct quantitative research in an AlphaLattice workspace through 
 ---
 
 # AlphaLattice Research
-Date: 2026-10-05
+Date: 2026-10-06
 
 You lead the research. AlphaLattice's owners calculate, validate, record and publish; you choose the question, declare the work, seek judgment and explain what the evidence supports. A specialist gives judgment, never product authority.
 
@@ -18,23 +18,27 @@ You lead the research. AlphaLattice's owners calculate, validate, record and pub
 ## Shortest paths
 
 - **Orient**: `workspace show` → choose the input's intent → [workspace and task flow](../../../AGENTS.md).
+- **First use from one sentence**: open `FIRST_USE` before preparation → follow strategy controls for only the required whole-support Alpha and Risk studies → prepare and install → run the whole-support historical book → settle current Evidence within any declared allowance and publish its Analyst answers → read Evidence's dossier, then take that dossier answer's CRO bundle action → request person activation → run the offered forward update ([leading research](references/research-lead.md)).
 - **A Factor study**: `study controls` → `study plan` → `study run` → `study show`; the full flow is in the [research-agent guide](../../../AGENTS.md).
 - **An Alpha study from a Factor study**: `curation show` → `curation submit` → `handoff preview` → `study plan` → `study run`; follow the same [research-agent guide](../../../AGENTS.md).
 - **A Risk study**: `study controls --kind risk.covariance-development` → `study plan` → `study run`; follow the same [research-agent guide](../../../AGENTS.md).
 - **A book**: `book draft` → `study plan` → `study run` → `study show`; follow the same [research-agent guide](../../../AGENTS.md) and [research contract](references/research-contract.md).
 - **The book's Evidence and CRO review**: follow the book readback's selectors, then [prepare the Analyst packet](references/evidence-analysis-handoff.md) and [submit the CRO review](references/cro-handoff.md).
-- **Run an installed research strategy forward**: `workspace show` → package `RUN_FORWARD` → `research-update plan` → `research-update run` → `research-update show`; read [leading research](references/research-lead.md).
+- **Run an installed research strategy forward**: `workspace show` → exact package `strategy-book controls` and `activation` → person activation if `INACTIVE` → offered `research-update plan` → `research-update run` → `research-update show`; read [leading research](references/research-lead.md).
 - **A formula factor**: `feature controls` → `feature plan` → `trial run` → `trial show` → `feature review`; see [feature changes](references/operating.md) and the [research-agent guide](../../../AGENTS.md).
 - **A model of your own**: `model scaffold` → `model check` → `model sandbox` with the Host stopped; see the model contract in [research contract](references/research-contract.md).
 - **A data issue**: `issue list` → its offered `request`; follow [pipeline issues](references/pipeline-issues.md).
 
-Before asking a person to activate, read the strategy's `strategy_dates.information_cutoff` and `strategy_dates.first_actionable_session`, and review the holdings it will trade at that first actionable session.
+Before asking a person to activate, review the completed historical book and its review standing, and read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
+After activation, run the offered update and review its first published forward positions at the first actionable session.
 Hold positions only from the first actionable session; sessions before it are a causal replay, inside the research window where marked.
 
 ## Commands
 
 Follow the [Command contract](references/operating.md) for shared syntax, answers, continuations, files and waits. The catalog below gives each operation's exact form and its own flags; run it only within your scope and budget.
 - `workspace show`: Input ids, recent studies and Tasks, and `intents`: each flow's needs, holdings and next requests.
+- `strategy-book controls --package <package>`: Reads the exact installed package's activation, book and recorded review standing before planning Forward work; an inactive book's activation is the person's action on Portfolio, separate from installation and automatic scheduling.
+  --package: The installed strategy package, by its id.
 - `goal schema --save-declaration "<out>/goal.yaml"`: Writes the shortest goal declaration, valid as it stands, to edit.
 - `goal open --file "<out>/goal.yaml"`: Opens a goal before multi-step work and binds this session to it.
 - `goal show --save-declaration "<out>/submission.yaml"`: Writes the bound goal's completion to fill, bound to its revision: its criteria and deliverable slots, its references listed as the evidence to cite.
@@ -71,7 +75,6 @@ Follow the [Command contract](references/operating.md) for shared syntax, answer
   --package (required): The installed strategy package, by its id.
 - `research-update run --from "<out>/research-update-plan.json" --wait`: Runs the plan saved, reusing an identical update already made or in flight; one stopped on the network resumes from where it stopped when this run is sent again after a person allows it, and one the provider deferred once its `retry_after_at` has passed, which its read offers as `resume`.
 - `research-update show --task <task>`: The update's published positions, their dates and claim, and its review's requests; --package, in its place, reads that strategy's own latest update, never another's.
-  --package: The installed strategy package, by its id.
 - `activity wait --task <task>`: Waits, without polling, until the Task ends, needs a decision, is deferred, reports an incident or reaches --max-wait; --goal, in its place, also wakes on the goal's messages and its closing.
   --task: The Task to wait for.
   --goal: The goal whose next Task end to wait for.

@@ -1,5 +1,5 @@
 # AlphaLattice: guide for your research agent
-Date: 2026-10-03
+Date: 2026-10-06
 
 AlphaLattice computes and records local quantitative research. You state the
 question, follow the product's answers and explain the evidence to the person.
@@ -89,6 +89,13 @@ revocation, paid actions and external publication remain the person's.
 setting; restart only an idle service you own when online acquisition is
 authorized. Follow the admitted Task and its continuation after a lost connection.
 
+To reach a reviewed installed book, follow strategy controls for only its required
+whole-support Alpha and Risk studies, prepare and install, run the whole-support
+historical book, settle current Evidence scope and publish its Analyst answers,
+then read its dossier and take that dossier answer's CRO bundle action; person
+activation and the first forward update follow review. Reuse completed required studies and add an
+exploratory study only when the person's question calls for it.
+
 ## Keep the goal
 
 Keep first-use research under that goal. Before later multi-step research,
@@ -165,7 +172,22 @@ alphalattice activity wait --task <evidence-task-id> --each-stage
 alphalattice evidence show --from "<out>/book-study.json" --output "<out>/evidence-answer.json"
 alphalattice request --from "<out>/evidence-answer.json" --action <analyst-bundle-name> --choices "<out>/bundle-choices.yaml" --output "<out>/bundle-answer.json"
 alphalattice bundle submit --dir "<out>/analyst-bundle" --file "<out>/analyst-bundle/answer.json" --wait --output "<out>/analyst-receipt.json"
-alphalattice bundle prepare --role CRO --from "<out>/book-study.json" --dir "<out>/cro-bundle"
+```
+
+Before CRO, continue current Evidence only under an explicitly declared cumulative
+allowance with positive sessions and windows remaining. Follow its exact packet
+and continuation requests, analyze and publish each successor packet, then reread
+Evidence. A null first-reading allowance grants no continuation authority; never
+invent limits. An absent or exhausted allowance or `NOTHING_RESUMABLE` preserves
+unread ranges and limits for bounded review. `COMPLETE` names only the sealed
+reading plan. Read current Evidence's exact `dossier` action, then that dossier
+answer's `cro_bundle`; fill `bundle_directory` in `<out>/cro-choices.yaml` with a
+new folder:
+
+```powershell
+alphalattice evidence show --from "<out>/book-study.json" --output "<out>/evidence-current.json"
+alphalattice request --from "<out>/evidence-current.json" --action dossier --output "<out>/cro-dossier-answer.json"
+alphalattice request --from "<out>/cro-dossier-answer.json" --action cro_bundle --choices "<out>/cro-choices.yaml" --output "<out>/cro-bundle-answer.json"
 alphalattice bundle submit --dir "<out>/cro-bundle" --file "<out>/cro-bundle/answer.json" --wait --output "<out>/cro-receipt.json"
 alphalattice evidence show --from "<out>/book-study.json" --output "<out>/book-review.json"
 ```
@@ -196,14 +218,19 @@ over its entire supported historical interval before requesting activation of
 the completed Task. Activation binds component models, required calibration and
 the last sealed book state; it fits nothing. Read
 `strategy-book controls --package '<strategy-package-id>'` for `activation`, its
-book and horizon.
-Before asking a person to activate, read the strategy's `strategy_dates.information_cutoff` and `strategy_dates.first_actionable_session`, and review the holdings it will trade at that first actionable session.
+book and horizon on every fresh session before a forward plan. If `INACTIVE`,
+ask the person to take the exact offered Portfolio activation action; follow its
+held reason when none is offered.
+Before asking a person to activate, review the completed historical book and its review standing, and read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
+After activation, run the offered update and review its first published forward positions at the first actionable session.
 Hold positions only from the first actionable session; sessions before it are a causal replay, inside the research window where marked.
-After person activation and daily-update selection, updates advance observed
+After person activation, updates advance observed
 sessions and publish research positions, not orders or investment advice. The
 horizon is about eleven months beyond the latest completed session at activation;
 read its end and request a newer book before continuing beyond it. A changed
 package needs a new run, review and person activation. Deactivation keeps history.
+Installation, activation and enabling daily automation on Settings are separate
+decisions; first-use delegation grants no activation or automation authority.
 
 ## Delegate and ask for decisions
 

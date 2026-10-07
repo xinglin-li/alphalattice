@@ -50,6 +50,34 @@ def _cli(workspace: Path, *arguments: str) -> tuple[int, dict[str, Any], str]:
     return result.returncode, json.loads(result.stdout.strip().splitlines()[-1]), result.stdout
 
 
+def test_every_goal_navigation_uses_the_current_goal_routes() -> None:
+    """P1/TE12: every registered Goal answer opens its exact revision or the Goals collection."""
+    from types import SimpleNamespace
+    from urllib.parse import parse_qs, urlsplit
+
+    from alphalattice.interface.local_application.client import LocalResearchClient
+    from alphalattice.interface.local_application.operations import OPERATIONS
+
+    client = object.__new__(LocalResearchClient)
+    client.connection = SimpleNamespace(url="http://127.0.0.1:12345")
+    before, current = "a" * 64, "b" * 64
+    operations = [operation for operation in OPERATIONS if operation.startswith("GOAL_")]
+    assert operations
+    for operation in operations:
+        document = {"operation": operation, "goal_hash": before}
+        answer = {"goal_hash": current}
+        selected = client.navigation(document, answer)
+        assert selected["kind"] == "goal"
+        assert parse_qs(urlsplit(selected["url"]).fragment) == {"page": ["goal"], "goal": [current]}
+        assert parse_qs(urlsplit(client.selected_url(document, {})).fragment) == {
+            "page": ["goal"],
+            "goal": [before],
+        }
+        collection = client.navigation({"operation": operation}, {})
+        assert collection["label"] == "Open Goals"
+        assert parse_qs(urlsplit(collection["url"]).fragment) == {"page": ["goals"]}
+
+
 @pytest.mark.parametrize(
     "network_consent",
     [
@@ -4399,3 +4427,45 @@ def test_the_installed_report_names_every_absent_performance_metric(
         "jensenAlpha",
     ):
         assert view["metrics"][alias] is None
+
+
+def test_recovery_provenance_is_paired_typed_and_worded() -> None:
+    """P3a: an existing owner request keeps its exact source pair or refuses it truthfully."""
+    from uuid import UUID
+
+    from alphalattice.interface.local_application.cli_contract import refusal_words
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+        PortfolioResearchRequestDocument,
+    )
+
+    source = UUID(int=83)
+    context = {"recovery_task_id": str(source), "recovery_task_hash": "a" * 64}
+    document = PortfolioResearchRequestDocument.model_validate(
+        {"operation": "WORKSPACE_PREPARE_PLAN", **context}
+    )
+    request = document.to_operation_request()
+    assert request.recovery_task_id == source and request.recovery_task_hash == "a" * 64
+    assert (
+        PortfolioResearchRequestDocument(operation="WORKSPACE_PREPARE_PLAN").recovery_task_id
+        is None
+    )
+    for field in context:
+        with pytest.raises(ValueError, match=r"portfolio_research\.recovery_context_pair_required"):
+            PortfolioResearchRequestDocument.model_validate(
+                {"operation": "WORKSPACE_PREPARE_PLAN", field: context[field]}
+            )
+    with pytest.raises(ValueError, match=r"portfolio_research\.recovery_task_id_invalid"):
+        PortfolioResearchOperationRequest(
+            operation="WORKSPACE_PREPARE_PLAN",
+            recovery_task_id="not-a-task",
+            recovery_task_hash="a" * 64,
+        )  # type: ignore[arg-type]
+    for code in (
+        "portfolio_research.recovery_context_pair_required",
+        "portfolio_research.recovery_task_id_invalid",
+        "portfolio_research.recovery_request_not_offered",
+    ):
+        words = refusal_words(code)
+        assert "recovery" in words["detail"]
+        assert words["next_action"] == "READ_THE_TASK_AND_CONFIRM_AGAIN"

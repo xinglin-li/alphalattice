@@ -1,5 +1,5 @@
 # Operating the CLI
-Date: 2026-10-05
+Date: 2026-10-06
 
 ## Setup and launch
 Date: 2026-10-03
@@ -39,7 +39,7 @@ Choose a new workspace directory for new research; the launcher initializes it w
 alphalattice --workspace "workspaces/my-research" serve --no-browser --stop-on-stdin
 ```
 
-As the lead, use the browser tools your host actually exposes. Unless the person asks for terminal-only work, open the exact launch link printed by the service in the host's own in-app browser; it establishes the browser session. Leave that tab available so the person can follow the work. As CLI work progresses, follow its relevant visible product pages: Task progress while waiting, then the exact result or positions after completion. If browser tools are unavailable, give the person the exact printed launch link. A printed link alone does not establish that a browser integration is attached.
+As the lead, use the browser tools your host actually exposes. Unless the person asks for terminal-only work, open the exact launch link printed by the service in the host's own in-app browser; it establishes the browser session. Leave that tab available so the person can follow the work. Follow the current Task, its pending person action or its published result; change pages only when that state or action changes. If browser tools are unavailable, give the person the exact printed launch link. A printed link alone does not establish that a browser integration is attached.
 
 Keep the service attached to stdin; enter `stop` to close the launch. Opening Local Web does not acquire data or run a study. Reuse the existing Host for commands on the workspace rather than starting another writer. If a restart invalidates the browser session, open the new launch link. Follow [the agent guide](../../../../AGENTS.md) to bind the native session and use clean `alphalattice` commands afterward; configuration does not change the person's host trust.
 
@@ -88,6 +88,8 @@ A fresh checkout uses its own locked environment and local UI build. When Eviden
 `activity wait` has no timer; `--goal` also wakes for its goal's messages and closing. A Codex turn that must end may use `--notify codex-queue` when `codex` and `CODEX_THREAD_ID` are available; its wake is a user message, not an instruction. A subagent waits in its own turn or hands the Task to the lead. Use `--max-wait` only when the command needs a cap. `activity recent` reads the last events by session and goal. `recovery list` shows unfinished Tasks and their owner-permitted recovery. A late heartbeat is not a dead Task. `--request-timeout` defaults to 120 seconds and caps at 600; it bounds only HTTP wait, not the Task. Cancellation must be followed to its actual state.
 
 After a restart, rediscover Tasks and plan current work from its declaration. Reuse completed research; never rebuild data, retrain or rewrite an old identity just to display or export it. Historical evidence reuse and a new replay that refuses a changed execution binding are different claims. Counts describe the read unless the owner gives an execution count. For exact reuse, `task_id: null` means no new Task; read the named existing publication. `study verify <task>` verifies an existing execution without admitting work. PLAN's expected calls describe potential work; `EXISTING_EXECUTION_CANDIDATE` does not promise a zero-work RUN. A code fix or authority grant is not a declaration edit.
+
+On every fresh session, read `workspace show`, then `strategy-book controls --package <package>` for the exact installed package and its `activation` before planning forward work. If `INACTIVE`, open the exact Portfolio activation action for the person; follow a held reason when no activation is offered. Installation, person activation and daily automation are separate decisions ([leading research](research-lead.md)).
 
 ## Study drafts and evidence links
 

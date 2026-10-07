@@ -784,6 +784,15 @@ class EvidenceReviewDelivery:
             # Beside the sealed dossier, never inside it: its hash and every
             # review bound to it are unchanged by what is read here.
             "evidence_sources": sources,
+            # Only a resolved dossier offers its native cognition bundle; a
+            # generic book read cannot settle the current Evidence scope (P1b).
+            "next_requests": {
+                "cro_bundle": {
+                    "operation": "AGENT_BUNDLE_PREPARE",
+                    "agent_role": "CRO",
+                    **selector_fields,
+                }
+            },
         }
         full = dossier.model_dump(mode="json")
         handles = tuple(value.finding_handle for value in dossier.findings)

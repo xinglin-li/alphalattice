@@ -28,6 +28,7 @@ function makeContext({hash='#page=overview', body=null, catalog=[],historyRows=[
   const dataMethods = {
     workspaceStatus:'ready', workspaceError:'', manifest:{}, status:'ready', ready:false, mode:'local',
     workspace:()=> 'Routing fixture', clocks:()=>({data:'2026-08-03',feature:'2026-08-03'}), inputs:()=>[], sessions:()=>[], experiments:()=>catalog, history:()=>historyRows,
+    portfolioEntries:()=>historyRows.map(row=>row.raw).filter(entry=>entry && ['portfolio.policy-development','INSTALLED_RESULT'].includes(entry.kind) && entry.status==='SUCCEEDED'),
     inputVersion:()=>({available:true,date:'2026-08-03',cutoff:'2026-08-03'}), subject:()=>null, notice:()=>'',
     actionableTasks:()=>[], tasks:()=>[], runs:()=>[], runsOf:()=>[], updates:()=>[], decisions:()=>[], versions:()=>[],
     holdings:()=>[], series:()=>[], studies:()=>[], books:()=>[], recent:()=>[], riskLinks:()=>[], researchUpdate:()=>null, cpuBudget:()=>({}),
@@ -63,6 +64,9 @@ function makeContext({hash='#page=overview', body=null, catalog=[],historyRows=[
     setHeld(){},toggleDisplayMenu(){},chooseDisplay(){},openCodeRef(){},download(){},reveal(){},
     ...library(appDir)};
   vm.createContext(c);
+  // Match the product's dictionary-before-reader boot: I18N retains this object.
+  // Loading a replacement dictionary afterwards silently tested English in zh mode.
+  vm.runInContext(source('../data/zh.js'),c,{filename:'data/zh.js'});c.window.ALPHA_ZH_READY=true;
   for(const file of files) if(realData || file!=='data.js')vm.runInContext(source(file),c,{filename:file});
   vm.runInContext('globalThis.probe={Data,app,ROUTES,PAGES,PAGE_TABS,OBJECT_KEYS,Inspect,Window,LiveViews,LiveStudy,LiveGoals,LiveModels,LiveFeatureResearch,LiveTeam,LiveActivity,LiveActivation,LiveReview,LiveWorkspace,LiveFeatures,LiveResearch,LiveTasks,Settings,ACTIONS,PRODUCT_ACTIONS,readRoute,routeUrl,routeObject,routeObjectId,listUrl,navigate,objectEntry,render,renderFailure,failureCard};',c);
   const realRender = c.probe.render;
@@ -107,7 +111,7 @@ function assertLocators(markup,ids,label,{row=null}={}) {
   }
 }
 function localizedContext(lang,options) {
-  const c=makeContext(options);vm.runInContext(source('../data/zh.js'),c,{filename:'data/zh.js'});
+  const c=makeContext(options);
   vm.runInContext("I18N.set('"+lang+"');",c);c.probe.readRoute();return c;
 }
 function offered(markup,action,value){const tags=[...String(markup).matchAll(/<button\b[^>]*>/g)].map(m=>m[0]);const row=tags.find(tag=>decode(/data-action="([^"]*)"/.exec(tag)?.[1])===action&&decode(/data-value="([^"]*)"/.exec(tag)?.[1])===value);assert.ok(row,'collection offers '+action+' '+value);return row;}
@@ -329,6 +333,16 @@ async function loadedReport(e) {
     const g={goal_id:ID,goal_hash:H,title:'Routing Goal',objective:'Read one exact fixture',kind:'RESEARCH',state:'OPEN',revision:1,reference_count:0,recorded_at:new Date().toISOString()};
     const c=makeContext({hash:'#page=goals',body:endpoint=>endpoint==='/api/goals'?{goals:[g]}:goalBody()});c.probe.readRoute();await c.probe.LiveGoals.ensure();offered(c.probe.LiveViews.page(),'goal-open',H);resetHistory(c);await press(c,'goal-open',H);await c.probe.LiveGoals.ensure();assert.equal(c.records.pushes.length,1);assert.equal(q(c).get('goal'),H);nonempty(c.probe.LiveViews.page(),'offered Goal');counts.offered_rows++;
   });
+  // U191: hiding the visual brand never hides the application menu's identity.
+  for(const lang of ['en','zh']) for(const mode of ['sidebar','rail']) await check('Named product menu '+mode+'/'+lang,()=>{
+    const c=localizedContext(lang), side={innerHTML:'',classList:{toggle(){}},querySelector(){return null;},querySelectorAll(){return [];}};
+    const select=c.document.querySelector;c.document.querySelector=selector=>selector==='#side'?side:select(selector);
+    vm.runInContext("savePreference('navigation', '"+mode+"');",c);c.probe.Window.renderSide();
+    const buttons=markupNodes(side.innerHTML).filter(x=>x.attrs['data-action']==='product-menu');
+    assert.equal(buttons.length,1);assert.equal(buttons[0].attrs['aria-label'],'AlphaLattice');
+    assert.equal(buttons[0].attrs['aria-haspopup'],'menu');
+    counts.named_product_menus=(counts.named_product_menus||0)+1;
+  });
   await check('offered Model row',async()=>{
     const model={model_id:'fixture-model',state:'INSTALLED',contract:{findings:[]},identity:{moves:[]}};
     const c=makeContext({hash:'#page=models',body:{models:[model]}});c.probe.readRoute();await c.probe.LiveModels.ensure();offered(c.probe.LiveViews.page(),'model-open',model.model_id);resetHistory(c);await press(c,'model-open',model.model_id);assert.equal(c.records.pushes.length,1);assert.equal(q(c).get('model'),model.model_id);nonempty(c.probe.LiveViews.page(),'offered Model');counts.offered_rows++;
@@ -367,7 +381,61 @@ async function loadedReport(e) {
     const raw={entry_id:'experiment:'+ID,task_id:ID,kind:'portfolio.policy-development',status:'SUCCEEDED',recorded_at:new Date().toISOString(),input_id:'fixture-input',input_binding_hash:H,book:{experiment_task_id:ID,experiment_receipt_hash:H,portfolio_session:'2026-08-03'}};
     const c=makeContext({hash:'#page='+page,realData:true,rawHistory:[raw],body:portfolioBody()});await connect(c);offered(c.probe.LiveViews.page(),'history-open',raw.entry_id);resetHistory(c);await press(c,'history-open',raw.entry_id);assert.equal(c.records.pushes.length,1);assert.equal(q(c).get('book'),ID);assert.equal(c.probe.app.page,page==='compare'?'compare':'portfolio');assert.ok(c.probe.Data.ready,c.probe.Data.error);nonempty(c.probe.LiveViews.page(),'offered Portfolio '+page);counts.offered_rows++;
   });
+  // U195 / P3b: discover installed books and authored studies through the real Data
+  // collection, with failures and unrelated records as negative controls. No per-book
+  // read is needed to list them; pressing a row reads its exact owner Task/date once.
+  for(const lang of ['en','zh']) for(const page of ['portfolio','compare']) await check('Portfolio eligible collection '+page+'/'+lang,async()=>{
+    const kinds=['portfolio.policy-development','INSTALLED_RESULT','portfolio.policy-development','INSTALLED_RESULT','CRO_REVIEW','unknown-future-kind'];
+    const rawHistory=kinds.map((kind,i)=>({entry_id:'portfolio-entry-'+i,task_id:'portfolio-task-'+i,kind,status:i===2||i===3?'FAILED':'SUCCEEDED',recorded_at:new Date().toISOString(),input_id:'fixture-input',input_binding_hash:H,book:{portfolio_session:'2026-08-0'+(i+1),...(kind==='INSTALLED_RESULT'?{result_hash:H,strategy_package_id:'RETURN_G6_MU_ONLY'}:{experiment_receipt_hash:H})}}));
+    const body=url=>{
+      if(!url.startsWith('/api/workbench/portfolio?'))return {};
+      const params=new URLSearchParams(url.split('?')[1]), entry=rawHistory.find(x=>x.task_id===params.get('task_id'));
+      return {...portfolioBody(),subject:{...portfolioBody().subject,task_id:entry.task_id,session:entry.book.portfolio_session,source_kind:entry.kind==='INSTALLED_RESULT'?'INSTALLED_RESULT':'DEVELOPMENT_RESULT',result_hash:H}};
+    };
+    const c=localizedContext(lang,{hash:'#page='+page,realData:true,rawHistory,body});await connect(c);
+    const eligible=c.probe.Data.portfolioEntries(), markup=String(c.probe.LiveViews.page());
+    assert.equal(eligible.length,2,'successful installed and authored kinds are the owner collection');
+    const offeredIds=markupNodes(markup).filter(x=>x.attrs['data-action']==='history-open').map(x=>x.attrs['data-value']).sort();
+    assert.deepEqual(offeredIds,Array.from(eligible,x=>x.entry_id).sort(),'every eligible object and no failed/unrelated object is offered');
+    const tabs=String(c.probe.Window.pageTabs()), portfolioTab=/<button\b[^>]*data-value="portfolio"[^>]*>([\s\S]*?)<\/button>/.exec(tabs);
+    assert.ok(portfolioTab && portfolioTab[1].includes('>2<'),'existing Portfolio tab counts the same collection in '+lang);
+    assert.equal(c.records.requests.filter(url=>url.startsWith('/api/workbench/portfolio?')).length,0,'listing reads no individual book');
+    for(const entry of eligible){
+      c.setRoute('#page='+page);resetHistory(c);const before=c.records.requests.length;
+      await press(c,'history-open',entry.entry_id);
+      const reads=c.records.requests.slice(before).filter(url=>url.startsWith('/api/workbench/portfolio?'));
+      assert.equal(reads.length,1,'one owner read per offered book');
+      const params=new URLSearchParams(reads[0].split('?')[1]);
+      assert.equal(params.get('task_id'),entry.task_id);assert.equal(params.get('portfolio_session'),entry.book.portfolio_session);
+      assert.equal(q(c).get('book'),entry.task_id);assert.equal(q(c).get('session'),entry.book.portfolio_session);
+      assert.equal(c.probe.app.page,page);assert.equal(c.probe.Data.subject().result_hash,H);assert.ok(c.probe.Data.ready,c.probe.Data.error);
+      assert.equal(c.records.pushes.length,1);nonempty(c.probe.LiveViews.page(),'eligible Portfolio readback');counts.offered_rows++;
+    }
+  });
   // Real Goal readback and LiveViews dispatch on every Goal folder, both route identity forms.
+  // U189 / P3a: the last canonical Task mutation reads in the person's zone.
+  // Missing and legacy clocks stay blank; a request/Goal clock cannot fill them.
+  const previousTimezone=process.env.TZ;
+  try {
+    process.env.TZ='America/New_York';
+    for(const lang of ['en','zh']) await check('Goal Task authoritative clock '+lang,async()=>{
+      const body=goalBody();body.record.tasks=[
+        {task_id:'timed-task',kind:'research_experiment',state:'SUCCEEDED',updated_at:'2024-10-06T00:30:00+00:00'},
+        {task_id:'legacy-task',kind:'research_experiment',state:'SUCCEEDED'},
+        {task_id:'absent-task',kind:'research_experiment',state:'BLOCKED',updated_at:null},
+      ];
+      const c=localizedContext(lang,{hash:'#page=goal&goal='+H,body});await c.probe.LiveGoals.ensure();
+      const markup=String(c.probe.LiveGoals.page()), label=lang==='zh'?'任务记录更新时间':'Task record updated';
+      const local=lang==='zh'?'2024年10月5日 20:30':'Oct 5, 2024 20:30';
+      assert.ok(markup.includes(local),'actual shared clock converts the owner instant to the reader day/time');
+      const clocks=markupNodes(markup).filter(x=>x.attrs['data-tip']?.startsWith(label+' · '));
+      assert.equal(clocks.length,1,'no clock is fabricated for absent or legacy Task facts');
+      assert.equal(clocks[0].attrs['data-tip'],label+' · 2024-10-06 00:30:00 UTC','the shared hint keeps the exact owner clock and meaning');
+      assert.ok(ancestors(clocks[0]).some(x=>x.attrs['data-key']==='timed-task'),'the clock stays on its Task row');
+      for(const id of ['legacy-task','absent-task'])offered(markup,'task',id);
+      counts.goal_task_clocks=(counts.goal_task_clocks||0)+1;
+    });
+  } finally { if(previousTimezone===undefined)delete process.env.TZ;else process.env.TZ=previousTimezone; }
   for(const value of [H,ID])for(const page of base.probe.PAGE_TABS.goals.tabs)await check('Goal page '+page+'/'+(value===H?'hash':'id'),async()=>{
     const c=makeContext({hash:'#'+new URLSearchParams({page,goal:value}),body:goalBody()});c.probe.readRoute();await c.probe.LiveGoals.ensure();
     const markup=String(c.probe.LiveViews.page());nonempty(markup,page);assert.ok(markup.includes('page-tabs'),'Goal page keeps folders');

@@ -14,6 +14,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING, NamedTuple, cast
 
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
+from alphalattice.evidence.alternative_evidence.analysis.packet import (
+    litigation_continuation_scope,
+    litigation_matter_summary,
+)
 from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceMode,
 )
@@ -30,6 +34,7 @@ from alphalattice.interface.local_application.evidence_cro import (
     EvidenceCroCoverageProgress,
     EvidenceCroEvidenceVersion,
     EvidenceCroProjection,
+    EvidenceCroRequiredAction,
     EvidenceCroStageWork,
     EvidenceCroUnitProgress,
     EvidenceSelectionLabel,
@@ -449,6 +454,78 @@ class EvidenceCroProjector:
             choices = versions if len(versions) > len(current) else ()
             partial = len(current) < len(selections)
             if recorded is None:
+                pending: dict[str, str] = {}
+                stops: set[str] = set()
+                unit_ids = coverage_unit_ids(tuple(selections))
+                for key, value in current.items():
+                    assert value.evidence is not None
+                    receipt = value.evidence.lineage.access_receipt
+                    scope = litigation_continuation_scope(receipt)
+                    summary = litigation_matter_summary(receipt)
+                    if scope is None or summary is None:
+                        continue
+                    if scope["state"] == "PENDING":
+                        chain = cast(dict[str, object], summary["reading_chain"])
+                        remaining = cast(dict[str, int] | None, chain["remaining"])
+                        if remaining is None:
+                            # A first reading has no cumulative continuation allowance.
+                            # It permits a bounded review, not invented reading authority.
+                            stops.add("No cumulative continuation allowance is declared.")
+                        elif all(remaining[name] > 0 for name in ("sessions", "windows")):
+                            pending[receipt.receipt_hash] = unit_ids[key]
+                        else:
+                            stops.add("The declared continuation allowance is exhausted.")
+                    elif scope["state"] == "NOTHING_RESUMABLE":
+                        stops.add("The sealed reading plan has no resumable work.")
+                adapter = self.app.evidence_task_adapter
+                preparations = (
+                    adapter.prepared_receipts() if pending and adapter is not None else {}
+                )
+                continuation_packets: NextRequests = {}
+                for receipt_hash, unit in pending.items():
+                    location = preparations.get(receipt_hash)
+                    if location is None:
+                        # The sealed analysis remains readable even if its preparation
+                        # Task was not retained. Never invent an executable continuation.
+                        stops.add("The selected analysis's preparation Task is not retained.")
+                        continue
+                    task_id, unit_id = location
+                    continuation_packets[f"packet_{unit}"] = bound(
+                        "EVIDENCE_PACKET",
+                        task_id=task_id,
+                        **({"evidence_unit_id": unit_id} if unit_id is not None else {}),
+                    )
+                if continuation_packets:
+                    return finish(
+                        replace(
+                            awaiting_alternative_evidence(book=book),
+                            explanation=(
+                                "The selected analysis still has source the sealed reading plan "
+                                "can continue. Read its exact packet and settle its continuation "
+                                "within the declared session and window allowance before CRO. "
+                                "Follow each continuation answer's successor packet, publish its "
+                                "Analyst answer, then read this book's Evidence again."
+                            ),
+                            coverage_progress=progress,
+                            required_actions=(
+                                EvidenceCroRequiredAction(
+                                    "SETTLE_EVIDENCE_CONTINUATION",
+                                    None,
+                                    "Read the packet's continuation scope and remaining allowance; "
+                                    "continue the sealed plan within that allowance.",
+                                    True,
+                                ),
+                                EvidenceCroRequiredAction(
+                                    "ANALYZE_CONTINUED_EVIDENCE",
+                                    None,
+                                    "Publish the Analyst answer to the returned successor packet "
+                                    "before requesting this book's CRO review.",
+                                    True,
+                                ),
+                            ),
+                        ),
+                        next_requests=continuation_packets,
+                    )
                 projection = replace(
                     alternative_evidence_ready_for_review(
                         book=book,
@@ -479,7 +556,35 @@ class EvidenceCroProjector:
                         projection,
                         explanation=" ".join((projection.explanation, coverage_words)),
                     )
-                next_requests: NextRequests = {"dossier": bound("CRO_REVIEW_DOSSIER")}
+                if stops:
+                    projection = replace(
+                        projection,
+                        explanation=" ".join((projection.explanation, *sorted(stops)))
+                        + (
+                            " Pending source and other unread ranges stay unread; the CRO "
+                            "assessment is bounded to the recorded analysis, not every source."
+                        ),
+                    )
+                projection = replace(
+                    projection,
+                    required_actions=(
+                        EvidenceCroRequiredAction(
+                            "READ_CRO_DOSSIER",
+                            None,
+                            "Read this book's dossier and the recorded limits of its Evidence.",
+                            False,
+                        ),
+                        EvidenceCroRequiredAction(
+                            "SUBMIT_CRO_ASSESSMENT",
+                            None,
+                            "Submit the CRO assessment through this book's offered bundle.",
+                            False,
+                        ),
+                    ),
+                )
+                next_requests: NextRequests = {
+                    "dossier": bound("CRO_REVIEW_DOSSIER"),
+                }
                 if historical is not None:
                     handle = historical.publication.publication_hash
                     next_requests["export"] = bound(

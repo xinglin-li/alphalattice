@@ -358,10 +358,17 @@ const Portfolio = (() => {
   function navigatorLayout() {
     const nav = $('[data-navigator]');
     if (!nav) return;
-    const rows = Data.series(), n = rows.length, [a, b] = Inspect.window(n);
+    const plot = $('#performanceChart [data-chart]');
+    const drawn = plot && CHART_ROWS.get(plot.dataset.chartId || 'portfolio');
+    // A pending view read keeps the prior chart mounted. Its navigator measures the rows
+    // and window that chart drew, as fitCharts does, until the accepted surface replaces it.
+    const rows = drawn?.rows, [a, b] = drawn?.window || [];
+    if (!Array.isArray(rows) || !rows.length || !Number.isInteger(a) || !Number.isInteger(b)
+      || a < 0 || b < a || b >= rows.length || !rows[a]?.date || !rows[b]?.date) return;
+    const n = rows.length;
     // The rail spans exactly the plot area as drawn (the SVG keeps its aspect and centres its
     // drawing), measured from the DOM, so a handle sits under the date it names.
-    const rail = nav.querySelector('[data-rail]'), plot = $('#performanceChart [data-chart]');
+    const rail = nav.querySelector('[data-rail]');
     if (plot) {
       const p = plot.getBoundingClientRect(), d = nav.getBoundingClientRect();
       if (p.width > 0 && d.width > 0) {

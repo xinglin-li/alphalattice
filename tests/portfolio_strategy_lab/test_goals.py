@@ -52,7 +52,7 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 @pytest.fixture
 def goal_app(tmp_path):
     calls = []
-    tasks: dict[UUID, tuple[str, str]] = {}
+    tasks: dict[UUID, tuple[str, str, datetime | None]] = {}
     body = {
         "status": "EXPERIMENT_PUBLISHED",
         "task_id": str(UUID(int=2)),
@@ -964,9 +964,9 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
     done, running, stuck = UUID(int=11), UUID(int=12), UUID(int=13)
     tasks.update(
         {
-            done: ("alpha_research.development", "SUCCEEDED"),
-            running: ("alpha_research.development", "RUNNING"),
-            stuck: ("alpha_research.development", "RECOVERY_REQUIRED"),
+            done: ("alpha_research.development", "SUCCEEDED", None),
+            running: ("alpha_research.development", "RUNNING", None),
+            stuck: ("alpha_research.development", "RECOVERY_REQUIRED", None),
         }
     )
     for task in (done, running, stuck):
@@ -1020,7 +1020,7 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
     }
     assert app.store.head(UUID(int=1)).state == "OPEN"  # nothing was sealed
 
-    tasks[running] = ("alpha_research.development", "SUCCEEDED")
+    tasks[running] = ("alpha_research.development", "SUCCEEDED", None)
     sealed = app.operate(
         Request(
             operation="GOAL_SUBMIT",
@@ -1069,6 +1069,175 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
         _attach(app, sealed, reference_id="late")
     with pytest.raises(ValueError, match="closed"):
         app.attributed_goal(RequestProvenance(goal_id=str(UUID(int=1))))
+
+
+def test_goal_task_fact_refetches_its_offset_update_time_after_restart(goal_app):
+    """A goal reads the current Task Control clock each time and preserves its UTC offset."""
+
+    app, opened, _calls, _body, tasks = goal_app
+    task_id = UUID(int=31)
+    first = datetime.fromisoformat("2026-10-05T13:14:15+05:45")
+    goal = app.store.load(opened["goal_hash"])
+    tasks[task_id] = ("factor_research", "QUEUED", first)
+    app.attribute(
+        goal,
+        Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+        {"status": "ADMITTED", "task_id": str(task_id)},
+        SESSION,
+    )
+
+    expected = {
+        "task_id": str(task_id),
+        "kind": "factor_research",
+        "state": "QUEUED",
+        "updated_at": first.isoformat(),
+    }
+    shown = app.operate(Request(operation="GOAL_SHOW", goal_id=goal.goal_id), "HUMAN")
+    assert shown["record"]["tasks"] == [expected]
+
+    refreshed = datetime.fromisoformat("2026-10-06T02:03:04-07:00")
+    tasks[task_id] = ("factor_research", "SUCCEEDED", refreshed)
+    expected.update(state="SUCCEEDED", updated_at=refreshed.isoformat())
+    refetched = app.operate(Request(operation="GOAL_SHOW", goal_id=goal.goal_id), "HUMAN")
+    assert refetched["record"]["tasks"] == [expected]
+
+    reopened = GoalApplication(
+        GoalStore(app.store.content.root.parents[1], "workspace"),
+        lambda: NOW,
+        app.read,
+        app.admitted_at,
+        app.task_facts,
+        workspace=app.workspace,
+    )
+    readback = reopened.operate(Request(operation="GOAL_SHOW", goal_id=goal.goal_id), "HUMAN")
+    assert readback["record"]["tasks"] == [expected]
+
+
+def test_a_complete_goal_without_task_update_time_reads_its_legacy_seal(goal_app):
+    """A pre-field COMPLETE payload has no clock key, so its existing goal hash still proves."""
+
+    app, opened, _calls, _body, tasks = goal_app
+    attached = _attach(app, opened)
+    task_id = UUID(int=32)
+    tasks[task_id] = ("factor_research", "SUCCEEDED", None)
+    goal = app.store.load(attached["goal_hash"])
+    app.attribute(
+        goal,
+        Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+        {"status": "ADMITTED", "task_id": str(task_id)},
+        SESSION,
+    )
+    sealed = app.operate(
+        Request(
+            operation="GOAL_SUBMIT",
+            goal_id=goal.goal_id,
+            goal_submission=_submission(),
+        ),
+        "EXTERNAL_AUTOMATION",
+    )
+    assert sealed["status"] == "COMPLETE"
+    path = app.store.content.root / "revisions" / f"{sealed['goal_hash']}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    (legacy_task,) = payload["completion"]["tasks"]
+    assert legacy_task == {
+        "task_id": str(task_id),
+        "kind": "factor_research",
+        "state": "SUCCEEDED",
+    }
+
+    reopened = GoalApplication(
+        GoalStore(app.store.content.root.parents[1], "workspace"),
+        lambda: NOW,
+        app.read,
+        app.admitted_at,
+        app.task_facts,
+        workspace=app.workspace,
+    )
+    loaded = reopened.store.load(sealed["goal_hash"])
+    assert loaded.state == "COMPLETE" and loaded.completion.tasks[0].updated_at is None
+    shown = reopened.operate(Request(operation="GOAL_SHOW", goal_hash=sealed["goal_hash"]), "HUMAN")
+    assert shown["goal_hash"] == sealed["goal_hash"]
+    assert shown["goal"]["completion"]["tasks"] == [legacy_task]
+    assert shown["record"]["tasks"] == [legacy_task]
+
+
+def test_goal_task_fact_uses_the_live_registry_record_update_time(live):
+    """The product composition hands the Goal owner Task Control's persisted TaskRecord clock."""
+
+    from tests.workspace_task_runner.task_control_support import task_contract
+
+    observed_at = datetime.fromisoformat("2026-10-05T13:14:15+05:45")
+    refreshed = datetime.fromisoformat("2026-10-06T02:03:04-07:00")
+    envelope, task_goal, plan = task_contract(salt="goal-task-current-update-time")
+    registry = live.session.task_control_registry
+    task = registry.admit(
+        input_envelope=envelope,
+        goal=task_goal,
+        plan=plan,
+        observed_at=observed_at,
+    ).record
+    canonical = registry.task(task.task_id)
+    app = live.operations.goals
+    goal_id = uuid4()
+    opened = app.operate(
+        Request(
+            operation="GOAL_OPEN",
+            goal_id=goal_id,
+            goal_declaration=DECLARATION,
+            change_reason="Register before execution",
+        ),
+        "HUMAN",
+    )
+    goal = app.store.load(opened["goal_hash"])
+    app.attribute(
+        goal,
+        Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+        {"status": "ADMITTED", "task_id": str(task.task_id)},
+        SESSION,
+    )
+
+    expected = {
+        "task_id": str(canonical.task_id),
+        "kind": canonical.task_kind,
+        "state": canonical.lifecycle.value,
+        "updated_at": canonical.updated_at.isoformat(),
+    }
+    shown = app.operate(Request(operation="GOAL_SHOW", goal_id=goal_id), "HUMAN")
+    assert shown["record"]["tasks"] == [expected]
+
+    registry.request_cancel(
+        task_id=task.task_id,
+        expected_task_hash=canonical.record_hash,
+        observed_at=refreshed,
+    )
+    updated = registry.task(task.task_id)
+    assert updated.updated_at.isoformat() == refreshed.isoformat()
+    expected.update(state=updated.lifecycle.value, updated_at=updated.updated_at.isoformat())
+    refetched = app.operate(Request(operation="GOAL_SHOW", goal_id=goal_id), "HUMAN")
+    assert refetched["record"]["tasks"] == [expected]
+
+    # A second Host composes a fresh TaskControl registry from the same workspace root.
+    live.stop()
+    live.start()
+    restarted_registry = live.session.task_control_registry
+    restarted_task = restarted_registry.task(task.task_id)
+    assert restarted_task == updated
+    restarted = live.operations.goals.operate(
+        Request(operation="GOAL_SHOW", goal_id=goal_id), "HUMAN"
+    )
+    assert restarted["record"]["tasks"] == [expected]
+
+
+def test_goal_task_fact_rejects_a_naive_update_time():
+    from alphalattice.interface.local_application.goals import GoalTaskFact
+
+    with pytest.raises(ValueError, match=r"goal\.task_updated_at_must_be_aware"):
+        GoalTaskFact(
+            task_id=UUID(int=33),
+            kind="factor_research",
+            state="QUEUED",
+            updated_at=datetime(2026, 10, 6, 2, 3, 4),
+        )
 
 
 def test_an_unmet_objective_completes_but_an_answer_that_contradicts_it_does_not(goal_app):

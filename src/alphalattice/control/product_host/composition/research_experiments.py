@@ -4373,9 +4373,8 @@ def review_requests(selector: Mapping[str, str]) -> dict[str, dict[str, str]]:
         "review": {"operation": "EVIDENCE_CRO", **selector},
         # The book's Evidence begins at its preview (V473).
         "evidence_preview": {"operation": "EVIDENCE_PREVIEW", **selector},
-        "dossier": {"operation": "CRO_REVIEW_DOSSIER", **selector},
-        # The CRO's bundle request, its directory left to choose (V295).
-        "cro_bundle": {"operation": "AGENT_BUNDLE_PREPARE", "agent_role": "CRO", **selector},
+        # Read the current Evidence state before it offers CRO work: a generic
+        # book read cannot know whether its bounded continuation is settled (P1).
     }
 
 

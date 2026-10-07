@@ -258,6 +258,38 @@ type PortfolioResearchOperation = Literal[
     "STRATEGY_DEACTIVATE",
 ]
 
+_RECOVERY_CONTEXT_OPERATIONS = frozenset(
+    {
+        "PLAN",
+        "RUN",
+        "EXPERIMENT_PLAN",
+        "EXPERIMENT_RUN",
+        "PORTFOLIO_UPDATE_PLAN",
+        "PORTFOLIO_UPDATE_RUN",
+        "RESEARCH_UPDATE_PLAN",
+        "RESEARCH_UPDATE_RUN",
+        "STRATEGY_CALIBRATION_PLAN",
+        "STRATEGY_CALIBRATION_RUN",
+        "STRATEGY_SCORE_PLAN",
+        "STRATEGY_SCORE_RUN",
+        "RESEARCH_INPUT_PLAN",
+        "RESEARCH_INPUT_CONFIRM",
+        "MODEL_TRAINING_INPUT_PLAN",
+        "MODEL_TRAINING_INPUT_PREPARE",
+        "WORKSPACE_PREPARE_PLAN",
+        "WORKSPACE_PREPARE_CONFIRM",
+        "DATA_UPDATE_PLAN",
+        "DATA_UPDATE_RUN",
+        "RESEARCH_STRATEGY_PLAN",
+        "RESEARCH_STRATEGY_PREPARE",
+        "FEATURE_CATALOG_PLAN",
+        "FEATURE_CATALOG_BUILD",
+        "EVIDENCE_PREVIEW",
+        "EVIDENCE_PREPARE",
+    }
+)
+"""Existing Task planner/admission doors that can carry common recovery context."""
+
 
 @dataclass(frozen=True, slots=True)
 class PortfolioResearchOperationRequest:
@@ -318,6 +350,8 @@ class PortfolioResearchOperationRequest:
     model_id: str | None = None
     task_id: UUID | None = None
     expected_task_hash: str | None = None
+    recovery_task_id: UUID | None = None
+    recovery_task_hash: str | None = None
     incident_key: str | None = None
     """An incident the Supervisor keeps (GY2), by its record's key."""
     remedy: Literal["CANCEL", "RECOVER", "REPLAN"] | None = None
@@ -438,6 +472,10 @@ class PortfolioResearchOperationRequest:
 
     def __post_init__(self) -> None:
         """Validate operation fields and normalize delivery commentary."""
+        if (self.recovery_task_id is None) != (self.recovery_task_hash is None):
+            raise LocalApplicationError("portfolio_research.recovery_context_pair_required")
+        if self.recovery_task_id is not None and not isinstance(self.recovery_task_id, UUID):
+            raise LocalApplicationError("portfolio_research.recovery_task_id_invalid")
         if self.operation == "EXPERIMENT_DELIVERY_EXPORT" and (
             (self.left_task_id is None) != (self.right_task_id is None)
         ):
@@ -486,6 +524,7 @@ class PortfolioResearchOperationRequest:
             self.continuation_spans,
             self.upgrade_set_hash,
             self.feature_trial_id,
+            self.recovery_task_hash,
         ):
             if value is not None and (
                 not isinstance(value, str)
@@ -1275,6 +1314,8 @@ class PortfolioResearchOperationRequest:
                 "experiment_receipt_hash",
                 "portfolio_session",
             }
+        if operation in _RECOVERY_CONTEXT_OPERATIONS:
+            allowed |= {"recovery_task_id", "recovery_task_hash"}
         return required, frozenset(allowed)
 
 
@@ -1405,6 +1446,10 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """The Task, by its id."""
     expected_task_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     """The Task's version as last read; a Task that moved since refuses the request."""
+    recovery_task_id: UUID | None = None
+    """The stopped Task whose owner replan this existing planner/admission continues."""
+    recovery_task_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    """The exact stopped Task version named by `recovery_task_id`."""
     incident_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     """The Guanyin incident, by the key TASK_INCIDENTS listed."""
     remedy: Literal["CANCEL", "RECOVER", "REPLAN"] | None = None

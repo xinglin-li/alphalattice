@@ -65,9 +65,131 @@ def test_the_supervisor_opens_an_incident_the_task_read_names_and_the_recovery_c
     supervisor.supervise_once()
     (kept,) = [r for r in supervisor.store.records() if r.key == opened.key]
     assert kept.state == "RESOLVED" and len(kept.attempts) == 1
+    assert kept.resolved_task_record_hash == registry.task(task.task_id).record_hash
     assert live.operations.status(task.task_id)["incident"] is None
     listed = ops.execute(PortfolioResearchOperationRequest(operation="TASK_INCIDENTS"))
     assert listed["open"] == 0 and listed["incidents"][0]["key"] == opened.key
+
+
+def test_a_succeeded_linked_successor_does_not_reopen_the_stopped_source_incident(live) -> None:
+    """An explicit successful re-plan resolves incident attention without changing its source."""
+    from datetime import timedelta
+    from uuid import uuid4
+
+    from alphalattice.control.task_control.contracts import TaskEvidence, TaskStageReceipt
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+    from tests.workspace_task_runner.task_control_support import (
+        compatibility,
+        digest,
+        task_contract,
+    )
+
+    registry = live.session.task_control_registry
+    supervisor = live.operations.supervisor
+    now = live.dispatcher.clock()
+    source_input, source_goal, source_plan = task_contract(salt="attention-source")
+    source = registry.admit(
+        input_envelope=source_input,
+        goal=source_goal,
+        plan=source_plan,
+        observed_at=now,
+    ).record
+    source_execution = registry.start_next(
+        compatibility=compatibility(source_plan),
+        worker_instance_id=uuid4(),
+        observed_at=now + timedelta(seconds=1),
+    )
+    assert source_execution is not None
+    stopped = registry.mark_recovery_required(
+        task_id=source.task_id,
+        failure_code="TASK_EXECUTION_INTERRUPTED",
+        observed_at=now + timedelta(seconds=2),
+    )
+    (opened,) = supervisor.supervise_once()
+    assert opened.task_id == str(source.task_id) and opened.state == "OPEN"
+    request = {"operation": "FACTOR_PLAN", "research_input_id": "replanned-input"}
+    registry.record_recovery_link(
+        source_task_id=source.task_id,
+        source_record_hash=stopped.record_hash,
+        admission_request=request,
+        observed_at=now + timedelta(seconds=3),
+    )
+    child_input, child_goal, child_plan = task_contract(salt="attention-successor")
+    child = registry.admit(
+        input_envelope=child_input,
+        goal=child_goal,
+        plan=child_plan,
+        observed_at=now + timedelta(seconds=4),
+    ).record
+    registry.record_recovery_link(
+        source_task_id=source.task_id,
+        source_record_hash=stopped.record_hash,
+        admission_request=request,
+        successor_task_id=child.task_id,
+        observed_at=now + timedelta(seconds=5),
+    )
+    child_execution = registry.start_next(
+        compatibility=compatibility(child_plan),
+        worker_instance_id=uuid4(),
+        observed_at=now + timedelta(seconds=6),
+    )
+    assert child_execution is not None
+    running_child, execution = child_execution
+    assert running_child.task_id == child.task_id
+
+    observed_at = now + timedelta(seconds=7)
+    for definition in child_plan.work_items:
+        item = registry.begin_work_item(
+            task_id=child.task_id,
+            execution_id=execution.execution_id,
+            stage_id=definition.stage_id,
+            observed_at=observed_at,
+        )
+        evidence = tuple(
+            TaskEvidence(
+                evidence_kind=kind,
+                reference=f"playpen://task-evidence/{child.task_id}/{definition.stage_id}/{kind}",
+                content_hash=digest(f"{child.task_id}:{definition.stage_id}:{kind}"),
+            )
+            for kind in definition.required_evidence_kinds
+        )
+        registry.mark_ready(
+            task_id=child.task_id,
+            execution_id=execution.execution_id,
+            stage_id=definition.stage_id,
+            evidence=evidence,
+            observed_at=observed_at + timedelta(seconds=1),
+        )
+        registry.verify_work_item(
+            TaskStageReceipt.from_identity(
+                receipt_id=uuid4(),
+                task_id=child.task_id,
+                execution_id=execution.execution_id,
+                stage_id=definition.stage_id,
+                work_item_definition_hash=item.definition_hash,
+                verifier_id=definition.verifier_id,
+                evidence=evidence,
+                status="VERIFIED",
+                failure_code=None,
+                observed_at=observed_at + timedelta(seconds=2),
+            )
+        )
+        observed_at += timedelta(seconds=3)
+
+    assert registry.task(child.task_id).lifecycle.value == "SUCCEEDED"
+    assert registry.task(source.task_id).record_hash == stopped.record_hash
+    assert supervisor.supervise_once() == ()
+
+    assert registry.task(source.task_id).lifecycle.value == "RECOVERY_REQUIRED"
+    assert supervisor.supervise_once() == ()
+    assert registry.task(source.task_id).record_hash == stopped.record_hash
+    listed = live.operations.execute(PortfolioResearchOperationRequest(operation="TASK_INCIDENTS"))
+    assert listed["open"] == 0
+    assert [row["key"] for row in listed["incidents"]] == [opened.key]
+    assert listed["incidents"][0]["state"] == "RESOLVED"
+    assert listed["incidents"][0]["resolved_task_record_hash"] == stopped.record_hash
 
 
 def test_a_remedys_receipt_answers_for_the_task_it_acted_on(tmp_path) -> None:

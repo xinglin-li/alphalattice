@@ -333,7 +333,7 @@ ROLE_COMMANDS: dict[str, RoleCapability] = {
             "(alpha.json, a candidate) → edit portfolio.yaml → `study plan` (draft.json) → "
             "`study run` (book-plan.json) → `study show` (book Task id)",
             "`study run` (book-run.json) → `risk-link add` (a Risk Task) | the lead's "
-            "Evidence and CRO review (the book's review, dossier and cro_bundle offers)",
+            "Evidence and CRO review (read the book's current Evidence before its CRO offers)",
             "`study show` (two book Task ids) → `study compare` (both ids)",
             _ANSWERS_EDGE,
         ),
@@ -378,6 +378,13 @@ BUNDLE_ROLES = {
 """The evidence specialists read a bundle and run no command; what each reads after README.md."""
 SKILL_COMMANDS: tuple[RoleCommand, ...] = (
     _WORKSPACE,
+    RoleCommand(
+        "strategy-book controls --package <package>",
+        "Reads the exact installed package's activation, book and recorded review standing "
+        "before planning Forward work; an inactive book's activation is the person's action "
+        "on Portfolio, separate from installation and automatic scheduling.",
+        ("--package",),
+    ),
     RoleCommand(
         'goal schema --save-declaration "<out>/goal.yaml"',
         "Writes the shortest goal declaration, valid as it stands, to edit.",

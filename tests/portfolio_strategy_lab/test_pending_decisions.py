@@ -4,10 +4,20 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from uuid import uuid4
+
+import pytest
 
 from alphalattice.control.product_host.composition.pending_decisions import pending_decisions
 from alphalattice.control.product_host.composition.research_experiment_plan import ExperimentPlan
+from alphalattice.control.product_host.composition.task_recovery import task_attention
 from alphalattice.control.product_host.storage.plan_previews import PreviewRegistry
+from alphalattice.control.task_control.contracts import (
+    TaskLifecycle,
+    TaskRecord,
+    TaskRecoveryLink,
+)
+from tests.workspace_task_runner.task_control_support import task_contract
 
 NOW = datetime(2026, 9, 29, 12, tzinfo=UTC)
 INPUTS = {"inputs": [{"input_id": "us-core", "versions": [{"end": "2026-08-01"}]}]}
@@ -109,3 +119,85 @@ def test_a_plan_previewed_and_not_run_waits_until_it_expires() -> None:
     assert [entry.plan.plan_hash[0] for entry in registry.waiting()] == ["c", "b"]
     clock[0] = NOW + timedelta(minutes=60)
     assert [entry.plan.plan_hash[0] for entry in registry.waiting()] == ["c"]
+
+
+@pytest.mark.parametrize("stopped", [TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED])
+@pytest.mark.parametrize(
+    "successor_state",
+    [
+        TaskLifecycle.QUEUED,
+        TaskLifecycle.BLOCKED,
+        TaskLifecycle.RECOVERY_REQUIRED,
+        TaskLifecycle.SUCCEEDED,
+    ],
+)
+def test_current_attention_requires_a_successful_explicit_successor_of_this_version(
+    stopped: TaskLifecycle, successor_state: TaskLifecycle
+) -> None:
+    """P3a class: history, viewing, similarity and a preview do not resolve a stopped Task.
+
+    A confirmed same-kind successor resolves only the source version it actually replaces,
+    and only after its canonical record succeeds. This predicate supplies every owner read.
+    """
+    envelope, goal, plan = task_contract(salt="attention")
+
+    def record(task_id, lifecycle, version=1) -> TaskRecord:
+        return TaskRecord.from_identity(
+            task_id=task_id,
+            task_kind=envelope.task_kind,
+            input=envelope,
+            goal=goal,
+            plan=plan,
+            lifecycle=lifecycle,
+            active_work_item_id=None,
+            latest_execution_id=None,
+            admitted_at=NOW,
+            started_at=None,
+            updated_at=NOW,
+            failure_code=None,
+            version=version,
+        )
+
+    source = record(uuid4(), stopped)
+    successor = record(uuid4(), successor_state)
+    successful_peer = record(uuid4(), TaskLifecycle.SUCCEEDED)
+    request = {"operation": "EXPERIMENT_RUN", "experiment_plan_hash": "a" * 64}
+    preview = TaskRecoveryLink.create(
+        source_task_id=source.task_id,
+        source_record_hash=source.record_hash,
+        admission_request=request,
+        successor_task_id=None,
+        recorded_at=NOW,
+    )
+    confirmed = TaskRecoveryLink.create(
+        source_task_id=source.task_id,
+        source_record_hash=source.record_hash,
+        admission_request=request,
+        successor_task_id=successor.task_id,
+        recorded_at=NOW,
+    )
+    peers = {successor.task_id: successor, successful_peer.task_id: successful_peer}
+    assert task_attention(source, successors=peers).unresolved
+    assert task_attention(source, successors=peers, links=(preview,)).unresolved
+    fact = task_attention(source, successors=peers, links=(preview, confirmed))
+    assert fact.unresolved is (successor_state is not TaskLifecycle.SUCCEEDED)
+    assert fact.resolution == (
+        "SUCCESSOR_SUCCEEDED" if successor_state is TaskLifecycle.SUCCEEDED else "STOPPED"
+    )
+
+    def refetch():
+        return pending_decisions(
+            tasks=(source,),
+            attention={source.task_id: fact},
+            awaiting={},
+            data_issues={},
+            overview={},
+        )
+
+    first = refetch()
+    assert refetch() == first  # viewing changes neither resolution nor the retained history
+    assert bool(first["decisions"]) is fact.unresolved
+    assert source.lifecycle is stopped
+    newer_stop = record(source.task_id, stopped, version=2)
+    assert task_attention(newer_stop, successors=peers, links=(confirmed,)).unresolved
+    assert task_attention(source, links=(confirmed,)).unresolved  # unread successor is no success

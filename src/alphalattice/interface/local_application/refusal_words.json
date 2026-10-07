@@ -379,6 +379,18 @@
   "detail": "The Task changed since the hash this request confirms was read; read the Task again (`task show`) and confirm against its current hash.",
   "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"
  },
+ "portfolio_research.recovery_context_pair_required": {
+  "detail": "A recovery continuation must keep both the stopped Task id and its exact record hash. Read its recovery view again and use the complete offered request.",
+  "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"
+ },
+ "portfolio_research.recovery_task_id_invalid": {
+  "detail": "The recovery continuation's source Task id must be a UUID. Read the stopped Task's recovery view and use the id in its offered request.",
+  "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"
+ },
+ "portfolio_research.recovery_request_not_offered": {
+  "detail": "This request is not the stopped Task's offered recovery continuation. Read its recovery view, preview the offered plan, and use that preview's filled admission request.",
+  "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"
+ },
  "local_application.expected_task_hash_invalid": {
   "detail": "`expected_task_hash` is a Task record's 64-character hash, as `task show` answers it.",
   "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"

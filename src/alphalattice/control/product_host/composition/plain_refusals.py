@@ -464,11 +464,12 @@ def explain(
         # one stopped since; the daily update's plan meets them first (OP4, U73).
         return {
             "detail": (
-                "This strategy does not run forward, so nothing binds its score inputs, its "
-                "calibration or its Portfolio update. A research installation is historical "
-                "until a person activates one of its reviewed books, which runs its strategy "
-                "forward: then the score, the calibration and the Portfolio update read that "
-                "activation."
+                "This strategy is not active. Read this package's controls, then open "
+                "the exact book on Portfolio, read its recorded review standing and ask the "
+                "person to activate it. Only the person can activate the book. Once active, "
+                "continue with this package's Forward update. Installation, activation and "
+                "the automatic schedule are separate facts; activation does not enable the "
+                "automatic schedule."
             ),
             "next_requests": {"books": {"operation": "CONTROLS"}},
         }

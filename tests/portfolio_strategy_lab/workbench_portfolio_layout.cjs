@@ -334,6 +334,123 @@ async function overlappingPerformanceReads() {
   assert.equal(vm.runInContext('Data.raw().forward_holdings.status',transport),'forward-current');
   assert.equal(vm.runInContext('Data.rollingPerformance().head_hash',transport),'head-a','the superseded Historical answer cannot overwrite the prior source');
 }
+// U194: the public chart binding installs the real resize/RAF path. The DOM and event
+// ports retain the painted Historical chart while the current reader requests Forward;
+// neither the private navigator function nor its data/window inputs are monkeypatched.
+function navigatorFixture(source=portfolioSource) {
+  const drawnRows=[
+    {date:'2024-08-05',value:100,benchmark:100,daily:0,benchmarkDaily:0},
+    {date:'2024-08-12',value:101,benchmark:100,daily:1,benchmarkDaily:0},
+    {date:'2024-08-19',value:102,benchmark:100,daily:1,benchmarkDaily:0},
+  ];
+  let currentRows=drawnRows, navMounted=true, plotMounted=true, ticket=0;
+  const frames=new Map(), timers=new Map(), resizeListeners=[];
+  const node=(dataset={})=>({dataset,style:{},attributes:{},textContent:'',listeners:new Map(),
+    classList:{add(){},remove(){}},
+    addEventListener(kind,listener){this.listeners.set(kind,listener);},
+    setAttribute(key,value){this.attributes[key]=String(value);},
+    getBoundingClientRect(){return {left:16,right:916,width:900};},
+  });
+  const rail=node(), win=node(), startShade=node(), endShade=node(), start=node(), end=node(), readings=node();
+  const handles=[node({handle:'start'}),node({handle:'end'})];
+  const children=new Map([
+    ['[data-rail]',rail],['[data-window]',win],['[data-shade-start]',startShade],
+    ['[data-shade-end]',endShade],['[data-window-start]',start],['[data-window-end]',end],['[data-readings]',readings],
+  ]);
+  const nav=node();
+  nav.querySelector=selector=>children.get(selector);
+  nav.querySelectorAll=selector=>selector==='[data-handle]'?handles:[];
+  const plot=node({chartId:'portfolio',chart:'indexed',width:'1000',left:'36',right:'36',top:'20',bottom:'40',height:'320',min:'90',max:'110'});
+  plot.getBoundingClientRect=()=>({left:64,right:864,width:800});
+  const tip=node(), cross=node(), marker=node(), wrap=node();
+  wrap.querySelector=selector=>({'[data-tooltip]':tip,'[data-cross]':cross,'[data-marker]':marker}[selector]);
+  plot.closest=selector=>selector==='[data-chart-wrap]'?wrap:selector==='svg'?{querySelector:()=>cross}:null;
+  const range=node({value:'all'}), charts=new Map([['portfolio',{
+    rows:drawnRows,window:[1,2],kind:'indexed',lines:[{key:'value',daily:'daily',cls:'series',label:'Study'}],
+  }]]);
+  const view={...c,app:{...app,page:'portfolio'},PAGES:{},ACTIONS:{},ON_INPUT:{},ON_CHANGE:{},
+    Data:{...Data,series:()=>currentRows},CHART_ROWS:charts,fitCharts:()=>0,
+    Inspect:{...c.Inspect,observation:1,window:n=>[0,Math.max(0,n-1)],
+      syncObservation(){},readingsMarkup:(rows,a,b)=>rows.slice(a,b+1).map(row=>row.date).join('|'),
+      presetActive:(_key,rows,a,b)=>a===0&&b===rows.length-1,
+    },
+    $:selector=>selector==='[data-navigator]'?navMounted?nav:null
+      :selector==='#performanceChart [data-chart]'||selector==='#performanceChart'?plotMounted?plot:null:null,
+    $$:selector=>selector==='[data-chart]'?plotMounted?[plot]:[]
+      :selector==='.performance-surface [data-action="chart-range"]'?[range]:[],
+    addEventListener:(kind,listener)=>{if(kind==='resize')resizeListeners.push(listener);},
+    requestAnimationFrame:callback=>{const id=++ticket;frames.set(id,callback);return id;},
+    cancelAnimationFrame:id=>frames.delete(id),
+    setTimeout:callback=>{const id=++ticket;timers.set(id,callback);return id;},
+    clearTimeout:id=>timers.delete(id),
+  };
+  vm.createContext(view);
+  vm.runInContext(source,view,{filename:'pages-portfolio.js'});
+  vm.runInContext('Portfolio.bindCharts()',view);
+  const snapshot=()=>JSON.parse(JSON.stringify({start:start.textContent,end:end.textContent,
+    handles:handles.map(handle=>handle.attributes),window:win.style,rail:rail.style,
+    startShade:startShade.style,endShade:endShade.style,readings:readings.innerHTML,range:range.attributes}));
+  return {charts,drawnRows,snapshot,setCurrent:rows=>{currentRows=rows;},
+    mount:(withNav,withPlot=withNav)=>{navMounted=withNav;plotMounted=withPlot;},
+    queueResize:()=>resizeListeners.forEach(listener=>listener({type:'resize'})),
+    flushFrames:()=>{const pending=[...frames.values()];frames.clear();for(const callback of pending)callback();},
+  };
+}
+const navigatorReader=navigatorFixture(), paintedNavigator=navigatorReader.snapshot();
+assert.equal(paintedNavigator.start,'2024-08-12');
+assert.equal(paintedNavigator.end,'2024-08-19');
+assert.equal(paintedNavigator.window.left,'50.000%');
+assert.equal(paintedNavigator.window.width,'50.000%');
+assert.equal(paintedNavigator.readings,'2024-08-12|2024-08-19');
+for(const currentRows of [[],[{date:'2026-10-05',value:200},{date:'2026-10-06',value:201}]]) {
+  navigatorReader.setCurrent(currentRows);
+  navigatorReader.queueResize();
+  assert.doesNotThrow(()=>navigatorReader.flushFrames(),'a pending reader cannot break the mounted chart resize');
+  assert.deepEqual(navigatorReader.snapshot(),paintedNavigator,'dates, window, readings and range all keep the painted chart snapshot');
+}
+const acceptedRows=[{date:'2026-10-01',value:100},{date:'2026-10-02',value:101}];
+navigatorReader.charts.set('portfolio',{rows:acceptedRows,window:[0,1]});
+navigatorReader.queueResize();navigatorReader.flushFrames();
+assert.equal(navigatorReader.snapshot().start,'2026-10-01','the accepted mounted chart supplies the new first date');
+assert.equal(navigatorReader.snapshot().end,'2026-10-02');
+assert.equal(navigatorReader.snapshot().window.width,'100.000%');
+assert.equal(navigatorReader.snapshot().readings,'2026-10-01|2026-10-02');
+navigatorReader.charts.set('portfolio',{rows:[acceptedRows[0]],window:[0,0]});
+navigatorReader.queueResize();navigatorReader.flushFrames();
+assert.equal(navigatorReader.snapshot().start,navigatorReader.snapshot().end,'a single drawn observation is a valid zero-span window');
+assert.equal(navigatorReader.snapshot().window.width,'0.000%');
+const lastValidNavigator=navigatorReader.snapshot();
+for(const invalid of [undefined,{rows:[],window:[0,0]},
+  {rows:acceptedRows,window:[-1,1]},{rows:acceptedRows,window:[0,2]},
+  {rows:acceptedRows,window:[1,0]},{rows:acceptedRows,window:[0.5,1]},
+  {rows:acceptedRows},{rows:[{},acceptedRows[1]],window:[0,1]},
+  {rows:[acceptedRows[0],{}],window:[0,1]}]) {
+  if(invalid)navigatorReader.charts.set('portfolio',invalid);else navigatorReader.charts.delete('portfolio');
+  navigatorReader.queueResize();
+  assert.doesNotThrow(()=>navigatorReader.flushFrames(),'an absent or invalid drawn window has no readable navigator dates');
+  assert.deepEqual(navigatorReader.snapshot(),lastValidNavigator,'an invalid snapshot cannot partly rewrite the navigator');
+}
+navigatorReader.charts.set('portfolio',{rows:acceptedRows,window:[0,1]});
+navigatorReader.queueResize();navigatorReader.mount(false);
+assert.doesNotThrow(()=>navigatorReader.flushFrames(),'a queued resize cannot operate on an unmounted navigator');
+assert.deepEqual(navigatorReader.snapshot(),lastValidNavigator);
+navigatorReader.mount(true,false);navigatorReader.queueResize();
+assert.doesNotThrow(()=>navigatorReader.flushFrames(),'a navigator without its mounted plot cannot borrow a stale chart registration');
+assert.deepEqual(navigatorReader.snapshot(),lastValidNavigator);
+const mountedRowsClause=`    // A pending view read keeps the prior chart mounted. Its navigator measures the rows
+    // and window that chart drew, as fitCharts does, until the accepted surface replaces it.
+    const rows = drawn?.rows, [a, b] = drawn?.window || [];
+    if (!Array.isArray(rows) || !rows.length || !Number.isInteger(a) || !Number.isInteger(b)
+      || a < 0 || b < a || b >= rows.length || !rows[a]?.date || !rows[b]?.date) return;
+    const n = rows.length;`;
+assert.ok(portfolioSource.includes(mountedRowsClause),'the negative control restores only the former live-series layout binding');
+const formerNavigator=navigatorFixture(portfolioSource.replace(mountedRowsClause,
+  '    const rows = Data.series(), n = rows.length, [a, b] = Inspect.window(n);'));
+formerNavigator.setCurrent([]);formerNavigator.queueResize();
+assert.throws(()=>formerNavigator.flushFrames(),/Cannot read properties of undefined \(reading 'date'\)/,
+  'the former live-series binding reproduces the reported error while the Historical navigator remains mounted');
+console.log('portfolio navigator: mounted/pending series, accepted window, invalid endpoints and queued unmount with former-binding negative control');
+
 async function runPortfolioTransportAssertions() {
   let watchdog;
   try {

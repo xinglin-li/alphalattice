@@ -5928,6 +5928,9 @@
 "goal.task_not_linked": {
 "owner": "goal"
 },
+"goal.task_updated_at_must_be_aware": {
+"owner": "goal"
+},
 "goal.workspace_mismatch": {
 "owner": "goal"
 },
@@ -8074,6 +8077,15 @@
 "owner": "portfolio_research"
 },
 "portfolio_research.receipt_required": {
+"owner": "portfolio_research"
+},
+"portfolio_research.recovery_context_pair_required": {
+"owner": "portfolio_research"
+},
+"portfolio_research.recovery_request_not_offered": {
+"owner": "portfolio_research"
+},
+"portfolio_research.recovery_task_id_invalid": {
 "owner": "portfolio_research"
 },
 "portfolio_research.risk_axis_mismatch": {
@@ -12436,6 +12448,21 @@
 "owner": "task_control"
 },
 "task_control.queued_task_identity_mismatch": {
+"owner": "task_control"
+},
+"task_control.recovery_link_invalid": {
+"owner": "task_control"
+},
+"task_control.recovery_link_preview_required": {
+"owner": "task_control"
+},
+"task_control.recovery_link_source_not_stopped": {
+"owner": "task_control"
+},
+"task_control.recovery_link_source_version_stale": {
+"owner": "task_control"
+},
+"task_control.recovery_link_successor_invalid": {
 "owner": "task_control"
 },
 "task_control.recovery_version_stale": {

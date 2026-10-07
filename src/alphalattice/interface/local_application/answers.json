@@ -7794,7 +7794,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The requests that go on to this book's review, each ready to send: `review`, `evidence_preview`, `dossier` and `cro_bundle`."
+    "meaning": "The requests that read this book's current Evidence state and preparation preview: `review` and `evidence_preview`. The current Evidence answer offers its ordered continuation or CRO requests."
    },
    {
     "name": "attributed_goal_id",
@@ -7911,6 +7911,12 @@
     "kind": "array",
     "required": true,
     "meaning": "For each analysis publication the dossier names: the Task and unit that prepared its receipt, its completion schema and the checks it required."
+   },
+   {
+    "name": "next_requests",
+    "kind": "object",
+    "required": true,
+    "meaning": "The exact book's current native CRO bundle request, after its Evidence reading has offered this resolved dossier; fill only bundle_directory."
    },
    {
     "name": "issuer_checks",
@@ -9390,7 +9396,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": false,
-    "meaning": "The requests that take these positions to their own review, each ready to send: `review`, `evidence_preview`, `dossier` and `cro_bundle`. Only with a publication."
+    "meaning": "The requests that read these positions' own current Evidence state and preparation preview: `review` and `evidence_preview`. The current Evidence answer offers its ordered continuation or CRO requests. Only with a publication."
    }
   ]
  },
@@ -9502,7 +9508,13 @@
     "name": "next_requests",
     "kind": "object",
     "required": false,
-    "meaning": "With `PLANNED`: `run`, the plan's `RESEARCH_UPDATE_RUN`, which reuses an identical update already made or in flight. With a refusal while the workspace's inputs are not ready: `status`, the Task holding the running place, or `data_update`, the data update that settles them."
+    "meaning": "With `PLANNED`: `run`, the plan's `RESEARCH_UPDATE_RUN`, which reuses an identical update already made or in flight. With an inactive installed strategy: `books`, this exact package's `CONTROLS`, whose activation offer names the person's Portfolio action. With a refusal while the workspace's inputs are not ready: `status`, the Task holding the running place, or `data_update`, the data update that settles them."
+   },
+   {
+    "name": "activation",
+    "kind": "object",
+    "required": false,
+    "meaning": "The exact installed package's current owner offer when its inactive state refuses the Forward plan: the book, recorded review standing and HUMAN-only activation request. Installation and the automatic schedule remain separate facts."
    },
    {
     "name": "attributed_goal_id",
@@ -9648,7 +9660,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": false,
-    "meaning": "The requests that take these positions to their own review, each ready to send: `review`, `evidence_preview`, `dossier` and `cro_bundle`, only with a publication; for a Task stopped where its plan's rerun resumes it, or deferred, `resume`, that rerun, a deferred one's once `retry_after_at` has passed."
+    "meaning": "The requests that read these positions' own current Evidence state and preparation preview: `review` and `evidence_preview`, only with a publication. The current Evidence answer offers its ordered continuation or CRO requests. For a Task stopped where its plan's rerun resumes it, or deferred, `resume`, that rerun, a deferred one's once `retry_after_at` has passed."
    }
   ]
  },

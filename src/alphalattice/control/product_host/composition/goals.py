@@ -56,8 +56,8 @@ GOAL_NAMESPACE = UUID("8f1d6c63-3c3e-4f5f-9f0e-5c4b2a7e8d10")
 """A goal opened without an id is named from its declaration and who opened it, so a retried
 open answers the goal it made rather than a second one."""
 
-TaskFacts = Callable[[UUID], tuple[str, str] | None]
-"""A Task's kind and Task Control lifecycle, or nothing when this workspace holds no such Task."""
+TaskFacts = Callable[[UUID], tuple[str, str, datetime | None] | None]
+"""A Task's kind, Task Control lifecycle and canonical update time, or nothing when absent."""
 
 # Only exact read selections can be evidence. Plans, lists, newest-result defaults,
 # actor requests and current activation are deliberately not evidence references.
@@ -616,7 +616,14 @@ class GoalApplication:
         for task_id in dict.fromkeys(str(e["task_id"]) for e in requests if e.get("task_id")):
             facts = self.task_facts(UUID(task_id))
             if facts is not None:
-                tasks.append(GoalTaskFact(task_id=UUID(task_id), kind=facts[0], state=facts[1]))
+                tasks.append(
+                    GoalTaskFact(
+                        task_id=UUID(task_id),
+                        kind=facts[0],
+                        state=facts[1],
+                        updated_at=facts[2],
+                    )
+                )
         delegated = [
             {
                 key: e[key]

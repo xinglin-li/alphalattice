@@ -131,6 +131,7 @@ from alphalattice.control.product_host.composition.strategy_tasks import (
     strategy_task,
 )
 from alphalattice.control.product_host.composition.task_recovery import (
+    TaskAttentionFact,
     TaskRecoveryView,
     build_task_recovery_view,
     stop_detail,
@@ -213,6 +214,7 @@ from alphalattice.control.task_control.registry import (
     TaskQueueFull,
     TaskQueueHeadAuthorityError,
     TaskRecordAuthorityError,
+    TaskTransitionRejected,
     TaskVersionStale,
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReader, TaskHeartbeatReadout
@@ -665,13 +667,13 @@ class PortfolioResearchOperations:
             "next_requests": {"status": {"operation": "STATUS", "task_id": str(sent.task_id)}},
         }
 
-    def _task_facts(self, task_id: UUID) -> tuple[str, str] | None:
-        """A Task's kind and lifecycle for a goal's record; nothing when it is not here."""
+    def _task_facts(self, task_id: UUID) -> tuple[str, str, datetime | None] | None:
+        """A Task's kind, lifecycle and canonical update clock; nothing when absent."""
         try:
             task = self.workspace_session.task_control_registry.task(task_id)
         except TaskNotFoundError:
             return None
-        return task.task_kind, task.lifecycle.value
+        return task.task_kind, task.lifecycle.value, task.updated_at
 
     def execute(
         self,
@@ -808,25 +810,45 @@ class PortfolioResearchOperations:
             else self._observe(lambda: observer.entered(request, caller=caller))
         )
         try:
+            recovery = self._recovery_context(request)
             # One operation proves each lifecycle admission it reads, and verifies
             # each Evidence record it loads, once; the proof is released with the
             # operation, never kept across requests.
-            with (
-                verified_model_read_scope(
-                    reuse_verified=request.operation
-                    in (
-                        LEDGER_READ_OPERATIONS
-                        | {"REPORT", "RESEARCH_UPDATE_READBACK", "PORTFOLIO_UPDATE_READBACK"}
-                    )
-                ),
-                verified_lifecycle_admissions(),
-                verified_study_evidence(reuse_verified=request.operation in LEDGER_READ_OPERATIONS),
-                verified_evidence_records(),
-                trial_reads_once(),
-            ):
-                body = typed_failures(
-                    self._execute(request, caller=caller, agent_execution=agent_execution)
+            if isinstance(recovery, dict):
+                body = recovery
+            else:
+                execution_request = (
+                    request
+                    if recovery is None
+                    else replace(request, recovery_task_id=None, recovery_task_hash=None)
                 )
+                with (
+                    verified_model_read_scope(
+                        reuse_verified=request.operation
+                        in (
+                            LEDGER_READ_OPERATIONS
+                            | {"REPORT", "RESEARCH_UPDATE_READBACK", "PORTFOLIO_UPDATE_READBACK"}
+                        )
+                    ),
+                    verified_lifecycle_admissions(),
+                    verified_study_evidence(
+                        reuse_verified=request.operation in LEDGER_READ_OPERATIONS
+                    ),
+                    verified_evidence_records(),
+                    trial_reads_once(),
+                ):
+                    body = typed_failures(
+                        self._execute(
+                            execution_request, caller=caller, agent_execution=agent_execution
+                        )
+                    )
+                if recovery is not None:
+                    source, declaration, is_preview, normalized = recovery
+                    body = (
+                        self._recovery_preview_answer(source, declaration, body)
+                        if is_preview
+                        else self._recovery_admission_answer(source, normalized, body)
+                    )
         except BaseException as error:
             if isinstance(error, TaskRecordAuthorityError):
                 body = {
@@ -841,10 +863,15 @@ class PortfolioResearchOperations:
                 }
             elif isinstance(error, TaskQueueHeadAuthorityError):
                 body = self.task_queue_authority_refusal(error)
-            elif (
-                isinstance(error, TaskNotFoundError)
-                and error.task_id == request.task_id
-                and request.operation in {"STATUS", "TASK_RECOVERY", "CANCEL", "RECOVER"}
+            elif isinstance(error, TaskNotFoundError) and (
+                (
+                    error.task_id == request.task_id
+                    and request.operation in {"STATUS", "TASK_RECOVERY", "CANCEL", "RECOVER"}
+                )
+                or (
+                    error.task_id == request.recovery_task_id
+                    and request.recovery_task_id is not None
+                )
             ):
                 body = {
                     "status": "REFUSED",
@@ -853,6 +880,18 @@ class PortfolioResearchOperations:
                     "task_id": str(error.task_id),
                     "next_action": "DISCOVER_TASK_IN_CURRENT_WORKSPACE",
                     **explain("task_control.task_not_found"),
+                    **(
+                        {
+                            "next_requests": {
+                                "recovery": {
+                                    "operation": "TASK_RECOVERY",
+                                    "task_id": str(error.task_id),
+                                }
+                            }
+                        }
+                        if request.recovery_task_id is not None
+                        else {}
+                    ),
                 }
             else:
                 code = owner_failure_code(error)
@@ -1197,9 +1236,20 @@ class PortfolioResearchOperations:
                         plan.data_plan,
                     )
                 except (ValueError, KeyError, FileNotFoundError) as error:
-                    return self._inputs_way(
-                        {"status": "REFUSED", **located_failure(error, "research_update.refused")}
-                    )
+                    failure = located_failure(error, "research_update.refused")
+                    body = {
+                        "status": "REFUSED",
+                        **failure,
+                        **explain(str(failure["failure_code"])),
+                    }
+                    if (
+                        failure["failure_code"] == "portfolio_update.not_installed"
+                        and request.strategy_package_id is not None
+                        and request.strategy_package_id in self._packages
+                        and self.activations is not None
+                    ):
+                        body["activation"] = self._activation_offer(request.strategy_package_id)
+                    return self._inputs_way(body)
             case "PORTFOLIO_UPDATE_PLAN" | "PORTFOLIO_UPDATE_RUN" | "PORTFOLIO_UPDATE_READBACK":
                 try:
                     if request.operation == "PORTFOLIO_UPDATE_PLAN":
@@ -3104,7 +3154,7 @@ class PortfolioResearchOperations:
                         }
                     }
                     if offer["status"] == "ACTIVE"
-                    else {},
+                    else {"books": {"operation": "CONTROLS", "strategy_package_id": package_id}},
                 }
             )
         return intents
@@ -3324,6 +3374,7 @@ class PortfolioResearchOperations:
         except (KeyError, ValueError, TaskNotFoundError):
             return body
         body["timing"] = task_timing(record, items, now=self.dispatcher.clock())
+        body["attention"] = self.supervisor.attention((record,))[task_id].model_dump(mode="json")
         # What the stopped stage's owner saw beside its code, as its work item keeps it (V444).
         cause = next((item.failure_cause for item in items if item.failure_cause), None)
         if cause is not None:
@@ -3584,6 +3635,7 @@ class PortfolioResearchOperations:
                 "delegated_steps": self.goals.record(first).get("delegated_steps", []),
             },
             tasks=tasks,
+            attention=self.supervisor.attention(tasks),
             awaiting=awaiting,
             data_issues=all_data_issues(
                 lambda cursor: self.data_issues.readback(limit=50, cursor=cursor)
@@ -3707,6 +3759,7 @@ class PortfolioResearchOperations:
         snapshot = self.workspace_session.task_control_registry.board(task_id)
         replan = self._task_replan(snapshot.task)
         resume_refusal = self._resume_refusal(snapshot.projection)
+        attention = self.supervisor.attention((snapshot.task,)).get(task_id)
         heartbeats = (
             TaskHeartbeatReadout(signals=(), unreadable=())
             if snapshot.execution is None
@@ -3726,6 +3779,7 @@ class PortfolioResearchOperations:
             or _raised_retry_reason(snapshot.task),
             resume_refusal=resume_refusal,
             replan_refusal=str(replan["detail"]) if replan and "failure_code" in replan else None,
+            attention=attention,
         )
         status = task_status_body(self.dispatcher.masked(snapshot.projection))
         status["worker_failure"] = self.dispatcher.failure(task_id)
@@ -3745,8 +3799,8 @@ class PortfolioResearchOperations:
             for action in cast(list[dict[str, object]], body.get("actions") or [])
             if action.get("available") and action.get("operation") in versioned
         }
-        # The owner's verified durable declaration, not a preview that may be gone with
-        # the ledger, supplies every field. No old Task id is attached to a new preview.
+        # The owner's verified durable declaration supplies every field. A stopped source
+        # version is carried only when its declaration has a distinct preview and admission.
         for action in cast(list[dict[str, object]], body.get("actions") or []):
             if action.get("action") != "REPLAN" or not action.get("available"):
                 continue
@@ -3768,20 +3822,262 @@ class PortfolioResearchOperations:
 
     def _task_replan(self, task: TaskRecord) -> dict[str, object] | None:
         """Ask the same composed owner that declares this Task's preview to bind it."""
+        owned = self._task_replan_owner(task)
+        if owned is None:
+            return None
+        declared, owner = owned
+        if declared.preview is None:
+            return None
+        _required, allowed = PortfolioResearchOperationRequest.field_contract(declared.preview)
+        choices = allowed - {"recovery_task_id", "recovery_task_hash"}
+        request = (
+            {"operation": declared.preview}
+            if not choices
+            else cast(dict[str, object], cast(Any, owner).replan_request(task))
+        )
+        if declared.preview != declared.admitting and task.lifecycle in {
+            TaskLifecycle.BLOCKED,
+            TaskLifecycle.CANCELLED,
+            TaskLifecycle.RECOVERY_REQUIRED,
+        }:
+            return {
+                **request,
+                "recovery_task_id": str(task.task_id),
+                "recovery_task_hash": task.record_hash,
+            }
+        return request
+
+    def _task_replan_owner(self, task: TaskRecord) -> tuple[TaskReplan, Any] | None:
+        """Find the owner behind the current composed replan declaration."""
+        declaration = self.replans().get(task.task_kind)
+        if declaration is None:
+            return None
         for item in fields(self):
             owner = getattr(self, item.name)
-            if not isinstance(owner, _AdmitsTasks):
-                continue
-            declared = next((v for v in owner.replans if v.task_kind == task.task_kind), None)
-            if declared is None:
-                continue
-            if declared.preview is None:
-                return None
-            _required, allowed = PortfolioResearchOperationRequest.field_contract(declared.preview)
-            if not allowed:
-                return {"operation": declared.preview}
-            return cast(dict[str, object], cast(Any, owner).replan_request(task))
+            if isinstance(owner, _AdmitsTasks) and any(
+                replan == declaration for replan in owner.replans
+            ):
+                return declaration, owner
         return None
+
+    @staticmethod
+    def _normalized_operation_request(
+        request: PortfolioResearchOperationRequest,
+    ) -> dict[str, object]:
+        """Return the JSON form of an operation, without recovery provenance fields."""
+        values = {
+            item.name: getattr(request, item.name)
+            for item in fields(request)
+            if item.name not in {"recovery_task_id", "recovery_task_hash"}
+            and getattr(request, item.name) is not None
+        }
+        return cast(
+            dict[str, object],
+            PortfolioResearchRequestDocument.model_validate(values).model_dump(
+                mode="json", exclude_none=True
+            ),
+        )
+
+    def _normalized_replan_request(self, request: Mapping[str, object]) -> dict[str, object]:
+        """Validate and normalize one owner-supplied operation request."""
+        typed = PortfolioResearchRequestDocument.model_validate(
+            dict(request)
+        ).to_operation_request()
+        return self._normalized_operation_request(typed)
+
+    def _recovery_context(
+        self, request: PortfolioResearchOperationRequest
+    ) -> tuple[TaskRecord, TaskReplan, bool, dict[str, object]] | dict[str, object] | None:
+        """Validate a replan preview or its exact previously offered admission."""
+        source_id = request.recovery_task_id
+        source_hash = request.recovery_task_hash
+        if source_id is None and source_hash is None:
+            return None
+        if source_id is None or source_hash is None:
+            return self._stale_recovery_context(
+                source_id, code="portfolio_research.recovery_context_pair_required"
+            )
+        registry = self.workspace_session.task_control_registry
+        try:
+            source = registry.task(source_id)
+        except TaskNotFoundError:
+            raise
+        if source.record_hash != source_hash:
+            return self._stale_recovery_context(source_id)
+        if source.lifecycle not in {
+            TaskLifecycle.BLOCKED,
+            TaskLifecycle.CANCELLED,
+            TaskLifecycle.RECOVERY_REQUIRED,
+        }:
+            return self._stale_recovery_context(
+                source_id, code="portfolio_research.recovery_request_not_offered"
+            )
+        owned = self._task_replan_owner(source)
+        if owned is None:
+            return self._stale_recovery_context(
+                source_id, code="portfolio_research.recovery_request_not_offered"
+            )
+        declaration, _owner = owned
+        if (
+            declaration.preview is None
+            or declaration.preview == declaration.admitting
+            or request.operation not in {declaration.preview, declaration.admitting}
+        ):
+            return self._stale_recovery_context(
+                source_id, code="portfolio_research.recovery_request_not_offered"
+            )
+        try:
+            normalized = self._normalized_operation_request(request)
+            if request.operation == declaration.preview:
+                expected_offer = self._task_replan(source)
+                if expected_offer is None:
+                    return self._stale_recovery_context(
+                        source_id, code="portfolio_research.recovery_request_not_offered"
+                    )
+                expected = self._normalized_replan_request(expected_offer)
+                if normalized != expected:
+                    return self._stale_recovery_context(
+                        source_id, code="portfolio_research.recovery_request_not_offered"
+                    )
+                return source, declaration, True, normalized
+        except (KeyError, TypeError, ValueError, ValidationError):
+            return self._stale_recovery_context(
+                source_id, code="portfolio_research.recovery_request_not_offered"
+            )
+        # The registry read is outside the malformed-request handler: database authority
+        # failures must retain the Task Control refusal instead of being called a bad request.
+        previews = registry.recovery_links(source_id)
+        if not any(
+            link.source_record_hash == source_hash
+            and link.successor_task_id is None
+            and link.admission_request == normalized
+            for link in previews
+        ):
+            return self._stale_recovery_context(
+                source_id, code="portfolio_research.recovery_request_not_offered"
+            )
+        return source, declaration, False, normalized
+
+    def _stale_recovery_context(
+        self,
+        source_id: UUID | None,
+        *,
+        code: str = "local_application.confirmation_stale",
+    ) -> dict[str, object]:
+        """Return the located refusal with a request to refresh this Task's recovery view."""
+        answer: dict[str, object] = {
+            **refused(code),
+            "refused_at": "OPERATION_ENTRY",
+            "next_requests": {
+                "recovery": {
+                    "operation": "TASK_RECOVERY",
+                    **({"task_id": str(source_id)} if source_id is not None else {}),
+                }
+            },
+        }
+        if source_id is None:
+            return answer
+        answer["task_id"] = str(source_id)
+        try:
+            source = self.workspace_session.task_control_registry.task(source_id)
+        except TaskNotFoundError:
+            return answer
+        answer["lifecycle"] = source.lifecycle.value
+        answer["task_record_hash"] = source.record_hash
+        return answer
+
+    @staticmethod
+    def _rewrite_admission_offer(
+        value: object, operation: str, source_id: UUID, source_hash: str
+    ) -> tuple[object, list[dict[str, object]]]:
+        """Bind the matching owner request anywhere in its mapping or list of offers."""
+        if isinstance(value, Mapping):
+            if value.get("operation") == operation:
+                offer = dict(value)
+                original = dict(offer)
+                offer["recovery_task_id"] = str(source_id)
+                offer["recovery_task_hash"] = source_hash
+                return offer, [original]
+            found: list[dict[str, object]] = []
+            rewritten: dict[object, object] = {}
+            for key, item in value.items():
+                updated, matches = PortfolioResearchOperations._rewrite_admission_offer(
+                    item, operation, source_id, source_hash
+                )
+                rewritten[key] = updated
+                found.extend(matches)
+            return (rewritten if found else value), found
+        if isinstance(value, list):
+            found = []
+            rewritten_items: list[object] = []
+            for item in value:
+                updated, matches = PortfolioResearchOperations._rewrite_admission_offer(
+                    item, operation, source_id, source_hash
+                )
+                rewritten_items.append(updated)
+                found.extend(matches)
+            return (rewritten_items if found else value), found
+        return value, []
+
+    def _recovery_preview_answer(
+        self, source: TaskRecord, declaration: TaskReplan, body: dict[str, object]
+    ) -> dict[str, object]:
+        """Persist each actual filled admission request and carry its exact source pair."""
+        next_requests = body.get("next_requests")
+        if next_requests is None:
+            return body
+        rewritten, matches = self._rewrite_admission_offer(
+            next_requests,
+            declaration.admitting,
+            source.task_id,
+            source.record_hash,
+        )
+        if not matches:
+            return body
+        registry = self.workspace_session.task_control_registry
+        try:
+            for match in matches:
+                admission_request = self._normalized_replan_request(match)
+                registry.record_recovery_link(
+                    source_task_id=source.task_id,
+                    source_record_hash=source.record_hash,
+                    admission_request=cast(dict[str, Any], admission_request),
+                    observed_at=self.dispatcher.clock(),
+                )
+        except (TaskVersionStale, TaskTransitionRejected):
+            return self._stale_recovery_context(source.task_id)
+        return {**body, "next_requests": rewritten}
+
+    def _recovery_admission_answer(
+        self,
+        source: TaskRecord,
+        admission_request: dict[str, object],
+        body: dict[str, object],
+    ) -> dict[str, object]:
+        """Link only the distinct canonical same-kind Task the admitted operation returned."""
+        value = body.get("task_id")
+        if not isinstance(value, str):
+            return body
+        try:
+            successor_id = UUID(value)
+        except ValueError:
+            return body
+        if successor_id == source.task_id:
+            return body
+        try:
+            successor = self.workspace_session.task_control_registry.task(successor_id)
+        except TaskNotFoundError:
+            return body
+        if successor.task_kind != source.task_kind:
+            return body
+        self.workspace_session.task_control_registry.record_recovery_link(
+            source_task_id=source.task_id,
+            source_record_hash=source.record_hash,
+            admission_request=cast(dict[str, Any], admission_request),
+            successor_task_id=successor_id,
+            observed_at=self.dispatcher.clock(),
+        )
+        return body
 
     def _run_answer(
         self, sent: CommandSubmission, data_plan: WorkspaceDataUpdatePlan | None = None
@@ -3926,6 +4222,11 @@ class PortfolioResearchOperations:
             except (ValueError, KeyError, OSError):
                 refusals.append(task_record_refusal(str(task.task_id)))
                 continue
+            if (
+                task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+                and not cast(dict[str, object], view["attention"])["unresolved"]
+            ):
+                continue
             stages = cast(list[dict[str, object]], view["stages"])
             health = cast(dict[str, object], view["health"])
             counts[str(health["status"])] = counts.get(str(health["status"]), 0) + 1
@@ -3991,9 +4292,21 @@ class PortfolioResearchOperations:
         Returns:
             The rows; a session's listing adds `next_cursor`.
         """
-        if agent_session is None:
-            return {"tasks": [self._task_row(value) for value in self.dispatcher.active()]}
         registry = self.workspace_session.task_control_registry
+        batch = registry.record_collection()
+        attention = self.supervisor.attention(batch.records)
+        if agent_session is None:
+            all_tasks: dict[str, object] = {
+                "tasks": [
+                    self._task_row(value, attention.get(value.task_id))
+                    for value in self.dispatcher.active()
+                ]
+            }
+            if batch.refused_task_ids:
+                all_tasks["refusals"] = [
+                    task_record_refusal(task_id) for task_id in batch.refused_task_ids
+                ]
+            return all_tasks
         submitted = registry.submitted_by_session(agent_session)
         if cursor is not None:
             position = next(
@@ -4014,7 +4327,7 @@ class PortfolioResearchOperations:
             final = self.dispatcher.final_lifecycle(projection)
             rows.append(
                 {
-                    **self._task_row(projection),
+                    **self._task_row(projection, attention.get(task_id)),
                     "submitted_by": agent.model_dump(mode="json"),
                     "final_state": None if final is None else final.value,
                     "artifact": (
@@ -4060,9 +4373,12 @@ class PortfolioResearchOperations:
             },
         }
 
-    def _task_row(self, value: TaskSafeProjection) -> dict[str, object]:
+    def _task_row(
+        self, value: TaskSafeProjection, attention: TaskAttentionFact | None = None
+    ) -> dict[str, object]:
         return {
             **task_status_body(value),
+            **({"attention": attention.model_dump(mode="json")} if attention is not None else {}),
             **(
                 {"detail": stop_detail(value.task_kind, value.latest_failure_code, "TASK_CONTROL")}
                 if value.latest_failure_code == "task_control.ledger_rebuilt"
@@ -4644,7 +4960,12 @@ class PortfolioResearchOperations:
             "chosen_by": selection.chosen_by,
             # The book the choice was recorded for, and its review read against it (V487).
             "review_selector": book.request_fields(),
-            "next_requests": review_requests(book.request_fields()),
+            "next_requests": {
+                **review_requests(book.request_fields()),
+                # This choice already names an admitted analysis. Its exact
+                # dossier stays readable independently of further source work.
+                "dossier": {"operation": "CRO_REVIEW_DOSSIER", **book.request_fields()},
+            },
         }
 
     def cro_review(self, selector: BookSelector | None) -> dict[str, object]:

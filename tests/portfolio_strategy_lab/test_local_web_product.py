@@ -1878,8 +1878,10 @@ def test_human_and_agent_share_plan_task_status_report_and_freeze(
     assert {request["operation"] for request in report["next_requests"].values()} == {
         "EVIDENCE_CRO",
         "EVIDENCE_PREVIEW",
-        "CRO_REVIEW_DOSSIER",
-        "AGENT_BUNDLE_PREPARE",
+    }
+    assert report["next_requests"]["review"] == {
+        "operation": "EVIDENCE_CRO",
+        "result_hash": result_hash,
     }
 
     frozen = _agent(

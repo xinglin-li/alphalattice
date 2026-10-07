@@ -79,7 +79,8 @@ const LiveReview = (() => {
   // a bundle read under the projection read the page is showing: its context is this read's;
   // one read earlier is retained content that establishes nothing about the refreshed context
   const inThisRead=(bundle)=>Boolean(bundle) && bundle.key===S.key && bundle.readGen===S.readGen;
-  const bundleOf=(role)=>{const x=role==='analyst' ? S.packet : S.dossier;return x && x.key===S.key ? x.value : null;};
+  const continuationRequired=()=>!historical() && (S.view?.required_actions || []).some(a=>a.action==='SETTLE_EVIDENCE_CONTINUATION' && a.blocking);
+  const bundleOf=(role)=>{if(role==='cro' && continuationRequired()) return null;const x=role==='analyst' ? S.packet : S.dossier;return x && x.key===S.key ? x.value : null;};
   const dossierOf=()=>bundleOf('cro')?.dossier || null;
   function currentIdentity() {
     const v=S.view || {}, d=inThisRead(S.dossier) ? S.dossier.value?.dossier : null;
@@ -103,7 +104,7 @@ const LiveReview = (() => {
     }
     if(group==='analysis'){
       if(f.analysis && now.analysis) return f.analysis===now.analysis ? 'current' : 'historical';
-      if(f.analysis && state==='AWAITING_ALTERNATIVE_EVIDENCE') return 'historical'; // the read says no current analysis exists
+      if(f.analysis && state==='AWAITING_ALTERNATIVE_EVIDENCE' && !continuationRequired()) return 'historical'; // the read says no current analysis exists; an exact pending continuation says otherwise
       if(f.asOf && now.asOf && !sameInstant(f.asOf,now.asOf)) return 'historical';
       return 'unresolved';
     }
@@ -1005,6 +1006,7 @@ const LiveReview = (() => {
   /* ---- the two handoffs ---- */
   async function getBundle(role,request=null,stay=false,quiet=false) {
     if(!current())return;
+    if(role==='cro' && continuationRequired()){S.error=said(S.view.explanation);render();return;}
     if(role==='analyst'&&!S.packetTask) {S.error='Choose a prepared evidence Task.';render();return;}
     // the page's own read names what the page shows; a composed request is read with its fields
     const fields=request ? requestFields(request) : {...S.selector,...(role==='analyst' ? {task_id:S.packetTask,...(S.packetUnit ? {evidence_unit_id:S.packetUnit} : {})} : {})};
@@ -1016,14 +1018,14 @@ const LiveReview = (() => {
       // recorded whatever the page shows now, and the bundle is adopted only into the exact
       // context it was asked for (the same book, pin and, for a packet, the same Task and unit)
       if(role==='analyst') bind('prepare',asked.task,asked.key,asked.selector,packetIdentity(doc.value));
-      if(ticket!==S.bundleRev || gen!==S.nav || S.key!==asked.key || S.pin!==asked.pin || (role==='analyst' && (S.packetTask!==asked.task || S.packetUnit!==asked.unit))) return;
+      if(ticket!==S.bundleRev || gen!==S.nav || S.key!==asked.key || S.pin!==asked.pin || S.readGen!==asked.readGen || (role==='analyst' && (S.packetTask!==asked.task || S.packetUnit!==asked.unit))) return;
       const bundle={...doc,key:asked.key,task:role==='analyst' ? asked.task : '',unit:role==='analyst' ? asked.unit : '',readGen:asked.readGen};
       // a packet asked for without a unit that the product answered for one unit: the product
       // named the unit, the page records it (the drafts follow; a unit-less draft is offered back)
       if(role==='analyst' && !asked.unit && doc.value.coverage_unit?.unit_id){S.packetUnit=String(doc.value.coverage_unit.unit_id);bundle.unit=S.packetUnit;loadDrafts();writeRoute(routeUpdate());}
       if(role==='analyst'){S.packet=bundle;adoptExcerpts(doc.value);}else S.dossier=bundle;
       S.role=role;if(!quiet)S.roleChosen=role;if(!stay && app.page!=='handoff'){app.page='handoff';pushRoute(routeUpdate({page:'handoff'}));}
-    }catch(e){if(ticket===S.bundleRev && S.key===asked.key){S.error=e.message;}}
+    }catch(e){if(ticket===S.bundleRev && gen===S.nav && S.key===asked.key && S.pin===asked.pin && S.readGen===asked.readGen){S.error=e.message;}}
     finally{if(ticket===S.bundleRev){S.busy='';repaintMain();}}
   }
   function packetChoice() {
@@ -1178,7 +1180,9 @@ const LiveReview = (() => {
   const reviewPublished=()=>S.view?.state==='REVIEW_PUBLISHED';
   function autoRead() { // the page's reads, once per book and packet; a failure is the section's own words
     if(!current() || !['handoff','evidence'].includes(app.page) || S.busy) return; // the Review page and the cycle's status page (round F1)
-    if(analysisPublished() && !bundleOf('cro') && S.autoDossier!==S.key){S.autoDossier=S.key;void getBundle('cro',null,true,true);return;}
+    const dossierRequests=Object.values(S.view?.next_requests || {}).filter(r=>r?.operation==='CRO_REVIEW_DOSSIER' && appliesHere(r));
+    const dossierKey=S.key+'|'+S.readGen;
+    if(analysisPublished() && !continuationRequired() && !inThisRead(S.dossier) && dossierRequests.length===1 && S.autoDossier!==dossierKey){S.autoDossier=dossierKey;void getBundle('cro',dossierRequests[0],true,true);return;}
     // a group's packet the reader chose is read whatever the book's turn: each prepared group is answered on its own (10.9)
     if(analysisPublished() && S.roleChosen!=='analyst') return;
     if(S.packetTask && !bundleOf('analyst') && S.autoPacket!==S.key+'|'+S.packetTask+'|'+S.packetUnit){S.autoPacket=S.key+'|'+S.packetTask+'|'+S.packetUnit;void getBundle('analyst',null,true,true);}
@@ -1407,6 +1411,8 @@ const LiveReview = (() => {
     const a=dossierOf(), v=S.view;
     if(analysisPublished()) out.push({title:t('The analysis'),body:html`${kv([[t('Analysis'),mono(a?.analysis_publication_hash || currentIdentity().analysis || '',SHORT.hash)],[t('Evidence as-of'),dayWord(a?.evidence_as_of || v?.evidence_as_of) || ''],[t('Expires'),dayWord(a?.evidence_expires_at || v?.evidence_expires_at) || '']])}${(a?.evidence_children || []).length ? html`<h3>${t('Groups\' publications')} <span class="num">${count(a.evidence_children.length)}</span></h3><ul class="fact-list">${a.evidence_children.map(c=>html`<li>${t('Group')} <span class="mono">${c.unit_id}</span> · ${entityNames(c.ordered_entity_ids) || ''} · ${t('analysis')} <span class="mono">${short(c.analysis_publication_hash,SHORT.id)}</span> · ${t('as-of {d}',{d:dayWord(c.evidence_as_of)})}</li>`)}</ul>` : ''}`});
     if(d) out.push({title:t('CRO dossier'),body:html`${kv([[t('Dossier'),html`${codeWords(d.status)} · ${mono(d.dossier?.dossier_hash,SHORT.hash)}`],[t('Analysis reviewed'),mono(d.dossier?.analysis_publication_hash,SHORT.hash)],[t('Citable findings'),(citableHandles(d.dossier) || []).length ? count((citableHandles(d.dossier) || []).length) : t('none')],[t('Dossier delivery'),(d.delivery || {}).delivery_mode==='WHOLE_DOSSIER' ? t('whole') : d.delivery?.part ? t('part {p} of {n}',{p:count(d.delivery.part),n:count(d.delivery.part_count)}) : ''],[t('Routes the policy allows'),(d.dossier?.allowed_routes || []).map(codeWords).join(' · ') || ''],[t('Policy'),mono(d.decision_policy_hash,SHORT.hash)],[t('Schema'),mono(d.assessment_schema_hash,SHORT.hash)],[t('Host usage'),codeWords(d.external_host_usage)],[t('Claim'),codeWords(d.claim)]])}${[...(d.dossier?.claim_limits || []),...(d.dossier?.limitations || [])].length ? html`<h3>${t('Claim limits and limitations')}</h3><ul class="fact-list">${[...(d.dossier?.claim_limits || []),...(d.dossier?.limitations || [])].map(x=>html`<li>${said(x)}</li>`)}</ul>` : ''}${codeRef(t('Read the submission template and assessment schema'), {submission_template:d.submission_template,assessment_schema:d.assessment_schema})}`});
+    const bundleRequest=inThisRead(S.dossier) ? d?.next_requests?.cro_bundle : null;
+    if(bundleRequest?.operation==='AGENT_BUNDLE_PREPARE' && bundleRequest.agent_role==='CRO' && appliesHere(bundleRequest)) out.push({title:t('Prepare agent bundle'),body:codeRef(t('Read the exact request'),bundleRequest)});
     return [...out,...teamFacts(),{title:t('How this page works'),body:html`<p>${t('The product prepares, validates, seals and publishes; the answers come from outside it. A dossier is compiled only from a current published analysis. Opening, reading or downloading here starts no actor, model or fetch.')}</p>`}];
   }
   /* The handoff's record (round 79): what the owners recorded about the Tasks this page bound. */
@@ -1423,7 +1429,7 @@ const LiveReview = (() => {
   // the Tasks a role's submission created, bound to this book by this page (round 79)
   const boundRows=(set)=>set.size ? html`<div class="card-list lines">${[...set].map(id=>{const s=taskState(id);return objectRow({state:s.lifecycle || 'pending',name:html`${t('Task')} ${mono(id,SHORT.id)}`,why:t('{n} / {m} stages verified',{n:s.verified,m:s.total}),to:{action:'task',value:id},cls:'evidence-row'},{key:id});})}</div>` : '';
   function handoffPage() {
-    S.role=S.roleChosen || (croTurn() ? 'cro' : 'analyst'); // whose turn it is: the state says, unless the reader chose
+    S.role=continuationRequired() ? 'analyst' : S.roleChosen || (croTurn() ? 'cro' : 'analyst'); // the current owner gate precedes an earlier chosen role
     queueMicrotask(autoRead);
     // B1: the head is the book's; where the handoff stands is the Review's first line -- the turn, then each party's day
     const days=['prepared','analysed','reviewed'].map(id=>cycle().stages.find(x=>x.id===id)).filter(st=>st && st.time).map(st=>html`${t(st.name)} ${st.time}`);
@@ -1460,6 +1466,7 @@ const LiveReview = (() => {
    * saying whether it is admitted here. */
   function confirm(kind,value='',request=null) {
     if(!current())return;
+    if(continuationRequired() && (kind==='cro' || (kind==='submit' && S.role==='cro'))){S.error=said(S.view.explanation);render();return;}
     S.error='';
     let path,payload,explanation,title,facts=[];
     try{
@@ -1833,9 +1840,8 @@ const LiveReview = (() => {
     const scope=panel(t('Scope'),'',html`${kv([...(x ? [[t('Readback'),html`${codeWords(x.review_status)}${infoMark(`${said(x.claim)} ${t('Exact in its sealed content; the rendering here may differ from the exported HTML.')}`)}`]] : []),...measures],'kv-columns')}`,'','data-report-section="scope"');
     const issuers=x ? reportIssuers() : '';
     // the reviews (2026-09-24): a required action is the decision's first line and the way on it names -- the issuer it reads, else its pipeline (the Overview's blocker says the same)
-    const actionWay=(a)=>a.entity_id ? {action:'review-live-item',value:a.entity_id} : ACTION_WAYS[a.action] ? {action:ACTION_WAYS[a.action][0],value:ACTION_WAYS[a.action][1]} : null;
-    const actions=(v?.required_actions || []).map(a=>objectRow({state:a.blocking ? 'blocked' : 'deferred',name:codeWords(a.action),why:said(a.reason),to:actionWay(a),cls:'evidence-row'},{key:'action:'+a.action+':'+(a.entity_id || ''),word:t(a.blocking ? 'Blocking' : 'Advisory'),columns:['scope'],props:[a.entity_id || (ACTION_WAYS[a.action] ? t(ACTION_WAYS[a.action][2]) : '')],attrs:a.reason ? html`data-tip="${said(a.reason)}"` : ''}));
-    const decided=Boolean(v && (v.disposition || (v.required_actions || []).length || (v.rule_ids || []).length));
+    const decided=Boolean(v && (reviewPublished() || historical()));
+    const actions=(decided ? v.required_actions || [] : []).map(a=>objectRow({state:a.blocking ? 'blocked' : 'deferred',name:codeWords(a.action),why:said(a.reason),to:actionWay(a),cls:'evidence-row'},{key:'action:'+a.action+':'+(a.entity_id || ''),word:t(a.blocking ? 'Blocking' : 'Advisory'),columns:['scope'],props:[a.entity_id || actionWay(a)?.word || ''],attrs:a.reason ? html`data-tip="${said(a.reason)}"` : ''}));
     const limits=v ? [...gapLines(v.gaps || []),...(v.claim_limits || []),...reviewLimits(v)] : [];
     const decision=!v ? '' : !decided ? panel(t('Decision'),'',html`${emptyState(t(publications().some(p=>p.lapsed) || workingPublication() ? 'No current review is published for this book; nothing is decided' : 'No review is published for this book; nothing is decided.'))}${publications().some(p=>p.lapsed) || workingPublication() ? html`<p class="caption">${t('A review sealed under an earlier binding reads back as recorded; the book can be reviewed again.')}</p>` : ''}`,'','data-report-section="decision"') : panel(t('Decision'),'',html`${actions.length ? html`<div class="card-list lines decision-actions">${actions}</div>` : ''}${kv([[t('Route'),v.disposition ? codeWords(v.disposition) : '\u2014'],[t('Completeness'),v.review_state ? codeWords(v.review_state) : '\u2014'],...(x?.review?.recommendation?.action_activation ? [[t('Activation'),codeWords(x.review.recommendation.action_activation)]] : []),[t('Reviewer'),attributionWords(v.review_attribution || [],{facts:true}) || '\u2014'],[t('Policy'),v.policy_version ? codeCell(v.policy_version) : '\u2014'],[t('Rules'),(v.rule_ids || []).length ? html`<span class="mono">${v.rule_ids.join(', ')}</span>` : '\u2014'],[t('Reasons'),(v.reasons || []).length ? html`<span class="owner-text">${v.reasons.map((r,i)=>html`${i ? ' · ' : ''}${reasonWords(r)}`)}</span>` : '\u2014']].filter(([,x])=>x!=='\u2014'),'kv-columns')}${limits.length ? html`<details class="reveal-details"><summary>${t('Limits')} <span class="num">${count(limits.length)}</span></summary>${textCollection('report-limits',limits,said)}</details>` : ''}`,'','data-report-section="decision"');
     const questions=questionsSection(), changes=changesSection();
@@ -1899,6 +1905,7 @@ const LiveReview = (() => {
   const reasonWords=(x)=>{ const v=String(x || ''); return /^[A-Z][A-Z_]+$/.test(v) ? codeWords(v) : /^[a-z][a-z0-9_.]+$/.test(v) ? codeWords(v.toUpperCase().replace(/\./g,'_')) : html`<span class="owner-text">${said(v)}</span>`; }; // generated sentences have exact templates; authored sentences keep their words
   function requiredPrimary(a) {
     const kind=String(a?.action || '');
+    if(['SETTLE_EVIDENCE_CONTINUATION','ANALYZE_CONTINUED_EVIDENCE','READ_CRO_DOSSIER','SUBMIT_CRO_ASSESSMENT'].includes(kind)) return actionWay(a);
     if(kind==='REFRESH_EVIDENCE') return nextOrStep('Prepare again','preview','evidence-stream');
     if(kind==='RESOLVE_ISSUER_MAPPING') return {word:t('Resolve the mapping'),action:'go',value:'portfolio'};
     if(kind==='HUMAN_REVIEW') return stepTo('Human review','handoff');
@@ -1914,10 +1921,10 @@ const LiveReview = (() => {
       case 'NO_BOOK_TO_REVIEW': sentence=t('No book is chosen.'); break;
       case 'REVIEW_INPUT_INCOMPLETE': sentence=t('This book cannot be reviewed yet.'); tone='warning'; break;
       case 'EVIDENCE_AUTHORITY_NOT_ADMITTED': sentence=t('Evidence is not set up for this workspace.'); tone='warning'; primary=stepTo(...BOOK_NEXT[st]); break;
-      case 'AWAITING_ALTERNATIVE_EVIDENCE': sentence=t('No evidence is prepared for this book.'); primary=nextOrStep('Prepare sources','prepare','evidence-stream'); break;
+      case 'AWAITING_ALTERNATIVE_EVIDENCE': sentence=continuationRequired() ? t('The selected analysis needs its evidence continuation before CRO.') : t('No evidence is prepared for this book.'); primary=continuationRequired() ? requiredPrimary(blocking) : nextOrStep('Prepare sources','prepare','evidence-stream'); break;
       case 'EVIDENCE_REFRESH_IN_PROGRESS': sentence=cp && cp.units_total>1 ? t('Preparing: {k} of {n} groups done.',{k:count(cp.units_prepared || 0),n:count(cp.units_total)}) : t('Preparing the evidence.'); tone='accent'; primary=v.task_id ? {word:t('Follow the run'),action:'review-watch',value:v.task_id} : null; break;
       case 'ANALYST_PACKET_PREPARED': sentence=t('Evidence prepared; awaiting the Analyst\'s answer.'); primary=stepTo(...BOOK_NEXT[st]); break;
-      case 'ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW': sentence=t('Analysis published as of {d}; awaiting the CRO\'s assessment.',{d:dayWord(v.evidence_as_of) || ''}); primary=stepTo(...BOOK_NEXT[st]); break;
+      case 'ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW': sentence=t('Analysis published as of {d}; awaiting the CRO\'s assessment.',{d:dayWord(v.evidence_as_of) || ''}); primary=actions.length ? requiredPrimary(blocking) : stepTo(...BOOK_NEXT[st]); break;
       case 'REVIEW_PUBLISHED': sentence=t('Reviewed · {n}.',{n:actions.length ? countText(actions.length,'{n} required action','{n} required actions') : t('no required action')}); tone='good'; primary=blocking ? requiredPrimary(blocking) : stepTo('Read the report','report'); break;
       case 'ALTERNATIVE_EVIDENCE_EXPIRED': sentence=t('The evidence expired {d}; a published review stays readable by its handle.',{d:dayWord(v.evidence_expires_at) || ''}); tone='warning'; primary=nextOrStep('Prepare again','preview','evidence-stream'); break;
       case 'ALTERNATIVE_EVIDENCE_SUPERSEDED': sentence=t('The preparation\'s policy moved; the evidence is superseded.'); tone='warning'; primary=nextOrStep('Prepare again','preview','evidence-stream'); break;
@@ -2052,7 +2059,20 @@ const LiveReview = (() => {
   /* A required action's way (B1; the book plan's item 3): where the owner's pipeline takes it -- a
    * refresh is prepared on Sources, a mapping resolved on the book's study, a human review written
    * on Review; an action naming an issuer reads that issuer. */
-  const ACTION_WAYS={REFRESH_EVIDENCE:['review-step','evidence-stream','Sources › Prepare'],RESOLVE_ISSUER_MAPPING:['go','portfolio','Resolve the mapping'],HUMAN_REVIEW:['review-step','handoff','Human review']};
+  const ACTION_WAYS={REFRESH_EVIDENCE:['review-step','evidence-stream','Sources › Prepare'],RESOLVE_ISSUER_MAPPING:['go','portfolio','Resolve the mapping'],HUMAN_REVIEW:['review-step','handoff','Human review'],SELECT_ANALYSIS:['review-live-item','analysis','Choose the analysis']};
+  function actionWay(a) {
+    if(a.entity_id) return {action:'review-live-item',value:a.entity_id,word:''};
+    const kind=a.action;
+    if(kind==='PREPARE_EVIDENCE') return nextOrStep('Prepare sources','prepare','evidence-stream');
+    if(kind==='SETTLE_EVIDENCE_CONTINUATION' || kind==='ANALYZE_CONTINUED_EVIDENCE' || kind==='READ_CRO_DOSSIER'){
+      const operation=kind==='READ_CRO_DOSSIER' ? 'CRO_REVIEW_DOSSIER' : 'EVIDENCE_PACKET';
+      const requests=Object.entries(S.view?.next_requests || {}).filter(([,r])=>r?.operation===operation && (operation!=='EVIDENCE_PACKET' || !staleUnit(S.view,r.evidence_unit_id)));
+      if(requests.length===1) return {word:t(NEXT_WORDS[operation][1]),action:'review-next',value:requests[0][0]};
+      return requests.length ? stepTo('Choose a group to read its Analyst packet','handoff') : null;
+    }
+    if(kind==='SUBMIT_CRO_ASSESSMENT') return stepTo('Assess as the CRO','handoff');
+    const way=ACTION_WAYS[kind];return way ? {action:way[0],value:way[1],word:t(way[2])} : null;
+  }
   /* The status (E1; GitHub's merge box, measured): the verdict -- or, before a review, the cycle's
    * sentence -- with its mark; the five stages as checks, each a mark, its line and its day, a row
    * opening its reading in the pane; the required action that blocks. The Overview's one box; its
@@ -2061,12 +2081,12 @@ const LiveReview = (() => {
   function overviewStatus() {
     const v=S.view, c=cycle(); if(!c.stages.length) return '';
     const published=Boolean(v) && !S.refusal && (reviewPublished() || historical());
-    const actions=published ? (v.required_actions || []) : [], blocking=actions.find(a=>a.blocking);
+    const actions=v?.required_actions || [], blocking=actions.find(a=>a.blocking);
     const human=c.checks.find(k=>k.id==='human');
     const checks=c.stages.map(st=>{ const asked=st.id==='reviewed' && Boolean(human), tone=asked ? 'warning' : STAGE_TONE[st.word] || 'neutral'; return {tone,name:t(st.name),why:asked ? t('human review required') : tone==='good' ? '' : t(stateOf(st.word).word),time:st.time || '',action:st.page===null ? '' : 'review-step',value:st.page || '',tip:st.line || ''}; }); // W (R4): a mark, a word, a day -- a done stage's name is its word; law 149: the row goes to the stage's page, the owner's line is its tip
     const tone=published && v.disposition ? stateOf(evidenceState(v.disposition).state).tone : blocking ? TONE.attention : published ? (actions.length ? 'warning' : 'good') : ({accent:'accent',warning:'warning',good:'good'})[c.tone] || 'neutral'; // B1 (item 7): the route's standing, the head's
     const notReached=published ? (v.issuer_rows || []).filter(r=>!issuerReviewed(r)).sort(byWeight).map(issuerName) : [];
-    const foot=actions.map(a=>{ const way=a.entity_id ? ['review-live-item',a.entity_id,''] : ACTION_WAYS[a.action] || null; return {tone:TONE.attention,word:t(a.blocking ? 'Blocking' : 'Advisory'),why:html`${codeWords(a.action)}${a.reason ? html` \u00b7 <span class="owner-text">${said(a.reason)}</span>` : ''}${a.action==='REFRESH_EVIDENCE' && notReached.length ? html` <span class="status-names">${t('Not reviewed: {names}.',{names:notReached.join(', ')})}</span>` : ''}`,action:way ? way[0] : '',value:way ? way[1] : '',label:way && way[2] ? t(way[2]) : ''}; }); // the reason is the owner's sentence, as the reasons above; the way is a quiet link, the top row's verb stays the page's one (laws 94, 129)
+    const foot=actions.map(a=>{ const way=actionWay(a); return {tone:TONE.attention,word:t(a.blocking ? 'Blocking' : 'Advisory'),why:html`${codeWords(a.action)}${a.reason ? html` \u00b7 <span class="owner-text">${said(a.reason)}</span>` : ''}${a.action==='REFRESH_EVIDENCE' && notReached.length ? html` <span class="status-names">${t('Not reviewed: {names}.',{names:notReached.join(', ')})}</span>` : ''}`,action:way?.action || '',value:way?.value || '',label:way?.word || ''}; }); // the owner pipeline is visible before publication; only a published review has a Report decision
     // B1 (item 7): the route is the head's state; the box says why -- the owner's first reason, the rest under it
     // the third review (2026-09-24; the user: 各管一件事): the Overview is the live standing -- the stages, the blocker and its way; the decision and its reasons are the Report's
     return statusBox({tone,title:c.sentence,reasons:[],checks,foot,label:t('Status'),attrs:'data-overview="status"'});

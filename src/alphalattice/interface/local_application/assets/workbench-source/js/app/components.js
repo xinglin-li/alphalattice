@@ -1770,6 +1770,12 @@ function pctText(s, threshold = null) {
    exports), a count with its noun, a session id told apart from its neighbours, an instant as a
    reader sees it. Nothing here changes a value; the owner's exact strings stay in the details. */
 const CODE_WORDS = {
+  SETTLE_EVIDENCE_CONTINUATION: 'Settle evidence continuation',
+  SELECT_ANALYSIS: 'Choose the analysis',
+  PREPARE_EVIDENCE: 'Prepare sources',
+  ANALYZE_CONTINUED_EVIDENCE: 'Analyze continued evidence',
+  READ_CRO_DOSSIER: 'Read the CRO dossier',
+  SUBMIT_CRO_ASSESSMENT: 'Submit the CRO assessment',
   NOT_ALLOCATION_RISK: 'Separately linked Risk references',
   PREPARING_FEATURE_CLOSURE: 'Preparing features',
   noop: 'No work needed', completed: 'Completed',

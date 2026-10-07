@@ -15,19 +15,25 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
+from uuid import UUID
 
-from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
+from alphalattice.control.product_host.composition.task_recovery import (
+    TaskAttentionFact,
+    task_attention,
+)
+from alphalattice.control.task_control.contracts import TaskRecord
 
-_STOPPED = frozenset({TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED})
 
-
-def _tasks(tasks: Iterable[TaskRecord]) -> list[dict[str, Any]]:
+def _tasks(
+    tasks: Iterable[TaskRecord], attention: Mapping[UUID, TaskAttentionFact]
+) -> list[dict[str, Any]]:
     return [
         {
             "kind": "STOPPED_TASK",
             "task_id": str(task.task_id),
             "task_kind": task.task_kind,
             "lifecycle": task.lifecycle.value,
+            "attention": fact.model_dump(mode="json"),
             "detail": "This Task stopped and waits for a choice; its recovery view says what "
             "stopped it and what may resume it.",
             "next_requests": {
@@ -35,7 +41,7 @@ def _tasks(tasks: Iterable[TaskRecord]) -> list[dict[str, Any]]:
             },
         }
         for task in tasks
-        if task.lifecycle in _STOPPED
+        if (fact := attention.get(task.task_id) or task_attention(task)).unresolved
     ]
 
 
@@ -250,6 +256,7 @@ def pending_decisions(
     inputs: Mapping[str, Any] | None = None,
     data_update: Mapping[str, Any] | None = None,
     first_use: Mapping[str, Any] | None = None,
+    attention: Mapping[UUID, TaskAttentionFact] | None = None,
 ) -> dict[str, object]:
     """Compose owner-supplied workspace/task/data/review decisions into one bounded read view.
 
@@ -263,6 +270,7 @@ def pending_decisions(
         inputs: Optional verified input state.
         data_update: Optional data update state.
         first_use: The workspace's first-use goal while its delegation is active (U70).
+        attention: Current owner resolution facts, separate from retained Task history.
 
     Returns:
         Ordered pending decisions, counts by kind and a plain summary; no decision is executed.
@@ -270,7 +278,7 @@ def pending_decisions(
     items = [
         *_first_use(first_use),
         *_workspace(preparation or {}, inputs or {}, data_update or {}),
-        *_tasks(tasks),
+        *_tasks(tasks, attention or {}),
         *_data_issues(data_issues),
         *_upgrade(overview),
         *_previews(previews),

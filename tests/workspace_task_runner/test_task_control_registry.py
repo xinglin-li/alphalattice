@@ -150,6 +150,7 @@ def test_registry_owns_queue_work_board_receipts_and_projection(tmp_path: Path) 
             runner.run_next(expected_task_id=uuid4())
     finally:
         runner.close()
+
     assert registry.task(admission.record.task_id) == admission.record
     started = registry.start_next(
         compatibility=compatibility(plan),
@@ -2453,3 +2454,146 @@ def test_a_child_start_stop_preserves_verification_evidence(phase, tmp_path):
         assert adapter.executed.count("resolve_inputs") == 1
     finally:
         runner.close()
+
+
+def test_recovery_links_seal_preview_and_confirmed_successor_in_the_event_journal(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    from alphalattice.control.task_control.registry import TaskControlDatabaseAuthorityError
+
+    now = datetime(2026, 8, 21, 12, tzinfo=UTC)
+    database = resolve_task_control_database(tmp_path)
+    registry = DuckDbTaskControlRegistry(database, gate=WorkspaceMutationGate())
+
+    source_input, source_goal, source_plan = task_contract(salt="recovery-source")
+    source = registry.admit(
+        input_envelope=source_input,
+        goal=source_goal,
+        plan=source_plan,
+        observed_at=now,
+    ).record
+    stopped_source = registry.mark_recovery_required(
+        task_id=source.task_id,
+        failure_code="fixture.interrupted",
+        observed_at=now + timedelta(seconds=1),
+    )
+    offered = {
+        "operation": "EXPERIMENT_PLAN",
+        "research_input_id": "research-input-1",
+    }
+    preview = registry.record_recovery_link(
+        source_task_id=source.task_id,
+        source_record_hash=stopped_source.record_hash,
+        admission_request=offered,
+        observed_at=now + timedelta(seconds=2),
+    )
+    repeated_preview = registry.record_recovery_link(
+        source_task_id=source.task_id,
+        source_record_hash=stopped_source.record_hash,
+        admission_request=offered,
+        observed_at=now + timedelta(seconds=3),
+    )
+    assert repeated_preview == preview
+    assert preview.successor_task_id is None
+    assert preview.link_hash == canonical_hash(
+        preview.model_dump(mode="json", exclude={"link_hash"})
+    )
+    assert registry.task(source.task_id).record_hash == stopped_source.record_hash
+
+    successor_input, successor_goal, successor_plan = task_contract(salt="recovery-successor")
+    successor = registry.admit(
+        input_envelope=successor_input,
+        goal=successor_goal,
+        plan=successor_plan,
+        observed_at=now + timedelta(seconds=4),
+    ).record
+
+    with pytest.raises(
+        TaskTransitionRejected, match=r"task_control\.recovery_link_preview_required"
+    ):
+        registry.record_recovery_link(
+            source_task_id=source.task_id,
+            source_record_hash=stopped_source.record_hash,
+            admission_request={**offered, "research_input_id": "other-input"},
+            successor_task_id=successor.task_id,
+            observed_at=now + timedelta(seconds=5),
+        )
+
+    moved_source = registry.mark_recovery_required(
+        task_id=source.task_id,
+        failure_code="fixture.interrupted",
+        observed_at=now + timedelta(seconds=6),
+    )
+    assert moved_source.record_hash != stopped_source.record_hash
+    reopened = DuckDbTaskControlRegistry(database, gate=WorkspaceMutationGate())
+    confirmed = reopened.record_recovery_link(
+        source_task_id=source.task_id,
+        source_record_hash=stopped_source.record_hash,
+        admission_request=offered,
+        successor_task_id=successor.task_id,
+        observed_at=now + timedelta(seconds=7),
+    )
+    repeated_confirmation = reopened.record_recovery_link(
+        source_task_id=source.task_id,
+        source_record_hash=stopped_source.record_hash,
+        admission_request=offered,
+        successor_task_id=successor.task_id,
+        observed_at=now + timedelta(seconds=8),
+    )
+
+    assert confirmed.successor_task_id == successor.task_id
+    assert confirmed.source_record_hash == stopped_source.record_hash
+    assert repeated_confirmation == confirmed
+    assert reopened.task(source.task_id).record_hash == moved_source.record_hash
+    assert reopened.recovery_links(source.task_id) == (preview, confirmed)
+    assert reopened.recovery_links() == (preview, confirmed)
+    returned = reopened.recovery_links(source.task_id)
+    returned[0].admission_request["research_input_id"] = "caller-edited"
+    assert reopened.recovery_links(source.task_id) == (preview, confirmed)
+    with pytest.raises(TaskVersionStale, match=r"task_control\.recovery_link_source_version_stale"):
+        reopened.record_recovery_link(
+            source_task_id=source.task_id,
+            source_record_hash=stopped_source.record_hash,
+            admission_request=offered,
+            observed_at=now + timedelta(seconds=8),
+        )
+
+    unrelated_input, unrelated_goal, unrelated_plan = task_contract(salt="unrelated-source")
+    unrelated = registry.admit(
+        input_envelope=unrelated_input,
+        goal=unrelated_goal,
+        plan=unrelated_plan,
+        observed_at=now + timedelta(seconds=9),
+    ).record
+    unrelated_stopped = registry.mark_recovery_required(
+        task_id=unrelated.task_id,
+        failure_code="fixture.interrupted",
+        observed_at=now + timedelta(seconds=10),
+    )
+    with pytest.raises(
+        TaskTransitionRejected, match=r"task_control\.recovery_link_preview_required"
+    ):
+        registry.record_recovery_link(
+            source_task_id=unrelated.task_id,
+            source_record_hash=unrelated_stopped.record_hash,
+            admission_request=offered,
+            successor_task_id=successor.task_id,
+            observed_at=now + timedelta(seconds=11),
+        )
+
+    # Corrupt fixture bytes through the store, then read with a fresh owner. A broken
+    # link seal is an authority refusal, never a guessed successful continuation.
+    damaged = preview.model_dump(mode="json")
+    damaged["link_hash"] = "f" * 64
+    with duckdb.connect(str(database)) as connection:
+        connection.execute(
+            "UPDATE workspace_task_event SET details_json = ? WHERE task_id = ? AND kind = ?",
+            [json.dumps(damaged), str(source.task_id), "task.recovery_link"],
+        )
+    fresh = DuckDbTaskControlRegistry(database, gate=WorkspaceMutationGate())
+    with pytest.raises(
+        TaskControlDatabaseAuthorityError, match=r"task_control\.recovery_link_invalid"
+    ):
+        fresh.recovery_links(source.task_id)

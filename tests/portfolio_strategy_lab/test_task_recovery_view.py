@@ -18,7 +18,7 @@ import sqlite3
 import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -46,8 +46,15 @@ from alphalattice.control.task_control.runner import (
     heartbeat_store_path,
 )
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
+from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchOperationRequest,
+    PortfolioResearchRequestDocument,
+)
 from alphalattice.investment.portfolio_strategy_lab.application.task import (
     PortfolioResearchTaskAdapter,
+)
+from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_execution import (
+    EligiblePoolShort,
 )
 from tests.portfolio_strategy_lab.local_web_support import (
     _InterruptsOnce,
@@ -139,17 +146,34 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         task_id = admitted["task_id"]
         live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
         assert interrupting.failures == 1
+        pending_before_view = _json(live, "/api/decisions")
+        assert any(
+            decision["kind"] == "STOPPED_TASK" and decision["task_id"] == task_id
+            for decision in pending_before_view["decisions"]
+        )
         stopped = _view(live, task_id)
         cli_read(3, stopped)
         assert stopped["lifecycle"] == "RECOVERY_REQUIRED" and stopped["status"]["lifecycle"] == (
             "RECOVERY_REQUIRED"
         )
+        assert stopped["attention"]["unresolved"] is True
+        assert stopped["attention"]["resolution"] == "STOPPED"
         assert stopped["operation_running"] is False
         assert stopped["cancellation"] == "NOT_REQUESTED"
         # What stopped: Task Control's own code, explained, marked resumable by Task Control.
         assert stopped["stop"]["code"] == "TASK_EXECUTION_INTERRUPTED"
         status = _json(live, f"/api/status?task_id={task_id}")
         assert status["lifecycle"] == "RECOVERY_REQUIRED"
+        assert status["attention"]["unresolved"] is True
+        assert status["attention"]["resolution"] == "STOPPED"
+        task_row = next(
+            row for row in _json(live, "/api/tasks")["tasks"] if row["task_id"] == task_id
+        )
+        assert task_row["attention"]["unresolved"] is True
+        assert any(
+            decision["kind"] == "STOPPED_TASK" and decision["task_id"] == task_id
+            for decision in _json(live, "/api/decisions")["decisions"]
+        )
         assert status["detail"] and stopped["stop"]["code"] not in status["detail"]
         assert status["detail"].endswith(".")
         assert stopped["stop"]["recoverable"] is True
@@ -178,12 +202,17 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         # V443: each one taking a version is offered bound to the Task and the version this
         # view read, so `recovery run --from` sends what was seen.
         bound = {"task_id": stopped["task_id"], "expected_task_hash": stopped["task_record_hash"]}
+        version = stopped["task_record_hash"]
         assert stopped["next_requests"] == {
             "cancel": {"operation": actions["CANCEL"]["operation"], **bound},
             "recover": {"operation": "RECOVER", **bound},
-            "replan": live.application.replan_request(
-                live.session.task_control_registry.task(UUID(task_id))
-            ),
+            "replan": {
+                **live.application.replan_request(
+                    live.session.task_control_registry.task(UUID(task_id))
+                ),
+                "recovery_task_id": task_id,
+                "recovery_task_hash": version,
+            },
         }
         replan = live.operations.replans()[stopped["task_kind"]]  # type: ignore[union-attr]
         assert (replan.preview, replan.admitting) == ("PLAN", "RUN")
@@ -193,7 +222,6 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         # The generic G0 pieces that are source-backed, and the ones that are not.
         assert stopped["health"]["status"] == "TERMINAL_DEFERRED"
         assert [i["incident_code"] for i in stopped["incidents"]] == ["TASK_EXECUTION_INTERRUPTED"]
-        version = stopped["task_record_hash"]
         assert _json(live, f"/api/status?task_id={task_id}")["task_record_hash"] == version
 
         # A confirmation made against another version is refused at the entry and changes nothing.
@@ -235,6 +263,12 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         done = _view(live, task_id)
         cli_read(0, done)
         assert done["lifecycle"] == "SUCCEEDED" and done["stop"] is None
+        assert done["attention"]["unresolved"] is False
+        assert done["attention"]["resolution"] == "NOT_STOPPED"
+        assert not any(
+            decision["kind"] == "STOPPED_TASK" and decision["task_id"] == task_id
+            for decision in _json(live, "/api/decisions")["decisions"]
+        )
         assert done["worker_failure"] is None
         assert done["task_record_hash"] != version
         assert done["verified_stage_count"] == done["total_stage_count"] == 1
@@ -981,6 +1015,28 @@ def test_every_owner_that_offers_a_plan_is_its_stopped_tasks_re_plan(
         assert {replan.preview or replan.admitting, replan.admitting} <= registered, kind
 
 
+def test_recovery_context_fields_follow_distinct_composed_preview_admission_pairs(
+    live: LocalPortfolioWebSession,
+) -> None:
+    """The public request contract follows every composed two-press replan declaration."""
+    operations = live.operations
+    assert operations is not None
+    pairs = {
+        operation
+        for replan in operations.replans().values()
+        if replan.preview is not None and replan.preview != replan.admitting
+        for operation in (replan.preview, replan.admitting)
+    }
+    assert pairs
+    context_fields = {"recovery_task_id", "recovery_task_hash"}
+    for operation in pairs:
+        _required, allowed = PortfolioResearchOperationRequest.field_contract(cast(Any, operation))
+        assert context_fields <= allowed, operation
+    for operation in {"EXPERIMENT_VERIFY_ALL", "CRO_REVIEW"}:
+        _required, allowed = PortfolioResearchOperationRequest.field_contract(cast(Any, operation))
+        assert not context_fields <= allowed, operation
+
+
 # Its last request raises an inner KeyError on purpose, to prove it is not read as an
 # unknown Task (V449).
 @pytest.mark.untyped_failure
@@ -1079,4 +1135,124 @@ def test_a_cancelled_verification_sweep_offers_and_runs_its_replan(
         assert _view(live, task_id)["lifecycle"] == "CANCELLED"
     finally:
         held.release.set()
+        live.stop()
+
+
+class _BlocksOnce:
+    """A real typed Portfolio refusal once, then the same installed inputs resolve normally."""
+
+    def __init__(self, inner: _Resolver) -> None:
+        self.inner = inner
+        self.block_next = True
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    @property
+    def strategy_catalog_hash(self) -> str:
+        return self.inner.strategy_catalog_hash
+
+    def resolve_authorities(self, **kwargs: Any) -> Any:
+        return self.inner.resolve_authorities(**kwargs)
+
+    def installed_packages(self) -> Any:
+        return self.inner.installed_packages()
+
+    def resolve(self, **kwargs: Any) -> Any:
+        if self.block_next:
+            self.block_next = False
+            raise EligiblePoolShort("portfolio_strategy_lab.eligible_pool_short:2024-01-03")
+        self.entered.set()
+        if not self.release.wait(timeout=30):
+            raise TimeoutError("successor gate was not released by its test")
+        return self.inner.resolve(**kwargs)
+
+
+def test_a_replan_preview_and_admission_link_a_distinct_successor_across_restart(
+    tmp_path: Path,
+) -> None:
+    """A blocked source stays pending through preview/admission until its child succeeds."""
+    workspace_id = "qa-recovery-successor"
+    resolver = _BlocksOnce(_Resolver(_resolved()))
+    live = _service(tmp_path, resolver, workspace_id)
+    live.start()
+
+    def decision_for(task_id: str, session: LocalPortfolioWebSession) -> dict[str, Any] | None:
+        return next(
+            (
+                decision
+                for decision in _json(session, "/api/decisions")["decisions"]
+                if decision.get("kind") == "STOPPED_TASK" and decision.get("task_id") == task_id
+            ),
+            None,
+        )
+
+    try:
+        source_answer = _json(live, "/api/run", method="POST", payload={})
+        source_id = source_answer["task_id"]
+        live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
+        source_before = _view(live, source_id)
+        assert source_before["lifecycle"] == "BLOCKED"
+        source_hash = source_before["task_record_hash"]
+        assert source_before["attention"]["unresolved"] is True
+        assert decision_for(source_id, live) is not None
+
+        recovery_request = source_before["next_requests"]["replan"]
+        assert recovery_request["recovery_task_id"] == source_id
+        assert recovery_request["recovery_task_hash"] == source_hash
+        preview = live.operations.execute(  # type: ignore[union-attr]
+            PortfolioResearchRequestDocument.model_validate(recovery_request).to_operation_request()
+        )
+        preview_request = preview["next_requests"]["run"]
+        assert preview_request["recovery_task_id"] == source_id
+        assert preview_request["recovery_task_hash"] == source_hash
+        preview_links = live.session.task_control_registry.recovery_links(  # type: ignore[union-attr]
+            UUID(source_id)
+        )
+        assert len(preview_links) == 1 and preview_links[0].successor_task_id is None
+        assert "recovery_task_id" not in preview_links[0].admission_request
+        assert "recovery_task_hash" not in preview_links[0].admission_request
+        assert decision_for(source_id, live) is not None
+
+        admitted = live.operations.execute(  # type: ignore[union-attr]
+            PortfolioResearchRequestDocument.model_validate(preview_request).to_operation_request()
+        )
+        successor_id = admitted["task_id"]
+        assert successor_id != source_id
+        assert resolver.entered.wait(timeout=30)
+        source_after_admission = _view(live, source_id)
+        assert source_after_admission["task_record_hash"] == source_hash
+        assert source_after_admission["lifecycle"] == "BLOCKED"
+        assert source_after_admission["attention"]["unresolved"] is True
+        assert decision_for(source_id, live) is not None
+
+        resolver.release.set()
+        live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
+        successor = _view(live, successor_id)
+        assert successor["lifecycle"] == "SUCCEEDED"
+        source_after_success = _view(live, source_id)
+        assert source_after_success["task_record_hash"] == source_hash
+        assert source_after_success["lifecycle"] == "BLOCKED"
+        assert source_after_success["attention"]["unresolved"] is False
+        assert source_after_success["attention"]["resolution"] == "SUCCESSOR_SUCCEEDED"
+        assert source_after_success["attention"]["successor_task_id"] == successor_id
+        assert decision_for(source_id, live) is None
+        links = live.session.task_control_registry.recovery_links(  # type: ignore[union-attr]
+            UUID(source_id)
+        )
+        successor_link = next(link for link in links if link.successor_task_id is not None)
+        assert str(successor_link.successor_task_id) == successor_id
+
+        live.stop()
+        restarted = _service(tmp_path, _Resolver(_resolved()), workspace_id)
+        restarted.start()
+        try:
+            refetched = _view(restarted, source_id)
+            assert refetched["task_record_hash"] == source_hash
+            assert refetched["attention"]["resolution"] == "SUCCESSOR_SUCCEEDED"
+            assert refetched["attention"]["successor_task_id"] == successor_id
+            assert decision_for(source_id, restarted) is None
+        finally:
+            restarted.stop()
+    finally:
+        resolver.release.set()
         live.stop()

@@ -504,6 +504,59 @@ class TaskRecord(ContractModel):
         return cls(**identity, record_hash=_hash(identity))
 
 
+class TaskRecoveryLink(ContractModel):
+    """Seal an operational link from one stopped Task version to an owner replan.
+
+    The request is the owner's normalized replan request before recovery context is
+    added. A missing successor records a preview only; it cannot establish that work
+    was admitted or completed.
+    """
+
+    source_task_id: UUID
+    source_record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    admission_request: dict[str, Any]
+    successor_task_id: UUID | None = None
+    recorded_at: datetime
+    link_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> TaskRecoveryLink:
+        """Validate the link seal and its operational request boundary."""
+        if self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() is None:
+            raise ValueError("task recovery link clock must be timezone-aware")
+        operation = self.admission_request.get("operation")
+        if not isinstance(operation, str) or not operation:
+            raise ValueError("task recovery link request must name an operation")
+        if {"recovery_task_id", "recovery_task_hash"} & self.admission_request.keys():
+            raise ValueError("task recovery link request must omit recovery context")
+        if self.successor_task_id == self.source_task_id:
+            raise ValueError("task recovery link successor must differ from its source")
+        identity = self.model_dump(mode="json", exclude={"link_hash"})
+        if self.link_hash != _hash(identity):
+            raise ValueError("task recovery link hash is invalid")
+        return self
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        source_task_id: UUID,
+        source_record_hash: str,
+        admission_request: dict[str, Any],
+        successor_task_id: UUID | None,
+        recorded_at: datetime,
+    ) -> TaskRecoveryLink:
+        """Compute the canonical seal for one preview or confirmed admission."""
+        identity = {
+            "source_task_id": source_task_id,
+            "source_record_hash": source_record_hash,
+            "admission_request": admission_request,
+            "successor_task_id": successor_task_id,
+            "recorded_at": recorded_at,
+        }
+        return cls(**identity, link_hash=_hash(identity))
+
+
 class WorkItemState(ContractModel):
     """Seal stage state, attempts and unique retained evidence references for one task.
 
@@ -913,6 +966,7 @@ __all__ = [
     "TaskInputEnvelope",
     "TaskLifecycle",
     "TaskRecord",
+    "TaskRecoveryLink",
     "TaskReplan",
     "TaskSafeProjection",
     "TaskStageReceipt",

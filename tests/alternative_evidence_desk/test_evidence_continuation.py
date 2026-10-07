@@ -597,3 +597,166 @@ def test_a_cumulative_allowance_is_honest_and_a_continuation_survives_restart_an
         assert _summary(packet)["windows"]["read"] == min(pending, MAXIMUM_ISSUED_MATTER_WINDOWS)
     finally:
         second.session.stop()
+
+
+@pytest.mark.parametrize(
+    ("case", "session_limit", "window_limit", "bounded_review"),
+    (
+        ("undeclared", None, None, True),
+        ("pending", 5, 320, False),
+        ("unexhausted", 5, 320, False),
+        ("windows_exhausted", 3, MAXIMUM_ISSUED_MATTER_WINDOWS + 2, True),
+        ("sessions_exhausted", 2, 320, True),
+    ),
+)
+def test_next_actions_settle_resumable_evidence_before_cro_and_keep_budget_stops_bounded(
+    tmp_path: Path,
+    case: str,
+    session_limit: int | None,
+    window_limit: int | None,
+    bounded_review: bool,
+) -> None:
+    """behaviour: a declared reading with work still owed keeps its exact continuation door;
+    an undeclared or exhausted allowance permits bounded CRO review with unread scope named."""
+
+    workspace, report = build_workspace(tmp_path)
+    authority = build_authority(tmp_path=tmp_path, report=report, extra_documents=_ten_k)
+    service = start_service(workspace, authority, tmp_path)
+    try:
+        selected = {"result_hash": service.result_hash()}
+        prepared = service.post("/api/evidence/prepare", selected)
+        assert prepared["disposition"] == "ADMITTED", prepared
+        service.drain()
+        packet_request = {
+            "operation": "EVIDENCE_PACKET",
+            **selected,
+            "task_id": prepared["task_id"],
+            "evidence_unit_id": ONE_UNIT,
+        }
+        parts = _parts(
+            service,
+            {**packet_request, "delivery_budget_bytes": 2 * DEFAULT_DELIVERY_BUDGET_BYTES},
+        )
+        if case == "pending":
+            remaining = _summary(parts[0])["reading_chain"]["remaining"]
+            assert remaining is None
+        if case != "undeclared":
+            assert session_limit is not None and window_limit is not None
+            continued = _continue(
+                service,
+                parts[0]["continuation_request"],
+                session_limit=session_limit,
+                window_limit=window_limit,
+            )
+            assert continued["disposition"] == "ADMITTED", continued
+            packet_request = continued["next_requests"]["packet"]
+            assert packet_request["task_id"] == continued["task_id"]
+            assert "evidence_unit_id" not in packet_request
+            parts = _parts(
+                service,
+                {**packet_request, "delivery_budget_bytes": 2 * DEFAULT_DELIVERY_BUDGET_BYTES},
+            )
+
+        summary = _summary(parts[0])
+        assert summary["continuation"]["state"] == "PENDING"
+        assert summary["windows"]["pending"] > 0
+        remaining = summary["reading_chain"]["remaining"]
+        if case == "undeclared":
+            assert remaining is None
+        elif case in {"pending", "unexhausted"}:
+            assert remaining["sessions"] > 0 and remaining["windows"] > 0
+        elif case == "windows_exhausted":
+            assert remaining["windows"] == 0 and remaining["sessions"] > 0
+        else:
+            assert remaining["sessions"] == 0 and remaining["windows"] > 0
+
+        # Only this packet's analysis is published: another reading of the same
+        # obligation would require a real Evidence selection, not an inferred latest one.
+        submitted = service.post(
+            "/api/evidence/analysis",
+            {
+                key: value
+                for key, value in {
+                    **parts[0]["submission_template"],
+                    "analysis_answer": {
+                        "findings": [],
+                        "notes": "Controlled whole packet read; its pending source remains unread.",
+                    },
+                }.items()
+                if key != "operation"
+            },
+        )
+        assert submitted["disposition"] == "ADMITTED", submitted
+        service.drain()
+        assert service.registry.task(UUID(submitted["task_id"])).lifecycle is (
+            TaskLifecycle.SUCCEEDED
+        )
+        task_count = len(service.registry.tasks())
+        section = _operation(service, {"operation": "EVIDENCE_CRO", **selected})
+        if bounded_review:
+            assert section["state"] == "ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW", section
+            assert "unread" in section["explanation"].casefold()
+            assert [action["action"] for action in section["required_actions"]] == [
+                "READ_CRO_DOSSIER",
+                "SUBMIT_CRO_ASSESSMENT",
+            ]
+            assert section["next_requests"]["dossier"] == {
+                "operation": "CRO_REVIEW_DOSSIER",
+                **selected,
+            }
+            assert set(section["next_requests"]) == {"dossier", "refresh", "review"}
+            assert section["next_requests"]["refresh"] == {
+                "operation": "EVIDENCE_REFRESH",
+                **selected,
+            }
+            assert section["next_requests"]["review"] == {
+                "operation": "CRO_REVIEW",
+                **selected,
+            }
+            assert "cro_bundle" not in section["next_requests"]
+            dossier = _operation(service, section["next_requests"]["dossier"])
+            assert dossier["status"] == "CRO_DOSSIER_READY", dossier
+            assert dossier["next_requests"]["cro_bundle"] == {
+                "operation": "AGENT_BUNDLE_PREPARE",
+                "agent_role": "CRO",
+                **selected,
+            }
+            directory = str(tmp_path / "cro-bundle")
+            bundle = _operation(
+                service,
+                {**dossier["next_requests"]["cro_bundle"], "bundle_directory": directory},
+            )
+            assert bundle["status"] == "AGENT_BUNDLE_READY", bundle
+            assert bundle["agent_role"] == "CRO"
+            assert bundle["bundle_directory"] == directory
+            assert bundle["next_requests"]["submit"] == {
+                "operation": "AGENT_ANSWER_SUBMIT",
+                "bundle_directory": directory,
+                "agent_answer": None,
+            }
+        else:
+            assert section["state"] == "AWAITING_ALTERNATIVE_EVIDENCE", section
+            assert [action["action"] for action in section["required_actions"]] == [
+                "SETTLE_EVIDENCE_CONTINUATION",
+                "ANALYZE_CONTINUED_EVIDENCE",
+            ]
+            packets = [
+                request
+                for request in section["next_requests"].values()
+                if request["operation"] == "EVIDENCE_PACKET"
+            ]
+            assert packets == [packet_request]
+            assert "REVIEW_WITH_CRO" not in section["available_actions"]
+            assert not any(
+                request["operation"].startswith("CRO_")
+                or (
+                    request["operation"] == "AGENT_BUNDLE_PREPARE"
+                    and request.get("agent_role") == "CRO"
+                )
+                for request in section["next_requests"].values()
+            )
+            reopened = _operation(service, packets[0])
+            assert _summary(reopened)["reading_chain"] == summary["reading_chain"]
+        assert len(service.registry.tasks()) == task_count, "the returned reads admit no work"
+    finally:
+        service.session.stop()

@@ -597,6 +597,8 @@
   "preparation_plan_hash": "The workspace preparation plan to confirm, by the hash its PLAN answered.",
   "prepared_input_hash": "The prepared input a Portfolio update reads, by its hash.",
   "prior_review_publication_hash": "An earlier CRO review the export compares with.",
+  "recovery_task_hash": "The exact stopped Task version named by `recovery_task_id`.",
+  "recovery_task_id": "The stopped Task whose owner replan this existing planner/admission continues.",
   "remedy": "The remedy to perform, one the incident offers: `CANCEL`, `RECOVER` or `REPLAN`.",
   "research_input_id": "The research input, by its id (RESEARCH_INPUTS lists them).",
   "research_input_plan_hash": "The research input plan to confirm, by the hash its PLAN answered.",
@@ -863,7 +865,10 @@
    ]
   },
   "DATA_UPDATE_PLAN": {
-   "allowed": [],
+   "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id"
+   ],
    "required": []
   },
   "DATA_UPDATE_READBACK": {
@@ -874,6 +879,8 @@
   },
   "DATA_UPDATE_RUN": {
    "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id",
     "update_plan_hash"
    ],
    "required": [
@@ -1028,6 +1035,8 @@
     "portfolio_session",
     "position_basis",
     "preparation_binding_hash",
+    "recovery_task_hash",
+    "recovery_task_id",
     "result_hash",
     "update_publication_hash",
     "update_task_id"
@@ -1041,6 +1050,8 @@
     "handoff_hash",
     "portfolio_session",
     "position_basis",
+    "recovery_task_hash",
+    "recovery_task_id",
     "result_hash",
     "update_publication_hash",
     "update_task_id"
@@ -1269,6 +1280,8 @@
     "factor_task_id",
     "input_binding_hash",
     "origin_task_id",
+    "recovery_task_hash",
+    "recovery_task_id",
     "research_input_id"
    ],
    "required": []
@@ -1336,7 +1349,9 @@
   },
   "EXPERIMENT_RUN": {
    "allowed": [
-    "experiment_plan_hash"
+    "experiment_plan_hash",
+    "recovery_task_hash",
+    "recovery_task_id"
    ],
    "required": [
     "experiment_plan_hash"
@@ -1375,7 +1390,9 @@
   "FEATURE_CATALOG_BUILD": {
    "allowed": [
     "feature_output",
-    "feature_plan_hash"
+    "feature_plan_hash",
+    "recovery_task_hash",
+    "recovery_task_id"
    ],
    "required": [
     "feature_plan_hash"
@@ -1400,7 +1417,9 @@
   },
   "FEATURE_CATALOG_PLAN": {
    "allowed": [
-    "feature_document"
+    "feature_document",
+    "recovery_task_hash",
+    "recovery_task_id"
    ],
    "required": [
     "feature_document"
@@ -1628,6 +1647,8 @@
    "allowed": [
     "component_id",
     "input_binding_hash",
+    "recovery_task_hash",
+    "recovery_task_id",
     "research_input_id"
    ],
    "required": [
@@ -1637,7 +1658,9 @@
   },
   "MODEL_TRAINING_INPUT_PREPARE": {
    "allowed": [
-    "experiment_plan_hash"
+    "experiment_plan_hash",
+    "recovery_task_hash",
+    "recovery_task_id"
    ],
    "required": [
     "experiment_plan_hash"
@@ -1675,6 +1698,8 @@
   },
   "PLAN": {
    "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id",
     "spec"
    ],
    "required": [
@@ -1685,6 +1710,8 @@
    "allowed": [
     "observed_through",
     "prepared_input_hash",
+    "recovery_task_hash",
+    "recovery_task_id",
     "strategy_package_id"
    ],
    "required": [
@@ -1700,6 +1727,8 @@
   },
   "PORTFOLIO_UPDATE_RUN": {
    "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id",
     "update_plan_hash"
    ],
    "required": [
@@ -1742,6 +1771,8 @@
   },
   "RESEARCH_INPUT_CONFIRM": {
    "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id",
     "research_input_plan_hash"
    ],
    "required": [
@@ -1750,6 +1781,8 @@
   },
   "RESEARCH_INPUT_PLAN": {
    "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id",
     "research_input_id"
    ],
    "required": [
@@ -1778,7 +1811,9 @@
   },
   "RESEARCH_STRATEGY_PLAN": {
    "allowed": [
-    "experiment_document"
+    "experiment_document",
+    "recovery_task_hash",
+    "recovery_task_id"
    ],
    "required": [
     "experiment_document"
@@ -1786,7 +1821,9 @@
   },
   "RESEARCH_STRATEGY_PREPARE": {
    "allowed": [
-    "experiment_plan_hash"
+    "experiment_plan_hash",
+    "recovery_task_hash",
+    "recovery_task_id"
    ],
    "required": [
     "experiment_plan_hash"
@@ -1817,6 +1854,8 @@
   "RESEARCH_UPDATE_PLAN": {
    "allowed": [
     "observed_through",
+    "recovery_task_hash",
+    "recovery_task_id",
     "strategy_package_id"
    ],
    "required": [
@@ -1832,6 +1871,8 @@
   },
   "RESEARCH_UPDATE_RUN": {
    "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id",
     "update_plan_hash"
    ],
    "required": [
@@ -1846,6 +1887,8 @@
   },
   "RUN": {
    "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id",
     "spec"
    ],
    "required": [
@@ -1917,6 +1960,8 @@
   },
   "STRATEGY_CALIBRATION_PLAN": {
    "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id",
     "score_snapshot_hash",
     "strategy_package_id"
    ],
@@ -1934,7 +1979,9 @@
   },
   "STRATEGY_CALIBRATION_RUN": {
    "allowed": [
-    "calibration_plan_hash"
+    "calibration_plan_hash",
+    "recovery_task_hash",
+    "recovery_task_id"
    ],
    "required": [
     "calibration_plan_hash"
@@ -1952,6 +1999,8 @@
    "allowed": [
     "component_id",
     "formation_session",
+    "recovery_task_hash",
+    "recovery_task_id",
     "strategy_package_id"
    ],
    "required": [
@@ -1967,6 +2016,8 @@
   },
   "STRATEGY_SCORE_RUN": {
    "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id",
     "score_plan_hash"
    ],
    "required": [
@@ -2035,14 +2086,19 @@
   "WORKSPACE_PREPARE_CONFIRM": {
    "allowed": [
     "data_issue_grant_hash",
-    "preparation_plan_hash"
+    "preparation_plan_hash",
+    "recovery_task_hash",
+    "recovery_task_id"
    ],
    "required": [
     "preparation_plan_hash"
    ]
   },
   "WORKSPACE_PREPARE_PLAN": {
-   "allowed": [],
+   "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id"
+   ],
    "required": []
   },
   "WORKSPACE_PREPARE_READBACK": {
@@ -2150,6 +2206,8 @@
   "preparation_plan_hash": "plan",
   "prepared_input_hash": "prepared-input",
   "prior_review_publication_hash": "prior-review",
+  "recovery_task_hash": "recovery-task-hash",
+  "recovery_task_id": "recovery-task-id",
   "remedy": "remedy",
   "research_input_id": "input",
   "research_input_plan_hash": "plan",
@@ -2786,6 +2844,8 @@
   "preparation_plan_hash",
   "prepared_input_hash",
   "prior_review_publication_hash",
+  "recovery_task_hash",
+  "recovery_task_id",
   "research_input_plan_hash",
   "result_hash",
   "review_dossier_hash",
@@ -3068,6 +3128,12 @@
    "string"
   ],
   "prior_review_publication_hash": [
+   "string"
+  ],
+  "recovery_task_hash": [
+   "string"
+  ],
+  "recovery_task_id": [
    "string"
   ],
   "remedy": [

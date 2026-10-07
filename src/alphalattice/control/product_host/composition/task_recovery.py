@@ -30,10 +30,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from alphalattice.control.guanyin.data.workspace_maintenance import maintenance_failure_detail
+from alphalattice.control.guanyin.tasks.supervision import IncidentRecord
 from alphalattice.control.observation_runtime.guardian import (
     GuardianHealth,
     HealthSignal,
@@ -51,6 +53,7 @@ from alphalattice.control.task_control.contracts import (
     TaskHeartbeatSignal,
     TaskLifecycle,
     TaskRecord,
+    TaskRecoveryLink,
     TaskReplan,
     TaskSafeProjection,
     WorkItemLifecycle,
@@ -177,6 +180,60 @@ class PermittedAction(_Contract):
     reason: str = Field(min_length=1, max_length=300)
 
 
+class TaskAttentionFact(_Contract):
+    """Whether this exact Task version still waits on a recovery choice.
+
+    An explicit owner-replan link resolves only when it names this exact source
+    version and its canonical child has succeeded. A Guanyin resolution resolves
+    only the exact Task version it observed; historical incidents without that
+    binding cannot clear current attention.
+    """
+
+    unresolved: bool = Field(
+        description="Whether this exact Task version still waits for a recovery choice."
+    )
+    resolution: Literal["NOT_STOPPED", "STOPPED", "SUCCESSOR_SUCCEEDED", "INCIDENT_RESOLVED"] = (
+        Field(description="Which current owner fact resolves or still holds this attention.")
+    )
+    task_record_hash: str = Field(
+        pattern=r"^[0-9a-f]{64}$",
+        description="The canonical Task record version this attention describes.",
+    )
+    successor_task_id: str | None = Field(
+        default=None,
+        description="The exact linked successor Task id, when a confirmed link applies.",
+    )
+    successor_task_hash: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+        description="The canonical linked successor record hash, when it was readable.",
+    )
+    successor_lifecycle: str | None = Field(
+        default=None,
+        description="The linked successor's current lifecycle, when its record was readable.",
+    )
+    incident_key: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+        description="The matching Guanyin incident that held or resolved this attention.",
+    )
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def validate_resolution(self) -> TaskAttentionFact:
+        """Keep the resolution vocabulary consistent with its proof fields."""
+        if self.unresolved != (self.resolution == "STOPPED"):
+            raise ValueError("task attention unresolved state differs from its resolution")
+        if self.resolution == "SUCCESSOR_SUCCEEDED" and (
+            self.successor_task_id is None
+            or self.successor_task_hash is None
+            or self.successor_lifecycle != TaskLifecycle.SUCCEEDED.value
+        ):
+            raise ValueError("successful successor attention needs its canonical child facts")
+        if self.resolution == "INCIDENT_RESOLVED" and self.incident_key is None:
+            raise ValueError("resolved incident attention needs its incident key")
+        return self
+
+
 class TaskRecoveryView(_Contract):
     """Seal read-only recovery state, preserved evidence and owner-permitted actions.
 
@@ -227,7 +284,19 @@ class TaskRecoveryView(_Contract):
     """The exact Task version every Task Control fact above describes; a confirmation carries
     it back and the owner refuses to act on any other version."""
     observed_at: datetime
+    attention: TaskAttentionFact | None = Field(
+        default=None,
+        description="Current recovery attention bound to task_record_hash, when requested.",
+    )
     view_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_serializer(mode="wrap")  # type: ignore[untyped-decorator]
+    def omit_absent_attention(self, handler):  # type: ignore[no-untyped-def]
+        """Keep the pre-attention view identity when its optional fact is absent."""
+        serialized = handler(self)
+        if self.attention is None:
+            serialized.pop("attention", None)
+        return serialized
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> TaskRecoveryView:
@@ -241,6 +310,8 @@ class TaskRecoveryView(_Contract):
         """
         if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
             raise ValueError("task recovery view clock must be timezone-aware")
+        if self.attention is not None and self.attention.task_record_hash != self.task_record_hash:
+            raise ValueError("task recovery attention differs from the viewed Task version")
         if self.verified_stage_count > self.total_stage_count:
             raise ValueError("task recovery view verified count exceeds plan")
         if (self.guardian is None) != (self.guardian_availability == "NOT_PUBLISHED"):
@@ -352,6 +423,130 @@ def stop_detail(task_kind: str, code: str, source: str) -> str:
         "Nothing was retried, and its verified stages are kept as recorded. Read its recovery "
         "view for the actions its owner permits."
     )[:STOP_WORDS_BOUND]
+
+
+def task_attention(
+    task: TaskRecord,
+    *,
+    successors: Mapping[UUID, TaskRecord] | None = None,
+    links: Iterable[TaskRecoveryLink] = (),
+    incidents: Iterable[IncidentRecord] = (),
+) -> TaskAttentionFact:
+    """Project current stop attention from canonical Task, link and incident facts.
+
+    A confirmed successor link is evidence only for its exact source record hash.
+    A matching child must be a distinct canonical Task of the same kind in
+    ``SUCCEEDED``. A pending, failed, unreadable or invalid child keeps the source
+    stopped unless another exact-version confirmed child has succeeded or a
+    current-version resolved incident supplies independent resolution evidence.
+    Successful unrelated Tasks are never considered.
+
+    A resolved incident is accepted only when it names this exact Task record hash
+    and the same execution. Legacy resolved incidents without that hash are not
+    proof of resolution and leave a stopped Task unresolved. An open incident for
+    this Task's current execution takes precedence over a resolved incident.
+    """
+    if task.lifecycle not in {TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED}:
+        return TaskAttentionFact(
+            unresolved=False,
+            resolution="NOT_STOPPED",
+            task_record_hash=task.record_hash,
+        )
+
+    successor_records = successors or {}
+    current_links = sorted(
+        (
+            link
+            for link in links
+            if link.source_task_id == task.task_id
+            and link.source_record_hash == task.record_hash
+            and link.successor_task_id is not None
+            and link.successor_task_id != task.task_id
+        ),
+        key=lambda link: (link.recorded_at, str(link.successor_task_id)),
+    )
+    pending_successor: TaskAttentionFact | None = None
+    for link in current_links:
+        successor_id = link.successor_task_id
+        assert successor_id is not None
+        child = successor_records.get(successor_id)
+        canonical_child = (
+            child is not None
+            and child.task_id == successor_id
+            and child.task_id != task.task_id
+            and child.task_kind == task.task_kind
+        )
+        if canonical_child:
+            assert child is not None
+            if child.lifecycle is TaskLifecycle.SUCCEEDED:
+                return TaskAttentionFact(
+                    unresolved=False,
+                    resolution="SUCCESSOR_SUCCEEDED",
+                    task_record_hash=task.record_hash,
+                    successor_task_id=str(child.task_id),
+                    successor_task_hash=child.record_hash,
+                    successor_lifecycle=child.lifecycle.value,
+                )
+        if pending_successor is None:
+            pending_successor = TaskAttentionFact(
+                unresolved=True,
+                resolution="STOPPED",
+                task_record_hash=task.record_hash,
+                successor_task_id=str(successor_id),
+                successor_task_hash=(child.record_hash if canonical_child and child else None),
+                successor_lifecycle=(child.lifecycle.value if canonical_child and child else None),
+            )
+
+    current_execution = None if task.latest_execution_id is None else str(task.latest_execution_id)
+    matching_incidents = tuple(
+        incident
+        for incident in incidents
+        if incident.task_id == str(task.task_id) and incident.execution_id == current_execution
+    )
+    open_incident = next(
+        (incident for incident in matching_incidents if incident.state == "OPEN"),
+        None,
+    )
+    if open_incident is not None:
+        return TaskAttentionFact(
+            unresolved=True,
+            resolution="STOPPED",
+            task_record_hash=task.record_hash,
+            successor_task_id=(
+                None if pending_successor is None else pending_successor.successor_task_id
+            ),
+            successor_task_hash=(
+                None if pending_successor is None else pending_successor.successor_task_hash
+            ),
+            successor_lifecycle=(
+                None if pending_successor is None else pending_successor.successor_lifecycle
+            ),
+            incident_key=open_incident.key,
+        )
+
+    resolved_incident = next(
+        (
+            incident
+            for incident in matching_incidents
+            if incident.state == "RESOLVED"
+            and incident.resolved_task_record_hash == task.record_hash
+        ),
+        None,
+    )
+    if resolved_incident is not None:
+        return TaskAttentionFact(
+            unresolved=False,
+            resolution="INCIDENT_RESOLVED",
+            task_record_hash=task.record_hash,
+            incident_key=resolved_incident.key,
+        )
+    if pending_successor is not None:
+        return pending_successor
+    return TaskAttentionFact(
+        unresolved=True,
+        resolution="STOPPED",
+        task_record_hash=task.record_hash,
+    )
 
 
 def _worker_stop(failure: str) -> tuple[str, str | None]:
@@ -761,6 +956,7 @@ def build_task_recovery_view(
     blocked_retry_reason: str | None = None,
     resume_refusal: str | None = None,
     replan_refusal: str | None = None,
+    attention: TaskAttentionFact | None = None,
 ) -> TaskRecoveryView:
     """Project one exact Task Control snapshot with separate dispatcher and liveness facts.
 
@@ -858,6 +1054,7 @@ def build_task_recovery_view(
         "guardian_availability": "NOT_PUBLISHED",
         "task_record_hash": task.record_hash,
         "observed_at": observed_at,
+        "attention": attention,
     }
     return _with_hash(TaskRecoveryView, values, "view_hash")
 
@@ -871,8 +1068,10 @@ __all__ = [
     "PreservedStage",
     "RecoverableKinds",
     "StopFact",
+    "TaskAttentionFact",
     "TaskRecoveryView",
     "WorkerStop",
     "build_task_recovery_view",
     "stop_detail",
+    "task_attention",
 ]
