@@ -1278,6 +1278,34 @@
       "rebuildability": "REBUILDABLE_FROM_THE_MACHINES_MODEL_STORE",
       "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
       "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "alpha-research/current/workspace-observation-history"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "immutable verified daily preparation history; current and previous marker heads and transitive numerical parts; no scientific admission",
+      "authority_owner": "alpha_research.publication.AlphaCurrentArtifactStore",
+      "retention_owner": "product_host.storage.ResearchInputStorage exact preparation reachability",
+      "rebuildability": "PREPARATION_REBUILDABLE_FROM_CURRENT_VERIFIED_SOURCE_VALUES",
+      "artifact_relationship": "VERIFIED_DAILY_PREPARATION_ONLY",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
+    },
+    {
+      "path_prefixes": [
+        "data-operations/execution-outcomes/local-qa-preparation"
+      ],
+      "roots": [
+        "artifacts"
+      ],
+      "semantic_role": "immutable verified daily preparation history; current and previous marker heads and transitive numerical parts; no scientific admission",
+      "authority_owner": "causal_outcomes.execution.PreparedLocalQASnapshotRows",
+      "retention_owner": "product_host.storage.ResearchInputStorage exact preparation reachability",
+      "rebuildability": "PREPARATION_REBUILDABLE_FROM_CURRENT_VERIFIED_SOURCE_VALUES",
+      "artifact_relationship": "VERIFIED_DAILY_PREPARATION_ONLY",
+      "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"
     }
   ]
 }

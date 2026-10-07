@@ -6,10 +6,11 @@ import functools
 import hashlib
 import json
 import math
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import AbstractContextManager, contextmanager, suppress
+from collections.abc import Buffer, Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from io import RawIOBase
 from itertools import pairwise
 from typing import Any, Protocol
 
@@ -127,6 +128,31 @@ def _canonical_hash(value: object) -> str:
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+class _SourcePrefixHashSink(RawIOBase):
+    """Hash the original IPC writes without retaining another complete table buffer."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.digest = hashlib.sha256()
+
+    def writable(self) -> bool:
+        return True
+
+    def write(self, value: Buffer) -> int:
+        view = memoryview(value)
+        self.digest.update(view)
+        return view.nbytes
+
+
+def _source_prefix_arrow_hash(table: pa.Table) -> str:
+    """Hash normalized source columns without depending on their batch layout."""
+    normalized = table.replace_schema_metadata(None).combine_chunks()
+    with _SourcePrefixHashSink() as sink:
+        with pa.ipc.new_stream(sink, normalized.schema) as writer:
+            writer.write_table(normalized)
+        return sink.digest.hexdigest()
 
 
 def _utc_naive(value: datetime) -> datetime:
@@ -6126,6 +6152,115 @@ class MarketDataRepository(WorkspaceRepository):
         finally:
             connection.close()
         return rows
+
+    def market_data_source_prefix_proof(
+        self,
+        *,
+        listing_ids: Sequence[str],
+        start: date,
+        through: date,
+        _connection: duckdb.DuckDBPyConnection | None = None,
+    ) -> str:
+        """Prove exact current raw values and cutoff-admitted actions in one bounded scan.
+
+        Raw rows have the same listing/date selection as ``raw_bars``, including
+        every stored provider. Actions use ``actions``' latest provider mapping,
+        ACTIVE status and effective dates through the cutoff, with no lower
+        action-date bound. Stored payload hashes and revision journals are not
+        evidence that these current values still equal a previous prefix.
+
+        Args:
+            listing_ids: Nonempty unique listing scope, normalized to sorted order.
+            start: First included raw session.
+            through: Last included raw session and admitted action effective date.
+            _connection: Optional connection already held in a consistent read snapshot.
+
+        Returns:
+            SHA256 binding request scope, actual keys, values, nulls and selected providers.
+
+        Raises:
+            ValueError: The request is invalid or a listing has no provider mapping.
+        """
+        scope = tuple(listing_ids)
+        if (
+            not scope
+            or any(not isinstance(value, str) or not value for value in scope)
+            or len(set(scope)) != len(scope)
+            or start > through
+        ):
+            raise ValueError("market_data_ops.source_prefix_request_invalid")
+        scope = tuple(sorted(scope))
+        providers_sql = """
+            WITH selected_provider AS (
+                SELECT scope.listing_id, selected.provider
+                FROM unnest(?::VARCHAR[]) AS scope(listing_id)
+                LEFT JOIN LATERAL (
+                    SELECT provider FROM provider_symbol_mapping
+                    WHERE listing_id = scope.listing_id
+                    ORDER BY effective_from DESC LIMIT 1
+                ) AS selected ON TRUE
+            )
+        """
+        boundary = (
+            self.database.read_transaction() if _connection is None else nullcontext(_connection)
+        )
+        with boundary as connection:
+            providers = connection.execute(
+                providers_sql
+                + "SELECT listing_id, provider FROM selected_provider ORDER BY listing_id",
+                [scope],
+            ).to_arrow_table()
+            if providers.column("provider").null_count:
+                raise ValueError("listing has no provider mapping")
+            raw = connection.execute(
+                """
+                SELECT listing_id, provider, session_date,
+                       COALESCE(open, 0::DOUBLE) AS open,
+                       COALESCE(high, 0::DOUBLE) AS high,
+                       COALESCE(low, 0::DOUBLE) AS low,
+                       COALESCE(close, 0::DOUBLE) AS close,
+                       COALESCE(volume, 0::BIGINT) AS volume,
+                       open IS NULL AS open_is_null, high IS NULL AS high_is_null,
+                       low IS NULL AS low_is_null, close IS NULL AS close_is_null,
+                       volume IS NULL AS volume_is_null
+                FROM raw_daily_bar_current
+                WHERE listing_id IN (SELECT unnest(?))
+                  AND session_date BETWEEN ? AND ?
+                ORDER BY listing_id, session_date, provider
+                """,
+                [scope, start, through],
+            ).to_arrow_table()
+            actions = connection.execute(
+                providers_sql
+                + """
+                SELECT action.listing_id, action.provider, action.effective_date,
+                       action.action_kind,
+                       COALESCE(action.new_shares_per_old_share, 0::DOUBLE)
+                           AS new_shares_per_old_share,
+                       COALESCE(action.cash_amount, 0::DOUBLE) AS cash_amount,
+                       action.provisional, action.provenance,
+                       action.new_shares_per_old_share IS NULL AS shares_is_null,
+                       action.cash_amount IS NULL AS cash_is_null
+                FROM corporate_action_current AS action
+                JOIN selected_provider AS selected
+                  ON selected.listing_id = action.listing_id
+                 AND selected.provider = action.provider
+                WHERE action.status = 'ACTIVE' AND action.effective_date <= ?
+                ORDER BY action.listing_id, action.effective_date, action.action_kind
+                """,
+                [scope, through],
+            ).to_arrow_table()
+        return _canonical_hash(
+            {
+                "kind": "MarketSourcePrefixProofV1",
+                "listing_ids": scope,
+                "start": start,
+                "through": through,
+                "providers": _source_prefix_arrow_hash(providers),
+                "raw": _source_prefix_arrow_hash(raw),
+                "actions": _source_prefix_arrow_hash(actions),
+            }
+        )
 
     def listing_scope(
         self, manifest: UniverseManifest, *, listing_ids: Sequence[str]

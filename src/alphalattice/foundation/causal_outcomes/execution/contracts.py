@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
-from typing import Literal, Self
+from typing import Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -58,18 +59,23 @@ class LocalQAMarketSnapshot(_Contract):
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_snapshot(self) -> Self:
         axis = self.ordered_listing_ids
+        listing_scope = set(axis)
         keys = tuple((v.session_date, v.listing_id) for v in self.bars)
         sessions = tuple(v.formation_session for v in self.schedule)
         if (
             not axis
-            or axis != tuple(sorted(set(axis)))
+            or axis != tuple(sorted(listing_scope))
             or keys != tuple(sorted(set(keys)))
             or not sessions
             or sessions != tuple(sorted(set(sessions)))
             or self.through not in sessions
-            or any(v.session_date > self.through or v.listing_id not in axis for v in self.bars)
             or any(
-                v.effective_date > self.through or v.listing_id not in axis for v in self.actions
+                v.session_date > self.through or v.listing_id not in listing_scope
+                for v in self.bars
+            )
+            or any(
+                v.effective_date > self.through or v.listing_id not in listing_scope
+                for v in self.actions
             )
             or any(
                 not (v.formation_session < v.entry_session < v.holding_end_session)
@@ -80,6 +86,181 @@ class LocalQAMarketSnapshot(_Contract):
         ):
             raise ValueError("causal_outcomes.qa_market_snapshot_invalid")
         return self
+
+
+class LocalQAOutcomePreparationSourcePrefix(_Contract):
+    """Actual bounded values committed by the QA preparation owner in memory.
+
+    ``through`` bounds consumed observations; it does not claim they were
+    acquired then. A manifest revision, acquisition clock or source-admission
+    claim is absent because none proves an unchanged semantic prefix.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid", frozen=True, strict=True, ser_json_inf_nan="constants"
+    )
+    through: date
+    listing_ids: tuple[str, ...] = Field(min_length=1)
+    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    schedule: tuple[CausalExecutionSchedulePoint, ...]
+    bars: tuple[RawDailyBar, ...]
+    actions: tuple[CorporateActionEvent, ...]
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def validate_prefix_scope(self) -> Self:
+        """Refuse unbounded observations or inconsistent ordered source axes."""
+        keys = tuple((value.session_date, value.listing_id) for value in self.bars)
+        sessions = tuple(value.formation_session for value in self.schedule)
+        listing_scope = set(self.listing_ids)
+        if (
+            self.listing_ids != tuple(sorted(listing_scope))
+            or keys != tuple(sorted(set(keys)))
+            or sessions != tuple(sorted(set(sessions)))
+            or any(value.formation_session > self.through for value in self.schedule)
+            or any(
+                value.session_date > self.through or value.listing_id not in listing_scope
+                for value in self.bars
+            )
+            or any(
+                value.effective_date > self.through or value.listing_id not in listing_scope
+                for value in self.actions
+            )
+        ):
+            raise ValueError("causal_outcomes.qa_preparation_source_prefix_invalid")
+        return self
+
+
+class _LocalQAPreparationRecord(_Contract):
+    """Seal only the local QA preparation owner's immutable records."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @classmethod
+    def create(cls, **values: object) -> Self:
+        payload = cls.model_construct(**values).model_dump(mode="json", exclude={"content_hash"})
+        return cast(
+            Self,
+            cls.model_validate_json(
+                json.dumps({**payload, "content_hash": canonical_hash(payload)})
+            ),
+        )
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def validate_preparation_identity(self) -> Self:
+        if self.content_hash != canonical_hash(
+            self.model_dump(mode="json", exclude={"content_hash"})
+        ):
+            raise ValueError("causal_outcomes.qa_preparation_identity_invalid")
+        return self
+
+
+class LocalQAOutcomePreparationPart(_LocalQAPreparationRecord):
+    """Commit one Parquet base or increment without granting outcome authority."""
+
+    kind: Literal["LocalQAOutcomePreparationPart"] = "LocalQAOutcomePreparationPart"
+    role: Literal["BASE", "INCREMENT"]
+    listing_count: int = Field(ge=1)
+    point_count: int = Field(ge=0)
+    row_count: int = Field(ge=0)
+    ipc_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    file_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    byte_count: int = Field(gt=0)
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def validate_part_shape(self) -> Self:
+        """Require one row per listing and matured point in the sealed part."""
+        if self.row_count != self.listing_count * self.point_count:
+            raise ValueError("causal_outcomes.qa_preparation_part_invalid")
+        return self
+
+
+class LocalQAOutcomePreparationHead(_LocalQAPreparationRecord):
+    """Link immutable QA rows to a freshly verified source prefix and request."""
+
+    kind: Literal["LocalQAOutcomePreparationHead"] = "LocalQAOutcomePreparationHead"
+    purpose: Literal["QA_NOT_FORWARD_AVAILABILITY_AUTHORITY"] = (
+        "QA_NOT_FORWARD_AVAILABILITY_AUTHORITY"
+    )
+    schema_id: Literal["desktop-causal-execution-outcome"] = "desktop-causal-execution-outcome"
+    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    listing_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    listing_count: int = Field(ge=1)
+    requested_session_count: int = Field(ge=1)
+    requested_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    matured_point_count: int = Field(ge=0)
+    matured_points_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_prefix_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    through: date
+    previous_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    parts: tuple[LocalQAOutcomePreparationPart, ...] = Field(min_length=1)
+    part: LocalQAOutcomePreparationPart | None = None
+    ipc_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def validate_head_shape(self) -> Self:
+        """Require the exact ordered base and increment rows of this request."""
+        if (
+            self.matured_point_count > self.requested_session_count
+            or self.parts[0].role != "BASE"
+            or any(value.role != "INCREMENT" for value in self.parts[1:])
+            or any(value.listing_count != self.listing_count for value in self.parts)
+            or sum(value.point_count for value in self.parts) != self.matured_point_count
+            or (self.previous_head_hash is None and (self.part is None or self.part.role != "BASE"))
+            or (self.previous_head_hash is None and self.parts != (self.part,))
+            or (
+                self.previous_head_hash is not None
+                and self.part is not None
+                and self.part.role != "INCREMENT"
+            )
+            or (
+                self.part is not None
+                and (
+                    self.part.listing_count != self.listing_count
+                    or self.part != self.parts[-1]
+                    or self.part.point_count > self.matured_point_count
+                    or (
+                        self.previous_head_hash is None
+                        and self.part.point_count != self.matured_point_count
+                    )
+                )
+            )
+        ):
+            raise ValueError("causal_outcomes.qa_preparation_head_invalid")
+        return self
+
+
+class LocalQAOutcomePreparationMarker(_LocalQAPreparationRecord):
+    """Publish the current QA head and its rollback root atomically, last."""
+
+    kind: Literal["LocalQAOutcomePreparationMarker"] = "LocalQAOutcomePreparationMarker"
+    purpose: Literal["QA_NOT_FORWARD_AVAILABILITY_AUTHORITY"] = (
+        "QA_NOT_FORWARD_AVAILABILITY_AUTHORITY"
+    )
+    current_head_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    previous_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+
+class LocalQAOutcomePreparationFile(_Contract):
+    """Name exact physical bytes for the existing governed retention owner."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    relative_path: str
+    byte_count: int = Field(ge=0)
+    file_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class LocalQAOutcomePreparationRetentionInventory(_LocalQAPreparationRecord):
+    """List rooted preparation files and exact unrooted candidates; never evict."""
+
+    kind: Literal["LocalQAOutcomePreparationRetentionInventory"] = (
+        "LocalQAOutcomePreparationRetentionInventory"
+    )
+    current_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    previous_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    referenced_heads: tuple[str, ...] = ()
+    protected_files: tuple[LocalQAOutcomePreparationFile, ...]
+    candidate_files: tuple[LocalQAOutcomePreparationFile, ...]
 
 
 class CausalExecutionOutcomeChunk(_Contract):
@@ -357,6 +538,12 @@ __all__ = [
     "CausalExecutionSchedulePoint",
     "DevelopmentOnlyExecutionOutcomeManifest",
     "DevelopmentOnlyExecutionOutcomeMarker",
+    "LocalQAOutcomePreparationFile",
+    "LocalQAOutcomePreparationHead",
+    "LocalQAOutcomePreparationMarker",
+    "LocalQAOutcomePreparationPart",
+    "LocalQAOutcomePreparationRetentionInventory",
+    "LocalQAOutcomePreparationSourcePrefix",
     "PolicyHoldoutExecutionOutcomeAuthority",
     "PolicyHoldoutExecutionOutcomeRelease",
 ]

@@ -89,6 +89,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     FeaturePersistenceTimingSink,
     MarketDataRepository,
     _canonical_hash,
+    _source_prefix_arrow_hash,
     _utc_aware,
     _utc_naive,
     raw_bars_from_table,
@@ -1922,6 +1923,177 @@ class FeatureStateRepository(WorkspaceRepository):
             if owns_connection:
                 connection.close()
         return rows
+
+    def feature_source_prefix_proof(
+        self,
+        *,
+        listing_ids: Sequence[str],
+        catalog_hash: str,
+        start: date,
+        end: date,
+        factor_ids: Sequence[str],
+        _connection: duckdb.DuckDBPyConnection | None = None,
+    ) -> str:
+        """Prove actual selected Feature values over an exact historical source scope.
+
+        This is the bounded row selection of ``feature_rows``, hashed from the
+        live keys, selected values and actual cutoff/source-verification lineage
+        rather than trusting stored row hashes or lineage counters. Separate
+        null bits distinguish a null cell from a valid NaN;
+        actual row keys distinguish a missing row from an all-null observation.
+        Numerical bits, including negative zero, are retained in canonical Arrow.
+
+        Args:
+            listing_ids: Nonempty unique listing scope, normalized to sorted order.
+            catalog_hash: Exact installed computing catalog.
+            start: First included session.
+            end: Last included session.
+            factor_ids: Nonempty unique stored factor selection, normalized to sorted order.
+            _connection: Optional connection already held in a consistent read snapshot.
+
+        Returns:
+            SHA256 binding request scope and exact current selected keys, values and nulls.
+
+        Raises:
+            ValueError: The request or selected catalog factors are invalid.
+        """
+        return self.feature_source_prefix_proofs(
+            listing_ids=listing_ids,
+            catalog_hash=catalog_hash,
+            start=start,
+            ends=(end,),
+            factor_ids=factor_ids,
+            _connection=_connection,
+        )[0]
+
+    def feature_source_prefix_proofs(
+        self,
+        *,
+        listing_ids: Sequence[str],
+        catalog_hash: str,
+        start: date,
+        ends: Sequence[date],
+        factor_ids: Sequence[str],
+        _connection: duckdb.DuckDBPyConnection | None = None,
+    ) -> tuple[str, ...]:
+        """Prove selected Feature prefixes from one consistent source read.
+
+        The largest prefix uses the original SQL projection. Earlier prefixes
+        are exported through the same connection to preserve the original Arrow
+        bytes, including null flags and negative zero; slicing or taking Arrow
+        rows alone does not preserve that encoding. Each result retains the
+        existing ``FeatureSourcePrefixProofV1`` payload and its own end date.
+        A prefix that still spans multiple original chunks uses their original
+        buffers before normalization. A single-chunk prefix of a multi-chunk
+        export retains per-cutoff SQL, including its original Boolean padding.
+        Prefixes are hashed and released in turn, retaining only the full table
+        and one earlier prefix. Arrow and IPC buffers are not automatically
+        bounded by DuckDB's memory limit.
+
+        Args:
+            listing_ids: Nonempty unique listing scope, normalized to sorted order.
+            catalog_hash: Exact installed computing catalog.
+            start: First included session.
+            ends: Nonempty requested cutoff sequence; duplicate cutoffs are allowed.
+            factor_ids: Nonempty unique stored factor selection, normalized to sorted order.
+            _connection: Optional connection already held in a consistent read snapshot.
+
+        Returns:
+            Exact source proofs in the requested cutoff order.
+
+        Raises:
+            ValueError: The request or selected catalog factors are invalid.
+        """
+        scope, factors, cutoffs = tuple(listing_ids), tuple(factor_ids), tuple(ends)
+        if (
+            not scope
+            or not factors
+            or not cutoffs
+            or any(not isinstance(value, str) or not value for value in (*scope, *factors))
+            or len(set(scope)) != len(scope)
+            or len(set(factors)) != len(factors)
+            or any(start > end for end in cutoffs)
+        ):
+            raise ValueError("feature.source_prefix_request_invalid")
+        scope, factors = tuple(sorted(scope)), tuple(sorted(factors))
+        if not set(factors) <= set(self._feature_factor_ids(catalog_hash)):
+            raise ValueError("feature row projection contains an unknown factor")
+        projection = ", ".join(
+            f'COALESCE("{factor}", 0::DOUBLE) AS value_{index}, "{factor}" IS NULL AS null_{index}'
+            for index, factor in enumerate(factors)
+        )
+        latest = max(cutoffs)
+        boundary = (
+            self.database.read_transaction() if _connection is None else nullcontext(_connection)
+        )
+        with boundary as connection:
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info('feature_daily_runtime')"
+                ).fetchall()
+            }
+            verification = (
+                "source_verification_receipt_hash"
+                if "source_verification_receipt_hash" in columns
+                else "NULL::VARCHAR"
+            )
+            statement = f"""
+                SELECT listing_id, session_date, catalog_hash,
+                       COALESCE(raw_input_hash, '') AS raw_input_hash,
+                       raw_input_hash IS NULL AS raw_input_is_null,
+                       COALESCE(action_set_hash, '') AS action_set_hash,
+                       action_set_hash IS NULL AS action_set_is_null,
+                       COALESCE(market_reference_revision, '') AS market_reference_revision,
+                       market_reference_revision IS NULL AS market_reference_is_null,
+                       COALESCE(input_cutoffs_json, '') AS input_cutoffs_json,
+                       input_cutoffs_json IS NULL AS cutoffs_is_null,
+                       COALESCE({verification}, '') AS source_verification_receipt_hash,
+                       {verification} IS NULL AS verification_is_null,
+                       {projection}
+                FROM feature_daily_runtime
+                WHERE listing_id IN (SELECT unnest(?)) AND catalog_hash = ?
+                  AND session_date BETWEEN ? AND ?
+                ORDER BY session_date, listing_id
+                """
+            rows = connection.execute(
+                statement, [scope, catalog_hash, start, latest]
+            ).to_arrow_table()
+            multiple_chunks = any(column.num_chunks > 1 for column in rows.columns)
+            session_axis = rows.column("session_date").to_numpy(zero_copy_only=False)
+            proofs: dict[date, str] = {}
+            for end in dict.fromkeys(cutoffs):
+                if end == latest:
+                    prefix = rows
+                elif multiple_chunks:
+                    stop = int(np.searchsorted(session_axis, np.datetime64(end), side="right"))
+                    bounded = rows.slice(0, stop)
+                    if all(column.num_chunks > 1 for column in bounded.columns):
+                        prefix = bounded
+                    else:
+                        prefix = connection.execute(
+                            statement, [scope, catalog_hash, start, end]
+                        ).to_arrow_table()
+                else:
+                    prefix = (
+                        connection.from_arrow(rows)
+                        .filter(f"session_date <= DATE '{end.isoformat()}'")
+                        .order("session_date, listing_id")
+                        .to_arrow_table()
+                    )
+                proofs[end] = _canonical_hash(
+                    {
+                        "kind": "FeatureSourcePrefixProofV1",
+                        "listing_ids": scope,
+                        "catalog_hash": catalog_hash,
+                        "start": start,
+                        "end": end,
+                        "factor_ids": factors,
+                        "values": _source_prefix_arrow_hash(prefix),
+                    }
+                )
+                del prefix
+        return tuple(proofs[end] for end in cutoffs)
 
     def materialization_source_windows(
         self,

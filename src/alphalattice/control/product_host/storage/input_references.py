@@ -23,7 +23,11 @@ from alphalattice.control.product_host.composition.evidence_review_workspace imp
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceError,
+    ResearchWorkspaceManifest,
     read_research_workspace_manifest,
+)
+from alphalattice.control.product_host.composition.strategy_scoring import (
+    workspace_observation_history_scope,
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     FactorInputBundle,
@@ -58,6 +62,9 @@ from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
     RETRIEVAL_GENERATION_FORMAT,
 )
 from alphalattice.evidence.alternative_evidence.storage.inventory import EvidenceStorageBinding
+from alphalattice.foundation.causal_outcomes.execution.artifacts import (
+    local_qa_preparation_retention_inventory,
+)
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
 )
@@ -67,6 +74,7 @@ from alphalattice.foundation.feature_engine.panels.retention_residue import (
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.research_foundation.runtime.delta import VerifiedPreResearchHead
+from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
 from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -300,7 +308,7 @@ class ResearchInputStorage:
                     "storage.retention_root_mismatch", "Pinned input manifest is missing."
                 )
             roots[h].add("USER_PINNED")
-        evidence = {
+        evidence: dict[str, Any] = {
             "manifest": manifest.manifest_hash,
             "publications": publications,
             "roots": {h: sorted(v) for h, v in sorted(roots.items())},
@@ -309,12 +317,84 @@ class ResearchInputStorage:
             "foundations": foundations,
             "source": self._source_references(bundles, roots, busy=bool(tasks)),
         }
+        preparation = self._preparation_references(manifest, busy=bool(tasks))
+        evidence["source"]["targets"].update(preparation["targets"])
+        evidence["source"]["preparation"] = preparation
         references = self._evidence_references()
         if references is not None:
             # Every fact a plan over evidence indexes depends on: a new pin, an
             # open reader or an unfinished Task changes the hash and stales it.
             evidence["evidence_indexes"] = references.evidence()
         return bundles, roots, evidence
+
+    def _preparation_references(
+        self, manifest: ResearchWorkspaceManifest, *, busy: bool
+    ) -> dict[str, Any]:
+        """Project owner-verified preparation roots into the governed cleanup.
+
+        Scientific observation/score/report files stay outside these narrow
+        namespaces. Current, previous and explicitly referenced preparation
+        heads keep their parts. An unfinished Task protects all candidates,
+        including parts whose marker has not yet been committed.
+        """
+        artifacts = self.workspace / "artifacts"
+        store = AlphaCurrentArtifactStore(artifacts)
+        scopes = tuple(
+            sorted(
+                workspace_observation_history_scope(binding)
+                for binding in manifest.score_inputs or ()
+                if binding.source_kind == "WORKSPACE_DATA_FEATURE"
+            )
+        )
+        alpha = store.workspace_observation_history_retention(active_scope_hashes=scopes)
+        causal = local_qa_preparation_retention_inventory(artifacts)
+        causal_heads = {
+            p.stem
+            for p in (
+                artifacts / "data-operations/execution-outcomes/local-qa-preparation/heads"
+            ).glob("*.json")
+        }
+        known = set(alpha.head_hashes) | causal_heads
+        # Preserve explicit head references if a retained manifest or pin names
+        # one. The scientific current products do not need their input cache.
+        references = _strings(manifest.model_dump(mode="json")) | set(self._all_pins())
+        heads = tuple(sorted(known & references))
+        if heads:
+            alpha = store.workspace_observation_history_retention(
+                active_scope_hashes=scopes,
+                referenced_heads=tuple(h for h in heads if h in alpha.head_hashes),
+            )
+            causal = local_qa_preparation_retention_inventory(
+                artifacts,
+                referenced_heads=tuple(h for h in heads if h in causal_heads),
+            )
+        retained = (
+            *((f.path, f.sha256, f.bytes) for f in alpha.roots),
+            *(
+                (artifacts / f.relative_path, f.file_hash, f.byte_count)
+                for f in causal.protected_files
+            ),
+        )
+        candidates = (
+            *((f.path, f.sha256) for f in alpha.targets),
+            *((artifacts / f.relative_path, f.file_hash) for f in causal.candidate_files),
+        )
+        return {
+            "roots": tuple(
+                sorted(
+                    (path.relative_to(self.workspace).as_posix(), digest, size)
+                    for path, digest, size in retained
+                )
+            ),
+            "heads": heads,
+            "active_scopes": scopes,
+            "busy": busy,
+            "targets": {}
+            if busy
+            else {
+                path.relative_to(self.workspace).as_posix(): digest for path, digest in candidates
+            },
+        }
 
     def _source_references(
         self,
@@ -742,7 +822,10 @@ class ResearchInputStorage:
                 | self._evidence_targets(),
                 evidence_evictor=self._evict_evidence_index,
             )
-            if evidence["source"]["targets"]:
+            if any(
+                relative.startswith("artifacts/feature-panel/")
+                for relative in evidence["source"]["targets"]
+            ):
                 PanelRetentionResidueOwner(
                     workspace=self.workspace,
                     resolver=ArtifactResolver(self.workspace / "artifacts"),

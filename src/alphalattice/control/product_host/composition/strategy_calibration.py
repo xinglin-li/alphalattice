@@ -12,7 +12,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
-    decision_eligible_at_close,
+    decision_eligible_at_closes,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceCalibrationInput,
@@ -751,18 +751,20 @@ class StrategyCalibrationApplication:
                     np.nan if item["simple_return"] is None else item["simple_return"]
                 )
                 ends[item["formation_session"]] = item["holding_end_session"]
-            axis_positions = {v: i for i, v in enumerate(axis)}
+            qualified = decision_eligible_at_closes(
+                formation_sessions=sessions,
+                listing_ids=listing_axis,
+                sessions=axis,
+                bars=bars,
+            )
             for day, row in positions.items():
-                index = axis_positions[day]
-                past = axis[max(0, index - 19) : index + 1]
-                for listing, column in columns.items():
-                    live[row, column] = (
-                        live[row, column]
-                        and listing in membership.get(day, set())
-                        and decision_eligible_at_close(
-                            listing_id=listing, formation_session=day, history=past, bars=bars
-                        )
-                    )
+                selected = membership.get(day, ())
+                member: BoolArray = np.fromiter(
+                    (listing in selected for listing in listing_axis),
+                    dtype=np.bool_,
+                    count=len(listing_axis),
+                )
+                live[row] &= member & qualified[row]
             source_hashes += (canonical_hash(table["row_hash"].to_pylist()),)
         if captured is None and self._source(plan.binding) != plan.source_hash:
             raise ValueError("portfolio_calibration.source_changed_during_read")

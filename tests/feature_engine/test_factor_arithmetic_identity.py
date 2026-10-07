@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import date
+from datetime import date, timedelta
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
@@ -91,6 +91,7 @@ from alphalattice.foundation.feature_engine.producers.factors.session_observatio
     SESSION_OBSERVATION_FACTOR_IDS,
     SESSION_OBSERVATION_IMPLEMENTATION_IDS,
     SESSION_OBSERVATION_KERNELS,
+    append_session_observation_values,
     session_observation_factor_specs,
 )
 from alphalattice.foundation.feature_engine.producers.factors.specifications import (
@@ -579,3 +580,212 @@ def test_previous_close_excursion_formulas_are_named_for_the_arithmetic_they_run
         assert spec.formula in declaration["algorithm"] or factor_id.endswith("cross")
         assert spec.return_convention == "split-adjusted-previous-close-session-excursion"
         assert all("doi.org" not in source for source in spec.literature_sources)
+
+
+def _session_observation_source() -> pd.DataFrame:
+    days = 320
+    positions = np.arange(days, dtype=np.float64)
+    close = np.column_stack((100.0 + np.sin(positions / 7.0), 120.0 + np.cos(positions / 9.0)))
+    close[[60, 250]] = (200.0, 220.0)
+    close[260] = close[259]
+    return pd.DataFrame(
+        {
+            "session_date": np.repeat(
+                np.asarray(
+                    [date(2024, 1, 1) + timedelta(days=i) for i in range(days)], dtype=object
+                ),
+                2,
+            ),
+            "listing_id": np.tile(("A", "B"), days),
+            "open_split_adjusted": (close * 0.99).reshape(-1),
+            "high_split_adjusted": (close * 1.02).reshape(-1),
+            "low_split_adjusted": (close * 0.98).reshape(-1),
+            "close_split_adjusted": close.reshape(-1),
+            "close_raw": close.reshape(-1),
+            "volume_raw": np.tile((1000.0, 1500.0), days),
+        },
+        index=pd.Index([f"source-{i}" for i in range(days * 2)], name="original_axis"),
+    )
+
+
+def _assert_session_observation_bytes(actual: pd.Series, expected: pd.Series) -> None:
+    assert actual.dtype == expected.dtype == np.dtype(np.float64)
+    assert actual.index.equals(expected.index)
+    assert actual.index.name == expected.index.name
+    assert actual.to_numpy().shape == expected.to_numpy().shape
+    assert actual.to_numpy().tobytes(order="C") == expected.to_numpy().tobytes(order="C")
+
+
+@pytest.mark.parametrize(
+    "specification", session_observation_factor_specs(), ids=lambda s: s.factor_id
+)
+@pytest.mark.parametrize("prefix_days", [90, 300, 320])
+def test_every_owned_session_recipe_appends_exact_finite_values_on_the_original_axis(
+    specification: FactorSpec, prefix_days: int
+) -> None:
+    """requirement: a source-proved prefix needs only the owner's finite warmup and new rows."""
+
+    source = _session_observation_source()
+    original = source.copy(deep=True)
+    registry = default_extension_kernel_registry()
+    expected = registry.compute(source, specification)
+    prefix = registry.compute(source.iloc[: prefix_days * 2], specification)
+    old_values = prefix.to_numpy(copy=True)
+    old_values.setflags(write=False)
+    previous = pd.Series(old_values, index=prefix.index, copy=False)
+    old_bytes = old_values.tobytes(order="C")
+    calls = []
+
+    def compute(frame: pd.DataFrame, recipe: FactorSpec) -> pd.Series:
+        calls.append(len(frame))
+        return registry.compute(frame, recipe)
+
+    actual = append_session_observation_values(
+        source, specification, previous=previous, compute=compute
+    )
+    _assert_session_observation_bytes(actual, expected)
+    assert old_values.tobytes(order="C") == old_bytes
+    assert not old_values.flags.writeable
+    pd.testing.assert_frame_equal(source, original)
+    warmup = min(prefix_days, specification.minimum_observations - 1)
+    assert calls == ([0] if prefix_days == 320 else [(320 - prefix_days + warmup) * 2])
+    if specification.factor_id == "sessions_since_252_high":
+        # The earliest tied high stays until it leaves the exact 252-row window.
+        assert actual.iloc[311 * 2] == 251.0
+        assert actual.iloc[312 * 2] == 62.0
+
+
+@pytest.mark.parametrize(
+    "specification", session_observation_factor_specs(), ids=lambda s: s.factor_id
+)
+def test_finite_session_tails_preserve_missing_nonfinite_and_zero_source_values(
+    specification: FactorSpec,
+) -> None:
+    """requirement: finite reuse retains the original kernels' missing-window and IEEE values."""
+
+    source = _session_observation_source()
+    column = source.columns.get_loc("close_split_adjusted")
+    source.iloc[[80 * 2, 299 * 2, 305 * 2], column] = np.nan
+    source.iloc[295 * 2 + 1, column] = 0.0
+    source.iloc[298 * 2 + 1, column] = np.inf
+    registry = default_extension_kernel_registry()
+    with np.errstate(divide="ignore", invalid="ignore"):
+        expected = registry.compute(source, specification)
+        previous = registry.compute(source.iloc[:600], specification)
+        actual = append_session_observation_values(
+            source, specification, previous=previous, compute=registry.compute
+        )
+    _assert_session_observation_bytes(actual, expected)
+
+
+@pytest.mark.parametrize("previous_kind", ["none", "empty", "long", "index", "dtype", "chronology"])
+def test_an_unproved_or_nonprefix_observation_axis_uses_the_ordinary_full_reader(
+    previous_kind: str,
+) -> None:
+    """requirement: the finite owner never fills a malformed prefix by approximation."""
+
+    source = _session_observation_source()
+    registry = default_extension_kernel_registry()
+    specification = next(s for s in session_observation_factor_specs() if s.factor_id == "gap")
+    if previous_kind == "chronology":
+        source = source.iloc[np.r_[np.arange(600, 640), np.arange(600)]]
+    previous = registry.compute(source.iloc[:40], specification)
+    if previous_kind == "none":
+        previous = None
+    elif previous_kind == "empty":
+        previous = previous.iloc[:0]
+    elif previous_kind == "long":
+        previous = pd.Series(np.zeros(len(source) + 1, dtype=np.float64))
+    elif previous_kind == "index":
+        previous = previous.rename(index=lambda value: "other-" + value)
+    elif previous_kind == "dtype":
+        previous = previous.astype(np.float32)
+    calls = []
+
+    def compute(frame: pd.DataFrame, recipe: FactorSpec) -> pd.Series:
+        calls.append(len(frame))
+        return registry.compute(frame, recipe)
+
+    actual = append_session_observation_values(
+        source, specification, previous=previous, compute=compute
+    )
+    _assert_session_observation_bytes(actual, registry.compute(source, specification))
+    assert calls == [len(source)]
+
+
+@pytest.mark.parametrize(
+    "changed", ["minimum_observations", "window_sessions", "absolute_tolerance", "formula"]
+)
+def test_a_changed_session_recipe_keeps_the_original_full_registry_route(changed: str) -> None:
+    """requirement: finite support belongs to the exact owned declaration."""
+
+    source = _session_observation_source()
+    registry = default_extension_kernel_registry()
+    owned = next(s for s in session_observation_factor_specs() if s.factor_id == "close_to_close")
+    payload = owned.model_dump()
+    payload[changed] = {
+        "minimum_observations": 3,
+        "window_sessions": 2,
+        "absolute_tolerance": 5e-11,
+        "formula": "a different declared close-return recipe",
+    }[changed]
+    specification = FactorSpec.model_validate(payload)
+    previous = registry.compute(source.iloc[:600], owned)
+    calls = []
+
+    def compute(frame: pd.DataFrame, recipe: FactorSpec) -> pd.Series:
+        calls.append(len(frame))
+        return registry.compute(frame, recipe)
+
+    actual = append_session_observation_values(
+        source, specification, previous=previous, compute=compute
+    )
+    _assert_session_observation_bytes(actual, registry.compute(source, specification))
+    assert calls == [len(source)]
+
+
+def test_an_unowned_liquidity_recipe_and_unknown_implementation_keep_registry_admission() -> None:
+    """requirement: finite session reuse neither adopts another family nor bypasses admission."""
+
+    source = _session_observation_source()
+    registry = default_extension_kernel_registry()
+    liquidity = session_liquidity_factor_specs()[0]
+    previous = registry.compute(source.iloc[:600], liquidity)
+    calls = []
+
+    def compute(frame: pd.DataFrame, recipe: FactorSpec) -> pd.Series:
+        calls.append(len(frame))
+        return registry.compute(frame, recipe)
+
+    actual = append_session_observation_values(
+        source, liquidity, previous=previous, compute=compute
+    )
+    _assert_session_observation_bytes(actual, registry.compute(source, liquidity))
+    payload = liquidity.model_dump()
+    payload["formula_ref"] = "factor.no_such_installed_implementation.v1"
+    unknown = FactorSpec.model_validate(payload)
+    with pytest.raises(ValueError, match="Feature implementation is not code-owned"):
+        append_session_observation_values(source, unknown, previous=previous, compute=compute)
+    assert calls == [len(source), len(source)]
+
+
+def test_a_full_cutoff_still_checks_the_original_registry_and_missing_source_fields() -> None:
+    """requirement: zero new numerical rows retain the registry's ownership and source checks."""
+
+    source = _session_observation_source()
+    registry = default_extension_kernel_registry()
+    specification = next(s for s in session_observation_factor_specs() if s.factor_id == "gap")
+    previous = registry.compute(source, specification)
+    with pytest.raises(ValueError, match="Feature implementation is not code-owned"):
+        append_session_observation_values(
+            source, specification, previous=previous, compute=FeatureKernelRegistry().compute
+        )
+    with pytest.raises(
+        ValueError, match=r"Feature kernel input is missing columns.*open_split_adjusted"
+    ):
+        append_session_observation_values(
+            source.drop(columns="open_split_adjusted"),
+            specification,
+            previous=previous,
+            compute=registry.compute,
+        )

@@ -139,6 +139,40 @@ def test_prepared_history_keeps_every_cutoff_array_and_observation_hash(
     assert len(set(hashes)) == len(DAYS), "different cutoffs remain different snapshots"
 
 
+def test_inference_selects_the_same_context_bytes_as_complete_training(
+    input_workspace, input_features
+):
+    """requirement: selecting inference lanes preserves the full owner's saved observations."""
+    training_ids = tuple(sorted(("gap", input_features[0].split("::")[1], "session_dollar_volume")))
+    publisher = AlphaCurrentArtifactStore(input_workspace / "artifacts")
+    request = dict(
+        observed_at=OBSERVED_AT,
+        expected_source_hash=workspace_score_source_identity(input_workspace),
+        ordered_feature_ids=input_features,
+    )
+    for day in DAYS:
+        complete, training = read_workspace_component_inputs(
+            input_workspace, formation=day, training_factor_ids=training_ids, **request
+        )
+        inference, absent = read_workspace_component_inputs(
+            input_workspace, formation=day, **request
+        )
+        assert training is not None and absent is None
+        assert training.market_context_values.shape[1] == 17
+        assert training.sector_context_values.shape[2] == 5
+        for name in ("market_context_values", "sector_trend_values"):
+            expected, actual = getattr(complete, name), getattr(inference, name)
+            assert expected.dtype == actual.dtype == np.dtype(np.float64)
+            assert expected.shape == actual.shape
+            assert expected.tobytes(order="C") == actual.tobytes(order="C")
+            # NumPy's persisted layout is Fortran only for an exclusively
+            # Fortran-contiguous array; a strided Sector view saves in C order.
+            assert (expected.flags.f_contiguous and not expected.flags.c_contiguous) == (
+                actual.flags.f_contiguous and not actual.flags.c_contiguous
+            )
+        _same_source(complete, inference, publisher)
+
+
 def test_prepared_history_is_immutable_and_projects_independent_callers(
     input_workspace, input_features
 ):

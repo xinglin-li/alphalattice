@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from io import BytesIO
@@ -63,7 +64,12 @@ from .contracts import (
     FrozenFeaturePreparation,
     FrozenScoreObservationSnapshot,
     SectorHistoryRecord,
+    WorkspaceObservationHistoryHead,
     seal_current_contract,
+)
+from .workspace_history import (
+    WorkspaceObservationHistoryRetention,
+    _WorkspaceObservationHistoryStore,
 )
 
 
@@ -93,6 +99,71 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
     """Current publication owner composed over immutable development evidence."""
 
     _packed_readback_error = AlphaCurrentArtifactReadbackError
+
+    def load_workspace_observation_history(
+        self, scope_hash: str
+    ) -> tuple[WorkspaceObservationHistoryHead, Mapping[str, npt.NDArray[np.float64]]] | None:
+        """Verify a stable component/source slot and return immutable exact observation columns.
+
+        An absent initial marker is cold. Corrupt or missing named current/previous artifacts
+        refuse without repair; the caller proves the actual current dependency prefix before reuse.
+        """
+        loaded = _WorkspaceObservationHistoryStore(
+            self.root, error=AlphaCurrentArtifactReadbackError
+        ).load(scope_hash)
+        return cast(
+            tuple[WorkspaceObservationHistoryHead, Mapping[str, npt.NDArray[np.float64]]] | None,
+            loaded,
+        )
+
+    def publish_workspace_observation_history(
+        self,
+        *,
+        scope_hash: str,
+        selection_hash: str,
+        dependency_prefix_hash: str,
+        formation_sessions: tuple[date, ...],
+        ordered_listing_ids: tuple[str, ...],
+        stable_session_count: int,
+        columns: Mapping[str, npt.NDArray[Any]],
+        reuse: WorkspaceObservationHistoryHead | None = None,
+        capacity: Callable[[int], None],
+    ) -> WorkspaceObservationHistoryHead:
+        """Persist float64 Parquet segments and commit the stable slot's marker last.
+
+        Capacity admission covers every new part, head and marker staging write. The caller
+        holds the workspace mutation gate; semantic selection changes rebuild the slot, while
+        verified identical complete stable-prefix segments may be reused.
+        """
+        published = _WorkspaceObservationHistoryStore(
+            self.root, error=AlphaCurrentArtifactReadbackError
+        ).publish(
+            scope_hash=scope_hash,
+            selection_hash=selection_hash,
+            dependency_prefix_hash=dependency_prefix_hash,
+            formation_sessions=formation_sessions,
+            ordered_listing_ids=ordered_listing_ids,
+            stable_session_count=stable_session_count,
+            columns=columns,
+            reuse=reuse,
+            capacity=capacity,
+        )
+        return cast(WorkspaceObservationHistoryHead, published)
+
+    def workspace_observation_history_retention(
+        self,
+        referenced_heads: tuple[str, ...] = (),
+        *,
+        active_scope_hashes: tuple[str, ...] | None = None,
+    ) -> WorkspaceObservationHistoryRetention:
+        """Verify bounded slot roots and exact unrooted candidates without deleting anything.
+
+        None protects all current/previous slots. Explicit active slots plus referenced heads
+        protect their transitive parts; returned head_hashes supports intersection with other pins.
+        """
+        return _WorkspaceObservationHistoryStore(
+            self.root, error=AlphaCurrentArtifactReadbackError
+        ).retention(referenced_heads=referenced_heads, active_scope_hashes=active_scope_hashes)
 
     def publish_frozen_observations(
         self,

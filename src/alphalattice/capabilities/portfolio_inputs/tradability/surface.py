@@ -13,8 +13,10 @@ from datetime import date
 from pathlib import Path
 from typing import Literal, cast
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
+from numpy.typing import NDArray
 
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
@@ -950,6 +952,49 @@ def decision_eligible_at_close(
         listing_id=listing_id, formation_session=formation_session, history=history, bars=bars
     )
     return status is DecisionTradabilityStatus.PLANNED_ORDER_ELIGIBLE
+
+
+def decision_eligible_at_closes(
+    *,
+    formation_sessions: tuple[date, ...],
+    listing_ids: tuple[str, ...],
+    sessions: tuple[date, ...],
+    bars: Mapping[tuple[date, str], RawDailyBar],
+) -> NDArray[np.bool_]:
+    """The same decision-only qualification over one admitted calendar axis.
+
+    Each formation reads its twenty preceding sessions including itself. Validate
+    a bar once, then count invalid bars in those exact windows. The scalar rule's
+    ADV20 value and future entry are not inputs to its Boolean answer.
+    """
+    if sessions != tuple(sorted(set(sessions))):
+        raise TradabilitySurfaceError("data_tradability.schedule_axis_invalid")
+    if len(set(listing_ids)) != len(listing_ids):
+        raise TradabilitySurfaceError("data_tradability.listing_axis_invalid")
+    positions = {day: index for index, day in enumerate(sessions)}
+    if any(day not in positions for day in formation_sessions):
+        raise TradabilitySurfaceError("data_tradability.source_axis_mismatch")
+    if not formation_sessions or not listing_ids:
+        return np.zeros((len(formation_sessions), len(listing_ids)), dtype=np.bool_)
+    selected_rows = [positions[day] for day in formation_sessions]
+    through = max(selected_rows) + 1
+    valid: NDArray[np.bool_] = np.fromiter(
+        (
+            _valid_formation_bar(bars.get((day, listing)))
+            for day in sessions[:through]
+            for listing in listing_ids
+        ),
+        dtype=np.bool_,
+        count=through * len(listing_ids),
+    ).reshape(through, len(listing_ids))
+    qualified = np.zeros_like(valid)
+    if through >= 20:
+        invalid_counts: NDArray[np.int64] = np.zeros(
+            (through + 1, len(listing_ids)), dtype=np.int64
+        )
+        np.cumsum(~valid, axis=0, dtype=np.int64, out=invalid_counts[1:])
+        qualified[19:] = invalid_counts[20:] == invalid_counts[:-20]
+    return qualified[selected_rows]
 
 
 def _execution_cell(

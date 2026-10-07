@@ -29,12 +29,14 @@ from alphalattice.control.product_host.composition.strategy_score_inputs import 
     build_workspace_score_inputs,
     prepare_workspace_component_inputs,
     read_workspace_component_inputs,
+    workspace_observation_history_columns,
     workspace_score_source_identity,
 )
 from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
     read_workspace_inputs,
 )
+from alphalattice.control.product_host.storage.inventory import require_storage_capacity
 from alphalattice.control.product_host.storage.plan_previews import (
     PLAN_PREVIEWS_DIRECTORY,
     PreviewRegistry,
@@ -144,6 +146,24 @@ def _implementation_hash() -> str:
             "src/alphalattice/foundation/causal_outcomes/execution/methods.py",
             "src/alphalattice/foundation/market_data_ops/returns/execution.py",
         ),
+    )
+
+
+def workspace_observation_history_scope(binding: ResearchWorkspaceScoreInput) -> str:
+    """Name the preparation slot of an installed component, apart from its models.
+
+    A model or rule rotation replaces this slot's current and previous heads;
+    it does not retain an ever-growing map of old model selectors.
+    """
+    return str(
+        canonical_hash(
+            {
+                "kind": "WorkspaceObservationHistoryScope.v1",
+                "package": binding.strategy_package_id,
+                "component": binding.component_id,
+                "source": binding.source_kind,
+            }
+        )
     )
 
 
@@ -724,20 +744,42 @@ class StrategyScoringApplication:
             if captured_authority_hash is None
             else self._captured_authority(binding, captured_authority_hash)
         )
+        training_factor_ids = (
+            authority.authority.training_factor_ids
+            if isinstance(authority, AdmittedRenewingInference)
+            and not authority.authority.supports(through)
+            else ()
+        )
+        scope_hash = workspace_observation_history_scope(binding)
+        selection_hash = str(
+            canonical_hash(
+                {
+                    "kind": "WorkspaceObservationHistorySelection.v1",
+                    "scope": scope_hash,
+                    "package": binding.strategy_package_hash,
+                    "authority": authority.authority.authority_hash,
+                    "features": authority.authority.model_set.ordered_feature_ids,
+                    "training_factors": training_factor_ids,
+                    "implementation": _implementation_hash(),
+                }
+            )
+        )
         with self.session.reads():
+            candidate = self.store.load_workspace_observation_history(scope_hash)
+            history = (
+                candidate
+                if candidate is not None and candidate[0].selection_hash == selection_hash
+                else None
+            )
             try:
-                return prepare_workspace_component_inputs(
+                prepared = prepare_workspace_component_inputs(
                     self.session.workspace,
                     through=through,
                     observed_at=self.clock() if observed_at is None else observed_at,
                     expected_source_hash=expected_source_hash,
                     ordered_feature_ids=authority.authority.model_set.ordered_feature_ids,
-                    training_factor_ids=(
-                        authority.authority.training_factor_ids
-                        if isinstance(authority, AdmittedRenewingInference)
-                        and not authority.authority.supports(through)
-                        else ()
-                    ),
+                    training_factor_ids=training_factor_ids,
+                    history=history,
                 )
             except ValueError as error:
                 if str(error) not in {
@@ -750,6 +792,26 @@ class StrategyScoringApplication:
                 # into an earlier legal formation. The original per-cutoff
                 # reader will accept or refuse at the action's own effective date.
                 return None
+        assert prepared.dependency_prefix_hash is not None
+        with self.session.mutation_gate.hold():
+            self.store.publish_workspace_observation_history(
+                scope_hash=scope_hash,
+                selection_hash=selection_hash,
+                dependency_prefix_hash=prepared.dependency_prefix_hash,
+                formation_sessions=prepared.formation_sessions,
+                ordered_listing_ids=prepared.ordered_listing_ids,
+                stable_session_count=prepared.stable_session_count,
+                columns=workspace_observation_history_columns(prepared),
+                reuse=(
+                    history[0]
+                    if history is not None and prepared.reused_history_hash == history[0].head_hash
+                    else None
+                ),
+                capacity=lambda size: require_storage_capacity(
+                    self.session.workspace, additional_bytes=size
+                ),
+            )
+        return prepared
 
     def execute_step(
         self,

@@ -19,6 +19,91 @@ class _Contract(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class WorkspaceObservationHistoryPart(_Contract):
+    """One complete session segment of exact float64 observation columns."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    kind: Literal["WorkspaceObservationHistoryPart"] = "WorkspaceObservationHistoryPart"
+    start: int = Field(ge=0)
+    stop: int = Field(ge=1)
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    part_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def validate_identity(self) -> WorkspaceObservationHistoryPart:
+        """Verify the nonempty session range and canonical part commitment."""
+        if self.stop <= self.start or self.part_hash != canonical_hash(
+            self.model_dump(mode="json", exclude={"part_hash"})
+        ):
+            raise ValueError("alpha_research.workspace_observation_history_invalid")
+        return self
+
+
+class WorkspaceObservationHistoryHead(_Contract):
+    """Select verified immutable prefix segments and one replaceable unmatured tail.
+
+    The dependency proof belongs to the caller's actual source-prefix owner. The head binds
+    exact ordered axes, column names and float64 parts without changing scientific snapshots.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    kind: Literal["WorkspaceObservationHistoryHead"] = "WorkspaceObservationHistoryHead"
+    scope_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    selection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dependency_prefix_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    formation_sessions: tuple[date, ...] = Field(min_length=1)
+    ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
+    column_names: tuple[str, ...] = Field(min_length=1)
+    dtype: Literal["float64"] = "float64"
+    stable_session_count: int = Field(ge=0)
+    predecessor_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    parts: tuple[WorkspaceObservationHistoryPart, ...] = Field(min_length=1)
+    head_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def validate_identity(self) -> WorkspaceObservationHistoryHead:
+        """Verify contiguous immutable segments, ordered axes and the head seal."""
+        stop = 0
+        for part in self.parts:
+            if part.start != stop or part.start < self.stable_session_count < part.stop:
+                raise ValueError("alpha_research.workspace_observation_history_invalid")
+            stop = part.stop
+        if (
+            self.formation_sessions != tuple(sorted(set(self.formation_sessions)))
+            or len(set(self.ordered_listing_ids)) != len(self.ordered_listing_ids)
+            or any(not name for name in self.ordered_listing_ids)
+            or self.column_names != tuple(sorted(set(self.column_names)))
+            or any(not name for name in self.column_names)
+            or self.stable_session_count > len(self.formation_sessions)
+            or stop != len(self.formation_sessions)
+            or sum(part.start >= self.stable_session_count for part in self.parts) > 1
+            or self.predecessor_head_hash == self.head_hash
+            or self.head_hash != canonical_hash(self.model_dump(mode="json", exclude={"head_hash"}))
+        ):
+            raise ValueError("alpha_research.workspace_observation_history_invalid")
+        return self
+
+
+class WorkspaceObservationHistoryMarker(_Contract):
+    """Marker-last selection of the current head and its independently retained predecessor."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    kind: Literal["WorkspaceObservationHistoryMarker"] = "WorkspaceObservationHistoryMarker"
+    scope_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    current_head_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    previous_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    marker_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def validate_identity(self) -> WorkspaceObservationHistoryMarker:
+        """Verify distinct current and previous heads and the marker seal."""
+        if self.current_head_hash == self.previous_head_hash or self.marker_hash != canonical_hash(
+            self.model_dump(mode="json", exclude={"marker_hash"})
+        ):
+            raise ValueError("alpha_research.workspace_observation_history_invalid")
+        return self
+
+
 class SectorReclassificationRecord(_Contract):
     """One listing's move to another Sector, read from its effective session on (V346)."""
 
@@ -683,5 +768,8 @@ __all__ = [
     "CurrentFormationScoreChunkRef",
     "CurrentFormationScoreSnapshot",
     "CurrentRefitStabilityAssessment",
+    "WorkspaceObservationHistoryHead",
+    "WorkspaceObservationHistoryMarker",
+    "WorkspaceObservationHistoryPart",
     "seal_current_contract",
 ]

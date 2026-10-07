@@ -309,6 +309,15 @@ class BoundedStorageRetentionOwner:
                 )
                 or evidence_index
                 or evidence_vector
+                or (
+                    relative.startswith(
+                        (
+                            "artifacts/alpha-research/current/workspace-observation-history/",
+                            "artifacts/data-operations/execution-outcomes/local-qa-preparation/",
+                        )
+                    )
+                    and relative.endswith((".parquet", ".json"))
+                )
             )
             if (
                 not target.is_relative_to(self.workspace)

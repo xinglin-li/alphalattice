@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from hashlib import file_digest
+from itertools import groupby
 from pathlib import Path
 from types import MappingProxyType
 
@@ -33,6 +34,7 @@ from alphalattice.foundation.causal_outcomes.execution.methods import (
     period_dividend_for_point,
     resolve_schedule_points,
 )
+from alphalattice.foundation.feature_engine.catalog.contracts import desktop_core_feature_bundle
 from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
 )
@@ -43,6 +45,7 @@ from alphalattice.foundation.feature_engine.producers.factors.session_liquidity 
     session_liquidity_factor_specs,
 )
 from alphalattice.foundation.feature_engine.producers.factors.session_observation import (
+    append_session_observation_values,
     session_observation_factor_specs,
 )
 from alphalattice.foundation.feature_engine.storage.repositories import (
@@ -60,6 +63,9 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
     IntArray,
     PanelFeatureSourceArrays,
     assemble_panel_context_arrays,
+)
+from alphalattice.investment.alpha_research.publication.contracts import (
+    WorkspaceObservationHistoryHead,
 )
 from alphalattice.investment.alpha_research.targets.component_training import (
     compile_frozen_component_training_targets,
@@ -91,6 +97,9 @@ class PreparedWorkspaceComponentInputs:
     formula_values: Mapping[str, FloatArray]
     raw_simple: FloatArray
     actions: tuple[tuple[CorporateActionEvent, ...], ...]
+    dependency_prefix_hash: str | None = None
+    stable_session_count: int = 0
+    reused_history_hash: str | None = None
 
 
 def _market_source_proof(market: MarketDataRepository) -> tuple[tuple[str, str | None], ...]:
@@ -118,6 +127,140 @@ def _immutable_arrays(values: Mapping[str, FloatArray]) -> Mapping[str, FloatArr
     )
 
 
+def _workspace_history_prefix_proof(
+    market: MarketDataRepository,
+    feature: FeatureStateRepository,
+    *,
+    sessions: tuple[date, ...],
+    listings: tuple[str, ...],
+    observed_at: datetime,
+    catalog_hash: str,
+    factor_ids: tuple[str, ...],
+    extension_factor_ids: tuple[str, ...],
+    feature_prefix_proof: str | None = None,
+) -> str:
+    """Bind actual source values and the dependency axes of a completed prefix.
+
+    Daily source identities and the observation instant are provenance. The
+    old completed clocks and actual membership, exclusions, Sector and source
+    values must still agree before an immutable preparation can be reused.
+    """
+    readiness = market.readiness.load("us-current-index-research")
+    if readiness is None or readiness.active_manifest_id is None:
+        raise ValueError("strategy_score.workspace_not_qualified")
+    manifest = market.load_universe_manifest(readiness.active_manifest_id)
+    with market.database.read_transaction() as connection:
+        data = market.market_data_source_prefix_proof(
+            listing_ids=listings,
+            start=sessions[0],
+            through=sessions[-1],
+            _connection=connection,
+        )
+        features = (
+            feature.feature_source_prefix_proof(
+                listing_ids=listings,
+                catalog_hash=catalog_hash,
+                start=sessions[0],
+                end=sessions[-1],
+                factor_ids=factor_ids,
+                _connection=connection,
+            )
+            if feature_prefix_proof is None
+            else feature_prefix_proof
+        )
+    calendar = materialize_calendar_schedule(
+        ("XNAS", "XNYS"),
+        start=sessions[0],
+        end=sessions[-1],
+        as_of_timestamp=observed_at,
+    )
+    schedule = market.membership_schedule(
+        manifest.profile.market_profile_id,
+        sessions=sessions,
+        fallback_listing_ids=tuple(item.listing_id for item in manifest.listings),
+    )
+    membership = []
+    for (members, basis), days in groupby(
+        sessions, key=lambda day: (schedule.members(day), schedule.basis(day))
+    ):
+        run = tuple(days)
+        membership.append((run[0], run[-1], members, basis))
+    history = feature.sector_history(manifest, listing_ids=listings)
+    if history is None or set(listings) - set(history):
+        raise ValueError("strategy_score.sector_coverage_incomplete")
+    exclusions = PanelStateRepository(market.database, market_data=market).panel_source_exclusions(
+        market_profile_id=manifest.profile.market_profile_id,
+        sessions=sessions,
+        listing_ids=listings,
+    )
+    reference = feature.market_reference("SPY")
+    reference_values = None
+    if reference is not None:
+        reference_values = (
+            str(reference["listing_id"]),
+            tuple(
+                (p.provider, p.session_date, p.adjusted_close)
+                for p in market.provider_adjusted_closes(
+                    str(reference["listing_id"]), start=sessions[0], through=sessions[-1]
+                )
+            ),
+        )
+    registry = default_extension_kernel_registry()
+    bundle = desktop_core_feature_bundle()
+    return str(
+        canonical_hash(
+            {
+                "kind": "WorkspaceObservationPrefixProof.v1",
+                "sessions": sessions,
+                "listings": listings,
+                "data": data,
+                "features": features,
+                "calendar": calendar.to_pylist(),
+                "membership": membership,
+                "admitted_listings": schedule.admitted_listing_ids,
+                "exclusions": tuple(
+                    (
+                        e.listing_id,
+                        max(sessions[0], e.first_session),
+                        min(sessions[-1], e.last_session),
+                        e.evidence_hash,
+                        e.reason_codes,
+                    )
+                    for e in exclusions
+                ),
+                "sector_map": dict(history),
+                "sector_history": history.lineage_payload(),
+                "reference": reference_values,
+                "execution_method": build_installed_execution_outcome_method_catalog()
+                .resolve(ONE_SESSION_RECIPE_ID)
+                .recipe_hash,
+                "extension_rules": tuple(
+                    (s.factor_id, registry.implementation_hash(s, core_bundle=bundle))
+                    for s in (
+                        *session_observation_factor_specs(),
+                        *session_liquidity_factor_specs(),
+                    )
+                    if s.factor_id in extension_factor_ids
+                ),
+            }
+        )
+    )
+
+
+def workspace_observation_history_columns(
+    value: PreparedWorkspaceComponentInputs,
+) -> Mapping[str, FloatArray]:
+    """Expose the held immutable numerical families to Alpha's preparation store."""
+    return MappingProxyType(
+        {
+            **{"ohlcv::" + k: v for k, v in value.ohlcv.items()},
+            **{"observations::" + k: v for k, v in value.observations.items()},
+            **{"formula::" + k: v for k, v in value.formula_values.items()},
+            "raw_simple": value.raw_simple,
+        }
+    )
+
+
 def prepare_workspace_component_inputs(
     workspace: Path,
     *,
@@ -126,6 +269,7 @@ def prepare_workspace_component_inputs(
     expected_source_hash: str,
     ordered_feature_ids: tuple[str, ...] = (),
     training_factor_ids: tuple[str, ...] = (),
+    history: tuple[WorkspaceObservationHistoryHead, Mapping[str, FloatArray]] | None = None,
 ) -> PreparedWorkspaceComponentInputs:
     """Verify and hold one maximum-cutoff history for projections in one Task.
 
@@ -142,6 +286,8 @@ def prepare_workspace_component_inputs(
         expected_source_hash: Required admitted workspace score source.
         ordered_feature_ids: Exact inference Feature selections to prepare.
         training_factor_ids: Optional sorted unique mature training factors.
+        history: A verified durable candidate; its current source prefix is
+            independently proved here before any of its values are used.
 
     Returns:
         Independently held immutable raw and Feature history.
@@ -149,7 +295,7 @@ def prepare_workspace_component_inputs(
     Raises:
         ValueError: Ordinary cutoff admission or exact source proof fails.
     """
-    _, _, history = _read_workspace_component_inputs(
+    _, _, prepared = _read_workspace_component_inputs(
         workspace,
         formation=through,
         observed_at=observed_at,
@@ -157,9 +303,10 @@ def prepare_workspace_component_inputs(
         ordered_feature_ids=ordered_feature_ids,
         training_factor_ids=training_factor_ids,
         capture=True,
+        history=history,
     )
-    assert history is not None
-    return history
+    assert prepared is not None
+    return prepared
 
 
 def workspace_score_source_identity(workspace: Path) -> str:
@@ -279,6 +426,7 @@ def _read_workspace_component_inputs(
     training_factor_ids: tuple[str, ...] = (),
     prepared: PreparedWorkspaceComponentInputs | None = None,
     capture: bool = False,
+    history: tuple[WorkspaceObservationHistoryHead, Mapping[str, FloatArray]] | None = None,
 ) -> tuple[
     FrozenPriceVolumeInputs | None,
     PanelFeatureSourceArrays | None,
@@ -343,12 +491,110 @@ def _read_workspace_component_inputs(
     points = resolve_schedule_points(recipe=method, ordered_sessions=axis, session_clocks=clocks)
     by_formation = {point.formation_session: point for point in points}
     dividend_axis = ExecutionOutcomeSessionAxis(axis)
+    binding = installed_data_update_binding(workspace)
+    extension = {
+        s.factor_id: s
+        for s in (*session_observation_factor_specs(), *session_liquidity_factor_specs())
+    }
+    formula_ids = tuple(
+        sorted(
+            {
+                name.split("::")[1]
+                for name in ordered_feature_ids
+                if name.startswith(
+                    ("RELATIVE_STOCK_CROSS_SECTION::", "NON_NEUTRAL_STOCK_CROSS_SECTION::")
+                )
+            }
+            | set(training_factor_ids)
+        )
+    )
+    stored = (
+        tuple(sorted((set(formula_ids) | {"mom_252_21"}) - extension.keys())) if formula_ids else ()
+    )
+    selected_stored = tuple(sorted({"dist_52w_high", "dist_52w_low", *stored}))
+    selected_extensions = tuple(
+        sorted({"close_to_close", *(name for name in formula_ids if name in extension)})
+    )
+    dependency_prefix_hash = None
+    restored: Mapping[str, FloatArray] | None = None
+    reused_count = return_start = 0
+    if capture:
+        # The immutable child proves its own bytes. Reuse also needs the source
+        # owner to prove the *current* old values, not a revision or last date.
+        candidate_sessions = None
+        if history is not None:
+            head, columns = history
+            if (
+                head.ordered_listing_ids == listings
+                and len(head.formation_sessions) <= len(sessions)
+                and head.formation_sessions == sessions[: len(head.formation_sessions)]
+                and head.stable_session_count
+                == sum(point.holding_end_session <= head.formation_sessions[-1] for point in points)
+            ):
+                candidate_sessions = head.formation_sessions
+        with market.database.read_transaction() as connection:
+            feature_proofs = feature.feature_source_prefix_proofs(
+                listing_ids=listings,
+                catalog_hash=binding.feature_catalog_hash,
+                start=sessions[0],
+                ends=(candidate_sessions[-1], sessions[-1])
+                if candidate_sessions is not None
+                else (sessions[-1],),
+                factor_ids=selected_stored,
+                _connection=connection,
+            )
+        if history is not None and candidate_sessions is not None:
+            head, columns = history
+            if (
+                _workspace_history_prefix_proof(
+                    market,
+                    feature,
+                    sessions=candidate_sessions,
+                    listings=listings,
+                    observed_at=observed_at,
+                    catalog_hash=binding.feature_catalog_hash,
+                    factor_ids=selected_stored,
+                    extension_factor_ids=selected_extensions,
+                    feature_prefix_proof=feature_proofs[0],
+                )
+                == head.dependency_prefix_hash
+            ):
+                expected_columns = {
+                    *("ohlcv::" + name for name in ohlcv),
+                    "observations::dist_52w_high",
+                    "observations::dist_52w_low",
+                    "observations::close_to_close",
+                    "raw_simple",
+                    *(
+                        "formula::" + name
+                        for name in (*stored, *(name for name in formula_ids if name in extension))
+                    ),
+                }
+                if set(columns) != expected_columns:
+                    raise ValueError("strategy_score.prepared_input_axis_invalid")
+                restored = columns
+                reused_count = len(head.formation_sessions)
+                return_start = head.stable_session_count
+                for name in ohlcv:
+                    ohlcv[name][:reused_count] = columns["ohlcv::" + name]
+                raw_simple[:reused_count] = columns["raw_simple"]
+        dependency_prefix_hash = _workspace_history_prefix_proof(
+            market,
+            feature,
+            sessions=sessions,
+            listings=listings,
+            observed_at=observed_at,
+            catalog_hash=binding.feature_catalog_hash,
+            factor_ids=selected_stored,
+            extension_factor_ids=selected_extensions,
+            feature_prefix_proof=feature_proofs[-1],
+        )
     actions: list[tuple[CorporateActionEvent, ...]] = []
     if prepared is None:
         with market._connect(read_only=True) as connection, connection.snapshot():
             for column, listing in enumerate(listings):
                 bars = market.raw_bars(
-                    listing, start=sessions[0], through=formation, _connection=connection
+                    listing, start=sessions[return_start], through=formation, _connection=connection
                 )
                 by_session = {bar.session_date: bar for bar in bars}
                 listing_actions = market.actions(listing, _connection=connection)
@@ -366,7 +612,8 @@ def _read_workspace_component_inputs(
                             ohlcv[name][positions[bar.session_date], column] = (
                                 np.nan if value is None else float(value)
                             )
-                for row, session in enumerate(sessions):
+                for row in range(return_start, len(sessions)):
+                    session = sessions[row]
                     point = by_formation.get(session)
                     if point is None:
                         continue
@@ -384,7 +631,7 @@ def _read_workspace_component_inputs(
             observations = feature.feature_rows(
                 listing_ids=listings,
                 catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
-                start=sessions[0],
+                start=sessions[reused_count] if reused_count < len(sessions) else formation,
                 end=formation,
                 factor_ids=("dist_52w_high", "dist_52w_low"),
                 _connection=connection,
@@ -393,15 +640,18 @@ def _read_workspace_component_inputs(
             name: np.full(shape, np.nan, dtype=np.float64)
             for name in ("dist_52w_high", "dist_52w_low")
         }
+        if restored is not None:
+            for name in observed:
+                observed[name][:reused_count] = restored["observations::" + name]
     else:
         if sessions != prepared.formation_sessions[: len(sessions)] or not set(listings) <= set(
             prepared.ordered_listing_ids
         ):
             raise ValueError("strategy_score.prepared_input_axis_invalid")
-        columns = [prepared.ordered_listing_ids.index(listing) for listing in listings]
+        column_positions = [prepared.ordered_listing_ids.index(listing) for listing in listings]
 
         def bounded(values: FloatArray) -> FloatArray:
-            return values[: len(sessions), columns].copy()
+            return values[: len(sessions), column_positions].copy()
 
         ohlcv = {name: bounded(values) for name, values in prepared.ohlcv.items()}
         observed = {name: bounded(values) for name, values in prepared.observations.items()}
@@ -409,7 +659,7 @@ def _read_workspace_component_inputs(
         # Only maturities visible at this cutoff are admitted, including the
         # trailing observation rows which were mature at the later capture.
         raw_simple[len(points) :] = np.nan
-        actions = [prepared.actions[column] for column in columns]
+        actions = [prepared.actions[column] for column in column_positions]
         for listing_actions in actions:
             _action_dividends(listing_actions, through=formation)
     listing_positions = {listing: index for index, listing in enumerate(listings)}
@@ -464,30 +714,21 @@ def _read_workspace_component_inputs(
             if value.factor_id == "close_to_close"
         )
         observed["close_to_close"] = (
-            default_extension_kernel_registry()
-            .compute(observation_frame, observation_spec)
+            append_session_observation_values(
+                observation_frame,
+                observation_spec,
+                previous=(
+                    pd.Series(restored["observations::close_to_close"].reshape(-1))
+                    if restored is not None
+                    else None
+                ),
+                compute=default_extension_kernel_registry().compute,
+            )
             .to_numpy(dtype=np.float64)
             .reshape(shape)
         )
-    formula_ids = tuple(
-        sorted(
-            {
-                name.split("::")[1]
-                for name in ordered_feature_ids
-                if name.startswith(
-                    ("RELATIVE_STOCK_CROSS_SECTION::", "NON_NEUTRAL_STOCK_CROSS_SECTION::")
-                )
-            }
-            | set(training_factor_ids)
-        )
-    )
     formula_values: dict[str, FloatArray] = {}
     if formula_ids:
-        extension = {
-            s.factor_id: s
-            for s in (*session_observation_factor_specs(), *session_liquidity_factor_specs())
-        }
-        stored = tuple(sorted((set(formula_ids) | {"mom_252_21"}) - extension.keys()))
         required = set(stored) | (set(formula_ids) & extension.keys())
         if prepared is not None and not required <= prepared.formula_values.keys():
             # A renewed authority can ask for another Feature set. The ordinary
@@ -510,11 +751,14 @@ def _read_workspace_component_inputs(
             rows = feature.feature_rows(
                 listing_ids=listings,
                 catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
-                start=sessions[0],
+                start=sessions[reused_count] if reused_count < len(sessions) else formation,
                 end=formation,
                 factor_ids=stored,
             )
             formula_values = {name: np.full(shape, np.nan, dtype=np.float64) for name in stored}
+            if restored is not None:
+                for name in stored:
+                    formula_values[name][:reused_count] = restored["formula::" + name]
             for item in rows:
                 if item["session_date"] in positions:
                     row, column = (
@@ -541,16 +785,24 @@ def _read_workspace_component_inputs(
             for name in formula_ids:
                 if name in extension:
                     formula_values[name] = (
-                        default_extension_kernel_registry()
-                        .compute(frame, extension[name])
+                        append_session_observation_values(
+                            frame,
+                            extension[name],
+                            previous=(
+                                pd.Series(restored["formula::" + name].reshape(-1))
+                                if restored is not None
+                                else None
+                            ),
+                            compute=default_extension_kernel_registry().compute,
+                        )
                         .to_numpy(dtype=np.float64)
                         .reshape(shape)
                     )
     # The Sector each session reads, the store's history over these names (V346).
-    history = feature.sector_history(manifest, listing_ids=listings)
-    if history is None or set(listings) - set(history):
+    sector_history = feature.sector_history(manifest, listing_ids=listings)
+    if sector_history is None or set(listings) - set(sector_history):
         raise ValueError("strategy_score.sector_coverage_incomplete")
-    mapping = sector_subset(history, listings)
+    mapping = sector_subset(sector_history, listings)
     sectors = sector_ids(mapping)
     if capture:
         if training_factor_ids and (
@@ -571,6 +823,11 @@ def _read_workspace_component_inputs(
             formula_values=_immutable_arrays(formula_values),
             raw_simple=_immutable_arrays({"returns": raw_simple})["returns"],
             actions=tuple(actions),
+            dependency_prefix_hash=dependency_prefix_hash,
+            stable_session_count=len(points),
+            reused_history_hash=(
+                history[0].head_hash if restored is not None and history else None
+            ),
         )
         if (
             workspace_score_source_identity(workspace) != expected_source_hash
@@ -639,6 +896,16 @@ def _read_workspace_component_inputs(
         observation_volume_state=formula_values.get("volume_zscore_21"),
         observation_dollar_volume=formula_values.get("session_dollar_volume"),
         reference_eligible=reference_eligible,
+        selected_sector_source_ids=None if training_factor_ids else ("sector_trend_20",),
+        selected_market_source_ids=(
+            None
+            if training_factor_ids
+            else (
+                "market_drawdown_252",
+                "observed_breadth_positive_share",
+                "observed_new_high_low_share",
+            )
+        ),
     )
     if workspace_score_source_identity(workspace) != expected_source_hash:
         raise ValueError("strategy_score.source_revision_changed")
@@ -647,8 +914,14 @@ def _read_workspace_component_inputs(
         ordered_listing_ids=listings,
         sector_by_listing_id=mapping,
         **ohlcv,
-        market_context_values=market_context[:, [3, 8, 15]],
-        sector_trend_values=sector_context[:, :, 1],
+        market_context_values=(
+            market_context[:, [3, 8, 15]]
+            if training_factor_ids
+            else np.asfortranarray(market_context)
+        ),
+        sector_trend_values=(
+            sector_context[:, :, 1] if training_factor_ids else sector_context.squeeze(axis=-1)
+        ),
         source_binding_hash=expected_source_hash,
         formula_values=formula_values,
         reference_eligible=reference_eligible,

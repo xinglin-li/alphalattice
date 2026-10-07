@@ -10613,6 +10613,153 @@
    "successor": "365b0b5b36a221eb9125a6e9d98304f66f9da25f751fc5e0ed16492368a56e80",
    "change": "P5 input history sharing and matured execution prefix append (2026-10-07)",
    "reason": "Frozen P5 prefix source 94700b5c04bffe7837ad7c4edd7b7e1776cbca2f shares exact-cutoff immutable input history under full database/WAL and workspace/axis proofs, and appends matured execution rows preserving listing-major complete19-column single-chunk IPC/three hashes and actions refusals. Independent source/pair review and retained515artifacts/15050arrays/47954467scalars comparison found no numerical or contract change. LEAD candidate A/L U0 passed225/56 unique reads with exact keys/verdicts/complete numeric-summary maps and unchanged source manifests/census. Exact18moved/61unchanged roles and17 recipe/policy controls; previous1498 records preserved; 144 whole owner/identity/public-closure checks and S4/staged fast gate passed. Clean measured owner source da3 retained100.493s oneG6/two-date contended envelope; no quiet speed guarantee or cross-Task daily reuse acceptance. Evidence: p5-prefix-reuse.md LEAD acceptance and lead-p5-prefix-integration/035330-review-79ca2843.53 immutable pins match; declared mutable run README active snapshot reconstructed to its frozen hash and current closure checked separately. No recipe/permission/scientific refusal or verifier weakened; full INV goal and daily implementation remain active."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "fd3c481fa300440bfd9c05c8cedfc590ca7520f7b1a7c300a91d72e15a23f120",
+   "successor": "d49b821160c39a9b3928c920263475773cea7dd726f6021ba9e393ef11b3d468",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "ab6a4ad7ecc0e21f8aa0bba23313f4335ae0651707374c8cb220ac5a51d42ead",
+   "successor": "adcf967183cee922684a3c60a12ac89c3e5bf667cfd66f07041015450b54f361",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "845ec46632a006ba484467edf15e3c978943a2a55263b71510b98955357360dd",
+   "successor": "3048a0bb7da5cfc62134f38af3cb779d06bef0fdd2346545fd682a3f051126c8",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_OBSERVATION",
+   "predecessor": "4266a1ca7adfd56c26082cf3fd4afbb46b0033bb65a6c33722072a4ec6464e07",
+   "successor": "8ef5b792c0cdbe2caca007477eb7f3ad4c29f47247f8005dd663abd275b04f9c",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "55791772b8aca5979045c33190b5d1474a81df33fb28883ef1be8c22a8fb01d2",
+   "successor": "8f01f5e7f61a1d362b91a19ba476fbbbf3f64538888642c56636f59a53f13186",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "684c4144f7e4b3d64807a2797c81b8b83642afc6bc857feada01b1bd4308f36a",
+   "successor": "0f0fef389a65ced3734ddaec7d2f258e2845b89cd2576c5ab03a8ae3ffcaa44a",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "7efcbbdf428ada2dabc61a0b92d08270cbe4b89765c8239f05d8b01f5bf62193",
+   "successor": "62dc7a8f98cc3338ce8bbad0bbe50a5a9af68a245dabd627989f82c9c7fe99ce",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "bf56681875d1f137cd206326edbc25b563d70d021f61a93d6f036b6808102803",
+   "successor": "904eee2aa427a333062405b6e3a8aa345092b0b8b18564cdf19856f735e9113e",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "faf99558248e8d60583c2af512f585f5863746a7cfd0b9db2701e70c6dee104d",
+   "successor": "8ef29d3d684f42f8cac384571d18fab62f97ead1462b163051d177b186ca6ea9",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "85390fcffa5b2522b12f225533c1b1774702767078e47acae5b9c44af90ab71a",
+   "successor": "f0e3613ff79141c556da0066ad763d97184fb329d88b9c078732d3cb16b856a1",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "88bb9025a16db563304c14dc08e6fc78ec151e26d69ac88357dfe5ed2b994f35",
+   "successor": "43800b18cd20bfd062e0eaa43c1f1fceb24999fa5f6386c78f3ae5e89dc766a8",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "418352b728bc3cc8b60efac0c3ed898889e12c4fad01751108f61d1d062cbf3e",
+   "successor": "ec99ed130618a22167f8415ffd881ef84d453c402e2c609874ef4ca11bbd5096",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "3a25b6962b2dfda6c236010552afecce341aa027d4a95be0333b9ceca7b7bd11",
+   "successor": "7b2ef210687874f68235d9b449c20ba79dd7f8d9880abbb49e534b32270707a5",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "0f37d19b5956298168a87997ec802af820ce6f4938087b70f54ded5a764ab831",
+   "successor": "62669b025e10e3e06a5416eb4d2d02e6a1eaec036e84187352e8f8c7c6c8b188",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "ceae8941a84c08ea3ae807de2f2053824af79cf438d8c682847a664d6034383b",
+   "successor": "e2b8e01af25ecb85d431525e590caf650fddfd91c292a90ae99067e790a43273",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "dfb32a7eef3ac0548063591ed4bdf435c6079c3a94fbae641c0a03147e5d174d",
+   "successor": "eb0d53491ce0e9eb93739f2dc25193125f66201653214d912fdaa6662ff13e48",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "1b562fa2ce9b6f008264d4ad9c641dba012ce0d35ba1b1ec8819fd01a469a10e",
+   "successor": "ae74909b97a783ac7d49ff75dd786b08b801523c7694eb95081f047ad511e8f3",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "1b562fa2ce9b6f008264d4ad9c641dba012ce0d35ba1b1ec8819fd01a469a10e",
+   "successor": "ae74909b97a783ac7d49ff75dd786b08b801523c7694eb95081f047ad511e8f3",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "c6ef58b4853a3eaf19e7f4453a9061a5f6bfe9a0040d15340d26b46aaba521f8",
+   "successor": "3409c701fc6a410eb9afac7d13ae9f93859968dddd68067009e0ea75b48cda1c",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "9b1641abd46ca1c2cd7adb53bd2bf88be9c71862383108d9b454cca3547aae9f",
+   "successor": "0683a5346672ca6725d825ed8fb63e91ac86eae908489c5d7335163c4a87f8b4",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "365b0b5b36a221eb9125a6e9d98304f66f9da25f751fc5e0ed16492368a56e80",
+   "successor": "2ddcdf1bd6226087b155ba2e5a5ebfa530752d72b06e9b5b9a6e99aa78edd1c0",
+   "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
+   "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
   }
  ]
 }

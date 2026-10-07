@@ -1092,6 +1092,8 @@ def assemble_panel_context_arrays(
     observation_high_distance: FloatArray | None = None,
     observation_low_distance: FloatArray | None = None,
     reference_eligible: BoolArray | None = None,
+    selected_sector_source_ids: tuple[str, ...] | None = None,
+    selected_market_source_ids: tuple[str, ...] | None = None,
 ) -> tuple[FloatArray, FloatArray]:
     """Build the declared causal Sector and Market source lanes.
 
@@ -1100,6 +1102,35 @@ def assemble_panel_context_arrays(
     interaction states are already formation-available published surfaces and
     remain distinct lanes.  This owner performs no final scaling; each derived
     column is scaled later at its consuming fold boundary.
+
+    Args:
+        formation_sessions: Ordered formations on the complete source history.
+        holding_end_sessions: Each outcome's maturity, absent while it is unknown.
+        ordered_listing_ids: Source and reference listing axis.
+        ordered_sector_ids: Sector state and output classification axis.
+        sector_by_listing_id: The classification each source session reads.
+        raw_log_execution_returns: Source outcome log returns on the declared axes.
+        raw_simple_execution_returns: Source outcome simple returns on those axes.
+        sector_state_values: Four already admitted causal Sector state lanes.
+        market_interaction_state_values: Two formation-available interaction lanes.
+        observation_returns: Optional formation-available close-to-close observations.
+        observation_volume_state: Optional Formula-owned volume deviations.
+        observation_dollar_volume: Optional formation-observed traded values.
+        observation_high_distance: Optional distances from each listing's own high.
+        observation_low_distance: Optional distances from each listing's own low.
+        reference_eligible: Optional dated reference population; absent means all members.
+        selected_sector_source_ids: Explicit ordered named output lanes, or the full axis.
+        selected_market_source_ids: Explicit ordered named output lanes, or the full axis
+            available from the supplied observations. An empty tuple selects no lanes.
+
+    Returns:
+        Read-only float64 Sector and Market arrays in the requested source-axis order.
+        With both selections absent, these retain the original complete output axes.
+
+    Raises:
+        PanelFeatureBoundaryError: Source/reference axes are invalid, a selected source is
+            unknown or repeated, or a provided observation array in selected mode has the
+            wrong source shape. Default full mode retains its original input admission.
     """
     sessions = len(formation_sessions)
     listings = len(ordered_listing_ids)
@@ -1116,6 +1147,44 @@ def assemble_panel_context_arrays(
         reference_eligible.shape != (sessions, listings) or reference_eligible.dtype != np.bool_
     ):
         raise PanelFeatureBoundaryError("alpha_research.panel_context_reference_axis_invalid")
+    available_market = (
+        BASE_MARKET_CONTEXT_SOURCE_IDS
+        if observation_returns is None
+        else (*BASE_MARKET_CONTEXT_SOURCE_IDS, *OBSERVED_MARKET_SOURCE_IDS)
+    )
+    selected_sector = (
+        SECTOR_CONTEXT_SOURCE_IDS
+        if selected_sector_source_ids is None
+        else selected_sector_source_ids
+    )
+    selected_market = (
+        available_market if selected_market_source_ids is None else selected_market_source_ids
+    )
+    if len(set(selected_sector)) != len(selected_sector) or len(set(selected_market)) != len(
+        selected_market
+    ):
+        raise PanelFeatureBoundaryError("alpha_research.feature_context_axis_invalid")
+    if not set(selected_sector).issubset(SECTOR_CONTEXT_SOURCE_IDS) or not set(
+        selected_market
+    ).issubset(available_market):
+        raise PanelFeatureBoundaryError("alpha_research.feature_context_source_not_installed")
+    if selected_sector_source_ids is not None or selected_market_source_ids is not None:
+        for values in (
+            observation_returns,
+            observation_volume_state,
+            observation_dollar_volume,
+            observation_high_distance,
+            observation_low_distance,
+        ):
+            if values is not None and values.shape != (sessions, listings):
+                raise PanelFeatureBoundaryError("alpha_research.feature_context_axis_invalid")
+    sector_output = {
+        SECTOR_CONTEXT_SOURCE_IDS.index(name): position
+        for position, name in enumerate(selected_sector)
+    }
+    market_output = {
+        available_market.index(name): position for position, name in enumerate(selected_market)
+    }
     groups: tuple[tuple[IntArray, IntArray], ...] = ()
     if reference_eligible is not None:
         masks, inverse = np.unique(reference_eligible, axis=0, return_inverse=True)
@@ -1180,41 +1249,63 @@ def assemble_panel_context_arrays(
         )
         for rows, mapping in sector_slices(sector_by_listing_id, formation_sessions)
     )
-    sector_return_source: FloatArray = np.full((sessions, sectors), np.nan, dtype=np.float64)
-    for rows, sector_positions in sector_runs:
-        for sector_position, sector in enumerate(ordered_sector_ids):
-            with np.errstate(invalid="ignore"):
-                sector_return_source[rows, sector_position] = reduce_reference(
-                    raw_simple_execution_returns, mean, sector_positions[sector]
-                )[rows]
+    sector_return_source: FloatArray | None = None
+    if 0 in sector_output:
+        sector_return_source = np.full((sessions, sectors), np.nan, dtype=np.float64)
+        for rows, sector_positions in sector_runs:
+            for sector_position, sector in enumerate(ordered_sector_ids):
+                with np.errstate(invalid="ignore"):
+                    sector_return_source[rows, sector_position] = reduce_reference(
+                        raw_simple_execution_returns, mean, sector_positions[sector]
+                    )[rows]
     # Deliberately not widened by an observed Sector breadth. It was built and
     # measured at two columns and at ten, and both lost: +0.018119 and +0.019066
     # against +0.020944 without it. The Sector broadcast slot is full -- the same
     # value repeated across every member of a Sector competes with the fifteen
     # Sector columns already carrying that dimension.
-    sector_context: FloatArray = np.full((sessions, sectors, 5), np.nan, dtype=np.float64)
-    for position, source_position in enumerate(latest):
-        if source_position >= 0:
-            sector_context[position, :, 0] = sector_return_source[int(source_position)]
-    sector_context[:, :, 1:] = sector_state_values
-
-    with np.errstate(invalid="ignore", divide="ignore"):
-        market_return_source = reduce_reference(raw_log_execution_returns, mean)
-        finite_simple = np.isfinite(raw_simple_execution_returns)
-        if reference_eligible is not None:
-            finite_simple &= reference_eligible
-        positive = finite_simple & (raw_simple_execution_returns > 0.0)
-        counts = np.sum(finite_simple, axis=1)
-        breadth_source = np.divide(
-            np.sum(positive, axis=1),
-            counts,
-            out=np.full(sessions, np.nan, dtype=np.float64),
-            where=counts > 0,
-        )
-        dispersion_source = reduce_reference(raw_log_execution_returns, sample_std)
-    cumulative_log: FloatArray = np.cumsum(
-        np.where(np.isfinite(market_return_source), market_return_source, 0.0)
+    sector_context: FloatArray = np.full(
+        (sessions, sectors, len(selected_sector)), np.nan, dtype=np.float64
     )
+    if 0 in sector_output:
+        assert sector_return_source is not None
+        for position, source_position in enumerate(latest):
+            if source_position >= 0:
+                sector_context[position, :, sector_output[0]] = sector_return_source[
+                    int(source_position)
+                ]
+    if selected_sector_source_ids is None:
+        sector_context[:, :, 1:] = sector_state_values
+    else:
+        for column, output in sector_output.items():
+            if column:
+                sector_context[:, :, output] = sector_state_values[:, :, column - 1]
+
+    market_return_source: FloatArray | None = None
+    breadth_source: FloatArray | None = None
+    dispersion_source: FloatArray | None = None
+    with np.errstate(invalid="ignore", divide="ignore"):
+        if any(column in market_output for column in (0, 1, 2, 3)):
+            market_return_source = reduce_reference(raw_log_execution_returns, mean)
+        if 4 in market_output:
+            finite_simple = np.isfinite(raw_simple_execution_returns)
+            if reference_eligible is not None:
+                finite_simple &= reference_eligible
+            positive = finite_simple & (raw_simple_execution_returns > 0.0)
+            counts = np.sum(finite_simple, axis=1)
+            breadth_source = np.divide(
+                np.sum(positive, axis=1),
+                counts,
+                out=np.full(sessions, np.nan, dtype=np.float64),
+                where=counts > 0,
+            )
+        if 5 in market_output:
+            dispersion_source = reduce_reference(raw_log_execution_returns, sample_std)
+    cumulative_log: FloatArray | None = None
+    if 3 in market_output:
+        assert market_return_source is not None
+        cumulative_log = np.cumsum(
+            np.where(np.isfinite(market_return_source), market_return_source, 0.0)
+        )
     # Two market columns read the *observation* panel rather than the execution
     # one, and they are the reason this parameter exists.
     #
@@ -1226,72 +1317,104 @@ def assemble_panel_context_arrays(
     # close-to-close returns is complete at `close(t)`, which is when formation
     # happens, so it is available at the formation session itself -- and the
     # freshest lags are exactly where the measured signal in this block sits.
-    width = 8 if observation_returns is None else 8 + len(OBSERVED_MARKET_SOURCE_IDS)
+    width = len(selected_market)
     market_context: FloatArray = np.full((sessions, width), np.nan, dtype=np.float64)
     if observation_returns is not None:
         if observation_returns.shape != (sessions, listings):
             raise PanelFeatureBoundaryError("alpha_research.feature_context_axis_invalid")
         with np.errstate(invalid="ignore", divide="ignore"):
-            finite_observed = np.isfinite(observation_returns)
-            if reference_eligible is not None:
-                finite_observed &= reference_eligible
-            observed_counts = np.sum(finite_observed, axis=1)
-            safe_counts = np.maximum(observed_counts, 1)
-            market_context[:, 8] = np.divide(
-                np.sum(finite_observed & (observation_returns > 0.0), axis=1),
-                observed_counts,
-                out=np.full(sessions, np.nan, dtype=np.float64),
-                where=observed_counts > 0,
-            )
-            market_context[:, 9] = reduce_reference(observation_returns, sample_std)
+            finite_observed: BoolArray | None = None
+            observed_counts: IntArray | None = None
+            if any(column in market_output for column in (8, 10, 16)):
+                finite_observed = np.isfinite(observation_returns)
+                if reference_eligible is not None:
+                    finite_observed &= reference_eligible
+            if 8 in market_output or 10 in market_output:
+                assert finite_observed is not None
+                observed_counts = np.sum(finite_observed, axis=1)
+            if 8 in market_output:
+                assert finite_observed is not None and observed_counts is not None
+                market_context[:, market_output[8]] = np.divide(
+                    np.sum(finite_observed & (observation_returns > 0.0), axis=1),
+                    observed_counts,
+                    out=np.full(sessions, np.nan, dtype=np.float64),
+                    where=observed_counts > 0,
+                )
+            if 9 in market_output:
+                market_context[:, market_output[9]] = reduce_reference(
+                    observation_returns, sample_std
+                )
 
             # Implied average correlation: the index variance a set of stock
             # variances and one realised index variance imply, under equal
             # weights. Session constant, and not a transform of the index return.
-            observed_mean = np.divide(
-                reduce_reference(np.where(finite_observed, observation_returns, 0.0), total),
-                observed_counts,
-                out=np.full(sessions, np.nan, dtype=np.float64),
-                where=observed_counts > 0,
-            )
-            stock_vol = _trailing_std(observation_returns, 63)
-            index_vol = _trailing_std(observed_mean[:, None], 63)[:, 0]
-            mean_variance = reduce_reference(stock_vol**2, mean)
-            mean_vol = reduce_reference(stock_vol, mean)
-            denominator = mean_vol**2 - mean_variance / safe_counts
-            market_context[:, 10] = np.divide(
-                index_vol**2 - mean_variance / safe_counts,
-                denominator,
-                out=np.full(sessions, np.nan, dtype=np.float64),
-                where=np.isfinite(denominator) & (np.abs(denominator) > 0.0),
-            )
+            if 10 in market_output:
+                assert finite_observed is not None and observed_counts is not None
+                safe_counts = np.maximum(observed_counts, 1)
+                observed_mean = np.divide(
+                    reduce_reference(np.where(finite_observed, observation_returns, 0.0), total),
+                    observed_counts,
+                    out=np.full(sessions, np.nan, dtype=np.float64),
+                    where=observed_counts > 0,
+                )
+                stock_vol = _trailing_std(observation_returns, 63)
+                index_vol = _trailing_std(observed_mean[:, None], 63)[:, 0]
+                mean_variance = reduce_reference(stock_vol**2, mean)
+                mean_vol = reduce_reference(stock_vol, mean)
+                denominator = mean_vol**2 - mean_variance / safe_counts
+                market_context[:, market_output[10]] = np.divide(
+                    index_vol**2 - mean_variance / safe_counts,
+                    denominator,
+                    out=np.full(sessions, np.nan, dtype=np.float64),
+                    where=np.isfinite(denominator) & (np.abs(denominator) > 0.0),
+                )
 
             # The dispersion split. Between-Sector is the spread of Sector means;
             # within is what is left once each name is measured against its own
             # Sector, and the ratio is the rotation-versus-selection regime in one
             # number.
-            sector_mean = np.full_like(observation_returns, np.nan)
-            for rows, sector_positions in sector_runs:
-                for positions in sector_positions.values():
-                    if positions.size:
-                        sector_mean[rows, positions] = reduce_reference(
-                            observation_returns, mean, positions
-                        )[rows][:, None]
-            within = reduce_reference(observation_returns - sector_mean, population_std)
-            between = reduce_reference(sector_mean, population_std)
-            market_context[:, 11] = within
-            market_context[:, 12] = between
-            market_context[:, 13] = np.divide(
-                between, within, out=np.full(sessions, np.nan, dtype=np.float64), where=within > 0.0
-            )
+            if any(column in market_output for column in (11, 12, 13)):
+                sector_mean = np.full_like(observation_returns, np.nan)
+                for rows, sector_positions in sector_runs:
+                    for positions in sector_positions.values():
+                        if positions.size:
+                            sector_mean[rows, positions] = reduce_reference(
+                                observation_returns, mean, positions
+                            )[rows][:, None]
+                within: FloatArray | None = None
+                between: FloatArray | None = None
+                if 11 in market_output or 13 in market_output:
+                    within = reduce_reference(observation_returns - sector_mean, population_std)
+                if 12 in market_output or 13 in market_output:
+                    between = reduce_reference(sector_mean, population_std)
+                if 11 in market_output:
+                    assert within is not None
+                    market_context[:, market_output[11]] = within
+                if 12 in market_output:
+                    assert between is not None
+                    market_context[:, market_output[12]] = between
+                if 13 in market_output:
+                    assert within is not None and between is not None
+                    market_context[:, market_output[13]] = np.divide(
+                        between,
+                        within,
+                        out=np.full(sessions, np.nan, dtype=np.float64),
+                        where=within > 0.0,
+                    )
 
-            if observation_volume_state is not None:
+            if 14 in market_output and observation_volume_state is not None:
                 # Universe volume against its own normal, equal weighted. The
                 # per-listing Formula is already the deviation of a session's log
                 # volume from its own trailing mean, so the cross-section of it is
                 # the market's volume regime without a second owner of that rule.
-                market_context[:, 14] = reduce_reference(observation_volume_state, mean)
-            if observation_high_distance is not None and observation_low_distance is not None:
+                market_context[:, market_output[14]] = reduce_reference(
+                    observation_volume_state, mean
+                )
+            if (
+                15 in market_output
+                and observation_high_distance is not None
+                and observation_low_distance is not None
+            ):
                 at_high = np.isfinite(observation_high_distance) & (
                     observation_high_distance >= -_NEW_EXTREME_BAND
                 )
@@ -1304,21 +1427,22 @@ def assemble_panel_context_arrays(
                     at_low &= reference_eligible
                     reach &= reference_eligible
                 reached = np.sum(reach, axis=1)
-                market_context[:, 15] = np.divide(
+                market_context[:, market_output[15]] = np.divide(
                     np.sum(at_high, axis=1) - np.sum(at_low, axis=1),
                     reached,
                     out=np.full(sessions, np.nan, dtype=np.float64),
                     where=reached > 0,
                 )
-            if observation_dollar_volume is not None:
+            if 16 in market_output and observation_dollar_volume is not None:
                 # The share of a session's traded value that changed hands in
                 # names that rose. Breadth counts listings; this weighs them, and
                 # the two disagree exactly when a move is narrow and large.
+                assert finite_observed is not None
                 traded = np.isfinite(observation_dollar_volume) & finite_observed
                 total_traded = reduce_reference(
                     np.where(traded, observation_dollar_volume, 0.0), total
                 )
-                market_context[:, 16] = np.divide(
+                market_context[:, market_output[16]] = np.divide(
                     reduce_reference(
                         np.where(
                             traded & (observation_returns > 0.0),
@@ -1336,20 +1460,38 @@ def assemble_panel_context_arrays(
         source_position = int(source_position_value)
         if source_position < 0:
             continue
-        market_context[position, 0] = market_return_source[source_position]
+        if 0 in market_output:
+            assert market_return_source is not None
+            market_context[position, market_output[0]] = market_return_source[source_position]
         for column, lookback in ((1, 21), (2, 63)):
+            if column not in market_output:
+                continue
+            assert market_return_source is not None
             start = source_position - lookback + 1
             if start >= 0:
                 window = market_return_source[start : source_position + 1]
                 if np.isfinite(window).all():
-                    market_context[position, column] = np.std(window, ddof=1)
-        drawdown_start = source_position - 252 + 1
-        if drawdown_start >= 0:
-            window = cumulative_log[drawdown_start : source_position + 1]
-            market_context[position, 3] = cumulative_log[source_position] - np.max(window)
-        market_context[position, 4] = breadth_source[source_position]
-        market_context[position, 5] = dispersion_source[source_position]
-    market_context[:, 6:8] = market_interaction_state_values
+                    market_context[position, market_output[column]] = np.std(window, ddof=1)
+        if 3 in market_output:
+            assert cumulative_log is not None
+            drawdown_start = source_position - 252 + 1
+            if drawdown_start >= 0:
+                window = cumulative_log[drawdown_start : source_position + 1]
+                market_context[position, market_output[3]] = cumulative_log[
+                    source_position
+                ] - np.max(window)
+        if 4 in market_output:
+            assert breadth_source is not None
+            market_context[position, market_output[4]] = breadth_source[source_position]
+        if 5 in market_output:
+            assert dispersion_source is not None
+            market_context[position, market_output[5]] = dispersion_source[source_position]
+    if selected_market_source_ids is None:
+        market_context[:, 6:8] = market_interaction_state_values
+    else:
+        for column, output in market_output.items():
+            if column in (6, 7):
+                market_context[:, output] = market_interaction_state_values[:, column - 6]
     return (
         cast(FloatArray, _readonly(sector_context, dtype=np.dtype(np.float64))),
         cast(FloatArray, _readonly(market_context, dtype=np.dtype(np.float64))),

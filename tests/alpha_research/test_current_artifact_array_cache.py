@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections import Counter
 from datetime import date
@@ -19,6 +20,7 @@ from alphalattice.investment.alpha_research.publication.artifacts import (
     AlphaCurrentArtifactReadbackError,
     AlphaCurrentArtifactStore,
 )
+from alphalattice.investment.alpha_research.publication.contracts import FrozenFeaturePreparation
 from alphalattice.investment.alpha_research.scores.model_renewal import (
     verified_lifecycle_admissions,
 )
@@ -206,6 +208,71 @@ def test_publishing_the_same_immutable_artifact_succeeds_after_an_opted_in_read(
         assert store.load_frozen_observations(repeated.snapshot_hash).source_binding_hash == (
             observation.snapshot_hash
         )
+
+
+@pytest.mark.parametrize("reuse_verified", (False, True))
+def test_complete_immutable_alpha_models_reuse_validation_only_with_an_opted_in_lease(
+    current_artifacts, monkeypatch, reuse_verified
+):
+    store, _, preparation = current_artifacts
+    validate = FrozenFeaturePreparation.model_validate
+    validations = []
+
+    def counted_validate(cls, value, *args, **kwargs):
+        validations.append(value)
+        return validate(value, *args, **kwargs)
+
+    monkeypatch.setattr(FrozenFeaturePreparation, "model_validate", classmethod(counted_validate))
+    with verified_model_read_scope(reuse_verified=reuse_verified):
+        first, first_surfaces = store.load_frozen_feature_preparation(preparation.preparation_hash)
+    first_count = len(validations)
+    assert first_count == 1  # both owners prove exact current bytes; the model is validated once
+    with verified_model_read_scope(reuse_verified=reuse_verified):
+        second, second_surfaces = store.load_frozen_feature_preparation(
+            preparation.preparation_hash
+        )
+    assert first == second == preparation
+    if os.name == "nt" and reuse_verified:
+        assert len(validations) == first_count
+        assert first is second
+        assert first_surfaces is second_surfaces
+    else:
+        assert len(validations) == first_count + 1
+        assert first is not second
+    assert tuple(surface.feature_values_hash for surface in first_surfaces) == tuple(
+        surface.feature_values_hash for surface in second_surfaces
+    )
+
+
+def test_an_alpha_model_with_nested_mutable_fields_is_always_a_fresh_shell(current_artifacts):
+    store, observation, _ = current_artifacts
+    with verified_model_read_scope(reuse_verified=True):
+        first = store.load_frozen_observation_snapshot(observation.snapshot_hash)
+        first.sector_by_listing_id["QA-A"] = "changed by this caller"
+        second = store.load_frozen_observation_snapshot(observation.snapshot_hash)
+    assert first is not second
+    assert first.sector_by_listing_id is not second.sector_by_listing_id
+    assert second == observation
+    assert second.sector_by_listing_id["QA-A"] == "Technology"
+
+
+def test_a_valid_content_seal_cannot_replace_the_alpha_models_structure(current_artifacts):
+    store, _, preparation = current_artifacts
+    payload = preparation.model_dump(mode="json", exclude={"preparation_hash"})
+    payload["vintages"] = []
+    identity = canonical_hash(payload)
+    path = store._path("current/frozen-feature-preparations", identity, "json")
+    path.write_text(
+        json.dumps(
+            {**payload, "preparation_hash": identity}, sort_keys=True, separators=(",", ":")
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    with verified_model_read_scope(reuse_verified=True):
+        for _ in range(2):
+            with pytest.raises(ValueError, match="frozen_feature_preparation_invalid"):
+                store.load_frozen_feature_preparation(identity)
 
 
 def test_observation_admission_proof_refuses_current_bytes_tampered_after_verification(

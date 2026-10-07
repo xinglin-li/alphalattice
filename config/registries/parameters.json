@@ -1,5 +1,21 @@
 {
 "entries": {
+"src/alphalattice/capabilities/portfolio_inputs/tradability/surface.py::decision_eligible_at_closes::-20": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/capabilities/portfolio_inputs/tradability/surface.py::decision_eligible_at_closes::20": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/foundation/causal_outcomes/execution/artifacts.py::_require_local_qa_hash::64": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/investment/alpha_research/publication/workspace_history.py::retention::2": {
+"class": "METHOD",
+"count": 1
+},
 "src/alphalattice/capabilities/alpha_modeling/adapters/hist_gradient_boosting.py::__post_init__::0.03": {
 "class": "METHOD",
 "count": 1
@@ -6198,19 +6214,19 @@
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::10": {
 "class": "METHOD",
-"count": 1
+"count": 3
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::11": {
 "class": "METHOD",
-"count": 1
+"count": 3
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::12": {
 "class": "METHOD",
-"count": 1
+"count": 3
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::13": {
 "class": "METHOD",
-"count": 1
+"count": 4
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::14": {
 "class": "METHOD",
@@ -6222,11 +6238,11 @@
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::16": {
 "class": "METHOD",
-"count": 1
+"count": 2
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::2": {
 "class": "METHOD",
-"count": 3
+"count": 4
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::21": {
 "class": "METHOD",
@@ -6234,23 +6250,31 @@
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::3": {
 "class": "METHOD",
-"count": 1
+"count": 3
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::4": {
 "class": "METHOD",
-"count": 2
+"count": 3
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::5": {
 "class": "METHOD",
-"count": 1
+"count": 2
+},
+"src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::6": {
+"class": "METHOD",
+"count": 2
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::63": {
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::8": {
+"src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::7": {
 "class": "METHOD",
 "count": 1
+},
+"src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::8": {
+"class": "METHOD",
+"count": 3
 },
 "src/alphalattice/investment/alpha_research/inputs/panel_feature_views.py::assemble_panel_context_arrays::9": {
 "class": "METHOD",

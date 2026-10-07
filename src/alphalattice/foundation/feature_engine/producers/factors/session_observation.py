@@ -272,6 +272,77 @@ def session_observation_factor_specs() -> tuple[FactorSpec, ...]:
     return tuple(sorted(specs, key=lambda value: value.factor_id))
 
 
+def append_session_observation_values(
+    source: pd.DataFrame,
+    specification: FactorSpec,
+    *,
+    previous: pd.Series | None,
+    compute: Callable[[pd.DataFrame, FactorSpec], pd.Series],
+) -> pd.Series:
+    """Append an owned recipe's finite tail to a source-proved observation prefix.
+
+    Args:
+        source: Complete listing/session source on the required output row axis.
+        specification: Exact recipe requested from the installed registry.
+        previous: Immutable, independently source-proved values for the leading
+            source rows, or no prefix for an ordinary full computation.
+        compute: The installed registry's ordinary compute boundary, retaining
+            its ownership, source-field, output-shape and numeric checks.
+
+    Returns:
+        Values on the original source index. Only these exact owned recipes
+        admit finite reuse; any other recipe or non-prefix axis uses the full
+        compute boundary. Every new row receives the original kernel's value
+        after its declared finite source history.
+
+    Raises:
+        ValueError: The ordinary registry refuses the source or recipe.
+    """
+    owned = next(
+        (value for value in session_observation_factor_specs() if value == specification), None
+    )
+    if (
+        owned is None
+        or previous is None
+        or previous.empty
+        or len(previous) > len(source)
+        or previous.dtype != np.dtype(np.float64)
+        or not previous.index.equals(source.index[: len(previous)])
+        or not {"listing_id", "session_date", *owned.required_fields} <= set(source.columns)
+    ):
+        return compute(source, specification)
+    prefix_size = len(previous)
+    if prefix_size == len(source):
+        compute(source.iloc[:0], specification)
+        return previous.copy()
+    ordered_positions = (
+        source[["listing_id", "session_date"]]
+        .reset_index(drop=True)
+        .sort_values(["listing_id", "session_date"], kind="mergesort")
+        .index.to_numpy(dtype=np.intp)
+    )
+    ordered = source.iloc[ordered_positions]
+    tails = []
+    for positions in ordered.groupby("listing_id", sort=False).indices.values():
+        original_positions = ordered_positions[np.asarray(positions, dtype=np.intp)]
+        new = np.flatnonzero(original_positions >= prefix_size)
+        if not len(new):
+            continue
+        first = int(new[0])
+        if np.any(original_positions[first:] < prefix_size):
+            return compute(source, specification)
+        tails.append(original_positions[max(0, first - owned.minimum_observations + 1) :])
+    tail_positions = np.sort(np.concatenate(tails)) if tails else np.empty(0, dtype=np.intp)
+    new_positions = tail_positions[tail_positions >= prefix_size]
+    if not np.array_equal(new_positions, np.arange(prefix_size, len(source))):
+        return compute(source, specification)
+    tail_values = compute(source.iloc[tail_positions], specification).to_numpy(dtype=np.float64)
+    values = np.empty(len(source), dtype=np.float64)
+    values[:prefix_size] = previous.to_numpy(dtype=np.float64)
+    values[new_positions] = tail_values[tail_positions >= prefix_size]
+    return pd.Series(values, index=source.index)
+
+
 def _ordered(source: pd.DataFrame) -> pd.DataFrame:
     return source.assign(_source_position=np.arange(len(source), dtype=np.int64)).sort_values(
         ["listing_id", "session_date"], kind="mergesort"
@@ -460,5 +531,6 @@ __all__ = [
     "SESSION_OBSERVATION_IMPLEMENTATION_IDS",
     "SESSION_OBSERVATION_KERNELS",
     "SESSION_OBSERVATION_METHOD_FAMILY",
+    "append_session_observation_values",
     "session_observation_factor_specs",
 ]

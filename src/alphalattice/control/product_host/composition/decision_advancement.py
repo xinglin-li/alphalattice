@@ -71,6 +71,7 @@ from alphalattice.control.product_host.maintenance.data_update import (
     WorkspaceDataUpdateApplication,
     read_workspace_inputs,
 )
+from alphalattice.control.product_host.storage.inventory import require_storage_capacity
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -1046,7 +1047,6 @@ class DecisionAdvancementApplication:
                     binding = plan.bindings[index]
                     if (
                         index not in prepared_inputs
-                        and len(pending[index]) > 1
                         and binding.source_kind == "WORKSPACE_DATA_FEATURE"
                     ):
                         prepared_inputs[index] = self.scoring.prepare_inputs(
@@ -1115,7 +1115,15 @@ class DecisionAdvancementApplication:
                     held = self._step(plan, key)
                     if held is None and component.weight_rule == "mu.iv0":
                         if market_rows is None:
-                            market_rows = PreparedLocalQASnapshotRows(market_snapshot)
+                            market_rows = PreparedLocalQASnapshotRows.from_artifact(
+                                source_root=self.ledger.root,
+                                source_category="market-inputs",
+                                content_hash=captured.products[0],
+                                artifact_root=self.session.workspace / "artifacts",
+                                capacity=lambda size: require_storage_capacity(
+                                    self.session.workspace, additional_bytes=size
+                                ),
+                            )
                         cp = CalibrationPlan.create(
                             workspace_manifest_hash=self._owner_fields(CALIBRATION_PLAN_FIELDS),
                             binding=self.calibration._binding(plan.package_id),
@@ -1129,9 +1137,10 @@ class DecisionAdvancementApplication:
                             implementation_hash=plan.calibration_implementation_hash,
                         )
                         self._save("calibration-programs", cp, "plan_hash")
-                        obs = self.calibration.execute_step(
-                            cp, CALIBRATION_STAGES[1], lambda _: "", captured=market_rows
-                        )
+                        with self.session.mutation_gate.hold():
+                            obs = self.calibration.execute_step(
+                                cp, CALIBRATION_STAGES[1], lambda _: "", captured=market_rows
+                            )
                         obs_hash = str(obs.evidence[0].content_hash)
                         result = self.calibration.execute_step(
                             cp, CALIBRATION_STAGES[2], {CALIBRATION_STAGES[1]: obs_hash}.__getitem__

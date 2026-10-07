@@ -1,4 +1,4 @@
-"""FU-READ: full saved answers are local snapshots, never requests or current verification."""
+"""Full saved answers are local snapshots, never requests or current verification."""
 
 from __future__ import annotations
 

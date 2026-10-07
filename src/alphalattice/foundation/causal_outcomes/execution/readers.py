@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol, Self, cast
 
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from alphalattice.control.workspace_runtime.content_store import ContentAddressedStore
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
@@ -26,6 +28,7 @@ from .artifacts import (
     DEVELOPMENT_ONLY_MANIFEST_CATEGORY,
     DEVELOPMENT_ONLY_MARKER_CATEGORY,
     METHOD_BINDING_CATEGORY,
+    _canonical_local_qa_table,
     _ExecutionOutcomeArtifactStore,
 )
 from .compile import _SCHEMA_ID, _action_dividends, _schema, derive_causal_execution_row
@@ -37,6 +40,8 @@ from .contracts import (
     DevelopmentOnlyExecutionOutcomeManifest,
     DevelopmentOnlyExecutionOutcomeMarker,
     LocalQAMarketSnapshot,
+    LocalQAOutcomePreparationHead,
+    LocalQAOutcomePreparationSourcePrefix,
     PolicyHoldoutExecutionOutcomeAuthority,
     PolicyHoldoutExecutionOutcomeRelease,
 )
@@ -230,15 +235,24 @@ class PreparedLocalQASnapshotRows:
     _schedule: tuple[CausalExecutionSchedulePoint, ...] = field(repr=False)
     _bars: tuple[RawDailyBar, ...] = field(repr=False)
     _actions: tuple[CorporateActionEvent, ...] = field(repr=False)
+    _artifact_store: _ExecutionOutcomeArtifactStore | None = field(repr=False, compare=False)
     _completed: (
         tuple[tuple[date, ...], date, tuple[CausalExecutionSchedulePoint, ...], pa.Table] | None
     ) = field(repr=False, compare=False)
 
-    def __init__(self, snapshot: LocalQAMarketSnapshot) -> None:
+    def __init__(
+        self,
+        snapshot: LocalQAMarketSnapshot,
+        *,
+        artifact_root: Path | None = None,
+        capacity: Callable[[int], None] | None = None,
+    ) -> None:
         """Verify the full captured content and retain independent immutable values.
 
         Args:
             snapshot: Sealed captured market observations, never a hash-only proof.
+            artifact_root: Optional existing artifact root for immutable QA preparation.
+            capacity: Existing storage owner's admission callback, required for durable writes.
 
         Raises:
             ValueError: The source content, fields or canonical axes are invalid.
@@ -246,11 +260,65 @@ class PreparedLocalQASnapshotRows:
         value = LocalQAMarketSnapshot.model_validate_json(
             json.dumps(snapshot.model_dump(mode="json"), separators=(",", ":"))
         )
+        self._retain(value, artifact_root=artifact_root, capacity=capacity)
+
+    @classmethod
+    def from_artifact(
+        cls,
+        *,
+        source_root: Path,
+        source_category: str,
+        content_hash: str,
+        artifact_root: Path | None = None,
+        capacity: Callable[[int], None] | None = None,
+    ) -> Self:
+        """Prepare from the source owner's fully validated, currently held artifact.
+
+        Args:
+            source_root: Existing captured-input content store, distinct from output artifacts.
+            source_category: Captured market record's category within that store.
+            content_hash: Exact captured market identity, checked against the complete JSON.
+            artifact_root: Optional existing artifact root for immutable QA preparation.
+            capacity: Existing storage owner's admission callback for durable writes.
+
+        Returns:
+            Preparation retaining the source owner's independently validated immutable values.
+
+        Raises:
+            ContentAddressedStoreError: The current source is missing, invalid or tampered.
+            ValueError: Durable output was requested without its capacity owner.
+        """
+        value = ContentAddressedStore(source_root, uri_prefix="causal-outcomes").load_model(
+            category=source_category,
+            content_hash=content_hash,
+            model=LocalQAMarketSnapshot,
+            identity_field="content_hash",
+        )
+        prepared = object.__new__(cls)
+        prepared._retain(value, artifact_root=artifact_root, capacity=capacity)
+        return prepared
+
+    def _retain(
+        self,
+        value: LocalQAMarketSnapshot,
+        *,
+        artifact_root: Path | None,
+        capacity: Callable[[int], None] | None,
+    ) -> None:
+        if artifact_root is not None and capacity is None:
+            raise ValueError("causal_outcomes.qa_preparation_capacity_required")
         object.__setattr__(self, "_through", value.through)
         object.__setattr__(self, "_listing_ids", value.ordered_listing_ids)
         object.__setattr__(self, "_schedule", value.schedule)
         object.__setattr__(self, "_bars", value.bars)
         object.__setattr__(self, "_actions", value.actions)
+        object.__setattr__(
+            self,
+            "_artifact_store",
+            None
+            if artifact_root is None
+            else _ExecutionOutcomeArtifactStore(artifact_root, preparation_capacity=capacity),
+        )
         object.__setattr__(self, "_completed", None)
 
     def rows(
@@ -280,6 +348,31 @@ class PreparedLocalQASnapshotRows:
         )
 
 
+def _local_qa_points_hash(points: tuple[CausalExecutionSchedulePoint, ...]) -> str:
+    return cast(str, canonical_hash(tuple(value.model_dump(mode="json") for value in points)))
+
+
+def _local_qa_source_prefix_hash(
+    *,
+    through: date,
+    listing_ids: tuple[str, ...],
+    schedule: tuple[CausalExecutionSchedulePoint, ...],
+    observations: tuple[RawDailyBar, ...],
+    actions: tuple[CorporateActionEvent, ...],
+    recipe_hash: str,
+) -> str:
+    """Commit actual independently verified bounded values, excluding source revisions."""
+    prefix = LocalQAOutcomePreparationSourcePrefix(
+        through=through,
+        listing_ids=listing_ids,
+        recipe_hash=recipe_hash,
+        schedule=tuple(value for value in schedule if value.formation_session <= through),
+        bars=tuple(value for value in observations if value.session_date <= through),
+        actions=tuple(value for value in actions if value.effective_date <= through),
+    )
+    return cast(str, canonical_hash(prefix.model_dump(mode="json")))
+
+
 def _local_qa_snapshot_rows(
     *,
     sessions: tuple[date, ...],
@@ -299,8 +392,18 @@ def _local_qa_snapshot_rows(
     points = tuple(
         v for v in schedule if v.formation_session in sessions and v.holding_end_session <= through
     )
+    bars = {(v.session_date, v.listing_id): v for v in observations if v.session_date <= through}
+    dividend_axis = ExecutionOutcomeSessionAxis(axis)
+    method = build_one_session_recipe()
+    dividends_by_listing = {
+        listing: _action_dividends(
+            tuple(v for v in actions if v.listing_id == listing), through=through
+        )
+        for listing in listing_ids
+    }
     completed = None
     completed_count = 0
+    durable_previous: LocalQAOutcomePreparationHead | None = None
     previous = None if prepared is None else prepared._completed
     if (
         previous is not None
@@ -310,14 +413,43 @@ def _local_qa_snapshot_rows(
     ):
         completed = previous[3]
         completed_count = len(previous[2])
-    bars = {(v.session_date, v.listing_id): v for v in observations if v.session_date <= through}
-    dividend_axis = ExecutionOutcomeSessionAxis(axis)
-    method = build_one_session_recipe()
+    artifact_store = None if prepared is None else prepared._artifact_store
+    if artifact_store is not None:
+        retained = artifact_store.load_local_qa_preparation()
+        if retained is None:
+            # No marker is a cold durable preparation, even if a prior writer
+            # left uncommitted files or this instance has a memory prefix.
+            completed = None
+            completed_count = 0
+        else:
+            head, retained_table = retained
+            if (
+                through >= head.through
+                and head.recipe_hash == method.recipe_hash
+                and head.listing_axis_hash == canonical_hash(listing_ids)
+                and head.listing_count == len(listing_ids)
+                and len(sessions) >= head.requested_session_count
+                and canonical_hash(sessions[: head.requested_session_count])
+                == head.requested_axis_hash
+                and len(points) >= head.matured_point_count
+                and _local_qa_points_hash(points[: head.matured_point_count])
+                == head.matured_points_hash
+                and _local_qa_source_prefix_hash(
+                    through=head.through,
+                    listing_ids=listing_ids,
+                    schedule=schedule,
+                    observations=observations,
+                    actions=actions,
+                    recipe_hash=method.recipe_hash,
+                )
+                == head.source_prefix_hash
+            ):
+                durable_previous = head
+                completed = retained_table
+                completed_count = head.matured_point_count
     rows = []
     for listing in listing_ids:
-        dividends = _action_dividends(
-            tuple(v for v in actions if v.listing_id == listing), through=through
-        )
+        dividends = dividends_by_listing[listing]
         # Validate every newly admitted action even when no point needs deriving.
         for point in points[completed_count:]:
             rows.append(
@@ -336,6 +468,7 @@ def _local_qa_snapshot_rows(
                 )
             )
     table = pa.Table.from_pylist(rows, schema=_schema())
+    increment = table if table.num_rows else None
     if completed is not None:
         appended_count = len(points) - completed_count
         if appended_count:
@@ -353,6 +486,31 @@ def _local_qa_snapshot_rows(
             ).combine_chunks()
         else:
             table = completed
+    if artifact_store is not None:
+        table = _canonical_local_qa_table(table)
+        artifact_store.publish_local_qa_preparation(
+            table=table,
+            increment=increment,
+            previous=durable_previous,
+            values={
+                "recipe_hash": method.recipe_hash,
+                "listing_axis_hash": canonical_hash(listing_ids),
+                "listing_count": len(listing_ids),
+                "requested_session_count": len(sessions),
+                "requested_axis_hash": canonical_hash(sessions),
+                "matured_point_count": len(points),
+                "matured_points_hash": _local_qa_points_hash(points),
+                "source_prefix_hash": _local_qa_source_prefix_hash(
+                    through=through,
+                    listing_ids=listing_ids,
+                    schedule=schedule,
+                    observations=observations,
+                    actions=actions,
+                    recipe_hash=method.recipe_hash,
+                ),
+                "through": through,
+            },
+        )
     if prepared is not None:
         if table is not completed:
             # Retained buffers are bytes-backed: callers cannot mutate the prepared

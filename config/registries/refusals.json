@@ -3030,6 +3030,15 @@
 "alpha_research.worker_thread_plan_invalid": {
 "owner": "alpha_research"
 },
+"alpha_research.workspace_observation_history_invalid": {
+"owner": "alpha_research"
+},
+"alpha_research.workspace_observation_history_missing": {
+"owner": "alpha_research"
+},
+"alpha_research.workspace_observation_history_reuse_invalid": {
+"owner": "alpha_research"
+},
 "alternative_evidence.access_program_missing": {
 "owner": "alternative_evidence"
 },
@@ -4113,6 +4122,33 @@
 "causal_outcomes.qa_market_snapshot_invalid": {
 "owner": "causal_outcomes"
 },
+"causal_outcomes.qa_preparation_capacity_required": {
+"owner": "causal_outcomes"
+},
+"causal_outcomes.qa_preparation_head_invalid": {
+"owner": "causal_outcomes"
+},
+"causal_outcomes.qa_preparation_identity_invalid": {
+"owner": "causal_outcomes"
+},
+"causal_outcomes.qa_preparation_ipc_mismatch": {
+"owner": "causal_outcomes"
+},
+"causal_outcomes.qa_preparation_marker_invalid": {
+"owner": "causal_outcomes"
+},
+"causal_outcomes.qa_preparation_missing": {
+"owner": "causal_outcomes"
+},
+"causal_outcomes.qa_preparation_part_invalid": {
+"owner": "causal_outcomes"
+},
+"causal_outcomes.qa_preparation_reference_invalid": {
+"owner": "causal_outcomes"
+},
+"causal_outcomes.qa_preparation_source_prefix_invalid": {
+"owner": "causal_outcomes"
+},
 "causal_outcomes.qa_session_axis_invalid": {
 "owner": "causal_outcomes"
 },
@@ -5158,6 +5194,9 @@
 "owner": "feature"
 },
 "feature.source_eligibility_unavailable": {
+"owner": "feature"
+},
+"feature.source_prefix_request_invalid": {
 "owner": "feature"
 },
 "feature.source_session_outside_calendar": {
@@ -6304,6 +6343,9 @@
 "owner": "market_data_ops"
 },
 "market_data_ops.session_mark_surface_not_this_handle": {
+"owner": "market_data_ops"
+},
+"market_data_ops.source_prefix_request_invalid": {
 "owner": "market_data_ops"
 },
 "market_data_ops.universe_manifest_membership_changed": {

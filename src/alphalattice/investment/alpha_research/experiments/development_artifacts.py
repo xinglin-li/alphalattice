@@ -38,6 +38,7 @@ from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
     verified_npz_arrays,
+    verified_request_value,
     verified_source_value,
 )
 from alphalattice.investment.alpha_research.calibration.return_unit import (
@@ -603,13 +604,35 @@ class AlphaDevelopmentArtifactStore:
         content_hash: str,
         identity_field: str,
     ) -> tuple[_ModelT, tuple[str, ...]]:
-        """Validate a model while retaining the exact JSON descriptor commitment."""
+        """Reuse complete immutable Python-mode validation of exact verified bytes.
+
+        The original descriptor, canonical content and model checks all run on
+        a cold or invalidated read. Mutable models and ordinary non-opted reads
+        retain their fresh parsing; the shared store's deep immutability check
+        admits only fully immutable results to its existing bounded cache.
+        """
         payload, file_identity = self._load_identity_json_with_identity(
             uri=self.uri(category, content_hash),
             category=category,
             identity_field=identity_field,
         )
-        return cast(_ModelT, model.model_validate(payload)), file_identity
+
+        def verify() -> tuple[_ModelT, tuple[str, ...]]:
+            return cast(_ModelT, model.model_validate(payload)), file_identity
+
+        return verified_request_value(
+            (
+                "alpha-identity-model-python",
+                str(self.root),
+                category,
+                content_hash,
+                model,
+                identity_field,
+                *file_identity,
+            ),
+            verify,
+            nbytes=int(file_identity[3]),
+        )
 
     def _publish(self, category: str, value: BaseModel, identity_field: str) -> str:
         return str(
@@ -637,16 +660,13 @@ class AlphaDevelopmentArtifactStore:
         already named in its own signature.
         """
 
-        return cast(
-            _ModelT,
-            model.model_validate(
-                self._load_identity_json(
-                    uri=self.uri(category, content_hash),
-                    category=category,
-                    identity_field=identity_field,
-                )
-            ),
+        value, _ = self._read_identity_json_with_identity(
+            model,
+            category=category,
+            content_hash=content_hash,
+            identity_field=identity_field,
         )
+        return value
 
     def _read_identity_json_text(
         self,
