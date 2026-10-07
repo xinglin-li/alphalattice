@@ -48,6 +48,7 @@ from alphalattice.control.product_host.composition.strategy_calibration import (
     _implementation_hash as calibration_identity,
 )
 from alphalattice.control.product_host.composition.strategy_score_inputs import (
+    PreparedWorkspaceComponentInputs,
     score_source_identity,
     workspace_score_source_identity,
 )
@@ -1019,6 +1020,22 @@ class DecisionAdvancementApplication:
                     continue
                 prior_score = max(historical, key=lambda s: s.formation_session)
                 effective_authorities[index] = prior_score.inference_authority_hash
+            pending = {
+                index: tuple(
+                    day
+                    for component, day in plan.requests
+                    if component == index
+                    and self._step(
+                        plan,
+                        "features_"
+                        + (f"{index}_" if plan.score_bindings else "")
+                        + day.isoformat(),
+                    )
+                    is None
+                )
+                for index in range(len(plan.bindings))
+            }
+            prepared_inputs: dict[int, PreparedWorkspaceComponentInputs | None] = {}
             for index, day in plan.requests:
                 self._cancel(task)
                 score_plan = self._score_plan(plan, day, source, index)
@@ -1026,11 +1043,25 @@ class DecisionAdvancementApplication:
                 key = "features_" + (f"{index}_" if plan.score_bindings else "") + day.isoformat()
                 held = self._step(plan, key)
                 if held is None:
+                    binding = plan.bindings[index]
+                    if (
+                        index not in prepared_inputs
+                        and len(pending[index]) > 1
+                        and binding.source_kind == "WORKSPACE_DATA_FEATURE"
+                    ):
+                        prepared_inputs[index] = self.scoring.prepare_inputs(
+                            binding,
+                            through=max(pending[index]),
+                            expected_source_hash=source,
+                            captured_authority_hash=effective_authorities.get(index),
+                            observed_at=self.clock(),
+                        )
                     result = self.scoring.execute_step(
                         score_plan,
                         SCORE_STAGES[1],
                         lambda _: "",
                         captured_authority_hash=effective_authorities.get(index),
+                        prepared_inputs=prepared_inputs.get(index),
                     )
                     held = self._commit(
                         plan,

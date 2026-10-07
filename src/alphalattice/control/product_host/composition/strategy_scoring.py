@@ -25,7 +25,9 @@ from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.strategy_score_inputs import (
+    PreparedWorkspaceComponentInputs,
     build_workspace_score_inputs,
+    prepare_workspace_component_inputs,
     read_workspace_component_inputs,
     workspace_score_source_identity,
 )
@@ -690,6 +692,65 @@ class StrategyScoringApplication:
                 lambda stage: self._stage_hash(task, stage),
             )
 
+    def prepare_inputs(
+        self,
+        binding: ResearchWorkspaceScoreInput,
+        *,
+        through: date,
+        expected_source_hash: str,
+        captured_authority_hash: str | None = None,
+        observed_at: datetime | None = None,
+    ) -> PreparedWorkspaceComponentInputs | None:
+        """Hold verified raw/Feature history for this Task's later cutoff projections.
+
+        Args:
+            binding: Exact installed component input binding.
+            through: Maximum requested formation not already prepared by this Task.
+            expected_source_hash: Exact admitted workspace source identity.
+            captured_authority_hash: Optional preceding formation's effective authority.
+            observed_at: Explicit shared calendar observation; defaults to the owner clock.
+
+        Returns:
+            Independently held immutable history, or no prepared value for a recorded
+            source or when a later invalid action requires each formation's full reader.
+
+        Raises:
+            ValueError: Source proof, qualification or authority checks fail.
+        """
+        if binding.source_kind != "WORKSPACE_DATA_FEATURE":
+            return None
+        authority = (
+            self._authority(binding)
+            if captured_authority_hash is None
+            else self._captured_authority(binding, captured_authority_hash)
+        )
+        with self.session.reads():
+            try:
+                return prepare_workspace_component_inputs(
+                    self.session.workspace,
+                    through=through,
+                    observed_at=self.clock() if observed_at is None else observed_at,
+                    expected_source_hash=expected_source_hash,
+                    ordered_feature_ids=authority.authority.model_set.ordered_feature_ids,
+                    training_factor_ids=(
+                        authority.authority.training_factor_ids
+                        if isinstance(authority, AdmittedRenewingInference)
+                        and not authority.authority.supports(through)
+                        else ()
+                    ),
+                )
+            except ValueError as error:
+                if str(error) not in {
+                    "causal execution dividend is invalid",
+                    "causal execution split is invalid",
+                    "causal execution encountered an unsupported corporate action",
+                }:
+                    raise
+                # A max-cutoff capture must not move an invalid later action
+                # into an earlier legal formation. The original per-cutoff
+                # reader will accept or refuse at the action's own effective date.
+                return None
+
     def execute_step(
         self,
         plan: StrategyScorePlan,
@@ -697,6 +758,7 @@ class StrategyScoringApplication:
         prior: Callable[[str], str],
         *,
         captured_authority_hash: str | None = None,
+        prepared_inputs: PreparedWorkspaceComponentInputs | None = None,
     ) -> StageExecutionResult:
         """Execute domain work; the caller owns Task stages and verifies the prefix."""
         self._require_plan(plan)
@@ -728,14 +790,20 @@ class StrategyScoringApplication:
                     if observed_training.observation_hash != plan.source_identity_hash:
                         raise ValueError("strategy_score.recorded_training_source_mismatch")
                 else:
-                    source, training = read_workspace_component_inputs(
-                        self.session.workspace,
-                        formation=plan.formation_session,
-                        observed_at=self.clock(),
-                        expected_source_hash=plan.source_identity_hash,
-                        ordered_feature_ids=authority.authority.component.ordered_feature_ids,
-                        training_factor_ids=authority.authority.training_factor_ids,
-                    )
+                    with self.session.reads():
+                        source, training = read_workspace_component_inputs(
+                            self.session.workspace,
+                            formation=plan.formation_session,
+                            observed_at=(
+                                self.clock()
+                                if prepared_inputs is None
+                                else prepared_inputs.observed_at
+                            ),
+                            expected_source_hash=plan.source_identity_hash,
+                            ordered_feature_ids=authority.authority.component.ordered_feature_ids,
+                            training_factor_ids=authority.authority.training_factor_ids,
+                            prepared=prepared_inputs,
+                        )
                     assert training is not None
                     observed_training = publish_component_training_observations(
                         self.store,
@@ -759,13 +827,17 @@ class StrategyScoringApplication:
                 source = self.store.load_frozen_observations(plan.source_identity_hash)
                 observation = self.store.load_frozen_observation_snapshot(plan.source_identity_hash)
             else:
-                source = build_workspace_score_inputs(
-                    self.session.workspace,
-                    formation=plan.formation_session,
-                    observed_at=self.clock(),
-                    expected_source_hash=plan.source_identity_hash,
-                    ordered_feature_ids=authority.authority.model_set.ordered_feature_ids,
-                )
+                with self.session.reads():
+                    source = build_workspace_score_inputs(
+                        self.session.workspace,
+                        formation=plan.formation_session,
+                        observed_at=(
+                            self.clock() if prepared_inputs is None else prepared_inputs.observed_at
+                        ),
+                        expected_source_hash=plan.source_identity_hash,
+                        ordered_feature_ids=authority.authority.model_set.ordered_feature_ids,
+                        prepared=prepared_inputs,
+                    )
                 observation = self.store.publish_frozen_observations(
                     source, disposition="RECORDED_INPUT_QA"
                 )

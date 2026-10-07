@@ -230,6 +230,9 @@ class PreparedLocalQASnapshotRows:
     _schedule: tuple[CausalExecutionSchedulePoint, ...] = field(repr=False)
     _bars: tuple[RawDailyBar, ...] = field(repr=False)
     _actions: tuple[CorporateActionEvent, ...] = field(repr=False)
+    _completed: (
+        tuple[tuple[date, ...], date, tuple[CausalExecutionSchedulePoint, ...], pa.Table] | None
+    ) = field(repr=False, compare=False)
 
     def __init__(self, snapshot: LocalQAMarketSnapshot) -> None:
         """Verify the full captured content and retain independent immutable values.
@@ -248,6 +251,7 @@ class PreparedLocalQASnapshotRows:
         object.__setattr__(self, "_schedule", value.schedule)
         object.__setattr__(self, "_bars", value.bars)
         object.__setattr__(self, "_actions", value.actions)
+        object.__setattr__(self, "_completed", None)
 
     def rows(
         self, *, sessions: tuple[date, ...], through: date
@@ -272,6 +276,7 @@ class PreparedLocalQASnapshotRows:
             schedule=self._schedule,
             observations=self._bars,
             actions=self._actions,
+            prepared=self,
         )
 
 
@@ -284,6 +289,7 @@ def _local_qa_snapshot_rows(
     schedule: tuple[CausalExecutionSchedulePoint, ...],
     observations: tuple[RawDailyBar, ...],
     actions: tuple[CorporateActionEvent, ...],
+    prepared: PreparedLocalQASnapshotRows | None = None,
 ) -> tuple[pa.Table, dict[tuple[date, str], RawDailyBar], tuple[date, ...]]:
     if through > maximum_through or through not in {v.formation_session for v in schedule}:
         raise ValueError("causal_outcomes.qa_calendar_support_absent")
@@ -293,6 +299,17 @@ def _local_qa_snapshot_rows(
     points = tuple(
         v for v in schedule if v.formation_session in sessions and v.holding_end_session <= through
     )
+    completed = None
+    completed_count = 0
+    previous = None if prepared is None else prepared._completed
+    if (
+        previous is not None
+        and through >= previous[1]
+        and sessions[: len(previous[0])] == previous[0]
+        and points[: len(previous[2])] == previous[2]
+    ):
+        completed = previous[3]
+        completed_count = len(previous[2])
     bars = {(v.session_date, v.listing_id): v for v in observations if v.session_date <= through}
     dividend_axis = ExecutionOutcomeSessionAxis(axis)
     method = build_one_session_recipe()
@@ -301,7 +318,8 @@ def _local_qa_snapshot_rows(
         dividends = _action_dividends(
             tuple(v for v in actions if v.listing_id == listing), through=through
         )
-        for point in points:
+        # Validate every newly admitted action even when no point needs deriving.
+        for point in points[completed_count:]:
             rows.append(
                 derive_causal_execution_row(
                     listing_id=listing,
@@ -317,7 +335,46 @@ def _local_qa_snapshot_rows(
                     ),
                 )
             )
-    return pa.Table.from_pylist(rows, schema=_schema()), bars, axis
+    table = pa.Table.from_pylist(rows, schema=_schema())
+    if completed is not None:
+        appended_count = len(points) - completed_count
+        if appended_count:
+            # Both source tables are listing-major. Interleave their listing slices
+            # before combining, preserving the full builder's row and IPC order.
+            table = pa.concat_tables(
+                [
+                    part
+                    for i in range(len(listing_ids))
+                    for part in (
+                        completed.slice(i * completed_count, completed_count),
+                        table.slice(i * appended_count, appended_count),
+                    )
+                ]
+            ).combine_chunks()
+        else:
+            table = completed
+    if prepared is not None:
+        if table is not completed:
+            # Retained buffers are bytes-backed: callers cannot mutate the prepared
+            # prefix through an Arrow buffer or a writable NumPy view.
+            table = pa.Table.from_arrays(
+                [
+                    pa.Array.from_buffers(
+                        column.type,
+                        len(column),
+                        [
+                            None if buffer is None else pa.py_buffer(buffer.to_pybytes())
+                            for buffer in column.chunk(0).buffers()
+                        ],
+                        null_count=column.null_count,
+                    )
+                    for column in table.columns
+                ],
+                schema=table.schema,
+            )
+        object.__setattr__(prepared, "_completed", (sessions, through, points, table))
+        table = table.select(table.column_names)
+    return table, bars, axis
 
 
 def local_qa_snapshot_rows(

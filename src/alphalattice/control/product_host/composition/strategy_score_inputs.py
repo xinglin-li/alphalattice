@@ -7,7 +7,10 @@ only resolves their axes and delegates; it publishes no Foundation or book.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date, datetime
+from hashlib import file_digest
 from pathlib import Path
 from types import MappingProxyType
 
@@ -21,7 +24,7 @@ from alphalattice.control.product_host.maintenance.data_update import (
 )
 from alphalattice.foundation.causal_outcomes.execution.compile import (
     _action_dividends,
-    derive_causal_execution_row,
+    causal_execution_simple_return,
 )
 from alphalattice.foundation.causal_outcomes.execution.methods import (
     ONE_SESSION_RECIPE_ID,
@@ -46,6 +49,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
     FeatureStateRepository,
     PanelStateRepository,
 )
+from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     BoolArray,
@@ -64,6 +68,98 @@ from alphalattice.investment.sector_research.inputs.surface import compile_secto
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.quant.sector_history import sector_ids, sector_subset
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+
+@dataclass(frozen=True)
+class PreparedWorkspaceComponentInputs:
+    """One Task's independently held, verified raw and Feature observation history.
+
+    Array storage is immutable bytes. A formation receives its own arrays and
+    its own membership and causal Context calculation; no later maturity is
+    visible through this held history.
+    """
+
+    workspace: Path
+    through: date
+    observed_at: datetime
+    source_hash: str
+    source_proof: tuple[tuple[str, str | None], ...]
+    formation_sessions: tuple[date, ...]
+    ordered_listing_ids: tuple[str, ...]
+    ohlcv: Mapping[str, FloatArray]
+    observations: Mapping[str, FloatArray]
+    formula_values: Mapping[str, FloatArray]
+    raw_simple: FloatArray
+    actions: tuple[tuple[CorporateActionEvent, ...], ...]
+
+
+def _market_source_proof(market: MarketDataRepository) -> tuple[tuple[str, str | None], ...]:
+    # A revision journal is not a content proof. Include the WAL's presence and
+    # exact bytes: a live writable instance can commit without checkpointing.
+    proof = []
+    for path in (market.path, Path(str(market.path) + ".wal")):
+        try:
+            with path.open("rb") as handle:
+                digest = file_digest(handle, "sha256").hexdigest()
+        except FileNotFoundError:
+            if path == market.path:
+                raise
+            digest = None
+        proof.append((str(path.resolve()), digest))
+    return tuple(proof)
+
+
+def _immutable_arrays(values: Mapping[str, FloatArray]) -> Mapping[str, FloatArray]:
+    return MappingProxyType(
+        {
+            name: np.frombuffer(array.tobytes(order="C"), dtype=array.dtype).reshape(array.shape)
+            for name, array in values.items()
+        }
+    )
+
+
+def prepare_workspace_component_inputs(
+    workspace: Path,
+    *,
+    through: date,
+    observed_at: datetime,
+    expected_source_hash: str,
+    ordered_feature_ids: tuple[str, ...] = (),
+    training_factor_ids: tuple[str, ...] = (),
+) -> PreparedWorkspaceComponentInputs:
+    """Verify and hold one maximum-cutoff history for projections in one Task.
+
+    Capture validates the source, raw and Feature history and Sector mapping.
+    Every formation verifies the current database bytes and performs its own
+    ordinary Context and optional training-target checks.
+    The caller owns the value's lifetime and discards it when its Task stage ends.
+
+    Args:
+        workspace: Admitted workspace; its retained writer lease and mutation gate
+            must cover this read boundary, as the scoring application arranges.
+        through: Maximum completed formation in the Task's pending requests.
+        observed_at: Shared explicit calendar observation timestamp.
+        expected_source_hash: Required admitted workspace score source.
+        ordered_feature_ids: Exact inference Feature selections to prepare.
+        training_factor_ids: Optional sorted unique mature training factors.
+
+    Returns:
+        Independently held immutable raw and Feature history.
+
+    Raises:
+        ValueError: Ordinary cutoff admission or exact source proof fails.
+    """
+    _, _, history = _read_workspace_component_inputs(
+        workspace,
+        formation=through,
+        observed_at=observed_at,
+        expected_source_hash=expected_source_hash,
+        ordered_feature_ids=ordered_feature_ids,
+        training_factor_ids=training_factor_ids,
+        capture=True,
+    )
+    assert history is not None
+    return history
 
 
 def workspace_score_source_identity(workspace: Path) -> str:
@@ -101,6 +197,7 @@ def build_workspace_score_inputs(
     observed_at: datetime,
     expected_source_hash: str,
     ordered_feature_ids: tuple[str, ...] = (),
+    prepared: PreparedWorkspaceComponentInputs | None = None,
 ) -> FrozenPriceVolumeInputs:
     """Build exact qualified price-volume inference inputs for one completed formation.
 
@@ -110,17 +207,21 @@ def build_workspace_score_inputs(
         observed_at: Explicit calendar observation timestamp.
         expected_source_hash: Required exact workspace score source.
         ordered_feature_ids: Explicit inference feature selections.
+        prepared: Optional Task-local maximum-cutoff history to project.
 
     Returns:
         Frozen source arrays assembled by the existing Data and Feature owners.
     """
-    return read_workspace_component_inputs(
+    source, _ = read_workspace_component_inputs(
         workspace,
         formation=formation,
         observed_at=observed_at,
         expected_source_hash=expected_source_hash,
         ordered_feature_ids=ordered_feature_ids,
-    )[0]
+        prepared=prepared,
+    )
+    assert source is not None
+    return source
 
 
 def read_workspace_component_inputs(
@@ -131,6 +232,7 @@ def read_workspace_component_inputs(
     expected_source_hash: str,
     ordered_feature_ids: tuple[str, ...] = (),
     training_factor_ids: tuple[str, ...] = (),
+    prepared: PreparedWorkspaceComponentInputs | None = None,
 ) -> tuple[FrozenPriceVolumeInputs, PanelFeatureSourceArrays | None]:
     """Read exact qualified inference inputs and optional mature training support.
 
@@ -145,6 +247,7 @@ def read_workspace_component_inputs(
         expected_source_hash: Required exact workspace score source.
         ordered_feature_ids: Explicit inference feature selections.
         training_factor_ids: Optional sorted unique factors selecting a mature training view.
+        prepared: Optional Task-local maximum-cutoff history to project.
 
     Returns:
         Frozen inference inputs and optional training arrays with known one-session maturities.
@@ -153,9 +256,48 @@ def read_workspace_component_inputs(
         ValueError: Source changes, qualified support/calendar/sector coverage is absent or selected
             training support is invalid.
     """
+    source, training, _ = _read_workspace_component_inputs(
+        workspace,
+        formation=formation,
+        observed_at=observed_at,
+        expected_source_hash=expected_source_hash,
+        ordered_feature_ids=ordered_feature_ids,
+        training_factor_ids=training_factor_ids,
+        prepared=prepared,
+    )
+    assert source is not None
+    return source, training
+
+
+def _read_workspace_component_inputs(
+    workspace: Path,
+    *,
+    formation: date,
+    observed_at: datetime,
+    expected_source_hash: str,
+    ordered_feature_ids: tuple[str, ...] = (),
+    training_factor_ids: tuple[str, ...] = (),
+    prepared: PreparedWorkspaceComponentInputs | None = None,
+    capture: bool = False,
+) -> tuple[
+    FrozenPriceVolumeInputs | None,
+    PanelFeatureSourceArrays | None,
+    PreparedWorkspaceComponentInputs | None,
+]:
     if workspace_score_source_identity(workspace) != expected_source_hash:
         raise ValueError("strategy_score.source_revision_changed")
     market = MarketDataRepository(workspace)
+    proof = _market_source_proof(market) if capture or prepared is not None else None
+    if prepared is not None:
+        if (
+            prepared.workspace != workspace.resolve()
+            or prepared.source_hash != expected_source_hash
+            or prepared.observed_at != observed_at
+            or formation > prepared.through
+        ):
+            raise ValueError("strategy_score.prepared_input_binding_invalid")
+        if proof != prepared.source_proof:
+            raise ValueError("strategy_score.source_revision_changed")
     readiness = market.readiness.load("us-current-index-research")
     if readiness is None or readiness.active_manifest_id is None:
         raise ValueError("strategy_score.workspace_not_qualified")
@@ -201,53 +343,75 @@ def read_workspace_component_inputs(
     points = resolve_schedule_points(recipe=method, ordered_sessions=axis, session_clocks=clocks)
     by_formation = {point.formation_session: point for point in points}
     dividend_axis = ExecutionOutcomeSessionAxis(axis)
-    # One read connection shared with both existing Data readers.
-    with market._connect(read_only=True) as connection:
-        for column, listing in enumerate(listings):
-            bars = market.raw_bars(
-                listing, start=sessions[0], through=formation, _connection=connection
-            )
-            by_session = {bar.session_date: bar for bar in bars}
-            dividends = _action_dividends(
-                market.actions(listing, _connection=connection), through=formation
-            )
-            for bar in bars:
-                if bar.session_date in positions:
-                    for name in ohlcv:
-                        value = getattr(bar, name)
-                        ohlcv[name][positions[bar.session_date], column] = (
-                            np.nan if value is None else float(value)
-                        )
-            for row, session in enumerate(sessions):
-                point = by_formation.get(session)
-                if point is None:
-                    continue
-                result = derive_causal_execution_row(
-                    listing_id=listing,
-                    symbol=listing,
-                    point=point,
-                    entry_bar=by_session.get(point.entry_session),
-                    holding_bar=by_session.get(point.holding_end_session),
-                    period_dividend_split_adjusted=period_dividend_for_point(
-                        recipe=method,
-                        dividends=dividends,
-                        ordered_sessions=dividend_axis,
-                        point=point,
-                    ),
+    actions: list[tuple[CorporateActionEvent, ...]] = []
+    if prepared is None:
+        with market._connect(read_only=True) as connection, connection.snapshot():
+            for column, listing in enumerate(listings):
+                bars = market.raw_bars(
+                    listing, start=sessions[0], through=formation, _connection=connection
                 )
-                value = result["simple_return"]
-                raw_simple[row, column] = np.nan if value is None else value
-        observations = feature.feature_rows(
-            listing_ids=listings,
-            catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
-            start=sessions[0],
-            end=formation,
-            factor_ids=("dist_52w_high", "dist_52w_low"),
-            _connection=connection,
-        )
-    observed: dict[str, FloatArray] = {
-        name: np.full(shape, np.nan, dtype=np.float64) for name in ("dist_52w_high", "dist_52w_low")
-    }
+                by_session = {bar.session_date: bar for bar in bars}
+                listing_actions = market.actions(listing, _connection=connection)
+                actions.append(listing_actions)
+                try:
+                    dividends = _action_dividends(listing_actions, through=formation)
+                except ValueError as error:
+                    if proof is not None and _market_source_proof(market) != proof:
+                        raise ValueError("strategy_score.source_revision_changed") from error
+                    raise
+                for bar in bars:
+                    if bar.session_date in positions:
+                        for name in ohlcv:
+                            value = getattr(bar, name)
+                            ohlcv[name][positions[bar.session_date], column] = (
+                                np.nan if value is None else float(value)
+                            )
+                for row, session in enumerate(sessions):
+                    point = by_formation.get(session)
+                    if point is None:
+                        continue
+                    value = causal_execution_simple_return(
+                        entry_bar=by_session.get(point.entry_session),
+                        holding_bar=by_session.get(point.holding_end_session),
+                        period_dividend_split_adjusted=period_dividend_for_point(
+                            recipe=method,
+                            dividends=dividends,
+                            ordered_sessions=dividend_axis,
+                            point=point,
+                        ),
+                    )
+                    raw_simple[row, column] = np.nan if value is None else value
+            observations = feature.feature_rows(
+                listing_ids=listings,
+                catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
+                start=sessions[0],
+                end=formation,
+                factor_ids=("dist_52w_high", "dist_52w_low"),
+                _connection=connection,
+            )
+        observed: dict[str, FloatArray] = {
+            name: np.full(shape, np.nan, dtype=np.float64)
+            for name in ("dist_52w_high", "dist_52w_low")
+        }
+    else:
+        if sessions != prepared.formation_sessions[: len(sessions)] or not set(listings) <= set(
+            prepared.ordered_listing_ids
+        ):
+            raise ValueError("strategy_score.prepared_input_axis_invalid")
+        columns = [prepared.ordered_listing_ids.index(listing) for listing in listings]
+
+        def bounded(values: FloatArray) -> FloatArray:
+            return values[: len(sessions), columns].copy()
+
+        ohlcv = {name: bounded(values) for name, values in prepared.ohlcv.items()}
+        observed = {name: bounded(values) for name, values in prepared.observations.items()}
+        raw_simple = bounded(prepared.raw_simple)
+        # Only maturities visible at this cutoff are admitted, including the
+        # trailing observation rows which were mature at the later capture.
+        raw_simple[len(points) :] = np.nan
+        actions = [prepared.actions[column] for column in columns]
+        for listing_actions in actions:
+            _action_dividends(listing_actions, through=formation)
     listing_positions = {listing: index for index, listing in enumerate(listings)}
     reference_eligible: BoolArray | None = None
     nominal: IntArray | None = None
@@ -276,32 +440,35 @@ def read_workspace_component_inputs(
         reference_eligible &= np.isfinite(ohlcv["close"]) & (ohlcv["close"] > 0.0)
         reference_eligible.setflags(write=False)
         nominal.setflags(write=False)
-    for item in observations:
-        if item["session_date"] not in positions:
-            continue
-        row, column = positions[item["session_date"]], listing_positions[item["listing_id"]]
-        for name in observed:
-            observed[name][row, column] = np.nan if item[name] is None else item[name]
-    raw_log = np.log1p(raw_simple)
+    if prepared is None:
+        for item in observations:
+            if item["session_date"] not in positions:
+                continue
+            row, column = positions[item["session_date"]], listing_positions[item["listing_id"]]
+            for name in observed:
+                observed[name][row, column] = np.nan if item[name] is None else item[name]
     # This formula's kernel is installed, although the ordinary stored catalog
     # need not materialize its column. Invoke its owner; do not invent an alias
     # or change the workspace's global Feature catalog.
-    observation_frame = pd.DataFrame(
-        {
-            "session_date": np.repeat(np.asarray(sessions, dtype=object), len(listings)),
-            "listing_id": np.tile(np.asarray(listings, dtype=object), len(sessions)),
-            "close_split_adjusted": ohlcv["close"].reshape(-1),
-        }
-    )
-    observation_spec = next(
-        value for value in session_observation_factor_specs() if value.factor_id == "close_to_close"
-    )
-    observed["close_to_close"] = (
-        default_extension_kernel_registry()
-        .compute(observation_frame, observation_spec)
-        .to_numpy(dtype=np.float64)
-        .reshape(shape)
-    )
+    if prepared is None:
+        observation_frame = pd.DataFrame(
+            {
+                "session_date": np.repeat(np.asarray(sessions, dtype=object), len(listings)),
+                "listing_id": np.tile(np.asarray(listings, dtype=object), len(sessions)),
+                "close_split_adjusted": ohlcv["close"].reshape(-1),
+            }
+        )
+        observation_spec = next(
+            value
+            for value in session_observation_factor_specs()
+            if value.factor_id == "close_to_close"
+        )
+        observed["close_to_close"] = (
+            default_extension_kernel_registry()
+            .compute(observation_frame, observation_spec)
+            .to_numpy(dtype=np.float64)
+            .reshape(shape)
+        )
     formula_ids = tuple(
         sorted(
             {
@@ -321,50 +488,101 @@ def read_workspace_component_inputs(
             for s in (*session_observation_factor_specs(), *session_liquidity_factor_specs())
         }
         stored = tuple(sorted((set(formula_ids) | {"mom_252_21"}) - extension.keys()))
-        rows = feature.feature_rows(
-            listing_ids=listings,
-            catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
-            start=sessions[0],
-            end=formation,
-            factor_ids=stored,
-        )
-        formula_values = {name: np.full(shape, np.nan, dtype=np.float64) for name in stored}
-        for item in rows:
-            if item["session_date"] in positions:
-                row, column = positions[item["session_date"]], listing_positions[item["listing_id"]]
-                for name in stored:
-                    formula_values[name][row, column] = np.nan if item[name] is None else item[name]
-        frame = pd.DataFrame(
-            {
-                "session_date": np.repeat(np.asarray(sessions, dtype=object), len(listings)),
-                "listing_id": np.tile(np.asarray(listings, dtype=object), len(sessions)),
-                **{
-                    f"{name}_split_adjusted": ohlcv[name].reshape(-1)
-                    for name in ("open", "high", "low", "close")
-                },
-                "volume": ohlcv["volume"].reshape(-1),
-                "close_raw": ohlcv["close"].reshape(-1),
-                "volume_raw": ohlcv["volume"].reshape(-1),
-            }
-        )
-        for name in formula_ids:
-            if name in extension:
-                formula_values[name] = (
-                    default_extension_kernel_registry()
-                    .compute(frame, extension[name])
-                    .to_numpy(dtype=np.float64)
-                    .reshape(shape)
-                )
-    holdings = tuple(
-        by_formation[session].holding_end_session if session in by_formation else None
-        for session in sessions
-    )
+        required = set(stored) | (set(formula_ids) & extension.keys())
+        if prepared is not None and not required <= prepared.formula_values.keys():
+            # A renewed authority can ask for another Feature set. The ordinary
+            # full reader retains the new authority's exact declaration.
+            result = _read_workspace_component_inputs(
+                workspace,
+                formation=formation,
+                observed_at=observed_at,
+                expected_source_hash=expected_source_hash,
+                ordered_feature_ids=ordered_feature_ids,
+                training_factor_ids=training_factor_ids,
+            )
+            if _market_source_proof(market) != proof:
+                raise ValueError("strategy_score.source_revision_changed")
+            return result
+        if prepared is not None:
+            selected = (*stored, *(name for name in formula_ids if name in extension))
+            formula_values = {name: bounded(prepared.formula_values[name]) for name in selected}
+        else:
+            rows = feature.feature_rows(
+                listing_ids=listings,
+                catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
+                start=sessions[0],
+                end=formation,
+                factor_ids=stored,
+            )
+            formula_values = {name: np.full(shape, np.nan, dtype=np.float64) for name in stored}
+            for item in rows:
+                if item["session_date"] in positions:
+                    row, column = (
+                        positions[item["session_date"]],
+                        listing_positions[item["listing_id"]],
+                    )
+                    for name in stored:
+                        formula_values[name][row, column] = (
+                            np.nan if item[name] is None else item[name]
+                        )
+            frame = pd.DataFrame(
+                {
+                    "session_date": np.repeat(np.asarray(sessions, dtype=object), len(listings)),
+                    "listing_id": np.tile(np.asarray(listings, dtype=object), len(sessions)),
+                    **{
+                        f"{name}_split_adjusted": ohlcv[name].reshape(-1)
+                        for name in ("open", "high", "low", "close")
+                    },
+                    "volume": ohlcv["volume"].reshape(-1),
+                    "close_raw": ohlcv["close"].reshape(-1),
+                    "volume_raw": ohlcv["volume"].reshape(-1),
+                }
+            )
+            for name in formula_ids:
+                if name in extension:
+                    formula_values[name] = (
+                        default_extension_kernel_registry()
+                        .compute(frame, extension[name])
+                        .to_numpy(dtype=np.float64)
+                        .reshape(shape)
+                    )
     # The Sector each session reads, the store's history over these names (V346).
     history = feature.sector_history(manifest, listing_ids=listings)
     if history is None or set(listings) - set(history):
         raise ValueError("strategy_score.sector_coverage_incomplete")
     mapping = sector_subset(history, listings)
     sectors = sector_ids(mapping)
+    if capture:
+        if training_factor_ids and (
+            not points or tuple(sorted(set(training_factor_ids))) != training_factor_ids
+        ):
+            raise ValueError("strategy_score.training_source_axis_invalid")
+        assert proof is not None
+        held_history = PreparedWorkspaceComponentInputs(
+            workspace=workspace.resolve(),
+            through=formation,
+            observed_at=observed_at,
+            source_hash=expected_source_hash,
+            source_proof=proof,
+            formation_sessions=sessions,
+            ordered_listing_ids=listings,
+            ohlcv=_immutable_arrays(ohlcv),
+            observations=_immutable_arrays(observed),
+            formula_values=_immutable_arrays(formula_values),
+            raw_simple=_immutable_arrays({"returns": raw_simple})["returns"],
+            actions=tuple(actions),
+        )
+        if (
+            workspace_score_source_identity(workspace) != expected_source_hash
+            or _market_source_proof(market) != proof
+        ):
+            raise ValueError("strategy_score.source_revision_changed")
+        return None, None, held_history
+    raw_log = np.log1p(raw_simple)
+    holdings = tuple(
+        by_formation[session].holding_end_session if session in by_formation else None
+        for session in sessions
+    )
     known = tuple(point.formation_session for point in points)
     states, _identity = compile_sector_context_arrays(
         sessions=known,
@@ -485,4 +703,6 @@ def read_workspace_component_inputs(
                 reference_eligible[:size] if reference_eligible is not None else None
             ),
         )
-    return source, training
+    if proof is not None and _market_source_proof(market) != proof:
+        raise ValueError("strategy_score.source_revision_changed")
+    return source, training, prepared

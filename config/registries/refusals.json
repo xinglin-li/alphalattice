@@ -12339,6 +12339,12 @@
 "strategy_score.plan_required": {
 "owner": "strategy_score"
 },
+"strategy_score.prepared_input_axis_invalid": {
+"owner": "strategy_score"
+},
+"strategy_score.prepared_input_binding_invalid": {
+"owner": "strategy_score"
+},
 "strategy_score.publication_ambiguous": {
 "owner": "strategy_score"
 },

@@ -135,18 +135,17 @@ def _action_dividends(
     return dividends
 
 
-def derive_causal_execution_row(
+def _execution_values(
     *,
-    listing_id: str,
-    symbol: str,
-    point: CausalExecutionSchedulePoint,
     entry_bar: RawDailyBar | None,
     holding_bar: RawDailyBar | None,
     period_dividend_split_adjusted: float,
     entry_venue_status: ExecutionVenueStatus | None = None,
     holding_venue_status: ExecutionVenueStatus | None = None,
-) -> dict[str, object]:
-    """Apply the tracked execution-status and open-return semantics to one triple."""
+) -> tuple[
+    ExecutionSessionStatus, ExecutionSessionStatus, float | None, float | None, float | None
+]:
+    """Resolve statuses, opens and return once for values and complete evidence rows."""
     entry_status = execution_session_status(entry_bar, venue_status=entry_venue_status)
     holding_status = execution_session_status(holding_bar, venue_status=holding_venue_status)
     if not math.isfinite(period_dividend_split_adjusted) or period_dividend_split_adjusted < 0.0:
@@ -166,6 +165,61 @@ def derive_causal_execution_row(
             exit_open=holding_open,
             period_dividend=adjusted_dividend,
         )
+    return entry_status, holding_status, entry_open, holding_open, simple_return
+
+
+def causal_execution_simple_return(
+    *,
+    entry_bar: RawDailyBar | None,
+    holding_bar: RawDailyBar | None,
+    period_dividend_split_adjusted: float,
+    entry_venue_status: ExecutionVenueStatus | None = None,
+    holding_venue_status: ExecutionVenueStatus | None = None,
+) -> float | None:
+    """Read the same admitted return without constructing unused evidence hashes.
+
+    Args:
+        entry_bar: Official entry observation, or an absent observation.
+        holding_bar: Official exit observation, or an absent observation.
+        period_dividend_split_adjusted: Admitted cash amount on the provider share basis.
+        entry_venue_status: Optional explicit entry eligibility or restriction.
+        holding_venue_status: Optional explicit exit eligibility or restriction.
+
+    Returns:
+        The complete evidence row's exact simple return, including absent eligibility.
+
+    Raises:
+        ValueError: The same dividend or return admission as the complete evidence row fails.
+    """
+    return _execution_values(
+        entry_bar=entry_bar,
+        holding_bar=holding_bar,
+        period_dividend_split_adjusted=period_dividend_split_adjusted,
+        entry_venue_status=entry_venue_status,
+        holding_venue_status=holding_venue_status,
+    )[-1]
+
+
+def derive_causal_execution_row(
+    *,
+    listing_id: str,
+    symbol: str,
+    point: CausalExecutionSchedulePoint,
+    entry_bar: RawDailyBar | None,
+    holding_bar: RawDailyBar | None,
+    period_dividend_split_adjusted: float,
+    entry_venue_status: ExecutionVenueStatus | None = None,
+    holding_venue_status: ExecutionVenueStatus | None = None,
+) -> dict[str, object]:
+    """Apply the tracked execution-status and open-return semantics to one triple."""
+    entry_status, holding_status, entry_open, holding_open, simple_return = _execution_values(
+        entry_bar=entry_bar,
+        holding_bar=holding_bar,
+        period_dividend_split_adjusted=period_dividend_split_adjusted,
+        entry_venue_status=entry_venue_status,
+        holding_venue_status=holding_venue_status,
+    )
+    adjusted_dividend = period_dividend_split_adjusted
     # The identities below are canonical JSON of these payloads. A session or
     # instant is encoded by ``canonical_hash`` as ``str(value)`` (its
     # ``default``); handing it the same string up front produces the same

@@ -816,7 +816,15 @@ def test_prepared_captured_rows_keep_exact_bytes_bounds_and_independent_results(
         actual, bars, axis = local_qa_snapshot_rows(prepared, sessions=sessions, through=cutoff)
         assert encoded(actual) == encoded(expected)
         assert actual.schema == expected.schema
-        assert actual["row_hash"].to_pylist() == expected["row_hash"].to_pylist()
+        for name in ("entry_source_row_hash", "holding_end_source_row_hash", "row_hash"):
+            assert actual[name].to_pylist() == expected[name].to_pylist()
+        assert all(column.num_chunks == 1 for column in actual.columns)
+        assert all(
+            not buffer.is_mutable
+            for column in actual.columns
+            for buffer in column.chunk(0).buffers()
+            if buffer is not None
+        )
         assert axis == expected_axis
         assert tuple((key, canonical_hash(asdict(value))) for key, value in bars.items()) == tuple(
             (key, canonical_hash(asdict(value))) for key, value in expected_bars.items()
@@ -826,7 +834,27 @@ def test_prepared_captured_rows_keep_exact_bytes_bounds_and_independent_results(
         bars.clear()
         again, fresh_bars, fresh_axis = prepared.rows(sessions=sessions, through=cutoff)
         assert encoded(again) == encoded(expected) and fresh_bars and fresh_axis == axis
+        assert again is not actual
     assert prepared.rows(sessions=days[-2:], through=days[-1])[0].num_rows == 0
+
+    # Smaller and changed request axes fall back, then can themselves grow.
+    for sessions, cutoff in (
+        (days, days[-1]),
+        (days[:4], days[3]),
+        (days[1:], days[-1]),
+        (days[1::2], days[-1]),
+        (days[:-1], days[-2]),
+        (days, days[-1]),
+    ):
+        expected, expected_bars, expected_axis = local_qa_snapshot_rows(
+            source, sessions=sessions, through=cutoff
+        )
+        actual, bars, axis = prepared.rows(sessions=sessions, through=cutoff)
+        assert encoded(actual) == encoded(expected)
+        assert axis == expected_axis
+        assert tuple((key, canonical_hash(asdict(value))) for key, value in bars.items()) == tuple(
+            (key, canonical_hash(asdict(value))) for key, value in expected_bars.items()
+        )
 
     # Returned frozen observations are independent of the caller's source values.
     full_bars = prepared.rows(sessions=days, through=days[-1])[1]
@@ -846,14 +874,16 @@ def test_prepared_captured_rows_keep_refusals_and_reject_forged_sources():
     sessions = (date(2026, 9, 1), date(2026, 9, 2))
     assert prepared.rows(sessions=sessions, through=date(2026, 9, 9))[0].num_rows == 4
     for captured in (source, prepared):
-        with pytest.raises(ValueError, match="unsupported corporate action"):
-            local_qa_snapshot_rows(captured, sessions=sessions, through=source.through)
+        for cutoff in (date(2026, 9, 10), source.through):
+            with pytest.raises(ValueError, match="unsupported corporate action"):
+                local_qa_snapshot_rows(captured, sessions=sessions, through=cutoff)
         for axis in ((), sessions[::-1], (sessions[0], sessions[0]), (date(2026, 8, 31),)):
             with pytest.raises(ValueError, match="qa_session_axis_invalid"):
                 local_qa_snapshot_rows(captured, sessions=axis, through=date(2026, 9, 9))
         for cutoff in (date(2026, 9, 12), date(2026, 9, 7)):
             with pytest.raises(ValueError, match="qa_calendar_support_absent"):
                 local_qa_snapshot_rows(captured, sessions=sessions, through=cutoff)
+    assert prepared.rows(sessions=sessions, through=date(2026, 9, 9))[0].num_rows == 4
     for changed in (
         {"content_hash": "0" * 64},
         {"ordered_listing_ids": ("B", "A")},

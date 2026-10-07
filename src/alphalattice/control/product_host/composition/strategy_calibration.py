@@ -741,7 +741,9 @@ class StrategyCalibrationApplication:
                 raise ValueError("portfolio_calibration.intervening_score_absent")
             realized[:] = np.nan
             ends = {}
-            for item in table.to_pylist():
+            for item in table.select(
+                ["listing_id", "formation_session", "simple_return", "holding_end_session"]
+            ).to_pylist():
                 if item["listing_id"] not in columns:
                     continue
                 row, column = positions[item["formation_session"]], columns[item["listing_id"]]
