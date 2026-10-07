@@ -1225,6 +1225,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
     (
         "The CLI itself",
         (
+            ("answer", "A saved full answer read locally, without a Host or fresh verification."),
             ("serve", "Start the Local Web Host on this workspace."),
             ("request", "Send one whole request, or a saved answer's next request."),
             ("schema", "A command's request schema, its answer's and a template."),

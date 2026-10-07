@@ -582,6 +582,46 @@ _DAMAGED = ClientRefusal(
 _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
     # First match wins: an exact code before the prefix that also covers it.
     (
+        "local_client.saved_answer_invalid",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "READ_A_FULL_SAVED_OWNER_ANSWER",
+            "This file is not a full saved owner answer in JSON or safe YAML. Read the file "
+            "the original command saved with --output; its owner fields are at the root, "
+            "not inside a printed CLI envelope. No Host request was sent.",
+        ),
+    ),
+    (
+        "local_client.saved_answer_incomplete",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "READ_A_FULL_SAVED_OWNER_ANSWER",
+            "This file holds a compact or incomplete display. Read the full owner answer "
+            "the original command saved with --output; a compact display cannot supply "
+            "missing values or whole references. No Host request was sent.",
+        ),
+    ),
+    (
+        "local_client.saved_answer_format_unavailable:",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "READ_A_FULL_SAVED_OWNER_ANSWER",
+            "This saved display format cannot be read as a full owner answer. Use the JSON "
+            "or YAML file the original command saved with --output. An HTML report is a "
+            "display, not that answer. No Host request was sent.",
+        ),
+    ),
+    (
+        "local_client.saved_answer_section_unknown:",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "READ_THE_LISTED_SAVED_SECTIONS",
+            "The saved answer has no part at the path named after the colon. The sections "
+            "field lists paths where reading stopped; --list-sections lists the root paths. "
+            "Read one of those paths from the same file. No Host request was sent.",
+        ),
+    ),
+    (
         "activity.cursor_invalid",
         ClientRefusal("INVALID_INPUT", **refusal_words("activity.cursor_invalid")),
     ),

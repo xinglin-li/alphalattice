@@ -388,6 +388,10 @@ def _client_required(noun: str, verb: str) -> list[str]:
 
 
 _OFFLINE_CASES: Final[dict[tuple[str, str], list[tuple[str, list[str], int, str]]]] = {
+    ("answer", "show"): [
+        ("no saved file", ["--file", "absent.answer.json"], 1, "INVALID_INPUT"),
+        ("a missing field", [], 1, "INVALID_INPUT"),
+    ],
     # It answers from the registry alone: a real operation, and no Host.
     ("schema", "show"): [
         ("no Host", ["STATUS"], 0, "OK"),

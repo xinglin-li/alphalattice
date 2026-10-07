@@ -66,6 +66,7 @@ from alphalattice.interface.local_application.failure_codes import (
 )
 
 CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
+    ("answer", "show"): "Read a saved full answer locally, without a Host or fresh verification.",
     ("schema", "show"): "A command's request schema (each branch of a two-operation command), "
     "its answer's and a YAML template.",
     ("activity", "wait"): "Wait, with no timer, for a Task or a goal's work to end or need you.",
@@ -88,6 +89,7 @@ other command is an operation of the registry (V266, OP1)."""
 
 OFFLINE_COMMANDS: Final = frozenset(
     {
+        ("answer", "show"),
         ("schema", "show"),
         ("backup", "restore"),
         ("model", "scaffold"),
@@ -234,7 +236,31 @@ def _answers(child: argparse.ArgumentParser, *, declaration: bool = False) -> No
 
 def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> None:
     child.add_argument("--output", type=Path, help="Save the full answer.")
-    if noun == "schema":
+    if (noun, verb) == ("answer", "show"):
+        child.add_argument(
+            "--file",
+            dest="saved_answer",
+            type=Path,
+            required=True,
+            help="A full owner answer saved by --output, as JSON or YAML (at most 4 MiB).",
+        )
+        reading = child.add_mutually_exclusive_group()
+        reading.add_argument(
+            "--section",
+            metavar="PATH",
+            help="Read one saved part by its dotted path, list index or slice, with its unit.",
+        )
+        reading.add_argument(
+            "--list-sections",
+            action="store_true",
+            help="List the saved answer's root paths.",
+        )
+        child.add_argument("--format", choices=("json", "yaml"), default="json")
+        child.description = (child.description or "") + (
+            " Both views print the selected reading whole. --output saves the full snapshot "
+            "reading, including the original answer; saved next requests are never sent."
+        )
+    elif noun == "schema":
         child.add_argument(
             "operation_name",
             nargs="+",
@@ -1166,6 +1192,8 @@ def main(
     try:
         parser = _parser(_named(arguments))
         args = parser.parse_args(arguments)
+        if getattr(args, "client_command", None) == ("answer", "show"):
+            return _saved_answer(args, started)
         if getattr(args, "client_command", None) in WORKSPACE_FREE:
             return _unbind(args, started)
         # Read anywhere on the line (V412); left out, it is the session's binding's (V568).
@@ -1225,6 +1253,67 @@ def _workspace(named: Path | None) -> tuple[Path, Path | None, Literal["OPTION",
     if found is not None:
         raise client.LocalResearchClientError("local_client.workspace_bound_to_another_session")
     raise client.LocalResearchClientError("local_client.workspace_unbound")
+
+
+def _saved_answer(args: argparse.Namespace, started: float) -> int:
+    """Read a historical file before resolving any workspace, binding or Host.
+
+    The existing answer-part owner selects the display; the full snapshot is saved
+    through the same format and no-overwrite owner as a live answer.
+    """
+    try:
+        if args.output is not None and args.output.exists():
+            raise client.LocalResearchClientError("local_client.output_exists_choose_another_path")
+        body = client.saved_answer(
+            args.saved_answer, section=args.section, list_sections=args.list_sections
+        )
+        full = {"snapshot": body["snapshot"], "answer": body["answer"]}
+        saved: dict[str, Any] = {}
+        if args.output is not None:
+            client._save_output(
+                args.output,
+                full,
+                json.dumps(full, default=client._json_value).encode("utf-8"),
+                args.format,
+            )
+            saved["output_file"] = str(args.output.resolve())
+        display = (
+            {key: value for key, value in body.items() if key != "answer"}
+            if args.section is not None or args.list_sections
+            else body
+        )
+        result = envelope(
+            operation="SAVED_ANSWER_SHOW",
+            outcome="OK",
+            body=display,
+            status="READ_SAVED_SNAPSHOT",
+            elapsed_seconds=time.perf_counter() - started,
+            **saved,
+        )
+        exit_code = 0
+    except client.LocalResearchClientError as error:
+        code = public_failure(error, "local_client.saved_answer_invalid")
+        # Word the owner's family even when its unsafe path suffix is withheld publicly.
+        refusal = client_refusal(str(error))
+        diagnostics = {
+            name: value
+            for name in ("document_size", "document_location", "sections")
+            if (value := getattr(error, name, None)) is not None
+        }
+        result = envelope(
+            operation="SAVED_ANSWER_SHOW",
+            outcome=refusal.outcome,
+            body=None,
+            status="REFUSED",
+            elapsed_seconds=time.perf_counter() - started,
+            failure_code=code,
+            detail=refusal.detail,
+            next_action=refusal.next_action,
+            **diagnostics,
+        )
+        exit_code = EXIT_CODES[refusal.outcome]
+    print(json.dumps(result, default=client._json_value, sort_keys=True))
+    return exit_code
 
 
 def _refused(code: str, started: float) -> int:

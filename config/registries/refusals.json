@@ -6099,6 +6099,18 @@
 "local_client.retrieval_environment_required": {
 "owner": "local_client"
 },
+"local_client.saved_answer_format_unavailable": {
+"owner": "local_client"
+},
+"local_client.saved_answer_incomplete": {
+"owner": "local_client"
+},
+"local_client.saved_answer_invalid": {
+"owner": "local_client"
+},
+"local_client.saved_answer_section_unknown": {
+"owner": "local_client"
+},
 "local_client.service_not_running": {
 "owner": "local_client"
 },

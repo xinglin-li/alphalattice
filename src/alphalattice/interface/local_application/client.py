@@ -87,6 +87,8 @@ class LocalResearchClientError(ValueError):
     short_reference: dict[str, object] | None = None
     """A short reference read back as no value or several: its `field`, its `value` and the
     `candidates` it begins (V393)."""
+    sections: list[str] | None = None
+    """The available sibling paths when a saved answer lacks the requested section."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1705,10 +1707,18 @@ def _step(value: Any, parts: list[str], at: int) -> tuple[Any, int] | None:
                 return value[key], end - at
         return None
     if isinstance(value, list) and (page := _PAGE.fullmatch(name)):
-        start, stop = (int(bound) if bound else None for bound in page.groups())
+        try:
+            start, stop = (int(bound) if bound else None for bound in page.groups())
+        except ValueError:
+            return None
         return value[start:stop], 1
-    if isinstance(value, list) and name.isdigit() and int(name) < len(value):
-        return value[int(name)], 1
+    if isinstance(value, list) and name.isdigit():
+        try:
+            index = int(name)
+        except ValueError:
+            return None
+        if index < len(value):
+            return value[index], 1
     return None
 
 
@@ -1732,6 +1742,99 @@ def answer_part(body: dict[str, Any], path: str) -> dict[str, Any]:
     units = body.get("metric_units")
     unit = units.get(path) if isinstance(units, dict) else None
     return {"section": path, "value": value, **({"unit": unit} if unit else {})}
+
+
+def saved_answer(
+    path: Path, *, section: str | None = None, list_sections: bool = False
+) -> dict[str, Any]:
+    """Read a saved full owner answer locally, without reopening or reverifying its object.
+
+    The CLI's saved JSON/YAML keeps owner fields at the root, unlike its printed envelope.
+    The original answer is always retained for the output writer; a selected part is only a
+    presentation of that snapshot. Saved requests remain data and no reference is shortened.
+
+    Args:
+        path: The full answer file, or standard input as ``-``.
+        section: An existing ``answer_part`` path, index or list slice.
+        list_sections: List the answer's root paths instead of selecting a part.
+
+    Returns:
+        The historical snapshot, original answer and optional selected part or root paths.
+
+    Raises:
+        LocalResearchClientError: A file failure, unsupported representation or absent part.
+    """
+    import yaml
+
+    from alphalattice.protocols.research_authoring.selection import load_safe_yaml_document
+
+    text = _text(path, limit=4 * 1024 * 1024)
+    if text.lstrip().startswith("<"):
+        raise LocalResearchClientError("local_client.saved_answer_format_unavailable:html")
+    try:
+        try:
+            body = json.loads(text)
+        except ValueError:
+            # Full exported answers are trees. Refuse scalar aliases too, before
+            # a short YAML file can expand them repeatedly during JSON serialization.
+            if any(isinstance(token, yaml.tokens.AliasToken) for token in yaml.scan(text)):
+                raise ValueError("not a JSON tree") from None
+            body = load_safe_yaml_document(text)
+        if not isinstance(body, dict):
+            raise ValueError("not an owner answer")
+        # The full exporter writes a JSON tree, including quoted date strings. Reject
+        # aliases before serialization so a small YAML file cannot amplify its containers.
+        stack: list[Any] = [body]
+        seen: set[int] = set()
+        while stack:
+            value = stack.pop()
+            if isinstance(value, (dict, list)):
+                if id(value) in seen:
+                    raise ValueError("not a JSON tree")
+                seen.add(id(value))
+            if isinstance(value, dict):
+                if any(not isinstance(key, str) for key in value):
+                    raise ValueError("not JSON-compatible keys")
+                stack.extend(value.values())
+            elif isinstance(value, list):
+                stack.extend(value)
+        json.dumps(body, allow_nan=False)
+    except (ValueError, TypeError, RecursionError, yaml.YAMLError) as error:
+        failure = LocalResearchClientError("local_client.saved_answer_invalid")
+        failure.document_location = {
+            "file": str(path),
+            "expected": "a full saved owner answer as a JSON-compatible mapping",
+        }
+        mark = getattr(error, "problem_mark", None)
+        if mark is not None:
+            failure.document_location.update({"line": mark.line + 1, "column": mark.column + 1})
+        raise failure from error
+    if _cut(body) or body.get("representation") == _REPRESENTATION or "omitted_sections" in body:
+        raise LocalResearchClientError("local_client.saved_answer_incomplete")
+    if {"schema_version", "operation", "outcome", "data", "timing"} <= body.keys():
+        raise LocalResearchClientError("local_client.saved_answer_invalid")
+    if section is not None and list_sections:
+        raise LocalResearchClientError("local_client.saved_answer_invalid")
+    reading: dict[str, Any] = {
+        "snapshot": {
+            "file": "-" if path == Path("-") else str(path.resolve()),
+            "claim": "HISTORICAL_SAVED_ANSWER_NOT_REVERIFIED",
+        },
+        "answer": body,
+    }
+    if section is not None:
+        try:
+            reading.update(answer_part(body, section))
+        except LocalResearchClientError as error:
+            reached = str(error).partition(":")[2]
+            failure = LocalResearchClientError(
+                "local_client.saved_answer_section_unknown:" + reached
+            )
+            failure.sections = _section_parts(body, section)
+            raise failure from error
+    elif list_sections:
+        reading["sections"] = list(body)
+    return reading
 
 
 def _section_parts(body: dict[str, Any], path: str) -> list[str]:

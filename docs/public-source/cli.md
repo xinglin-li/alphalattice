@@ -31,6 +31,37 @@ The stable envelope has `operation`, `outcome`, `status`, `data`, optional `fail
 
 ## Saved answers and display
 
+### Read a saved answer locally
+
+`answer show` reads a full JSON or YAML owner answer saved by `--output`, without
+a workspace, agent session or Host:
+
+```powershell
+alphalattice answer show --file answer.json --list-sections
+alphalattice answer show --file answer.json --section position
+alphalattice answer show --file answer.yaml --section result.items.3:6
+```
+
+This is a historical snapshot, marked `HISTORICAL_SAVED_ANSWER_NOT_REVERIFIED`
+with its source file. The command performs no fresh verification or live request.
+It prints the selected part whole in either view, including exact references and
+declared metric units; other fields remain in the unchanged file and can be read
+by their own paths. With neither section option it prints the whole original
+answer under `answer`, retaining its verification times, limits and context.
+The local read exits `OK` even if that saved answer recorded a refusal or pending
+work. Saved `next_requests` remain data and are never executed.
+
+`--output reading.json` saves the full snapshot reading, including the original
+answer, in JSON or with `--format yaml`, without overwriting a file. Printed CLI
+envelopes, compact displays and HTML reports are not full owner answer inputs.
+Input must be the JSON-compatible tree the full exporter writes, without YAML
+aliases, cycles or non-finite numbers. The saved-file limit is 4 MiB.
+Invalid inputs and unknown paths return
+`INVALID_INPUT`; path refusals name the available sections. Use `--from` below
+when you intend a live continuation instead.
+
+### Save and continue a live answer
+
 `--output` saves the full owner answer as JSON or YAML in either view. In a saved answer the owner's fields are at the root, not under the printed envelope's `data` (for example, read `position`, not `data.position`). `--save-declaration` saves an editable declaration. `--view full` displays all content; compact view names omitted paths in `omitted_sections`, which can be read with `--section <dotted-path>`. A selected section affects display only; `--output` still saves the full answer. A cut compact answer cannot stand in for its full saved request.
 
 For a repeated read, `--from answer.json` carries the whole saved selection, including input revision, session or page. An explicit non-target selection flag wins; a flag naming a different Task or goal is refused. For a next operation, `--from` selects the offered request, a draft's plan or a Task reference. Explicit values fill open choices; fields bound by the offer cannot be replaced. `--list-next` shows multiple actions for explicit selection; `--choices choices.yaml` supplies the selected action's missing values. A partly filled object remains a template until its inner required `choose` fields are set. A study plan can read controls and keep their input; a study draft can take an explicit declaration.
