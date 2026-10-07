@@ -827,7 +827,14 @@ class PortfolioResearchOperations:
                         reuse_verified=request.operation
                         in (
                             LEDGER_READ_OPERATIONS
-                            | {"REPORT", "RESEARCH_UPDATE_READBACK", "PORTFOLIO_UPDATE_READBACK"}
+                            | {
+                                "REPORT",
+                                "RESEARCH_UPDATE_READBACK",
+                                "PORTFOLIO_UPDATE_READBACK",
+                                "GOAL_SHOW",
+                                "GOAL_EXPORT",
+                                "GOAL_REFERENCE",
+                            }
                         )
                     ),
                     verified_lifecycle_admissions(),

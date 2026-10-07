@@ -25,6 +25,7 @@ from alphalattice.capabilities.alpha_modeling.catalog import (
     build_installed_alpha_model_catalog,
 )
 from alphalattice.capabilities.alpha_modeling.contracts import (
+    AlphaModelFitResult,
     AlphaModelNumericalBinding,
     AlphaModelRecipeEnvelope,
     BoundAlphaModelFitInput,
@@ -719,7 +720,9 @@ def test_dynamic_panel_rank_ic_is_equal_session_weighted_and_fail_closed() -> No
         session_grouped_rank_ic(predictions, targets, codes)
 
 
-def test_lightgbm_curve_and_stored_trees_do_not_move_with_the_thread_count() -> None:
+def test_lightgbm_curve_and_stored_trees_do_not_move_with_the_thread_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Binding plan B3: LightGBM's built-in l2 sums in parallel, so the last bits of the curve
     early stopping reads moved with the thread count; the l2 the adapters install reproduces
     the one-thread curve at any count, and the stored model text records no count."""
@@ -767,6 +770,76 @@ def test_lightgbm_curve_and_stored_trees_do_not_move_with_the_thread_count() -> 
         parameters=None,  # type: ignore[arg-type]
     )
     assert (metric, evaluator) == ("None", sequential_l2)
+
+    from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
+        DYNAMIC_PANEL_FIXED_ITERATIONS,
+        DynamicPanelLightGBMAdapter,
+        build_dynamic_panel_lightgbm_recipe,
+        dynamic_panel_lightgbm_parameters,
+    )
+
+    adapter = DynamicPanelLightGBMAdapter()
+    parameters = next(
+        value
+        for value in dynamic_panel_lightgbm_parameters()
+        if value.training_policy == "FIXED_ITERATION"
+        and value.fixed_iterations == min(DYNAMIC_PANEL_FIXED_ITERATIONS)
+        and value.min_child_samples == 50
+        and value.lambda_l1 == value.lambda_l2 == 1.0
+        and value.feature_fraction == value.bagging_fraction == 1.0
+    )
+    recipe = build_dynamic_panel_lightgbm_recipe(parameters)
+    feature_ids = tuple(f"feature-{index}" for index in range(train_x.shape[1]))
+    inputs = BoundAlphaTrainingInput(
+        training_binding_hash="a" * 64,
+        ordered_feature_ids=feature_ids,
+        features=_readonly(train_x),
+        targets=_readonly(train_x[:, 0] * train_x[:, 1] - train_x[:, 2]),
+    )
+    fit_plan = BoundAlphaModelFitInput(
+        fit_plan_hash="b" * 64,
+        protocol_id="DIRECT_FIT",
+        parent_training_binding_hash=inputs.training_binding_hash,
+        ordered_feature_ids=feature_ids,
+    )
+    prediction_calls: list[tuple[tuple[int, ...], object, bytes]] = []
+    original_predict = lightgbm.Booster.predict
+
+    def observe_prediction(booster: object, data: np.ndarray, **kwargs: object) -> object:
+        result = original_predict(booster, data, **kwargs)
+        prediction_calls.append(
+            (data.shape, kwargs.get("num_threads"), np.asarray(result, dtype="<f8").tobytes())
+        )
+        return result
+
+    monkeypatch.setattr(lightgbm.Booster, "predict", observe_prediction)
+
+    def fixed_fit(threads: int) -> tuple[AlphaModelFitResult, bytes]:
+        with lightgbm_threads(threads) as admitted:
+            assert admitted.threads == threads
+            prediction_calls.clear()
+            with alpha_model_numerical_scope(adapter.describe_numerical_binding()):
+                result = adapter.fit(recipe=recipe, inputs=inputs, fit_plan=fit_plan)
+            assert [(shape, width) for shape, width, _ in prediction_calls] == [
+                (inputs.features.shape, threads)
+            ]
+            return result, prediction_calls[0][2]
+
+    one_fit, one_predictions = fixed_fit(1)
+    two_fit, two_predictions = fixed_fit(2)
+    assert one_predictions == two_predictions
+    assert (
+        np.asarray([one_fit.training_mse], dtype="<f8").tobytes()
+        == np.asarray([two_fit.training_mse], dtype="<f8").tobytes()
+    )
+    assert one_fit == two_fit
+    assert one_fit.estimator_content.content_hash == two_fit.estimator_content.content_hash
+    assert one_fit.state_projection.projection_hash == two_fit.state_projection.projection_hash
+    assert one_fit.selection_diagnostic is not None and two_fit.selection_diagnostic is not None
+    assert (
+        one_fit.selection_diagnostic.diagnostic_hash == two_fit.selection_diagnostic.diagnostic_hash
+    )
+    assert one_fit.fit_call_count == one_fit.predict_call_count == 1
 
 
 def test_lightgbm_fits_on_one_thread_unless_the_sealed_canary_holds(

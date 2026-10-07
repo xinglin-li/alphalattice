@@ -7,15 +7,17 @@ submission check; numerical owners are stand-ins, never duplicated here.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import BaseModel, ConfigDict
 
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.publication.goals import GoalStore
@@ -746,6 +748,145 @@ def test_goal_show_reuses_identical_owner_read_but_verifies_every_reference(goal
     assert calls == [("EXPERIMENT_READBACK", "HUMAN")]
 
 
+@pytest.mark.parametrize("operation", ["GOAL_SHOW", "GOAL_EXPORT", "GOAL_REFERENCE"])
+def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamper(
+    live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+):
+    """The Host enables EV2 leases without retaining an owner's current answer or gaps."""
+    from alphalattice.control.workspace_runtime.content_store import (
+        ContentAddressedStore,
+        verified_model_read_scope,
+    )
+    from tests.workspace_task_runner.task_control_support import task_contract
+
+    envelope, task_goal, plan = task_contract(salt=f"goal-source-reuse-{operation}")
+    task = live.session.task_control_registry.admit(
+        input_envelope=envelope,
+        goal=task_goal,
+        plan=plan,
+        observed_at=NOW,
+    ).record
+
+    class FrozenResult(BaseModel):
+        model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
+
+        content_hash: str
+        text: Literal["sealed"]
+        score: float
+
+    store = ContentAddressedStore(tmp_path / "results", uri_prefix="artifact://goal-test")
+    value = FrozenResult(content_hash="b" * 64, text="sealed", score=-1.0)
+    store.publish_model(category="results", value=value, identity_field="content_hash")
+    path = store.root / "results" / f"{value.content_hash}.json"
+    calls = []
+    current = {"status": "EXPERIMENT_PUBLISHED"}
+
+    def read(request, caller):
+        calls.append((request.operation, caller))
+        assert request.operation == "EXPERIMENT_READBACK"
+        assert request.task_id == task.task_id
+        # A nested numerical owner's opt-in joins the Host's outer policy.
+        with verified_model_read_scope(reuse_verified=True):
+            result = store.load_model(
+                category="results",
+                content_hash=value.content_hash,
+                model=FrozenResult,
+                identity_field="content_hash",
+            )
+        return {
+            "status": current["status"],
+            "task_id": str(task.task_id),
+            "program": {"program_hash": "a" * 64, "kind": "alpha.model-development"},
+            "evidence": {"evidence_hash": result.content_hash},
+            "result": {"score": result.score},
+        }
+
+    # This is GoalApplication's public reader dependency, composed by the real Host.
+    live.operations.goals.read = read
+    opened = live.operations.execute(
+        Request(
+            operation="GOAL_OPEN",
+            goal_id=uuid4(),
+            goal_declaration=DECLARATION,
+            change_reason="Register before execution",
+        )
+    )
+    attached = live.operations.execute(
+        Request(
+            operation="GOAL_ATTACH",
+            goal_hash=opened["goal_hash"],
+            change_reason="Attach the exact result",
+            goal_reference={
+                "reference_id": "alpha",
+                "label": "Alpha result",
+                "stage": "ALPHA",
+                "request": {"operation": "EXPERIMENT_READBACK", "task_id": str(task.task_id)},
+            },
+        )
+    )
+    assert attached.get("failure_code") is None, attached
+    calls.clear()
+    source_reads = []
+    original_open = Path.open
+
+    def open_file(self, mode="r", *args, **kwargs):
+        if self == path and mode == "rb":
+            source_reads.append(self)
+        return original_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_file)
+    request = Request(
+        operation=operation,
+        goal_hash=attached["goal_hash"],
+        goal_reference_id="alpha" if operation == "GOAL_REFERENCE" else None,
+    )
+
+    def reference(answer):
+        return answer["reference"] if operation == "GOAL_REFERENCE" else answer["references"][0]
+
+    first = live.operations.execute(request)
+    first_reads = len(source_reads)
+    second = live.operations.execute(request)
+    assert first_reads == 1
+    assert len(source_reads) == (first_reads if os.name == "nt" else first_reads + 1)
+    assert calls == [("EXPERIMENT_READBACK", "HUMAN")] * 2
+    assert first == second
+    assert reference(second)["state"] == "VERIFIED_READBACK"
+    assert reference(second)["summary"]["result"] == {"score": -1.0}
+    if operation != "GOAL_REFERENCE":
+        assert second["gaps"] == [{"stage": "RISK", "failure_code": "goal.stage_not_evidenced"}]
+
+    # The immutable leaf can be reused; a live owner's Task standing and gaps cannot.
+    current["status"] = "EXPERIMENT_RUNNING"
+    pending = live.operations.execute(request)
+    assert len(calls) == 3
+    assert reference(pending)["state"] == "VERIFIED_TASK_STATE"
+    assert reference(pending)["summary"]["status"] == "EXPERIMENT_RUNNING"
+    if operation != "GOAL_REFERENCE":
+        assert pending["gaps"][0] == {
+            "reference_id": "alpha",
+            "failure_code": "goal.task_not_succeeded",
+        }
+
+    original = path.read_bytes()
+    stat = path.stat()
+    changed = original.replace(b'"sealed"', b'"broken"')
+    assert changed != original and len(changed) == len(original)
+    path.write_bytes(changed)
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert (path.stat().st_size, path.stat().st_mtime_ns) == (stat.st_size, stat.st_mtime_ns)
+    tampered = live.operations.execute(request)
+    assert len(calls) == 4
+    assert reference(tampered)["state"] == "UNAVAILABLE"
+    assert reference(tampered)["failure_code"] == "content_store.artifact_tampered"
+    assert "summary" not in reference(tampered)
+    if operation != "GOAL_REFERENCE":
+        assert tampered["gaps"][0] == {
+            "reference_id": "alpha",
+            "failure_code": "content_store.artifact_tampered",
+        }
+
+
 def test_goal_reference_verifies_only_selected_owner_and_preserves_full_readback(
     goal_app, monkeypatch
 ):
@@ -1202,7 +1343,7 @@ def test_goal_task_fact_uses_the_live_registry_record_update_time(live):
         "state": canonical.lifecycle.value,
         "updated_at": canonical.updated_at.isoformat(),
     }
-    shown = app.operate(Request(operation="GOAL_SHOW", goal_id=goal_id), "HUMAN")
+    shown = live.operations.execute(Request(operation="GOAL_SHOW", goal_id=goal_id))
     assert shown["record"]["tasks"] == [expected]
 
     registry.request_cancel(
@@ -1213,7 +1354,7 @@ def test_goal_task_fact_uses_the_live_registry_record_update_time(live):
     updated = registry.task(task.task_id)
     assert updated.updated_at.isoformat() == refreshed.isoformat()
     expected.update(state=updated.lifecycle.value, updated_at=updated.updated_at.isoformat())
-    refetched = app.operate(Request(operation="GOAL_SHOW", goal_id=goal_id), "HUMAN")
+    refetched = live.operations.execute(Request(operation="GOAL_SHOW", goal_id=goal_id))
     assert refetched["record"]["tasks"] == [expected]
 
     # A second Host composes a fresh TaskControl registry from the same workspace root.
@@ -1222,9 +1363,7 @@ def test_goal_task_fact_uses_the_live_registry_record_update_time(live):
     restarted_registry = live.session.task_control_registry
     restarted_task = restarted_registry.task(task.task_id)
     assert restarted_task == updated
-    restarted = live.operations.goals.operate(
-        Request(operation="GOAL_SHOW", goal_id=goal_id), "HUMAN"
-    )
+    restarted = live.operations.execute(Request(operation="GOAL_SHOW", goal_id=goal_id))
     assert restarted["record"]["tasks"] == [expected]
 
 

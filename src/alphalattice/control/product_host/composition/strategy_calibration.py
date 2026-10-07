@@ -48,6 +48,7 @@ from alphalattice.control.task_control.runner import (
 )
 from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
 from alphalattice.foundation.causal_outcomes.execution.readers import (
+    PreparedLocalQASnapshotRows,
     local_qa_snapshot_rows,
     read_local_qa_execution_rows,
 )
@@ -662,7 +663,9 @@ class StrategyCalibrationApplication:
         )
 
     def _observations(
-        self, plan: CalibrationPlan, captured: LocalQAMarketSnapshot | None = None
+        self,
+        plan: CalibrationPlan,
+        captured: LocalQAMarketSnapshot | PreparedLocalQASnapshotRows | None = None,
     ) -> CalibrationObservations:
         if captured is None and self._source(plan.binding) != plan.source_hash:
             raise ValueError("portfolio_calibration.stale_plan")
@@ -808,7 +811,7 @@ class StrategyCalibrationApplication:
         stage: str,
         prior: Callable[[str], str],
         *,
-        captured: LocalQAMarketSnapshot | None = None,
+        captured: LocalQAMarketSnapshot | PreparedLocalQASnapshotRows | None = None,
     ) -> StageExecutionResult:
         """Validate, collect observations, compile or reopen one exact calibration step.
 

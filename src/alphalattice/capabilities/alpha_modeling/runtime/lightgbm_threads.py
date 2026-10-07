@@ -175,7 +175,7 @@ def canary_digest(threads: int) -> str:
     digest = hashlib.sha256()
     digest.update(model_trees(str(booster.model_to_string(num_iteration=iterations))).encode())
     digest.update(np.asarray(curve["valid_0"]["l2"], dtype=np.float64).tobytes())
-    predictions = booster.predict(valid_x, num_iteration=iterations)
+    predictions = booster.predict(valid_x, num_iteration=iterations, num_threads=threads)
     digest.update(np.asarray(predictions, dtype=np.float64).tobytes())
     return digest.hexdigest()
 

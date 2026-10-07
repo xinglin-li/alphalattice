@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Protocol, cast
@@ -215,26 +216,90 @@ def local_qa_prefix(
     )
 
 
-def local_qa_snapshot_rows(
-    snapshot: LocalQAMarketSnapshot, *, sessions: tuple[date, ...], through: date
+@dataclass(frozen=True, slots=True, init=False)
+class PreparedLocalQASnapshotRows:
+    """One independently verified captured input shared by a calibration stage.
+
+    Its source is reconstructed from the stored JSON convention, including
+    nonfinite quotes, before any field is retained. Only immutable independent
+    values survive; each bounded read returns its own table and mapping.
+    """
+
+    _through: date = field(repr=False)
+    _listing_ids: tuple[str, ...] = field(repr=False)
+    _schedule: tuple[CausalExecutionSchedulePoint, ...] = field(repr=False)
+    _bars: tuple[RawDailyBar, ...] = field(repr=False)
+    _actions: tuple[CorporateActionEvent, ...] = field(repr=False)
+
+    def __init__(self, snapshot: LocalQAMarketSnapshot) -> None:
+        """Verify the full captured content and retain independent immutable values.
+
+        Args:
+            snapshot: Sealed captured market observations, never a hash-only proof.
+
+        Raises:
+            ValueError: The source content, fields or canonical axes are invalid.
+        """
+        value = LocalQAMarketSnapshot.model_validate_json(
+            json.dumps(snapshot.model_dump(mode="json"), separators=(",", ":"))
+        )
+        object.__setattr__(self, "_through", value.through)
+        object.__setattr__(self, "_listing_ids", value.ordered_listing_ids)
+        object.__setattr__(self, "_schedule", value.schedule)
+        object.__setattr__(self, "_bars", value.bars)
+        object.__setattr__(self, "_actions", value.actions)
+
+    def rows(
+        self, *, sessions: tuple[date, ...], through: date
+    ) -> tuple[pa.Table, dict[tuple[date, str], RawDailyBar], tuple[date, ...]]:
+        """Read the same bounded causal rows without resealing the captured input.
+
+        Args:
+            sessions: Ordered formation sessions requested by the consumer.
+            through: Last admitted observation session for this read.
+
+        Returns:
+            Fresh causal table, bar mapping and bounded formation axis.
+
+        Raises:
+            ValueError: The requested axis, cutoff or admitted actions are invalid.
+        """
+        return _local_qa_snapshot_rows(
+            sessions=sessions,
+            through=through,
+            maximum_through=self._through,
+            listing_ids=self._listing_ids,
+            schedule=self._schedule,
+            observations=self._bars,
+            actions=self._actions,
+        )
+
+
+def _local_qa_snapshot_rows(
+    *,
+    sessions: tuple[date, ...],
+    through: date,
+    maximum_through: date,
+    listing_ids: tuple[str, ...],
+    schedule: tuple[CausalExecutionSchedulePoint, ...],
+    observations: tuple[RawDailyBar, ...],
+    actions: tuple[CorporateActionEvent, ...],
 ) -> tuple[pa.Table, dict[tuple[date, str], RawDailyBar], tuple[date, ...]]:
-    """Derive completed labels from immutable recovery inputs."""
-    prefix = local_qa_prefix(snapshot, through=through)
-    axis = tuple(v.formation_session for v in prefix.schedule if v.formation_session <= through)
+    if through > maximum_through or through not in {v.formation_session for v in schedule}:
+        raise ValueError("causal_outcomes.qa_calendar_support_absent")
+    axis = tuple(v.formation_session for v in schedule if v.formation_session <= through)
     if not sessions or sessions != tuple(sorted(set(sessions))) or not set(sessions) <= set(axis):
         raise ValueError("causal_outcomes.qa_session_axis_invalid")
     points = tuple(
-        v
-        for v in prefix.schedule
-        if v.formation_session in sessions and v.holding_end_session <= through
+        v for v in schedule if v.formation_session in sessions and v.holding_end_session <= through
     )
-    bars = {(v.session_date, v.listing_id): v for v in prefix.bars}
+    bars = {(v.session_date, v.listing_id): v for v in observations if v.session_date <= through}
     dividend_axis = ExecutionOutcomeSessionAxis(axis)
     method = build_one_session_recipe()
     rows = []
-    for listing in prefix.ordered_listing_ids:
+    for listing in listing_ids:
         dividends = _action_dividends(
-            tuple(v for v in prefix.actions if v.listing_id == listing), through=through
+            tuple(v for v in actions if v.listing_id == listing), through=through
         )
         for point in points:
             rows.append(
@@ -253,6 +318,27 @@ def local_qa_snapshot_rows(
                 )
             )
     return pa.Table.from_pylist(rows, schema=_schema()), bars, axis
+
+
+def local_qa_snapshot_rows(
+    snapshot: LocalQAMarketSnapshot | PreparedLocalQASnapshotRows,
+    *,
+    sessions: tuple[date, ...],
+    through: date,
+) -> tuple[pa.Table, dict[tuple[date, str], RawDailyBar], tuple[date, ...]]:
+    """Derive completed labels from raw or independently prepared recovery inputs."""
+    if isinstance(snapshot, PreparedLocalQASnapshotRows):
+        return snapshot.rows(sessions=sessions, through=through)
+    prefix = local_qa_prefix(snapshot, through=through)
+    return _local_qa_snapshot_rows(
+        sessions=sessions,
+        through=through,
+        maximum_through=prefix.through,
+        listing_ids=prefix.ordered_listing_ids,
+        schedule=prefix.schedule,
+        observations=prefix.bars,
+        actions=prefix.actions,
+    )
 
 
 def read_local_qa_execution_rows(

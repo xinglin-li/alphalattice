@@ -10228,6 +10228,139 @@
    "successor": "bfdd3c971986a4c8d72dc04ab5ed28f44396d816a671fe37a415bf66141e7183",
    "change": "AX's dogfood run (merged 2026-10-05)",
    "reason": "F2 and F3 changed the preparation owner's source bytes: an unavailable data-update binding now directs to the first preparation, and a pending truth review offers Data issues instead of a retry confirmation, under the same refusal codes and readiness rules; no grant, input, result or rule moved."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "f2e067c2ff003d06ba25f89a958e278bab69278e4230f642219fb45a18412616",
+   "successor": "54c1106fbebf30bc379edd243d0abd803dd650c43a77397dc0fc04c641c31522",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "0b12b679cd5b3f605aea0ac2f3f78686be2d1cdf1814815baf66c8ceaa4a59fd",
+   "successor": "967dbd4d28974d5b939f6d6af66ac7558fa4ef60065d4f6d264fc785f54afcc0",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "d50ec8930a8b63cd80b2fe9bf0be855bcf1694a63677c9b6a6cacb0e8da1af2a",
+   "successor": "ef8efd9c3e4a68c3f1c346205facf86785def60e6bc16a047bef22898649f655",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "67f6e0b2cd0738e326b7687624e40c4092afa9db073276096f5ad5f734aa7743",
+   "successor": "8ceb9bdfe7ff86a3ef2cb546df31a570a1381f93edb462cd6e6451fe6bc0a0f0",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "21eda344c31842565fe4c8f188db71e8d357157025fb9618f839c19615c9fad0",
+   "successor": "d9f230a68f4f6104d4a4b1d96884be8153d4cf20a202e8c852b48a84ed59e680",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "c22132423edae270496aa16bfe3d69e3982db1f3d42c3362d6d8417483e494a9",
+   "successor": "3e3ae73cad52c50d0e5e56e48369fce4d1895239096ed3a4f378a2017b72981d",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "ef1ab047de6c55e916b6c0ddeb641402219f59654ec91c890f210f48442fa38f",
+   "successor": "75b8af81965444477aa45b2cf75c70e2eb7c2123a48a3f3145390c48d840067b",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "770d3a1cdb5f92af748580157682b2f0d55233da487ec57606ab8a16535f9c65",
+   "successor": "fad680e369444d355966f7633003f61d6e9e30e6da962061f744e046f6725a16",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "c80e50bbbb5e298ad490d74e319745834407be75c4734889ce7a16e2e63892af",
+   "successor": "feb7e776115fdebc55fd748755835c7167d85882ce206348c61818cc9c2d8654",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "4b6ac13cc642554fb3120572c26116c3bfbd65d3bbfde6f63a05bc9aaf699035",
+   "successor": "39a82a779b7bd9967eec37292604b45dd4dc95da093e1b0dd01fcf19433adff7",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "29f314c0400e55be1194c7d208affaf3413032365fbbd175fe0b55a185713c67",
+   "successor": "3940e33a1f1a8e461b4a93bbdf68d7d6f70ef362e024db834057eec5de83cf8c",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "6dcf4808215f1a50c31f93f07757fd56b56a24c59ad9e4e3e08fc8e8ab18ef15",
+   "successor": "8f7171c58fc98613dc305d7cce3aafcb25e89e11a886d4b6f9931f0cdfbf7f8c",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "f76815fbfd66a2fae17f7a3f57920629733740662ea135f30a73a884aaf6589c",
+   "successor": "d7ce869094fc9fb6ce06507ff3c11436445e80898e9751e90ca0a9080d380de6",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "bfdd3c971986a4c8d72dc04ab5ed28f44396d816a671fe37a415bf66141e7183",
+   "successor": "bac0d8ad850560fcd596c84623c1ef216a0d602b89121759054062c8974b8f71",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "60c58a38ffcc2d04c025ab63b4fbf1e3b0747a25d4fa42cc5e4b3503a456cfe6",
+   "successor": "0c7859a3c898625608ac83a30bcf96300229cb626a40724d309023d1feca0329",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "60c58a38ffcc2d04c025ab63b4fbf1e3b0747a25d4fa42cc5e4b3503a456cfe6",
+   "successor": "0c7859a3c898625608ac83a30bcf96300229cb626a40724d309023d1feca0329",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "1ce1e7e9920353bf74d6cc41cd9ed49faac4734423bc4d6a0eb07c605fb35d3b",
+   "successor": "1c598c2eb95caa4640c8b69284b9c08c4b59b36bfec50e6fc33d1b9aaf39407a",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "6426e032624f43eacf9ffd3b3c529d24a895bee2b55c38e3ed8f9e126c8f0903",
+   "successor": "e18bc5d01297afdfb9a99c591cc15e92707cb8ce66fe392aef8b51ddba73dbb8",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "3852d5ad3754330aa65ffa1d0107933fba4bdec5c7398c33c076ad8bd9db1e6d",
+   "successor": "1a5013c7d1a429cbb9ef427c893f22473748417ac331a9fe54f37cd29f774cb3",
+   "change": "P5 measured owner optimizations (LEAD integration, 2026-10-07)",
+   "reason": "P5 source ee13e49ce451401a8fed2b739a447d86a370a709 changes this closure through verified immutable-source and captured-input reuse, or complete diagnostic prediction at the already admitted fit width. Retained paired numerical graphs and tamper probes preserve admitted computations and refusals. Forward timing used dirty 39c owner edits corroborated to committed 15e; it is not a clean final-SHA timing claim. LEAD candidate A/L U0 passed 225/56 unique reads with exact verdict and numeric-summary equality, no errors or missing/added keys, and unchanged corpus manifest/metadata controls. Exact 19 moved/60 unchanged roles and 125 whole-owner/identity/public-closure checks passed. Evidence: 2026-10-07 P5 main-line acceptance in p5-performance.md and lead-p5-compatibility/014338-integration-af6f0e42; no scientific recipe, authority or verification contract changed."
   }
  ]
 }

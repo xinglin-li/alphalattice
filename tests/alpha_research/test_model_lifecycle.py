@@ -626,10 +626,48 @@ alpha:
     receipt = output_store._load(CATEGORY, identity, "content_hash", AlphaLifecycleResearchReceipt)
     path = output_store._path("current/lifecycle-arrays", receipt.projection_files[0], "bin")
     original = path.read_bytes()
+    # Separate complete owner readbacks retain only an OS-backed proof, never
+    # a timestamp shortcut; the workflow's full numeric checks still execute.
+    import os
+    from collections import Counter
+
+    from alphalattice.investment.alpha_research.experiments.lifecycle_authoring import (
+        verify_lifecycle_research,
+    )
+
+    opened = Counter()
+    open_file = Path.open
+
+    def counted_open(file, *args, **kwargs):
+        if file == path and (args[0] if args else kwargs.get("mode", "r")) == "rb":
+            opened[file] += 1
+        return open_file(file, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", counted_open)
+    assert (
+        verify_lifecycle_research(
+            program=sealed, evidence=evidence, output_workspace=tmp_path / "output"
+        )
+        == "CURRENT"
+    )
+    first_reads = opened[path]
+    assert (
+        verify_lifecycle_research(
+            program=sealed, evidence=evidence, output_workspace=tmp_path / "output"
+        )
+        == "CURRENT"
+    )
+    assert opened[path] == (first_reads if os.name == "nt" else first_reads + 1)
+
+    before = path.stat()
     path.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     with pytest.raises(ValueError, match="frozen_input_content_invalid"):
         workflow.replay(document, **actor)
     path.write_bytes(original)
+    restored, _ = workflow.replay(document, **actor)
+    assert restored.numerical_call_count == 0
+    assert restored.artifact_uris == evidence.artifact_uris
 
 
 def test_legacy_panel_and_package_component_identities_do_not_rotate():

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from uuid import UUID
@@ -746,6 +746,127 @@ def test_captured_prefix_and_tail_first_publication(numerical, tmp_path):
         assert store.decision_history(n.checkpoint.content_hash) == ()
     store.publish_decision_update(branch[0])
     assert store.decision_history(n.checkpoint.content_hash) == tuple(branch)
+
+
+def _captured_rows_snapshot(*, quote="normal", actions=()):
+    from alphalattice.foundation.market_data_ops.sources.contracts import RawDailyBar
+
+    schedule = planned_local_qa_schedule(date(2026, 9, 1), date(2026, 9, 11))
+    days = tuple(v.formation_session for v in schedule if v.formation_session <= date(2026, 9, 11))
+    bars = tuple(
+        RawDailyBar(listing, "synthetic", day, 100.0 + i, 102.0 + i, 99.0 + i, 101.0 + i, 1000)
+        for i, day in enumerate(days)
+        for listing in ("A", "B")
+    )
+    affected = (days[2], "A")
+    if quote == "missing":
+        bars = tuple(v for v in bars if (v.session_date, v.listing_id) != affected)
+    elif quote != "normal":
+        value = {"zero": 0.0, "nan": float("nan"), "infinity": float("inf")}[quote]
+        bars = tuple(
+            replace(v, open=value) if (v.session_date, v.listing_id) == affected else v
+            for v in bars
+        )
+    return LocalQAMarketSnapshot.create(
+        source_hash=HASH,
+        through=days[-1],
+        ordered_listing_ids=("A", "B"),
+        schedule=schedule,
+        bars=bars,
+        actions=actions,
+    )
+
+
+@pytest.mark.parametrize("quote", ["normal", "missing", "zero", "nan", "infinity"])
+def test_prepared_captured_rows_keep_exact_bytes_bounds_and_independent_results(quote):
+    import pyarrow as pa
+
+    from alphalattice.foundation.causal_outcomes.execution.readers import (
+        PreparedLocalQASnapshotRows,
+        local_qa_snapshot_rows,
+    )
+
+    source = _captured_rows_snapshot(
+        quote=quote,
+        actions=(
+            CorporateActionEvent(
+                "A", "synthetic", date(2026, 9, 3), "CASH_DIVIDEND", cash_amount=0.25
+            ),
+            CorporateActionEvent(
+                "B", "synthetic", date(2026, 9, 4), "SPLIT", new_shares_per_old_share=2.0
+            ),
+        ),
+    )
+    prepared = PreparedLocalQASnapshotRows(source)
+
+    def encoded(table):
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, table.schema) as writer:
+            writer.write_table(table)
+        return sink.getvalue().to_pybytes()
+
+    days = tuple(
+        v.formation_session for v in source.schedule if v.formation_session <= source.through
+    )
+    for cutoff in days:
+        sessions = tuple(d for d in days if d <= cutoff)
+        expected, expected_bars, expected_axis = local_qa_snapshot_rows(
+            source, sessions=sessions, through=cutoff
+        )
+        actual, bars, axis = local_qa_snapshot_rows(prepared, sessions=sessions, through=cutoff)
+        assert encoded(actual) == encoded(expected)
+        assert actual.schema == expected.schema
+        assert actual["row_hash"].to_pylist() == expected["row_hash"].to_pylist()
+        assert axis == expected_axis
+        assert tuple((key, canonical_hash(asdict(value))) for key, value in bars.items()) == tuple(
+            (key, canonical_hash(asdict(value))) for key, value in expected_bars.items()
+        )
+        assert max(day for day, _ in bars) == cutoff
+        assert all(day <= cutoff for day in actual["holding_end_session"].to_pylist())
+        bars.clear()
+        again, fresh_bars, fresh_axis = prepared.rows(sessions=sessions, through=cutoff)
+        assert encoded(again) == encoded(expected) and fresh_bars and fresh_axis == axis
+    assert prepared.rows(sessions=days[-2:], through=days[-1])[0].num_rows == 0
+
+    # Returned frozen observations are independent of the caller's source values.
+    full_bars = prepared.rows(sessions=days, through=days[-1])[1]
+    assert all(full_bars[bar.session_date, bar.listing_id] is not bar for bar in source.bars)
+
+
+def test_prepared_captured_rows_keep_refusals_and_reject_forged_sources():
+    from alphalattice.foundation.causal_outcomes.execution.readers import (
+        PreparedLocalQASnapshotRows,
+        local_qa_snapshot_rows,
+    )
+
+    source = _captured_rows_snapshot(
+        actions=(CorporateActionEvent("A", "synthetic", date(2026, 9, 10), "CAPITAL_GAIN"),)
+    )
+    prepared = PreparedLocalQASnapshotRows(source)
+    sessions = (date(2026, 9, 1), date(2026, 9, 2))
+    assert prepared.rows(sessions=sessions, through=date(2026, 9, 9))[0].num_rows == 4
+    for captured in (source, prepared):
+        with pytest.raises(ValueError, match="unsupported corporate action"):
+            local_qa_snapshot_rows(captured, sessions=sessions, through=source.through)
+        for axis in ((), sessions[::-1], (sessions[0], sessions[0]), (date(2026, 8, 31),)):
+            with pytest.raises(ValueError, match="qa_session_axis_invalid"):
+                local_qa_snapshot_rows(captured, sessions=axis, through=date(2026, 9, 9))
+        for cutoff in (date(2026, 9, 12), date(2026, 9, 7)):
+            with pytest.raises(ValueError, match="qa_calendar_support_absent"):
+                local_qa_snapshot_rows(captured, sessions=sessions, through=cutoff)
+    for changed in (
+        {"content_hash": "0" * 64},
+        {"ordered_listing_ids": ("B", "A")},
+        {"bars": (*source.bars, source.bars[0])},
+        {"bars": source.bars[::-1]},
+        {"bars": (replace(source.bars[0], listing_id="UNKNOWN"), *source.bars[1:])},
+        {"bars": (replace(source.bars[0], session_date=date(2026, 9, 12)), *source.bars[1:])},
+        {"schedule": source.schedule[::-1]},
+        {"actions": (replace(source.actions[0], effective_date=date(2026, 9, 12)),)},
+        {"bars": (replace(source.bars[0], open=123.0), *source.bars[1:])},
+    ):
+        with pytest.raises(ValueError, match="qa_market_snapshot_invalid"):
+            PreparedLocalQASnapshotRows(source.model_copy(update=changed))
 
 
 def test_frozen_input_extension_refuses_past_corrections_not_future_rows():

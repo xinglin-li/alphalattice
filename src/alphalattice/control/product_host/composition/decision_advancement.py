@@ -87,9 +87,14 @@ from alphalattice.control.task_control.runner import (
     StageDisposition,
     StageExecutionResult,
 )
-from alphalattice.control.workspace_runtime.content_store import CommittedIndex, CommittedKind
+from alphalattice.control.workspace_runtime.content_store import (
+    CommittedIndex,
+    CommittedKind,
+    verified_model_read_scope,
+)
 from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
 from alphalattice.foundation.causal_outcomes.execution.readers import (
+    PreparedLocalQASnapshotRows,
     local_qa_prefix,
     planned_local_qa_schedule,
     read_local_qa_market_snapshot,
@@ -868,6 +873,7 @@ class DecisionAdvancementApplication:
         ):
             raise _Cancelled
 
+    @verified_model_read_scope(reuse_verified=True)
     def execute_stage(
         self, *, task: TaskRecord, execution: TaskExecution, work_item: WorkItemDefinition
     ) -> StageExecutionResult:
@@ -1056,6 +1062,7 @@ class DecisionAdvancementApplication:
             return self._commit(plan, stage, tuple(products), source)
         market_snapshot = self._load("market-inputs", captured.products[0], LocalQAMarketSnapshot)
         if stage == STAGES[4]:
+            market_rows: PreparedLocalQASnapshotRows | None = None
             checkpoint = self.updates.store.load_decision_checkpoint(plan.checkpoint_hash)
             scores = {}
             for h in (*plan.history_score_hashes, *self._need(plan, STAGES[3]).products):
@@ -1076,6 +1083,8 @@ class DecisionAdvancementApplication:
                     )
                     held = self._step(plan, key)
                     if held is None and component.weight_rule == "mu.iv0":
+                        if market_rows is None:
+                            market_rows = PreparedLocalQASnapshotRows(market_snapshot)
                         cp = CalibrationPlan.create(
                             workspace_manifest_hash=self._owner_fields(CALIBRATION_PLAN_FIELDS),
                             binding=self.calibration._binding(plan.package_id),
@@ -1090,7 +1099,7 @@ class DecisionAdvancementApplication:
                         )
                         self._save("calibration-programs", cp, "plan_hash")
                         obs = self.calibration.execute_step(
-                            cp, CALIBRATION_STAGES[1], lambda _: "", captured=market_snapshot
+                            cp, CALIBRATION_STAGES[1], lambda _: "", captured=market_rows
                         )
                         obs_hash = str(obs.evidence[0].content_hash)
                         result = self.calibration.execute_step(
@@ -1577,6 +1586,7 @@ class DecisionAdvancementApplication:
             raise ValueError("research_update.stage_unknown")
         return None
 
+    @verified_model_read_scope(reuse_verified=True)
     def verify_stage(
         self,
         *,

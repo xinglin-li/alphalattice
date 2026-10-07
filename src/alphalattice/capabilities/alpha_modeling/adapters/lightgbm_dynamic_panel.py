@@ -27,7 +27,7 @@ from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment impo
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
-from ..runtime.lightgbm_threads import model_trees, sequential_l2
+from ..runtime.lightgbm_threads import lightgbm_fit_threads, model_trees, sequential_l2
 from .lightgbm_chronological import (
     CHRONOLOGICAL_LIGHTGBM_CONTENT_FORMAT_ID,
     ChronologicalLightGBMAdapter,
@@ -457,7 +457,9 @@ class DynamicPanelLightGBMAdapter(ChronologicalLightGBMAdapter):
             dataset_params=self._dataset_params(parameters),
         )
         booster = lightgbm.train(native, dataset, num_boost_round=iterations)
-        predictions = np.asarray(booster.predict(inputs.features), dtype=np.float64)
+        predictions = np.asarray(
+            booster.predict(inputs.features, num_threads=lightgbm_fit_threads()), dtype=np.float64
+        )
         gains = np.asarray(booster.feature_importance(importance_type="gain"), dtype=np.float64)
         model_text = model_trees(str(booster.model_to_string(num_iteration=iterations)))
         content = AlphaEstimatorContent.create(

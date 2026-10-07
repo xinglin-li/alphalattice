@@ -12,6 +12,7 @@ from pydantic import Field
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
     DYNAMIC_PANEL_LIGHTGBM_SEEDS,
 )
+from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
 from alphalattice.investment.alpha_research.experiments.development_artifacts import (
     AlphaDevelopmentArtifactStore,
 )
@@ -258,6 +259,7 @@ class AlphaLifecycleExperiment:
             parameter_domain_hash=canonical_hash({"seeds": list(rule.seeds)}),
         )
 
+    @verified_model_read_scope(reuse_verified=True)
     @verified_lifecycle_admissions()
     def execute(
         self,
@@ -454,6 +456,7 @@ def lifecycle_program_scheme(
     return None
 
 
+@verified_model_read_scope(reuse_verified=True)
 @verified_lifecycle_admissions()
 def verify_lifecycle_research(
     *,
