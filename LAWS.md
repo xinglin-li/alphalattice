@@ -229,7 +229,8 @@ use. *Held by:*
 
 **OW12. A strategy runs forward by a person's activation of its reviewed book.** An installed
 research strategy's book replays history until a person activates a completed run of it over its
-whole support (`STRATEGY_ACTIVATE`, person-only). The activation binds what the daily chain reads,
+whole support (`STRATEGY_ACTIVATE`, person-only; under a first use's delegation its agent activates
+the book once that book's review is published, OP19). The activation binds what the daily chain reads,
 each built from the strategy's own research: each component's models, a lifecycle grant from the
 training input its Alpha study read, so the study's fitted models are reused by their keys and
 later quarters fit on the workspace's data through the horizon; the calibration's starting
@@ -555,20 +556,25 @@ the answer check every test's operations pass (`exit_problem`).
 **OP19. A first use is the agent's, by the person's one sentence.** A goal of kind `FIRST_USE`,
 opened from the person's sentence, once per workspace and before its first preparation, delegates
 the first use's person-only steps (`FIRST_USE_STEPS`: opening the network for the preparation,
-confirming it and its resumes, deciding its data issues) to the agent running it, while it is
+confirming it and its resumes, deciding its data issues, confirming its membership changes, and
+activating its book once that book's Evidence and CRO review is published, which the person
+deactivates) to the agent running it, while it is
 open and within its hours (`FIRST_USE_HOURS`); each runs as the person's decision carried by the
 agent and is recorded in the goal's ledger as delegated. Its book draft's declared
 unavailable-return quarantine is a data decision of that kind: the draft's policy kept and the
 effective population reported, never chosen to improve a result (V504). The network it opens holds until the
 delegation's end by the control itself (OP5), and its earlier end, by submission or abandonment,
-closes it; an activation, a storage decision, an automation, a revocation and anything paid stay
-a person's, and the goal is never revised nor offers a revision. Its record names the delegation,
+closes it; a deactivation, any other activation, a storage decision, an automation, a revocation
+and anything paid stay a person's, and the goal is never revised nor offers a revision. Its record names the delegation,
 its end and whether it holds, and the person's decisions name it with its Stop while it holds
 (U70). *Why:*
 the maintainer, 2026-10-01: the person gives one sentence and the agent runs the first use, the person
-able to interrupt at any time (V452). *Held by:*
+able to interrupt at any time (V452); the maintainer's hands-off rule, 2026-10-07: a reversible step
+is a default the agent takes and discloses, so the reviewed book's activation and the membership its
+source names are the first use's (STOPS-1). *Held by:*
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them`,
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised`,
+`test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_delegated_activation_takes_only_a_book_with_a_published_review`,
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_is_the_one_before_the_first_preparation`.
 
 **OP20. A person's decision carries by its evidence.** A retry that changes only a run or clock
@@ -705,14 +711,9 @@ hidden reasoning, strategy evidence or large numerical artifacts. *Held by:* rev
 **DA8. Retired as a standing rule** (the maintainer, 2026-10-04, V647). That an evaluation's
 blind review set is read only as counts was the evaluation's design, not a product rule: its
 mandatory count, halt and quarantine steps are retired, a run's counted report follows it, and
-review accuracy is next measured on a fresh blind set. The counting tool and the instruction
-preflight stay optional evaluation tooling, and no law replaces the retired restriction.
-*Held by:* the dated decision (review). The following hold the historical optional tooling,
-not a continuing mandatory gate:
-`private-test: test_successor_plain_lowercase_prose_and_code_release`,
-`private-test: test_successor_every_real_mention_class_counts`,
-`private-test: test_successor_leaves_old_descriptor_and_old_counts_unchanged`,
-`private-test: test_preflight_enumerates_cards_skills_references_and_root_for_both_hosts`.
+review accuracy is next measured on a fresh blind set. AXLEAN-2 (2026-10-08) retired the
+optional counting, instruction preflight and historical source screen/seal tools. No law
+replaces the retired restriction. *Held by:* the dated decision (review).
 
 **DA9. Each file type has one job.** Before writing a file, choose its type by who writes it and who
 reads it:
@@ -1111,5 +1112,5 @@ The Workbench's laws are
 ## Held by review
 
 The laws no check holds yet, each to become a check where it can; this list only shrinks:
-ID5, OW3, OW8, OW10, OP7, OP13, DA1, DA7, DA9, EV4, TE1, TE3, TE4, TE6, TE8, TE9,
+ID5, OW3, OW8, OW10, OP7, OP13, DA1, DA7, DA8, DA9, EV4, TE1, TE3, TE4, TE6, TE8, TE9,
 PR1, PR3, PR4, PR5, PR7, PR8, PR9, PR10, PR11, PR12.

@@ -80,6 +80,9 @@ const LiveReview = (() => {
   // one read earlier is retained content that establishes nothing about the refreshed context
   const inThisRead=(bundle)=>Boolean(bundle) && bundle.key===S.key && bundle.readGen===S.readGen;
   const continuationRequired=()=>!historical() && (S.view?.required_actions || []).some(a=>a.action==='SETTLE_EVIDENCE_CONTINUATION' && a.blocking);
+  const requiredActions=()=> (S.view?.required_actions || []).filter(a=>a.action!=='NONE');
+  // NONE carries the review's limits; it asks for no decision or next action.
+  const actionStanding=a=>a.action==='NONE' ? {state:null,tone:TONE.rest,word:codeWords(a.action)} : {state:a.blocking ? 'blocked' : 'deferred',tone:TONE.attention,word:t(a.blocking ? 'Blocking' : 'Advisory')};
   const bundleOf=(role)=>{if(role==='cro' && continuationRequired()) return null;const x=role==='analyst' ? S.packet : S.dossier;return x && x.key===S.key ? x.value : null;};
   const dossierOf=()=>bundleOf('cro')?.dossier || null;
   function currentIdentity() {
@@ -527,7 +530,7 @@ const LiveReview = (() => {
     if(!o) return html`<p class="caption">${t('This object is not in the current read.')}</p>`;
     const head=evidenceRow(o.type,o.x,{named:true,brief:true,cls:'evidence-head'});
     const rows=(list,type)=>list.length ? objectCollection('issuer-'+id+'-'+type,list) : '';
-    if(o.type==='issue'){ const a=(S.view?.required_actions || []).find(a=>(o.x.affected_entities || []).includes(a.entity_id)); return html`${a ? refusal({reason:said(a.reason)},TONE.attention,{state:a.blocking ? 'blocked' : 'deferred',word:t(a.blocking ? 'Blocking' : 'Advisory'),next:html`${codeWords(a.action)} · ${entityNames([a.entity_id])}`}) : ''}${issue(o.x)}`; }
+    if(o.type==='issue'){ const a=(S.view?.required_actions || []).find(a=>(o.x.affected_entities || []).includes(a.entity_id)), standing=a ? actionStanding(a) : null; return html`${a ? refusal({reason:said(a.reason)},standing.tone,{state:standing.state,word:standing.word,next:a.action==='NONE' ? '' : html`${codeWords(a.action)} · ${entityNames([a.entity_id])}`}) : ''}${issue(o.x)}`; }
     if(o.type==='citation') return citation(o.id);
     // B2 (item 4): the claim -- the finding's issuers and stance, its summary once -- then its sources, then the review's words on it; its handle is the pane's caption
     if(o.type==='finding'){ const f=o.x, sup=(f.supporting_span_handles || []), con=(f.contradicting_span_handles || []), disp=dispositionOf(f.finding_handle); return html`${evidenceRow('finding',f,{named:true,brief:true,cls:'evidence-head',why:html`${entityNames(f.affected_entities) || ''}${f.direction ? html` · ${cellWord(f.direction)}` : ''}`})}${f.summary ? html`<p class="owner-text">${f.summary}</p>` : ''}${passagesOf(sup,'support')}${passagesOf(con,'contra')}${kv([[t('Lifecycle'),codeWords(f.lifecycle)],[t('Stance'),cellWord(f.direction)],[hint(t('Support'),t('How a finding is held up by its own citations: supported, single source, contested, unsupported.')),codeWords(f.structure)],...(disp ? [[t('Disposition'),codeWords(disp.disposition)],...(disp.rationale ? [[t('CRO rationale'),html`<span class="owner-text">${disp.rationale}</span>`]] : [])] : [])])}${(f.limitations || []).length ? html`<h3>${t('Limitations')}</h3>${textCollection('finding-'+f.finding_handle+'-limits',f.limitations)}` : ''}`; }
@@ -1702,15 +1705,16 @@ const LiveReview = (() => {
   /* From Task Center: the Task's scope is resolved through owner facts (this page's record, or
    * `resolveScope` against the book last read here) before a book is shown; else it is followed
    * with its scope unresolved and no book is guessed. */
-  async function openTask(id) {
+  async function openTask(id,wanted=()=>true) {
+    if(!wanted()) return false;
     const gen=++S.nav; // this return is a navigation; any later one supersedes it
     const known=S.taskBooks.get(id), kb=known ? boundFor(key(known)) : null;
-    if(known){ const opened=open(known,'',kb.review.has(id) ? 'evidence' : 'handoff'), g=S.nav; return opened.then(async()=>{ if(g!==S.nav) return; if(kb.prepare.has(id)){S.packetTask=id;S.packetUnit='';loadDrafts();adoptPacketRequest(S.view);writeRoute(routeUpdate());await getBundle('analyst');} if(g!==S.nav) return; return watch(id); }); }
+    if(known){ const opened=open(known,'',kb.review.has(id) ? 'evidence' : 'handoff'), g=S.nav; return opened.then(async()=>{ if(g!==S.nav || !wanted()) return false; if(kb.prepare.has(id)){S.packetTask=id;S.packetUnit='';loadDrafts();adoptPacketRequest(S.view);writeRoute(routeUpdate());await getBundle('analyst');} if(g!==S.nav || !wanted()) return false; return watch(id); }); }
     let view=null;
     try { view=await Data.read('/api/tasks/recovery?'+new URLSearchParams({task_id:id})); } catch { view=null; }
-    if(gen!==S.nav) return; // the reader navigated while the owner was answering: nothing is opened for this reply
+    if(gen!==S.nav || !wanted()) return false; // the reader navigated while the owner was answering: nothing is opened for this reply
     const scope=await resolveScope(id,view,S.selector || readPreference('reviewLastBook') || null);
-    if(gen!==S.nav) return;
+    if(gen!==S.nav || !wanted()) return false;
     if(scope) return adopt(id,scope);
     S.nav+=1; closeDialog();reset();S.selector=null;S.key=key(null);S.pin='';S.view=null;S.status='empty';S.packetTask='';S.packetUnit='';S.work=null;
     S.unresolved={task:id,kind:view?.task_kind || '',view,reason:t('no owner fact binds this Task to a book on this page: choose the exact book to bind it (the owner verifies), or read it on Tasks')};
@@ -1841,7 +1845,7 @@ const LiveReview = (() => {
     const issuers=x ? reportIssuers() : '';
     // the reviews (2026-09-24): a required action is the decision's first line and the way on it names -- the issuer it reads, else its pipeline (the Overview's blocker says the same)
     const decided=Boolean(v && (reviewPublished() || historical()));
-    const actions=(decided ? v.required_actions || [] : []).map(a=>objectRow({state:a.blocking ? 'blocked' : 'deferred',name:codeWords(a.action),why:said(a.reason),to:actionWay(a),cls:'evidence-row'},{key:'action:'+a.action+':'+(a.entity_id || ''),word:t(a.blocking ? 'Blocking' : 'Advisory'),columns:['scope'],props:[a.entity_id || actionWay(a)?.word || ''],attrs:a.reason ? html`data-tip="${said(a.reason)}"` : ''}));
+    const actions=(decided ? v.required_actions || [] : []).map(a=>objectRow({state:actionStanding(a).state,name:codeWords(a.action),why:said(a.reason),to:actionWay(a),cls:'evidence-row'},{key:'action:'+a.action+':'+(a.entity_id || ''),word:actionStanding(a).word,columns:['scope'],props:[a.entity_id || actionWay(a)?.word || ''],attrs:a.reason ? html`data-tip="${said(a.reason)}"` : ''}));
     const limits=v ? [...gapLines(v.gaps || []),...(v.claim_limits || []),...reviewLimits(v)] : [];
     const decision=!v ? '' : !decided ? panel(t('Decision'),'',html`${emptyState(t(publications().some(p=>p.lapsed) || workingPublication() ? 'No current review is published for this book; nothing is decided' : 'No review is published for this book; nothing is decided.'))}${publications().some(p=>p.lapsed) || workingPublication() ? html`<p class="caption">${t('A review sealed under an earlier binding reads back as recorded; the book can be reviewed again.')}</p>` : ''}`,'','data-report-section="decision"') : panel(t('Decision'),'',html`${actions.length ? html`<div class="card-list lines decision-actions">${actions}</div>` : ''}${kv([[t('Route'),v.disposition ? codeWords(v.disposition) : '\u2014'],[t('Completeness'),v.review_state ? codeWords(v.review_state) : '\u2014'],...(x?.review?.recommendation?.action_activation ? [[t('Activation'),codeWords(x.review.recommendation.action_activation)]] : []),[t('Reviewer'),attributionWords(v.review_attribution || [],{facts:true}) || '\u2014'],[t('Policy'),v.policy_version ? codeCell(v.policy_version) : '\u2014'],[t('Rules'),(v.rule_ids || []).length ? html`<span class="mono">${v.rule_ids.join(', ')}</span>` : '\u2014'],[t('Reasons'),(v.reasons || []).length ? html`<span class="owner-text">${v.reasons.map((r,i)=>html`${i ? ' · ' : ''}${reasonWords(r)}`)}</span>` : '\u2014']].filter(([,x])=>x!=='\u2014'),'kv-columns')}${limits.length ? html`<details class="reveal-details"><summary>${t('Limits')} <span class="num">${count(limits.length)}</span></summary>${textCollection('report-limits',limits,said)}</details>` : ''}`,'','data-report-section="decision"');
     const questions=questionsSection(), changes=changesSection();
@@ -1913,7 +1917,7 @@ const LiveReview = (() => {
   }
   function cycle() {
     const v=S.view, st=v?.state || '', blocked=blockedState(), pinned=historical(), inv=inventory(), cp=v?.coverage_progress || null;
-    const actions=v?.required_actions || [], blocking=actions.find(a=>a.blocking) || actions[0] || null;
+    const actions=requiredActions(), blocking=actions.find(a=>a.blocking) || actions[0] || null;
     let sentence='', tone='neutral', primary=null;
     if(S.refusal){ sentence=t('Evidence review is not available for this workspace.'); tone='warning'; }
     else if(pinned){ sentence=t('Pinned: the review published {d}, read exactly as it was sealed.',{d:publishedAt() || ''}); tone='historical'; primary=stepTo('Read the report','report'); }
@@ -2061,6 +2065,7 @@ const LiveReview = (() => {
    * on Review; an action naming an issuer reads that issuer. */
   const ACTION_WAYS={REFRESH_EVIDENCE:['review-step','evidence-stream','Sources › Prepare'],RESOLVE_ISSUER_MAPPING:['go','portfolio','Resolve the mapping'],HUMAN_REVIEW:['review-step','handoff','Human review'],SELECT_ANALYSIS:['review-live-item','analysis','Choose the analysis']};
   function actionWay(a) {
+    if(a.action==='NONE')return null;
     if(a.entity_id) return {action:'review-live-item',value:a.entity_id,word:''};
     const kind=a.action;
     if(kind==='PREPARE_EVIDENCE') return nextOrStep('Prepare sources','prepare','evidence-stream');
@@ -2081,12 +2086,12 @@ const LiveReview = (() => {
   function overviewStatus() {
     const v=S.view, c=cycle(); if(!c.stages.length) return '';
     const published=Boolean(v) && !S.refusal && (reviewPublished() || historical());
-    const actions=v?.required_actions || [], blocking=actions.find(a=>a.blocking);
+    const actions=v?.required_actions || [], blocking=requiredActions().find(a=>a.blocking);
     const human=c.checks.find(k=>k.id==='human');
     const checks=c.stages.map(st=>{ const asked=st.id==='reviewed' && Boolean(human), tone=asked ? 'warning' : STAGE_TONE[st.word] || 'neutral'; return {tone,name:t(st.name),why:asked ? t('human review required') : tone==='good' ? '' : t(stateOf(st.word).word),time:st.time || '',action:st.page===null ? '' : 'review-step',value:st.page || '',tip:st.line || ''}; }); // W (R4): a mark, a word, a day -- a done stage's name is its word; law 149: the row goes to the stage's page, the owner's line is its tip
-    const tone=published && v.disposition ? stateOf(evidenceState(v.disposition).state).tone : blocking ? TONE.attention : published ? (actions.length ? 'warning' : 'good') : ({accent:'accent',warning:'warning',good:'good'})[c.tone] || 'neutral'; // B1 (item 7): the route's standing, the head's
+    const tone=published && v.disposition ? stateOf(evidenceState(v.disposition).state).tone : blocking ? TONE.attention : published ? (requiredActions().length ? 'warning' : 'good') : ({accent:'accent',warning:'warning',good:'good'})[c.tone] || 'neutral'; // B1 (item 7): the route's standing, the head's
     const notReached=published ? (v.issuer_rows || []).filter(r=>!issuerReviewed(r)).sort(byWeight).map(issuerName) : [];
-    const foot=actions.map(a=>{ const way=actionWay(a); return {tone:TONE.attention,word:t(a.blocking ? 'Blocking' : 'Advisory'),why:html`${codeWords(a.action)}${a.reason ? html` \u00b7 <span class="owner-text">${said(a.reason)}</span>` : ''}${a.action==='REFRESH_EVIDENCE' && notReached.length ? html` <span class="status-names">${t('Not reviewed: {names}.',{names:notReached.join(', ')})}</span>` : ''}`,action:way?.action || '',value:way?.value || '',label:way?.word || ''}; }); // the owner pipeline is visible before publication; only a published review has a Report decision
+    const foot=actions.map(a=>{ const way=actionWay(a), standing=actionStanding(a); return {tone:standing.tone,word:standing.word,why:html`${a.action==='NONE' ? '' : codeWords(a.action)}${a.reason ? html`${a.action==='NONE' ? '' : ' \u00b7 '}<span class="owner-text">${said(a.reason)}</span>` : ''}${a.action==='REFRESH_EVIDENCE' && notReached.length ? html` <span class="status-names">${t('Not reviewed: {names}.',{names:notReached.join(', ')})}</span>` : ''}`,action:way?.action || '',value:way?.value || '',label:way?.word || ''}; }); // the owner pipeline is visible before publication; only a published review has a Report decision
     // B1 (item 7): the route is the head's state; the box says why -- the owner's first reason, the rest under it
     // the third review (2026-09-24; the user: 各管一件事): the Overview is the live standing -- the stages, the blocker and its way; the decision and its reasons are the Report's
     return statusBox({tone,title:c.sentence,reasons:[],checks,foot,label:t('Status'),attrs:'data-overview="status"'});

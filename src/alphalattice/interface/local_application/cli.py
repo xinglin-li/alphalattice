@@ -70,6 +70,9 @@ CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     ("schema", "show"): "A command's request schema (each branch of a two-operation command), "
     "its answer's and a YAML template.",
     ("activity", "wait"): "Wait, with no timer, for a Task or a goal's work to end or need you.",
+    ("strategy-book", "review"): "Run or reuse an installed strategy's whole-support book, "
+    "prepare its Evidence and write every Analyst bundle, following each Task to its end; "
+    "the first stop is the answer.",
     ("backup", "restore"): "Restore a backup generation of the held state onto a new "
     "directory, from the backup root alone.",
     ("model", "scaffold"): "Write a new Alpha model's adapter, declaration and contract test "
@@ -288,6 +291,30 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             action="store_true",
             help="With --task: also return as the Task verifies each stage (STAGE_VERIFIED), a "
             "coverage run's unit among them.",
+        )
+    elif (noun, verb) == ("strategy-book", "review"):
+        child.add_argument(
+            "--package",
+            dest="strategy_package_id",
+            required=True,
+            help="The installed strategy package whose book is reviewed.",
+        )
+        child.add_argument(
+            "--dir",
+            dest="bundle_root",
+            type=Path,
+            required=True,
+            help="A folder for the Analyst bundles; each unit's is a new folder inside it.",
+        )
+        child.add_argument(
+            "--max-wait",
+            type=float,
+            help="The only timer, for a command run under a cap; omit it to follow each Task.",
+        )
+        child.add_argument(
+            "--notify",
+            choices=("codex-queue",),
+            help="Also queue one line to this Codex thread (CODEX_THREAD_ID) when it ends.",
         )
     elif (noun, verb) == ("model", "scaffold"):
         given = child.add_mutually_exclusive_group(required=True)
@@ -609,7 +636,16 @@ def _field_help(name: str, required: set[str] | frozenset[str]) -> str | None:
 
 
 def _client_fields(args: argparse.Namespace) -> dict[str, Any]:
-    """The client's own waiter, in the fields the research client's `run` reads."""
+    """The client's own waiter or book review, in the fields the research client's `run`
+    reads."""
+    if args.client_command == ("strategy-book", "review"):
+        return {
+            "command": "book-review",
+            "strategy_package_id": args.strategy_package_id,
+            "bundle_root": args.bundle_root,
+            "max_wait": args.max_wait,
+            "notify": args.notify,
+        }
     return {
         "command": "activity-wait",
         "task_id": args.task_id,

@@ -11,6 +11,9 @@ from alphalattice.control.product_host.composition.strategy_score_inputs import 
     workspace_observation_history_columns,
     workspace_score_source_identity,
 )
+from alphalattice.control.product_host.composition.strategy_scoring import (
+    workspace_observation_history_reuse,
+)
 from alphalattice.foundation.feature_engine.producers.factors.session_observation import (
     SESSION_OBSERVATION_FACTOR_IDS,
 )
@@ -33,7 +36,7 @@ def daily_workspace(real_risk_workspace, tmp_path):
     return copy_workspace(real_risk_workspace.workspace, tmp_path / "daily")
 
 
-def _publish(store, prepared):
+def _publish(store, prepared, reuse=None):
     assert prepared.dependency_prefix_hash is not None
     return store.publish_workspace_observation_history(
         scope_hash="1" * 64,
@@ -43,6 +46,7 @@ def _publish(store, prepared):
         ordered_listing_ids=prepared.ordered_listing_ids,
         stable_session_count=prepared.stable_session_count,
         columns=workspace_observation_history_columns(prepared),
+        reuse=reuse,
         capacity=lambda count: None,
     )
 
@@ -216,3 +220,101 @@ def test_a_reloaded_owner_appends_every_session_observation_with_the_same_public
         assert fresh.publish_frozen_observations(
             ordinary, disposition="RECORDED_INPUT_QA"
         ) == fresh.publish_frozen_observations(reused, disposition="RECORDED_INPUT_QA")
+
+
+WIDE = (
+    "RELATIVE_STOCK_CROSS_SECTION::mom_252_21::identity",
+    "NON_NEUTRAL_STOCK_CROSS_SECTION::gap::identity",
+)
+"""A renewal day's Features: the model's plus a training factor the next day does not need."""
+
+
+def _column_hashes(prepared):
+    import hashlib
+
+    return {
+        name: hashlib.sha256(values.tobytes()).hexdigest()
+        for name, values in workspace_observation_history_columns(prepared).items()
+    }
+
+
+def test_the_day_after_a_renewal_reuses_its_wider_history_as_a_cold_rebuild(daily_workspace):
+    """requirement: a kept history of more Feature columns than the day needs is reused exactly.
+
+    A renewal day also captures its training factors, and the next day needs fewer columns. The
+    next day proves the kept prefix over the Features it was kept for, reuses it, and keeps only
+    the columns it needs: each equals a cold rebuild's, value for value and by hash, and the
+    day's scoring inputs are the same.
+    """
+    store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
+    previous = _publish(store, _capture(daily_workspace, FIRST, WIDE))
+    history = AlphaCurrentArtifactStore(
+        daily_workspace / "artifacts"
+    ).load_workspace_observation_history("1" * 64)
+    narrow = WIDE[:1]
+    appended = _capture(daily_workspace, LAST, narrow, history)
+    assert appended.reused_history_hash == previous.head_hash
+    cold = _capture(daily_workspace, LAST, narrow)
+    _same_preparation(cold, appended)
+    assert _column_hashes(cold) == _column_hashes(appended)
+    assert appended.dependency_prefix_hash == cold.dependency_prefix_hash
+    # The publication the scoring owner makes of it: the renewal's wider parts are not shared,
+    # the day's own columns are written, and the day after reuses them, sharing their parts.
+    columns = workspace_observation_history_columns(appended)
+    assert workspace_observation_history_reuse(history[0], appended, columns) is None
+    with pytest.raises(Exception, match="workspace_observation_history_reuse_invalid"):
+        _publish(store, appended, reuse=history[0])
+    narrow_head = _publish(store, appended)
+    again = _capture(
+        daily_workspace, LAST, narrow, store.load_workspace_observation_history("1" * 64)
+    )
+    assert again.reused_history_hash == narrow_head.head_hash
+    assert (
+        workspace_observation_history_reuse(
+            narrow_head, again, workspace_observation_history_columns(again)
+        )
+        == narrow_head
+    )
+    request = dict(
+        formation=LAST,
+        observed_at=OBSERVED_AT,
+        expected_source_hash=workspace_score_source_identity(daily_workspace),
+        ordered_feature_ids=narrow,
+    )
+    ordinary = build_workspace_score_inputs(daily_workspace, **request)
+    reused = build_workspace_score_inputs(daily_workspace, **request, prepared=appended)
+    for name in ("close", "volume", "market_context_values", "sector_trend_values"):
+        np.testing.assert_array_equal(getattr(ordinary, name), getattr(reused, name))
+    assert set(ordinary.formula_values) == set(reused.formula_values)
+    for name, values in ordinary.formula_values.items():
+        assert values.tobytes() == reused.formula_values[name].tobytes()
+
+
+def test_a_kept_history_is_refused_for_more_columns_or_another_implementation(daily_workspace):
+    """requirement: reuse needs the same implementation and a history holding the needed columns.
+
+    A history kept for fewer Feature columns than a capture needs proves another prefix and is
+    rebuilt; the selection that finds a history names the slot, package and implementation, and
+    no authority, so a renewal keeps it and a changed implementation does not.
+    """
+    from types import SimpleNamespace
+
+    from alphalattice.control.product_host.composition.strategy_scoring import (
+        workspace_observation_history_selection,
+    )
+
+    store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
+    _publish(store, _capture(daily_workspace, FIRST, WIDE[:1]))
+    history = store.load_workspace_observation_history("1" * 64)
+    wider = _capture(daily_workspace, LAST, WIDE, history)
+    assert wider.reused_history_hash is None
+    _same_preparation(_capture(daily_workspace, LAST, WIDE), wider)
+    binding = SimpleNamespace(
+        strategy_package_id="package",
+        component_id="component",
+        source_kind="WORKSPACE_DATA_FEATURE",
+        strategy_package_hash="3" * 64,
+    )
+    same = workspace_observation_history_selection(binding, implementation="a" * 64)
+    assert same == workspace_observation_history_selection(binding, implementation="a" * 64)
+    assert same != workspace_observation_history_selection(binding, implementation="b" * 64)

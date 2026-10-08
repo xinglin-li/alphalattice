@@ -226,8 +226,21 @@ class TaskSupervisor:
         also allowed to retain Task Control's located refusal rather than being guessed.
         """
         records = tuple(tasks)
-        by_id = {record.task_id: record for record in records}
         registry = self.operations.workspace_session.task_control_registry
+        canonical = registry.record_collection().records
+        by_id = {record.task_id: record for record in canonical}
+        admission_order = {record.task_id: index for index, record in enumerate(canonical)}
+        by_id.update((record.task_id, record) for record in records)
+        completed: dict[tuple[str, str], TaskRecord] = {}
+        for record in by_id.values():
+            if record.lifecycle is TaskLifecycle.SUCCEEDED:
+                key = (record.task_kind, record.plan.plan_hash)
+                previous = completed.get(key)
+                if previous is None or (
+                    admission_order.get(record.task_id, -1)
+                    > admission_order.get(previous.task_id, -1)
+                ):
+                    completed[key] = record
         links = registry.recovery_links()
         incidents = self.store.records()
         successor_ids = {
@@ -252,6 +265,14 @@ class TaskSupervisor:
                 successors=successors,
                 links=links,
                 incidents=incidents,
+                superseded_by=completed.get((record.task_kind, record.plan.plan_hash)),
+                superseded_is_later=(
+                    (candidate := completed.get((record.task_kind, record.plan.plan_hash)))
+                    is not None
+                    and record.task_id in admission_order
+                    and candidate.task_id in admission_order
+                    and admission_order[candidate.task_id] > admission_order[record.task_id]
+                ),
             )
             for record in records
         }

@@ -71,6 +71,10 @@ from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import 
     finding_aliases,
     review_dispositions,
 )
+from alphalattice.oversight.chief_risk_officer.decision.views import (
+    REVIEW_STATE_WORDS,
+    coverage_words,
+)
 from alphalattice.oversight.chief_risk_officer.publication.portfolio_review import (
     PortfolioReviewView,
 )
@@ -780,6 +784,10 @@ class EvidenceReviewDelivery:
             "finding_aliases": finding_aliases(dossier),
             "submission_template": self.app._review_submission(dossier, read_at=read_at),
             "claim": "EXTERNAL_ASSESSMENT_IS_NOT_A_ROUTE_OR_PROTECTED_VALIDATION",
+            # The coverage in words beside its numbers: a quiet holding was checked and had
+            # nothing to read; only the unreached share is unread (FLOW-3).
+            "coverage_words": list(coverage_words(dossier.coverage)),
+            "review_state_words": REVIEW_STATE_WORDS,
             "external_host_usage": "UNAVAILABLE",
             # Beside the sealed dossier, never inside it: its hash and every
             # review bound to it are unchanged by what is read here.

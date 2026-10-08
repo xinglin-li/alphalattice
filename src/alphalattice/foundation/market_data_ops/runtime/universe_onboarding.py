@@ -41,6 +41,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
     candidate_manifest_document,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
+    ActionAuditReceipt,
     CurrentUniverseOnboardingListing,
     HydrationDeferred,
     MarketDataRepository,
@@ -1155,6 +1156,8 @@ class CurrentUniverseOnboarding:
             now=observed_at,
         )
         if receipt is None and item.listing_id in set(self.retained_listing_ids):
+            receipt = self._retained_audit_chain(item, observed_at=observed_at)
+        if receipt is None and item.listing_id in set(self.retained_listing_ids):
             self._record_listing_failure(
                 item,
                 code="data.retained_action_evidence_not_reusable",
@@ -1200,6 +1203,57 @@ class CurrentUniverseOnboarding:
             return "FAILED"
         self._mark_listing(item, state="FEATURE_READY", observed_at=observed_at, origin="LOCAL")
         return "READY"
+
+    def _retained_audit_chain(
+        self, item: CurrentUniverseOnboardingListing, *, observed_at: datetime
+    ) -> ActionAuditReceipt | None:
+        """Complete retained coverage from its unchanged anchor and current rolling proof.
+
+        A same-session roster change needs no new tail. Its daily audit still
+        covers only the rolling range: retain both witnesses as recorded,
+        never manufacture a fresh full-history Provider receipt.
+        """
+        anchors = self.store.latest_action_audit_receipts(
+            (item.listing_id,), provider=self.provider.name
+        )
+        links = self.store.latest_action_audit_receipts(
+            (item.listing_id,),
+            requested_as_of=self.as_of_session,
+            provider=self.provider.name,
+        )
+        anchor, link = anchors.get(item.listing_id), links.get(item.listing_id)
+        if anchor is None or link is None or anchor.mapping_revision != link.mapping_revision:
+            return None
+        anchor = self.store.verified_action_audit_receipt(
+            self.acquisition_manifest,
+            receipt_hash=anchor.receipt_hash,
+            listing_id=item.listing_id,
+            requested_as_of=anchor.requested_as_of,
+            now=observed_at,
+            allow_historical=True,
+            provider=self.provider.name,
+        )
+        link = self.store.verified_action_audit_receipt(
+            self.acquisition_manifest,
+            receipt_hash=link.receipt_hash,
+            listing_id=item.listing_id,
+            requested_as_of=self.as_of_session,
+            now=observed_at,
+            allow_equivalent_manifest=True,
+            provider=self.provider.name,
+        )
+        if anchor is None or link is None:
+            return None
+        bars = self.store.raw_bars(item.listing_id, through=self.as_of_session)
+        if not bars or any(
+            not (
+                anchor.history_start <= bar.session_date <= anchor.history_end
+                or link.history_start <= bar.session_date <= link.history_end
+            )
+            for bar in bars
+        ):
+            return None
+        return link
 
     def _complete_action_audit(
         self,

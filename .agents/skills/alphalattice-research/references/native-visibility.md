@@ -1,5 +1,5 @@
 # Native sessions and Team
-Date: 2026-10-07
+Date: 2026-10-08
 
 Research and Team need no product hook and no hook approval. Binding starts no model, agent or
 Task and grants no execution or write rights. Configuration alone proves no live child.
@@ -16,7 +16,9 @@ environment (`.venv/bin/python` outside Windows), configure once:
 For Claude use `native_research.py configure --host claude-code`. The host-local
 `alphalattice-project.local.json` in `.codex/` or `.claude/` declares the project's host.
 Existing settings remain; configure removes only the product's own retired lifecycle hook
-groups. `native_research.py doctor` checks local readiness. Bind the actual Session inside it:
+groups. `native_research.py doctor` checks local readiness. A Session is bound when it first
+works on a workspace, in the configured project above the workspace when there is one, else in
+the workspace; its first research request opens a goal when it holds none. Bind explicitly only to rebind or to turn reading off:
 
 ```text
 alphalattice --workspace <explicit-workspace> session bind --usage read

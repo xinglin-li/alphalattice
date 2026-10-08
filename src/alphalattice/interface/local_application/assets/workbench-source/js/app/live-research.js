@@ -21,18 +21,20 @@ const LiveResearch = (() => {
     INVALID:'The workspace moved beneath this PLAN; PLAN it again explicitly.',
     MISSING:'This service holds no preview under this hash: it expired, was displaced by newer previews, or the service restarted. Only an explicit new PLAN recreates it.',
     ADMITTED_AS_TASK:'This PLAN was already admitted as a Task; read the Task, not the preview.'};
-  async function inspectShared(hash) {
-    if(!hash) return;
+  async function inspectShared(hash, wanted=()=>true) {
+    if(!hash || !wanted()) return false;
     const ticket=++S.sharedTicket;
     S.shared={hash,ticket,loading:true,body:null,error:''};
     S.initialized=true; app.page='lab'; replaceHash({page:'lab',plan:hash}); dropReview(); paint();
     try {
       const body=await Data.read('/api/experiments/preview?'+new URLSearchParams({experiment_plan_hash:hash}));
-      if(ticket!==S.sharedTicket) return; // a later inspect owns the panel; this answer is stale
+      if(ticket!==S.sharedTicket || !wanted()) return false; // a later inspect or manual choice owns the panel
       S.shared={hash,ticket,loading:false,body,error:''};
       if(body?.status==='AVAILABLE') openReader(); // round 67 / 69: what is new for the person comes first — the reader opens on the shared PLAN
+      return true;
     } catch(e) { if(ticket===S.sharedTicket) S.shared={hash,ticket,loading:false,body:null,error:e.message}; }
-    if(ticket===S.sharedTicket) paint();
+    if(ticket===S.sharedTicket && wanted()) paint();
+    return wanted();
   }
   function dismissShared() { S.shared=null; S.sharedTicket++; replaceHash({plan:''}); dropReview(); paint(); }
   /* An adoption review is one transaction: the exact shared answer (hash + ticket), the draft

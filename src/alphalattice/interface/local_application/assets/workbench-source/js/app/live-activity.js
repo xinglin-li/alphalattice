@@ -14,7 +14,11 @@ const LiveActivity = (() => {
   const INTERVAL = 3000, HIDDEN_INTERVAL = 15000, BACKOFF = 10000, CATCH_UP = 250;
   const S = {cursor: null, epoch: null, watermark: 0, groups: new Map(), tasks: {}, error: '', observer: null,
     notice: '', unavailable: 0, unseen: 0, primed: false, fetching: null, timer: null, cost: null, disposition: null, stopped: false,
-    stale: false, following: null, followGeneration: 0, pendingOpen: null, pendingNoticed: null, opening: null, reconciled: 0};
+    stale: false, following: null, paused: null, followGeneration: 0, pendingOpen: null, pendingNoticed: null, opening: null, reconciled: 0};
+  // A Goal follows only the Tasks and decisions its owners attributed, never a similar name.
+  const G = {scope: '', id: '', body: null, stamp: '', reading: null, shown: new Set(), error: ''};
+  const goalScope = () => S.following === 'latest' || S.following?.startsWith('goal:');
+  const followedTasks = () => goalScope() ? (G.body?.record?.tasks || []).map(v => v.task_id) : S.following ? [S.following] : [];
   // `S.epoch` is the store whose ordinals the retained groups, watermark and cursor belong to.
   /* The declared Team event kinds the feed can name in words; any other kind is shown as declared.
    * The raw kind and payload stay in the row's exact observations. */
@@ -47,7 +51,7 @@ const LiveActivity = (() => {
       for (const g of [...S.groups.values()].sort((a, b) => a.last - b.last).slice(0, S.groups.size - MAX_GROUPS)) S.groups.delete(g.key);
     }
     const keep = new Set([...S.groups.values()].map((g) => g.task_id).filter(Boolean));
-    if (S.following) keep.add(S.following); // the followed Task's projection is referenced by the choice
+    for (const task of followedTasks()) keep.add(task);
     for (const id of Object.keys(S.tasks)) if (!keep.has(id)) delete S.tasks[id];
   }
   /* Facts of a group. Three truths stay apart: what the operation returned, what Task Control
@@ -158,22 +162,36 @@ const LiveActivity = (() => {
   /* Following is one choice at a time: each change bumps a generation, and an automatic open
    * decided under an older generation, or on another page, is abandoned at the point where it
    * would actually move the reader. The hash records the choice so a reload restores it. */
-  function setFollowing(taskId) {
-    S.following = taskId || null; S.followGeneration += 1; S.pendingOpen = S.pendingNoticed = null; S.reconciled = 0;
-    replaceHash({follow: S.following || ''});
-    if (S.following) reconcileFollowed();
+  function setFollowing(taskId, paused = false) {
+    S.paused = paused ? taskId : null;
+    S.following = paused ? null : taskId || null; S.followGeneration += 1; S.pendingOpen = S.pendingNoticed = null; S.reconciled = 0;
+    if (paused) replaceHash({follow: taskId, follow_paused: '1'});
+    else if (typeof hashParams === 'function' && hashParams().has('follow_paused')) replaceHash({follow_paused: ''});
+    if (!paused) {
+      replaceHash({follow: S.following || ''});
+      if (S.following) reconcileFollowed();
+    }
+    if (typeof Window.renderTop === 'function') Window.renderTop();
     paint();
   }
   function pin() { setFollowing(null); }
+  function pauseFollowing() {
+    const scope = S.following || S.paused;
+    if (!scope) return;
+    if (S.following) setFollowing(scope, true);
+    else replaceHash({follow: scope, follow_paused: '1'}); // Back or a pre-painted link keeps the pause
+  }
+  function followAgain() { const scope = S.paused; if (scope) { G.stamp = ''; G.shown.clear(); setFollowing(scope); } }
   const SETTLED = new Set(['SUCCEEDED', 'FAILED', 'BLOCKED', 'CANCELLED']);
-  const busy = () => Boolean((typeof LiveResearch !== 'undefined' && LiveResearch.dirty && LiveResearch.dirty()) || document.querySelector('#dialog')?.open);
-  const route = () => app.page + '|' + (app.book || '') + '|' + (typeof location !== 'undefined' ? location.hash.replace(/([#&])follow=[^&]*/, '$1') : '');
+  const busy = () => Boolean((typeof LiveResearch !== 'undefined' && LiveResearch.dirty && LiveResearch.dirty()) || document.querySelector('#dialog')?.open || document.activeElement?.matches?.('input, textarea, select, [contenteditable="true"]'));
+  const route = () => app.page + '|' + (app.book || '') + '|' + (typeof location !== 'undefined' ? location.hash.replace(/([#&])follow(?:_paused)?=[^&]*/g, '$1') : '');
   const groupOfTask = (task) => [...S.groups.values()].find((g) => g.task_id === task) || null;
   /* What is known about the followed Task right now: a retained verified result opens; a
    * settled Task whose verification this reader never saw (restored after the event, or the
    * event left retention) is reconciled once against the owner's own readback; a Task that
    * ended without a result ends the follow. A moving Task waits for the feed. */
   function reconcileFollowed() {
+    if (goalScope()) { void reconcileGoal(); return; }
     const task = S.following;
     if (!task || S.pendingOpen || S.opening) return;
     const g = groupOfTask(task);
@@ -183,6 +201,87 @@ const LiveActivity = (() => {
     S.reconciled = S.followGeneration;
     if (live.lifecycle !== 'SUCCEEDED') { notify('Followed Task {task} ended {state}; there is no result to open', {task: shortRef(task), state: codeWords(live.lifecycle)}); setFollowing(null); return; }
     S.pendingOpen = 'task:' + task; openFollowed();
+  }
+  // Reuse the feed's cadence. Own read receipts cannot dirty the Goal again; canonical Task
+  // state changes still do, including a result whose verification left the retained feed.
+  const FOLLOW_READS = new Set(['GOAL_LIST', 'GOAL_NARRATIVE', 'GOAL_SHOW', 'GOAL_REFERENCE', 'GOAL_EXPORT', 'CASE_NARRATIVE', 'CASE_READBACK', 'PENDING_DECISIONS', 'STATUS', 'TASK_RECOVERY', 'TASK_RECOVERY_VIEW', 'EXPERIMENT_READBACK', 'REPORT', 'RESEARCH_HISTORY']);
+  function goalStamp() {
+    const ordinal = Math.max(0, ...[...S.groups.values()].flatMap(g => g.items).filter(v => v.schema_kind !== 'ProductOperationObserved' || !(FOLLOW_READS.has(v.payload?.operation) || (Data.offers?.(v.payload?.operation) && !Data.posts(v.payload.operation)))).map(v => v.ordinal));
+    return JSON.stringify([S.epoch, ordinal, followedTasks().map(id => { const v = S.tasks[id] || Data.tasks().find(t => t.task_id === id); return [id, v?.lifecycle, v?.task_record_hash]; })]);
+  }
+  async function publishedReview(task, wanted) {
+    const view = await Data.readShared('/api/tasks/recovery?' + new URLSearchParams({task_id: task}));
+    if (!wanted()) return false;
+    const pub = (view.artifact_refs || []).map(v => String(v).match(/cro_review_publication\/([^/?#]+)/)?.[1]).find(Boolean);
+    if (!pub) return false;
+    await Data.refreshHistory();
+    if (!wanted()) return false;
+    const entry = Data.history().find(v => v.raw?.review_publication_hash === pub && v.raw?.book);
+    if (!entry) return false;
+    return Data.openEntry(entry.id);
+  }
+  async function openDecision(decision, wanted) {
+    if (decision.review_publication_hash) {
+      await Data.refreshHistory();
+      if (!wanted()) return false;
+    }
+    const way = LiveViews.decisionRow(decision, [decision])?.to;
+    if (!wanted() || !way) return false;
+    if (way.action === 'task') return LiveTasks.open(way.value, wanted);
+    if (way.action === 'task-result') return LiveTasks.openResult(way.value, wanted);
+    if (way.action === 'history-open') return Data.openEntry(way.value);
+    if (decision.kind === 'PLAN_PREVIEW') return LiveResearch.inspectShared(decision.plan_hash, wanted);
+    // Following shows the decision's page; it never previews or confirms a write itself.
+    if (way.action === 'workspace-preview') { navigate('data'); return true; }
+    if (way.page) { navigate(way.page, way.extra || {}); return true; }
+    return false;
+  }
+  async function reconcileGoal() {
+    if (!goalScope() || G.reading || busy() || S.stale || S.error) return;
+    const scope = S.following, generation = S.followGeneration;
+    let origin = route();
+    let stamp = goalStamp();
+    const wanted = () => S.following === scope && S.followGeneration === generation && route() === origin && goalStamp() === stamp && !busy();
+    if (G.scope !== scope) Object.assign(G, {scope, id: scope.startsWith('goal:') ? scope.slice(5) : '', body: null, stamp: '', shown: new Set(), error: ''});
+    G.reading = true;
+    return (async () => {
+      try {
+        if (!G.body && G.stamp === stamp) return;
+        if (!G.body || G.stamp !== stamp) {
+          if (scope === 'latest') {
+            const list = await Data.readShared('/api/goals');
+            if (!wanted()) return;
+            G.id = (list.goals || []).find(v => v.state === 'OPEN')?.goal_id || '';
+            if (!G.id) { G.body = null; G.stamp = stamp; return; }
+          }
+          const body = await Data.readShared('/api/goals/narrative?' + new URLSearchParams({goal_id: G.id}));
+          if (!wanted()) return;
+          if (body.goal?.goal_id !== G.id) throw Error('goal.not_found');
+          G.body = body; stamp = goalStamp(); G.stamp = stamp; G.error = '';
+        }
+        // Decisions can finish their own bounded read after this Goal's last Task event.
+        await Data.refreshDecisions();
+        if (!wanted()) return;
+        const decision = (Data.decisions() || []).find(v => v.waits_on !== 'AGENT' && v.kind !== 'FIRST_USE' && (v.goal_ids || [v.goal_id]).includes(G.id));
+        const task = [...(G.body.record?.tasks || [])].reverse().find(v => stateMoving(v.state) || v.state === 'SUCCEEDED');
+        const key = decision ? JSON.stringify(['decision', decision.kind, decision.task_id, decision.task_record_hash, decision.plan_hash, decision.review_publication_hash, decision.case_token, decision.research_input_id, decision.input_through, decision.data_through]) : task ? task.task_id + ':' + task.state : '';
+        if (!key || G.shown.has(key) || !wanted()) return;
+        let opening;
+        if (decision) opening = openDecision(decision, wanted);
+        else if (stateMoving(task.state)) opening = LiveTasks.open(task.task_id, wanted);
+        else if (task.kind === 'chief_risk_officer.portfolio_review') opening = publishedReview(task.task_id, wanted);
+        else opening = LiveTasks.openResult(task.task_id, wanted);
+        origin = route();
+        // Progress opens its inspector synchronously, then checks its own wanted boundary.
+        // The scope generation still protects every late read from a manual navigation.
+        const opened = await opening;
+        if (S.following === scope && S.followGeneration === generation && opened !== false) {
+          G.shown.add(key);
+          if (G.shown.size > MAX_GROUPS) G.shown.delete(G.shown.values().next().value);
+        }
+      } catch (e) { if (S.following === scope && S.followGeneration === generation && e.name !== 'AbortError' && G.error !== e.message) { G.error = e.message; notify(e.message); } }
+      finally { G.reading = null; }
+    })();
   }
   /* A followed Task's verified result opens once the reader is free to be moved: not over an
    * unsaved draft, a confirmation or an open dialog. Until then it waits, announced once. */
@@ -305,7 +404,7 @@ const LiveActivity = (() => {
   // N6: the followed Task is a state with its control (notes); the log's sentence is the label's (i)
   function section() {
     const rows = ordered();
-    const following = S.following ? html`${t('Following Task {task} · its verified result will open here; pin to keep the current view.', {task: shortRef(S.following)})} ${btn(t('Pin current view'), 'activity-pin', '', 'text-btn')}` : '';
+    const following = S.following ? html`${goalScope() ? t('Following this Goal') : t('Following Task {task} · its verified result will open here; pin to keep the current view.', {task: shortRef(S.following)})} ${btn(t('Pin current view'), 'activity-pin', '', 'text-btn')}` : '';
     return runLog({id: 'activityLog', title: t('Workspace activity'), caption: t('Recorded operations, Task returns and verified results · newest first · no simulated progress'), notes: html`${following ? html`<p class="run-log-following">${following}</p>` : ''}${banners()}`, lines: rows.map(row), empty: emptyState(t('No recorded activity yet.')), status: html`<span data-activity-cost>${t('Not read yet')}</span>`, cls: 'activity-log', linesCls: 'card-list lines slotted activity-rows'});
   }
 
@@ -367,13 +466,13 @@ const LiveActivity = (() => {
   }
   function mergeFresh(body) {
     const fresh = Object.values(body.tasks || {});
-    for (const v of fresh) if (S.tasks[v.task_id] || v.task_id === S.following || [...S.groups.values()].some((g) => g.task_id === v.task_id)) S.tasks[v.task_id] = v;
+    for (const v of fresh) if (S.tasks[v.task_id] || followedTasks().includes(v.task_id) || [...S.groups.values()].some((g) => g.task_id === v.task_id)) S.tasks[v.task_id] = v;
     if (fresh.length) Data.mergeTasks(fresh);
   }
   function watched() {
     const moving = [...S.groups.values()].filter((g) => g.task_id && (!S.tasks[g.task_id] || mayChange(S.tasks[g.task_id].lifecycle))).sort((a, b) => b.last - a.last).map((g) => g.task_id);
     // The followed Task is watched even without a retained group, so a restored follow can reconcile.
-    return [...new Set([...(S.following ? [S.following] : []), ...moving])].slice(0, 16);
+    return [...new Set([...followedTasks(), ...moving])].slice(0, 16);
   }
   const cadence = () => (S.error ? BACKOFF : document.hidden ? HIDDEN_INTERVAL : INTERVAL);
   async function refresh() {
@@ -435,7 +534,7 @@ const LiveActivity = (() => {
     window.addEventListener('pagehide', stop);
     window.addEventListener('pageshow', (event) => { if (event.persisted) resume(); });
   }
-  return {section, logLines, starterOf, recordOf, refresh, markSeen, bind, facts, nextRead, absorbPage, open, openSavedResult, cadence, stop, resume, follow, pin, setFollowing, taskSettled, setNotices, noticesState, readSessionUsage,
+  return {section, logLines, starterOf, recordOf, refresh, markSeen, bind, facts, nextRead, absorbPage, open, openSavedResult, cadence, stop, resume, follow, pin, setFollowing, pauseFollowing, followAgain, followPaused: () => S.paused, taskSettled, setNotices, noticesState, readSessionUsage,
     retained: () => [...S.groups.values()],
     nativeUsageState: () => S.observer?.native_usage || null,
     state: () => ({cursor: S.cursor, epoch: S.epoch, groups: S.groups.size, unseen: S.unseen, error: S.error, notice: S.notice, tasks: Object.keys(S.tasks).length, watermark: S.watermark, disposition: S.disposition, stale: S.stale, stopped: S.stopped, fetching: Boolean(S.fetching), timer: S.timer !== null, following: S.following, pendingOpen: S.pendingOpen, opening: Boolean(S.opening), generation: S.followGeneration}),

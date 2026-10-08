@@ -426,12 +426,52 @@ class AlphaPreparedRefit(_LifecycleContract):
         return str(canonical_hash([self.content_hash, recipe_hash, numerical_binding_hash]))
 
 
+@dataclass(frozen=True)
+class AlphaRefitPrices:
+    """One component's training prices and their price-volume history, read and computed once.
+
+    The history runs through ``through``. A vintage whose last training session is no later
+    reads its own rows from it: the pass is causal row by row
+    (`prepare_frozen_price_volume_history`), so those rows are the ones its own pass computes.
+    """
+
+    observation_hash: str
+    ordered_feature_ids: tuple[str, ...]
+    through: date
+    source: FrozenPriceVolumeInputs
+    history: FloatArray
+
+
+def read_alpha_refit_prices(
+    store: AlphaDevelopmentArtifactStore,
+    observations: AlphaTrainingObservations,
+    *,
+    ordered_feature_ids: tuple[str, ...],
+    through: date,
+) -> AlphaRefitPrices:
+    """The training prices of ``observations`` and their history through ``through``."""
+    with span("read", "training_prices"):
+        source = read_training_prices(store, observations.observation_hash)
+    with span("features", "price_volume_history"):
+        history = prepare_frozen_price_volume_history(
+            source, ordered_feature_ids=ordered_feature_ids, through=through
+        )
+    return AlphaRefitPrices(
+        observation_hash=observations.observation_hash,
+        ordered_feature_ids=ordered_feature_ids,
+        through=through,
+        source=source,
+        history=history,
+    )
+
+
 def prepare_alpha_refit(
     store: AlphaDevelopmentArtifactStore,
     *,
     plan: ResolvedAlphaRefitPlan,
     observations: AlphaTrainingObservations,
     component: HeterogeneousAlphaComponentRecipe,
+    prices: AlphaRefitPrices | None = None,
 ) -> AlphaPreparedRefit:
     """Prepare causal admitted component training rows and persist their exact fit binding.
 
@@ -445,6 +485,8 @@ def prepare_alpha_refit(
         plan: Exact resolved lifecycle refit plan.
         observations: Sealed target/eligibility observations with availability dates.
         component: Installed component recipe deciding feature/target/candidate semantics.
+        prices: These observations' prices and history through no earlier than the plan's
+            last training session, read once for several vintages; otherwise read here.
 
     Returns:
         Persisted prepared refit with plan, row/value authority and market scale.
@@ -453,8 +495,20 @@ def prepare_alpha_refit(
         AlphaLifecycleError: Plan/source/target binding, label maturity/shape or supported
             training-row count violates admission.
     """
-    with span("read", "training_prices"):
-        source = read_training_prices(store, observations.observation_hash)
+    if prices is not None and (
+        prices.observation_hash != observations.observation_hash
+        or prices.ordered_feature_ids != plan.ordered_feature_ids
+        or prices.through < plan.training_sessions[-1]
+    ):
+        prices = None
+    if prices is None:
+        prices = read_alpha_refit_prices(
+            store,
+            observations,
+            ordered_feature_ids=plan.ordered_feature_ids,
+            through=plan.training_sessions[-1],
+        )
+    source = prices.source
     expected = resolve_alpha_refit_plan(
         lifecycle=plan.lifecycle,
         vintage=plan.vintage,
@@ -483,14 +537,9 @@ def prepare_alpha_refit(
         or labels["eligible"].dtype != np.bool_
     ):
         raise AlphaLifecycleError("alpha_research.refit_label_axis_invalid")
-    # Historical rows use exactly the one-day inference arithmetic; calculate
-    # the common history once rather than once per training date or seed.
-    with span("features", "price_volume_history"):
-        history = prepare_frozen_price_volume_history(
-            source,
-            ordered_feature_ids=plan.ordered_feature_ids,
-            through=plan.training_sessions[-1],
-        )
+    # Historical rows use exactly the one-day inference arithmetic, calculated once for
+    # every vintage that shares these prices (`AlphaRefitPrices`).
+    history = prices.history
     market = np.array(source.market_context_values, copy=True)
     market[1:, 0] = market[:-1, 0]
     market[0, 0] = np.nan

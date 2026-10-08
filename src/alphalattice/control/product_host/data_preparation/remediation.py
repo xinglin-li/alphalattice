@@ -420,7 +420,10 @@ class WorkspaceDataIssueApplication:
                 operation, endpoint, payload = (
                     "WORKSPACE_PREPARE_PLAN",
                     "/api/workspace/preparation/plan",
-                    {},
+                    {
+                        "recovery_task_id": str(task.task_id),
+                        "recovery_task_hash": task.record_hash,
+                    },
                 )
             elif task.task_kind == "workspace_preparation":
                 operation, endpoint, payload = (
@@ -1065,6 +1068,18 @@ class WorkspaceDataIssueApplication:
             self.panel.record_feature_input_resolution(case_token, receipt.model_dump(mode="json"))
             followup = self.readback()
             requests = cast(dict[str, dict[str, str]], followup.get("next_requests", {}))
+            preparation_plans = [
+                value
+                for key, value in requests.items()
+                if key.startswith("continue:") and value["operation"] == "WORKSPACE_PREPARE_PLAN"
+            ]
+            preparation_request = (
+                preparation_plans[0]
+                if len(preparation_plans) == 1
+                else {"operation": "WORKSPACE_PREPARE_PLAN"}
+                if not preparation_plans
+                else None
+            )
             return {
                 "status": "CONFIRMED_PENDING_REVALIDATION",
                 "receipt_hash": receipt.receipt_hash,
@@ -1083,7 +1098,11 @@ class WorkspaceDataIssueApplication:
                         for key, value in requests.items()
                         if key.startswith("continue:")
                     },
-                    "preparation_plan": {"operation": "WORKSPACE_PREPARE_PLAN"},
+                    **(
+                        {"preparation_plan": preparation_request}
+                        if preparation_request is not None
+                        else {}
+                    ),
                 },
             }
 

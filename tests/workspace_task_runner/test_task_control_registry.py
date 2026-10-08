@@ -194,6 +194,12 @@ def test_registry_owns_queue_work_board_receipts_and_projection(tmp_path: Path) 
     assert projection.verified_stage_count == projection.total_stage_count == 2
     assert projection.cancel_available is False
     assert len(registry.stage_receipts(task.task_id)) == 2
+    with pytest.raises(TaskTransitionRejected, match="terminal task cannot be cancelled"):
+        registry.request_cancel(
+            task_id=task.task_id,
+            expected_task_hash=task.record_hash,
+            observed_at=now + timedelta(seconds=10),
+        )
 
 
 def test_projection_collection_keeps_queue_head_failure_out_of_requested_task_refusal(
@@ -724,6 +730,7 @@ def test_a_lost_ledger_lists_its_tasks_again_from_their_frozen_requests(tmp_path
     assert rebuilt.task_id == admitted.record.task_id
     assert rebuilt.lifecycle is TaskLifecycle.BLOCKED
     assert rebuilt.failure_code == "task_control.ledger_rebuilt"
+    assert rebuilt_store.safe_projection(rebuilt.task_id).cancel_available is True
     assert rebuilt_store.tasks() == (rebuilt,)
     assert rebuilt_store.submitted_by(rebuilt.task_id) == agent
     assert rebuilt_store.rebuild_from_requests(observed_at=now + timedelta(minutes=2)) == ()
@@ -731,12 +738,140 @@ def test_a_lost_ledger_lists_its_tasks_again_from_their_frozen_requests(tmp_path
         input_envelope=envelope, goal=goal, plan=plan, observed_at=now + timedelta(minutes=3)
     )
     assert not again.duplicate_active and again.record.task_id != rebuilt.task_id
+    cancelled, _command = rebuilt_store.request_cancel(
+        task_id=rebuilt.task_id,
+        expected_task_hash=rebuilt.record_hash,
+        observed_at=now + timedelta(minutes=3, seconds=1),
+    )
+    assert cancelled.lifecycle is TaskLifecycle.CANCELLED
+    assert cancelled.failure_code == "task_control.ledger_rebuilt"
+    assert rebuilt_store.safe_projection(rebuilt.task_id).cancel_available is False
 
     # A request that does not read as written is refused by name, never listed.
     moved = next((tmp_path / "runtime" / "task-requests").glob("*.json"))
     moved.rename(moved.with_name("0" * 64 + ".json"))
     with pytest.raises(ValueError, match="admission_request_unreadable"):
         rebuilt_store.rebuild_from_requests(observed_at=now + timedelta(minutes=4))
+
+
+@pytest.mark.parametrize("failure_code", ["task_control.ledger_rebuilt", "fixture.blocked"])
+def test_only_a_ledger_rebuilt_block_can_close_without_discarding_its_history(
+    tmp_path: Path, failure_code: str
+) -> None:
+    """BADGE regression: version-confirmed closing keeps the blocked reason and all
+    stored work, evidence and events; an ordinary block still requires its recovery."""
+    import duckdb
+
+    now = datetime(2026, 10, 8, 5, tzinfo=UTC)
+    database = resolve_task_control_database(tmp_path)
+    registry = DuckDbTaskControlRegistry(database, gate=WorkspaceMutationGate())
+    envelope, goal, plan = task_contract(salt="close-blocked")
+    admitted = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+    started = registry.start_next(
+        compatibility=compatibility(plan),
+        worker_instance_id=uuid4(),
+        observed_at=now + timedelta(seconds=1),
+    )
+    assert started is not None
+    running, execution = started
+    _complete_stage(
+        registry,
+        task_id=running.task_id,
+        execution_id=execution.execution_id,
+        stage_id="resolve_inputs",
+        evidence_kind="input_binding",
+        now=now + timedelta(seconds=2),
+    )
+    registry.begin_work_item(
+        task_id=running.task_id,
+        execution_id=execution.execution_id,
+        stage_id="publish_result",
+        observed_at=now + timedelta(seconds=5),
+    )
+    blocked = registry.block_work_item(
+        task_id=running.task_id,
+        execution_id=execution.execution_id,
+        stage_id="publish_result",
+        failure_code=failure_code,
+        observed_at=now + timedelta(seconds=6),
+    )
+    board = registry.board(blocked.task_id)
+    receipts = registry.stage_receipts(blocked.task_id)
+    (request,) = read_requests(database.parent)
+    with duckdb.connect(str(database), read_only=True) as connection:
+        history = connection.execute(
+            "SELECT * FROM workspace_task_event WHERE task_id = ? ORDER BY sequence",
+            [str(blocked.task_id)],
+        ).fetchall()
+    can_close = failure_code == "task_control.ledger_rebuilt"
+    assert board.projection.cancel_available is can_close
+    assert board.projection.verified_stage_count == 1
+    with pytest.raises(TaskVersionStale, match="stale task version"):
+        registry.request_cancel(
+            task_id=blocked.task_id,
+            expected_task_hash=admitted.record_hash,
+            observed_at=now + timedelta(seconds=7),
+        )
+    assert registry.task(blocked.task_id) == blocked
+    if not can_close:
+        with pytest.raises(TaskTransitionRejected, match="terminal task cannot be cancelled"):
+            registry.request_cancel(
+                task_id=blocked.task_id,
+                expected_task_hash=blocked.record_hash,
+                observed_at=now + timedelta(seconds=8),
+            )
+        assert registry.board(blocked.task_id) == board
+        return
+
+    closed_at = now + timedelta(seconds=8)
+    cancelled, command = registry.request_cancel(
+        task_id=blocked.task_id,
+        expected_task_hash=blocked.record_hash,
+        observed_at=closed_at,
+    )
+    assert cancelled.lifecycle is TaskLifecycle.CANCELLED
+    assert cancelled.failure_code == failure_code
+    assert cancelled.active_work_item_id is None
+    assert command.expected_task_hash == blocked.record_hash
+    repeated, repeated_command = registry.request_cancel(
+        task_id=blocked.task_id,
+        expected_task_hash=blocked.record_hash,
+        observed_at=now + timedelta(seconds=9),
+    )
+    assert (repeated, repeated_command) == (cancelled, command)
+    after = registry.board(blocked.task_id)
+    assert after.task == cancelled
+    assert after.work_items == board.work_items
+    assert after.execution == board.execution
+    assert registry.stage_receipts(blocked.task_id) == receipts
+    assert read_requests(database.parent) == (request,)
+    assert after.projection.cancel_available is False
+    assert after.projection.cancel_pending is False
+    assert after.projection.verified_stage_count == 1
+    assert after.projection.artifact_refs == board.projection.artifact_refs
+    with pytest.raises(TaskTransitionRejected, match="does not require recovery"):
+        registry.restart_recovery(
+            task_id=blocked.task_id,
+            compatibility=compatibility(plan),
+            worker_instance_id=uuid4(),
+            observed_at=now + timedelta(seconds=10),
+        )
+    with duckdb.connect(str(database), read_only=True) as connection:
+        after_history = connection.execute(
+            "SELECT * FROM workspace_task_event WHERE task_id = ? ORDER BY sequence",
+            [str(blocked.task_id)],
+        ).fetchall()
+        commands = connection.execute(
+            "SELECT command_hash, resolution, resolved_at FROM workspace_task_command "
+            "WHERE task_id = ?",
+            [str(blocked.task_id)],
+        ).fetchall()
+    assert after_history[:-1] == history
+    assert after_history[-1][4] == "task.cancel_requested"
+    assert json.loads(after_history[-1][5]) == {
+        "command_hash": command.command_hash,
+    }
+    assert commands == [(command.command_hash, "CANCELLED", closed_at.replace(tzinfo=None))]
 
 
 def test_registry_enforces_one_active_one_queued_and_safe_cancel(tmp_path: Path) -> None:

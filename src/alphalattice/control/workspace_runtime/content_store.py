@@ -10,6 +10,7 @@ digest; those are read, never written, until the formats registry names their up
 from __future__ import annotations
 
 import atexit
+import copy
 import ctypes
 import hashlib
 import json
@@ -686,11 +687,25 @@ def verified_request_proof(identity: tuple[object, ...], check: Callable[[], Non
                     _VERIFIED_PROOF_CACHE.popitem(last=False)
 
 
+class _Copied:
+    """A kept value that is not deeply immutable: each caller receives its own deep copy."""
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: object) -> None:
+        self.value = value
+
+
+def _handed(value: object) -> object:
+    return copy.deepcopy(value.value) if isinstance(value, _Copied) else value
+
+
 def verified_request_value[T](
     identity: tuple[object, ...],
     builder: Callable[[], T],
     *,
     nbytes: int | Callable[[T], int],
+    copy_mutable: bool = False,
 ) -> T:
     """Memoize one immutable, validated value under local and optional process byte bounds.
 
@@ -699,13 +714,18 @@ def verified_request_value[T](
     and the source file's resolved path and identity. Builders that raise are never cached.
     Values larger than either cache's byte limit are returned uncached. The two limits apply
     separately; active requests and caller-held references can keep evicted bytes alive.
+
+    A value that is not deeply immutable is returned uncached, unless the owner passes
+    ``copy_mutable``: then it is kept too, and every caller, the first included, receives
+    its own deep copy, so no caller can change what another reads. An owner opts in only
+    where that copy is cheap against rebuilding the value.
     """
     key = tuple(identity)
     scope = _VERIFIED_ARRAY_SCOPE.get()
     if scope is not None and key in scope:
         value, _ = scope[key]
         scope.move_to_end(key)
-        return cast(T, value)
+        return cast(T, _handed(value))
 
     if scope is not None and _REUSE_VERIFIED_ARRAYS.get():
         global _VERIFIED_ARRAY_PROCESS_CACHE_HITS, _VERIFIED_ARRAY_PROCESS_CACHE_MISSES
@@ -720,22 +740,29 @@ def verified_request_value[T](
             value, size = cached
             if size <= _VERIFIED_ARRAY_CACHE_LIMIT_BYTES:
                 _remember_request_value(scope, key, value, size)
-            return cast(T, value)
+            return cast(T, _handed(value))
 
     value = builder()
     size = nbytes(value) if callable(nbytes) else nbytes
     if size < 0:
         raise ValueError("content_store.verified_value_size_invalid")
-    if scope is not None and _immutable_request_value(value):
-        if size <= _VERIFIED_ARRAY_CACHE_LIMIT_BYTES:
-            _remember_request_value(scope, key, value, size)
-        if (
-            _REUSE_VERIFIED_ARRAYS.get()
-            and not _VERIFIED_SOURCE_BUILD.get()
-            and size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES
-        ):
-            _remember_process_value(key, value, size)
-    return value
+    if scope is None:
+        return value
+    if _immutable_request_value(value):
+        kept: object = value
+    elif copy_mutable:
+        kept = _Copied(value)
+    else:
+        return value
+    if size <= _VERIFIED_ARRAY_CACHE_LIMIT_BYTES:
+        _remember_request_value(scope, key, kept, size)
+    if (
+        _REUSE_VERIFIED_ARRAYS.get()
+        and not _VERIFIED_SOURCE_BUILD.get()
+        and size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES
+    ):
+        _remember_process_value(key, kept, size)
+    return cast(T, _handed(kept))
 
 
 def _remember_request_value(

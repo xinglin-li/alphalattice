@@ -97,6 +97,7 @@ from alphalattice.control.task_control.runner import (
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import ContentAddressedStoreError
+from alphalattice.control.workspace_runtime.database import WorkspaceDatabase
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.network_access import network_access
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
@@ -132,6 +133,7 @@ from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.spans import span
 
 PROFILE = (
     resolve_playpen_root(Path(__file__)) / "config/market-profiles/us-current-index-research.yaml"
@@ -1725,11 +1727,12 @@ class WorkspaceDataUpdateApplication:
         update published and is recorded where the next backup answer reads it."""
         workspace = self.session.workspace
         try:
-            WorkspaceBackups(
-                workspace,
-                workspace_id=read_research_workspace_manifest(workspace).workspace_id,
-                clock=self.clock,
-            ).create(reason="DATA_UPDATE")
+            with span("copy", "held_state_backup"):
+                WorkspaceBackups(
+                    workspace,
+                    workspace_id=read_research_workspace_manifest(workspace).workspace_id,
+                    clock=self.clock,
+                ).create(reason="DATA_UPDATE")
         except (WorkspaceBackupError, ResearchWorkspaceError, OSError, duckdb.Error) as error:
             record_backup_failure(workspace, error, at=self.clock())
         else:
@@ -1875,6 +1878,24 @@ class WorkspaceDataUpdateApplication:
         advancement Task passes nothing and keeps the projection alone, as before.
         """
         self._require_plan(plan)
+        if stage != _STAGES[1]:
+            return self._step(plan, stage, cancelled=cancelled, bound_to=bound_to)
+        # The data stage keeps one writable instance of the market store from its first read
+        # to its last write, so its cycles' holds, the runner's units and every other thread's
+        # reads attach to it instead of reopening the file with a cold cache and checkpointing
+        # it at each close. Writable, it is no lock: every thread attaches without waiting, and
+        # each cycle still releases the write gate at its network edges.
+        with WorkspaceDatabase(self.session.workspace).retain(read_only=False):
+            return self._step(plan, stage, cancelled=cancelled, bound_to=bound_to)
+
+    def _step(
+        self,
+        plan: WorkspaceDataUpdatePlan,
+        stage: str,
+        *,
+        cancelled: Callable[[], bool],
+        bound_to: tuple[TaskRecord, TaskExecution] | None,
+    ) -> StageExecutionResult:
         if stage == _STAGES[0]:
             if (
                 read_workspace_inputs(

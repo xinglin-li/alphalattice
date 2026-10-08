@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -51,6 +51,7 @@ from alphalattice.control.task_control.contracts import (
     TaskReplan,
     WorkItemDefinition,
 )
+from alphalattice.control.task_control.registry import LEDGER_REBUILT_DETAIL, LEDGER_REBUILT_NEXT
 from alphalattice.control.task_control.runner import (
     StageDisposition,
     StageExecutionResult,
@@ -297,19 +298,32 @@ class ResearchStrategyPreparation:
         alphas = [row for row in completed if row.get("component_recipe_id")]
         held = {row["component_recipe_id"] for row in alphas}
         missing = [component for component in required if component not in held]
+        risks = [row for row in completed if row["kind"] == "risk.covariance-development"]
+        windows = self._risk_windows(alphas)
+        # A completed Risk study covers until a calibrated Alpha study names its window.
+        covered = any(
+            all(
+                str(risk["sessions"]["start"]) <= window["start"]
+                and str(risk["sessions"]["end"]) >= window["end"]
+                for window in windows
+            )
+            for risk in risks
+        )
         return {
             "status": "AVAILABLE",
             "declaration_schema": FrozenPortfolioPreparationRequest.model_json_schema(),
             "required_components": required,
             "alpha_tasks": alphas,
-            "risk_tasks": [
-                row for row in completed if row["kind"] == "risk.covariance-development"
-            ],
+            "risk_tasks": risks,
             # The components no completed lifecycle study holds yet, each with its first step.
             "missing_components": missing,
+            # The window the Risk study's `experiment.sessions` must cover, per calibrated Alpha
+            # study; empty until one completes (V533, FLOW-3).
+            "risk_windows": windows,
             # The declaration is the reader's to write (V136).
             "next_requests": {
                 **self._component_routes(missing),
+                **({} if covered else {"risk": self._risk_route()}),
                 "plan": {"operation": "RESEARCH_STRATEGY_PLAN", "experiment_document": None},
             },
             "claim": (
@@ -317,6 +331,60 @@ class ResearchStrategyPreparation:
                 "preparation does not run a Portfolio."
             ),
         }
+
+    def _selector(self) -> dict[str, object]:
+        """The workspace's one input, bound; left to choose when it has several."""
+        inputs = read_research_workspace_manifest(self.session.workspace).experiment_inputs or ()
+        return (
+            {"research_input_id": inputs[0].input_id, "input_binding_hash": inputs[0].binding_hash}
+            if len(inputs) == 1
+            else {"research_input_id": None}
+        )
+
+    def _risk_route(self) -> dict[str, object]:
+        """The Risk study's controls on the input, its window from `risk_windows`."""
+        return {
+            "operation": "EXPERIMENT_CONTROLS",
+            **self._selector(),
+            "experiment_kind": "risk.covariance-development",
+        }
+
+    def _economic_schedule(self, alpha: Mapping[str, Any]) -> tuple[Any, ...]:
+        """The calibrated Alpha study's matured economic formations, as preparation reads them."""
+        bundle = read_factor_bundle(self.session.workspace, str(alpha["input_binding_hash"]))
+        return tuple(
+            local_research_economic_schedule(
+                first=date.fromisoformat(str(alpha["sessions"]["start"])),
+                last=date.fromisoformat(str(alpha["sessions"]["end"])),
+                through=bundle.sessions[-1],
+            )
+        )
+
+    def _risk_windows(self, alphas: list[dict[str, Any]]) -> list[dict[str, str]]:
+        """Each completed calibrated Alpha study's window a Risk study must cover (V533)."""
+        calibrated = {
+            v.component_id
+            for recipe in FROZEN_RESEARCH_BOOK_RECIPES
+            for v in recipe.components
+            if v.weight_rule == "mu.iv0"
+        }
+        windows = []
+        for alpha in alphas:
+            if alpha.get("component_recipe_id") not in calibrated:
+                continue
+            try:
+                schedule = self._economic_schedule(alpha)
+            except (KeyError, OSError, ValueError):
+                continue
+            if schedule:
+                windows.append(
+                    {
+                        "alpha_task_id": str(alpha["task_id"]),
+                        "start": schedule[0].formation_session.isoformat(),
+                        "end": schedule[-1].formation_session.isoformat(),
+                    }
+                )
+        return windows
 
     def _component_routes(self, missing: list[str]) -> dict[str, dict[str, object]]:
         """Each missing component's first step toward its lifecycle study (V505, RR5).
@@ -327,11 +395,7 @@ class ResearchStrategyPreparation:
         """
         manifest = read_research_workspace_manifest(self.session.workspace)
         inputs = manifest.experiment_inputs or ()
-        selector: dict[str, object] = (
-            {"research_input_id": inputs[0].input_id, "input_binding_hash": inputs[0].binding_hash}
-            if len(inputs) == 1
-            else {"research_input_id": None}
-        )
+        selector = self._selector()
         trained = {
             v.component_id
             for v in manifest.model_training_inputs or ()
@@ -413,10 +477,8 @@ class ResearchStrategyPreparation:
             if row.get("component_recipe_id") in calibrated
             and row["task_id"] in {str(v) for v in request.alpha_task_ids}
         )
-        schedule = local_research_economic_schedule(
-            first=date.fromisoformat(str(primary["sessions"]["start"])),
-            last=date.fromisoformat(str(primary["sessions"]["end"])),
-            through=bundle.sessions[-1],
+        schedule = self._economic_schedule(
+            {**primary, "input_binding_hash": request.input_binding_hash}
         )
         if not schedule:
             raise ValueError("research_strategy.matured_economic_support_absent")
@@ -797,6 +859,11 @@ class ResearchStrategyPreparation:
             "status": task.lifecycle.value,
             "task_id": str(task_id),
             "failure_code": task.failure_code,
+            **(
+                {"detail": LEDGER_REBUILT_DETAIL, "stop_next": LEDGER_REBUILT_NEXT}
+                if task.failure_code == "task_control.ledger_rebuilt"
+                else {}
+            ),
             "authority": value.model_dump(mode="json") if value else None,
             "gap": gap,
             "claim": "INPUTS_READY_NOT_PORTFOLIO_EXECUTED_NO_CURRENT_ACTIVATION",
@@ -804,6 +871,14 @@ class ResearchStrategyPreparation:
                 "replan": {
                     "operation": "RESEARCH_STRATEGY_PLAN",
                     "experiment_document": self._of(task).request.model_dump(mode="json"),
+                    **(
+                        {
+                            "recovery_task_id": str(task.task_id),
+                            "recovery_task_hash": task.record_hash,
+                        }
+                        if task.lifecycle in {TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED}
+                        else {}
+                    ),
                 }
             }
             if gap or task.lifecycle in {TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED}
@@ -915,6 +990,15 @@ class ResearchStrategyPreparation:
                     "Restart the owned Local Web service, then explicitly "
                     "select a package for PLAN/RUN."
                 ),
+                # After the restart, each package's whole-support book: the book whose review
+                # its activation reads, so the first use reviews one book (FLOW-3).
+                "next_requests": {
+                    f"books:{v.package.strategy_id}": {
+                        "operation": "CONTROLS",
+                        "strategy_package_id": v.package.strategy_id,
+                    }
+                    for v in packages
+                },
             }
 
 

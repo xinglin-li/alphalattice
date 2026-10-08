@@ -902,6 +902,22 @@ function clockOf(iso, seconds = false) { // self-contained: the harnesses load t
 /* `o.inDay`: the row stands under its day's group head, which says the day -- its time is the clock
  * alone (W, 375 at 125 %: the day said twice left the title a letter). `o.dot`: the group says the
  * state (a lobby by state), the dot alone leads; `o.line: false`: one line, no way on under it. */
+function earlierStopRows(row, render) {
+  const earlier = row.earlierStops || [];
+  if (!earlier.length) return render(row);
+  const reason = (old) => {
+    const task = old.object || Data.taskOf(old.task_id || old.raw?.task_id);
+    const detail = task?.detail || old.raw?.detail;
+    const code = task?.latest_failure_code || old.raw?.failure_code;
+    return detail ? t(detail) : code ? codeWords(code) : '';
+  };
+  const first = earlier.length === 1 ? reason(earlier[0]) : '';
+  const fact = row.successorReference;
+  const selected = fact && Data.taskOf(fact.successor_task_id);
+  const task = selected?.task_record_hash === fact?.successor_task_hash ? selected : null;
+  const front = fact ? objectRow({state: fact.successor_lifecycle, name: task ? LiveViews.nameOf(task).name : t('Task'), ref: short(fact.successor_task_id, SHORT.id), to: {action: 'task', value: fact.successor_task_id}}, {key: fact.successor_task_id}) : render(row);
+  return html`${front}<details class="reveal-details"><summary>${first ? t('Resolved an earlier stop: {reason}', {reason: first}) : t('Resolved an earlier stop')}</summary><div class="card-list lines slotted">${earlier.map(old => html`${earlier.length > 1 && reason(old) ? html`<p class="caption">${t('Resolved an earlier stop: {reason}', {reason: reason(old)})}</p>` : ''}${render(old)}`)}</div></details>`;
+}
 function runRow(run, o = {}) {
   const at = run.finished || run.started;
   // N6 (law 58): a held data update's way on is the Data page's; any other stop its code's or its state's
@@ -1770,6 +1786,7 @@ function pctText(s, threshold = null) {
    exports), a count with its noun, a session id told apart from its neighbours, an instant as a
    reader sees it. Nothing here changes a value; the owner's exact strings stay in the details. */
 const CODE_WORDS = {
+  UNRECOVERABLE: 'Unrecoverable execution',
   SETTLE_EVIDENCE_CONTINUATION: 'Settle evidence continuation',
   SELECT_ANALYSIS: 'Choose the analysis',
   PREPARE_EVIDENCE: 'Prepare sources',
@@ -2042,6 +2059,7 @@ const CODE_WORDS = {
   "assignment": "Assignment",
   "question": "Question",
   "pm_response": "PM response",
+  "session_bound": "Session bound",
   "plan": "Plan",
   "decision": "Decision",
   "dead_end": "Dead end",

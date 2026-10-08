@@ -55,6 +55,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.kernel.quant.sector_history import SectorReclassification
 from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
+from alphalattice.kernel.shared_kernel.spans import span
 
 
 @dataclass(frozen=True)
@@ -551,7 +552,8 @@ class FeaturePanelSnapshotPublisher:
                 else ()
             ),
         )
-        self.logical_identity.publish_snapshot(descriptor.uri, published_at=now)
+        with span("hash", "panel_logical_identity"):
+            self.logical_identity.publish_snapshot(descriptor.uri, published_at=now)
         self.mutation_gate.run(
             self.panel_state.register_feature_panel_snapshot,
             snapshot_hash=snapshot_hash,
@@ -586,7 +588,8 @@ class FeaturePanelSnapshotPublisher:
         # would defeat that gate rather than complete a handoff. Such a Panel is
         # unresolvable for a reason, not for a missing artifact.
         if bool(quality_governance.get("gateway_qualified")):
-            self.semantic_index.obtain(descriptor.uri)
+            with span("verify", "panel_semantic_index"):
+                self.semantic_index.obtain(descriptor.uri)
             if (
                 self.resolver.find_feature_panel_semantic_index(panel_snapshot_hash=snapshot_hash)
                 is None

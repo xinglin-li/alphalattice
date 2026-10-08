@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
@@ -24,6 +25,7 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
 from alphalattice.foundation.market_data_ops.sources.providers import (
     MarketDataProvider,
     ProviderFetchError,
+    SectorObservation,
     SectorReferenceProvider,
 )
 from alphalattice.foundation.market_data_ops.sources.sanitization import (
@@ -315,6 +317,51 @@ class SectorTransportPolicy:
         )
 
 
+def _classify_sector_results(
+    provider_name: str,
+    results: Sequence[tuple[ManifestListing, SectorObservation | ProviderFetchError]],
+    observations: dict[str, dict[str, object]],
+    failures: dict[str, dict[str, object]],
+) -> None:
+    """File each fetched Sector as an observation or a failure; provider-wide errors file none."""
+    for listing, result in results:
+        if isinstance(result, ProviderFetchError):
+            if result.code not in {
+                "data.rate_limited",
+                "data.provider_session_unstable",
+            }:
+                failures[listing.listing_id] = {
+                    "listing_id": listing.listing_id,
+                    "provider_symbol": listing.provider_symbol,
+                    "failure_code": result.code,
+                    "retryable": result.retryable,
+                }
+            continue
+        if result.provider != provider_name or result.provider_symbol != listing.provider_symbol:
+            failures[listing.listing_id] = {
+                "listing_id": listing.listing_id,
+                "provider_symbol": listing.provider_symbol,
+                "failure_code": "sector.identity_mismatch",
+                "retryable": False,
+            }
+            continue
+        observations[listing.listing_id] = {
+            "listing_id": listing.listing_id,
+            "provider": result.provider,
+            "provider_symbol": result.provider_symbol,
+            "sector_name": result.sector_name,
+            "sector_key": result.sector_key,
+            "payload_hash": result.payload_hash,
+            "evidence_hash": canonical_hash(
+                {
+                    "source": SECTOR_SOURCE,
+                    "payload": result.payload_hash,
+                    "symbol": listing.provider_symbol,
+                }
+            ),
+        }
+
+
 @dataclass
 class SectorRefreshStager:
     """Acquire current-sector evidence without touching DuckDB.
@@ -388,45 +435,7 @@ class SectorRefreshStager:
                     "workers": workers,
                 }
             )
-            for listing, result in results:
-                if isinstance(result, ProviderFetchError):
-                    if result.code not in {
-                        "data.rate_limited",
-                        "data.provider_session_unstable",
-                    }:
-                        failures[listing.listing_id] = {
-                            "listing_id": listing.listing_id,
-                            "provider_symbol": listing.provider_symbol,
-                            "failure_code": result.code,
-                            "retryable": result.retryable,
-                        }
-                    continue
-                if (
-                    result.provider != self.provider.name
-                    or result.provider_symbol != listing.provider_symbol
-                ):
-                    failures[listing.listing_id] = {
-                        "listing_id": listing.listing_id,
-                        "provider_symbol": listing.provider_symbol,
-                        "failure_code": "sector.identity_mismatch",
-                        "retryable": False,
-                    }
-                    continue
-                observations[listing.listing_id] = {
-                    "listing_id": listing.listing_id,
-                    "provider": result.provider,
-                    "provider_symbol": result.provider_symbol,
-                    "sector_name": result.sector_name,
-                    "sector_key": result.sector_key,
-                    "payload_hash": result.payload_hash,
-                    "evidence_hash": canonical_hash(
-                        {
-                            "source": SECTOR_SOURCE,
-                            "payload": result.payload_hash,
-                            "symbol": listing.provider_symbol,
-                        }
-                    ),
-                }
+            _classify_sector_results(self.provider.name, results, observations, failures)
             payload["observations"] = [observations[key] for key in sorted(observations)]
             payload["failures"] = [failures[key] for key in sorted(failures)]
             payload["cursor_listing_id"] = chunk[-1].listing_id
@@ -630,6 +639,30 @@ class SectorRefreshStager:
             os.fsync(handle.fileno())
         temporary.replace(self.path)
         return content_hash
+
+    def observe(
+        self, listings: Sequence[ManifestListing]
+    ) -> tuple[dict[str, dict[str, object]], dict[str, dict[str, object]], bool]:
+        """The current Sector of ``listings`` alone, by the refresh's rules; nothing is staged.
+
+        Answers the observations and failures by listing id, and whether the provider failed as
+        a whole (rate limited or unstable), which leaves the listings it did not answer unread.
+        """
+        observations: dict[str, dict[str, object]] = {}
+        failures: dict[str, dict[str, object]] = {}
+        provider_wide = False
+        for offset in range(0, len(listings), self.transport_policy.chunk_size):
+            results = self._fetch_chunk(
+                listings[offset : offset + self.transport_policy.chunk_size],
+                workers=self.transport_policy.max_workers,
+            )
+            _classify_sector_results(self.provider.name, results, observations, failures)
+            provider_wide = provider_wide or any(
+                isinstance(error, ProviderFetchError)
+                and error.code in {"data.rate_limited", "data.provider_session_unstable"}
+                for _listing, error in results
+            )
+        return observations, failures, provider_wide
 
     def _fetch_chunk(self, chunk, *, workers: int):
         if workers == 1:

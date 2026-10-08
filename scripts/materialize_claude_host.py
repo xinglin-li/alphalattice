@@ -365,6 +365,13 @@ BUNDLE_ROLES = {
 SKILL_COMMANDS: tuple[RoleCommand, ...] = (
     _WORKSPACE,
     RoleCommand(
+        'strategy-book review --package <package> --dir "<out>/analysts"',
+        "Runs or reuses the installed strategy's whole-support book, prepares its Evidence and "
+        "writes every Analyst bundle in one call, following each Task to its end; the first "
+        "answer that needs another step is its answer.",
+        ("--package", "--dir"),
+    ),
+    RoleCommand(
         "strategy-book controls --package <package>",
         "Reads the exact installed package's activation, book and recorded review standing "
         "before planning Forward work; an inactive book's activation is the person's action "

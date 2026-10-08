@@ -1133,8 +1133,14 @@ def test_a_sessions_task_listing_reads_each_artifact_from_its_owner_a_page_at_a_
     page = _json(live, "/api/tasks?agent_session=c-54")
     assert [row["task_id"] for row in page["tasks"]] == submitted["c-54"][::-1]
     assert page["next_cursor"] is None
+    # The session's first research request opened the goal its Tasks attach to (AUTOBIND).
+    assert len({row["submitted_by"]["goal_id"] for row in page["tasks"]}) == 1
     for row in page["tasks"]:
-        assert row["submitted_by"] == {"vendor": "claude-code", "session": "c-54", "goal_id": None}
+        assert row["submitted_by"]["goal_id"] is not None
+        assert (row["submitted_by"]["vendor"], row["submitted_by"]["session"]) == (
+            "claude-code",
+            "c-54",
+        )
         assert row["final_state"] == "SUCCEEDED"
         artifact = row["artifact"]
         assert (artifact["artifact_kind"], artifact["availability"]) == (

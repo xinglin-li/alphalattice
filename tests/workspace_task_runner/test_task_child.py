@@ -68,6 +68,17 @@ def thread_variables(*, cancelled) -> dict[str, str | None]:  # type: ignore[no-
     return {name: os.environ.get(name) for name in ONE_THREAD_VARIABLES}
 
 
+def numerical_product(*, cancelled) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    import numpy as np
+
+    from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
+
+    values = np.arange(64, dtype=np.float64).reshape(8, 8)
+    before = numerical_thread_counts()
+    product = values @ values.T
+    return {"counts": before, "after": numerical_thread_counts(), "product": product.tolist()}
+
+
 def refused(*, cancelled) -> None:  # type: ignore[no-untyped-def]
     raise ValueError("fixture.refused_by_name")
 
@@ -221,6 +232,31 @@ def test_a_spread_worker_loads_its_numerical_libraries_on_one_thread() -> None:
         answers = [calls.answer() for _ in range(2)]
     spread = [a for a in answers if a != parent]
     assert spread and all(set(a.values()) == {"1"} for a in spread)
+
+
+def test_spread_numerical_calls_hold_one_thread_and_leave_normal_calls_unchanged() -> None:
+    """PATTERN: the shared limiter reaches real BLAS work, with the same exact result.
+
+    Spread calls hold one thread. The ordinary Task worker has no thread scope,
+    so the same call retains its ambient numerical counts before and afterward.
+    """
+    import numpy as np
+
+    values = np.arange(64, dtype=np.float64).reshape(8, 8)
+    expected = (values @ values.T).tolist()
+    ordinary = run_in_child(f"{HERE}:numerical_product", {})
+    with child_calls(f"{HERE}:numerical_product", workers=2) as calls:
+        for _ in range(2):
+            calls.make({})
+        spread = [calls.answer() for _ in range(2)]
+    for answer in spread:
+        assert answer["product"] == expected
+        assert answer["counts"] and all(threads == 1 for _api, threads in answer["counts"])
+        assert answer["after"] == answer["counts"]
+    again = run_in_child(f"{HERE}:numerical_product", {})
+    assert ordinary["counts"] and ordinary["counts"] == ordinary["after"]
+    assert again["counts"] == again["after"] == ordinary["counts"]
+    assert ordinary["product"] == again["product"] == expected
 
 
 def observe_cancellation(*, started: str, stopped: str, cancelled):

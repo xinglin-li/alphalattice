@@ -13,11 +13,12 @@ from alphalattice.control.product_host.composition.research_experiment_plan impo
 from alphalattice.control.product_host.composition.task_recovery import task_attention
 from alphalattice.control.product_host.storage.plan_previews import PreviewRegistry
 from alphalattice.control.task_control.contracts import (
+    ResearchPlan,
     TaskLifecycle,
     TaskRecord,
     TaskRecoveryLink,
 )
-from tests.workspace_task_runner.task_control_support import task_contract
+from tests.workspace_task_runner.task_control_support import digest, task_contract
 
 NOW = datetime(2026, 9, 29, 12, tzinfo=UTC)
 INPUTS = {"inputs": [{"input_id": "us-core", "versions": [{"end": "2026-08-01"}]}]}
@@ -97,6 +98,39 @@ def test_the_workspace_state_waits_on_a_person_from_its_owners_answers() -> None
     assert not _kinds(inputs=INPUTS)  # a data update not read is no decision, never an empty one
 
 
+def test_each_item_says_whom_it_waits_on_and_only_the_persons_are_counted() -> None:
+    """requirement (STOPS-1): a step only a person may take waits on the PERSON; a step the agent
+    takes and discloses, advice included, waits on the AGENT, and the headline counts only the
+    person's. A preparation waits on the agent while a first-use goal delegates it."""
+
+    owners = {
+        "awaiting": {"curation": ["t1"], "promotion": ["t2"]},
+        "previews": [{"plan_hash": "a" * 64, "study_kind": "k", "previewed_by": "AGENT"}],
+        "inputs": INPUTS,
+        "data_update": {"inputs": {"market_through": "2026-08-03"}},
+    }
+    answer = pending_decisions(tasks=(), data_issues={}, overview={}, **owners)  # type: ignore[arg-type]
+    waits = {str(item["kind"]): item["waits_on"] for item in answer["decisions"]}  # type: ignore[attr-defined]
+    assert waits == {
+        "INPUT_VERSION": "PERSON",
+        "PLAN_PREVIEW": "AGENT",
+        "CURATION": "AGENT",
+        "PROMOTION": "AGENT",
+    }
+    assert answer["detail"] == "1 decision waits on a person."
+    unprepared = {"preparation": {"status": "NOT_PREPARED"}, "inputs": {"inputs": []}}
+    assert _kinds(**unprepared)["WORKSPACE_PREPARATION"]["waits_on"] == "PERSON"
+    first_use = {"goal_id": "g", "steps": [], "ends_at": NOW.isoformat(), "active": True}
+    delegated = pending_decisions(
+        tasks=(), awaiting={}, data_issues={}, overview={}, first_use=first_use, **unprepared
+    )
+    assert {item["kind"]: item["waits_on"] for item in delegated["decisions"]} == {  # type: ignore[attr-defined]
+        "FIRST_USE": "AGENT",
+        "WORKSPACE_PREPARATION": "AGENT",
+    }
+    assert delegated["detail"] == "Nothing waits on a person."
+
+
 def test_a_plan_previewed_and_not_run_waits_until_it_expires() -> None:
     """requirement (V45): a PLAN previewed and not run is one decision, whoever previewed it,
     with its preview and its RUN; the registry holds it runnable only until it expires."""
@@ -104,6 +138,7 @@ def test_a_plan_previewed_and_not_run_waits_until_it_expires() -> None:
     preview = {"plan_hash": "a" * 64, "study_kind": "factor.screening-development"}
     item = _kinds(previews=[{**preview, "previewed_by": "AGENT"}])["PLAN_PREVIEW"]
     assert item["previewed_by"] == "AGENT"
+    assert item["goal_ids"] == [], "a historical preview supplies no inferred Goal"
     assert item["next_requests"] == {
         "preview": {"operation": "EXPERIMENT_PREVIEW_READBACK", "experiment_plan_hash": "a" * 64},
         "run": {"operation": "EXPERIMENT_RUN", "experiment_plan_hash": "a" * 64},
@@ -119,6 +154,220 @@ def test_a_plan_previewed_and_not_run_waits_until_it_expires() -> None:
     assert [entry.plan.plan_hash[0] for entry in registry.waiting()] == ["c", "b"]
     clock[0] = NOW + timedelta(minutes=60)
     assert [entry.plan.plan_hash[0] for entry in registry.waiting()] == ["c"]
+
+
+def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
+    tmp_path, monkeypatch, live
+) -> None:
+    """UIFOLLOW seam: actual Goal attribution and canonical Task contracts reach the pending
+    operation; data cases follow issued source pairs and async CRO follows its sealed review key.
+    Metadata fixtures stand in for read-only owners; no scientific result is invented.
+    """
+    from contextlib import nullcontext
+
+    from alphalattice.control.product_host.composition.goals import GoalApplication
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
+    from alphalattice.control.product_host.publication.goals import GoalStore
+    from alphalattice.interface.local_application.cli_contract import RequestProvenance
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest as Request,
+    )
+    from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
+        portfolio_review_task_contract,
+    )
+
+    goals = GoalApplication(
+        GoalStore(tmp_path, "workspace"),
+        lambda: NOW,
+        lambda *_: {},
+        lambda _: NOW,
+        lambda _: None,
+        workspace=tmp_path,
+    )
+    declaration = {
+        "title": "Same question",
+        "objective": "Inspect the exact work",
+        "kind": "DATA",
+        "criteria": [{"criterion_id": "read", "text": "Read the retained work"}],
+    }
+
+    def open_goal(kind="DATA"):
+        opened = goals.operate(
+            Request(
+                operation="GOAL_OPEN",
+                goal_id=uuid4(),
+                goal_declaration={**declaration, "kind": kind},
+            ),
+            "HUMAN",
+        )
+        return goals.store.load(opened["goal_hash"])
+
+    first, second = open_goal(), open_goal()
+    provenance = RequestProvenance(goal_id=str(first.goal_id))
+
+    def record(contract, lifecycle, failure_code=None):
+        envelope, goal, plan = contract
+        return TaskRecord.from_identity(
+            task_id=uuid4(),
+            task_kind=envelope.task_kind,
+            input=envelope,
+            goal=goal,
+            plan=plan,
+            lifecycle=lifecycle,
+            active_work_item_id=None,
+            latest_execution_id=None,
+            admitted_at=NOW,
+            started_at=None,
+            updated_at=NOW,
+            failure_code=failure_code,
+            version=1,
+        )
+
+    stopped = record(task_contract(salt="follow-stop"), TaskLifecycle.BLOCKED, "fixture.blocked")
+    study = record(task_contract(salt="follow-study"), TaskLifecycle.SUCCEEDED)
+    review = record(
+        portfolio_review_task_contract(review_key_payload={"decision_policy_hash": "d" * 64}),
+        TaskLifecycle.SUCCEEDED,
+    )
+    for task in (stopped, study):
+        goals.attribute(
+            first,
+            Request(operation="EXPERIMENT_RUN", experiment_plan_hash="a" * 64),
+            {"status": "ADMITTED", "task_id": str(task.task_id)},
+            provenance,
+        )
+    goals.attribute(
+        first, Request(operation="EXPERIMENT_PLAN"), {"plan_hash": "a" * 64}, provenance
+    )
+    goals.attribute(
+        first, Request(operation="CRO_REVIEW"), {"review_publication_hash": "b" * 64}, provenance
+    )
+    goals.attribute(second, Request(operation="CRO_REVIEW"), {"task_id": str(review.task_id)}, None)
+    case_token, unbound_token = digest("follow-case"), digest("unattributed-case")
+    offers = {
+        f"preview:{case_token}:option": {
+            "operation": "DATA_ISSUE_PREVIEW",
+            "data_issue_case_token": case_token,
+        },
+        f"delegate:{stopped.task_id}:{case_token}:option": {
+            "operation": "DATA_ISSUE_DELEGATE",
+            "data_issue_case_token": case_token,
+            "task_id": str(stopped.task_id),
+        },
+        f"preview:{unbound_token}:option": {
+            "operation": "DATA_ISSUE_PREVIEW",
+            "data_issue_case_token": unbound_token,
+        },
+    }
+    canonical = (stopped, study, review)
+    reads = []
+
+    def collection():
+        reads.append("tasks")
+        return SimpleNamespace(records=canonical, refused_task_ids=())
+
+    operations = live.operations
+    with monkeypatch.context() as readers:
+        readers.setattr(operations, "goals", goals)
+        readers.setattr(
+            operations,
+            "workspace_session",
+            SimpleNamespace(
+                workspace=tmp_path,
+                task_control_registry=SimpleNamespace(record_collection=collection),
+                reads=lambda **_: nullcontext(True),
+            ),
+        )
+        readers.setattr(
+            operations.supervisor,
+            "attention",
+            lambda tasks: {t.task_id: task_attention(t) for t in tasks},
+        )
+        readers.setattr(
+            operations,
+            "experiments",
+            SimpleNamespace(
+                awaiting=lambda _: {
+                    "curation": [str(study.task_id)],
+                    "promotion": [str(study.task_id)],
+                    "admitted": [],
+                },
+                waiting_previews=lambda _: [
+                    {"plan_hash": "a" * 64, "study_kind": "factor.screening-development"}
+                ],
+            ),
+        )
+        readers.setattr(
+            operations,
+            "data_issues",
+            SimpleNamespace(readback=lambda **_: {"next_requests": offers}),
+        )
+        readers.setattr(
+            PortfolioResearchOperations,
+            "execute",
+            lambda _self, request, **_: (
+                {"status": "NOT_PREPARED"}
+                if request.operation == "WORKSPACE_PREPARE_READBACK"
+                else {}
+            ),
+        )
+        overview = {
+            "reviews": [
+                {
+                    "state": "CHANGED",
+                    "review_publication_hash": "e" * 64,
+                    "review_key": review.input.input_hash,
+                },
+                {
+                    "state": "CURRENT",
+                    "review_publication_hash": "b" * 64,
+                    "book_key": "book",
+                    "person_action": {"action": "WEIGH"},
+                },
+                {
+                    "state": "CHANGED",
+                    "review_publication_hash": "f" * 64,
+                    "review_key": study.input.input_hash,
+                },
+            ]
+        }
+        # The public overview reader supplies metadata here; its composition wrapper and
+        # canonical Task-kind check remain real, including the negative non-CRO binding.
+        readers.setattr(
+            "alphalattice.control.product_host.composition.portfolio_research_operations.upgrade_overview",
+            lambda **_: overview,
+        )
+        answer = operations.pending_decisions()
+        assert reads == ["tasks"], "the pending operation reads canonical Tasks once"
+        items = {
+            item["kind"]: item
+            for item in answer["decisions"]
+            if item["kind"] != "DATA_ISSUE" and item.get("review_publication_hash") != "f" * 64
+        }
+        for kind in ("STOPPED_TASK", "CURATION", "PROMOTION", "PLAN_PREVIEW", "CRO_RECOMMENDATION"):
+            assert items[kind]["goal_ids"] == [str(first.goal_id)]
+            assert items[kind]["waits_on"] == "AGENT"
+        assert items["REVIEW_CHANGED"]["goal_ids"] == [str(second.goal_id)]
+        unrelated = next(
+            item for item in answer["decisions"] if item.get("review_publication_hash") == "f" * 64
+        )
+        assert unrelated["goal_ids"] == [], "a non-CRO Task input never declares a review binding"
+        assert items["WORKSPACE_PREPARATION"]["goal_ids"] == []
+        cases = {
+            item["case_token"]: item for item in answer["decisions"] if item["kind"] == "DATA_ISSUE"
+        }
+        assert cases[case_token]["goal_ids"] == [str(first.goal_id)]
+        assert cases[unbound_token]["goal_ids"] == []
+        assert cases[case_token]["waits_on"] == "PERSON"
+        assert answer["detail"] == "3 decisions wait on a person."
+        first_use = open_goal("FIRST_USE")
+        delegated = operations.pending_decisions()
+        item = next(item for item in delegated["decisions"] if item["kind"] == "FIRST_USE")
+        assert item["goal_ids"] == [str(first_use.goal_id)]
+        assert item["waits_on"] == "AGENT"
+        assert delegated["detail"] == "Nothing waits on a person."
 
 
 @pytest.mark.parametrize("stopped", [TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED])
@@ -201,3 +450,188 @@ def test_current_attention_requires_a_successful_explicit_successor_of_this_vers
     newer_stop = record(source.task_id, stopped, version=2)
     assert task_attention(newer_stop, successors=peers, links=(confirmed,)).unresolved
     assert task_attention(source, links=(confirmed,)).unresolved  # unread successor is no success
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    [
+        "later_exact_plan_success",
+        "changed_plan",
+        "earlier_admission",
+        "same_admission",
+        "canonical_earlier_with_later_clock",
+        "canonical_later_with_same_clock",
+        "blocked_successor",
+        "recovery_required_source",
+    ],
+)
+def test_only_a_later_successful_exact_plan_supersedes_a_blocked_task(boundary: str) -> None:
+    """BADGE regression: a later successful canonical admission of the same sealed plan
+    clears a block; changed plans and other admission or lifecycle boundaries keep it."""
+    envelope, goal, plan = task_contract(salt="exact-plan-attention")
+
+    def record(
+        lifecycle: TaskLifecycle, admitted_at: datetime, task_plan: ResearchPlan
+    ) -> TaskRecord:
+        return TaskRecord.from_identity(
+            task_id=uuid4(),
+            task_kind=envelope.task_kind,
+            input=envelope,
+            goal=goal,
+            plan=task_plan,
+            lifecycle=lifecycle,
+            active_work_item_id=None,
+            latest_execution_id=None,
+            admitted_at=admitted_at,
+            started_at=None,
+            updated_at=NOW + timedelta(minutes=10),
+            failure_code="fixture.stopped" if lifecycle is not TaskLifecycle.SUCCEEDED else None,
+            version=1,
+        )
+
+    source_state = (
+        TaskLifecycle.RECOVERY_REQUIRED
+        if boundary == "recovery_required_source"
+        else TaskLifecycle.BLOCKED
+    )
+    source = record(source_state, NOW, plan)
+    successor_plan = plan
+    if boundary == "changed_plan":
+        successor_plan = ResearchPlan.create(
+            goal_hash=goal.goal_hash,
+            workflow_definition_hash=digest("changed-attention-workflow"),
+            verifier_catalog_hash=plan.verifier_catalog_hash,
+            work_items=plan.work_items,
+        )
+        assert successor_plan.plan_hash != plan.plan_hash
+    successor_state = (
+        TaskLifecycle.BLOCKED if boundary == "blocked_successor" else TaskLifecycle.SUCCEEDED
+    )
+    admission_minutes = {
+        "earlier_admission": -1,
+        "same_admission": 0,
+        "canonical_later_with_same_clock": 0,
+    }.get(boundary, 1)
+    successor = record(successor_state, NOW + timedelta(minutes=admission_minutes), successor_plan)
+    retained_source = source.model_dump(mode="json")
+    canonical_order = {
+        "canonical_earlier_with_later_clock": False,
+        "canonical_later_with_same_clock": True,
+    }.get(boundary)
+    fact = task_attention(source, superseded_by=successor, superseded_is_later=canonical_order)
+    clears = boundary in {"later_exact_plan_success", "canonical_later_with_same_clock"}
+    assert fact.unresolved is (not clears)
+    assert fact.resolution == ("SUCCESSOR_SUCCEEDED" if clears else "STOPPED")
+    assert fact.task_record_hash == source.record_hash
+    if clears:
+        assert fact.successor_task_id == str(successor.task_id)
+        assert fact.successor_task_hash == successor.record_hash
+        assert fact.successor_lifecycle == TaskLifecycle.SUCCEEDED.value
+    else:
+        assert fact.successor_task_id is None
+        assert fact.successor_task_hash is None
+        assert fact.successor_lifecycle is None
+    answer = pending_decisions(
+        tasks=(source,),
+        attention={source.task_id: fact},
+        awaiting={},
+        data_issues={},
+        overview={},
+    )
+    assert answer["counts"] == ({} if clears else {"STOPPED_TASK": 1})
+    assert bool(answer["decisions"]) is (not clears)
+    assert source.model_dump(mode="json") == retained_source
+
+
+def test_a_rebuilt_ledger_task_holds_no_decision_and_keeps_its_stopped_record() -> None:
+    """BADGE regression: a ledger-rebuilt block leaves attention while its stopped state
+    and reason stay readable, and an ordinary blocked peer still needs its decision."""
+    envelope, goal, plan = task_contract(salt="rebuilt-attention")
+
+    def record(failure_code: str) -> TaskRecord:
+        return TaskRecord.from_identity(
+            task_id=uuid4(),
+            task_kind=envelope.task_kind,
+            input=envelope,
+            goal=goal,
+            plan=plan,
+            lifecycle=TaskLifecycle.BLOCKED,
+            active_work_item_id=None,
+            latest_execution_id=None,
+            admitted_at=NOW,
+            started_at=None,
+            updated_at=NOW,
+            failure_code=failure_code,
+            version=1,
+        )
+
+    rebuilt = record("task_control.ledger_rebuilt")
+    peer = record("fixture.blocked")
+    retained = rebuilt.model_dump(mode="json")
+    fact = task_attention(rebuilt)
+    assert fact.unresolved is False
+    assert fact.resolution == "UNRECOVERABLE"
+    assert fact.task_record_hash == rebuilt.record_hash
+    answer = pending_decisions(
+        tasks=(rebuilt, peer),
+        awaiting={},
+        data_issues={},
+        overview={},
+    )
+    assert answer["counts"] == {"STOPPED_TASK": 1}
+    decisions = answer["decisions"]
+    assert isinstance(decisions, list)
+    assert [row["task_id"] for row in decisions] == [str(peer.task_id)]
+    assert rebuilt.lifecycle is TaskLifecycle.BLOCKED
+    assert rebuilt.failure_code == "task_control.ledger_rebuilt"
+    assert rebuilt.model_dump(mode="json") == retained
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        None,
+        "plan_hash",
+        "data_revision_hash",
+        "panel_hash",
+        "data_through",
+        "task_lifecycle",
+        "task_id",
+        "missing_plan",
+    ],
+)
+def test_input_version_follows_only_the_task_that_published_current_data(changed) -> None:
+    """A published update's exact plan and after identities bind its input-version decision;
+    legacy, stale or unsealed current data never inherits the latest Task's Goal.
+    Read-only owner shapes stand in for the sealed receipt transport.
+    """
+    from copy import deepcopy
+
+    task, goal = str(uuid4()), str(uuid4())
+    current = {"data_through": "2026-08-03", "data_revision_hash": "d" * 64, "panel_hash": "f" * 64}
+    update = {
+        "inputs": current,
+        "task_id": task,
+        "task_lifecycle": "SUCCEEDED",
+        "plan_hash": "a" * 64,
+        "receipt": {"plan_hash": "a" * 64, "after": deepcopy(current)},
+    }
+    if changed == "missing_plan":
+        update["plan_hash"] = update["receipt"]["plan_hash"] = None
+    elif changed in {"data_revision_hash", "panel_hash", "data_through"}:
+        update["receipt"]["after"][changed] = "earlier"
+    elif changed:
+        update[changed] = "RUNNING" if changed == "task_lifecycle" else None
+    answer = pending_decisions(
+        tasks=(),
+        awaiting={},
+        data_issues={},
+        overview={},
+        inputs=INPUTS,
+        data_update=update,
+        goal_attribution={("task_id", task): {goal}},
+    )
+    decision = next(row for row in answer["decisions"] if row["kind"] == "INPUT_VERSION")
+    assert decision["goal_ids"] == ([goal] if changed is None else [])
+    assert decision.get("task_id") == (task if changed is None else None)
+    assert decision["waits_on"] == "PERSON"

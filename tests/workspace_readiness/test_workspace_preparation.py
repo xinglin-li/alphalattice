@@ -47,7 +47,16 @@ def test_initialization_creates_real_factor_inputs_and_reopens_without_strategie
     with WorkspaceApplicationSession.acquire(root) as session:
         app = WorkspacePreparationApplication(session, clock=lambda: OBSERVED_AT)
         assert app.readback() == view
-        assert app.plan()["status"] == "ALREADY_PREPARED"
+        planned = app.plan()
+        assert planned["status"] == "ALREADY_PREPARED"
+        # With no research strategy installed, the first use goes on at its controls, the
+        # shortest way to a book that runs forward; a study on the input stays offered for
+        # exploration (FLOW-3).
+        assert planned["next_action"] == view["next_action"] == "RESEARCH_STRATEGY_CONTROLS"
+        assert planned["next_requests"]["strategy_controls"] == {
+            "operation": "RESEARCH_STRATEGY_CONTROLS"
+        }
+        assert any(name.startswith("research_controls:") for name in planned["next_requests"])
 
 
 def test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap(
@@ -501,16 +510,41 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
         agent = LocalResearchClient(root)
         decided = agent.request(delegated["next_requests"]["confirm"])
         assert decided.get("failure_code") is None, decided
-        successor_plan = agent.request({"operation": "WORKSPACE_PREPARE_PLAN"})
-        confirmed = agent.request(
-            {
-                "operation": "WORKSPACE_PREPARE_CONFIRM",
-                "preparation_plan_hash": successor_plan["plan_hash"],
-                "data_issue_grant_hash": grant,
-            }
+        continuation = decided["next_requests"][f"continue:{stopped.task_id}"]
+        recovery_source = {
+            "recovery_task_id": str(stopped.task_id),
+            "recovery_task_hash": stopped.record_hash,
+        }
+        assert continuation == {"operation": "WORKSPACE_PREPARE_PLAN", **recovery_source}
+        assert decided["next_requests"]["preparation_plan"] == continuation
+        successor_plan = agent.request(continuation)
+        assert successor_plan["predecessor_task_id"] == str(stopped.task_id)
+        confirm = successor_plan["next_requests"][f"confirm_with_grant:{grant}"]
+        assert confirm == {
+            "operation": "WORKSPACE_PREPARE_CONFIRM",
+            "preparation_plan_hash": successor_plan["plan_hash"],
+            "data_issue_grant_hash": grant,
+            **recovery_source,
+        }
+        previews = registry.recovery_links(stopped.task_id)
+        assert any(
+            link.source_record_hash == stopped.record_hash
+            and link.successor_task_id is None
+            and link.admission_request
+            == {key: value for key, value in confirm.items() if key not in recovery_source}
+            for link in previews
         )
+        confirmed = agent.request(confirm)
         successor = UUID(str(confirmed["task_id"]))
         assert successor != stopped.task_id
+        link = next(
+            link
+            for link in registry.recovery_links(stopped.task_id)
+            if link.successor_task_id == successor
+        )
+        assert link.source_record_hash == stopped.record_hash
+        assert registry.task(successor).input.payload["source_task_id"] == str(stopped.task_id)
+        assert registry.task(successor).plan.plan_hash != stopped.plan.plan_hash
 
         # A storage failure stops the successor: its records cannot be replaced.
         records = app._path(successor, "progress").parent
@@ -529,6 +563,7 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
             TaskLifecycle.BLOCKED,
             "catalog.replace_blocked",
         ), live.dispatcher.failure(successor)
+        assert live.operations.recovery_view(stopped.task_id)["attention"]["unresolved"] is True
         monkeypatch.setattr(persistence.os, "replace", real_replace)
 
         # Its readback says what stopped it and offers the confirm that resumes it; the agent
@@ -559,6 +594,17 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
         assert registry.task(successor).lifecycle is TaskLifecycle.SUCCEEDED, (
             live.dispatcher.failure(successor)
         )
+        source = live.operations.recovery_view(stopped.task_id)
+        assert source["lifecycle"] == "BLOCKED"
+        assert source["task_record_hash"] == stopped.record_hash
+        assert source["attention"]["resolution"] == "SUCCESSOR_SUCCEEDED"
+        assert source["attention"]["successor_task_id"] == str(successor)
+
+    from tests.portfolio_strategy_lab.local_web_support import _walk_badge_records
+
+    _walk_badge_records(
+        root, tmp_path / "preparation-pair-browser", str(stopped.task_id), str(successor)
+    )
 
 
 def test_optional_progress_delivery_never_governs_the_stage(

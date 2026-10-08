@@ -61,6 +61,7 @@ from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
 from alphalattice.investment.alpha_research.publication.contracts import (
     FrozenComponentScoreSnapshot,
+    WorkspaceObservationHistoryHead,
     seal_current_contract,
 )
 from alphalattice.investment.alpha_research.scores.frozen_inference import (
@@ -165,6 +166,46 @@ def workspace_observation_history_scope(binding: ResearchWorkspaceScoreInput) ->
             }
         )
     )
+
+
+def workspace_observation_history_selection(
+    binding: ResearchWorkspaceScoreInput, *, implementation: str
+) -> str:
+    """Name what a kept history's values depend on: its slot, package and implementation.
+
+    Not the authority, its Features or its training factors: they choose which columns a
+    capture needs, and a capture proves the kept columns' source prefix apart. So a renewal,
+    which changes the authority and adds training factors, keeps the history the next day reads.
+    """
+    return str(
+        canonical_hash(
+            {
+                "kind": "WorkspaceObservationHistorySelection.v2",
+                "scope": workspace_observation_history_scope(binding),
+                "package": binding.strategy_package_hash,
+                "implementation": implementation,
+            }
+        )
+    )
+
+
+def workspace_observation_history_reuse(
+    head: WorkspaceObservationHistoryHead | None,
+    prepared: PreparedWorkspaceComponentInputs,
+    columns: Mapping[str, object],
+) -> WorkspaceObservationHistoryHead | None:
+    """The kept head whose stored parts a publication shares, or None to write its own.
+
+    Parts are shared only by the head a capture reused and only with the same columns: the day
+    after a renewal keeps fewer columns than the renewal's history and writes them afresh.
+    """
+    if (
+        head is None
+        or prepared.reused_history_hash != head.head_hash
+        or head.column_names != tuple(sorted(columns))
+    ):
+        return None
+    return head
 
 
 class StrategyScorePlan(BaseModel):  # type: ignore[misc]
@@ -751,18 +792,8 @@ class StrategyScoringApplication:
             else ()
         )
         scope_hash = workspace_observation_history_scope(binding)
-        selection_hash = str(
-            canonical_hash(
-                {
-                    "kind": "WorkspaceObservationHistorySelection.v1",
-                    "scope": scope_hash,
-                    "package": binding.strategy_package_hash,
-                    "authority": authority.authority.authority_hash,
-                    "features": authority.authority.model_set.ordered_feature_ids,
-                    "training_factors": training_factor_ids,
-                    "implementation": _implementation_hash(),
-                }
-            )
+        selection_hash = workspace_observation_history_selection(
+            binding, implementation=_implementation_hash()
         )
         with self.session.reads():
             candidate = self.store.load_workspace_observation_history(scope_hash)
@@ -793,6 +824,7 @@ class StrategyScoringApplication:
                 # reader will accept or refuse at the action's own effective date.
                 return None
         assert prepared.dependency_prefix_hash is not None
+        columns = workspace_observation_history_columns(prepared)
         with self.session.mutation_gate.hold():
             self.store.publish_workspace_observation_history(
                 scope_hash=scope_hash,
@@ -801,11 +833,9 @@ class StrategyScoringApplication:
                 formation_sessions=prepared.formation_sessions,
                 ordered_listing_ids=prepared.ordered_listing_ids,
                 stable_session_count=prepared.stable_session_count,
-                columns=workspace_observation_history_columns(prepared),
-                reuse=(
-                    history[0]
-                    if history is not None and prepared.reused_history_hash == history[0].head_hash
-                    else None
+                columns=columns,
+                reuse=workspace_observation_history_reuse(
+                    history[0] if history is not None else None, prepared, columns
                 ),
                 capacity=lambda size: require_storage_capacity(
                     self.session.workspace, additional_bytes=size

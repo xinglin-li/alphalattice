@@ -892,3 +892,58 @@ def test_tampered_marker_child_fails_closed(tmp_path) -> None:
     marker_path.write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError):
         store.current_head()
+
+
+def test_one_days_deltas_chain_alike_in_any_ledger_order() -> None:
+    """requirement: a day's adjusted-return deltas chain to one hash, whatever their ledger order.
+
+    The ledger orders one observation's rows by receipt hashes that bind the observation clock,
+    so the same day observed twice listed its deltas in two orders and published two chain
+    identities. The revision its readers bound keeps its prefix as published.
+    """
+
+    from alphalattice.foundation.market_data_ops.returns.semantic_revisions import (
+        build_adjusted_return_semantic_revision,
+    )
+    from alphalattice.foundation.market_data_ops.storage.duckdb import (
+        ProviderAdjustedSeriesRevision,
+    )
+
+    def row(listing_id: str, session: date, receipt: str) -> ProviderAdjustedSeriesRevision:
+        return ProviderAdjustedSeriesRevision(
+            receipt_hash=receipt * 64,
+            listing_id=listing_id,
+            provider="replay",
+            prior_series_hash=None,
+            next_series_hash="0" * 64,
+            scope_start=session,
+            scope_end=session,
+            full_history=False,
+            changed_value_count=1,
+            changed_return_sessions=(session,),
+            session_set_changed=True,
+            uniform_rescale=False,
+            source_receipt_hash="1" * 64,
+            observed_at=datetime(2026, 9, 11, 13, 15, tzinfo=UTC),
+        )
+
+    earlier = (row("z", date(2026, 9, 9), "a"), row("m", date(2026, 9, 9), "b"))
+    # A revision published before the order was canonical keeps its order for its readers.
+    published = build_adjusted_return_semantic_revision(earlier)
+    published = published.model_copy(
+        update={
+            "deltas": tuple(reversed(published.deltas)),
+            "chain_hash": canonical_hash(
+                [value.semantic_hash for value in reversed(published.deltas)]
+            ),
+        }
+    )
+    day = (row("q", date(2026, 9, 10), "c"), row("b", date(2026, 9, 10), "d"))
+    observed = build_adjusted_return_semantic_revision((*earlier, *day), published=published)
+    again = build_adjusted_return_semantic_revision((*earlier, *day[::-1]), published=published)
+    assert observed.chain_hash == again.chain_hash
+    assert observed.deltas[: published.cursor] == published.deltas
+    assert canonical_hash([value.semantic_hash for value in observed.deltas[:2]]) == (
+        published.chain_hash
+    )
+    assert [value.listing_id for value in observed.deltas[2:]] == ["b", "q"]

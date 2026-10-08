@@ -1,4 +1,4 @@
-"""What waits on a person, in one read (binding plan, N5).
+"""What waits on a person, and what the agent carries, in one read (binding plan, N5).
 
 A Task that stopped and needs a person's choice; a data issue whose options only a person may
 confirm; an upgrade not yet acknowledged; a Factor study nobody has curated; an explored study
@@ -9,12 +9,17 @@ already
 answers its own part and names its next request; this reads those answers, never recomputes
 them, and lists each decision with the request that takes it. Nothing here verifies evidence
 or starts work.
+
+Each item says whom it waits on (STOPS-1, the person's hands-off rule). A step only a person
+may take waits on the PERSON; a step the agent may take, by its own operations or the
+first-use goal's delegation, waits on the AGENT, which takes it and tells the person.
+Advice stops nothing: the agent reports it.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
-from typing import Any
+from typing import Any, Final
 from uuid import UUID
 
 from alphalattice.control.product_host.composition.task_recovery import (
@@ -22,6 +27,23 @@ from alphalattice.control.product_host.composition.task_recovery import (
     task_attention,
 )
 from alphalattice.control.task_control.contracts import TaskRecord
+
+PERSON: Final = "PERSON"
+AGENT: Final = "AGENT"
+
+WAITS_ON: Final[dict[str, str]] = {
+    "FIRST_USE": AGENT,
+    "INPUT_VERSION": PERSON,
+    "STOPPED_TASK": AGENT,
+    "UPGRADE": AGENT,
+    "PLAN_PREVIEW": AGENT,
+    "CURATION": AGENT,
+    "PROMOTION": AGENT,
+    "REVIEW_CHANGED": AGENT,
+    "CRO_RECOMMENDATION": AGENT,
+}
+"""Whom each kind waits on. A workspace's preparation and its data issues wait on the agent
+while a first-use goal delegates them, else on the person (`pending_decisions`)."""
 
 
 def _tasks(
@@ -34,8 +56,8 @@ def _tasks(
             "task_kind": task.task_kind,
             "lifecycle": task.lifecycle.value,
             "attention": fact.model_dump(mode="json"),
-            "detail": "This Task stopped and waits for a choice; its recovery view says what "
-            "stopped it and what may resume it.",
+            "detail": "This Task stopped; its recovery view says what stopped it and what may "
+            "resume it, and the agent resumes it where it may.",
             "next_requests": {
                 "recovery": {"operation": "TASK_RECOVERY", "task_id": str(task.task_id)}
             },
@@ -113,6 +135,7 @@ def _reviews(overview: Mapping[str, Any]) -> list[dict[str, Any]]:
         {
             "kind": "REVIEW_CHANGED",
             "review_publication_hash": row.get("review_publication_hash"),
+            "review_key": row.get("review_key"),
             "detail": "This review was sealed under an earlier Evidence binding; it reads back as "
             "recorded, and its book can be reviewed again.",
             "next_requests": dict(row.get("next_requests") or {}),
@@ -139,9 +162,10 @@ def _recommendations(overview: Mapping[str, Any]) -> list[dict[str, Any]]:
         {
             "kind": "CRO_RECOMMENDATION",
             "review_publication_hash": row.get("review_publication_hash"),
+            "review_key": row.get("review_key"),
             "person_action": row["person_action"],
-            "detail": "The CRO's latest review of this book asks a person to act; its export "
-            "gives the recommendation and the evidence it rests on.",
+            "detail": "The CRO's latest review of this book recommends a person weigh its cited "
+            "sources before relying on it; the agent reports it, and it stops nothing.",
             "next_requests": dict(row.get("next_requests") or {}),
         }
         for _key, row in sorted(newest.items())
@@ -208,9 +232,25 @@ def _workspace(
     )
     if not through or newest is None or through <= newest[0]:
         return []
+    receipt = data_update.get("receipt") or {}
+    published = receipt.get("after") or {}
+    source_task = (
+        data_update.get("task_id")
+        if data_update.get("task_lifecycle") == "SUCCEEDED"
+        and isinstance(data_update.get("plan_hash"), str)
+        and bool(data_update["plan_hash"])
+        and data_update.get("plan_hash") == receipt.get("plan_hash")
+        and published.get("data_through") == through
+        and all(
+            current.get(key) is not None and current[key] == published.get(key)
+            for key in ("data_revision_hash", "panel_hash")
+        )
+        else None
+    )
     return [
         {
             "kind": "INPUT_VERSION",
+            **({"task_id": source_task} if source_task else {}),
             "data_through": through,
             "input_through": newest[0],
             "research_input_id": newest[1],
@@ -257,6 +297,7 @@ def pending_decisions(
     data_update: Mapping[str, Any] | None = None,
     first_use: Mapping[str, Any] | None = None,
     attention: Mapping[UUID, TaskAttentionFact] | None = None,
+    goal_attribution: Mapping[tuple[str, str], set[str]] | None = None,
 ) -> dict[str, object]:
     """Compose owner-supplied workspace/task/data/review decisions into one bounded read view.
 
@@ -271,6 +312,7 @@ def pending_decisions(
         data_update: Optional data update state.
         first_use: The workspace's first-use goal while its delegation is active (U70).
         attention: Current owner resolution facts, separate from retained Task history.
+        goal_attribution: Exact selectors and the Goals their retained requests counted toward.
 
     Returns:
         Ordered pending decisions, counts by kind and a plain summary; no decision is executed.
@@ -286,16 +328,33 @@ def pending_decisions(
         *_reviews(overview),
         *_recommendations(overview),
     ]
+    delegated = first_use is not None
     counts: dict[str, int] = {}
     for item in items:
+        goal_ids = {str(item["goal_id"])} if item["kind"] == "FIRST_USE" else set()
+        for key in ("task_id", "plan_hash", "review_publication_hash", "review_key", "case_token"):
+            if (value := item.get(key)) is not None:
+                goal_ids.update((goal_attribution or {}).get((key, str(value)), ()))
+        if item["kind"] == "DATA_ISSUE":
+            for request in (data_issues.get("next_requests") or {}).values():
+                if (
+                    request.get("operation") == "DATA_ISSUE_DELEGATE"
+                    and request.get("data_issue_case_token") == item["case_token"]
+                ):
+                    goal_ids.update(
+                        (goal_attribution or {}).get(("task_id", str(request["task_id"])), ())
+                    )
+        item["goal_ids"] = sorted(goal_ids)
         counts[item["kind"]] = counts.get(item["kind"], 0) + 1
+        item["waits_on"] = WAITS_ON.get(item["kind"], AGENT if delegated else PERSON)
+    person = sum(item["waits_on"] == PERSON for item in items)
     return {
         "status": "PENDING_DECISIONS",
         "decisions": items,
         "counts": counts,
         "detail": (
-            f"{len(items)} decision{'' if len(items) == 1 else 's'} wait on a person."
-            if items
+            f"{person} decision{' waits' if person == 1 else 's wait'} on a person."
+            if person
             else "Nothing waits on a person."
         ),
     }

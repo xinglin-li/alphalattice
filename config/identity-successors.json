@@ -10760,6 +10760,601 @@
    "successor": "2ddcdf1bd6226087b155ba2e5a5ebfa530752d72b06e9b5b9a6e99aa78edd1c0",
    "change": "P5 verified daily preparation and exact source serialization (2026-10-07)",
    "reason": "Daily preparation is retained and verified across updates, and source serialization is exact; the implementation moved, while every result was proved equal at the merge (strict replay of the saved reads: same keys, verdicts and numeric summaries) and no recipe or policy control changed."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "0f0fef389a65ced3734ddaec7d2f258e2845b89cd2576c5ab03a8ae3ffcaa44a",
+   "successor": "468c92becf87ae0b5d940b53474df0f9a62e3e2d6c79ec0f095db54addabf319",
+   "change": "FIX1 FLAKE-AUDIT and FLAKE-AXIS: universe onboarding and maintenance (2026-10-08)",
+   "reason": "Onboarding completes a same-session retained audit from the verified full anchor, the day's verified rolling evidence and unchanged stored bytes, and drops accumulated Feature invalidations only for candidates the saved request proves were never admitted. Both admit cases that were wrongly refused; no published number changes for a previously admitted workspace."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "43800b18cd20bfd062e0eaa43c1f1fceb24999fa5f6386c78f3ae5e89dc766a8",
+   "successor": "acfd7f8cca67797466690edf4171a1c087016e95469dd09e4d33f3a5c19c4f5b",
+   "change": "FIX1 FLAKE-AUDIT and FLAKE-AXIS: universe onboarding and maintenance (2026-10-08)",
+   "reason": "Onboarding completes a same-session retained audit from the verified full anchor, the day's verified rolling evidence and unchanged stored bytes, and drops accumulated Feature invalidations only for candidates the saved request proves were never admitted. Both admit cases that were wrongly refused; no published number changes for a previously admitted workspace."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "62669b025e10e3e06a5416eb4d2d02e6a1eaec036e84187352e8f8c7c6c8b188",
+   "successor": "eda39f66ccc7cbf704c5bc1ada843e3fb62781210f26f0f7c05e3cc7c8374303",
+   "change": "FIX1 FLAKE-AUDIT and FLAKE-AXIS: universe onboarding and maintenance (2026-10-08)",
+   "reason": "Onboarding completes a same-session retained audit from the verified full anchor, the day's verified rolling evidence and unchanged stored bytes, and drops accumulated Feature invalidations only for candidates the saved request proves were never admitted. Both admit cases that were wrongly refused; no published number changes for a previously admitted workspace."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "e2b8e01af25ecb85d431525e590caf650fddfd91c292a90ae99067e790a43273",
+   "successor": "488b421565f2f7efad57e6957a44ea96c2c7062db3a3cb1ecfe4a527c0a6288e",
+   "change": "FIX1 FLAKE-AUDIT and FLAKE-AXIS: universe onboarding and maintenance (2026-10-08)",
+   "reason": "Onboarding completes a same-session retained audit from the verified full anchor, the day's verified rolling evidence and unchanged stored bytes, and drops accumulated Feature invalidations only for candidates the saved request proves were never admitted. Both admit cases that were wrongly refused; no published number changes for a previously admitted workspace."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "eb0d53491ce0e9eb93739f2dc25193125f66201653214d912fdaa6662ff13e48",
+   "successor": "2cf7abd78b2b544d59898a93b03f85a38dfbc7eb8851867a07b21d428f9d063a",
+   "change": "FIX1 FLAKE-AUDIT and FLAKE-AXIS: universe onboarding and maintenance (2026-10-08)",
+   "reason": "Onboarding completes a same-session retained audit from the verified full anchor, the day's verified rolling evidence and unchanged stored bytes, and drops accumulated Feature invalidations only for candidates the saved request proves were never admitted. Both admit cases that were wrongly refused; no published number changes for a previously admitted workspace."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "7b2ef210687874f68235d9b449c20ba79dd7f8d9880abbb49e534b32270707a5",
+   "successor": "9d32e0002723b2ab8b0027d1e823a3b05f18497b2321cdcdeb57c0d1cbf8c78f",
+   "change": "FLOW-3: the product's answers name the next step (2026-10-08)",
+   "reason": "Preparation and research-strategy answers now offer the shortest chain (RESEARCH_STRATEGY_CONTROLS, then the book's CONTROLS) and name the Risk window a calibrated Alpha study needs; the Alpha draft no longer offers a Factor-first prerequisite. Offers and answer words changed; no computation, sealed input or published number changed."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "2cf7abd78b2b544d59898a93b03f85a38dfbc7eb8851867a07b21d428f9d063a",
+   "successor": "615c300327704c6082911a9fe8f083c672dc8c592e07b2d6f48b3169d8b8670e",
+   "change": "FLOW-3: the product's answers name the next step (2026-10-08)",
+   "reason": "Preparation and research-strategy answers now offer the shortest chain (RESEARCH_STRATEGY_CONTROLS, then the book's CONTROLS) and name the Risk window a calibrated Alpha study needs; the Alpha draft no longer offers a Factor-first prerequisite. Offers and answer words changed; no computation, sealed input or published number changed."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "ae74909b97a783ac7d49ff75dd786b08b801523c7694eb95081f047ad511e8f3",
+   "successor": "2803431c2817ff8acfe6f068c6cdc692770dd4267df72e7a6809de3e9377f359",
+   "change": "FLOW-3: the product's answers name the next step (2026-10-08)",
+   "reason": "Preparation and research-strategy answers now offer the shortest chain (RESEARCH_STRATEGY_CONTROLS, then the book's CONTROLS) and name the Risk window a calibrated Alpha study needs; the Alpha draft no longer offers a Factor-first prerequisite. Offers and answer words changed; no computation, sealed input or published number changed."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "ae74909b97a783ac7d49ff75dd786b08b801523c7694eb95081f047ad511e8f3",
+   "successor": "2803431c2817ff8acfe6f068c6cdc692770dd4267df72e7a6809de3e9377f359",
+   "change": "FLOW-3: the product's answers name the next step (2026-10-08)",
+   "reason": "Preparation and research-strategy answers now offer the shortest chain (RESEARCH_STRATEGY_CONTROLS, then the book's CONTROLS) and name the Risk window a calibrated Alpha study needs; the Alpha draft no longer offers a Factor-first prerequisite. Offers and answer words changed; no computation, sealed input or published number changed."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "d49b821160c39a9b3928c920263475773cea7dd726f6021ba9e393ef11b3d468",
+   "successor": "eb7b56d6937576dfbbf1895af3929077c3729bccf950df407e6f1de7d31a9718",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "adcf967183cee922684a3c60a12ac89c3e5bf667cfd66f07041015450b54f361",
+   "successor": "52fcdbd4385eb2a5cafd71dbea04933747b97d51b4613c3adf503e4e2578e8e2",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "ef8efd9c3e4a68c3f1c346205facf86785def60e6bc16a047bef22898649f655",
+   "successor": "18d8d2b03891f141ed6f0875e4751de3696c178bfd79b3102f6f886b8675d455",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "8f01f5e7f61a1d362b91a19ba476fbbbf3f64538888642c56636f59a53f13186",
+   "successor": "f26f778a00ee595a715a91478a03abd5b1947bbb0fe95cba8ebd0ba6a5d16ae5",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "468c92becf87ae0b5d940b53474df0f9a62e3e2d6c79ec0f095db54addabf319",
+   "successor": "7e7253c543259a881df99e0945597fca5427f709d653273aad52fc7284026a89",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "62dc7a8f98cc3338ce8bbad0bbe50a5a9af68a245dabd627989f82c9c7fe99ce",
+   "successor": "a4ba895fadaf26cd48ebc5f12e2ac1d845e88e6f7908fd9ccd1f46c327a09a7f",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "904eee2aa427a333062405b6e3a8aa345092b0b8b18564cdf19856f735e9113e",
+   "successor": "0c3a6a1b3753d16487f1061e69ef1811be33342dda39095e8849f1e8c2e021d9",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "f0e3613ff79141c556da0066ad763d97184fb329d88b9c078732d3cb16b856a1",
+   "successor": "9972c7e29474234991101ebaca91af87c82376c05e84248fdc9984983a24379e",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "9d32e0002723b2ab8b0027d1e823a3b05f18497b2321cdcdeb57c0d1cbf8c78f",
+   "successor": "5dd02dcc130b563b1020254abc22101291c5ebbe8cd3fb7a679658ae6bac9bb7",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "eda39f66ccc7cbf704c5bc1ada843e3fb62781210f26f0f7c05e3cc7c8374303",
+   "successor": "eb7db2682ed03b55c867330222e30e10262cfbc66069105930cbe0f6be0ed93f",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "488b421565f2f7efad57e6957a44ea96c2c7062db3a3cb1ecfe4a527c0a6288e",
+   "successor": "c369e99949971e6ddad858975ce81fd39f2b307f957d998489bb1dd9355231c1",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "2803431c2817ff8acfe6f068c6cdc692770dd4267df72e7a6809de3e9377f359",
+   "successor": "9c4b3d70cf4ab7631be64f9bc25489ece970d615433a2ae644cf92fe0d4a8d02",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "2803431c2817ff8acfe6f068c6cdc692770dd4267df72e7a6809de3e9377f359",
+   "successor": "9c4b3d70cf4ab7631be64f9bc25489ece970d615433a2ae644cf92fe0d4a8d02",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "3409c701fc6a410eb9afac7d13ae9f93859968dddd68067009e0ea75b48cda1c",
+   "successor": "d55121f1cb77d62c1e6d7a466946c67d21be559c8d7f7c14474f580f8f0733d2",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "2ddcdf1bd6226087b155ba2e5a5ebfa530752d72b06e9b5b9a6e99aa78edd1c0",
+   "successor": "3650dae3b4c8bba37dc4ad0f6fb83902b00f4fcaca5ab9b4d32931f74bad7bf9",
+   "change": "PERF-1 levers 1 and 2: one thread-pool view per loaded module set; the verified estimator kept once (2026-10-08)",
+   "reason": "Two exact-equality speedups of the Alpha fit, prediction and model-loading path. (1) Each fit and prediction scope applied and verified its single-thread limit through two fresh threadpoolctl views, each asking every loaded module for its path; it now reuses one view while the process's loaded modules are exactly those it was built over (a module loaded since rebuilds it), applying and verifying the same limit over the same libraries, and looks each installed package version up once a process. (2) A model-fit sidecar load re-validated its estimator on every call because the estimator's dict payload kept it out of the content store's immutable-only request memo; the memo now keeps it on the owner's opt-in and gives every caller its own deep copy, and identity-JSON bytes are parsed inside the memo's builder. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before lever 1, after lever 1 and after lever 2 produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 718 s, 382 s and 319 s."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "eb7b56d6937576dfbbf1895af3929077c3729bccf950df407e6f1de7d31a9718",
+   "successor": "7c0264fc5600315047d029689013d368f9b03267a81b58ad6bd73d21b103872b",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "52fcdbd4385eb2a5cafd71dbea04933747b97d51b4613c3adf503e4e2578e8e2",
+   "successor": "b78c051d459e396e93a6f4d5665c43f14caa287776b36a8ed364893aed8f8e18",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "18d8d2b03891f141ed6f0875e4751de3696c178bfd79b3102f6f886b8675d455",
+   "successor": "1b8add97ae7a5211ef72b32ce041358967f96bb6e7f93e74f3d4302462264977",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "f26f778a00ee595a715a91478a03abd5b1947bbb0fe95cba8ebd0ba6a5d16ae5",
+   "successor": "04064b132fa615ce2471477e9910d5bac002327e8279159e3c89158045d88b4a",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "7e7253c543259a881df99e0945597fca5427f709d653273aad52fc7284026a89",
+   "successor": "2758e4a30195f42b974ac6834b1e81868f0c82dd87c8c13c068cfd9ed9ed09bd",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "a4ba895fadaf26cd48ebc5f12e2ac1d845e88e6f7908fd9ccd1f46c327a09a7f",
+   "successor": "2b678bf4f4c2e830d8027feb165b2d5268b74652a99b881de48ad5c10c45530e",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "0c3a6a1b3753d16487f1061e69ef1811be33342dda39095e8849f1e8c2e021d9",
+   "successor": "10f7a8521d8dccd97bc829d5e555e9d2c6aabae288c8e1044ca424c94e2a16b8",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "9972c7e29474234991101ebaca91af87c82376c05e84248fdc9984983a24379e",
+   "successor": "505e5ffe77de88595fea797d43349f04a4e9e766a98a6255f0eb4b3fc16b6a9b",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "5dd02dcc130b563b1020254abc22101291c5ebbe8cd3fb7a679658ae6bac9bb7",
+   "successor": "fa5ab923a980998bd33d5cdf3b7845166ca02a9a513fab50b1239029b432565a",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "eb7db2682ed03b55c867330222e30e10262cfbc66069105930cbe0f6be0ed93f",
+   "successor": "dec578902ec98cf3ce09221aa2f14f4ff5df11dc7b154c38844e86f18da148fa",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "c369e99949971e6ddad858975ce81fd39f2b307f957d998489bb1dd9355231c1",
+   "successor": "2b76de3b1474fb0a1380ca3b6e680ce8807a01aa092cbd7c434d19684c5d5042",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "9c4b3d70cf4ab7631be64f9bc25489ece970d615433a2ae644cf92fe0d4a8d02",
+   "successor": "1d817180097226cbf286c542fe296ff62e7b6da40750fa14583c65474c6f0c2b",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "9c4b3d70cf4ab7631be64f9bc25489ece970d615433a2ae644cf92fe0d4a8d02",
+   "successor": "1d817180097226cbf286c542fe296ff62e7b6da40750fa14583c65474c6f0c2b",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "d55121f1cb77d62c1e6d7a466946c67d21be559c8d7f7c14474f580f8f0733d2",
+   "successor": "e2f6796900138564ba682d8569dda20da17230d12fe1ed78365f3cc87c7aac89",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "3650dae3b4c8bba37dc4ad0f6fb83902b00f4fcaca5ab9b4d32931f74bad7bf9",
+   "successor": "c152534406dae5951d71b75a6c0339c46b1a54acf219bec4603364a1761f10cc",
+   "change": "PERF-1 each Booster parsed once per scoring loop (2026-10-08)",
+   "reason": "Each LightGBM prediction rebuilt its Booster from the estimator's model text (about 2.3 ms for 300 trees), and a lifecycle study predicts with the same few dozen models at every formation. A scope beside the existing Dataset scope keeps Boosters by their exact model text for one scoring loop and clears them on exit; the lifecycle study opens it around its formation loop. Prediction leaves a Booster unchanged; outside the scope every prediction parses afresh as before. Proof: the G2 lifecycle Alpha study repeated from the same checkpoint at a 4-core budget before and after the change produced byte-identical study files, every score array, estimator, model-fit sidecar, model set and prepared refit included; only the execution record and evidence receipt, which bind the plan hash, differ. The study ran in 235 s instead of 319 s."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "fa5ab923a980998bd33d5cdf3b7845166ca02a9a513fab50b1239029b432565a",
+   "successor": "4b8b2a3abffda6c261ff2256e2620458c8821555b9d69137a62c08bece345feb",
+   "change": "PERF-1 Risk's live estimate enters its thread policy: closure-only roles (2026-10-08)",
+   "reason": "The Risk covariance module now runs the live EWMA Ledoit-Wolf estimate inside its declared single-thread policy, on the process's reused thread-pool view. These roles hash that module through their rule closure but never run that estimate: only the Risk development build calls an estimator's estimate method. Their computations are unchanged. The Risk covariance development implementation and the EWMA estimator move without a successor, because their published eigen diagnostics change."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "c152534406dae5951d71b75a6c0339c46b1a54acf219bec4603364a1761f10cc",
+   "successor": "6f7a1461847bc10fe837e143cd96f70eb379d39ab02269ab53ed9d894e8fb737",
+   "change": "PERF-1 Risk's live estimate enters its thread policy: closure-only roles (2026-10-08)",
+   "reason": "The Risk covariance module now runs the live EWMA Ledoit-Wolf estimate inside its declared single-thread policy, on the process's reused thread-pool view. These roles hash that module through their rule closure but never run that estimate: only the Risk development build calls an estimator's estimate method. Their computations are unchanged. The Risk covariance development implementation and the EWMA estimator move without a successor, because their published eigen diagnostics change."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-diagonal-shrunk-ledoit-wolf",
+   "predecessor": "1f65eecf637c4fb804007489365ea6fdf7525d870b7d8ae41cb52327e52b63f3",
+   "successor": "5b666972180917fd13db90d6611925c58b493cc01293ba27d30ddd77f39dc0ed",
+   "change": "PERF-1 Risk's live estimate enters its thread policy: closure-only roles (2026-10-08)",
+   "reason": "The Risk covariance module now runs the live EWMA Ledoit-Wolf estimate inside its declared single-thread policy, on the process's reused thread-pool view. These roles hash that module through their rule closure but never run that estimate: only the Risk development build calls an estimator's estimate method. Their computations are unchanged. The Risk covariance development implementation and the EWMA estimator move without a successor, because their published eigen diagnostics change."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-fast-slow-ledoit-wolf",
+   "predecessor": "9f3c99ed9afd8608abf739c6da96d9474af13d5c2d100675ea430cf56d997ad7",
+   "successor": "1017505bcd2d40be433e8b0a85fa120fa1a6b257a2106c6d26a41b51c0a34ae4",
+   "change": "PERF-1 Risk's live estimate enters its thread policy: closure-only roles (2026-10-08)",
+   "reason": "The Risk covariance module now runs the live EWMA Ledoit-Wolf estimate inside its declared single-thread policy, on the process's reused thread-pool view. These roles hash that module through their rule closure but never run that estimate: only the Risk development build calls an estimator's estimate method. Their computations are unchanged. The Risk covariance development implementation and the EWMA estimator move without a successor, because their published eigen diagnostics change."
+  },
+  {
+   "role": "risk_research.estimator_catalog",
+   "predecessor": "87f09a526dc962914760a933fb9eaf7c9df9ab0621a2bf62387d85067bdcc3cf",
+   "successor": "2aed649cb5ffc37f05cce040efea911fa564cc38d83d0cfa2d40a8c7863c0757",
+   "change": "PERF-1 Risk's live estimate enters its thread policy: closure-only roles (2026-10-08)",
+   "reason": "The Risk covariance module now runs the live EWMA Ledoit-Wolf estimate inside its declared single-thread policy, on the process's reused thread-pool view. These roles hash that module through their rule closure but never run that estimate: only the Risk development build calls an estimator's estimate method. Their computations are unchanged. The Risk covariance development implementation and the EWMA estimator move without a successor, because their published eigen diagnostics change."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "615c300327704c6082911a9fe8f083c672dc8c592e07b2d6f48b3169d8b8670e",
+   "successor": "ee8e97e1fc9cf8b0a6cd01dd0bd2977752224e8333137f456c8304147c12aca5",
+   "change": "PERF2 lever 1: the Feature invalidation planner works by calendar position (2026-10-08)",
+   "reason": "The planner finds a day's sessions by calendar position and expands each distinct range set once; plan hashes are identical, and the Panel chunk values, frozen scores, prepared inputs and positions are equal between the before and after daily runs."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "b78c051d459e396e93a6f4d5665c43f14caa287776b36a8ed364893aed8f8e18",
+   "successor": "af6f30cf0acd5e8b3fcd0a0abd623b2c16b1f85be94e1a97dda5e4c5d76e21b6",
+   "change": "PERF-1 lever 4: training history once per component (2026-10-08)",
+   "reason": "Training prices and their price-volume history are read and computed once per component, not once per lifecycle vintage. The pass is causal row by row, so the history through each cutoff equals the latest history sliced, bit for bit (35/35 vintages, pinned by a prefix test). Every observation, prepared refit, lifecycle array and admission is byte-identical."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "2758e4a30195f42b974ac6834b1e81868f0c82dd87c8c13c068cfd9ed9ed09bd",
+   "successor": "5d51a6541f8b697dd2aa64c84ef86d6df87e2ff217aa24f214d004b08e241b2a",
+   "change": "PERF-1 lever 4: training history once per component (2026-10-08)",
+   "reason": "Training prices and their price-volume history are read and computed once per component, not once per lifecycle vintage. The pass is causal row by row, so the history through each cutoff equals the latest history sliced, bit for bit (35/35 vintages, pinned by a prefix test). Every observation, prepared refit, lifecycle array and admission is byte-identical."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "10f7a8521d8dccd97bc829d5e555e9d2c6aabae288c8e1044ca424c94e2a16b8",
+   "successor": "fb8539077d4de08c3427989d4061787f5612792f5565bb24c17b03e7bd9f8dc1",
+   "change": "PERF-1 lever 4: training history once per component (2026-10-08)",
+   "reason": "Training prices and their price-volume history are read and computed once per component, not once per lifecycle vintage. The pass is causal row by row, so the history through each cutoff equals the latest history sliced, bit for bit (35/35 vintages, pinned by a prefix test). Every observation, prepared refit, lifecycle array and admission is byte-identical."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "505e5ffe77de88595fea797d43349f04a4e9e766a98a6255f0eb4b3fc16b6a9b",
+   "successor": "4126286dec35e15b5f9445fab57c67d3030f79726904c2630ae7817359cf02e0",
+   "change": "PERF-1 lever 4: training history once per component (2026-10-08)",
+   "reason": "Training prices and their price-volume history are read and computed once per component, not once per lifecycle vintage. The pass is causal row by row, so the history through each cutoff equals the latest history sliced, bit for bit (35/35 vintages, pinned by a prefix test). Every observation, prepared refit, lifecycle array and admission is byte-identical."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "4b8b2a3abffda6c261ff2256e2620458c8821555b9d69137a62c08bece345feb",
+   "successor": "fe7158b7edce347aed2287ff7914dea2a92c049b6b35e68b4218592d7a3beb2f",
+   "change": "PERF-1 lever 4: training history once per component (2026-10-08)",
+   "reason": "Training prices and their price-volume history are read and computed once per component, not once per lifecycle vintage. The pass is causal row by row, so the history through each cutoff equals the latest history sliced, bit for bit (35/35 vintages, pinned by a prefix test). Every observation, prepared refit, lifecycle array and admission is byte-identical."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "dec578902ec98cf3ce09221aa2f14f4ff5df11dc7b154c38844e86f18da148fa",
+   "successor": "c5c0cfddcd1e00b12d8cfb2f7b9c8f4189fe76e3affc2214091b756dab436636",
+   "change": "PERF-1 lever 4: training history once per component (2026-10-08)",
+   "reason": "Training prices and their price-volume history are read and computed once per component, not once per lifecycle vintage. The pass is causal row by row, so the history through each cutoff equals the latest history sliced, bit for bit (35/35 vintages, pinned by a prefix test). Every observation, prepared refit, lifecycle array and admission is byte-identical."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "2b76de3b1474fb0a1380ca3b6e680ce8807a01aa092cbd7c434d19684c5d5042",
+   "successor": "29a0b5431f1e7d8cbd24d6304cee0d43e6f452294c966d712783138721bfa199",
+   "change": "PERF-1 lever 4: training history once per component (2026-10-08)",
+   "reason": "Training prices and their price-volume history are read and computed once per component, not once per lifecycle vintage. The pass is causal row by row, so the history through each cutoff equals the latest history sliced, bit for bit (35/35 vintages, pinned by a prefix test). Every observation, prepared refit, lifecycle array and admission is byte-identical."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "1d817180097226cbf286c542fe296ff62e7b6da40750fa14583c65474c6f0c2b",
+   "successor": "a6fba0c075badf1ed47b064b6e10c01d88f8eca09f1a1b6520972bc3564fd2ae",
+   "change": "PERF-1 lever 4: training history once per component (2026-10-08)",
+   "reason": "Training prices and their price-volume history are read and computed once per component, not once per lifecycle vintage. The pass is causal row by row, so the history through each cutoff equals the latest history sliced, bit for bit (35/35 vintages, pinned by a prefix test). Every observation, prepared refit, lifecycle array and admission is byte-identical."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "1d817180097226cbf286c542fe296ff62e7b6da40750fa14583c65474c6f0c2b",
+   "successor": "a6fba0c075badf1ed47b064b6e10c01d88f8eca09f1a1b6520972bc3564fd2ae",
+   "change": "PERF-1 lever 4: training history once per component (2026-10-08)",
+   "reason": "Training prices and their price-volume history are read and computed once per component, not once per lifecycle vintage. The pass is causal row by row, so the history through each cutoff equals the latest history sliced, bit for bit (35/35 vintages, pinned by a prefix test). Every observation, prepared refit, lifecycle array and admission is byte-identical."
+  },
+  {
+   "role": "risk_research.estimator_catalog",
+   "predecessor": "2aed649cb5ffc37f05cce040efea911fa564cc38d83d0cfa2d40a8c7863c0757",
+   "successor": "85041fed9104866bafcf5e83a2cce73057f9d924f5742c062c94b59953769e76",
+   "change": "PERF Risk: fast-slow and diagonal estimators under the single-thread policy (2026-10-08)",
+   "reason": "The estimator catalog is a registry whose closure moved with the estimators; no value of its own changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "04064b132fa615ce2471477e9910d5bac002327e8279159e3c89158045d88b4a",
+   "successor": "f26cdecac0839fc8b63620a7c12bcecd230f7132c10d07a44cf4c57dcd60a5a5",
+   "change": "PERF2: canonical daily delta order and the candidate-only Sector recheck (2026-10-08)",
+   "reason": "Deltas past the published prefix chain in content order (by listing, then session), so the chain hash is reproducible; published prefixes are untouched. A candidate recheck fetches only the candidates' Sectors when the active membership's Sector revision is complete and within its 30 days. Admission is unchanged, and the Panel chunk values, frozen scores, inputs and positions are equal."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "ee8e97e1fc9cf8b0a6cd01dd0bd2977752224e8333137f456c8304147c12aca5",
+   "successor": "f7ad6150571501d17ee80b96bb899fcbdd1633ef5f172148b41b550555814eca",
+   "change": "PERF2: canonical daily delta order and the candidate-only Sector recheck (2026-10-08)",
+   "reason": "Deltas past the published prefix chain in content order (by listing, then session), so the chain hash is reproducible; published prefixes are untouched. A candidate recheck fetches only the candidates' Sectors when the active membership's Sector revision is complete and within its 30 days. Admission is unchanged, and the Panel chunk values, frozen scores, inputs and positions are equal."
+  },
+  {
+   "role": "sector_research.forecast_catalog",
+   "predecessor": "83f46f191d7f5cdf0538fc0446f09cbf30499a9dc15ac0a315f3036307ee5738",
+   "successor": "b52952baf67ce9017598d260b9f40afef8719f4d3136ab5bb618a499b1ba88b0",
+   "change": "INV PATTERN: Sector thread scope reuses the shared thread-pool view (2026-10-08)",
+   "reason": "The Sector scope routes through shared_kernel.environment's reused thread-pool view (the same limits and refusals, no new layer); its micro cost drops from 37 ms to 0.2 ms. Values are equal across 125 Parquets, 1,185,192 rows and the prepared sessions."
+  },
+  {
+   "role": "sector_research.method.DISTRIBUTED_LAG_ELASTIC_NET",
+   "predecessor": "c4f4f722066218c9bfba9d7ddb632851dba54e5ee750ff59910b78b92af99987",
+   "successor": "e95e8a15c80a73f0e07765208dc69ea332838438f607f3eac61235ba22d3c3a8",
+   "change": "INV PATTERN: Sector thread scope reuses the shared thread-pool view (2026-10-08)",
+   "reason": "The Sector scope routes through shared_kernel.environment's reused thread-pool view (the same limits and refusals, no new layer); its micro cost drops from 37 ms to 0.2 ms. Values are equal across 125 Parquets, 1,185,192 rows and the prepared sessions."
+  },
+  {
+   "role": "sector_research.method.EWMA_SECTOR_MEAN",
+   "predecessor": "ae94aafb4157b5ad69e3fdcf4ec6deea6ce899b6409fdb3faa0e7f6c6c8b6cb4",
+   "successor": "414e54134da31f022d2def6cb8be5e984f1aed9bf742115c00a57d671e230da9",
+   "change": "INV PATTERN: Sector thread scope reuses the shared thread-pool view (2026-10-08)",
+   "reason": "The Sector scope routes through shared_kernel.environment's reused thread-pool view (the same limits and refusals, no new layer); its micro cost drops from 37 ms to 0.2 ms. Values are equal across 125 Parquets, 1,185,192 rows and the prepared sessions."
+  },
+  {
+   "role": "sector_research.method.SECTOR_RELATIVE_STRENGTH_126",
+   "predecessor": "77a82bb8ef2370c890b7489d36eaa7d2b8a399a339aa942e198b9ca8a9c41eac",
+   "successor": "3b5bd5b7c3c150810b54a5856bbee0886f7e4e9745182c97322b17d8f4ecea5d",
+   "change": "INV PATTERN: Sector thread scope reuses the shared thread-pool view (2026-10-08)",
+   "reason": "The Sector scope routes through shared_kernel.environment's reused thread-pool view (the same limits and refusals, no new layer); its micro cost drops from 37 ms to 0.2 ms. Values are equal across 125 Parquets, 1,185,192 rows and the prepared sessions."
+  },
+  {
+   "role": "sector_research.method.ZERO_SECTOR_FORECAST",
+   "predecessor": "2c1cd83331b49f78d89189c0844a482fae753e1e7c2f6ab76fd2d124a6023fca",
+   "successor": "b5bb938975e906e908033d65e425c2cfdfe0b2169bef9ca7504cd12af9095dc5",
+   "change": "INV PATTERN: Sector thread scope reuses the shared thread-pool view (2026-10-08)",
+   "reason": "The Sector scope routes through shared_kernel.environment's reused thread-pool view (the same limits and refusals, no new layer); its micro cost drops from 37 ms to 0.2 ms. Values are equal across 125 Parquets, 1,185,192 rows and the prepared sessions."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "fe7158b7edce347aed2287ff7914dea2a92c049b6b35e68b4218592d7a3beb2f",
+   "successor": "78bf90d7bea924d77ca8afe786151174a3835e6e224295384800f32851b2679f",
+   "change": "BADGE: the strategy readback's offer binds its source (2026-10-08)",
+   "reason": "The research strategy readback's offered next request now carries its exact source, so a re-plan taken from it links to the stopped Task it resolves. Offers and recovery links changed; no computation or published number changed."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "5d51a6541f8b697dd2aa64c84ef86d6df87e2ff217aa24f214d004b08e241b2a",
+   "successor": "f6154a9fc01a82a48cca01bf82da4b74d6882fece517b310dccc12673fe4b535",
+   "change": "PERF2: the seal reads every listing's bars and actions in one read each (2026-10-08)",
+   "reason": "The source prefix proof and the seal read each listing's bars and corporate actions in one set read instead of one per listing; the same rows in the same order, and the sealed values and proofs are equal."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "2b678bf4f4c2e830d8027feb165b2d5268b74652a99b881de48ad5c10c45530e",
+   "successor": "29ceb2c428c94f13a8b8439f4d98e49a46a8ff781d77401fad387ae33a796e4d",
+   "change": "PERF2: the seal reads every listing's bars and actions in one read each (2026-10-08)",
+   "reason": "The source prefix proof and the seal read each listing's bars and corporate actions in one set read instead of one per listing; the same rows in the same order, and the sealed values and proofs are equal."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "fb8539077d4de08c3427989d4061787f5612792f5565bb24c17b03e7bd9f8dc1",
+   "successor": "ac72ba2461de6863b57b3e36d2a1d30ef6f9aa96c5876a0a07b2302933a2b2b1",
+   "change": "PERF2: the seal reads every listing's bars and actions in one read each (2026-10-08)",
+   "reason": "The source prefix proof and the seal read each listing's bars and corporate actions in one set read instead of one per listing; the same rows in the same order, and the sealed values and proofs are equal."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "acfd7f8cca67797466690edf4171a1c087016e95469dd09e4d33f3a5c19c4f5b",
+   "successor": "9b730a31cce542daaafb1e911fac1e5032aa5faca303448101f18969868168b0",
+   "change": "PERF2: the seal reads every listing's bars and actions in one read each (2026-10-08)",
+   "reason": "The source prefix proof and the seal read each listing's bars and corporate actions in one set read instead of one per listing; the same rows in the same order, and the sealed values and proofs are equal."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "c5c0cfddcd1e00b12d8cfb2f7b9c8f4189fe76e3affc2214091b756dab436636",
+   "successor": "cfc2cd3251812a7c0fcab612f84bbf9cf8b8c49bbed89c4a54ef3f9a15fcdd9d",
+   "change": "PERF2: the seal reads every listing's bars and actions in one read each (2026-10-08)",
+   "reason": "The source prefix proof and the seal read each listing's bars and corporate actions in one set read instead of one per listing; the same rows in the same order, and the sealed values and proofs are equal."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "29a0b5431f1e7d8cbd24d6304cee0d43e6f452294c966d712783138721bfa199",
+   "successor": "30a5a3db637b5833bf1f846ddd0331adb988b82bc8302a9e668ab316d088a5e9",
+   "change": "PERF2: the seal reads every listing's bars and actions in one read each (2026-10-08)",
+   "reason": "The source prefix proof and the seal read each listing's bars and corporate actions in one set read instead of one per listing; the same rows in the same order, and the sealed values and proofs are equal."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "f6154a9fc01a82a48cca01bf82da4b74d6882fece517b310dccc12673fe4b535",
+   "successor": "38cebfc16a9def00aa53a5f856b3653afa6282b108f6b203430c955336ca9b9b",
+   "change": "PERF2 a28534661: the day after a renewal reuses the kept observation history",
+   "reason": "Scoring reuses the kept observation history found by slot, package and implementation and proved over its own Features; values exactly equal on daily and daily2"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "29ceb2c428c94f13a8b8439f4d98e49a46a8ff781d77401fad387ae33a796e4d",
+   "successor": "23d1ebbc2b7e58ebab9b626ca71d64bc5abb3a09a0b7f0f08a3c6217f992360d",
+   "change": "PERF2 a28534661: the day after a renewal reuses the kept observation history",
+   "reason": "Scoring reuses the kept observation history found by slot, package and implementation and proved over its own Features; values exactly equal on daily and daily2"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "ac72ba2461de6863b57b3e36d2a1d30ef6f9aa96c5876a0a07b2302933a2b2b1",
+   "successor": "005cc777108a200bdd7ff1b1a26dc555f1135dddd136cbf369e28693eca2401a",
+   "change": "PERF2 a28534661: the day after a renewal reuses the kept observation history",
+   "reason": "Scoring reuses the kept observation history found by slot, package and implementation and proved over its own Features; values exactly equal on daily and daily2"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "cfc2cd3251812a7c0fcab612f84bbf9cf8b8c49bbed89c4a54ef3f9a15fcdd9d",
+   "successor": "e51afcace4de65d7f2f8002df0b860a441a4a3282b8de43bf783bf47eff22157",
+   "change": "PERF2 a28534661: the day after a renewal reuses the kept observation history",
+   "reason": "Scoring reuses the kept observation history found by slot, package and implementation and proved over its own Features; values exactly equal on daily and daily2"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "30a5a3db637b5833bf1f846ddd0331adb988b82bc8302a9e668ab316d088a5e9",
+   "successor": "c40f8ae0ca8d3fddc253db6be7d16b594e76d4372082c3990e6353303c683d6f",
+   "change": "PERF2 a28534661: the day after a renewal reuses the kept observation history",
+   "reason": "Scoring reuses the kept observation history found by slot, package and implementation and proved over its own Features; values exactly equal on daily and daily2"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "af6f30cf0acd5e8b3fcd0a0abd623b2c16b1f85be94e1a97dda5e4c5d76e21b6",
+   "successor": "9e98328f44a8e6844f19e822b3dd8785a68f50aa8d26b112e21546024bf16333",
+   "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
+   "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "38cebfc16a9def00aa53a5f856b3653afa6282b108f6b203430c955336ca9b9b",
+   "successor": "95da212b6dcded7e290205fc793900fe260d6f423b02c2d76fb9c97cc1c599fd",
+   "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
+   "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "005cc777108a200bdd7ff1b1a26dc555f1135dddd136cbf369e28693eca2401a",
+   "successor": "8bedd7a46b343ae78781169d0b91118529263f46785973ce903b09b693c12465",
+   "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
+   "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "4126286dec35e15b5f9445fab57c67d3030f79726904c2630ae7817359cf02e0",
+   "successor": "9e89a469e307a1704d4e393a1f31cef1a7ae882085ee44084d4221739f106330",
+   "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
+   "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "78bf90d7bea924d77ca8afe786151174a3835e6e224295384800f32851b2679f",
+   "successor": "3e6067bb71d418399b515351477d633467de218c13e7773cf90f830e0ee279e3",
+   "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
+   "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "e51afcace4de65d7f2f8002df0b860a441a4a3282b8de43bf783bf47eff22157",
+   "successor": "ee10b8e002ef378cb26ebf5f32fa6c8eb13a3a8b326b6e9a37963a8ff5b8e0fb",
+   "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
+   "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "c40f8ae0ca8d3fddc253db6be7d16b594e76d4372082c3990e6353303c683d6f",
+   "successor": "af8ee14808d95938bfd1b726962643038ea4aed510ba14dd268d47de7478eeb9",
+   "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
+   "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "a6fba0c075badf1ed47b064b6e10c01d88f8eca09f1a1b6520972bc3564fd2ae",
+   "successor": "c11cf8fd8fe2d08139a713320919de79e59701823aaf799b88012029ead2b4a4",
+   "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
+   "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "a6fba0c075badf1ed47b064b6e10c01d88f8eca09f1a1b6520972bc3564fd2ae",
+   "successor": "c11cf8fd8fe2d08139a713320919de79e59701823aaf799b88012029ead2b4a4",
+   "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
+   "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "e2f6796900138564ba682d8569dda20da17230d12fe1ed78365f3cc87c7aac89",
+   "successor": "70f1a2ef8668562ca0aac277f3d8d5390600f65711339aaac41e59ac857876cd",
+   "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
+   "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "6f7a1461847bc10fe837e143cd96f70eb379d39ab02269ab53ed9d894e8fb737",
+   "successor": "8506b67e54c06d2dde8e6f7b259afddf748cccf59a2e83597d915b596a6cc3bd",
+   "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
+   "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
   }
  ]
 }

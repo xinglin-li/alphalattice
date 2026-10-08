@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 import numpy as np
 
@@ -55,7 +55,12 @@ for _entry in (str(PLAYPEN_ROOT / "src"), str(SCRIPTS_ROOT)):
     if _entry not in sys.path:
         sys.path.insert(0, _entry)
 
-import run_monthly_alpha_refit_research as monthly_runner  # type: ignore[import-not-found]  # noqa: E402
+# A sibling script by its directory at run time, by the repository namespace for types.
+if TYPE_CHECKING:
+    from scripts import run_monthly_alpha_refit_research as monthly_runner
+else:
+    import run_monthly_alpha_refit_research as monthly_runner
+
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (  # noqa: E402
     build_dynamic_panel_lightgbm_recipe,
 )

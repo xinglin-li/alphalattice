@@ -24,6 +24,7 @@ from alphalattice.investment.alpha_research.scores.model_renewal import (
     AlphaModelLifecycleAdmission,
     prepare_alpha_refit,
     publish_component_training_observations,
+    read_alpha_refit_prices,
 )
 from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     AlphaModelLifecycleRecipe,
@@ -75,6 +76,34 @@ def prepare_component_lifecycle(
     prepared = []
     rejected: list[tuple[str, str]] = []
     vintages = sorted({v for day in source.formation_sessions for v in rule.vintages(day)})
+    # The prices and their causal history are read and computed once, through the latest
+    # vintage's last training session; each vintage reads its own rows from them.
+    cutoffs = []
+    for vintage in vintages:
+        try:
+            cutoffs.append(
+                resolve_alpha_refit_plan(
+                    lifecycle=rule,
+                    vintage=vintage,
+                    sessions=source.formation_sessions,
+                    component_recipe_hash=component.recipe_hash,
+                    source_binding_hash=observations.content_hash,
+                    ordered_listing_ids=source.ordered_listing_ids,
+                    ordered_feature_ids=component.ordered_feature_ids,
+                ).training_sessions[-1]
+            )
+        except ValueError:
+            continue
+    prices = (
+        read_alpha_refit_prices(
+            store,
+            observations,
+            ordered_feature_ids=component.ordered_feature_ids,
+            through=max(cutoffs),
+        )
+        if cutoffs
+        else None
+    )
     for vintage in vintages:
         if cancelled():
             raise ValueError("model_training.cancelled_at_safe_checkpoint")
@@ -92,7 +121,11 @@ def prepare_component_lifecycle(
             with span("features", "refit_preparation"):
                 prepared.append(
                     prepare_alpha_refit(
-                        store, plan=plan, observations=observations, component=component
+                        store,
+                        plan=plan,
+                        observations=observations,
+                        component=component,
+                        prices=prices,
                     )
                 )
         except ValueError as error:

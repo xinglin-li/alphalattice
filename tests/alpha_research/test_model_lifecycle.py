@@ -381,6 +381,15 @@ def test_history_and_daily_features_are_identical_and_future_rows_are_inert(temp
             formation_session=source.formation_sessions[index],
         )
         np.testing.assert_array_equal(history[index], daily)
+    # A history through an earlier cutoff is the later history's prefix, bit for bit: the
+    # training vintages read their rows from one history (AlphaRefitPrices).
+    for index in (150, 200):
+        earlier = prepare_frozen_price_volume_history(
+            source,
+            ordered_feature_ids=COMPONENT.ordered_feature_ids,
+            through=source.formation_sessions[index],
+        )
+        np.testing.assert_array_equal(earlier.view("u8"), history[: index + 1].view("u8"))
     if temporal:
         reference = np.ones((len(source.formation_sessions), 9), dtype=np.bool_)
         reference[:-1, -1] = False
@@ -602,6 +611,20 @@ alpha:
     denied_dispatcher = ResearchExperimentDispatcher(compilers=(denied,), authority=Authority())
     with pytest.raises(ValueError, match="refit_period_not_admitted"):
         denied_dispatcher.compile(document)
+    # Every binary read from here on is counted, so the process's first read of an array --
+    # the one that leaves its OS-backed proof -- is seen, not only the readbacks after it.
+    import os
+    from collections import Counter
+
+    opened: Counter[Path] = Counter()
+    open_file = Path.open
+
+    def counted_open(file, *args, **kwargs):
+        if (args[0] if args else kwargs.get("mode", "r")) == "rb":
+            opened[file] += 1
+        return open_file(file, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", counted_open)
     evidence, _ = workflow.run_sealed(document, **actor)
     assert evidence.program_hash == sealed.program_hash
     assert (
@@ -625,25 +648,16 @@ alpha:
     identity = output_store._hash_from_uri(evidence.artifact_uris[0], "current/" + CATEGORY)
     receipt = output_store._load(CATEGORY, identity, "content_hash", AlphaLifecycleResearchReceipt)
     path = output_store._path("current/lifecycle-arrays", receipt.projection_files[0], "bin")
+    assert opened[path] >= 1  # the run and its replay read the array in full
     original = path.read_bytes()
     # Separate complete owner readbacks retain only an OS-backed proof, never
-    # a timestamp shortcut; the workflow's full numeric checks still execute.
-    import os
-    from collections import Counter
-
+    # a timestamp shortcut; the workflow's full numeric checks still execute. On
+    # Windows both readbacks reuse the proof the replay left; elsewhere each reads again.
     from alphalattice.investment.alpha_research.experiments.lifecycle_authoring import (
         verify_lifecycle_research,
     )
 
-    opened = Counter()
-    open_file = Path.open
-
-    def counted_open(file, *args, **kwargs):
-        if file == path and (args[0] if args else kwargs.get("mode", "r")) == "rb":
-            opened[file] += 1
-        return open_file(file, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "open", counted_open)
+    seeded = opened[path]
     assert (
         verify_lifecycle_research(
             program=sealed, evidence=evidence, output_workspace=tmp_path / "output"
@@ -657,7 +671,7 @@ alpha:
         )
         == "CURRENT"
     )
-    assert opened[path] == (first_reads if os.name == "nt" else first_reads + 1)
+    assert opened[path] == (seeded if os.name == "nt" else first_reads + 1)
 
     before = path.stat()
     path.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))

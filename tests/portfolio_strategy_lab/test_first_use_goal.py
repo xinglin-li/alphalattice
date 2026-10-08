@@ -17,8 +17,15 @@ from uuid import UUID
 import pytest
 
 from alphalattice.control.product_host.composition.goals import GoalApplication
+from alphalattice.control.product_host.composition.portfolio_research_operations import (
+    PortfolioResearchOperations,
+)
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.interface.local_application.cli_contract import (
+    REQUEST_PROVENANCE,
+    RequestProvenance,
+)
 from alphalattice.interface.local_application.goals import FIRST_USE_HOURS
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
@@ -167,6 +174,11 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
     delegated = app.delegation(goal, "NETWORK_ACCESS_SET", "EXTERNAL_AUTOMATION")
     assert delegated == f"first-use-goal:{goal.goal_id}"
     assert app.delegation(goal, "MODEL_ACTIVATE", "EXTERNAL_AUTOMATION") is None
+    # Its membership changes and its reviewed book's activation are delegated; the person
+    # deactivates (STOPS-1).
+    for step in ("DATA_CHANGE_CONFIRM", "STRATEGY_ACTIVATE"):
+        assert app.delegation(goal, step, "EXTERNAL_AUTOMATION") == delegated
+    assert app.delegation(goal, "STRATEGY_DEACTIVATE", "EXTERNAL_AUTOMATION") is None
     assert app.delegation(goal, "NETWORK_ACCESS_SET", "HUMAN") is None
     with pytest.raises(ValueError, match=r"goal\.first_use_is_not_revised"):
         app.operate(
@@ -181,6 +193,44 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
     now[0] += timedelta(hours=FIRST_USE_HOURS)
     assert app.delegation(goal, "NETWORK_ACCESS_SET", "EXTERNAL_AUTOMATION") is None
     assert app.first_use_delegation(goal)["active"] is False
+
+
+def test_a_delegated_activation_takes_only_a_book_with_a_published_review() -> None:
+    """requirement (STOPS-1): under the first-use delegation the agent activates a book only once
+    its review standing is REVIEWED, and is refused by name before; the person's own activation
+    asks for no review."""
+
+    activated: list[UUID] = []
+    standing = {"status": "NOT_REVIEWED"}
+
+    def activate(task_id: UUID) -> dict[str, object]:
+        activated.append(task_id)
+        return {"status": "ACTIVATED"}
+
+    owner = SimpleNamespace(
+        activations=SimpleNamespace(activate=activate),
+        review=object(),
+        _book_review_standing=lambda _task_id: standing,
+    )
+    request = Request(operation="STRATEGY_ACTIVATE", task_id=UUID(int=3))
+
+    def run() -> dict[str, object]:
+        return PortfolioResearchOperations._strategy_activation(owner, request, "HUMAN")  # type: ignore[arg-type]
+
+    scope = REQUEST_PROVENANCE.set(
+        RequestProvenance(goal_id=str(UUID(int=7)), delegation=f"first-use-goal:{UUID(int=7)}")
+    )
+    try:
+        refused = run()
+        assert refused["failure_code"] == "strategy_activation.review_required", refused
+        assert not activated
+        standing["status"] = "REVIEWED"
+        assert run()["status"] == "ACTIVATED"
+    finally:
+        REQUEST_PROVENANCE.reset(scope)
+    standing["status"] = "NOT_REVIEWED"
+    assert run()["status"] == "ACTIVATED"
+    assert activated == [UUID(int=3), UUID(int=3)]
 
 
 def test_a_first_use_is_the_one_before_the_first_preparation(

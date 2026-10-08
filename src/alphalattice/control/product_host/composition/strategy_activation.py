@@ -1352,7 +1352,12 @@ class StrategyActivation:
             "fit_calls": 0,
             "claim": "FORWARD_RESEARCH_NOT_TRADING_ADVICE",
             "next_requests": {
-                "update": {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": package_id}
+                "update": {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": package_id},
+                # The person's one click back, which the agent names when it tells them (STOPS-1).
+                "deactivate": {
+                    "operation": "STRATEGY_DEACTIVATE",
+                    "strategy_package_id": package_id,
+                },
             },
         }
 

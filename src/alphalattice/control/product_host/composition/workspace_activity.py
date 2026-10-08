@@ -975,6 +975,7 @@ class WorkspaceActivity:
             except KeyError:
                 continue  # a watched id this workspace never admitted
             body = task_status_body(shown)
+            body["task_record_hash"] = shown.task_record_hash
             failure = dispatcher.failure(shown.task_id)
             body["worker_failure"] = failure
             body["worker_failure_type"] = failure_class_name(failure)

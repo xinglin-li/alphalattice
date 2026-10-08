@@ -90,6 +90,18 @@ waited too."""
 _RUNNING_PLACE_SQL = ", ".join(f"'{lifecycle.value}'" for lifecycle in sorted(_RUNNING_PLACE))
 
 
+def task_is_unrecoverable(task: TaskRecord) -> bool:
+    """Whether a blocked Task carries the ledger rebuild's unrecoverable reason."""
+    return (
+        task.lifecycle is TaskLifecycle.BLOCKED
+        and task.failure_code == "task_control.ledger_rebuilt"
+    )
+
+
+def _cancel_available(task: TaskRecord) -> bool:
+    return task.lifecycle not in _TERMINAL_TASKS or task_is_unrecoverable(task)
+
+
 class TaskQueueFull(RuntimeError):
     """Every waiting place is taken; the message names how many wait and the places."""
 
@@ -1432,7 +1444,8 @@ class DuckDbTaskControlRegistry:
             observed_at: Aware operational clock supplied by the caller.
 
         Returns:
-            The task and command; queued work cancels immediately, executing work awaits enactment.
+            The task and command; queued and ledger-rebuilt work cancels immediately,
+            executing work awaits enactment.
 
         Raises:
             TaskVersionStale: The confirmed task version changed.
@@ -1457,7 +1470,7 @@ class DuckDbTaskControlRegistry:
                 return current, TaskCommand.model_validate_json(existing[0])
             if current.record_hash != expected_task_hash:
                 raise TaskVersionStale("cancel command observed a stale task version")
-            if current.lifecycle in _TERMINAL_TASKS:
+            if not _cancel_available(current):
                 raise TaskTransitionRejected("terminal task cannot be cancelled")
             command = TaskCommand.from_identity(
                 command_id=uuid4(),
@@ -1466,12 +1479,17 @@ class DuckDbTaskControlRegistry:
                 kind=TaskCommandKind.CANCEL_REQUESTED,
                 requested_at=observed_at,
             )
-            if current.lifecycle is TaskLifecycle.QUEUED:
+            if current.lifecycle in {TaskLifecycle.QUEUED, TaskLifecycle.BLOCKED}:
                 task = self._replace_task(
                     current,
                     observed_at=observed_at,
                     lifecycle=TaskLifecycle.CANCELLED,
-                    failure_code="TASK_CANCELLED_BEFORE_START",
+                    active_work_item_id=None,
+                    failure_code=(
+                        current.failure_code
+                        if current.lifecycle is TaskLifecycle.BLOCKED
+                        else "TASK_CANCELLED_BEFORE_START"
+                    ),
                 )
                 resolution = "CANCELLED"
                 resolved_at = self._db_time(observed_at)
@@ -2407,7 +2425,7 @@ class DuckDbTaskControlRegistry:
             "total_stage_count": len(work_items),
             "running_since": task.started_at,
             "last_activity_at": last_activity,
-            "cancel_available": task.lifecycle not in _TERMINAL_TASKS,
+            "cancel_available": _cancel_available(task),
             "cancel_pending": task.lifecycle is TaskLifecycle.CANCEL_REQUESTED,
             "queued_next_task_id": (
                 queued.task_id if queued is not None and queued.task_id != task.task_id else None

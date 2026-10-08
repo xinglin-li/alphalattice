@@ -1,10 +1,23 @@
 # Contributing to AlphaLattice
-Date: 2026-10-01
+Date: 2026-10-08
 
-The first release takes no outside contributions.
+contributions open once the CLA bot is active
 
-Others may join after the first release once the ownership of the existing
-work, the rights to new contributions, credit and permissions are agreed.
+The maintainer must also complete the contribution infrastructure and repository
+settings before announcing that contributions are open. See [governance](GOVERNANCE.md)
+for final authority, contribution credit and maintainer permissions.
+
+## Propose a change
+
+Open an issue before starting nontrivial work so the maintainer can confirm its
+scope. Describe the problem and proposed change with synthetic or redacted
+examples. Report security vulnerabilities privately through [SECURITY.md](SECURITY.md).
+
+On your first pull request, sign the [Contributor License Agreement](CLA.md)
+through CLA Assistant. Link the agreed issue, describe the change and include
+the check results. The maintainer reviews and decides whether to accept it.
+
+## Verification
 
 Install the locked environment and build Local Web before public verification:
 
@@ -27,8 +40,12 @@ $env:ALPHALATTICE_NETWORK_DISABLED = '1'
 uv run python -m pytest tests/portfolio_strategy_lab/test_local_web_product.py -n auto -m "not real_evidence" --basetemp "$env:TEMP/alphalattice-public-tests"
 ```
 
-Full and real-evidence gates require the maintainers' private checkout and
+Full and real-evidence gates require the maintainer's private checkout and
 refuse when its inputs are absent.
 
-Contact Xinglin Li through [LinkedIn](https://www.linkedin.com/in/xinglin-li-381571139/)
-or [xinglin789@outlook.com](mailto:xinglin789@outlook.com) to discuss those terms.
+## How accepted changes ship
+
+The maintainer imports accepted public pull requests into private development
+while retaining the contributor's Git authorship. After the required verification,
+the maintainer exports each shipped change to this repository and publishes
+releases. The public pull request remains the record of the contribution.

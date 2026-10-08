@@ -90,6 +90,7 @@ from .covariance import (
     _standardized_residuals,
     _validate_inputs,
     numerical_environment_hash,
+    risk_numerical_thread_policy,
 )
 from .domains import DIAGONAL_PARAMETER_DOMAIN, RiskParameterDomain
 from .matrix_identity import matrix_content_hash
@@ -397,12 +398,13 @@ class DiagonalShrunkCovarianceAdapter:
             RiskNumericalError: Recipe admission or the method numerical-input contract fails.
         """
         active = self.validate_recipe(recipe)
-        return estimate_diagonal_shrunk_covariance(
-            returns=inputs.returns,
-            ordered_listing_ids=inputs.ordered_listing_ids,
-            formation_session=inputs.formation_session,
-            recipe=active,
-        )
+        with risk_numerical_thread_policy():
+            return estimate_diagonal_shrunk_covariance(
+                returns=inputs.returns,
+                ordered_listing_ids=inputs.ordered_listing_ids,
+                formation_session=inputs.formation_session,
+                recipe=active,
+            )
 
 
 class DiagonalShrunkCovarianceCapability:

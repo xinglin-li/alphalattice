@@ -248,3 +248,41 @@ def test_market_prefix_refuses_invalid_scopes_and_missing_provider(market_source
         connection.execute("DELETE FROM provider_symbol_mapping WHERE listing_id = ?", [SCOPE[1]])
     with pytest.raises(ValueError, match="listing has no provider mapping"):
         _proof(market)
+
+
+def test_listing_set_reads_answer_each_listings_own_reads(market_source):
+    """requirement: one read of a listing set answers exactly what each listing's reads answer.
+
+    The daily seal read every listing's bars and actions with three queries a listing and
+    component; the set readers keep each listing's rows, bounds, order, latest provider mapping
+    and missing-mapping refusal.
+    """
+    market, _ = market_source
+    with market.database.connect(read_only=False) as connection:
+        connection.execute(
+            """INSERT INTO corporate_action_current
+               SELECT listing_id, 'other', effective_date, action_kind,
+                      new_shares_per_old_share, cash_amount, provisional, provenance,
+                      payload_hash, status, observed_at
+               FROM corporate_action_current WHERE effective_date = ?""",
+            [DAYS[0]],
+        )
+        connection.execute(
+            """INSERT INTO provider_symbol_mapping
+               VALUES (?, 'other', 'BBB', ?, NULL, 'ACTIVE')""",
+            [SCOPE[1], date(2026, 8, 10)],
+        )
+    for start, through in ((None, None), (DAYS[1], None), (DAYS[0], DAYS[1]), (DAYS[2], DAYS[1])):
+        assert market.raw_bars_by_listing(SCOPE, start=start, through=through) == {
+            listing: market.raw_bars(listing, start=start, through=through) for listing in SCOPE
+        }
+    assert market.raw_bars_by_listing(("missing",)) == {"missing": ()}
+    assert market.actions_by_listing(tuple(reversed(SCOPE))) == {
+        listing: market.actions(listing) for listing in SCOPE
+    }
+    with market.database.connect(read_only=False) as connection:
+        connection.execute("DELETE FROM provider_symbol_mapping WHERE listing_id = ?", [SCOPE[1]])
+    with pytest.raises(ValueError, match="listing has no provider mapping"):
+        market.actions(SCOPE[1])
+    with pytest.raises(ValueError, match="listing has no provider mapping"):
+        market.actions_by_listing(SCOPE)

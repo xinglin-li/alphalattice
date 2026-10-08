@@ -31,6 +31,7 @@ from .portfolio_review import (
     REVIEW_ANSWER_TEXT_FIELDS,
     CRORiskConfidence,
     CRORiskSeverity,
+    PortfolioReviewCoverage,
     PortfolioReviewDossier,
     PortfolioReviewDossierFinding,
     finding_aliases,
@@ -334,18 +335,8 @@ def _index(
         "",
         "## Coverage (written by the program)",
         "",
-        f"- Reviewed ending-weight coverage {_percent(coverage.reviewed_ending_weight_coverage)}; "
-        f"selected-issuer coverage {_percent(coverage.selected_issuer_coverage)}; "
-        f"mapping coverage {_percent(coverage.mapping_coverage)}.",
+        *(f"- {sentence}" for sentence in coverage_words(coverage)),
     ]
-    if coverage.nothing_filed_ending_weight_coverage is not None:
-        lines.append(
-            "- Holdings that filed nothing with the SEC in the last "
-            f"{coverage.nothing_filed_window_days} days carry "
-            f"{_percent(coverage.nothing_filed_ending_weight_coverage)} of the ending weight: "
-            "nothing was there to read, which is not a finding of no risk; "
-            f"{_percent(coverage.unreached_ending_weight_coverage or 0.0)} was not read."
-        )
     if dossier.mapping_failure_count:
         lines.append(
             f"- {dossier.mapping_failure_count} holding(s) did not map to an admitted issuer and "
@@ -390,6 +381,41 @@ def _name(entity_id: str, tickers: Sequence[str]) -> str:
     return entity_id if not listed else f"{entity_id} ({', '.join(listed)})"
 
 
+REVIEW_STATE_WORDS: dict[str, str] = {
+    "EXECUTED_WITH_FINDINGS": "Read; the Analyst filed findings.",
+    "EXECUTED_NO_FINDINGS": "Read; the Analyst filed no finding.",
+    "NOTHING_FILED": "Checked: the holding filed nothing with the SEC in the window, so there "
+    "was nothing to read. Not unread, and not a finding of no risk.",
+    "NO_SPANS_DELIVERED": "Its sources yielded no passage to read.",
+    "SOURCE_MISSING": "Its source was missing: not read.",
+}
+"""Each issuer `review_state` in words, so a quiet holding never reads as an unread one."""
+
+
+def coverage_words(coverage: PortfolioReviewCoverage) -> tuple[str, ...]:
+    """The dossier's coverage in words: read, quiet and unreached kept apart (FLOW-3).
+
+    A holding that filed nothing in the window was checked and had nothing to read; it is
+    neither unread nor a finding of no risk. Only the unreached share was not read.
+    """
+    words = [
+        f"Reviewed ending-weight coverage {_percent(coverage.reviewed_ending_weight_coverage)}; "
+        f"selected-issuer coverage {_percent(coverage.selected_issuer_coverage)} counts only "
+        f"issuers with a reading; mapping coverage {_percent(coverage.mapping_coverage)}."
+    ]
+    if coverage.nothing_filed_ending_weight_coverage is not None:
+        words.append(
+            "Holdings that filed nothing with the SEC in the last "
+            f"{coverage.nothing_filed_window_days} days carry "
+            f"{_percent(coverage.nothing_filed_ending_weight_coverage)} of the ending weight: "
+            "they were checked and nothing was there to read, so they are not unread, and that "
+            "is not a finding of no risk. Only "
+            f"{_percent(coverage.unreached_ending_weight_coverage or 0.0)} of the ending weight "
+            "was not read."
+        )
+    return tuple(words)
+
+
 def _percent(value: float) -> str:
     return f"{value * 100:.2f}%"
 
@@ -399,4 +425,4 @@ def _points(value: float) -> str:
     return "0.00 pp" if points == 0 else f"{points:+.2f} pp"
 
 
-__all__ = ["render_review_bundle"]
+__all__ = ["REVIEW_STATE_WORDS", "coverage_words", "render_review_bundle"]

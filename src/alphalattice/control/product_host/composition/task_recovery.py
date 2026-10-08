@@ -62,6 +62,7 @@ from alphalattice.control.task_control.registry import (
     LEDGER_REBUILT_DETAIL,
     LEDGER_REBUILT_NEXT,
     TaskBoardSnapshot,
+    task_is_unrecoverable,
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReadout
 from alphalattice.interface.local_application.cli_contract import refusal_words
@@ -186,15 +187,17 @@ class TaskAttentionFact(_Contract):
     An explicit owner-replan link resolves only when it names this exact source
     version and its canonical child has succeeded. A Guanyin resolution resolves
     only the exact Task version it observed; historical incidents without that
-    binding cannot clear current attention.
+    binding cannot clear current attention. A later successful admission of the
+    exact same kind and sealed plan supersedes a blocked request. A rebuilt Task
+    that cannot resume has no recovery decision, while retaining its stopped record.
     """
 
     unresolved: bool = Field(
         description="Whether this exact Task version still waits for a recovery choice."
     )
-    resolution: Literal["NOT_STOPPED", "STOPPED", "SUCCESSOR_SUCCEEDED", "INCIDENT_RESOLVED"] = (
-        Field(description="Which current owner fact resolves or still holds this attention.")
-    )
+    resolution: Literal[
+        "NOT_STOPPED", "STOPPED", "SUCCESSOR_SUCCEEDED", "INCIDENT_RESOLVED", "UNRECOVERABLE"
+    ] = Field(description="Which current owner fact resolves or still holds this attention.")
     task_record_hash: str = Field(
         pattern=r"^[0-9a-f]{64}$",
         description="The canonical Task record version this attention describes.",
@@ -434,6 +437,8 @@ def task_attention(
     successors: Mapping[UUID, TaskRecord] | None = None,
     links: Iterable[TaskRecoveryLink] = (),
     incidents: Iterable[IncidentRecord] = (),
+    superseded_by: TaskRecord | None = None,
+    superseded_is_later: bool | None = None,
 ) -> TaskAttentionFact:
     """Project current stop attention from canonical Task, link and incident facts.
 
@@ -442,14 +447,21 @@ def task_attention(
     ``SUCCEEDED``. A pending, failed, unreadable or invalid child keeps the source
     stopped unless another exact-version confirmed child has succeeded or a
     current-version resolved incident supplies independent resolution evidence.
-    Successful unrelated Tasks are never considered.
+    A blocked request may also be superseded by a later successful admission with
+    its exact Task kind and ResearchPlan.plan_hash. A changed plan stays distinct;
+    it needs the owner's explicit recovery link. Successful unrelated Tasks are
+    never considered. Ledger-rebuilt Tasks cannot resume and hold no decision.
 
     A resolved incident is accepted only when it names this exact Task record hash
     and the same execution. Legacy resolved incidents without that hash are not
     proof of resolution and leave a stopped Task unresolved. An open incident for
     this Task's current execution takes precedence over a resolved incident.
     """
-    if task.lifecycle not in {TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED}:
+    if task.lifecycle not in {
+        TaskLifecycle.BLOCKED,
+        TaskLifecycle.RECOVERY_REQUIRED,
+        TaskLifecycle.CANCELLED,
+    }:
         return TaskAttentionFact(
             unresolved=False,
             resolution="NOT_STOPPED",
@@ -499,6 +511,40 @@ def task_attention(
                 successor_task_hash=(child.record_hash if canonical_child and child else None),
                 successor_lifecycle=(child.lifecycle.value if canonical_child and child else None),
             )
+
+    if task.lifecycle is TaskLifecycle.CANCELLED:
+        return TaskAttentionFact(
+            unresolved=False,
+            resolution="NOT_STOPPED",
+            task_record_hash=task.record_hash,
+        )
+    if (
+        task.lifecycle is TaskLifecycle.BLOCKED
+        and superseded_by is not None
+        and superseded_by.task_id != task.task_id
+        and superseded_by.task_kind == task.task_kind
+        and superseded_by.plan.plan_hash == task.plan.plan_hash
+        and (
+            superseded_is_later
+            if superseded_is_later is not None
+            else superseded_by.admitted_at > task.admitted_at
+        )
+        and superseded_by.lifecycle is TaskLifecycle.SUCCEEDED
+    ):
+        return TaskAttentionFact(
+            unresolved=False,
+            resolution="SUCCESSOR_SUCCEEDED",
+            task_record_hash=task.record_hash,
+            successor_task_id=str(superseded_by.task_id),
+            successor_task_hash=superseded_by.record_hash,
+            successor_lifecycle=superseded_by.lifecycle.value,
+        )
+    if task_is_unrecoverable(task):
+        return TaskAttentionFact(
+            unresolved=False,
+            resolution="UNRECOVERABLE",
+            task_record_hash=task.record_hash,
+        )
 
     current_execution = None if task.latest_execution_id is None else str(task.latest_execution_id)
     matching_incidents = tuple(
@@ -723,6 +769,8 @@ def _actions(
         expected_effect=(
             "Cancelled at once: it never started."
             if lifecycle is TaskLifecycle.QUEUED
+            else "Cancelled at once: this Task's execution cannot be recovered."
+            if task_is_unrecoverable(task)
             else (
                 "Cancellation is requested; the worker acknowledges it at its next safe "
                 "checkpoint, and until then the Task keeps running. Requested is not "

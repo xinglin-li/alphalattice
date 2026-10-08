@@ -9,7 +9,17 @@ const project = path.resolve(__dirname, '../..');
 const library = require(path.join(project, 'tests/portfolio_strategy_lab/workbench_library.cjs'));
 const finish = library.guard('workbench_routes');
 const appDir = process.argv[2] ? path.resolve(process.argv[2]) : path.join(project, 'src/alphalattice/interface/local_application/assets/workbench-source/js/app');
-const source = name => fs.readFileSync(path.join(appDir, name), 'utf8');
+// Source files stay immutable during this process. Reuse bytes and compiled modules;
+// every scenario still receives its own fresh VM context and fixture state.
+const sourceBytes = new Map(), fixedScripts = new Map();
+const source = name => {
+  if(!sourceBytes.has(name))sourceBytes.set(name,fs.readFileSync(path.join(appDir,name),'utf8'));
+  return sourceBytes.get(name);
+};
+const fixedScript = name => {
+  if(!fixedScripts.has(name))fixedScripts.set(name,new vm.Script(source(name),{filename:name}));
+  return fixedScripts.get(name);
+};
 const build = fs.readFileSync(path.join(project, 'scripts/build_local_web_ui.py'), 'utf8');
 const files = [...build.slice(build.indexOf('APP_FILES = ['), build.indexOf('\n]', build.indexOf('APP_FILES = ['))).matchAll(/"js\/app\/([^"\n]+)"/g)].map(m => m[1]).filter(name => name!=='boot.js');
 const failures = [], counts = {routes:0, rendered_routes:0, registered_pages:0, object_addresses:0, opener_checks:0, offered_rows:0, object_tab_pairs:0, study_shapes:0, renderer_shapes:0, recovery_documents:0};
@@ -30,7 +40,7 @@ function makeContext({hash='#page=overview', body=null, catalog=[],historyRows=[
     workspace:()=> 'Routing fixture', clocks:()=>({data:'2026-08-03',feature:'2026-08-03'}), inputs:()=>[], sessions:()=>[], experiments:()=>catalog, history:()=>historyRows,
     portfolioEntries:()=>historyRows.map(row=>row.raw).filter(entry=>entry && ['portfolio.policy-development','INSTALLED_RESULT'].includes(entry.kind) && entry.status==='SUCCEEDED'),
     inputVersion:()=>({available:true,date:'2026-08-03',cutoff:'2026-08-03'}), subject:()=>null, notice:()=>'',
-    actionableTasks:()=>[], tasks:()=>[], runs:()=>[], runsOf:()=>[], updates:()=>[], decisions:()=>[], versions:()=>[],
+    actionableTasks:()=>[], unrecoverableTasks:()=>[], tasks:()=>[], runs:()=>[], runsOf:()=>[], updates:()=>[], decisions:()=>[], versions:()=>[],
     holdings:()=>[], series:()=>[], studies:()=>[], books:()=>[], recent:()=>[], riskLinks:()=>[], researchUpdate:()=>null, cpuBudget:()=>({}),
     lifecycleOf:(_id,fallback)=>fallback, declaredOf:id=>catalog.find(v=>v.task_id===id)||null,
     offers:()=>false, route:op=>library.hostRoutes()[op]?.path || '/fixture/'+op,
@@ -66,8 +76,8 @@ function makeContext({hash='#page=overview', body=null, catalog=[],historyRows=[
   vm.createContext(c);
   // Match the product's dictionary-before-reader boot: I18N retains this object.
   // Loading a replacement dictionary afterwards silently tested English in zh mode.
-  vm.runInContext(source('../data/zh.js'),c,{filename:'data/zh.js'});c.window.ALPHA_ZH_READY=true;
-  for(const file of files) if(realData || file!=='data.js')vm.runInContext(source(file),c,{filename:file});
+  fixedScript('../data/zh.js').runInContext(c);c.window.ALPHA_ZH_READY=true;
+  for(const file of files) if(realData || file!=='data.js')fixedScript(file).runInContext(c);
   vm.runInContext('globalThis.probe={Data,app,ROUTES,PAGES,PAGE_TABS,OBJECT_KEYS,Inspect,Window,LiveViews,LiveStudy,LiveGoals,LiveModels,LiveFeatureResearch,LiveTeam,LiveActivity,LiveActivation,LiveReview,LiveWorkspace,LiveFeatures,LiveResearch,LiveTasks,Settings,ACTIONS,PRODUCT_ACTIONS,readRoute,routeUrl,routeObject,routeObjectId,listUrl,navigate,objectEntry,render,renderFailure,failureCard};',c);
   const realRender = c.probe.render;
   c.render = ()=>{}; // Navigation calls retain all production route mechanics; layout itself is read explicitly below.
@@ -81,7 +91,13 @@ function makeContext({hash='#page=overview', body=null, catalog=[],historyRows=[
 async function check(name, fn) {try{await fn();}catch(error){failures.push({name,message:error.message,stack:error.stack});console.log('FAIL '+name+': '+error.stack);}}
 function q(c){return new URLSearchParams(c.location.hash.slice(1));}
 function resetHistory(c){c.records.pushes.length=0;c.records.replaces.length=0;}
-function nonempty(markup,label){assert.ok(String(markup || '').trim(),label+' returns nonempty markup');}
+function nonempty(markup,label){
+  assert.ok(String(markup || '').trim(),label+' returns nonempty markup');
+  for(const [, declared] of String(markup).matchAll(/\bdata-row-columns="([^"]*)"/g)) {
+    const columns=declared.trim().split(/\s+/).filter(Boolean);
+    assert.ok(columns.length<=8,label+': named facts fit the shared eight-column row: '+columns.join(', '));
+  }
+}
 const settle=async()=>{for(let i=0;i<4;i++)await new Promise(resolve=>setImmediate(resolve));};
 const decode=value=>String(value).replace(/&quot;/g,'"').replace(/&#39;|&#x27;/g,"'").replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
 // U121 / TE12: inspect the actual shared locator markup, including its ancestry. This

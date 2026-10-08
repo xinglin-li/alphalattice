@@ -9,12 +9,16 @@ from typing import Any
 import numpy as np
 from pydantic import Field
 
+from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological import (
+    chronological_lightgbm_booster_cache,
+)
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
     DYNAMIC_PANEL_LIGHTGBM_SEEDS,
 )
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
 from alphalattice.investment.alpha_research.experiments.development_artifacts import (
     AlphaDevelopmentArtifactStore,
+    model_fit_sidecar_scope,
 )
 from alphalattice.investment.alpha_research.experiments.development_execution import (
     AlphaDevelopmentCancelled,
@@ -360,33 +364,40 @@ class AlphaLifecycleExperiment:
             through=authority.sessions[-1],
         )
         source_positions = {day: i for i, day in enumerate(original.formation_sessions)}
-        for day in authority.sessions:
-            if self.cancelled():
-                raise AlphaDevelopmentCancelled("alpha_research.lifecycle_cancelled_at_checkpoint")
-            position = source_positions[day]
-            inference = AdmittedRenewingInference(store.root.parent, admitted)
-            projection = inference.score(
-                formation=day,
-                listing_ids=original.ordered_listing_ids,
-                eligible=(
-                    np.ones(len(original.ordered_listing_ids), dtype=np.bool_)
-                    if original.reference_eligible is None
-                    else original.reference_eligible[position]
-                ),
-                surfaces=inference.features(original, day, history=history),
-                raw_12_1_momentum=(
-                    original.formula_values["mom_252_21"][position]
-                    if "mom_252_21" in original.formula_values
-                    else None
-                ),
-            )
-            assert inference.model_set_publication_hash is not None
-            model_sets.append(inference.model_set_publication_hash)
-            projections.append(projection.projection_hash)
-            projection_files.append(publish_lifecycle_projection(store, projection))
-            calls += inference.prediction_owner.predictions + inference.fit_numerical_calls
-            fits += inference.fit_calls
-            predictions += inference.prediction_owner.predictions
+        # One study predicts with the same few dozen models at every formation: each
+        # Booster is parsed from its model text once for the loop, not once a formation.
+        with chronological_lightgbm_booster_cache():
+            for day in authority.sessions:
+                if self.cancelled():
+                    raise AlphaDevelopmentCancelled(
+                        "alpha_research.lifecycle_cancelled_at_checkpoint"
+                    )
+                position = source_positions[day]
+                inference = AdmittedRenewingInference(store.root.parent, admitted)
+                # Each child's sidecar is verified once for the formation, not once a use.
+                with model_fit_sidecar_scope():
+                    projection = inference.score(
+                        formation=day,
+                        listing_ids=original.ordered_listing_ids,
+                        eligible=(
+                            np.ones(len(original.ordered_listing_ids), dtype=np.bool_)
+                            if original.reference_eligible is None
+                            else original.reference_eligible[position]
+                        ),
+                        surfaces=inference.features(original, day, history=history),
+                        raw_12_1_momentum=(
+                            original.formula_values["mom_252_21"][position]
+                            if "mom_252_21" in original.formula_values
+                            else None
+                        ),
+                    )
+                assert inference.model_set_publication_hash is not None
+                model_sets.append(inference.model_set_publication_hash)
+                projections.append(projection.projection_hash)
+                projection_files.append(publish_lifecycle_projection(store, projection))
+                calls += inference.prediction_owner.predictions + inference.fit_numerical_calls
+                fits += inference.fit_calls
+                predictions += inference.prediction_owner.predictions
         for _ in range(calls):
             if recorder is not None:
                 recorder.record(capability="alpha_model.lifecycle")

@@ -280,6 +280,7 @@ const Inspect = (() => {
     const row = (S.commandRows || []).find((c) => c.id === id);
     closeDialog();
     if (!row) return;
+    if (/^(page|record|task|link):/.test(id) && typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.();
     savePreference('commands.recent', [id, ...recentIds().filter((x) => x !== id)].slice(0, 5));
     return row.run();
   }
@@ -452,6 +453,7 @@ const Inspect = (() => {
     if (Window.inspectorMode() === 'task') { // round 66: the inspector's Task steps through the page's Task rows
       const keys = [...document.querySelectorAll('#main .tp-task-list [data-key]')].map((r) => r.dataset.key), i = keys.indexOf(hashParams().get('task') || ''), to = i + delta;
       if (i < 0 || to < 0 || to >= keys.length) return false;
+      if (typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.();
       LiveTasks.open(keys[to]);
       return true;
     }
@@ -459,6 +461,7 @@ const Inspect = (() => {
     if (!s) return false;
     const to = c.index + delta;
     if (to < 0 || to >= c.keys.length) return false;
+    if (typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.();
     c.index = to; c.from = routeObjectId(); c.at = ''; // the next object addressed is the one stepped to (keepListContext)
     Data.openEntry(c.keys[to], false);
     return true;

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import pathlib
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
@@ -272,6 +275,31 @@ file and runs every other check. Kept in memory only: nothing on disk vouches fo
 entry is two digests, one per chunk file the process read, so the workspace's chunks bound it."""
 
 _VERIFIED_CHUNK_LOCK = Lock()
+
+_SIDECAR_SCOPE: ContextVar[dict[tuple[str, str], tuple[Any, Any, Any]] | None] = ContextVar(
+    "alpha_model_fit_sidecar_scope", default=None
+)
+"""Each model-fit sidecar one formation has verified; absent unless a scope opens it."""
+
+
+@contextmanager
+def model_fit_sidecar_scope() -> Iterator[None]:
+    """Verify each model-fit sidecar once for the block, then release.
+
+    One lifecycle formation reads every child's sidecar three or four times: the planned-refit
+    check, the child's renewal, the model set's verification and the score. The first read in
+    the block runs every check, the lease ones included; a later read of the same operation in
+    the same store gets the verified sidecar and receipt and its own copy of the estimator.
+    Nothing survives the block, so each formation verifies every child again.
+    """
+    token = _SIDECAR_SCOPE.set({})
+    try:
+        yield
+    finally:
+        scope = _SIDECAR_SCOPE.get()
+        if scope is not None:
+            scope.clear()
+        _SIDECAR_SCOPE.reset(token)
 
 
 def _verified_content_hash(raw: bytes, table: pa.Table, identity: dict[str, object]) -> str:
@@ -545,6 +573,19 @@ class AlphaDevelopmentArtifactStore:
         identity_field: str,
     ) -> tuple[dict[str, object], tuple[str, ...]]:
         """Read and verify one exact JSON file snapshot, returning its descriptor identity."""
+        raw, file_identity = self._verified_identity_json(
+            uri=uri, category=category, identity_field=identity_field
+        )
+        return cast(dict[str, object], json.loads(raw)), file_identity
+
+    def _verified_identity_json(
+        self,
+        *,
+        uri: str,
+        category: str,
+        identity_field: str,
+    ) -> tuple[bytes, tuple[str, ...]]:
+        """The exact verified bytes of one JSON file snapshot and its descriptor identity."""
         content_hash = self._hash_from_uri(uri, category)
         target = self._path(category, content_hash, "json")
         resolved = target.resolve()
@@ -598,13 +639,12 @@ class AlphaDevelopmentArtifactStore:
             )
             return raw, file_identity
 
-        raw, file_identity = verified_source_value(
+        return verified_source_value(
             ("alpha-identity-json", str(self.root), category, content_hash, identity_field),
             (target,),
             verify,
             nbytes=lambda value: len(value[0]),
         )
-        return cast(dict[str, object], json.loads(raw)), file_identity
 
     def _read_identity_json_with_identity(
         self,
@@ -613,22 +653,25 @@ class AlphaDevelopmentArtifactStore:
         category: str,
         content_hash: str,
         identity_field: str,
+        copy_mutable: bool = False,
     ) -> tuple[_ModelT, tuple[str, ...]]:
         """Reuse complete immutable Python-mode validation of exact verified bytes.
 
         The original descriptor, canonical content and model checks all run on
-        a cold or invalidated read. Mutable models and ordinary non-opted reads
-        retain their fresh parsing; the shared store's deep immutability check
-        admits only fully immutable results to its existing bounded cache.
+        a cold or invalidated read, and the bytes are parsed only then. Mutable
+        models and ordinary non-opted reads retain their fresh parsing; the shared
+        store's deep immutability check admits only fully immutable results to its
+        existing bounded cache, or, with ``copy_mutable``, keeps a mutable one and
+        hands each caller its own copy.
         """
-        payload, file_identity = self._load_identity_json_with_identity(
+        raw, file_identity = self._verified_identity_json(
             uri=self.uri(category, content_hash),
             category=category,
             identity_field=identity_field,
         )
 
         def verify() -> tuple[_ModelT, tuple[str, ...]]:
-            return cast(_ModelT, model.model_validate(payload)), file_identity
+            return cast(_ModelT, model.model_validate(json.loads(raw))), file_identity
 
         return verified_request_value(
             (
@@ -642,6 +685,7 @@ class AlphaDevelopmentArtifactStore:
             ),
             verify,
             nbytes=int(file_identity[3]),
+            copy_mutable=copy_mutable,
         )
 
     def _publish(self, category: str, value: BaseModel, identity_field: str) -> str:
@@ -1656,6 +1700,11 @@ class AlphaDevelopmentArtifactStore:
         self,
         operation_binding_hash: str,
     ) -> tuple[AlphaModelFitSidecar, AlphaEstimatorContent, AlphaFitProvenanceReceipt]:
+        scope = _SIDECAR_SCOPE.get()
+        key = (str(self.root), operation_binding_hash)
+        if scope is not None and key in scope:
+            kept_sidecar, kept_estimator, kept_provenance = scope[key]
+            return kept_sidecar, copy.deepcopy(kept_estimator), kept_provenance
         pointer = (
             self.root
             / "current"
@@ -1668,11 +1717,14 @@ class AlphaDevelopmentArtifactStore:
         sidecar = AlphaModelFitSidecar.model_validate(payload)
         if sidecar.operation_binding_hash != operation_binding_hash:
             raise AlphaDevelopmentArtifactReadbackError("model fit sidecar operation changed")
-        estimator = self._load(
-            "model-estimator-content",
-            sidecar.estimator_content_hash,
-            "content_hash",
+        # Its payload is a plain dict, so the verified estimator is kept once and each load
+        # gets its own copy (5 us) instead of re-validating about 750 KB of model text.
+        estimator, _ = self._read_identity_json_with_identity(
             AlphaEstimatorContent,
+            category="current/model-estimator-content",
+            content_hash=sidecar.estimator_content_hash,
+            identity_field="content_hash",
+            copy_mutable=True,
         )
         provenance = self._load(
             "model-fit-provenance",
@@ -1682,6 +1734,8 @@ class AlphaDevelopmentArtifactStore:
         )
         if provenance.estimator_content_hash != estimator.content_hash:
             raise AlphaDevelopmentArtifactReadbackError("model fit sidecar content changed")
+        if scope is not None:
+            scope[key] = (sidecar, copy.deepcopy(estimator), provenance)
         return sidecar, estimator, provenance
 
     def publish_surface(self, value: AlphaDevelopmentSurfaceManifest) -> str:

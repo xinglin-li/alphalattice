@@ -270,6 +270,7 @@ def test_every_activation_surface_reads_the_exact_books_published_review(
         assert parse_qs(urlsplit(navigation["url"]).fragment) == {
             "page": ["portfolio"],
             "book": [task_id],
+            "follow": ["latest"],
         }
         denied = fresh.request(activate_request)
         assert denied["status"] == "REFUSED"
@@ -307,7 +308,11 @@ def test_every_activation_surface_reads_the_exact_books_published_review(
         ]
         assert forward["activation"] == active
         assert forward["next_requests"] == {"update": plan_request}
-        assert activated["next_requests"] == {"update": plan_request}
+        # The activation names the person's one-click stop beside its update (STOPS-1).
+        assert activated["next_requests"] == {
+            "update": plan_request,
+            "deactivate": {"operation": "STRATEGY_DEACTIVATE", "strategy_package_id": PACKAGE},
+        }
 
         def no_review_read(*_args, **_kwargs):
             raise AssertionError("Automation discovery opened full review standing")

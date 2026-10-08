@@ -185,9 +185,7 @@ def portfolio_view(body: dict[str, Any], sectors: dict[str, Any] | None = None) 
         support = {"start": body["window"]["selected_start"], "end": body["window"]["selected_end"]}
         task_id, receipt_hash = origin, None
         input_hash, input_date = recorded.get("input_binding_hash"), recorded.get("input_end")
-        input_id = recorded.get("input_id") or (
-            "Bound historical input" if input_hash else "Input not recorded"
-        )
+        input_id = recorded.get("input_id") or ("Bound historical input" if input_hash else None)
         title = spec["strategy_package_id"]
         count, excluded = recorded.get("source_listing_count"), recorded.get("data_exclusion_count")
         quality = {

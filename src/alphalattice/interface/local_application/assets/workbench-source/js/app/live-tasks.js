@@ -9,7 +9,7 @@ const LiveTasks = (() => {
   // `status`: the selected Task's STATUS (its timing, who submitted it, its open incident); `guardian`: every
   // unfinished Task as Guanyin sees it (U22); `incidents`: the incident records, open first (U38); `remedy`:
   // the last remedy attempted from this page, said in place
-  const S={selected:null,record:null,view:null,status:null,guardian:null,incidents:null,remedy:null,error:'',fetching:null,timer:null,confirming:null,busy:false,painted:'',settling:false};
+  const S={selected:null,record:null,view:null,status:null,guardian:null,incidents:null,remedy:null,error:'',fetching:null,timer:null,confirming:null,busy:false,painted:'',settling:false,closureFailures:[]};
   /* Keep polling while Task Control says the Task moves or the dispatcher says its operation
    * has not returned; the two facts are read apart and never masked over each other. */
   const alive=()=>stateMoving(S.record?.lifecycle) || (S.view ? stateMoving(S.view.lifecycle) || S.view.operation_running : false);
@@ -243,7 +243,7 @@ const LiveTasks = (() => {
     const deferred=r?.lifecycle==='DEFERRED' ? S.status : null, until=deferred?.retry_after_at && Date.parse(deferred.retry_after_at)>(Date.parse(r.observed_at) || Date.now()) ? deferred.retry_after_at : null;
     const cause=!r ? noteLine(text,'',tone==='attention' ? 'warning' : 'neutral','',ic) : r.lifecycle==='SUCCEEDED' ? '' : stateHeld(r.lifecycle) || r.lifecycle==='CANCELLED' ? refusal({code:r.stop?.detail || w?.detail || stopKnown ? '' : stopCode,reason:(deferred?.detail ? LiveWorkspace.deferWords(deferred.detail) : '') || (r.stop?.detail ? t(r.stop.detail) : '') || (w?.detail ? t(w.detail) : '') || (r.operation_running ? t('the operation has not returned') : '')},TONE.attention,{state:r.lifecycle,word:t('Why it stopped'),next:until ? t('Waiting until {time}',{time:when(until)}) : way,more:causeLine(r.stop?.cause || S.status?.failure_cause)}) : noteLine(text,'',tone==='attention' ? 'warning' : 'neutral','',ic);
     const guardian=r ? html`<p class="caption">${t('Guanyin · G0 read-only · health {health} · no remediation attempted by this view · model facts not observed by this Host',{health:codeWords(r.health.status)})}</p>` : '';
-    return html`<div class="tp-detail"><p class="tp-truth">${t(v.goal_summary)}</p>${summary(v,r)}${S.error ? notRead(t('Status uncertain'),S.error) : ''}${cause}${r ? incident(r) : ''}${r ? permitted(r,fresh) : ''}<section class="inspector-section"><h3>${t('Steps')}${r ? html` <span>${r.verified_stage_count} / ${r.total_stage_count} ${t('verified')}</span>` : ''}</h3>${r ? steps(r) : skeleton('rows')}</section><details class="reveal-details inspector-section task-receipt"><summary>${t('Receipt')}</summary>${receipt(v,r)}</details>${log(v)}${guardian}</div>`;
+    return html`<div class="tp-detail"><p class="tp-truth">${t(v.goal_summary)}</p>${summary(v,r)}${LiveViews.taskSuccessor(r || v)}${S.error ? notRead(t('Status uncertain'),S.error) : ''}${cause}${r ? incident(r) : ''}${r ? permitted(r,fresh) : ''}<section class="inspector-section"><h3>${t('Steps')}${r ? html` <span>${r.verified_stage_count} / ${r.total_stage_count} ${t('verified')}</span>` : ''}</h3>${r ? steps(r) : skeleton('rows')}</section><details class="reveal-details inspector-section task-receipt"><summary>${t('Receipt')}</summary>${receipt(v,r)}</details>${log(v)}${guardian}</div>`;
   }
   /* Tasks as a lobby (F2, law 136): grouped by state -- the moving and the held open, the ended
    * folded; a held state's head says its way on in the state table's words -- by time (the moving
@@ -256,14 +256,15 @@ const LiveTasks = (() => {
   function lobby(runs) {
     const kinds = [...new Set(runs.map((r) => r.kind))];
     // U22: an unfinished Task's progress is the guardian's (one read for every such Task); a finished one's its record's
-    const row = (r, d) => { const on = (k) => d.props[k] !== false, p = S.guardian?.get(r.id)?.progress;
+    const row = (r, d) => earlierStopRows(r, r => { const on = (k) => d.props[k] !== false, p = S.guardian?.get(r.id)?.progress;
       const current = p ? p.current_stage : r.current, [done, total] = p ? [p.verified_stage_count, p.total_stage_count] : r.verified;
-      return runRow(r, {cls: 'tp-task', dot: d.group === 'state', line: false, columns: ['id', 'kind', 'stage', 'verified', 'care'], props: [on('id') ? html`<span class="mono">${short(r.id)}</span>` : '', on('kind') ? ['', codeWords(r.kind), 'drop'] : '', on('stage') && stateMoving(r.state) && current ? codeWords(current) : '', on('verified') ? html`${t('Verified stages')} · ${count(done)} / ${count(total)}` : '', care(r)]}); };
+      const health = care(r), recovery = LiveViews.taskAttentionFacts(r);
+      return runRow(r, {cls: 'tp-task', dot: d.group === 'state', line: false, columns: ['id', 'kind', 'stage', 'verified', 'care'], props: [on('id') ? html`<span class="mono">${short(r.id)}</span>` : '', on('kind') ? ['', codeWords(r.kind), 'drop'] : '', on('stage') && stateMoving(r.state) && current ? codeWords(current) : '', on('verified') ? html`${t('Verified stages')} · ${count(done)} / ${count(total)}` : '', health || recovery ? html`${health} ${recovery}` : '']}); });
     const byState = (r) => { const a = stateOf(r.state); return {key: a.key || 'unknown', label: t(a.word), rank: TASK_RANK[a.key] ?? 7, open: Boolean(a.moving || a.held), note: a.held && a.next ? t(a.next) : ''}; };
     const axes = [{key: 'state', label: t('State'), group: byState},
       {key: 'time', label: t('Time'), group: (r) => stateMoving(r.state) ? {key: 'moving', label: t('In progress'), rank: -1, open: true} : timeGroup(r.finished || r.started)},
       {key: 'kind', label: t('Task kind'), group: (r) => ({key: r.kind || 'unknown', label: codeWords(r.kind), rank: kinds.indexOf(r.kind), open: true})}];
-    return Lobby.render('tasks', {items: runs, row, axes, cls: 'tp-task-list', words: (r) => [r.name, codeWords(r.kind), r.id, r.starter].join(' '), placeholder: t('Name, kind or Task id'),
+    return Lobby.render('tasks', {items: runs, row, axes, cls: 'tp-task-list', words: (r) => [r, ...(r.earlierStops || [])].map(one => [one.name, codeWords(one.kind), one.id, one.starter].join(' ')).join(' '), placeholder: t('Name, kind or Task id'),
       filters: kinds.length > 1 ? [{field: 'kind', label: t('Task kind'), multiple: true, options: kinds.map((k) => [k, codeWords(k)]), test: (r, one) => r.kind === one}] : [],
       properties: [['id', t('Task id'), false], ['kind', t('Task kind')], ['stage', t('Current stage')], ['verified', t('Verified stages')]]});
   }
@@ -281,7 +282,7 @@ const LiveTasks = (() => {
   function page() {
     const runs = Data.runsOf('task');
     const refused = (Data.taskRefusals?.() || []).map(r=>refusal(r,TONE.attention,{catalog:true,more:html`<p>${t('Task')} ${hashCell(r.task_id,SHORT.id)}</p>`,next:prerequisiteWays(r.next_requests)}));
-    const list = runs.length ? detailSplit(lobby(runs), 'task') : refused.length ? '' : html`<section class="panel pad">${emptyState(t('No Tasks yet.'),link(t('New experiment'),'lab','button primary'),'page-empty')}</section>`;
+    const list = runs.length ? detailSplit(lobby(Data.groupTaskSuccessors(runs)), 'task') : refused.length ? '' : html`<section class="panel pad">${emptyState(t('No Tasks yet.'),link(t('New experiment'),'lab','button primary'),'page-empty')}</section>`;
     return html`${objectHead(t('Tasks'),t('Product-owned recorded states'),btnAttrs(icon('refresh'),'task-refresh','','icon-btn',html`aria-label="${t('Refresh task status')}" data-tip="${t('Refresh task status')}"`),'',[{ic:'team',action:'go',value:'team',word:t('Team'),why:t('The retained sessions and their exchanges')}])}${S.error ? notRead(t('Status uncertain'),S.error) : ''}${incidentList()}${refused}${list}`;
   }
   /* Repaint what a poll may have changed: the open Task's body in the inspector is replaced only
@@ -358,8 +359,8 @@ const LiveTasks = (() => {
   /* The Task opens in the inspector (round 66): the same body from a row's Enter or Space, the
    * Home, History, a study's link or a cold address. Closing the inspector clears the selection
    * and the address; the poll stops with it. */
-  function open(id) {
-    if(!id) return Promise.resolve();
+  function open(id, wanted=()=>true) {
+    if(!id || !wanted()) return Promise.resolve(false);
     const same=S.selected===id;
     S.selected=id; if(!same) { S.record=null; S.view=null; S.status=null; S.remedy=null; S.error=''; S.painted=''; }
     Inspect.selectAddressMode('task', {task:id});
@@ -368,12 +369,12 @@ const LiveTasks = (() => {
     // law 149 (the user, 2026-09-24: 侧栏点出来会闪烁): the record opens whole -- read first and shown
     // once, the list giving way in the same frame; a read slower than OPEN_WAIT shows its skeleton first
     const closed=({nextMode}={})=>{ if(S.selected===id) { S.selected=null; S.record=null; S.view=null; S.status=null; S.remedy=null; S.painted=''; clearTimeout(S.timer); if(hashParams().get('task')===id && (nextMode!=='record' || app.page!=='tasks')) replaceHash({task:''}); } };
-    const show=()=>{ if(S.selected!==id || (Window.inspectorMode()==='task' && Window.openedBy('task',id))) return; const nextMode=Inspect.addressedMode(); if(nextMode!=='task' || hashParams().get('task')!==id) { closed({nextMode}); return; } const recorded=S.record; Window.openInspector({mode:'task', readHeader:()=>({title:titleOf(id,recorded),kind:t('Task')}), title:titleOf(id), kind:t('Task'), body:runBody(), by:['task',id], onClose:closed}); S.painted=String(runBody()); };
+    const show=()=>{ if(!wanted() || S.selected!==id || (Window.inspectorMode()==='task' && Window.openedBy('task',id))) return; const nextMode=Inspect.addressedMode(); if(nextMode!=='task' || hashParams().get('task')!==id) { closed({nextMode}); return; } const recorded=S.record; Window.openInspector({mode:'task', readHeader:()=>({title:titleOf(id,recorded),kind:t('Task')}), title:titleOf(id), kind:t('Task'), body:runBody(), by:['task',id], onClose:closed}); S.painted=String(runBody()); };
     if(same && S.record) { show(); return refresh(); }
     const switching=Window.inspectorMode()==='task'; // another Task's record is shown: it stays until this one is read, then this one replaces it at once
     const slow=switching ? null : setTimeout(show,OPEN_WAIT);
     const read=async()=>{ for(let i=0;i<3 && S.selected===id && !S.record;i++) await refresh(); };
-    return read().finally(()=>{ clearTimeout(slow); show(); });
+    return read().then(()=>{ if(!wanted()) { closed(); return false; } show(); return S.selected===id; }).finally(()=>clearTimeout(slow));
   }
   function close(after=null) {
     if(Window.inspectorMode()==='task') Window.closeInspector(true);
@@ -382,6 +383,53 @@ const LiveTasks = (() => {
   /* The walk's held row is the open Task while the inspector holds one (round 58): J / K move it. */
   function follow(id) { if(Window.inspectorMode()==='task' && id && id!==S.selected) void open(id); }
   const ACTIONS={cancel:'CANCEL',recover:'RECOVER'};
+  const unrecoverable = (view) => typeof view.task_record_hash === 'string' && view.attention?.task_record_hash === view.task_record_hash && view.attention?.unresolved === false && view.attention.resolution === 'UNRECOVERABLE';
+  function unrecoverableActions() {
+    const tasks = Data.unrecoverableTasks();
+    if (!tasks.length && !S.closureFailures.length) return '';
+    const failures = S.closureFailures.map(item => refusal(item, TONE.attention, {catalog: true, more: html`<div class="flow">${btn(html`${t('Task')} ${short(item.task_id, SHORT.id)}`, 'task', item.task_id, 'text-btn')}</div>`}));
+    return html`<section class="inspector-section">${tasks.length ? html`<div class="flow">${btn(countText(tasks.length, 'Close {n} unrecoverable Task', 'Close {n} unrecoverable Tasks'), 'task-close-unrecoverable', '', 'button', S.busy)}</div>` : ''}${failures}</section>`;
+  }
+  async function previewUnrecoverable() {
+    if (S.busy) return;
+    const intent = Data.navigationIntent(), tasks = Data.unrecoverableTasks();
+    if (!tasks.length) return;
+    S.busy = true;
+    let readingTask = tasks[0];
+    try {
+      const entries = [];
+      for (const task of tasks) {
+        readingTask = task;
+        const view = await readView(task.task_id), action = view.actions.find(a => a.action === 'CANCEL');
+        if (!Data.navigationCurrent(intent)) return;
+        if (view.status.task_id === view.task_id && view.status.task_record_hash === view.task_record_hash) Data.mergeTasks([{...view.status, attention: view.attention}]);
+        if (!unrecoverable(view) || !action?.available) throw Error(action?.reason || 'The task no longer admits this action. Refresh its status.');
+        entries.push({id: view.task_id, version: view.task_record_hash, view, action});
+      }
+      S.confirming = {kind: 'unrecoverable', entries};
+      openDialog(t('Task · explicit confirmation'), countText(entries.length, 'Close {n} unrecoverable Task', 'Close {n} unrecoverable Tasks'),
+        html`${entries.map(({view, action}) => html`<section class="inspector-section"><h3>${LiveViews.nameOf(view.status).name}</h3>${kv([[t('Task'), hashCell(view.task_id, SHORT.id)], [t('version'), hashCell(view.task_record_hash)], [t('Scope'), t(action.scope)], [t('What changes'), effectWords(action)], [t('Why it is permitted'), t(action.reason)]])}</section>`)}<p>${t('The owner acts on exactly this Task version; if it changes before you confirm, you will be shown the new state instead.')}</p>`,
+        html`${btn(t('Confirm'), 'task-commit', '', 'button primary', true)}`);
+    } catch(e) {
+      if (Data.navigationCurrent(intent)) S.closureFailures = [{task_id: readingTask.task_id, code: e.body?.failure_code || e.body?.refused || '', reason: e.body?.detail || e.message}];
+    } finally { S.busy = false; if (Data.navigationCurrent(intent) && app.page === 'overview') patchMain(); }
+  }
+  async function commitUnrecoverable(entries) {
+    S.confirming = null; S.busy = true; S.closureFailures = []; closeDialog();
+    for (const {id, version} of entries) {
+      try {
+        const current = await readView(id), action = current.actions.find(a => a.action === 'CANCEL');
+        if (current.task_record_hash !== version || !unrecoverable(current) || !action?.available) {
+          S.closureFailures.push({task_id: id, reason: t('Not sent: the Task changed since you reviewed it and is now {state} (version {version}). Review it again.', {state: codeWords(current.lifecycle), version: short(current.task_record_hash)})});
+          continue;
+        }
+        await Data.post('/api/cancel', {task_id: id, expected_task_hash: version});
+      } catch(e) { S.closureFailures.push({task_id: id, code: e.body?.failure_code || e.body?.refused || '', reason: e.body?.detail || e.message}); }
+    }
+    try { await refresh(); await Data.refreshDecisions(); await Data.refreshHistory(); }
+    catch(e) { S.closureFailures.push({task_id: entries[0].id, code: e.body?.failure_code || e.body?.refused || '', reason: e.body?.detail || e.message}); }
+    finally { S.busy = false; paint(); if (app.page === 'overview') patchMain(); }
+  }
   /* The confirmation is bound to the exact Task version and action it shows: the view is read
    * fresh, the owner's own scope and expected effect are the text, and the version travels with
    * the choice. Nothing is sent from here. */
@@ -406,6 +454,7 @@ const LiveTasks = (() => {
    * refused later at Task Control (the next readback carries the dispatcher's fact). */
   async function commit() {
     if(S.busy || !S.confirming) return;
+    if(S.confirming.kind === 'unrecoverable') return commitUnrecoverable(S.confirming.entries);
     const {kind,id,version}=S.confirming; S.confirming=null;S.busy=true;closeDialog();
     let renew=null, outcome='not-sent';
     try {
@@ -438,6 +487,21 @@ const LiveTasks = (() => {
     const closeResult=()=>{close();intent=Data.navigationIntent();}; // this open owns its synchronous inspector dismissal
     const readers={'factor.screening-development':'factor','alpha.model-development':'alpha','risk.covariance-development':'risk'};
     const kind=S.record?.task_id===id ? S.record.task_kind : Data.tasks().find(v=>v.task_id===id)?.task_kind;
+    if(kind==='workspace_data_update') {
+      if(!current()) return false;
+      closeResult(); navigate('data', {update:id}); return true;
+    }
+    if(kind==='research_input_capture') {
+      const body=await Data.readShared('/api/research-inputs/readback?'+new URLSearchParams({task_id:id}));
+      if(!current()) return false;
+      if(body.status!=='SUCCEEDED' || !body.input_binding_hash) throw Error(body.failure_code || body.status);
+      closeResult(); LiveWorkspace.openVersion(body.input_binding_hash); return true;
+    }
+    if(['alternative_evidence.document_intelligence','chief_risk_officer.portfolio_review'].includes(kind)) {
+      if(!current()) return false;
+      closeResult();
+      const opening=LiveReview.openTask(id,current); intent=Data.navigationIntent(); return opening;
+    }
     if(kind==='research_feature_materialization') {
       // the build's values are its result, read as their page (LS5), never a dialog
       const body=await Data.read('/api/features/build?'+new URLSearchParams({task_id:id}));
@@ -453,8 +517,8 @@ const LiveTasks = (() => {
       if(!current()) return false;
       closeResult();
       if(report) return LiveActivity.openSavedResult(report.result_hash, current);
-      return openDialog(t('Task · readback'),S.record?.goal_summary || id,
-        html`<p class="caption">${t('This Task kind has no result page in the workbench; its record is read here.')}</p>`,'');
+      // Its inspector owns the synchronous address change; later reads keep the new intent.
+      const opening=open(id,current); intent=Data.navigationIntent(); return opening;
     }
     // Metadata chooses a reader, not authority. Each study's reader owns its strict
     // readback; Alpha can first paint its qualified saved summary.
@@ -486,5 +550,5 @@ const LiveTasks = (() => {
     window.addEventListener('pageshow',(e)=>{if(e.persisted&&alive())refresh();});
     LiveActivity.bind(); void LiveActivity.refresh();
   }
-  return {follow,page,open,refresh,refreshInspector,preview,commit,previewRemedy,commitRemedy,replanPreview,replanCommit,turnIncidents,close,openResult,bind,paintActivity:paint,standing,liveness,dismissConfirmation:()=>{S.confirming=null;},toggle:()=>navigate('tasks'),view:()=>S.view,confirming:()=>S.confirming,selected:()=>S.selected};
+  return {follow,page,open,refresh,refreshInspector,preview,commit,previewUnrecoverable,unrecoverableActions,previewRemedy,commitRemedy,replanPreview,replanCommit,turnIncidents,close,openResult,bind,paintActivity:paint,standing,liveness,dismissConfirmation:()=>{S.confirming=null;},toggle:()=>navigate('tasks'),view:()=>S.view,confirming:()=>S.confirming,selected:()=>S.selected};
 })();

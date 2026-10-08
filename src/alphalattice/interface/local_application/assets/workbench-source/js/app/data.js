@@ -12,6 +12,7 @@ const Data = (() => {
   const uniqueRows = (rows, key) => { const seen = new Set(); return rows.filter(row => { const id = key(row); if (seen.has(id)) return false; seen.add(id); return true; }); };
   const refusalKey = row => row.entry_id || row.task_id || row.goal_id || JSON.stringify(row);
   let workspace = null, histories = [], historyRefusals = [], inputVersions = [], activeTasks = [], taskRefusals = [], historyCursor = null;
+  let taskOwners = new Map();
   let experiments = null, experimentsError = '', experimentRefusals = []; // declared parameters and unreadable per-Task plans from one listing
   let preparation = null; // the preparation owner's readback: with the session, then as the scene re-reads it
   let decisions = null, decisionsError = ''; // U5: what waits on a person, the Host's one answer (PENDING_DECISIONS)
@@ -268,6 +269,7 @@ const Data = (() => {
   function setTasks(tasks, refusals = []) {
     const was = new Map(activeTasks.map((v) => [v.task_id, v.lifecycle]));
     activeTasks = tasks.map((v) => ({...v, status: v.lifecycle, kind: v.task_kind}));
+    taskOwners = new Map(activeTasks.map(v => [v.task_id, v]));
     taskRefusals = refusals;
     app.tasks = activeTasks;
     settledSince(was);
@@ -293,10 +295,16 @@ const Data = (() => {
     for (const v of projections) {
       if (v.status === 'REFUSED') { byId.delete(v.task_id); refusedById.set(v.task_id, v); continue; }
       refusedById.delete(v.task_id);
-      if (byId.get(v.task_id)?.lifecycle !== v.lifecycle) moved = true;
-      byId.set(v.task_id, {...v, status: v.lifecycle, kind: v.task_kind});
+      const previous = byId.get(v.task_id);
+      if (previous?.lifecycle !== v.lifecycle) moved = true;
+      // Activity reports the version without recovery attention; keep that owner's fact
+      // only while it still describes the same canonical Task record.
+      const carried = !Object.hasOwn(v, 'attention') && v.task_record_hash && v.task_record_hash === previous?.task_record_hash
+        ? {attention: previous.attention} : {};
+      byId.set(v.task_id, {...carried, ...v, status: v.lifecycle, kind: v.task_kind});
     }
     activeTasks = [...byId.values()];
+    taskOwners = byId;
     taskRefusals = [...refusedById.values()];
     app.tasks = activeTasks;
     settledSince(was);
@@ -308,6 +316,43 @@ const Data = (() => {
    * user's reading 2026-09-23: a finished run stayed blue in every list until a reload). */
   const ENDED = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED', 'REFUSED']);
   const lifecycleOf = (taskId, recorded) => (ENDED.has(recorded) ? recorded : activeTasks.find((v) => v.task_id === taskId)?.lifecycle || recorded);
+  const rowTaskId = (row) => row.task_id || row.object?.task_id || row.raw?.task_id || row.id;
+  const rowTaskHash = (row) => row.task_record_hash || row.object?.task_record_hash || row.raw?.task_record_hash;
+  const taskAttention = (row) => {
+    const owner = row.attention ? row : row.object?.attention ? row.object : row.raw?.attention ? row.raw : taskOwners.get(rowTaskId(row));
+    const fact = owner?.attention, current = taskOwners.get(rowTaskId(row));
+    return fact && (!owner.task_record_hash || owner.task_record_hash === fact.task_record_hash) && (!current || current.task_record_hash === fact.task_record_hash) ? fact : null;
+  };
+  const taskSuccessor = (row) => {
+    const fact = taskAttention(row);
+    const current = fact && taskOwners.get(fact.successor_task_id);
+    return fact?.unresolved === false && fact.resolution === 'SUCCESSOR_SUCCEEDED' && fact.successor_task_id && fact.successor_task_hash && fact.successor_lifecycle === 'SUCCEEDED' && (!current || current.task_record_hash === fact.successor_task_hash) ? fact : null;
+  };
+  /* A canonical successor is one item; its earlier stop remains an exact, disclosed row.
+   * A successor outside this loaded collection has only its owner's exact Task reference. */
+  function groupTaskSuccessors(rows) {
+    const earlier = new Map(), folded = new Set(), references = new Map(), fronts = new Map(), byTask = new Map();
+    for (const row of rows) {
+      const id = rowTaskId(row), versions = byTask.get(id) || new Map(), hash = rowTaskHash(row);
+      if (!versions.has(hash)) versions.set(hash, row);
+      byTask.set(id, versions);
+    }
+    for (const row of rows) {
+      const fact = taskSuccessor(row);
+      const successor = fact && byTask.get(fact.successor_task_id)?.get(fact.successor_task_hash);
+      if (!fact) continue;
+      if (!successor) {
+        let front = references.get(fact.successor_task_id);
+        if (!front) {
+          front = {id: fact.successor_task_id, task_id: fact.successor_task_id, kind: 'Task', name: 'Task', status: stateName(fact.successor_lifecycle), successorReference: fact, earlierStops: []};
+          references.set(fact.successor_task_id, front); fronts.set(row, front);
+        }
+        front.earlierStops.push(row); folded.add(row); continue;
+      }
+      const stops = earlier.get(successor) || []; stops.push(row); earlier.set(successor, stops); folded.add(row);
+    }
+    return rows.flatMap(row => fronts.has(row) ? [fronts.get(row)] : folded.has(row) ? [] : [earlier.has(row) ? {...row, earlierStops: earlier.get(row)} : row]);
+  }
   /* When Task Control reports a Task's lifecycle moving, the listings are read again -- the
    * history's newest page and the experiments, together -- and the page repaints: a run that ends
    * turns green where it is listed, a new one joins its lists. One read at a time; a move reported
@@ -376,7 +421,7 @@ const Data = (() => {
   const kindName = (kind) => ({
     'portfolio.policy-development': 'Portfolio study', 'alpha.model-development': 'Alpha modeling', // law 134: the dock's word for the kind's list
     'factor.screening-development': 'Factor screening', 'risk.covariance-development': 'Risk modeling',
-    'CRO_REVIEW': 'CRO review', 'INSTALLED_RESULT': 'Installed strategy result',
+    'CRO_REVIEW': 'CRO review', 'INSTALLED_RESULT': 'Installed strategy result', 'TASK_RECORD': 'Task record',
     'CONTINUOUS_UPDATE': 'Continuous update',
   })[kind] || kind;
   const stateName = (state) => ({
@@ -563,7 +608,7 @@ const Data = (() => {
       Inspect.reopenFromAddress();
       if (featurePlan && !h.get('page') && !task) { app.page = 'features'; replaceHash({page: 'features', feature_plan: featurePlan}); refresh(); } // the client's link to a saved PLAN opens its page
       const follow = h.get('follow');
-      if (follow) LiveActivity.setFollowing(follow);
+      if (follow) LiveActivity.setFollowing(follow, h.get('follow_paused') === '1');
     } catch (reason) {
       if (ticket !== connectionGeneration) return;
       workspaceStatus = 'error'; workspaceError = String(reason?.message || reason);
@@ -728,7 +773,7 @@ const Data = (() => {
     if (navigation === null) { beginNavigation(); navigation = navigationIntent(); }
     const study = id.startsWith('experiment:') ? experiments?.find(v=>v.task_id===id.slice('experiment:'.length)) : null;
     let entry = histories.find((x) => x.entry_id === id) || (study ? {...study,status:study.lifecycle} : null);
-    if (!entry && id.startsWith('result:')) {
+    if (!entry && (id.startsWith('result:') || id.startsWith('task:'))) {
       let exact;
       try { exact = await pageRead('/api/research-history?' + new URLSearchParams({history_entry_id:id})); }
       catch (error) { if (navigationCurrent(navigation)) throw error; return; }
@@ -737,6 +782,7 @@ const Data = (() => {
       if (entry) histories.push(entry);
     }
     if (!entry) {alertDialog(t('Saved reference unavailable'),t('This exact reference was not discovered. No latest result was selected.'),btn(t('Close'),'close','','button'));return;} // an alert hides its X: its one answer closes it
+    if (entry.kind === 'TASK_RECORD' && entry.task_id) return LiveTasks.open(entry.task_id);
     if(entry.review_publication_hash && entry.book) { if (push) objectEntry('review:' + entry.review_publication_hash); return LiveReview.open(entry.book, entry.review_publication_hash); }
     const studyPage={'factor.screening-development':'factor','alpha.model-development':'alpha','risk.covariance-development':'risk'}[entry.kind];
     if(studyPage && entry.task_id) { if (push) objectEntry('study:' + entry.task_id); return LiveStudy.open(entry.task_id,studyPage); }
@@ -822,16 +868,15 @@ const Data = (() => {
     workspace: () => workspace?.workspace_id || '',
     /* Round 65: the objects the viewer opened last (the router keeps their keys), then the newest
      * recorded ones — the Home's third group and the command menu's Recent. Local, not a record. */
-    recent: (n = 8) => { const opened = readPreference('objects.recent'), ids = Array.isArray(opened) ? opened.map((k) => String(k).split(':').slice(1).join(':')) : []; const rows = historyRows(); const first = ids.map((id) => rows.find((r) => r.task_id === id || r.id.endsWith(':' + id))).filter(Boolean); return [...new Set([...first, ...rows])].slice(0, n); },
+    recent: (n = 8) => { const opened = readPreference('objects.recent'), ids = Array.isArray(opened) ? opened.map((k) => String(k).split(':').slice(1).join(':')) : []; const rows = historyRows(); const first = ids.map((id) => rows.find((r) => r.task_id === id || r.id.endsWith(':' + id))).filter(Boolean); return groupTaskSuccessors([...new Set([...first, ...rows])]).slice(0, n); },
     workspaceFacts: () => workspace, history: historyRows, historyRefusals: () => historyRefusals, historyError: () => historyError, portfolioEntries, hasMoreHistory: () => Boolean(historyCursor), get historyLoading() { return Boolean(historyPaging); },
     experiments: () => experiments, experimentRefusals: () => experimentRefusals, get experimentsError() { return experimentsError; }, refreshExperiments, declaredOf, inputVersion, lifecycleOf,
     decisions: () => decisions, get decisionsError() { return decisionsError; }, refreshDecisions,
     preparation: () => preparation, setPreparation: (body) => { preparation = body?.status ? body : preparation; },
     inputs: () => inputVersions, tasks: () => activeTasks, taskRefusals: () => taskRefusals, comparison: () => comparison,
-    actionableTasks: () => {
-      const superseded = new Set(preparation?.superseded_task_ids || []);
-      return activeTasks.filter(task => !superseded.has(task.task_id));
-    },
+    taskAttention, taskSuccessor, groupTaskSuccessors, taskOf: id => taskOwners.get(id) || null,
+    actionableTasks: () => activeTasks.filter(task => taskAttention(task)?.unresolved === true && !(decisions || []).some(d => d.kind === 'STOPPED_TASK' && d.task_id === task.task_id && d.waits_on === 'AGENT' && taskAttention(d)?.task_record_hash === task.task_record_hash)),
+    unrecoverableTasks: () => activeTasks.filter(task => { const fact = taskAttention(task); return fact?.unresolved === false && fact.resolution === 'UNRECOVERABLE'; }),
     comparisonKey: () => comparisonKey, comparisonShown: () => !app.compareOther || sameComparison(selection()),
     subject: () => get('subject', null), schema: () => get('schema', ''),
     notice: () => t(get('notice', '')), now: () => get('now', ''),

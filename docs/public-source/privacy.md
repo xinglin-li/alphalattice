@@ -1,5 +1,5 @@
 # Privacy and native usage reading
-Date: 2026-10-07
+Date: 2026-10-08
 
 The workspace Host can read usage facts from this machine's Claude Code or Codex session files, for the agent Sessions bound to the workspace it serves. It retains a whitelist of response IDs, models, recorded effort, token counts and timestamps (including recorded first/last times); it discards conversation text and other file content.
 
@@ -24,7 +24,7 @@ Reading is on by default. Either of two switches turns it off, and then nothing 
 
 A person's switch on **Settings** turns reading off for every Session bound to the workspace. `alphalattice usage-reading show` reads it; only a person sets it, and an agent's request to set it is refused. A switch record the product did not write, or cannot read, reads as off.
 
-For one Session, bind the actual native Session with `--usage off`; see [Getting started](getting-started.md). The default is `--usage read`. Each actual host/Session binds independently without removing or replacing another record. To change this Session's usage, workspace or roles, run `alphalattice session unbind` yourself, then bind again with the explicit workspace. Run unbind at the end too; it removes only your own record and keeps workspace history.
+A Session is bound when it first works on a workspace, with reading on. For one Session, bind the actual native Session with `--usage off` first; see [Getting started](getting-started.md). The default is `--usage read`. Each actual host/Session binds independently without removing or replacing another record. To change this Session's usage, workspace or roles, run `alphalattice session unbind` yourself, then bind again with the explicit workspace. Run unbind at the end too; it removes only your own record and keeps workspace history.
 
 `native_research.py doctor` reports `usage_reading` as `OFF`, `READ` or null. OFF skips native file discovery and reads for this Session; another Session's READ setting cannot enable them. A Codex child whose ancestry was not admitted must name `--workspace` explicitly; OFF never grants another Session's binding. Research continues. Neither switch changes the host's own storage.
 

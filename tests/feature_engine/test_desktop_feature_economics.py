@@ -31,6 +31,7 @@ from alphalattice.foundation.feature_engine.runtime.factor_invalidation import (
     compile_listing_plan,
     compile_panel_plan,
     expand_ranges,
+    restrict_plan_to_sessions,
     targets_by_session,
 )
 from alphalattice.foundation.feature_engine.runtime.service import (
@@ -773,3 +774,57 @@ def test_expand_ranges_bisects_a_calendar_and_keeps_an_unsorted_sequence_in_its_
     shuffled = calendar[::-1]
     assert expand_ranges(ranges, shuffled) == tuple(reversed(linear))
     assert expand_ranges((), calendar) == () and expand_ranges(ranges, ()) == ()
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    offsets=st.lists(st.integers(0, 60), min_size=1, max_size=40),
+    picked=st.sets(st.integers(0, 60), max_size=60),
+    repeat=st.booleans(),
+)
+def test_planned_runs_of_selected_sessions_equal_the_calendar_scan(
+    offsets: list[int], picked: set[int], repeat: bool
+) -> None:
+    """requirement: a plan's runs of selected sessions are found by position, as the scan's.
+
+    The daily update planned one new session per factor by scanning the listing's whole calendar
+    (53 factors, two plans a listing, 473 listings). Finding the runs by calendar position must
+    give the scan's runs for any selection, and a calendar that repeats a session keeps the scan.
+    """
+
+    from datetime import timedelta
+
+    def scanned(calendar: tuple[date, ...], selected: set[date]) -> tuple[object, ...]:
+        ordered = [session for session in calendar if session in selected]
+        if not ordered:
+            return ()
+        positions = {session: index for index, session in enumerate(calendar)}
+        result = []
+        first = previous = ordered[0]
+        for session in ordered[1:]:
+            if positions[session] != positions[previous] + 1:
+                result.append(PanelInvalidationRange(first, previous))
+                first = session
+            previous = session
+        result.append(PanelInvalidationRange(first, previous))
+        return tuple(result)
+
+    start = date(2026, 1, 5)
+    calendar = tuple(start + timedelta(days=offset) for offset in sorted(set(offsets)))
+    if repeat:
+        middle = len(calendar) // 2
+        calendar = (*calendar[: middle + 1], *calendar[middle:])
+    whole = FactorSessionInvalidationPlan.create(
+        items=(
+            FactorSessionInvalidation(
+                "ret_1d", (PanelInvalidationRange(min(calendar), max(calendar)),)
+            ),
+        )
+    )
+    selected = {start + timedelta(days=offset) for offset in picked}
+    for chosen in (selected, set(sorted(selected)[:1])):
+        restricted = restrict_plan_to_sessions(
+            whole, calendar=calendar, allowed=chosen.__contains__
+        )
+        expected = scanned(calendar, chosen & set(calendar))
+        assert tuple(item.ranges for item in restricted.items) == ((expected,) if expected else ())

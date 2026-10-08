@@ -151,12 +151,20 @@ assert.match(markup,/data-action="chart-data"/);
 // the parent browser walk owns viewport geometry and painted theme verification.
 const portfolioSource=fs.readFileSync(path.join(appDir,'pages-portfolio.js'),'utf8');
 const componentsSource=fs.readFileSync(path.join(appDir,'components.js'),'utf8');
+const viewsSource=fs.readFileSync(path.join(appDir,'live-views.js'),'utf8');
+const strategyFactsFrom=viewsSource.indexOf('  function studyFacts('),strategyFactsTo=viewsSource.indexOf('  /* A history date',strategyFactsFrom);
+assert.ok(strategyFactsFrom>=0&&strategyFactsTo>strategyFactsFrom,'the actual shared study naming reader remains available');
+const ownerLabels=Object.fromEntries(JSON.parse(fs.readFileSync(path.resolve(appDir,'../../../..','labels.json'),'utf8')).labels.map(v=>[v.id,v]));
 const emptyFrom=componentsSource.indexOf('function emptyState(');
 const emptyTo=componentsSource.indexOf('/* A refusal or a failure',emptyFrom);
 const wordsFrom=componentsSource.indexOf('const labelOf =');
 const wordsTo=componentsSource.indexOf('/* A feature by its name',wordsFrom);
 const codedSource=componentsSource.match(/^const coded = .*$/m)?.[0];
 assert.ok(emptyFrom>=0 && emptyTo>emptyFrom && wordsFrom>=0 && wordsTo>wordsFrom && codedSource,'the actual display helpers remain available');
+const headFrom=componentsSource.indexOf('function contextFacts(');
+const headTo=componentsSource.indexOf('/* Attributes a builder is handed',headFrom);
+assert.ok(headFrom>=0 && headTo>headFrom,'the actual object-head facts builder remains available');
+const inputHeads=process.argv[3] ? JSON.parse(fs.readFileSync(process.argv[3],'utf8')) : null;
 const oldBranch="    if (noForwardObservations) return html`<div id=\"portfolioPerformance\">${controls}</div>`;";
 const branchAnchor='    const noForwardObservations=forward && Data.series().length===0;';
 assert.ok(portfolioSource.includes(branchAnchor),'the negative control reinserts the exact former tabs-only branch');
@@ -167,14 +175,18 @@ function performanceReader(source,locale,theme,width) {
   let selectedMode='forward';
   const view={...c,app:{...app},PAGES:{},ACTIONS:{},ON_INPUT:{},ON_CHANGE:{},
     innerWidth:width,window:{ALPHA_PRODUCT:true},document:{documentElement:{lang:'en'},body:{dataset:{theme}}},
-    CODE_WORDS:{},STATES:{},stageWord:()=>null,
+    raw:(markup)=>markup,railTools:()=>'',Inspect:{...c.Inspect,hasFacts:()=>false},
+    CODE_WORDS:{},STATES:{},stageWord:()=>null,LABELS:ownerLabels,
+    LiveViews:{...c.LiveViews},
     Data:{...Data,raw:()=>owner,subject:()=>owner.subject,forwardPerformance:()=>owner.forward_performance,
       performanceMode:()=>selectedMode,series:()=>selectedMode==='forward' ? owner.forward_performance?.available===true ? owner.forward_performance.series || [] : [] : historicalRows},
   };
   vm.createContext(view);
   vm.runInContext(fs.readFileSync(path.join(appDir,'..','data','zh.js'),'utf8'),view,{filename:'zh.js'});
   vm.runInContext(fs.readFileSync(path.join(appDir,'i18n.js'),'utf8'),view,{filename:'i18n.js'});
-  vm.runInContext(componentsSource.slice(emptyFrom,emptyTo)+componentsSource.slice(wordsFrom,wordsTo)+codedSource,view,{filename:'components-performance-readers.js'});
+  vm.runInContext(componentsSource.slice(emptyFrom,emptyTo)+componentsSource.slice(wordsFrom,wordsTo)+codedSource+componentsSource.slice(headFrom,headTo),view,{filename:'components-performance-readers.js'});
+  vm.runInContext(viewsSource.slice(strategyFactsFrom,strategyFactsTo)+'\nglobalThis.strategyFacts=studyFacts;',view,{filename:'shared-study-naming.js'});
+  view.LiveViews.studyFacts=view.strategyFacts;
   vm.runInContext('globalThis.translate=t;globalThis.chooseLocale=I18N.set;',view);
   view.chooseLocale(locale);
   vm.runInContext(source,view,{filename:'pages-portfolio.js'});
@@ -183,7 +195,7 @@ function performanceReader(source,locale,theme,width) {
     assert.ok(start>=0 && end>start,'the actual performance producer precedes Activation');
     return page.slice(start,end);
   };
-  return {owner,fragment,translate:view.translate,setMode:(next)=>{selectedMode=next;}};
+  return {owner,fragment,page:()=>String(view.PAGES.portfolio()),studyFacts:view.strategyFacts,translate:view.translate,setMode:(next)=>{selectedMode=next;}};
 }
 const zeroOwner=()=>({available:true,status:'RECORDED_REALIZED_FORWARD_WINDOW',cost_bps_per_side:'5',selected_window_metrics:{},
   selected_window_metric_provenance:{status:'INSUFFICIENT_REALIZED_OBSERVATIONS',selected_start:null,selected_end:null,observation_count:0,observed_through:'2024-08-21',published_at:'2026-10-05T12:00:00Z'},series:[]});
@@ -199,6 +211,43 @@ function assertEmptyPerformance(reader,reason) {
 let performanceConditions=0;
 for(const locale of ['en','zh-CN'])for(const theme of ['light','dark'])for(const width of [1470,900]) {
   const reader=performanceReader(portfolioSource,locale,theme,width),translate=reader.translate;
+  const originalSubject=reader.owner.subject;
+  const installedLabel=Object.values(ownerLabels).find(v=>v.kind==='strategy');
+  for(const packageId of ['QA_UNLABELLED_STRATEGY',installedLabel.id]) {
+    reader.owner.subject={...originalSubject,source_kind:'INSTALLED_RESULT',title:packageId};
+    const page=reader.page(),head=page.slice(0,page.indexOf('<div id="portfolioPerformance">'));
+    const word=packageId===installedLabel.id ? locale==='zh-CN' ? installedLabel.title_zh : installedLabel.title : translate('Installed strategy result');
+    assert.ok(head.includes(word),'the installed head uses the shared declared title or naming absence in either language');
+    assert.ok(!head.includes(translate('Word not declared')),'an unknown package code is not the installed book title');
+    assert.equal(reader.owner.subject.title,packageId,'rendering preserves the exact owner package code for its recorded facts');
+    assert.equal(reader.owner.subject.task_id,originalSubject.task_id,'naming preserves the exact saved object');
+    const review=reader.studyFacts(null,{kind:'CRO_REVIEW',strategy_package_id:packageId});
+    assert.equal(review.words,word,'a published review retains the same declared or unnamed installed-book title');
+    assert.equal(review.summary,packageId,'the review retains the exact owner package code as metadata');
+  }
+  const authoredReview=reader.studyFacts(null,{kind:'CRO_REVIEW',book:{experiment_task_id:'authored-book'}});
+  assert.equal(authoredReview.words,'','a review with no strategy package retains its existing naming fallback');
+  assert.equal(authoredReview.summary,'','an authored review does not invent an installed strategy identifier');
+  reader.owner.subject={...originalSubject,title:null};
+  assert.ok(reader.page().includes(translate('Portfolio study')),'an authored unnamed book retains its existing title fallback');
+  reader.owner.subject=originalSubject;
+  if(inputHeads) {
+    // The real installed-book projection is read through Portfolio.page and its shared
+    // head builder. Unknown input names stay absent; a recorded name keeps its spelling.
+    for(const [index,subject] of inputHeads.entries()) {
+      reader.owner.subject=subject;
+      const page=reader.page(),head=page.slice(0,page.indexOf('<div id="portfolioPerformance">'));
+      const inputKey=`<span class="context-key">${translate('Input')}</span>`;
+      if(index===0) {
+        assert.doesNotMatch(head,/Input not recorded|Input Input/,'an absent owner input is not a fabricated name or repeated placeholder');
+        assert.ok(!head.includes(inputKey),'an unknown input leaves no labelled placeholder in either language');
+      } else {
+        assert.ok(head.includes(inputKey),'a known input retains its translated property label');
+        assert.ok(head.includes(index===1 ? 'recorded-input' : 'Bound historical input'),'the owner input name or bound-input distinction stays intact');
+      }
+    }
+    reader.owner.subject=JSON.parse(JSON.stringify(raw.subject));
+  }
   reader.owner.forward_performance=zeroOwner();
   let fragment=assertEmptyPerformance(reader,'Fewer than two settled outcomes were recorded');
   assert.ok(fragment.includes(translate('{n} observations',{n:'0'})));

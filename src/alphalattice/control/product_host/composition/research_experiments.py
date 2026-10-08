@@ -1170,6 +1170,10 @@ class ResearchExperimentApplication:
                 and not answer["sources"]
             ):
                 return {**answer, **self._development_routes(binding.binding_hash), **needed}
+            if answer["status"] == "DRAFT_READY":
+                # A lifecycle study plans from its prepared component source: the development
+                # path's curated-Factor prerequisite would contradict its ready draft (FLOW-3).
+                return answer
             return {**answer, **needed}
         if kind == RISK_EXPERIMENT_KIND:
             return {**risk_controls(self.session, binding), **needed}

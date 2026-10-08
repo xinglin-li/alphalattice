@@ -550,7 +550,12 @@ class GoalApplication:
         A step the person delegated is recorded as theirs, by the delegation that carried it
         (V452); a network step records what it set.
         """
-        task = body.get("task_id") or body.get("publication_task_id")
+        receipt = body.get("receipt")
+        task = (
+            body.get("task_id")
+            or body.get("publication_task_id")
+            or (receipt.get("task_id") if isinstance(receipt, Mapping) else None)
+        )
         bundle = body.get("bundle_reference")
         if (
             bundle is None
@@ -566,6 +571,20 @@ class GoalApplication:
                 "operation": request.operation,
                 "status": str(body.get("status", "")),
                 "task_id": str(task) if task else None,
+                **{
+                    key: value
+                    for key, value in (
+                        (
+                            "plan_hash",
+                            body.get("plan_hash")
+                            if request.operation == "EXPERIMENT_PLAN"
+                            else None,
+                        ),
+                        ("review_publication_hash", body.get("review_publication_hash")),
+                        ("case_token", request.data_issue_case_token),
+                    )
+                    if value is not None
+                },
                 **(
                     {"feature_trial_id": str(body["feature_trial_id"])}
                     if body.get("feature_trial_id")
@@ -592,6 +611,24 @@ class GoalApplication:
                 ),
             },
         )
+
+    def decision_attribution(self) -> dict[tuple[str, str], set[str]]:
+        """Exact retained request selectors and the Goals they counted toward.
+
+        Legacy absent selectors stay unknown; reading adds no attribution.
+        """
+        indexed: dict[tuple[str, str], set[str]] = {}
+        for goal_id in self.store.goal_ids():
+            for entry in self.store.attributed(goal_id):
+                if "operation" not in entry:
+                    continue
+                for key in ("task_id", "plan_hash", "review_publication_hash", "case_token"):
+                    value = entry.get(key)
+                    if value is not None:
+                        if not isinstance(value, str) or not value:
+                            raise ValueError("goal.attribution_invalid")
+                        indexed.setdefault((key, value), set()).add(str(goal_id))
+        return indexed
 
     def accepted_answer_context(
         self,

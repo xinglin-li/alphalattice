@@ -1,5 +1,5 @@
 # AlphaLattice: guide for your research agent
-Date: 2026-10-07
+Date: 2026-10-08
 
 AlphaLattice computes and records local quantitative research. You state the
 question, follow the product's answers and explain the evidence to the person.
@@ -15,7 +15,7 @@ declared in `investment/portfolio_strategy_lab/policies/installed_strategies.py`
 models in `capabilities/alpha_modeling/extensions/`, and Feature kernels in
 `foundation/feature_engine/producers/factors/`. Follow
 `docs/public-source/extending.md` in the editable checkout and run
-the tests that answer for the change. The person chooses the lead model; keep
+the tests that answer for the change. The lead model is whatever your host runs; keep
 the shipped specialists' inexpensive defaults.
 
 A changed computation gets a new method identity and new result evidence.
@@ -26,13 +26,19 @@ or edit a stored record to make it pass.
 
 ## Open the workspace
 
+If you installed AlphaLattice in this session, continue here: read this guide and the
+research Skill by the paths `configure` printed under `continue_here`, start each
+specialist as a general subagent whose prompt is its card's text, and tell the person
+its `disclosure` in one line. A session opened in the checkout with its `open_session`
+command loads them itself and the host enforces the cards' tool limits there.
 Follow [setup](.agents/skills/alphalattice-research/references/operating.md#setup-and-launch) for the locked Windows
 checkout or installed wheel, download permission, persistent PATH and native
 configuration. Use a new workspace for new research. Keep its service attached
-to stdin and open its exact launch link in your browser so the person can watch;
-after a restart, open the new link. A bare address grants no browser session.
+to stdin and open its exact launch link once in your browser so the person can
+watch; after a restart, open the new link. Never navigate or click the Workbench to
+show work; the person reads it there. A bare address grants no browser session.
 
-Bind your actual Session from the checkout or configured agent project; the command reads its native host and session id:
+Your Session is bound when it first works on a workspace, and its first research request opens a goal when it holds none; nothing needs a separate step. Run `session bind` only to rebind or to turn reading off; the command reads its native host and session id:
 
 ```powershell
 alphalattice --workspace "workspaces/my-research" session bind
@@ -84,8 +90,11 @@ alphalattice cpu-budget show
 Opening binds an identified session to the goal; otherwise pass its returned id
 with `--goal`. Confirm only the plan the preview offers. While the goal is open,
 for 24 hours from opening, you may open the preparation's network, confirm its
-preparation and resumes, and preview/decide its data issues within that first
-use's scope. Read the decisions in `goal show`'s `record.delegated_steps`.
+preparation and resumes, preview/decide its data issues, confirm its membership
+changes and activate its book once that book's review standing is `REVIEWED`,
+within that first use's scope. Tell the person each in one line; they deactivate
+the book in one click on **Portfolio**. Read the decisions in `goal show`'s
+`record.delegated_steps`.
 The `FIRST_USE` declaration is never revised. Evidence attachments, notes and
 an accepted submission may create record revisions; none restarts its original
 24-hour delegation window. Accepted submission, abandonment or expiry ends delegation
@@ -99,12 +108,12 @@ revocation, paid actions and external publication remain the person's.
 setting; restart only an idle service you own when online acquisition is
 authorized. Follow the admitted Task and its continuation after a lost connection.
 
-To reach a reviewed installed book, follow strategy controls for only its required
-whole-support Alpha and Risk studies, prepare and install, run the whole-support
-historical book, settle current Evidence scope and publish its Analyst answers,
-then read its dossier and take that dossier answer's CRO bundle action; person
-activation and the first forward update follow review. Reuse completed required studies and add an
-exploratory study only when the person's question calls for it.
+From preparation on, follow each answer's `next_action` and offered
+`next_requests`. They lead through the research strategy's controls and its
+required whole-support Alpha and Risk studies, its installation, its whole-support
+book, that book's Evidence and CRO review, and its activation offer. Reuse
+completed required studies; add an exploratory study only when the person's
+question calls for it.
 
 ## Keep the goal
 
@@ -123,51 +132,28 @@ do not replace that ledger with your command log. Use the
 [goal procedure](.agents/skills/alphalattice-research/references/goals.md) for
 assignments, waits and checked completion.
 
-## Factor, then Alpha; Risk beside them
+## Explore in the Lab
 
-Every placeholder is a selection or returned reference. Declare the person's
-Factor hypothesis and bounds before planning:
+An exploratory Factor, Alpha or Risk study and a Lab book follow the input's
+`intents` in `workspace show`; each answer offers its next request (`study
+controls`, `study plan`, `study run`, `study show`, `curation show`, `curation
+submit`, `handoff preview`, `book draft`). Every placeholder is a selection or a
+returned reference. Declare the person's Factor hypothesis and bounds before
+planning, and read Factor evidence before filling curation choices and their
+rationale. The handoff's target and model are the person's choice, as its answer
+says. For risk sizing, set `portfolio.risk_task_id` to a completed compatible Risk
+study; equal weights read no Risk study, and `risk-link add` adds report evidence
+without changing weights. A Lab book is research only and is never activated.
 
-```powershell
-alphalattice study controls --input <input-id> --save-declaration "<out>/factor.yaml"
-alphalattice study plan --input <input-id> --file "<out>/factor.yaml" --output "<out>/factor-plan.json"
-alphalattice study run --from "<out>/factor-plan.json" --wait --output "<out>/factor-run.json"
-alphalattice study show <factor-task-id> --output "<out>/factor-study.json"
-alphalattice curation show --from "<out>/factor-run.json" --output "<out>/curation.json"
-alphalattice curation submit --from "<out>/curation.json" --choices "<out>/curation-choices.yaml" --output "<out>/curation-decision.json"
-alphalattice handoff preview --from "<out>/curation-decision.json" --save-declaration "<out>/alpha.yaml" --output "<out>/handoff.json"
-```
+## Review the book
 
-Read Factor evidence before filling curation choices and rationale. Fill the
-handoff's Alpha target and model within the person's bounds. Risk needs the same
-input and may run beside Factor and Alpha:
-
-```powershell
-alphalattice study plan --from "<out>/handoff.json" --file "<out>/alpha.yaml" --output "<out>/alpha-plan.json"
-alphalattice study run --from "<out>/alpha-plan.json" --wait --output "<out>/alpha-run.json"
-alphalattice study show <alpha-task-id> --output "<out>/alpha-study.json"
-alphalattice study controls --input <input-id> --kind <risk-kind> --save-declaration "<out>/risk.yaml"
-alphalattice study plan --input <input-id> --file "<out>/risk.yaml" --output "<out>/risk-plan.json"
-alphalattice study run --from "<out>/risk-plan.json" --wait --output "<out>/risk-run.json"
-alphalattice study show <risk-task-id> --output "<out>/risk-study.json"
-```
-
-## Build and review the book
-
-Choose an Alpha candidate, draft its book and fill the Portfolio declaration:
-
-```powershell
-alphalattice book draft --from "<out>/alpha-study.json" --candidate <candidate-id> --save-declaration "<out>/portfolio.yaml" --output "<out>/book-draft.json"
-alphalattice study plan --from "<out>/book-draft.json" --file "<out>/portfolio.yaml" --output "<out>/book-plan.json"
-alphalattice study run --from "<out>/book-plan.json" --wait --output "<out>/book-run.json"
-alphalattice study show <book-task-id> --output "<out>/book-study.json"
-```
-
-For risk sizing, set `portfolio.risk_task_id` to a completed compatible Risk study
-and choose a risk-reading policy. Equal weights read no Risk study; use
-`risk-link add --from "<out>/book-run.json" --risk-study <risk-task-id>` for
-report evidence without changing weights. Use computational titles such as
-**Rebound Return Book** and **Trend Rebound Book**, but select ids from answers.
+For an installed strategy, one call takes its whole-support book to its Analyst bundles:
+`alphalattice strategy-book review --package <package> --dir "<out>/analysts"`
+runs or reuses the book, follows it, prepares its Evidence and writes every Analyst bundle,
+answering with each bundle's answer path and submit command. It stops at the first answer
+that needs another step and names it. Run it as a wait: in the background, or on Codex as its
+own process with `--notify codex-queue --output <file>`, ending your turn. The commands below
+are its steps, for when you choose otherwise.
 
 Carry the book readback's Evidence/CRO selectors, never the default book. Admit
 the required source access and model setup before preparation; if either is
@@ -231,9 +217,10 @@ the completed Task. Activation binds component models, required calibration and
 the last sealed book state; it fits nothing. Read
 `strategy-book controls --package '<strategy-package-id>'` for `activation`, its
 book and horizon on every fresh session before a forward plan. If `INACTIVE`,
-ask the person to take the exact offered Portfolio activation action; follow its
-held reason when none is offered.
-Before asking a person to activate, review the completed historical book and its review standing, and read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
+take the offered activation under an open first-use goal once its review standing
+is `REVIEWED`; otherwise ask the person to take the exact offered Portfolio
+activation action. Follow its held reason when none is offered.
+Before activating, or asking a person to activate, review the completed historical book and its review standing, and read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
 After activation, run the offered update and review its first published forward positions at the first actionable session.
 Hold positions only from the first actionable session; sessions before it are a causal replay, inside the research window where marked.
 Before activation, show the person the offer's `review_holdings`: the reviewed
@@ -244,13 +231,14 @@ compute nothing to preview them. Report each position with its basis, a close-ma
 conditional estimate or an entry observed at the next session's open, and the
 publication's `claim`; [reading the dates](.agents/skills/alphalattice-research/references/research-lead.md#reading-the-dates)
 works one activation through every timestamp.
-After person activation, updates advance observed
+After activation, updates advance observed
 sessions and publish research positions, not orders or investment advice. The
 horizon is about eleven months beyond the latest completed session at activation;
 read its end and request a newer book before continuing beyond it. A changed
-package needs a new run, review and person activation. Deactivation keeps history.
+package needs a new run, review and activation. Deactivation keeps history.
 Installation, activation and enabling daily automation on Settings are separate
-decisions; first-use delegation grants no activation or automation authority.
+decisions; first-use delegation covers only its reviewed book's activation, never
+automation.
 
 ## Delegate and ask for decisions
 
@@ -262,11 +250,21 @@ Skill's [native visibility](.agents/skills/alphalattice-research/references/nati
 for configuration, binding and permitted usage. Configuration, binding, Team observations
 and a subagent stop grant no authority and prove no Task success.
 
+Everything else is a default you take: say in one line what you chose and how to
+change it, and go on. Advice in an answer, such as an incomplete Analyst review, a
+CRO's request for a person's review or a review sealed under earlier Evidence, goes
+into your report and is never a stop. Execution parameters are yours too: before a
+heavy Task read `cpu-budget show`, keep `auto` unless its `machine` is busy or
+small, set the budget without asking and say so in one line. Never change a
+study's model, window or bounds to save time. A wait is one call, never a poll: run
+it in the background, or on Codex with `--notify codex-queue` ([waits](.agents/skills/alphalattice-research/references/operating.md#waits-and-return-visits)).
+
 Name each person-only decision, scope and page; wait for their answer. Factor
 activation is on **Features**, model activation on **Models**; neither a trial
 nor a first-use goal activates either. Read the review's activation standing and
 reasons first. Strategy activate/deactivate is on **Portfolio**: name the exact
-book Task or package; your CLI request is refused. Daily automation is on
+book Task or package; outside the first-use delegation your CLI request is
+refused. Daily automation is on
 **Settings** for named packages. External sharing/publication needs permission;
 point to **Report & delivery** and **Review**. Internal publication grants no
 external sharing or use.

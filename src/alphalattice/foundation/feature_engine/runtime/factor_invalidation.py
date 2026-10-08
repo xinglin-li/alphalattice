@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from typing import Literal
 
@@ -142,7 +142,7 @@ def compile_listing_plan(
 
     return FactorSessionInvalidationPlan.create(
         items=tuple(
-            FactorSessionInvalidation(factor_id, _ranges(calendar, factor_sessions))
+            FactorSessionInvalidation(factor_id, _ranges(calendar, factor_sessions, positions))
             for factor_id, factor_sessions in sorted(targets.items())
             if factor_sessions
         ),
@@ -198,10 +198,17 @@ def compile_panel_plan(
         for item in whole:
             for factor_id in item.factor_ids:
                 targets[factor_id].update(calendar)
+        # Every listing's factors usually carry the same ranges (a day's one new session):
+        # expand each distinct range set once, not once per listing and factor.
+        expanded: dict[tuple[PanelInvalidationRange, ...], tuple[date, ...]] = {}
         for plan in listing_plans:
             receipts.extend(plan.source_receipt_hashes)
             for item in plan.items:
-                targets[item.factor_id].update(expand_ranges(item.ranges, calendar))
+                key = tuple(item.ranges)
+                sessions_in = expanded.get(key)
+                if sessions_in is None:
+                    sessions_in = expanded[key] = expand_ranges(key, calendar)
+                targets[item.factor_id].update(sessions_in)
         forced = set(forced_sessions).intersection(calendar)
         for item in invalidations:
             if item.kind in _MEMBERSHIP_PANEL_KINDS:
@@ -212,9 +219,10 @@ def compile_panel_plan(
     receipts.extend(
         item.source_receipt_hash for item in invalidations if item.source_receipt_hash is not None
     )
+    positions = {session: index for index, session in enumerate(calendar)}
     return FactorSessionInvalidationPlan.create(
         items=tuple(
-            FactorSessionInvalidation(factor_id, _ranges(calendar, factor_sessions))
+            FactorSessionInvalidation(factor_id, _ranges(calendar, factor_sessions, positions))
             for factor_id, factor_sessions in sorted(targets.items())
             if factor_sessions
         ),
@@ -239,12 +247,13 @@ def restrict_plan_to_sessions(
     # Every factor of a plan usually carries the same ranges (one new session
     # a day); expand and restrict each distinct range set once, not per factor.
     restricted: dict[tuple[PanelInvalidationRange, ...], tuple[PanelInvalidationRange, ...]] = {}
+    positions = {session: index for index, session in enumerate(calendar)}
     for item in plan.items:
         key = tuple(item.ranges)
         ranges = restricted.get(key)
         if ranges is None:
             sessions = {session for session in expand_ranges(key, calendar) if allowed(session)}
-            ranges = _ranges(calendar, sessions)
+            ranges = _ranges(calendar, sessions, positions)
             restricted[key] = ranges
         if ranges:
             items.append(FactorSessionInvalidation(item.factor_id, ranges))
@@ -339,11 +348,25 @@ def _source_sessions(
     raise ValueError("bounded source invalidation requires exact sessions or an earliest bound")
 
 
-def _ranges(calendar: Sequence[date], selected: set[date]) -> tuple[PanelInvalidationRange, ...]:
-    ordered = [session for session in calendar if session in selected]
+def _ranges(
+    calendar: Sequence[date],
+    selected: set[date],
+    positions: Mapping[date, int] | None = None,
+) -> tuple[PanelInvalidationRange, ...]:
+    """The contiguous calendar runs of ``selected``; ``positions`` is the calendar's index map."""
+    if positions is None:
+        positions = {session: index for index, session in enumerate(calendar)}
+    if len(positions) == len(calendar):
+        # A calendar of distinct sessions orders the selected sessions by their positions: a
+        # day's one new session costs one lookup, not a scan of the whole history per factor.
+        ordered = sorted(
+            (session for session in selected if session in positions),
+            key=positions.__getitem__,
+        )
+    else:
+        ordered = [session for session in calendar if session in selected]
     if not ordered:
         return ()
-    positions = {session: index for index, session in enumerate(calendar)}
     result: list[PanelInvalidationRange] = []
     first = previous = ordered[0]
     for session in ordered[1:]:

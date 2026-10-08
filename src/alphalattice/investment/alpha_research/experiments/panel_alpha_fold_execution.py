@@ -9,8 +9,6 @@ from datetime import date
 from types import MappingProxyType
 from typing import Any, Literal
 
-from threadpoolctl import threadpool_limits  # type: ignore[import-untyped]
-
 from alphalattice.investment.alpha_research.experiments.panel_methodology_authoring import (
     PanelResearchMethodologyRequest,
 )
@@ -31,6 +29,7 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
     PanelFeatureSourceArrays,
 )
 from alphalattice.kernel.quant.sector_history import SectorHistory
+from alphalattice.kernel.shared_kernel.environment import numerical_thread_limit
 
 
 class PanelAlphaFoldExecutionError(ValueError):
@@ -194,7 +193,7 @@ def execute_panel_alpha_fold_worker(
         raise PanelAlphaFoldExecutionError("alpha_research.worker_thread_plan_invalid")
     if owns_process:
         _pin_worker_process()
-    with threadpool_limits(limits=request.numerical_thread_count):
+    with numerical_thread_limit(request.numerical_thread_count):
         return _compute_fold(request)
 
 

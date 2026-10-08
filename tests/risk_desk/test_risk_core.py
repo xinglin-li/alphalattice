@@ -231,6 +231,82 @@ def test_risk_numerical_thread_policy_is_fixed_and_path_free() -> None:
     assert "site-packages" not in str(environment)
 
 
+@pytest.mark.parametrize(
+    ("module_name", "function_name", "parameters"),
+    (
+        ("covariance", "estimate_dynamic_covariance", None),
+        ("fast_slow", "estimate_fast_slow_covariance", {"blend_weight": 0.25}),
+        ("diagonal", "estimate_diagonal_shrunk_covariance", {"correlation_shrinkage": 0.0}),
+    ),
+)
+def test_the_live_estimate_runs_single_threaded_whatever_the_ambient_threads(
+    monkeypatch: pytest.MonkeyPatch, module_name, function_name, parameters
+) -> None:
+    """regression (INV FINDING 2026-10-08): each installed adapter's estimate enters the policy.
+
+    The policy existed and was tested, but no production path entered it: the live estimates
+    ran at the machine's default threads, and their eigen diagnostics' last bits moved with them.
+    """
+    from importlib import import_module
+
+    from alphalattice.investment.risk_research.contracts import default_covariance_recipe
+    from alphalattice.investment.risk_research.estimators.catalog import (
+        build_installed_risk_estimator_catalog,
+    )
+    from alphalattice.investment.risk_research.estimators.contracts import BoundRiskReturnInput
+
+    owner = import_module(f"alphalattice.investment.risk_research.estimators.{module_name}")
+    catalog = build_installed_risk_estimator_catalog()
+    if parameters is None:
+        envelope = catalog.seal_recipe(
+            recipe_schema_id=owner.COVARIANCE_RECIPE_SCHEMA_ID,
+            parameters=default_covariance_recipe().model_dump(mode="json"),
+        )
+    else:
+        schema = next(
+            value
+            for name, value in vars(owner).items()
+            if name.endswith("_RECIPE_SCHEMA_ID") and not name.startswith("COVARIANCE")
+        )
+        envelope = catalog.admit_recipe(
+            capability_handle=schema, parameters=parameters, seed=0
+        ).recipe
+    adapter = catalog.resolve(envelope)
+    returns = _returns(assets=120)
+    listing_ids = tuple(f"listing-{index:03d}" for index in range(returns.shape[1]))
+    observed: list[int] = []
+    inner = getattr(owner, function_name)
+
+    def watched(**kwargs):
+        observed.append(
+            max(
+                int(pool["num_threads"])
+                for pool in threadpool_info()
+                if pool.get("num_threads") is not None
+            )
+        )
+        return inner(**kwargs)
+
+    monkeypatch.setattr(owner, function_name, watched)
+    outputs = []
+    for ambient_limit in (4, 2):
+        with threadpool_limits(limits=ambient_limit):
+            outputs.append(
+                adapter.estimate(
+                    recipe=envelope,
+                    inputs=BoundRiskReturnInput.create(
+                        return_surface_hash="a" * 64,
+                        ordered_listing_ids=listing_ids,
+                        formation_session=date(2026, 1, 3),
+                        returns=returns,
+                    ),
+                )
+            )
+    assert observed == [RISK_NUMERICAL_THREAD_LIMIT, RISK_NUMERICAL_THREAD_LIMIT]
+    assert outputs[0].eigenvalues.tobytes() == outputs[1].eigenvalues.tobytes()
+    assert outputs[0].diagnostics == outputs[1].diagnostics
+
+
 def test_packed_covariance_chunk_round_trip_and_single_lease(tmp_path: Path) -> None:
     returns = _returns(assets=5)
     listing_ids = tuple(f"listing-{index:02d}" for index in range(returns.shape[1]))

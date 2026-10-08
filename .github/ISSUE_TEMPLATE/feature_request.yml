@@ -1,0 +1,22 @@
+name: Feature request
+description: Discuss a proposed change before starting nontrivial work.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read CONTRIBUTING.md before starting work.
+        Use synthetic or redacted examples; do not include secrets or private data.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change and alternatives
+      description: Explain the intended behavior and why it helps.
+    validations:
+      required: true

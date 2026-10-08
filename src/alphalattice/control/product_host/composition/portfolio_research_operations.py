@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections.abc import Callable, Mapping
-from contextlib import nullcontext
+from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field, fields, replace
 from datetime import date, datetime
 from functools import partial
@@ -279,14 +280,21 @@ from alphalattice.interface.local_application.goals import (
     GoalSession,
 )
 from alphalattice.interface.local_application.native_bridge import (
+    HOSTS,
+    NativeBridgeError,
     NativeResearchBinding,
     deliver_accepted_answer,
+    file_bound_fact,
     session_project,
     set_usage_reading,
     usage_reading_answer,
 )
-from alphalattice.interface.local_application.native_setup import admitted_session_project
-from alphalattice.interface.local_application.operations import OPERATIONS, PERSON_ONLY
+from alphalattice.interface.local_application.native_setup import (
+    admitted_session_project,
+    autobind_root,
+    autobind_session,
+)
+from alphalattice.interface.local_application.operations import GRAMMAR, OPERATIONS, PERSON_ONLY
 from alphalattice.interface.local_application.portfolio_research import (
     FrozenCandidateProjection,
     LocalApplicationError,
@@ -323,6 +331,9 @@ from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioEvidenceReviewError,
+)
+from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
+    TASK_KIND as CRO_REVIEW_TASK_KIND,
 )
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AgentRun
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord, answer_read
@@ -441,6 +452,19 @@ def _read_at(request: PortfolioResearchOperationRequest) -> datetime | None:
     )
 
 
+RUN_FORWARD_WORDS: Final = (
+    "A book that runs forward to next positions comes from the research strategy: its "
+    "controls name the required Alpha and Risk studies over their whole support, which need no "
+    "Factor study; then prepare and install it, run its whole-support book and review that "
+    "book. A Lab book is research only and is never activated."
+)
+"""The first use's shortest way, ahead of the inputs' Lab flows (FLOW-3)."""
+INSTALLED_BOOK_WORDS: Final = (
+    "The installed strategy runs its whole-support historical book from its controls; review "
+    "that book, then a person activates it."
+)
+
+
 @dataclass(slots=True)
 class PortfolioResearchOperations:
     """One product operation owner for every human and Agent caller."""
@@ -476,6 +500,10 @@ class PortfolioResearchOperations:
     native_projects: set[Path] = field(default_factory=set)
     """Agent projects this Host admitted a Session binding from, for a workspace kept outside
     them; found again after a restart by the next bind or milestone (FLOW-1)."""
+    autobound: set[tuple[str, str]] = field(default_factory=set)
+    """The Sessions this Host checked for a binding, once each per run (AUTOBIND)."""
+    goals_named: set[tuple[str, str, str]] = field(default_factory=set)
+    """Each Session and goal whose holding this Host filed, once per run (STOPS-1)."""
 
     observer_failures: int = field(default=0, init=False)
     last_observer_failure: str | None = field(default=None, init=False)
@@ -705,6 +733,12 @@ class PortfolioResearchOperations:
                 or not observed_operation(request.operation)
                 else self.goals.attributed_goal(provenance)
             )
+            if goal is None and _opens_goal(request.operation, provenance):
+                goal = self._open_session_goal(request.operation, provenance)
+            if not request.operation.startswith("GOAL_"):
+                # Before the work, which may deliver to the Session's binding (AUTOBIND).
+                self._autobind(provenance, goal)
+                self._name_goal(provenance, goal)
         except ValueError as error:
             # A request naming a goal it cannot count toward is refused before it runs.
             code = public_failure(error, "goal.refused")
@@ -718,13 +752,22 @@ class PortfolioResearchOperations:
             )
         if goal is None:
             # Every refusal leaves with its words and a way on (OP4, V449).
-            return worded_refusal(
+            answered = worded_refusal(
                 _carried(
                     self._execute_observed(request, caller=caller, agent_execution=agent_execution),
                     request,
                 ),
                 workspace=self.workspace_session.workspace,
             )
+            if request.operation.startswith("GOAL_"):
+                # After a goal's own operation, so the bound fact is filed under it.
+                held = None
+                if request.operation in {"GOAL_OPEN", "GOAL_TAKE"}:
+                    with suppress(Exception):
+                        held = self.goals.attributed_goal(provenance)
+                self._autobind(provenance, held)
+                self._name_goal(provenance, held)
+            return answered
         delegation = self.goals.delegation(goal, request.operation, caller)
         scope = REQUEST_PROVENANCE.set(
             replace(
@@ -751,6 +794,158 @@ class PortfolioResearchOperations:
         return worded_refusal(
             _carried({**body, "attributed_goal_id": str(goal.goal_id)}, request),
             workspace=self.workspace_session.workspace,
+        )
+
+    def _open_session_goal(
+        self, operation: str, provenance: RequestProvenance | None
+    ) -> Goal | None:
+        """Open a goal for an identified Session's first research request when it holds none.
+
+        Under the person's hands-off rule the work is recorded from the first call: the goal
+        names the request that began it, and the Session holds it as `goal open` would. The
+        Session may open its own goal, the person's sentence for a first use, to replace it.
+        Nothing here refuses the request (AUTOBIND).
+        """
+        assert provenance is not None and provenance.vendor is not None
+        command = GRAMMAR[operation]
+        name = "Claude Code" if provenance.vendor == "claude-code" else "Codex"
+        declaration = {
+            "title": f"Session work: {command.noun} {command.verb}",
+            "objective": (
+                f"The work this {name} session began with `{command.noun} {command.verb}`: "
+                f"{command.purpose}"
+            )[:2400],
+            "kind": "RESEARCH",
+            "scope": (
+                "Opened by the Host at the session's first research request, which held no "
+                "goal; the session may open its own goal to replace it."
+            ),
+            "criteria": [
+                {
+                    "criterion_id": "recorded",
+                    "text": "The session's requests, Tasks and results are recorded here.",
+                }
+            ],
+        }
+        try:
+            opened = self.goals.operate(
+                PortfolioResearchOperationRequest(
+                    operation="GOAL_OPEN", goal_declaration=declaration
+                ),
+                "EXTERNAL_AUTOMATION",
+                provenance,
+            )
+            if opened.get("status") != "GOAL_SAVED":
+                return None
+            return self.goals.store.head(UUID(str(opened["goal_id"])))
+        except Exception:
+            return None
+
+    def _autobind(self, provenance: RequestProvenance | None, goal: Goal | None = None) -> None:
+        """Bind the Session a request names, once, when nothing binds it to this workspace.
+
+        A Session is bound by working: no `session bind`, no configure. The binding lives in
+        the workspace, the bound fact names the Session in Team and its Goal from the first
+        call, and its usage is read in the background. A Codex child binds its lead. A goal
+        the Session already holds is named by the same fact (STOPS-1). Any failure leaves the
+        request as it is (AUTOBIND).
+        """
+        if provenance is None or provenance.vendor not in HOSTS or not provenance.session:
+            return
+        key = (provenance.vendor, provenance.session)
+        if key in self.autobound:
+            return
+        self.autobound.add(key)
+        workspace = Path(self.workspace_session.workspace)
+        try:
+            if self._served(key, workspace):
+                return
+            above = None
+            with suppress(NativeBridgeError):
+                above = session_project(workspace.resolve(), key[0])
+            root, lead = autobind_session(workspace, *key, project=above)
+            if above is not None:
+                self.native_projects.add(above)
+            self.autobound.add((key[0], lead))
+            binding = NativeResearchBinding.read(root, session=(key[0], lead))
+            observer = self.observer
+            if binding is not None and observer is not None:
+                file_bound_fact(
+                    root,
+                    binding,
+                    at=self.dispatcher.clock(),
+                    publish=lambda document: self.declare_event(observer, document),
+                    goal_hash=None if goal is None else goal.goal_hash,
+                )
+                if goal is not None:
+                    self.goals_named.add((*key, str(goal.goal_id)))
+        except Exception:
+            return
+        if self.read_native_usage is not None:
+            threading.Thread(target=self.read_native_usage, daemon=True).start()
+
+    def _name_goal(self, provenance: RequestProvenance | None, goal: Goal | None) -> None:
+        """File, once, the goal a bound Session holds, so its Sessions row reads it (STOPS-1).
+
+        A goal the Host opened for the Session, or one it opened or took itself, is named by
+        the same product fact as its binding; the Session never has to declare it. Any
+        failure leaves the request as it is.
+        """
+        observer = self.observer
+        if (
+            observer is None
+            or provenance is None
+            or provenance.vendor not in HOSTS
+            or not provenance.session
+            or goal is None
+        ):
+            return
+        with suppress(Exception):
+            key = (provenance.vendor, provenance.session, str(goal.goal_id))
+            if key in self.goals_named:
+                return
+            self.goals_named.add(key)
+            workspace = Path(self.workspace_session.workspace)
+            found = self._session_binding((provenance.vendor, provenance.session), workspace)
+            if found is not None:
+                file_bound_fact(
+                    *found,
+                    at=self.dispatcher.clock(),
+                    publish=lambda document: self.declare_event(observer, document),
+                    goal_hash=goal.goal_hash,
+                )
+
+    def _session_binding(
+        self, session: tuple[str, str], workspace: Path
+    ) -> tuple[Path, NativeResearchBinding] | None:
+        """This exact Session's binding of this workspace, wherever it is kept.
+
+        The configured project above the workspace, a project this Host admitted, or the
+        workspace's own folder where the Host bound the Session itself (AUTOBIND).
+        """
+        projects: list[Path] = []
+        with suppress(NativeBridgeError):
+            above = session_project(workspace.resolve(), session[0])
+            admitted_session_project(workspace, above, session[0])
+            projects.append(above)
+        projects.extend(sorted(self.native_projects))
+        projects.append(autobind_root(workspace))
+        for project in projects:
+            with suppress(NativeBridgeError, OSError):
+                binding = NativeResearchBinding.read(project, session=session)
+                if binding is not None and binding.workspace.resolve() == workspace.resolve():
+                    return project, binding
+        return None
+
+    def _served(self, session: tuple[str, str], workspace: Path) -> bool:
+        """Whether a binding of this Session, or of its lead, already serves this workspace."""
+        projects = {autobind_root(workspace), *self.native_projects}
+        with suppress(NativeBridgeError):
+            projects.add(session_project(workspace.resolve(), session[0]))
+        return any(
+            binding.workspace.resolve() == workspace.resolve() and binding.serves(session)
+            for project in projects
+            for binding in NativeResearchBinding.bindings(project)
         )
 
     def _delegating_goal(self) -> Goal | None:
@@ -1053,7 +1248,7 @@ class PortfolioResearchOperations:
             return self.upgrade(request)
         if request.operation == "RESEARCH_HISTORY":
             try:
-                return ResearchHistory(
+                answer = ResearchHistory(
                     self.workspace_session,
                     self.experiments,
                     None if self.application is None else self.application.pipeline,
@@ -1070,6 +1265,31 @@ class PortfolioResearchOperations:
                     entry_id=request.history_entry_id,
                     installed_packages=tuple(self._packages),
                 )
+                if "entries" not in answer:
+                    return answer
+                records = self.workspace_session.task_control_registry.record_collection().records
+                attention = self.supervisor.attention(records)
+                by_id = {record.task_id: record for record in records}
+                for entry in cast("list[dict[str, Any]]", answer["entries"]):
+                    if entry["task_id"] is not None:
+                        task_id = UUID(entry["task_id"])
+                        fact = attention.get(task_id)
+                        if fact is not None:
+                            entry["attention"] = fact.model_dump(mode="json")
+                        record = by_id.get(task_id)
+                        if record is not None:
+                            entry["task_kind"] = record.task_kind
+                            entry["task_record_hash"] = record.record_hash
+                        if (
+                            record is not None
+                            and record.failure_code == "task_control.ledger_rebuilt"
+                        ):
+                            entry["detail"] = stop_detail(
+                                record.task_kind, record.failure_code, "TASK_CONTROL"
+                            )
+                            if self._task_replan(record) is not None:
+                                entry["stop_next"] = LEDGER_REBUILT_NEXT
+                return answer
             except (ValueError, KeyError, OSError) as error:
                 return {
                     "status": "REFUSED",
@@ -1590,13 +1810,12 @@ class PortfolioResearchOperations:
             return unavailable("history_unavailable", "native_history")
         observer = self.observer
         workspace = self.workspace_session.workspace
-        project = session_project(workspace, run.host)
-        admitted_session_project(workspace, project, run.host)
-        binding = NativeResearchBinding.read(
-            project, session=(original_session.vendor, original_session.session_id)
+        found = self._session_binding(
+            (original_session.vendor, original_session.session_id), Path(workspace)
         )
-        if binding is None or binding.workspace.resolve() != workspace.resolve():
+        if found is None:
             return unavailable("binding_mismatch", "native_binding")
+        project, binding = found
         result = deliver_accepted_answer(
             project,
             binding,
@@ -2213,7 +2432,8 @@ class PortfolioResearchOperations:
         """A person runs a reviewed research book's strategy forward, or stops it (LS1, OW12).
 
         As a person activates a model (OW11), every other caller is refused by name, before
-        anything else is asked.
+        anything else is asked. A first-use goal's delegation carries the activation of a book
+        with a published review, and only of one (STOPS-1); the person deactivates it.
         """
         if caller != "HUMAN":
             return cast(
@@ -2223,9 +2443,19 @@ class PortfolioResearchOperations:
             return cast(
                 dict[str, object], refused("strategy_activation.research_strategy_required")
             )
+        provenance = REQUEST_PROVENANCE.get()
         try:
             if request.operation == "STRATEGY_ACTIVATE":
                 assert request.task_id is not None
+                if (
+                    provenance is not None
+                    and provenance.delegation is not None
+                    and (
+                        self.review is None
+                        or self._book_review_standing(request.task_id)["status"] != "REVIEWED"
+                    )
+                ):
+                    raise ValueError("strategy_activation.review_required")
                 return self.activations.activate(request.task_id)
             assert request.strategy_package_id is not None
             return self.activations.deactivate(request.strategy_package_id)
@@ -3175,11 +3405,13 @@ class PortfolioResearchOperations:
         """
         if not self._packages:
             # No strategy is installed: the way forward begins at the research strategy's
-            # controls, which name each missing component's first step (V505, RR5).
+            # controls, which name each missing component's first step (V505, RR5). It is the
+            # first intent, the shortest way to positions, ahead of the inputs' Lab flows.
             return [
                 {
                     "flow": "RUN_FORWARD",
                     "status": "NO_RESEARCH_STRATEGY_INSTALLED",
+                    "detail": RUN_FORWARD_WORDS,
                     "next_requests": {
                         "strategy_controls": {"operation": "RESEARCH_STRATEGY_CONTROLS"}
                     },
@@ -3195,6 +3427,18 @@ class PortfolioResearchOperations:
                 and "next_requests" not in offer
                 and "held" not in offer
             ):
+                # Installed with no book yet: its whole-support book comes next (FLOW-3).
+                intents.append(
+                    {
+                        "flow": "RUN_FORWARD",
+                        "strategy_package_id": package_id,
+                        "status": "NO_BOOK_YET",
+                        "detail": INSTALLED_BOOK_WORDS,
+                        "next_requests": {
+                            "books": {"operation": "CONTROLS", "strategy_package_id": package_id}
+                        },
+                    }
+                )
                 continue
             intents.append(
                 {
@@ -3656,6 +3900,14 @@ class PortfolioResearchOperations:
         batch = self.workspace_session.task_control_registry.record_collection()
         tasks = batch.records
         task_refusals = [task_record_refusal(task_id) for task_id in batch.refused_task_ids]
+        goal_attribution = self.goals.decision_attribution()
+        for task in tasks:
+            if task.task_kind == CRO_REVIEW_TASK_KIND and (
+                goal_ids := goal_attribution.get(("task_id", str(task.task_id)))
+            ):
+                goal_attribution.setdefault(("review_key", task.input.input_hash), set()).update(
+                    goal_ids
+                )
         # The workspace's own state is its owners' answers, read in one boundary; a store a
         # writer holds leaves its part unread rather than read as empty (V45).
         owners: dict[str, dict[str, object]] = {}
@@ -3694,6 +3946,7 @@ class PortfolioResearchOperations:
                 "delegated_steps": self.goals.record(first).get("delegated_steps", []),
             },
             tasks=tasks,
+            goal_attribution=goal_attribution,
             attention=self.supervisor.attention(tasks),
             awaiting=awaiting,
             data_issues=all_data_issues(
@@ -3709,7 +3962,14 @@ class PortfolioResearchOperations:
         )
         if task_refusals:
             cast(list[dict[str, Any]], answer["decisions"]).extend(
-                {"kind": "TASK_RECORD_UNREADABLE", **item} for item in task_refusals
+                # An unreadable record is a defect the agent reads and repairs (STOPS-1).
+                {
+                    "kind": "TASK_RECORD_UNREADABLE",
+                    **item,
+                    "waits_on": "AGENT",
+                    "goal_ids": sorted(goal_attribution.get(("task_id", item["task_id"]), ())),
+                }
+                for item in task_refusals
             )
             cast(dict[str, int], answer["counts"])["TASK_RECORD_UNREADABLE"] = len(task_refusals)
             answer["detail"] = task_refusals[0]["detail"]
@@ -3894,7 +4154,7 @@ class PortfolioResearchOperations:
             if not choices
             else cast(dict[str, object], cast(Any, owner).replan_request(task))
         )
-        if declared.preview != declared.admitting and task.lifecycle in {
+        if task.lifecycle in {
             TaskLifecycle.BLOCKED,
             TaskLifecycle.CANCELLED,
             TaskLifecycle.RECOVERY_REQUIRED,
@@ -3977,11 +4237,10 @@ class PortfolioResearchOperations:
                 source_id, code="portfolio_research.recovery_request_not_offered"
             )
         declaration, _owner = owned
-        if (
-            declaration.preview is None
-            or declaration.preview == declaration.admitting
-            or request.operation not in {declaration.preview, declaration.admitting}
-        ):
+        if declaration.preview is None or request.operation not in {
+            declaration.preview,
+            declaration.admitting,
+        }:
             return self._stale_recovery_context(
                 source_id, code="portfolio_research.recovery_request_not_offered"
             )
@@ -3998,6 +4257,17 @@ class PortfolioResearchOperations:
                     return self._stale_recovery_context(
                         source_id, code="portfolio_research.recovery_request_not_offered"
                     )
+                if declaration.preview == declaration.admitting:
+                    try:
+                        registry.record_recovery_link(
+                            source_task_id=source.task_id,
+                            source_record_hash=source.record_hash,
+                            admission_request=cast(dict[str, Any], normalized),
+                            observed_at=self.dispatcher.clock(),
+                        )
+                    except (TaskVersionStale, TaskTransitionRejected):
+                        return self._stale_recovery_context(source_id)
+                    return source, declaration, False, normalized
                 return source, declaration, True, normalized
         except (KeyError, TypeError, ValueError, ValidationError):
             return self._stale_recovery_context(
@@ -4082,6 +4352,12 @@ class PortfolioResearchOperations:
         self, source: TaskRecord, declaration: TaskReplan, body: dict[str, object]
     ) -> dict[str, object]:
         """Persist each actual filled admission request and carry its exact source pair."""
+        if declaration.preview == "WORKSPACE_PREPARE_PLAN" and body.get(
+            "predecessor_task_id"
+        ) != str(source.task_id):
+            return self._stale_recovery_context(
+                source.task_id, code="portfolio_research.recovery_request_not_offered"
+            )
         next_requests = body.get("next_requests")
         if next_requests is None:
             return body
@@ -4443,6 +4719,7 @@ class PortfolioResearchOperations:
     ) -> dict[str, object]:
         return {
             **task_status_body(value),
+            "task_record_hash": value.task_record_hash,
             **({"attention": attention.model_dump(mode="json")} if attention is not None else {}),
             **(
                 {"detail": stop_detail(value.task_kind, value.latest_failure_code, "TASK_CONTROL")}
@@ -5109,12 +5386,15 @@ class PortfolioResearchOperations:
             "last_task": None if last_task is None else last_task.model_dump(mode="json"),
             "last_model_fits": None if last_fits is None else last_fits.model_dump(mode="json"),
             "guidance": (
-                "auto takes the processors not in use when a preparation or a Task starts. Set "
-                "a number of cores only when the user asks or the machine is busy with other "
-                "work. A budget changes how fast work runs, never what it computes: a book's "
+                "auto takes the processors not in use when a preparation or a Task starts. "
+                "Before a heavy Task the agent keeps auto unless the machine is busy with other "
+                "work or small; then it sets a number of cores itself, without asking, and says "
+                "in one line what it set and how to change it. A budget changes how "
+                "fast work runs, never what it computes: a book's "
                 "model sessions prove the retrieval canary when they load, a Task's DuckDB and "
                 "Arrow reads give the same values at any count, and an Alpha study's LightGBM "
-                "fits prove their canary at the count they run on. tasks_waiting sets how many "
+                "fits prove their canary at the count they run on. The agent never changes a "
+                "study's model, window or bounds to save time. tasks_waiting sets how many "
                 "Tasks may wait behind the running one (auto: one place per four processors); a "
                 "request past the last place is refused before its planning work, and a Task "
                 "waiting for its recovery holds no running place."
@@ -5422,7 +5702,7 @@ class PortfolioResearchOperations:
         if request.operation == "WORKSPACE_SHOW":
             # The first read is the path: every standard flow on each input, what it needs,
             # holds and asks next, each request ready to send (V376).
-            body["intents"] = [*self.experiments.intents(), *self._forward_intents()]
+            body["intents"] = [*self._forward_intents(), *self.experiments.intents()]
             return body
         contracts: dict[str, dict[str, object]] = {}
         for operation in OPERATIONS:
@@ -5802,6 +6082,19 @@ def _request_fields(request: PortfolioResearchOperationRequest, *left: str) -> d
         and isinstance(value := getattr(request, item.name), str | int | float | UUID)
         and not isinstance(value, bool)
     }
+
+
+def _opens_goal(operation: str, provenance: RequestProvenance | None) -> bool:
+    """Whether this request is an identified Session's research request that opens a goal."""
+    return (
+        provenance is not None
+        and provenance.vendor in HOSTS
+        and bool(provenance.session)
+        and provenance.goal_id is None
+        and not operation.startswith("GOAL_")
+        and observed_operation(operation)
+        and operation not in {"EVENT_DECLARE", "SESSION_USAGE_READ", "USAGE_READING_SET"}
+    )
 
 
 def _risk_controls(workspace: Path, document: Mapping[str, Any]) -> dict[str, object]:

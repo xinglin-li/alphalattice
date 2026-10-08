@@ -142,8 +142,10 @@ class _CycleHold:
     the Feature phase and a diagnoser call is a few dozen small reads and
     short transactions that used to open, read the metadata of and checkpoint
     the workspace database each. Taken once, the instance serves them all;
-    each network edge releases it first and takes it again afterwards, so
-    nothing is held while the process waits on the outside world. The gate is
+    each network edge releases it first and takes it again afterwards, so the
+    gate is never held while the process waits on the outside world (a stage
+    that retains the instance itself, as the data update does, keeps it open
+    across the edge; writable, that is no lock). The gate is
     taken first so no other thread can wait on this thread's gate while this
     thread waits on their connection mode.
     """
@@ -953,6 +955,20 @@ class WorkspaceMaintenanceCoordinator:
                     change_set=maintenance_change_set,
                 )
 
+        if not sector_available:
+            # A candidate recheck whose candidates still have no Sector keeps them quarantined
+            # without refreshing every member's Sector or building the Features twice.
+            applied, refused = self._candidate_only_sector_recheck(request, observed_at=now)
+            if applied:
+                return self._finish(
+                    cycle.cycle_id,
+                    phase=MaintenancePhase.FEATURE,
+                    status=MaintenanceStatus.BLOCKED if refused else MaintenanceStatus.RUNNING,
+                    observed_at=now,
+                    failure_code=refused or "sector.recoverable_exclusion_applied",
+                    change_set=maintenance_change_set,
+                )
+
         # The Feature phase reaches the Provider (SPY) and its own worker
         # threads; the hold must not span it.
         hold.release()
@@ -1072,6 +1088,26 @@ class WorkspaceMaintenanceCoordinator:
             )
         if quality_change is not None:
             invalidations = (*invalidations, quality_change)
+        current_members = {item.listing_id for item in self.manifest.listings}
+        if any(
+            item.listing_id is not None and item.listing_id not in current_members
+            for item in invalidations
+        ):
+            axis, _scopes = self.feature_foundation._axis_listings()
+            requested = self.market_data.load_universe_manifest_revision(
+                request.membership_revision
+            )
+            # A saved candidate can fail qualification without ever joining the
+            # Panel's axis. Historical members keep their owed source work;
+            # unknown names remain for the Feature owner's refusal.
+            never_admitted = {item.listing_id for item in requested.listings} - {
+                item.listing_id for item in axis
+            }
+            invalidations = tuple(
+                item
+                for item in invalidations
+                if item.kind == "panel_binding_change" or item.listing_id not in never_admitted
+            )
         if (
             not invalidations
             and active_panel is not None
@@ -1573,11 +1609,84 @@ class WorkspaceMaintenanceCoordinator:
         )
         return MaintenanceStatus.RUNNING, "feature.baseline_qualification_applied"
 
+    def _candidate_only_sector_recheck(
+        self, request: WorkspaceMaintenanceRequest, *, observed_at: datetime
+    ) -> tuple[bool, str | None]:
+        """Recheck only the candidates' Sector while the members' Sector is current.
+
+        A candidate recheck works on the active membership plus its candidates, a revision no
+        Sector reference covers, so the Feature build refreshed every member's Sector (one
+        provider call a listing) to learn the candidates', and built again over the reduction
+        when a candidate still had none. While the active membership holds a complete Sector
+        revision inside its refresh interval, only the candidates are fetched. When none of
+        them has a Sector, they stay quarantined by the recoverable exclusion over the members'
+        carried evidence, which keeps its observation time; the answer is (True, its refusal or
+        None). Every other case answers (False, None) and the full refresh runs as before: no
+        recheck, a stale or incomplete reference, a candidate outside the recheck, a provider
+        failure other than a missing Sector, a candidate that now has a Sector, or a reduction
+        that would not be the active membership.
+        """
+        scope = request.candidate_recheck
+        if scope is None or self.feature_input is None:
+            return False, None
+        working = self.manifest
+        active = self.market_data.load_universe_manifest_revision(request.membership_revision)
+        member_ids = {item.listing_id for item in active.listings}
+        candidates = tuple(item for item in working.listings if item.listing_id not in member_ids)
+        if (
+            not candidates
+            or not member_ids < {item.listing_id for item in working.listings}
+            or not {item.listing_id for item in candidates} <= set(scope.listing_ids)
+            or self.feature_state.current_sector_state(active) is None
+            or self.feature_state.sector_revision_refresh_due(active, observed_at=observed_at)
+            or self._sector_reduced_manifest(working, tuple(sorted(member_ids))).revision_sha256
+            != active.revision_sha256
+        ):
+            return False, None
+        evidence = self.feature_state.bindable_sector_evidence(active)
+        observed = self.feature_foundation.observe_candidate_sectors(candidates)
+        if evidence is None or observed is None:
+            return False, None
+        observations, failures, provider_wide = observed
+        if (
+            provider_wide
+            or observations
+            or set(failures) != {item.listing_id for item in candidates}
+            or any(
+                item["failure_code"] != "sector.missing_current_sector"
+                for item in failures.values()
+            )
+        ):
+            return False, None
+        return True, self._apply_sector_partial_exclusion(
+            request=request, observed_at=observed_at, carried=evidence.observations
+        )
+
+    def _sector_reduced_manifest(
+        self, parent: UniverseManifest, admitted_ids: tuple[str, ...]
+    ) -> UniverseManifest:
+        """The membership a Sector exclusion leaves: the parent's admitted listings."""
+        assert self.feature_input is not None
+        # The parent's obligations are kept and the Sector requirement is
+        # added by name; the identity is the set, so re-satisfying it over the
+        # same listings is the same manifest.
+        return build_quality_filtered_research_manifest(
+            parent,
+            eligible_listing_ids=admitted_ids,
+            qualification_obligations=(
+                qualification_obligation(
+                    "feature_input_policy", self.feature_input.gateway.policy.policy_hash
+                ),
+                qualification_obligation("sector", "YAHOO_CURRENT_SECTOR:require_nonempty"),
+            ),
+        )
+
     def _apply_sector_partial_exclusion(
         self,
         *,
         request: WorkspaceMaintenanceRequest,
         observed_at: datetime,
+        carried: tuple[Mapping[str, object], ...] | None = None,
     ) -> str | None:
         """Quarantine unadmitted Sector candidates and activate a safe subset.
 
@@ -1589,13 +1698,20 @@ class WorkspaceMaintenanceCoordinator:
         safe reduction exists, the data cause when the reduction could not
         bind its evidence because members failed the day's refresh, and the
         evidence shortfall when it could not bind for another reason.
+
+        ``carried`` is the active members' Sector evidence when only the candidates were
+        rechecked: the reduction is then the active membership, which keeps its revision.
         """
 
         if self.feature_input is None:
             return "sector.partial_current_sector"
         observed_at = self._utc(self.clock() if self.clock is not None else observed_at)
         parent = self.manifest
-        observations = self.feature_state.staged_sector_observations(parent.revision_sha256)
+        observations = (
+            carried
+            if carried is not None
+            else self.feature_state.staged_sector_observations(parent.revision_sha256)
+        )
         observation_by_id = {str(item["listing_id"]): item for item in observations}
         expected_ids = {item.listing_id for item in parent.listings}
         admitted_ids = tuple(sorted(expected_ids & set(observation_by_id)))
@@ -1657,17 +1773,7 @@ class WorkspaceMaintenanceCoordinator:
             )
             for listing_id in excluded_ids
         )
-        # The parent's obligations are kept and the Sector requirement is
-        # added by name; the identity is the set, so re-satisfying it over the
-        # same listings is the same manifest.
-        reduced = build_quality_filtered_research_manifest(
-            parent,
-            eligible_listing_ids=admitted_ids,
-            qualification_obligations=(
-                qualification_obligation("feature_input_policy", policy.policy_hash),
-                qualification_obligation("sector", "YAHOO_CURRENT_SECTOR:require_nonempty"),
-            ),
-        )
+        reduced = self._sector_reduced_manifest(parent, admitted_ids)
         admission = FeatureInputAdmission.create(
             candidate_manifest_revision=parent.revision_sha256,
             admitted_listing_ids=admitted_ids,
@@ -1743,13 +1849,15 @@ class WorkspaceMaintenanceCoordinator:
             # payload seals no audit), or the evidence is otherwise missing,
             # expired or changed since the parent's audit.
             return self._refused_binding_cause(request, admitted_ids)
-        # Through the activation coordinator, as every activation: its map and receipt,
-        # the reclassifications' effective session among them, reach the ledger (V346).
-        self.feature_foundation.sector_activation.activate(
-            manifest=reduced,
-            observations=tuple(observation_by_id[item] for item in admitted_ids),
-            observed_at=observed_at,
-        )
+        if carried is None:
+            # Through the activation coordinator, as every activation: its map and receipt,
+            # the reclassifications' effective session among them, reach the ledger (V346).
+            # Carried evidence is the active membership's own revision, already activated.
+            self.feature_foundation.sector_activation.activate(
+                manifest=reduced,
+                observations=tuple(observation_by_id[item] for item in admitted_ids),
+                observed_at=observed_at,
+            )
         self.mutation_gate.run(
             self.feature_state.clear_sector_staging,
             parent.revision_sha256,

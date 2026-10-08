@@ -92,6 +92,94 @@ def goal_app(tmp_path):
     return app, opened, calls, body, tasks
 
 
+@pytest.mark.parametrize("selector", ["preview", "publication", "receipt", "case"])
+def test_goal_attribution_retains_exact_decision_selectors(
+    goal_app, monkeypatch, selector: str
+) -> None:
+    """UIFOLLOW: real request attribution supplies exact selectors, including reused Tasks;
+    equal declarations do not associate another Goal, and reading never fills legacy absence.
+    """
+    app, opened, _calls, _body, _tasks = goal_app
+    first = app.store.load(opened["goal_hash"])
+    task_id, plan_hash, publication_hash, case_token = (
+        str(UUID(int=20)),
+        "a" * 64,
+        "b" * 64,
+        "c" * 64,
+    )
+    request, body, exact = {
+        "preview": (
+            Request(operation="EXPERIMENT_PLAN"),
+            {"status": "PLANNED", "task_id": None, "plan_hash": plan_hash},
+            ("plan_hash", plan_hash),
+        ),
+        "publication": (
+            Request(operation="CRO_REVIEW"),
+            {"disposition": "REUSED_EXACT", "review_publication_hash": publication_hash},
+            ("review_publication_hash", publication_hash),
+        ),
+        "receipt": (
+            Request(operation="AGENT_ANSWER_SUBMIT", bundle_directory="bundle", agent_answer={}),
+            {"status": "ACCEPTED", "receipt": {"task_id": task_id}},
+            ("task_id", task_id),
+        ),
+        "case": (
+            Request(
+                operation="DATA_ISSUE_PREVIEW",
+                data_issue_case_token=case_token,
+                data_issue_evidence_hash="d" * 64,
+                data_issue_option_id="option",
+                data_issue_option_hash="e" * 64,
+            ),
+            {"status": "PREVIEWED"},
+            ("case_token", case_token),
+        ),
+    }[selector]
+    app.attribute(first, request, body, SESSION)
+    second = app.operate(
+        Request(operation="GOAL_OPEN", goal_id=UUID(int=2), goal_declaration=DECLARATION),
+        "HUMAN",
+    )
+    app.store.attribute(UUID(int=2), {"operation": request.operation, "task_id": None})
+    assert app.decision_attribution()[exact] == {str(first.goal_id)}
+    app.attribute(app.store.load(second["goal_hash"]), request, body, SESSION)
+    legacy = app.store.attributed(UUID(int=2))[0]
+    assert all(key not in legacy for key in ("plan_hash", "review_publication_hash", "case_token"))
+    before = {
+        path: path.read_bytes() for path in (app.store.content.root / "attribution").rglob("*.json")
+    }
+    reads: list[UUID] = []
+    original = app.store.attributed
+
+    def attributed(goal_id: UUID):
+        reads.append(goal_id)
+        return original(goal_id)
+
+    monkeypatch.setattr(app.store, "attributed", attributed)
+    assert app.decision_attribution()[exact] == {str(UUID(int=1)), str(UUID(int=2))}
+    assert reads == [UUID(int=1), UUID(int=2)], "each retained attribution is read once"
+    assert {path: path.read_bytes() for path in before} == before
+
+
+@pytest.mark.parametrize("malformed", ["entry", "selector"])
+def test_decision_attribution_preserves_the_named_corruption_refusal(goal_app, malformed) -> None:
+    """An unreadable retained attribution cannot become empty or guessed Goal membership."""
+    app, opened, _calls, _body, _tasks = goal_app
+    app.attribute(
+        app.store.load(opened["goal_hash"]),
+        Request(operation="CRO_REVIEW"),
+        {"review_publication_hash": "a" * 64},
+        SESSION,
+    )
+    entry = app.store.content.root / "attribution" / str(UUID(int=1)) / "00000000.json"
+    entry.write_text(
+        json.dumps([] if malformed == "entry" else {"operation": "CRO_REVIEW", "task_id": []}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=r"^goal\.attribution_invalid$"):
+        app.decision_attribution()
+
+
 def _attach(app, opened, reference_id="alpha"):
     return app.operate(
         Request(
@@ -1667,7 +1755,8 @@ def test_a_declared_event_reaches_its_goal_through_the_host(
     assert [(m["agent_id"], m["summary"]) for m in declared] == [(SESSION.session, "Costs first.")]
     assert record["open_assignments"] == []
     rows = _json(live, "/api/activity/external")["items"]
-    assert [row["payload"]["subject"]["goal_id"] for row in rows] == [goal_id]
+    # The declared event and the Host's bound fact for the Session, both filed under its goal.
+    assert {row["payload"]["subject"]["goal_id"] for row in rows} == {goal_id}
 
 
 def test_the_workbench_reaches_what_the_ui_pass_reads(live, tmp_path: Path):
@@ -1718,6 +1807,7 @@ def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
     """The research case page keeps working over goals until the UI pass (U23)."""
 
     from types import SimpleNamespace
+    from urllib.parse import parse_qs, urlsplit
 
     from alphalattice.interface.local_application.client import LocalResearchClient
     from tests.portfolio_strategy_lab.local_web_support import _json, _request
@@ -1755,8 +1845,11 @@ def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
     assert tuple(live.operations.workspace_session.task_control_registry.tasks()) == tasks
     client = object.__new__(LocalResearchClient)
     client.connection = SimpleNamespace(url=live.url)
+    client.goal = None
     url = client.selected_url({"operation": "GOAL_SHOW", "goal_hash": saved["case_hash"]}, goal)
     assert "/#" in url and saved["case_hash"] in url
+    assert parse_qs(urlsplit(url).fragment)["follow"] == ["goal:" + goal["goal"]["goal_id"]]
+    assert parse_qs(urlsplit(client.selected_url({}, {})).fragment)["follow"] == ["latest"]
     assert client.navigation({"operation": "GOAL_SHOW"}, goal)["kind"] == "goal"
 
 

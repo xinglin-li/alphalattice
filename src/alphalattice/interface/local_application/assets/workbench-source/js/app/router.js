@@ -20,6 +20,7 @@ function copyLink() {
 }
 function routeUrl(page, extra = {}) {
   const {theme: ignoredTheme, lang: ignoredLang, ...context} = extra;
+  for (const key of ['follow', 'follow_paused']) if (!Object.hasOwn(context, key) && hashParams().get(key)) context[key] = hashParams().get(key);
   if (page === 'history') Object.assign(context, {...historyRoute(), ...context});
   // An object's folder tabs keep the address the tab table requires, including a
   // Goal's exact revision. Explicit keys still clear or replace that object.

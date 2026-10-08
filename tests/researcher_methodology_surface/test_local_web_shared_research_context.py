@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -325,13 +326,21 @@ def test_shared_plan_is_navigable_and_visible_as_activity_without_execution(
     cursor = _json(host, "/api/activity")["cursor"]
     planned = _plan(host, _declaration(host, tmp_path / "shared.yaml", 20280101))
     plan_hash = planned["data"]["plan_hash"]
-    assert planned["local_web_url"].endswith(f"/?plan={plan_hash}")
+    planned_url = urlsplit(planned["local_web_url"])
+    assert parse_qs(planned_url.query) == {"plan": [plan_hash]}
+    goal_id = planned["data"].get("attributed_goal_id")
+    assert parse_qs(planned_url.fragment)["follow"] == [f"goal:{goal_id}" if goal_id else "latest"]
     client = LocalResearchClient(host.workspace)
     navigation = client.navigation({"operation": "EXPERIMENT_PLAN"}, planned["data"])
     assert navigation["kind"] == "shared_plan" and navigation["claim"] == "NAVIGATION_NOT_AUTHORITY"
-    assert client.navigation(
-        {"operation": "EXPERIMENT_PREVIEW_READBACK", "experiment_plan_hash": plan_hash}, {}
-    )["url"].endswith(f"/?plan={plan_hash}")
+    preview_url = urlsplit(
+        client.navigation(
+            {"operation": "EXPERIMENT_PREVIEW_READBACK", "experiment_plan_hash": plan_hash}, {}
+        )["url"]
+    )
+    assert parse_qs(preview_url.query) == {"plan": [plan_hash]}
+    follow_scope = f"goal:{client.goal}" if client.goal else "latest"
+    assert parse_qs(preview_url.fragment)["follow"] == [follow_scope]
     page = _json(host, f"/api/activity?after={cursor}")
     returned = [
         item

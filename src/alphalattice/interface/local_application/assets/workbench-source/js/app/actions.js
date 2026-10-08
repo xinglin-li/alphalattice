@@ -221,6 +221,7 @@ const PRODUCT_ACTIONS = {
     'task-scene': () => { LiveTasks.close(); navigate('overview'); },
     'task-update-scene': (id) => { LiveTasks.close(); navigate('data', id ? {update: id} : {}); },
     'task-cancel': (id) => LiveTasks.preview('cancel',id),
+    'task-close-unrecoverable': () => LiveTasks.previewUnrecoverable(),
     'task-recovery': (id) => LiveTasks.preview('recover',id),
     'task-commit': () => LiveTasks.commit(),
     'task-remedy': (value) => LiveTasks.previewRemedy(value),
@@ -256,6 +257,7 @@ const PRODUCT_ACTIONS = {
     'research-replan-shared': () => LiveResearch.replanShared(),
     'research-shared-dismiss': () => LiveResearch.dismissShared(),
     'activity-follow': (key) => LiveActivity.follow(key),
+    'activity-follow-again': () => LiveActivity.followAgain(),
     'activity-pin': () => LiveActivity.pin(),
     'team-open': (session) => LiveTeam.open(session),
     'team-select': (session) => LiveTeam.select(session),
@@ -302,8 +304,20 @@ const PRODUCT_ACTIONS = {
     'portfolio-risk-export': (hash) => LiveStudy.riskExport(hash, Data.subject()?.task_id),
     codex: () => copyText(JSON.stringify(currentContext(), null, 2) + '\n' + location.href),
 };
+// Only an addressed choice pauses the observer; automatic owner navigation stays independent.
+const NAVIGATION_ACTIONS = new Set([
+  'go', 'detail-back', 'facts', 'facts-open', 'record', 'proof-open', 'peek-open', 'inspector-tab',
+  'goal-list', 'goal-open', 'goal-evidence', 'goal-reference-retry', 'goal-continue', 'model-open', 'models-list', 'feature-research-open', 'feature-research-list',
+  'workspace-input', 'workspace-task', 'workspace-issue-open', 'workspace-version-open', 'workspace-current', 'workspace-stage',
+  'study-catalog', 'study-open', 'alpha-compare-open', 'study-foundations', 'study-foundation-open', 'study-factor-detail', 'study-risk-links', 'study-alpha-draft', 'study-portfolio-draft', 'study-foundation-draft',
+  'review-current', 'review-pin', 'review-live-item', 'review-source', 'review-step', 'review-next', 'review-use-task', 'review-role', 'review-read-cell', 'review-read-part', 'review-read-excerpts', 'review-questions', 'review-runs-all', 'review-use-packet',
+  'tasks', 'task', 'task-result', 'task-page', 'task-scene', 'task-update-scene', 'task-review-scene', 'feature-definitions', 'feature-open-plan', 'activity-open',
+  'team-open', 'team-select', 'team-actor', 'team-member-open', 'team-event', 'team-reveal', 'history-open', 'holding', 'portfolio-tab', 'portfolio-performance', 'session-prev', 'session-next', 'exact',
+  'research-inspect-shared', 'research-continue', 'research-portfolio-redraft',
+]);
 function dispatchAction(name, value) {
   try {
+    if (NAVIGATION_ACTIONS.has(name) && typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.();
     if (Window.openedBy(name, value)) return Promise.resolve(Window.closeDetail()); // law 149: the press that opened the detail in view closes it
     const action = PRODUCT_ACTIONS[name] || (READ_ACTIONS.has(name) ? ACTIONS[name] : null);
     // a press inside an open detail that opens another object in it keeps the level it left (LS5; Window.trailAfter)
@@ -331,7 +345,7 @@ const Events = (() => {
       Window.notePress(b); // inside an open detail or not: a level down, or a new detail
       e.preventDefault(); dispatchAction(b.dataset.action, b.dataset.value); return;
     }
-    if (e.target.closest('a[href^="#page="]')) closeDialog();
+    if (e.target.closest('a[href^="#page="]')) { if (typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.(); closeDialog(); }
   }
   function onInput(e) {
     if(e.target.id==='storageCap')return Settings.editStorageCap(e.target.value);
@@ -363,6 +377,7 @@ const Events = (() => {
     onInput(event); onChange(event);
   }
   function onChange(e) {
+    if (['reviewBook', 'reviewSavedPublication', 'reviewPreparedTask', 'studyAlphaComparisonTask', 'holdingsSession', 'compareSelect', 'workspaceInputFamily'].includes(e.target.id) && typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.();
     if(e.target.id==='featureSelection')return LiveFeatures.select(e.target.value);
     if (e.target.dataset?.filterName) { const name = e.target.dataset.filterName, v = Array.isArray(e.target.value) ? e.target.value.join(',') : e.target.value; return (name.startsWith('evidence-') ? LiveReview : Lobby).setFilter(name + ':' + v); }
     if (e.target.id==='workspaceInputFamily')return LiveWorkspace.changed('family',e.target.value);
@@ -497,6 +512,7 @@ const Events = (() => {
       }
     }, true);
     window.addEventListener('hashchange', () => {
+      if (typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.();
       Data.beginNavigation();
       stampEntry();
       hideToast();

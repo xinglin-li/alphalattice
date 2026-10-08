@@ -22,12 +22,14 @@ from alphalattice.interface.local_application.native_bridge import (
     HOSTS,
     PROJECT_DECLARATION_NAME,
     PROJECT_DECLARATION_SCHEMA,
+    SPAWN_HOPS,
     USAGE_READINGS,
     NativeBridgeError,
     NativeResearchBinding,
     declares_product,
     session_project,
 )
+from alphalattice.interface.local_application.native_usage import codex_thread_spawn
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PRODUCT_HOOK_MATCHER = "^alphalattice_.*$"
@@ -395,6 +397,31 @@ def _roles(host: str = "codex", root: Path | None = None) -> list[str]:
     return sorted(name for name in agents if name.startswith("alphalattice_"))
 
 
+def continue_here(project: Path, host: str) -> dict[str, Any]:
+    """How the session that installed AlphaLattice continues the research (STOPS-1).
+
+    A host loads AGENTS.md, the research Skill and the specialist cards on its own only in a
+    session started in the configured folder. The installing session reads the first two by
+    path and starts each specialist as a general subagent from its card, so a card's tool
+    limits hold there by instruction; `open_session` is the command for a session where the
+    host enforces them, offered as an option and never a step.
+    """
+    folder = project.resolve()
+    claude = host == "claude-code"
+    command = f'cd "{folder}"; claude' if claude else f'codex -C "{folder}"'
+    skill = folder / (".claude" if claude else ".agents") / "skills/alphalattice-research"
+    return {
+        "read": [str(folder / "AGENTS.md"), str(skill / "SKILL.md")],
+        "specialists": str(folder / (".claude/agents" if claude else ".codex/agents")),
+        "open_session": command,
+        "disclosure": (
+            "AlphaLattice is set up and the research continues in this session. Its specialists "
+            "start here from their cards as general subagents, so their tool limits hold by "
+            f"instruction; for limits the host enforces, open a session with `{command}`."
+        ),
+    }
+
+
 def declare_project(project: Path, host: str) -> None:
     """Write exact host-local project metadata; it grants neither trust nor native authorship."""
     if host not in HOSTS:
@@ -408,7 +435,13 @@ def declare_project(project: Path, host: str) -> None:
 
 
 def bind_session(
-    project: Path, *, host: str, session_id: str, workspace: Path, usage: str = "read"
+    project: Path,
+    *,
+    host: str,
+    session_id: str,
+    workspace: Path,
+    usage: str = "read",
+    roles: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     """Bind this exact host/Session without replacing another Session's workspace (V568).
 
@@ -420,6 +453,7 @@ def bind_session(
         session_id: The session, as its host names it.
         workspace: The workspace's folder.
         usage: ``off`` prevents native Session usage reads.
+        roles: The admitted specialist roles; the project's own cards when omitted.
 
     Returns:
         The binding as written, with its project.
@@ -442,7 +476,7 @@ def bind_session(
     document = {
         "session_id": session_id,
         "workspace": folder,
-        "roles": _roles(host, project),
+        "roles": list(roles) if roles is not None else _roles(host, project),
         "host": host,
         # Named only when off, so a binding written before the switch reads the same.
         **({"usage": "OFF"} if usage == "off" else {}),
@@ -515,6 +549,51 @@ def bind_session(
         "detail": preflight["detail"],
         "next_action": preflight["next_action"],
     }
+
+
+AUTOBIND_ROOT = Path("runtime") / "native-sessions"
+"""Where the Host keeps the bindings it makes itself, inside the workspace (AUTOBIND)."""
+
+
+def autobind_root(workspace: Path) -> Path:
+    """The workspace's own binding folder, read like a project's."""
+    return workspace / AUTOBIND_ROOT
+
+
+def autobind_session(
+    workspace: Path, host: str, session_id: str, *, project: Path | None = None
+) -> tuple[Path, str]:
+    """Bind the Session a request names to this workspace, with no step and no configure.
+
+    Under the person's hands-off rule a Session is bound by working: the Host writes the
+    binding in the workspace's own folder, with the product's shipped specialist roles and
+    reading on (the workspace switch still governs reading). A Codex child binds its lead,
+    found up its own rollout's spawn chain; a Claude Code subagent carries its lead's id.
+
+    Args:
+        workspace: The workspace the Session works on.
+        host: Its host.
+        session_id: The Session the request names.
+        project: The configured project above the workspace, where the binding is kept with
+            its own cards so commands from it may omit the workspace; else the
+            workspace's own folder with the shipped roles.
+
+    Returns:
+        The binding folder and the Session bound.
+    """
+    lead = session_id
+    if host == "codex":
+        for _ in range(SPAWN_HOPS):
+            spawn = codex_thread_spawn(lead)
+            if spawn is None:
+                break
+            lead = spawn.parent_thread_id
+    if project is not None:
+        bind_session(project, host=host, session_id=lead, workspace=workspace)
+        return project, lead
+    root = autobind_root(workspace)
+    bind_session(root, host=host, session_id=lead, workspace=workspace, roles=tuple(_roles(host)))
+    return root, lead
 
 
 def _configuration(host: str = "codex") -> None:
@@ -664,7 +743,12 @@ def main() -> int:
                 "host": args.host,
                 "retired_hook_groups_removed": removed,
                 "trust_changed": False,
-                "next": "Bind this project's Session to its research workspace.",
+                "next": (
+                    "Continue the research in this session: read the files in `read` by path, "
+                    "start each specialist from its card in `specialists`, and tell the person "
+                    "`disclosure` in one line."
+                ),
+                "continue_here": continue_here(ROOT, args.host),
             }
         elif args.command == "bind":
             result = bind_session(

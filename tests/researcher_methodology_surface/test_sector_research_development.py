@@ -60,6 +60,7 @@ from alphalattice.investment.sector_research.models.catalog import (
 from alphalattice.investment.sector_research.models.contracts import (
     INSUFFICIENT_MATURED_HISTORY,
     BoundSectorForecastInput,
+    sector_numerical_thread_policy,
 )
 from alphalattice.investment.sector_research.targets.execution import (
     build_sector_target_recipe,
@@ -133,6 +134,22 @@ def _bound_input(evidence, sessions, matrix, *, rows: int, formation_index: int 
 
 
 # ------------------------------------------------------------ unit-level cases
+
+
+def test_sector_numerical_thread_policy_refuses_a_pool_that_ignored_the_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "alphalattice.investment.sector_research.models.contracts.numerical_thread_pools",
+        lambda: [{"num_threads": 2}],
+    )
+    with (
+        pytest.raises(
+            SectorResearchError, match=r"^sector_research\.numerical_thread_policy_failed$"
+        ),
+        sector_numerical_thread_policy(),
+    ):
+        pytest.fail("The Sector numerical body must not run after a pool ignored its limit")
 
 
 def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else() -> None:

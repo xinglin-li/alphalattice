@@ -654,6 +654,10 @@ def test_a_holding_that_filed_nothing_is_counted_apart_and_never_as_no_risk() ->
         evidence_cro_body,
         project_published_review,
     )
+    from alphalattice.oversight.chief_risk_officer.decision.views import (
+        REVIEW_STATE_WORDS,
+        coverage_words,
+    )
 
     quiet = _issuer("QA99", weight_rank=9).model_copy(update={"review_state": "NOTHING_FILED"})
 
@@ -683,6 +687,12 @@ def test_a_holding_that_filed_nothing_is_counted_apart_and_never_as_no_risk() ->
         assert coverage["unreached_ending_weight"] == f"{unreached:.3%}"
         assert coverage["nothing_filed_window_days"] == 30
         assert coverage["accounted_ending_weight"] == f"{1.0 - unreached:.3%}"
+        # The agent's dossier reads the same partition in words: a quiet holding was checked
+        # and had nothing to read, never unread; only the unreached share is (FLOW-3).
+        words = coverage_words(dossier.coverage)
+        assert "they were checked and nothing was there to read, so they are not unread" in words[1]
+        assert f"Only {unreached:.2%} of the ending weight was not read." in words[1]
+        assert "Not unread" in REVIEW_STATE_WORDS["NOTHING_FILED"]
         return receipt, recommendation
 
     _receipt, complete = reviewed(0.0)

@@ -309,12 +309,25 @@ its line alone. *Held by:* `empty_census`, `workbench_dom.cjs`.
 
 **ST9. What needs you is counted where it is seen.** Home's Needs a decision is the one count of
 what waits on the person (`LiveViews.needs`): the dock's Home carries it, and Data its own share,
-as the warning counter before any neutral one (Tasks: the unfinished ones); the rail counts only
+as the warning counter before any neutral one (Tasks: only actual Task decisions); the rail counts only
 what needs you, 15 px on the glyph's top-right corner with the glyph masked away under it (a ring
 of a fixed colour bit the current item's fill); the document title leads with it as `(n) `. Nothing else feeds it and
-nothing is kept as read: it falls when the owner's record does. In the background a Task that
+nothing is kept as read: it falls when the owner's record does. An item explicitly waiting on
+the agent does not enter a person's count; an absent owner field keeps the person default.
+Activity updates carry the canonical Task version and retain an existing attention fact only
+for that same version. In the background a Task that
 ends is a system notification only when the viewer turned it on in Settings; the browser asks
-once and a refusal is said on that row. *Held by:* `workbench_activity.cjs`, review.
+once and a refusal is said on that row. An unrecoverable ledger-rebuilt stop holds no decision;
+its reason and Re-PLAN remain readable. A later successful admission of the exact Task kind
+and sealed plan, or the successful successor named by an exact recovery link, clears the old
+stop. Canonical admission order takes precedence over a clock reading. A changed plan needs
+that link. Tasks, History and Home show the successor once with the earlier stop folded
+beneath it. A review's NONE action retains its words and limits in the neutral state; it
+offers no way on and feeds no attention count (BADGE/U205). *Held by:* `workbench_activity.cjs`,
+`test_pending_decisions.py::test_only_a_later_successful_exact_plan_supersedes_a_blocked_task`,
+`test_pending_decisions.py::test_a_rebuilt_ledger_task_holds_no_decision_and_keeps_its_stopped_record`,
+`test_workbench_badge.py`,
+`test_workbench_review_publication.py::test_a_sealed_no_action_review_is_neutral_and_feeds_no_attention`, review.
 
 **ST10. One wire answer, each reader's own rule.** Callers of the same exact unfinished GET
 share one wire answer, consumed once; each applies its own strict or refusal reading. Different
@@ -327,6 +340,21 @@ A late continuation cannot navigate or rewrite the address after a newer address
 boot and History races), `workbench_read_collections.cjs` (refresh, Goal and Team races),
 `workbench_navigation_intent.cjs` (normal and late action continuations, including Facts and
 Record), collected by `test_workbench_readback.py::test_the_workbench_harnesses_pass`.
+
+**ST11. Following is the viewer's choice, scoped to the owner's work.** A Host launch and an
+exact result or person-decision answer retain `follow=goal:<Goal UUID>`, or `follow=latest`
+while no session Goal is known. The latest scope reads the workspace's latest active Goal;
+legacy `follow=<Task UUID>` remains an exact Task choice. Only owner-attributed Tasks and
+decisions can move a Goal follower: running progress, a finished result, a person decision,
+or an exact published review. Missing `waits_on` keeps the person default. One state change
+moves at most once. A temporarily unavailable decision read retries on the existing cadence,
+even without a new Task event; an exact input family and cutoff generation is a distinct state.
+Typing, an unsaved draft or a dialog holds the move; a late answer never
+overrides a newer choice. Manual navigation pauses following, retained across Reload and
+Back/Forward, with one `Follow again` control. This reuses the activity cadence and existing
+object readers, not a new polling or execution path (UIFOLLOW/U208). *Held by:*
+`test_workbench_goal_follow.py` (Task records through events into the real readers, state
+changes and controlled latency), and `test_launch_and_answer_links_follow_the_session_goal_through_the_real_browser`.
 
 ## FT. Figures and tables
 

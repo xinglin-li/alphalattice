@@ -6522,6 +6522,9 @@
 "native_bridge.binding_unreadable": {
 "owner": "native_bridge"
 },
+"native_bridge.child_not_a_specialist": {
+"owner": "native_bridge"
+},
 "native_bridge.child_usage_binding_unverified": {
 "owner": "native_bridge"
 },
@@ -12316,6 +12319,9 @@
 "owner": "strategy_activation"
 },
 "strategy_activation.research_strategy_required": {
+"owner": "strategy_activation"
+},
+"strategy_activation.review_required": {
 "owner": "strategy_activation"
 },
 "strategy_activation.schedule_unavailable": {

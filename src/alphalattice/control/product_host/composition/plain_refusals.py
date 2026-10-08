@@ -177,6 +177,11 @@ _STRATEGY_ACTIVATION_WORDS = {
         "Only an installed research strategy runs forward: prepare one from your Alpha and Risk "
         "studies and install it, then run and review its book."
     ),
+    "strategy_activation.review_required": (
+        "Under the first-use delegation an agent activates only a book with a published "
+        "Evidence and CRO review: review this book first, or ask the person to activate it on "
+        "Portfolio."
+    ),
     "strategy_activation.book_task_absent": "No Task has this id; `study list` names the books.",
     "strategy_activation.book_task_required": (
         "A strategy runs forward from one of its books: name a completed run of an installed "

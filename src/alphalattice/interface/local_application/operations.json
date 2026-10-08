@@ -1376,7 +1376,10 @@
    ]
   },
   "EXPERIMENT_VERIFY_ALL": {
-   "allowed": [],
+   "allowed": [
+    "recovery_task_hash",
+    "recovery_task_id"
+   ],
    "required": []
   },
   "EXPORT": {
@@ -2139,8 +2142,10 @@
   }
  },
  "first_use": [
+  "DATA_CHANGE_CONFIRM",
   "DATA_ISSUE_CONFIRM",
   "NETWORK_ACCESS_SET",
+  "STRATEGY_ACTIVATE",
   "WORKSPACE_PREPARE_CONFIRM"
  ],
  "flags": {

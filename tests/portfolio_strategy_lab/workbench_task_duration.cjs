@@ -27,7 +27,9 @@ function fixture({statusSource = read('status'), dataSource = read('data'), task
     Window: {render() {}, renderSide() {}, inspectorMode: () => inspector ? 'task' : '', openedBy: (kind, id) => kind === 'task' && inspector?.by[1] === id,
       openInspector: value => {inspector = value;}, setInspectorBody: body => {inspector.body = body;}},
     Inspect: {selectAddressMode: (kind, extra) => {for (const [key, value] of Object.entries(extra)) route.set(key, value);}, addressedMode: () => 'task', closeLens() {}},
-    LiveReview: {taskFinished() {}}, LiveViews: {nameOf: () => ({name: 'Labelled Task duration fixture'})},
+    LiveReview: {taskFinished() {}}, LiveViews: {nameOf: () => ({name: 'Labelled Task duration fixture'}),
+      // BADGE's successor and stop facts: this Task has neither.
+      taskSuccessor: () => '', taskAttentionFacts: () => ''},
     LiveActivity: {starterOf: () => '', logLines: () => [], retained: () => [], refresh: async () => {}, markSeen() {}},
     ROUTES: {tasks: ['Workspace', 'Tasks']}, html: () => '', t: key => key,
     fetch: async url => {

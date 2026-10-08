@@ -11,7 +11,7 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Final, cast
 
 import yaml  # type: ignore[import-untyped]
 
@@ -459,6 +459,16 @@ def prepare_factor_handoff(
     )
 
 
+MODEL_CHOICE_WORDS: Final = (
+    "The agent fills the open target, model and parameters within the person's bounds, "
+    "preferring the dynamic-panel LightGBM capability with light settings, and tells the "
+    "person in one line what it chose and how to change it; it does not stop to ask. A "
+    "research strategy's required Alpha study is planned from strategy controls and needs no "
+    "model choice."
+)
+"""Whose decision a handoff's open fields are (FLOW-3)."""
+
+
 def preview_factor_handoff(
     *,
     workspace: Path,
@@ -533,7 +543,11 @@ def preview_factor_handoff(
         ],
         "task": None,
         "numerical_call_count": 0,
+        # Whose decision the open fields are, in the answer itself (FLOW-3).
+        "choice_owner": "AGENT_DISCLOSES",
     }
+    if prepared.missing_fields:
+        result["detail"] = MODEL_CHOICE_WORDS
     if not prepared.missing_fields:
         sealed = prepared.workflow().prepare(
             prepared.document, actor_kind=ActorKind.HUMAN, actor_id="preview"

@@ -329,6 +329,17 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
         assert entry.main() == code
         result = json.loads(capsys.readouterr().out)
         assert result["status"] == status
+        if command == "configure":
+            # The installing session continues: it reads the guide and Skill by path, and a
+            # session the host enforces the cards in is an option it discloses (STOPS-1).
+            here = result["continue_here"]
+            assert here["read"] == [
+                str(project.resolve() / "AGENTS.md"),
+                str(project.resolve() / ".agents/skills/alphalattice-research/SKILL.md"),
+            ]
+            assert here["specialists"] == str(project.resolve() / ".codex/agents")
+            assert here["open_session"] == f'codex -C "{project.resolve()}"'
+            assert here["open_session"] in here["disclosure"]
         if command == "doctor":
             assert result["failure_code"] == "native_bridge.not_bound"
             assert {"alphalattice_evidence_analyst", "alphalattice_cro"} <= set(result["roles"])

@@ -75,8 +75,8 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
                 "operation": "RESEARCH_STRATEGY_PLAN",
                 "experiment_document": declaration.model_dump(mode="json"),
             }
-            # P3a binds composed recovery offers to this exact stopped Task version;
-            # the preparation owner still reads its original durable declaration.
+            # Every offered replan carries the exact stopped Task version; the owner
+            # keeps its normalized durable declaration separate from that context.
             recovery_source = {
                 "recovery_task_id": str(task.task_id),
                 "recovery_task_hash": task.record_hash,
@@ -84,9 +84,10 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
             for read in (
                 live.operations.recovery_view(task.task_id),
                 live.operations.status(task.task_id),
+                owner.readback(task.task_id),
             ):
                 assert read["next_requests"]["replan"] == {**expected, **recovery_source}
-            assert owner.readback(task.task_id)["next_requests"]["replan"] == expected
+            assert owner.replan_request(task) == expected
             recovery = live.operations.recovery_view(task.task_id)
             assert recovery["stop"]["detail"] == LEDGER_REBUILT_DETAIL
             assert recovery["verified_stage_count"] == 0
@@ -146,6 +147,15 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
             code, answer = cli("recovery", "show", str(task.task_id), "--output", str(saved))
             assert code == 2 and answer["data"]["lifecycle"] == "BLOCKED"
             assert answer["data"]["stop"]["detail"] == LEDGER_REBUILT_DETAIL
+            direct_saved = tmp_path / "strategy.json"
+            code, answer = cli(
+                "strategy", "show", "--task", str(task.task_id), "--output", str(direct_saved)
+            )
+            assert code == 2 and answer["data"]["status"] == "BLOCKED"
+            direct_readback = json.loads(direct_saved.read_text(encoding="utf-8"))
+            assert direct_readback["next_requests"]["replan"] == {**expected, **recovery_source}
+            assert direct_readback["detail"] == LEDGER_REBUILT_DETAIL
+            assert direct_readback["stop_next"] == LEDGER_REBUILT_NEXT
             original = registry.task(task.task_id)
             assert registry.recovery_links(task.task_id) == ()
             prepare_request = {
@@ -156,6 +166,8 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
                 (
                     ("strategy", "plan", "--from", str(saved)),
                     ("request", "--from", str(saved), "--action", "replan"),
+                    ("strategy", "plan", "--from", str(direct_saved)),
+                    ("request", "--from", str(direct_saved), "--action", "replan"),
                 )
             ):
                 preview_saved = tmp_path / f"replan-{index}.json"
@@ -171,7 +183,7 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
                 assert link.source_record_hash == original.record_hash
                 assert link.admission_request == prepare_request
                 assert link.successor_task_id is None
-            assert planned == [expected["experiment_document"]] * 2
+            assert planned == [expected["experiment_document"]] * 4
             assert registry.task(task.task_id) == original
             assert registry.tasks() == (original,)
     finally:

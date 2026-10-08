@@ -866,6 +866,52 @@ def test_goal_development_adapter_matches_frozen_linear_state(tmp_path: Path) ->
     assert estimator.content_hash != provenance.provenance_hash
 
 
+def test_a_formation_scope_verifies_each_sidecar_once_and_copies_the_estimator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """requirement (PERF-1 lever 5): one formation verifies a sidecar once, not once a use."""
+    from alphalattice.investment.alpha_research.experiments.development_artifacts import (
+        model_fit_sidecar_scope,
+    )
+
+    plan, workspace = _plan_and_workspace()
+    program = _program(plan.foundation, plan)
+    result = execute_alpha_model_batch(
+        program=program,
+        batch=_batch(program),
+        fold_plan=plan,
+        store=AlphaCurrentArtifactStore(tmp_path),
+        array_workspace=workspace,
+        model_mandate=build_current_alpha_research_model_mandate(),
+    )
+    store = AlphaCurrentArtifactStore(tmp_path)
+    numerical = store.load_candidate_numerical_fold_result(
+        result.candidates[0].numerical_result_hashes[0]
+    )
+    operation = numerical.execution_binding_hash
+    fresh = store.load_model_fit_sidecar(operation)
+    reads = 0
+    read_text = Path.read_text
+
+    def counted(path, *args, **kwargs):
+        nonlocal reads
+        if path.name == f"{operation}.json" and path.parent.name.startswith("model-fit-sidecar"):
+            reads += 1
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", counted)
+    with model_fit_sidecar_scope():
+        loads = [store.load_model_fit_sidecar(operation) for _ in range(3)]
+        loads[0][1].payload["mutated"] = True
+        after = store.load_model_fit_sidecar(operation)
+    assert reads == 1
+    assert all(load[0] == fresh[0] and load[2] == fresh[2] for load in loads)
+    assert loads[1][1] == fresh[1] and loads[1][1] is not loads[2][1]
+    assert "mutated" not in after[1].payload
+    store.load_model_fit_sidecar(operation)
+    assert reads == 2  # nothing survives the scope
+
+
 @pytest.mark.parametrize("mutation", ("missing", "operation_mismatch"))
 def test_goal_development_reuse_requires_complete_model_sidecar(
     tmp_path: Path,

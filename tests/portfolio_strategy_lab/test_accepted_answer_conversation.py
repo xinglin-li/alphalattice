@@ -626,9 +626,18 @@ def test_selected_product_return_reads_the_exact_accepted_contribution(
         not {"native_host", "native_session_id", "native_agent_id", "authorship_basis"}
         & detail.keys()
     )
-    assert scene.authored["text"] not in json.dumps(page)
+    # The operation rows carry no contribution text; a self-bound Session's Conversation row
+    # holds only its bounded preview (AUTOBIND).
+    operations = [item for item in page["items"] if item["schema_kind"] == PRODUCT_OPERATION_SCHEMA]
+    assert scene.authored["text"] not in json.dumps(operations)
     assert client.activity(limit=200)["items"] == page["items"]
-    assert client.read_external()["items"] == []
+    external = client.read_external()["items"]
+    if session is None:
+        assert external == []
+    else:
+        # The Session bound itself at this request: its bound fact and its delivered answer.
+        kinds = sorted(row["payload"]["subject"]["message_kind"] for row in external)
+        assert kinds == ["answer", "session_bound"]
     assert scene.live.session.task_control_registry.tasks() == (scene.task,)
 
 
@@ -1692,3 +1701,20 @@ def test_goal_retry_keeps_original_binding_or_stays_unbound(
         == "DELIVERED"
     )
     assert answers() == [row]
+
+
+def test_an_answer_from_a_session_that_bound_itself_is_delivered(product_answer_scene):
+    """regression (AX's REACCEPT, 2026-10-08 00:21): five accepted Analyst answers each read
+    `native_bridge.accepted_delivery_failed`, retries too: no configured project held a binding
+    of their Session. The submission's own request binds its Session first (AUTOBIND), so the
+    accepted answer is filed in its Conversation, and a retry is the same row."""
+    from alphalattice.interface.local_application.native_setup import autobind_root
+
+    scene = product_answer_scene
+    first, _row = scene.submit(session="self-bound-lead", vendor="codex")
+    assert first["status"] == "ACCEPTED"
+    assert first["conversation"]["status"] == "DELIVERED", first["conversation"]
+    root = autobind_root(scene.live.workspace)
+    assert NativeResearchBinding.read(root, session=("codex", "self-bound-lead")) is not None
+    retry, _row = scene.submit(session="self-bound-lead", vendor="codex")
+    assert retry["conversation"]["observation_id"] == first["conversation"]["observation_id"]

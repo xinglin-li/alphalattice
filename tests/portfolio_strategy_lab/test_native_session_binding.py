@@ -615,3 +615,107 @@ def test_only_a_person_turns_usage_reading_off_and_then_nothing_is_read(
     }
     assert person(True)["usage_reading"] == "READ"
     assert client.request({"operation": "SESSION_USAGE_READ"})["status"] == "NOT_BOUND"
+
+
+@pytest.mark.parametrize("host", ("codex", "claude-code"))
+def test_a_session_that_opens_a_goal_here_is_bound_without_a_separate_step(
+    live: LocalPortfolioWebSession, monkeypatch, host
+) -> None:
+    """requirement (FLOW-3, AX's REACCEPT of 2026-10-07): a fresh lead never ran `session
+    bind`, so its Sessions page stayed empty. A Session that opens a goal on a workspace
+    inside its configured project is bound by that request, with reading on; opening another
+    goal changes nothing, and the goal itself is unchanged by the binding."""
+    declaration = {
+        "title": "A study",
+        "objective": "Does the signal survive costs?",
+        "kind": "REVIEW",
+        "criteria": [{"criterion_id": "done", "text": "The review is recorded."}],
+        "deliverables": [{"deliverable_id": "result", "kind": "RESULT", "description": "It"}],
+    }
+
+    project = _project(live, host)
+    _session(monkeypatch, host)
+    assert NativeResearchBinding.read(project, session=(host, "fixture-parent")) is None
+    client = LocalResearchClient(live.workspace)
+    opened = client.request({"operation": "GOAL_OPEN", "goal_declaration": declaration})
+    assert opened["status"] == "GOAL_SAVED", opened
+    binding = NativeResearchBinding.read(project, session=(host, "fixture-parent"))
+    assert binding is not None and binding.workspace == live.workspace.resolve()
+    assert binding.usage == "READ"
+    record = binding.record_path(project).read_bytes()
+    again = client.request(
+        {"operation": "GOAL_OPEN", "goal_declaration": {**declaration, "title": "Another"}}
+    )
+    assert again["status"] == "GOAL_SAVED", again
+    assert binding.record_path(project).read_bytes() == record
+
+
+@pytest.mark.parametrize("host", ("codex", "claude-code"))
+def test_one_research_command_binds_the_session_and_opens_its_goal(
+    live: LocalPortfolioWebSession, monkeypatch, capsys, host
+) -> None:
+    """requirement (AUTOBIND, the person's report and AX's REACCEPT of 2026-10-07): with no
+    `session bind`, no configure and no goal, Sessions stayed empty. A shell that names only
+    its host session runs one ordinary research command: the Host binds that Session in the
+    workspace, names it in the activity Team reads, opens a goal for it, and the goal's
+    Conversation shows the request. A second command binds and opens nothing new."""
+    from alphalattice.interface.local_application.native_setup import autobind_root
+
+    _session(monkeypatch, host, "fixture-lead")
+    line = ["--workspace", str(live.workspace), "cpu-budget", "set", "--queue", "2"]
+    assert cli.main(line, serve=lambda _: 99) == 0
+    capsys.readouterr()
+    root = autobind_root(live.workspace)
+    binding = NativeResearchBinding.read(root, session=(host, "fixture-lead"))
+    assert binding is not None and binding.workspace == live.workspace.resolve()
+    assert binding.usage == "READ"
+    client = LocalResearchClient(live.workspace)
+    bound = [
+        row
+        for row in client.read_external()["items"]
+        if row["payload"]["subject"].get("message_kind") == "session_bound"
+    ]
+    assert [row["payload"]["subject"]["native_session_id"] for row in bound] == ["fixture-lead"]
+    goals = client.request({"operation": "GOAL_LIST"})["goals"]
+    assert len(goals) == 1, goals
+    record = client.request({"operation": "GOAL_SHOW", "goal_id": goals[0]["goal_id"]})["record"]
+    requests = [
+        row for row in record["conversation"] if row.get("input_channel") == "PRODUCT_OPERATION"
+    ]
+    # The Conversation shows the binding, then the request, both the Session's.
+    assert [row["message_kind"] for row in requests] == ["session_bound", "CPU_BUDGET_SET"]
+    assert requests[1]["agent_session"] == "fixture-lead"
+    assert bound[0]["payload"]["subject"]["goal_id"] == goals[0]["goal_id"]
+    # The fact names the goal the Session holds, as its Sessions row reads it (STOPS-1).
+    held = client.request({"operation": "GOAL_SHOW", "goal_id": goals[0]["goal_id"]})
+    assert bound[0]["payload"]["subject"]["reference"] == f"case:{held['goal']['goal_hash']}"
+    record_bytes = binding.record_path(root).read_bytes()
+    assert cli.main(line, serve=lambda _: 99) == 0
+    capsys.readouterr()
+    assert len(client.request({"operation": "GOAL_LIST"})["goals"]) == 1
+    assert binding.record_path(root).read_bytes() == record_bytes
+
+
+def test_a_session_bound_by_a_read_names_the_goal_its_first_request_opens(
+    live: LocalPortfolioWebSession, monkeypatch, capsys
+) -> None:
+    """regression (STOPS-1, the Tech Lead's live check of 2026-10-08): a Session bound by its
+    first read held no goal, and when its next request opened one its Sessions row still read
+    "No research question is declared". The Host now names the goal once it is held."""
+    _session(monkeypatch, "claude-code", "fixture-reader")
+    assert (
+        cli.main(["--workspace", str(live.workspace), "workspace", "show"], serve=lambda _: 99) == 0
+    )
+    line = ["--workspace", str(live.workspace), "cpu-budget", "set", "--queue", "2"]
+    assert cli.main(line, serve=lambda _: 99) == 0
+    capsys.readouterr()
+    client = LocalResearchClient(live.workspace)
+    [goal] = client.request({"operation": "GOAL_LIST"})["goals"]
+    held = client.request({"operation": "GOAL_SHOW", "goal_id": goal["goal_id"]})["goal"]
+    facts = [
+        row["payload"]["subject"]
+        for row in client.read_external()["items"]
+        if row["payload"]["subject"].get("message_kind") == "session_bound"
+    ]
+    assert [fact.get("reference") for fact in facts] == [None, f"case:{held['goal_hash']}"]
+    assert facts[1]["goal_id"] == goal["goal_id"]

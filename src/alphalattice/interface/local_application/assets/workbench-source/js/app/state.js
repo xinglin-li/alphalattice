@@ -161,9 +161,7 @@ function input() {
 }
 const viewBook = () => Data.subject()?.task_id || '';
 const viewSession = () => Data.subject()?.session || '';
-const openTaskCount = () => Data.actionableTasks().filter((x) =>
-  !['succeeded', 'cancelled', 'SUCCEEDED', 'CANCELLED', 'FAILED'].includes(x.status)
-).length;
+const openTaskCount = () => Data.actionableTasks().length;
 
 function currentContext() {
   if (LiveStudy.pages.has(app.page))return {page:app.page,workspace:Data.workspace(),study:LiveStudy.context(),claim:'SAVED_RESEARCH_NOT_CURRENT_AUTHORITY'};

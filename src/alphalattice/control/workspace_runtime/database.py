@@ -31,6 +31,7 @@ from typing import Any, NamedTuple, cast
 import duckdb
 
 from alphalattice.control.workspace_runtime.reader_threads import connect_duckdb
+from alphalattice.kernel.shared_kernel.spans import span
 
 WORKSPACE_MARKET_DATA_DATABASE_FILENAME = "market-data.duckdb"
 """The market/feature/sector store. Named so other owners can refuse it by name."""
@@ -49,7 +50,8 @@ def _connect(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
 def _fresh_connection(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
     """Open the process's instance of the file (a metadata read; a checkpoint on close)."""
 
-    return _connect(path, read_only=read_only)
+    with span("read", "duckdb_instance_open"):
+        return _connect(path, read_only=read_only)
 
 
 def _attached_connection(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
@@ -331,7 +333,8 @@ class WorkspaceConnection:
         # and the waiters are woken -- whether it returns or raises.
         counted = _release_top_level(self)
         try:
-            self._raw.close()
+            with span("write", "duckdb_instance_close"):
+                self._raw.close()
         finally:
             if counted:
                 _closed(self._path)
@@ -683,9 +686,11 @@ def retain_workspace_database(
     order, since a caller may take its hold inside a unit that ends first.
     It changes no transaction boundary: each operation inside still opens its
     own cursor and commits or rolls back on its own. The engine checkpoints
-    when the instance's last connection closes. A writable retention must
-    not span a network wait; callers release it before fetching and retain
-    again after.
+    when the instance's last connection closes. A read-only retention is a
+    lock (a writer of another thread waits for it) and must not span a network
+    wait. A writable one is none: every other thread attaches to its instance
+    without waiting, so a stage may keep one across its network edges while
+    its units still release the write gate at each edge.
     """
     resolved = path.resolve()
     key = (resolved, threading.get_ident())

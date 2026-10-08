@@ -23,7 +23,7 @@ const History = (() => {
   function filtered() {
     const q = app.historyQuery.toLowerCase().trim();
     const kinds = app.historyKind === 'all' ? null : String(app.historyKind).split(','); // round 91: a filter holds several values
-    const rows = historyItems().filter((x) => (!kinds || kinds.includes(x.kind)) && (!q || [x.kind, x.name, x.summary, x.words, x.reference, x.id, x.task_id, x.input, x.inputCutoff, x.recordedAt, x.holdingsSession, x.note].join(' ').toLowerCase().includes(q)));
+    const rows = Data.groupTaskSuccessors(historyItems()).filter((x) => (!kinds || [x, ...(x.earlierStops || [])].some(row => kinds.includes(row.kind))) && (!q || [x, ...(x.earlierStops || [])].some(row => [row.kind, row.name, row.summary, row.words, row.reference, row.id, row.task_id, row.input, row.inputCutoff, row.recordedAt, row.holdingsSession, row.note].join(' ').toLowerCase().includes(q))));
     return sorted(rows, app.historySort);
   }
   const declaredNote = () => Data.experiments() === null ? t('Declared parameters not loaded yet.') : Data.experimentsError ? t('Declared parameters unavailable: {error}', {error: Data.experimentsError}) : t('Labels summarize declared parameters, never results or a winner.');
@@ -35,7 +35,7 @@ const History = (() => {
    * line a row: the kind's mark, the reference, the name, the facts, the day. The owner's older
    * pages are read from the foot. */
   function lobby() {
-    const items = historyItems(), kinds = [...new Set(items.map((x) => x.kind))];
+    const items = Data.groupTaskSuccessors(historyItems()), kinds = [...new Set(items.flatMap(x => [x, ...(x.earlierStops || [])].map(row => row.kind)))];
     const versions = [...new Set(items.map((x) => x.raw?.input_binding_hash).filter(Boolean))].sort((a, b) => String(items.find((x) => x.raw?.input_binding_hash === b)?.inputCutoff || '').localeCompare(String(items.find((x) => x.raw?.input_binding_hash === a)?.inputCutoff || '')));
     const byInput = (x) => { const h = x.raw?.input_binding_hash; return h ? {key: h, label: html`${x.input} · ${LiveViews.cutoffText(x)}`, rank: versions.indexOf(h), open: versions.indexOf(h) === 0} : {key: 'none', label: t('No input version'), rank: 9e9, open: false}; };
     const row = (x, d) => LiveViews.recordRow(x, {ref: x.ref, columns: ['mode', 'note'], props: [x.mode !== 'readback' ? t(OPERATION_MODES[x.mode]) : '', x.note ? coded(x.note) : ''], show: d.props, actions: html`${x.task_id ? btnAttrs(html`${icon('task')}<span>${t('Open the Task')}</span>`, 'task', x.task_id, 'menu-row', html`role="menuitem"`) : ''}${btnAttrs(html`${icon('copy')}<span>${t('Copy reference')}</span>`, 'history-copy', x.id, 'menu-row', html`role="menuitem"`)}`});
@@ -43,8 +43,8 @@ const History = (() => {
       axes: [{key: 'time', label: t('Time'), group: (x) => timeGroup(x.raw?.recorded_at || x.recordedAt)}, {key: 'kind', label: t('Artifact kind'), group: (x) => ({key: x.kind, label: t(x.kind), rank: kinds.indexOf(x.kind), open: true})}, {key: 'input', label: t('Input version'), group: byInput}],
       select: (d) => { app.historySort = d.order; return filtered(); }, orders: ORDERS(), apply: (d) => { app.historySort = d.order; },
       bind: {get: () => ({query: app.historyQuery, filters: app.historyKind === 'all' ? {} : {kind: app.historyKind}}), set: (patch) => { if ('query' in patch) app.historyQuery = patch.query; if ('filters' in patch) app.historyKind = patch.filters.kind || 'all'; routeFilters(); }},
-      words: label, placeholder: t('Strategy, input, kind or ID'),
-      filters: [{field: 'kind', label: t('Kind'), multiple: true, options: kinds.map((k) => [k, t(k)]), test: (x, one) => x.kind === one}],
+      words: x => [x, ...(x.earlierStops || [])].map(label).join(' '), placeholder: t('Strategy, input, kind or ID'),
+      filters: [{field: 'kind', label: t('Kind'), multiple: true, options: kinds.map((k) => [k, t(k)]), test: (x, one) => [x, ...(x.earlierStops || [])].some(row => row.kind === one)}],
       properties: [['origin', t('Continued from'), false], ['interval', t('Interval')], ['input', t('Input version')], ['holdings', t('Holdings session')], ['recorded', t('Recorded')]],
       foot: Data.hasMoreHistory() ? Lobby.older(t('Older records are not read yet'), 'history-more', '', Data.historyLoading) : ''});
   }

@@ -1308,12 +1308,20 @@ expecting it to run. A test holds this set to the owners' refusals.
 """
 
 FIRST_USE_STEPS: Final[frozenset[str]] = frozenset(
-    {"NETWORK_ACCESS_SET", "WORKSPACE_PREPARE_CONFIRM", "DATA_ISSUE_CONFIRM"}
+    {
+        "NETWORK_ACCESS_SET",
+        "WORKSPACE_PREPARE_CONFIRM",
+        "DATA_ISSUE_CONFIRM",
+        "DATA_CHANGE_CONFIRM",
+        "STRATEGY_ACTIVATE",
+    }
 )
-"""The person's steps a first-use goal delegates to the agent that runs it (V452, OP19): opening
-the network for the first preparation, confirming that preparation and its resumes, and deciding
-its data issues. An activation, a storage decision, an automation, a revocation and anything
-paid stay a person's."""
+"""The person's steps a first-use goal delegates to the agent that runs it (V452, OP19; STOPS-1):
+opening the network for the first preparation, confirming that preparation and its resumes,
+deciding its data issues, confirming its membership changes, and activating its book once that
+book has a published review, which the person deactivates in one click. A deactivation, a model's
+or Feature's activation, a storage decision, an automation, a revocation and anything paid stay a
+person's."""
 
 
 def table() -> dict[str, Any]:

@@ -56,6 +56,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     CurrentUniverseMaintenanceListing,
     MarketDataRepository,
 )
+from alphalattice.kernel.shared_kernel.spans import span
 
 
 class CurrentUniverseMaintenanceStatus(StrEnum):
@@ -341,14 +342,15 @@ class CurrentUniverseMaintenance:
                                 current_item=listing.symbol,
                             )
                         else:
-                            result = self._apply_hydration(
-                                item,
-                                listing=listing,
-                                existing=existing,
-                                audit_start=audit_start,
-                                hydration=hydration,
-                                observed_at=now,
-                            )
+                            with span("write", "listing_maintenance"):
+                                result = self._apply_hydration(
+                                    item,
+                                    listing=listing,
+                                    existing=existing,
+                                    audit_start=audit_start,
+                                    hydration=hydration,
+                                    observed_at=now,
+                                )
                             if result.startswith("DEFERRED:"):
                                 systemic_failure = systemic_failure or result.partition(":")[2]
                             self._publish_progress(
@@ -533,7 +535,8 @@ class CurrentUniverseMaintenance:
             observed_at=observed_at,
         )
         listing = self._listing(item.listing_id)
-        existing = self.store.raw_bars(item.listing_id, through=self.as_of_session)
+        with span("read", "listing_raw_history"):
+            existing = self.store.raw_bars(item.listing_id, through=self.as_of_session)
         if not existing:
             self._record_failure(
                 item,
@@ -720,20 +723,21 @@ class CurrentUniverseMaintenance:
                 observed_at=observed_at,
             )
             return "FAILED"
-        return self._audit_and_finish(
-            item,
-            listing=listing,
-            raw_through=raw_through,
-            observed_at=observed_at,
-            hydration=hydration,
-            audit_start=audit_start,
-            before_bars=before_bars,
-            before_actions=before_actions,
-            before_adjusted_through=before_adjusted_through,
-            write_counts=write_counts,
-            sentinel_report=sentinel_report,
-            restatement_observation=restatement_observation,
-        )
+        with span("verify", "listing_action_audit"):
+            return self._audit_and_finish(
+                item,
+                listing=listing,
+                raw_through=raw_through,
+                observed_at=observed_at,
+                hydration=hydration,
+                audit_start=audit_start,
+                before_bars=before_bars,
+                before_actions=before_actions,
+                before_adjusted_through=before_adjusted_through,
+                write_counts=write_counts,
+                sentinel_report=sentinel_report,
+                restatement_observation=restatement_observation,
+            )
 
     def _price_action_sentinel(self, batch: SanitizedBatch) -> PriceActionIntegritySentinelReport:
         """Run the sentinels against the authority the Host qualified.

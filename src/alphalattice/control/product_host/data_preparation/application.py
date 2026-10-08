@@ -136,6 +136,21 @@ ListingUnitState = Literal[
 ]
 
 
+def research_next(manifest: ResearchWorkspaceManifest) -> tuple[str, dict[str, dict[str, str]]]:
+    """A prepared workspace's next research step, as its first use takes it (FLOW-3).
+
+    With no research strategy installed, `strategy controls` names the strategy's required
+    Alpha and Risk studies, the shortest way to a book that runs forward; once one is
+    installed, its book's controls. A study on the prepared input stays offered beside it
+    for exploration.
+    """
+    if manifest.strategy_installation == "NON_DEFAULT_RESEARCH":
+        return "CONTROLS", {"strategy_book": {"operation": "CONTROLS"}}
+    return "RESEARCH_STRATEGY_CONTROLS", {
+        "strategy_controls": {"operation": "RESEARCH_STRATEGY_CONTROLS"}
+    }
+
+
 class ListingActivityRow(BaseModel):  # type: ignore[misc]
     """Retain one announced listing-unit transition and its distinct observation clocks.
 
@@ -611,7 +626,7 @@ class WorkspacePreparationApplication:
             if truth_review_pending
             else "WORKSPACE_PREPARE_PLAN"
             if replan or (not latest and not inputs)
-            else "EXPERIMENT_CONTROLS"
+            else research_next(manifest)[0]
             if inputs
             else None,
             "next_requests": {
@@ -636,6 +651,7 @@ class WorkspacePreparationApplication:
                     and not truth_review_pending
                     else {}
                 ),
+                **(research_next(manifest)[1] if inputs else {}),
                 **{
                     "research_controls:" + item["binding_hash"]: {
                         "operation": "EXPERIMENT_CONTROLS",
@@ -703,7 +719,7 @@ class WorkspacePreparationApplication:
             return {
                 **self.readback(),
                 "status": "ALREADY_PREPARED",
-                "next_action": "EXPERIMENT_CONTROLS",
+                "next_action": research_next(manifest)[0],
             }
         tasks = self.tasks()
         superseded = superseded_preparations(self.session.task_control_registry, tasks)

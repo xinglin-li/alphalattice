@@ -63,7 +63,7 @@ def test_planning_and_both_network_gates_read_one_provider_work_owner():
         # The plan's answer, sealed fresh or the data update's that has not ended (V604).
         ("WorkspaceDataUpdateApplication", "_plan_answer"),
         ("WorkspaceDataUpdateApplication", "admit"),
-        ("WorkspaceDataUpdateApplication", "execute_step"),
+        ("WorkspaceDataUpdateApplication", "_step"),
         ("DecisionAdvancementApplication", "_plan_body"),
         ("DecisionAdvancementApplication", "_execute"),
     }
@@ -82,7 +82,7 @@ def test_planning_and_both_network_gates_read_one_provider_work_owner():
             for n in ast.walk(method)
         )
     }
-    assert set(gates) == {"admit", "execute_step"}
+    assert set(gates) == {"admit", "_step"}
     for method in gates.values():
         assert any(
             isinstance(n, ast.If)

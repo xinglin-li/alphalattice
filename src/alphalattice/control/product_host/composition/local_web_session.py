@@ -16,6 +16,7 @@ operation owner, so the browser and the generic Agent tool share them.
 from __future__ import annotations
 
 import json
+import os
 import secrets
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -24,6 +25,7 @@ from http import HTTPStatus
 from pathlib import Path
 from threading import Event, Lock
 from typing import Any, Final, Literal, cast, get_args
+from urllib.parse import urlencode
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -160,6 +162,7 @@ from alphalattice.interface.local_application.activity import (
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
+    agent_session,
 )
 from alphalattice.interface.local_application.client import (
     LocalResearchConnection,
@@ -183,7 +186,10 @@ from alphalattice.interface.local_application.native_bridge import (
     session_project,
     usage_reading,
 )
-from alphalattice.interface.local_application.native_setup import admitted_session_project
+from alphalattice.interface.local_application.native_setup import (
+    admitted_session_project,
+    autobind_root,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     FinalizationStatusProjection,
     FrozenCandidateProjection,
@@ -489,6 +495,17 @@ class NativeUsageReader:
                 self._reason = self._reason or (
                     owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
                 )
+        # The bindings the Host made itself, kept in the workspace (AUTOBIND).
+        root = autobind_root(self.workspace)
+        try:
+            held, _diagnostics = NativeResearchBinding.binding_entries(root)
+            found.extend(
+                (root, binding) for binding in held if binding.workspace.resolve() == self.workspace
+            )
+        except Exception as error:
+            self._reason = self._reason or (
+                owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
+            )
         return tuple(found)
 
     def read_binding(self, project: Path, binding: NativeResearchBinding) -> dict[str, object]:
@@ -1193,7 +1210,16 @@ class LocalPortfolioWebSession:
         """
         if self.web is None:
             raise LocalWebError("local_web.service_not_started")
-        return self.web.launch_url
+        named = agent_session(os.environ)
+        goal = (
+            self.operations.goals.attributed_goal(
+                RequestProvenance(vendor=named[0], session=named[1])
+            )
+            if self.operations is not None and named is not None
+            else None
+        )
+        follow = "latest" if goal is None else f"goal:{goal.goal_id}"
+        return self.web.launch_url + "#" + urlencode({"follow": follow})
 
 
 def build_evidence_review_application(
@@ -2269,6 +2295,7 @@ def build_local_web_application(
             for name in (
                 "task_id",
                 "origin_task_id",
+                "recovery_task_id",
                 "factor_task_id",
                 "risk_task_id",
                 "left_task_id",

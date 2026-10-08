@@ -9,6 +9,9 @@ authority.
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -687,3 +690,56 @@ def _json(session: LocalPortfolioWebSession, path: str, **kwargs: Any) -> dict[s
     status, _headers, body = _request(session, path, **kwargs)
     assert status == 200, (status, body[:400])
     return json.loads(body)
+
+
+def _run_badge_browser(
+    live: LocalPortfolioWebSession, out: Path, mode: str, ids: dict[str, str]
+) -> None:
+    """The BADGE owner records through one live built Workbench at 900 px."""
+    root = Path(__file__).resolve().parents[2]
+    node = shutil.which("node")
+    assert node, "BADGE requires Node.js and the pinned Playwright browser runtime"
+    out.mkdir(parents=True, exist_ok=True)
+    receipt = out / "badge-records.json"
+    receipt.write_text(json.dumps({**ids, "out": str(out)}), encoding="utf-8", newline="\n")
+    completed = subprocess.run(
+        [
+            node,
+            str(Path(__file__).with_name("workbench_badge.cjs")),
+            live.url,
+            live.launch_url,
+            f"--mode={mode}",
+            str(receipt),
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=180,
+        env={
+            **os.environ,
+            "ALPHALATTICE_NETWORK_DISABLED": "1",
+            "NODE_PATH": str(root / "third_party/playwright/node_modules"),
+            "PLAYWRIGHT_BROWSERS_PATH": str(root / "third_party/playwright/.browsers"),
+        },
+    )
+    diagnostics = (completed.stdout + completed.stderr).replace(live.launch_url, "<launch URL>")
+    (out / "browser.log").write_text(diagnostics, encoding="utf-8", newline="\n")
+    assert completed.returncode == 0, diagnostics
+    assert f"workbench badge {mode} complete" in completed.stdout, diagnostics
+
+
+def _walk_badge_records(
+    workspace: Path, out: Path, source_task_id: str | None, successor_task_id: str | None
+) -> None:
+    """Walk an existing prepared workspace after its producer Host has stopped."""
+    assert source_task_id and successor_task_id
+    live = LocalPortfolioWebSession.from_workspace(workspace)
+    live.start()
+    try:
+        _run_badge_browser(
+            live, out, "pair", {"source": source_task_id, "successor": successor_task_id}
+        )
+    finally:
+        live.stop()

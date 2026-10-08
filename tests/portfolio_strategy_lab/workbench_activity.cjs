@@ -15,7 +15,7 @@ const item=(ordinal,schema,payload,extra={})=>({ordinal,observation_id:'obs-'+or
 const page=(disposition,epoch,items,tasks={},more=false,observer={status:'OK'})=>({workspace_id:'qa',disposition,epoch,cursor:epoch+':'+(items.at(-1)?.ordinal||0),head:items.at(-1)?.ordinal||0,more,items,unavailable:0,tasks,observer,read_cost:{observations:items.length,elapsed_ms:1}});
 const projection=(task_id,lifecycle,extra={})=>({task_id,task_kind:'portfolio_public_development_replay',lifecycle,verified_stage_count:lifecycle==='SUCCEEDED'?4:1,total_stage_count:4,current_stage:'plan',worker_failure:null,worker_failure_type:null,...extra});
 const percentRule=(root)=>library.readingSource(root);
-const c={console,URLSearchParams,Date,Number,Math,Set,Map,Object,Array,String,Promise,JSON,Boolean,Error,
+const c={Window:{renderTop(){}},console,URLSearchParams,Date,Number,Math,Set,Map,Object,Array,String,Promise,JSON,Boolean,Error,
   app:{page:'portfolio',book:'book-a',session:'2024-08-12'},
   document:{hidden:false,addEventListener:on,querySelector:()=>dialogOpen?{open:true}:null},window:{addEventListener:on},
   replaceHash:(v)=>hashes.push(v),LiveResearch:{dirty:()=>dirty,inspectShared:(hash)=>inspected.push(hash)},

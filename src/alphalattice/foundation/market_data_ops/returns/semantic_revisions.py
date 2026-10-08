@@ -38,8 +38,17 @@ class AdjustedReturnSemanticRevision(BaseModel):
 
 def build_adjusted_return_semantic_revision(
     ledger: tuple[ProviderAdjustedSeriesRevision, ...],
+    *,
+    published: AdjustedReturnSemanticRevision | None = None,
 ) -> AdjustedReturnSemanticRevision:
-    """Build a content-addressed chain without exposing mutable rows downstream."""
+    """Build a content-addressed chain without exposing mutable rows downstream.
+
+    The published revision's deltas stay its prefix, as its readers bound them. The deltas past
+    it are chained by their content, by listing and then session: the ledger orders one
+    observation's rows by receipt hashes that bind the observation clock, so the same day
+    observed twice would otherwise chain to two identities. Readers merge a listing's deltas
+    whatever their order.
+    """
     deltas: list[AdjustedReturnSemanticDelta] = []
     for value in ledger:
         identity = {
@@ -54,7 +63,26 @@ def build_adjusted_return_semantic_revision(
                 semantic_hash=canonical_hash(identity),
             )
         )
-    frozen = tuple(deltas)
+    kept = (
+        len(deltas) >= published.cursor
+        and tuple(value.semantic_hash for value in deltas[: published.cursor])
+        == tuple(value.semantic_hash for value in published.deltas)
+        if published is not None
+        else False
+    )
+    prefix = deltas[: published.cursor] if kept and published is not None else []
+    frozen = (
+        *prefix,
+        *sorted(
+            deltas[len(prefix) :],
+            key=lambda value: (
+                value.listing_id,
+                value.changed_return_sessions,
+                value.session_set_changed,
+                value.uniform_rescale,
+            ),
+        ),
+    )
     return AdjustedReturnSemanticRevision(
         cursor=len(frozen),
         chain_hash=canonical_hash([value.semantic_hash for value in frozen]),
@@ -78,8 +106,12 @@ class AdjustedReturnSemanticRevisionPublisher:
 
     def refresh(self) -> AdjustedReturnSemanticRevision:
         """Publish the current semantic ledger as an immutable revision."""
+        try:
+            published: AdjustedReturnSemanticRevision | None = self.load()
+        except FileNotFoundError:
+            published = None
         revision = build_adjusted_return_semantic_revision(
-            self.store.provider_adjusted_semantic_ledger()
+            self.store.provider_adjusted_semantic_ledger(), published=published
         )
         self.resolver.publish_adjusted_return_semantic_revision(
             payload=revision.model_dump(mode="json"),

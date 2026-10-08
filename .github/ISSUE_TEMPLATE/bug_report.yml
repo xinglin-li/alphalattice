@@ -1,0 +1,33 @@
+name: Bug report
+description: Report a reproducible bug with synthetic or redacted examples.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report vulnerabilities privately as described in SECURITY.md.
+        Do not include credentials, private data, provider payloads or conversation text.
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps and minimal reproduction
+      description: Include the commands or actions needed to reproduce the bug using synthetic or redacted data.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and sanitized diagnostics
+      description: Include relevant operating system and tool versions. Remove secrets and private paths from any error output.

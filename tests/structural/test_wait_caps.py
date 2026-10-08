@@ -41,10 +41,13 @@ def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:
         "_follow",
         "_wait_for_goal",
         "_wait",
+        "_review_steps",
     }, capped
     assert sleeps == {"_sleep_before_read", "_queue_wake"}, sleeps
-    # The queue notifier has a fixed attempt count, not a wait cap; it is not a poll.
-    for name in capped - {"_sleep_before_read", "_wait"}:
+    # The queue notifier has a fixed attempt count, not a wait cap; it is not a poll. A book
+    # review (AGENT-TIME verb 2) waits only through `_follow`, under its one deadline.
+    assert "_follow" in calls["_review_steps"]
+    for name in capped - {"_sleep_before_read", "_wait", "_review_steps"}:
         assert "_sleep_before_read" in calls[name], name
         if name != "_read_through_restarts":
             assert "_read_through_restarts" in calls[name], name
@@ -93,6 +96,8 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
             "_follow",
             "_wait_for_goal",
             "_wait",
+            # AGENT-TIME verb 2: its deadline bounds the follows of its book and Evidence Tasks.
+            "_review_steps",
         )
     }
     # Status and lock acquisition both re-read after their bounded pause. Joins inspect

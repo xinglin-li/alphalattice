@@ -22,7 +22,7 @@ The lead submits every nominated answer. The Host files its acceptance under the
 One delegation runs in this order:
 
 1. Hold the Goal in a bound Session and prepare the bundle: `bundle prepare --role <ROLE> --task <task-id> --dir "<out>/bundle"` for a stage role, or the offered `analyst_bundle_<unit>` or `cro_bundle` action. Keep its `bundle_reference`, files, answer path and `submit_command`.
-2. Start the loaded card with the host's native subagent tool, giving only what the card asks for and the bundle directory, file list and answer path.
+2. Start the loaded card with the host's native subagent tool, giving only what the card asks for and the bundle directory, file list and answer path. In the session that installed AlphaLattice, start a general subagent whose prompt is the card's text (`.claude/agents/<card>.md`, or `developer_instructions` in `.codex/agents/<card>.toml`); its tool limits then hold by instruction.
 3. The child writes the answer file and returns `written`.
 4. Run the preparation's `submit_command` yourself. On `CORRECT`, send the named items to the same child, which fixes them in the same file; rerun the same command, at most twice.
 5. Read the publication from its owner, never from the answer file. A stage role's `ACCEPTED` or `DONE` receipt carries its accepted answer, which Team and the Goal then show; for the Analyst or CRO, wait on the receipt's Task, then read current Evidence or the book's review. Acceptance ends the bundle's open assignment.

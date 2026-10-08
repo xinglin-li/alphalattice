@@ -136,7 +136,7 @@
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "alternative_evidence.acquisition_deadline_exceeded": {
-  "detail": "This unit's official acquisition ran past the window its request was admitted for, so it stopped; the filings it fetched are kept for the next attempt. Preview and prepare again, which opens a new window, or ask the person to serve the Host with a longer `--sec-acquisition-window-seconds`.",
+  "detail": "This unit's official acquisition ran past the window its request was admitted for, so it stopped; the filings it fetched are kept for the next attempt. Preview and prepare again, which opens a new window, or restart an idle Host you own with a longer `--sec-acquisition-window-seconds`.",
   "next_action": "PREVIEW_AND_PREPARE_AGAIN"
  },
  "alternative_evidence.answer_problems": {
@@ -576,7 +576,7 @@
   "next_action": "NAME_THE_UPDATES_OWN_TASK"
  },
  "product_host.evidence_task_adapter_absent": {
-  "detail": "This Host was served without the evidence source package and its retrieval runtime, so no evidence is prepared or read here; a person admits them when serving the Host.",
+  "detail": "This Host was served without the evidence source package and its retrieval runtime, so no evidence is prepared or read here; under the source consent already given, install them and serve the Host again with them.",
   "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME"
  },
  "research_authoring.document_unparsable": {
@@ -1309,6 +1309,10 @@
  },
  "native_bridge.child_usage_binding_unverified": {
   "detail": "The child's usage could not be linked to the bound parent Session and an admitted role: its own record does not name this Session as its parent with one of the binding's roles. No child identity or usage was invented, and research can continue.",
+  "next_action": "CONTINUE_RESEARCH_THE_CHILD_STAYS_UNREAD"
+ },
+ "native_bridge.child_not_a_specialist": {
+  "detail": "This child is the Session's own helper, not a product specialist, so its usage is not read; the Session's reading stands without it.",
   "next_action": "CONTINUE_RESEARCH_THE_CHILD_STAYS_UNREAD"
  },
  "native_bridge.child_usage_file_missing": {

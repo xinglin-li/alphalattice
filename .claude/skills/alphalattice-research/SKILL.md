@@ -10,7 +10,7 @@ You lead the research. AlphaLattice's owners calculate, validate, record and pub
 
 ## Start and choose a path
 
-- Use the installed `alphalattice` command from the checkout or configured agent project. Follow the [installation guide](../../../AGENTS.md) for that leg first. Name the workspace; announce a new directory under `workspaces/` for new work, and let the launcher initialize it. Do not choose existing research or a default for the person. Keep requests and exports in the workspace; relative paths resolve from your shell's directory.
+- Use the installed `alphalattice` command from the checkout or configured agent project. Follow the [installation guide](../../../AGENTS.md) for that leg first. Name the workspace; announce a new directory under `workspaces/` for new work, and let the launcher initialize it. For new work choose the new directory yourself and say which; work in existing research only when the person names it. Keep requests and exports in the workspace; relative paths resolve from your shell's directory.
 - Reuse the Host for that workspace. Unless the person asks for terminal-only work, use the host's browser tools to open its exact printed launch and keep Local Web available as research progresses. The [operating guide](references/operating.md) covers launch, binding and safe shutdown. Never read or copy `runtime/local-research-connection.json`.
 - Begin at `workspace show` and choose the input's `intents`. Read `standing`; a status alone does not establish completion. See the [command contract](references/operating.md) for all shared command and answer rules.
 - One exact read needs no goal. Open a goal before multi-step work; the Host records its Tasks and checks its submission ([goals](references/goals.md)). Delegate a distinct question to the relevant role card ([specialists](references/specialist-handoff.md)).
@@ -18,18 +18,18 @@ You lead the research. AlphaLattice's owners calculate, validate, record and pub
 ## Shortest paths
 
 - **Orient**: `workspace show` → choose the input's intent → [workspace and task flow](../../../AGENTS.md).
-- **First use from one sentence**: open `FIRST_USE` before preparation → follow strategy controls for only the required whole-support Alpha and Risk studies → prepare and install → run the whole-support historical book → settle current Evidence within any declared allowance and publish its Analyst answers → read Evidence's dossier, then take that dossier answer's CRO bundle action → request person activation → run the offered forward update ([leading research](references/research-lead.md)).
+- **First use from one sentence**: open `FIRST_USE` before preparation → follow strategy controls for only the required whole-support Alpha and Risk studies → prepare and install → run the whole-support historical book and prepare its Evidence and Analyst bundles (`strategy-book review`) → settle current Evidence within any declared allowance and publish its Analyst answers → read Evidence's dossier, then take that dossier answer's CRO bundle action → activate the reviewed book under the goal's delegation and tell the person → run the offered forward update ([leading research](references/research-lead.md)).
 - **A Factor study**: `study controls` → `study plan` → `study run` → `study show`; the full flow is in the [research-agent guide](../../../AGENTS.md).
 - **An Alpha study from a Factor study**: `curation show` → `curation submit` → `handoff preview` → `study plan` → `study run`; follow the same [research-agent guide](../../../AGENTS.md).
 - **A Risk study**: `study controls --kind risk.covariance-development` → `study plan` → `study run`; follow the same [research-agent guide](../../../AGENTS.md).
 - **A book**: `book draft` → `study plan` → `study run` → `study show`; follow the same [research-agent guide](../../../AGENTS.md) and [research contract](references/research-contract.md).
 - **The book's Evidence and CRO review**: follow the book readback's selectors, then [prepare the Analyst packet](references/evidence-analysis-handoff.md) and [submit the CRO review](references/cro-handoff.md).
-- **Run an installed research strategy forward**: `workspace show` → exact package `strategy-book controls` and `activation` → person activation if `INACTIVE` → offered `research-update plan` → `research-update run` → `research-update show`; read [leading research](references/research-lead.md).
+- **Run an installed research strategy forward**: `workspace show` → exact package `strategy-book controls` and `activation` → if `INACTIVE`, the person's activation (or yours of a first use's reviewed book) → offered `research-update plan` → `research-update run` → `research-update show`; read [leading research](references/research-lead.md).
 - **A formula factor**: `feature controls` → `feature plan` → `trial run` → `trial show` → `feature review`; see [feature changes](references/operating.md) and the [research-agent guide](../../../AGENTS.md).
 - **A model of your own**: `model scaffold` → `model check` → `model sandbox` with the Host stopped; see the model contract in [research contract](references/research-contract.md).
 - **A data issue**: `issue list` → its offered `request`; follow [pipeline issues](references/pipeline-issues.md).
 
-Before asking a person to activate, review the completed historical book and its review standing, and read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
+Before activating, or asking a person to activate, review the completed historical book and its review standing, and read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
 After activation, run the offered update and review its first published forward positions at the first actionable session.
 Hold positions only from the first actionable session; sessions before it are a causal replay, inside the research window where marked.
 
@@ -37,6 +37,9 @@ Hold positions only from the first actionable session; sessions before it are a 
 
 Follow the [Command contract](references/operating.md) for shared syntax, answers, continuations, files and waits. The catalog below gives each operation's exact form and its own flags; run it only within your scope and budget.
 - `workspace show`: Input ids, recent studies and Tasks, and `intents`: each flow's needs, holdings and next requests.
+- `strategy-book review --package <package> --dir "<out>/analysts"`: Runs or reuses the installed strategy's whole-support book, prepares its Evidence and writes every Analyst bundle in one call, following each Task to its end; the first answer that needs another step is its answer.
+  --package: The installed strategy package whose book is reviewed.
+  --dir: A folder for the Analyst bundles; each unit's is a new folder inside it.
 - `strategy-book controls --package <package>`: Reads the exact installed package's activation, book and recorded review standing before planning Forward work; an inactive book's activation is the person's action on Portfolio, separate from installation and automatic scheduling.
   --package: The installed strategy package, by its id.
 - `goal schema --save-declaration "<out>/goal.yaml"`: Writes the shortest goal declaration, valid as it stands, to edit.
@@ -84,7 +87,7 @@ Follow the [Command contract](references/operating.md) for shared syntax, answer
 
 ## Authority and evidence
 
-- A person authorizes workspace/input preparation, sets network access, confirms data or storage changes, controls the daily research automation, and activates or deactivates a strategy, model or feature. Only the narrow first-use delegation in [goals](references/goals.md) delegates its named preparation steps; it authorizes no other person-only act.
+- A person authorizes workspace/input preparation, sets network access, confirms data or storage changes, controls the daily research automation, and activates or deactivates a strategy, model or feature. Only the narrow first-use delegation in [goals](references/goals.md) delegates its named steps; it authorizes no other person-only act.
 - Product answers and sealed artifacts are the evidence. Never invent an id, hash, model, field or number; preserve exported bytes and hashes.
 - Keep a development result separate from an installed strategy, prospective validation, current recommendation and trading instruction. A comparison names no winner; unavailable return is not zero. State the evidence limits and keep adverse observations.
 - Count D5-protected material before any bundle. Keep research and preparation offline unless the workspace has the person's authority; give specialists only the Host-packed, role-appropriate projection, never original source material, dirty data, credentials, prompts or hidden reasoning.

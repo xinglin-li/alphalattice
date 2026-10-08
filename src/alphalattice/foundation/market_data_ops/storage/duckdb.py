@@ -402,6 +402,19 @@ _RAW_BAR_COLUMNS = (
 )
 """A raw bar's columns, in ``RawDailyBar``'s field order."""
 
+_SELECTED_PROVIDER_SQL = """
+    WITH selected_provider AS (
+        SELECT scope.listing_id, selected.provider
+        FROM unnest(?::VARCHAR[]) AS scope(listing_id)
+        LEFT JOIN LATERAL (
+            SELECT provider FROM provider_symbol_mapping
+            WHERE listing_id = scope.listing_id
+            ORDER BY effective_from DESC LIMIT 1
+        ) AS selected ON TRUE
+    )
+"""
+"""Each listing's latest provider mapping, ``_provider_for_listing``'s rule, for a listing set."""
+
 
 def _raw_bar_query(
     listing_id: str, *, start: date | None, through: date | None
@@ -5357,8 +5370,15 @@ class MarketDataRepository(WorkspaceRepository):
         provider: str,
         requested_as_of: date,
         now: datetime,
+        allow_historical: bool = False,
+        allow_equivalent_manifest: bool = False,
     ) -> ActionAuditReceipt | None:
-        """Verify an exact consumed receipt over its recorded range, not a new audit budget."""
+        """Verify an exact consumed receipt over its recorded range, not a new audit budget.
+
+        Historical verification retains the recorded observation and scope, ignoring
+        only acquisition freshness and an equivalent membership manifest revision.
+        Equivalent manifests can also be admitted without relaxing freshness.
+        """
         self._assert_manifest_scope(manifest, [listing_id])
         with self._connect(read_only=True) as connection:
             receipt = self._rebindable_action_audit_receipt(
@@ -5367,8 +5387,13 @@ class MarketDataRepository(WorkspaceRepository):
                 provider=provider,
                 requested_as_of=requested_as_of,
                 now=now,
-                manifest_revision=manifest.revision_sha256,
+                manifest_revision=(
+                    None
+                    if allow_historical or allow_equivalent_manifest
+                    else manifest.revision_sha256
+                ),
                 receipt_hash=receipt_hash,
+                allow_historical=allow_historical,
             )
         if receipt is None or receipt.observed_at > _utc_naive(now):
             return None
@@ -5482,16 +5507,20 @@ class MarketDataRepository(WorkspaceRepository):
         }
 
     @staticmethod
-    def _action_audit_receipt_current(receipt: ActionAuditReceipt, *, now: datetime) -> bool:
+    def _action_audit_receipt_current(
+        receipt: ActionAuditReceipt, *, now: datetime, allow_historical: bool = False
+    ) -> bool:
         """Check freshness, complete diagnostics, and the installed policy.
 
         A receipt these refuse is refused by the complete validator whatever
         the current bytes say, so a caller may skip the byte evidence for it. The
         rules live here once; ``_action_audit_receipt_verifies`` applies them
         before the byte comparison.
+        Historical reads admit older observations, never future ones.
         """
         return not (
-            _utc_naive(now) - receipt.observed_at >= timedelta(hours=24)
+            (not allow_historical and _utc_naive(now) - receipt.observed_at >= timedelta(hours=24))
+            or (allow_historical and receipt.observed_at > _utc_naive(now))
             or receipt.provider_adjusted_close_evidence_hash is None
             or receipt.max_adjusted_close_difference_bps is None
             or receipt.adjusted_close_mismatch_count is None
@@ -5500,15 +5529,22 @@ class MarketDataRepository(WorkspaceRepository):
 
     @staticmethod
     def _action_audit_receipt_verifies(
-        receipt: ActionAuditReceipt, evidence: Mapping[str, object], *, now: datetime
+        receipt: ActionAuditReceipt,
+        evidence: Mapping[str, object],
+        *,
+        now: datetime,
+        allow_historical: bool = False,
     ) -> bool:
         """Every reuse check: fresh, same mapping, same bytes, complete diagnostics.
 
         ``evidence`` is the current ``_action_audit_evidence`` over the range the
         caller holds the receipt to -- the whole history for the acquisition
         budget, the receipt's own recorded range for rebinding.
+        Historical verification changes only the acquisition freshness check.
         """
-        return MarketDataRepository._action_audit_receipt_current(receipt, now=now) and not (
+        return MarketDataRepository._action_audit_receipt_current(
+            receipt, now=now, allow_historical=allow_historical
+        ) and not (
             receipt.mapping_revision != evidence["mapping_revision"]
             or receipt.raw_evidence_hash != evidence["raw_evidence_hash"]
             or receipt.action_set_hash != evidence["action_set_hash"]
@@ -5529,6 +5565,7 @@ class MarketDataRepository(WorkspaceRepository):
         manifest_revision: str | None,
         receipt_hash: str | None = None,
         candidate_hashes: frozenset[str] | None = None,
+        allow_historical: bool = False,
     ) -> ActionAuditReceipt | None:
         """Find another manifest's receipt that still proves its own range.
 
@@ -5552,6 +5589,7 @@ class MarketDataRepository(WorkspaceRepository):
                 manifest_revision=manifest_revision,
                 receipt_hash=receipt_hash,
                 candidate_hashes=candidate_hashes,
+                allow_historical=allow_historical,
             ),
             None,
         )
@@ -5567,6 +5605,7 @@ class MarketDataRepository(WorkspaceRepository):
         manifest_revision: str | None,
         receipt_hash: str | None = None,
         candidate_hashes: frozenset[str] | None = None,
+        allow_historical: bool = False,
     ) -> Iterator[ActionAuditReceipt]:
         """Every candidate receipt that still proves its own range, in the candidates' order.
 
@@ -5594,7 +5633,9 @@ class MarketDataRepository(WorkspaceRepository):
                 continue
             if receipt.history_end < requested_as_of:
                 continue
-            if not self._action_audit_receipt_current(receipt, now=now):
+            if not self._action_audit_receipt_current(
+                receipt, now=now, allow_historical=allow_historical
+            ):
                 continue
             audited = (receipt.history_start, receipt.history_end)
             evidence = evidence_by_range.get(audited)
@@ -5608,7 +5649,9 @@ class MarketDataRepository(WorkspaceRepository):
                     history_end=receipt.history_end,
                 )
                 evidence_by_range[audited] = evidence
-            if self._action_audit_receipt_verifies(receipt, evidence, now=now):
+            if self._action_audit_receipt_verifies(
+                receipt, evidence, now=now, allow_historical=allow_historical
+            ):
                 yield receipt
 
     @staticmethod
@@ -6078,6 +6121,48 @@ class MarketDataRepository(WorkspaceRepository):
                 connection.close()
         return tuple(RawDailyBar(*row) for row in rows)
 
+    def raw_bars_by_listing(
+        self,
+        listing_ids: Sequence[str],
+        *,
+        start: date | None = None,
+        through: date | None = None,
+        _connection: duckdb.DuckDBPyConnection | None = None,
+    ) -> dict[str, tuple[RawDailyBar, ...]]:
+        """``raw_bars`` of many listings in one read: each one's rows, filter and order.
+
+        Args:
+            listing_ids: Durable listing identities; each answers, empty without bars.
+            start: First included session, if bounded.
+            through: Last included session, if bounded.
+            _connection: Existing read connection for a larger transaction.
+
+        Returns:
+            Each listing's bars in session order.
+        """
+        sql = (
+            f"SELECT {', '.join(_RAW_BAR_COLUMNS)} FROM raw_daily_bar_current "
+            "WHERE listing_id IN (SELECT unnest(?::VARCHAR[]))"
+        )
+        params: list[object] = [list(listing_ids)]
+        if start is not None:
+            sql += " AND session_date >= ?"
+            params.append(start)
+        if through is not None:
+            sql += " AND session_date <= ?"
+            params.append(through)
+        connection = _connection or self._connect(read_only=True)
+        owns_connection = _connection is None
+        try:
+            rows = connection.execute(sql + " ORDER BY listing_id, session_date", params).fetchall()
+        finally:
+            if owns_connection:
+                connection.close()
+        bars: dict[str, list[RawDailyBar]] = {listing_id: [] for listing_id in listing_ids}
+        for row in rows:
+            bars[row[0]].append(RawDailyBar(*row))
+        return {listing_id: tuple(values) for listing_id, values in bars.items()}
+
     @staticmethod
     def _raw_bar_table(
         connection: duckdb.DuckDBPyConnection,
@@ -6190,17 +6275,7 @@ class MarketDataRepository(WorkspaceRepository):
         ):
             raise ValueError("market_data_ops.source_prefix_request_invalid")
         scope = tuple(sorted(scope))
-        providers_sql = """
-            WITH selected_provider AS (
-                SELECT scope.listing_id, selected.provider
-                FROM unnest(?::VARCHAR[]) AS scope(listing_id)
-                LEFT JOIN LATERAL (
-                    SELECT provider FROM provider_symbol_mapping
-                    WHERE listing_id = scope.listing_id
-                    ORDER BY effective_from DESC LIMIT 1
-                ) AS selected ON TRUE
-            )
-        """
+        providers_sql = _SELECTED_PROVIDER_SQL
         boundary = (
             self.database.read_transaction() if _connection is None else nullcontext(_connection)
         )
@@ -6529,6 +6604,57 @@ class MarketDataRepository(WorkspaceRepository):
             if owns_connection:
                 connection.close()
         return rows
+
+    def actions_by_listing(
+        self,
+        listing_ids: Sequence[str],
+        *,
+        _connection: duckdb.DuckDBPyConnection | None = None,
+    ) -> dict[str, tuple[CorporateActionEvent, ...]]:
+        """``actions`` of many listings in one read, each under its latest provider mapping.
+
+        Args:
+            listing_ids: Durable listing identities; each answers, empty without actions.
+            _connection: Existing read connection for a larger transaction.
+
+        Returns:
+            Each listing's active action observations in effective-date order.
+
+        Raises:
+            ValueError: A listing has no provider mapping, as ``actions`` refuses it.
+        """
+        scope = list(listing_ids)
+        connection = _connection or self._connect(read_only=True)
+        owns_connection = _connection is None
+        try:
+            providers = connection.execute(
+                _SELECTED_PROVIDER_SQL + "SELECT listing_id, provider FROM selected_provider",
+                [scope],
+            ).fetchall()
+            if any(provider is None for _listing_id, provider in providers):
+                raise ValueError("listing has no provider mapping")
+            rows = connection.execute(
+                _SELECTED_PROVIDER_SQL
+                + """
+                SELECT action.listing_id, action.provider, action.effective_date,
+                       action.action_kind, action.new_shares_per_old_share,
+                       action.cash_amount, action.provisional, action.provenance
+                FROM corporate_action_current AS action
+                JOIN selected_provider AS selected
+                  ON selected.listing_id = action.listing_id
+                 AND selected.provider = action.provider
+                WHERE action.status = 'ACTIVE'
+                ORDER BY action.listing_id, action.effective_date, action.action_kind
+                """,
+                [scope],
+            ).fetchall()
+        finally:
+            if owns_connection:
+                connection.close()
+        events: dict[str, list[CorporateActionEvent]] = {listing_id: [] for listing_id in scope}
+        for row in rows:
+            events[row[0]].append(CorporateActionEvent(*row))
+        return {listing_id: tuple(values) for listing_id, values in events.items()}
 
     def _active_action_set_hash(
         self,

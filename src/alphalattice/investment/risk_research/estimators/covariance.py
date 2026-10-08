@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 from sklearn.covariance import LedoitWolf
-from threadpoolctl import threadpool_info, threadpool_limits  # type: ignore[import-untyped]
+from threadpoolctl import threadpool_info  # type: ignore[import-untyped]
 
 from alphalattice.investment.risk_research.contracts import (
     CovarianceDiagnostics,
@@ -20,7 +20,11 @@ from alphalattice.investment.risk_research.contracts import (
     default_covariance_recipe,
     seal_contract,
 )
-from alphalattice.kernel.shared_kernel.environment import recorded_environment
+from alphalattice.kernel.shared_kernel.environment import (
+    numerical_thread_limit,
+    numerical_thread_pools,
+    recorded_environment,
+)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .capability import RANDOMNESS_NONE
@@ -108,11 +112,16 @@ def numerical_environment_hash() -> str:
 
 @contextmanager
 def risk_numerical_thread_policy() -> Iterator[None]:
-    """Run the numerical recipe under its code-owned thread policy."""
-    with threadpool_limits(limits=RISK_NUMERICAL_THREAD_LIMIT):
+    """Run the numerical recipe under its code-owned thread policy.
+
+    The live estimate enters it (``CovarianceEstimatorAdapter.estimate``): an eigen
+    decomposition's last bits move with the BLAS thread count, and they reach the published
+    diagnostics. The thread view is the process's reused one (``numerical_thread_limit``).
+    """
+    with numerical_thread_limit(RISK_NUMERICAL_THREAD_LIMIT):
         if any(
             int(pool["num_threads"]) > RISK_NUMERICAL_THREAD_LIMIT
-            for pool in threadpool_info()
+            for pool in numerical_thread_pools()
             if pool.get("num_threads") is not None
         ):
             raise RiskNumericalError("risk_research.numerical_thread_policy_failed")
@@ -317,12 +326,13 @@ class CovarianceEstimatorAdapter:
             RiskNumericalError: Recipe admission or the method numerical-input contract fails.
         """
         active = self.validate_recipe(recipe)
-        return estimate_dynamic_covariance(
-            returns=inputs.returns,
-            ordered_listing_ids=inputs.ordered_listing_ids,
-            formation_session=inputs.formation_session,
-            recipe=active,
-        )
+        with risk_numerical_thread_policy():
+            return estimate_dynamic_covariance(
+                returns=inputs.returns,
+                ordered_listing_ids=inputs.ordered_listing_ids,
+                formation_session=inputs.formation_session,
+                recipe=active,
+            )
 
 
 class CovarianceCapability:

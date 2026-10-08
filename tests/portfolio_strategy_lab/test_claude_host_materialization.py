@@ -337,9 +337,12 @@ def test_every_command_example_writes_and_reads_under_out_or_the_workspace(mater
 
 
 def test_both_agent_guides_review_the_book_before_activation_and_positions_after():
-    """P1: activation precedes forward positions; both hosts keep cutoff and causal replay."""
+    """P1: activation precedes forward positions; both hosts keep cutoff and causal replay.
+    The agent reviews first whether it activates under a first use's delegation (STOPS-1) or
+    asks the person."""
     sentence = (
-        "Before asking a person to activate, review the completed historical book and its "
+        "Before activating, or asking a person to activate, review the completed historical "
+        "book and its "
         "review standing, and read `strategy_dates.information_cutoff` and the conditional "
         "`strategy_dates.first_actionable_session`."
     )

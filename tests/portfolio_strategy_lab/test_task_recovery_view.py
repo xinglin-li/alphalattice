@@ -1015,16 +1015,16 @@ def test_every_owner_that_offers_a_plan_is_its_stopped_tasks_re_plan(
         assert {replan.preview or replan.admitting, replan.admitting} <= registered, kind
 
 
-def test_recovery_context_fields_follow_distinct_composed_preview_admission_pairs(
+def test_recovery_context_fields_follow_composed_replan_offers(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """The public request contract follows every composed two-press replan declaration."""
+    """Every offered re-plan, including a single-step sweep, carries its exact source."""
     operations = live.operations
     assert operations is not None
     pairs = {
         operation
         for replan in operations.replans().values()
-        if replan.preview is not None and replan.preview != replan.admitting
+        if replan.preview is not None
         for operation in (replan.preview, replan.admitting)
     }
     assert pairs
@@ -1032,7 +1032,8 @@ def test_recovery_context_fields_follow_distinct_composed_preview_admission_pair
     for operation in pairs:
         _required, allowed = PortfolioResearchOperationRequest.field_contract(cast(Any, operation))
         assert context_fields <= allowed, operation
-    for operation in {"EXPERIMENT_VERIFY_ALL", "CRO_REVIEW"}:
+    assert "EXPERIMENT_VERIFY_ALL" in pairs
+    for operation in {"CRO_REVIEW"}:
         _required, allowed = PortfolioResearchOperationRequest.field_contract(cast(Any, operation))
         assert not context_fields <= allowed, operation
 
@@ -1120,12 +1121,31 @@ def test_a_cancelled_verification_sweep_offers_and_runs_its_replan(
             True,
         ), action
         assert "new Task" in action["expected_effect"]
-        assert saved["data"]["next_requests"]["replan"] == {"operation": "EXPERIMENT_VERIFY_ALL"}
         version = saved["data"]["task_record_hash"]
+        assert saved["data"]["next_requests"]["replan"] == {
+            "operation": "EXPERIMENT_VERIFY_ALL",
+            "recovery_task_id": task_id,
+            "recovery_task_hash": version,
+        }
+        stale = _json(
+            live,
+            "/api/experiments/verify-all",
+            method="POST",
+            payload={
+                "recovery_task_id": task_id,
+                "recovery_task_hash": "0" * 64,
+            },
+        )
+        assert stale["failure_code"] == "local_application.confirmation_stale"
         code, admitted = cli("request", "--from", str(stopped), "--action", "replan")
         assert code == 3 and admitted["data"]["lifecycle"] == "QUEUED", admitted
         new_id = admitted["data"]["task_id"]
         assert new_id != task_id
+        links = live.session.task_control_registry.recovery_links(UUID(task_id))
+        assert len(links) == 2
+        assert links[-1].source_record_hash == version
+        assert str(links[-1].successor_task_id) == new_id
+        assert links[-1].admission_request == {"operation": "EXPERIMENT_VERIFY_ALL"}
         original = _view(live, task_id)
         assert original["lifecycle"] == "CANCELLED" and original["task_record_hash"] == version
         assert _view(live, new_id)["task_kind"] == original["task_kind"]
@@ -1133,6 +1153,7 @@ def test_a_cancelled_verification_sweep_offers_and_runs_its_replan(
         live.dispatcher.drain_for_tests()
         assert _view(live, new_id)["lifecycle"] == "SUCCEEDED"
         assert _view(live, task_id)["lifecycle"] == "CANCELLED"
+        assert _view(live, task_id)["attention"]["successor_task_id"] == new_id
     finally:
         held.release.set()
         live.stop()

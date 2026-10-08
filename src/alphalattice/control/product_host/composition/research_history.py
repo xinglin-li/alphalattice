@@ -354,6 +354,17 @@ class ResearchHistory:
                                 failure_code=task.failure_code,
                             )
                         )
+                if not produced:
+                    produced.append(
+                        HistoryEntry(
+                            f"task:{task.task_id}",
+                            "TASK_RECORD",
+                            task.admitted_at,
+                            task.task_id,
+                            task.lifecycle.value,
+                            failure_code=task.failure_code,
+                        )
+                    )
                 for entry in produced:
                     prior = rows.get(entry.entry_id)
                     if prior is not None and prior != entry:
@@ -437,6 +448,14 @@ class ResearchHistory:
                     review_publication_hash=publication.publication_hash,
                 )
                 rows[entry.entry_id] = entry
+        specialized_tasks = {
+            entry.task_id for entry in rows.values() if entry.kind != "TASK_RECORD"
+        }
+        rows = {
+            key: entry
+            for key, entry in rows.items()
+            if entry.kind != "TASK_RECORD" or entry.task_id not in specialized_tasks
+        }
         if (
             strategy is not None
             and strategy not in installed_packages

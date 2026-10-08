@@ -2305,6 +2305,10 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
         selector = {"task_id": task_id, "curation_receipt_hash": human["decision"]["receipt_hash"]}
         incomplete = _json(session, "/api/experiments/handoff", method="POST", payload=selector)
         assert incomplete["status"] == "DRAFT_INCOMPLETE", incomplete
+        # Who fills the open target and model, in the answer itself: the agent, disclosed,
+        # never a stop for the person (FLOW-3; the Tech Lead's STOPS rulings, rows 32 and 44).
+        assert incomplete["choice_owner"] == "AGENT_DISCLOSES"
+        assert "does not stop to ask" in incomplete["detail"]
         assert (
             incomplete["foundation"]["selected_factor_ids"]
             == report["document"]["factor"]["factor_ids"]

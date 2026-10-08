@@ -7,9 +7,12 @@ from contextlib import contextmanager, nullcontext
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from threadpoolctl import threadpool_info, threadpool_limits  # type: ignore[import-untyped]
 
-from alphalattice.kernel.shared_kernel.environment import package_versions
+from alphalattice.kernel.shared_kernel.environment import (
+    numerical_thread_limit,
+    numerical_thread_pools,
+    package_versions,
+)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..contracts import NESTED_FIT_RUNTIME_CAPABILITY, AlphaModelNumericalBinding
@@ -134,7 +137,7 @@ def _validate_effective_thread_boundary(
         return
     observed = tuple(
         int(value["num_threads"])
-        for value in threadpool_info()
+        for value in numerical_thread_pools()
         if isinstance(value.get("num_threads"), int)
     )
     if observed and max(observed) > environment.configured_thread_count:
@@ -151,7 +154,7 @@ def alpha_model_numerical_scope(
     environment = resolve_alpha_model_numerical_environment(binding)
     library_thread_limit = environment.configured_thread_count
     limiter = (
-        threadpool_limits(limits=library_thread_limit)
+        numerical_thread_limit(library_thread_limit)
         if library_thread_limit is not None
         else nullcontext()
     )

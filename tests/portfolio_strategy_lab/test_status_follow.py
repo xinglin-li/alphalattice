@@ -66,7 +66,7 @@ def test_a_waiting_status_answers_when_the_task_moves_on_or_its_wait_ends() -> N
     assert time.monotonic() - begun < 0.05
 
 
-def test_the_follow_asks_the_host_to_wait_instead_of_polling() -> None:
+def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys) -> None:
     task_id = str(uuid4())
     sent: list[dict[str, Any]] = []
     answers = iter(
@@ -89,6 +89,9 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling() -> None:
     assert final["lifecycle"] == "SUCCEEDED" and final["admission"] == admitted
     assert all(d["operation"] == "STATUS" and 0 < d["wait_seconds"] <= 20 for d in sent)
     assert len(sent) == 2 and time.monotonic() - begun < 0.2
+    # Its first line tells the agent this call is the wait (AGENT-TIME R1).
+    first = json.loads(capsys.readouterr().err.splitlines()[0])
+    assert first["follow"]["operation"] == "STATUS" and "do not poll" in first["returns"]
 
 
 @pytest.mark.parametrize(
@@ -903,3 +906,150 @@ def test_a_read_followed_to_its_end_reads_its_selection_again(monkeypatch) -> No
     promotion = {**shown, "follow_task_id": child}
     final = client_module._follow(promoted, promotion, None)  # type: ignore[arg-type]
     assert "read_request" not in final and final["task_id"] == child
+
+
+class _ScriptedHost:
+    """A Host answering each operation as its owner does, by the fields the verb reads."""
+
+    def __init__(self, workspace: Path, *, prerequisites: bool = True) -> None:
+        self.workspace = workspace
+        self.goal = None
+        self.sent: list[dict[str, Any]] = []
+        self.prerequisites = prerequisites
+        self.previews = 0
+
+    def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
+        self.sent.append(document)
+        book = {"result_hash": "b" * 64}
+        match document["operation"]:
+            case "CONTROLS":
+                return {
+                    "status": "CONTROLS",
+                    "template": {"strategy_package_id": "pkg", "lookback": 20},
+                    "next_requests": {"preview": {"operation": "PLAN", "spec": {}}},
+                }
+            case "RUN":
+                assert document["spec"] == {"strategy_package_id": "pkg", "lookback": 20}
+                return {"status": "ADMITTED", "disposition": "ADMITTED", "task_id": "t-book"}
+            case "STATUS":
+                return {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", **document}
+            case "RESULTS":
+                # The book's Task names no result; the saved results do, by their Task.
+                return {
+                    "results": [
+                        {"task_id": "other", "result_hash": "a" * 64},
+                        {"task_id": "t-book", **book},
+                    ]
+                }
+            case "REPORT":
+                assert document["result_hash"] == book["result_hash"]
+                return {
+                    "result_hash": book["result_hash"],
+                    "review_selector": book,
+                    "next_requests": {
+                        "review": {"operation": "EVIDENCE_CRO", **book},
+                        "evidence_preview": {"operation": "EVIDENCE_PREVIEW", **book},
+                    },
+                }
+            case "EVIDENCE_PREVIEW":
+                self.previews += 1
+                if not self.prerequisites:
+                    return {
+                        "status": "EVIDENCE_PREREQUISITES_MISSING",
+                        "next_requests": {"setup": {"operation": "EVIDENCE_SETUP"}},
+                    }
+                units = (
+                    {
+                        f"analyst_bundle_{unit}": {
+                            "operation": "AGENT_BUNDLE_PREPARE",
+                            "agent_role": "ANALYST",
+                            "evidence_unit_id": unit,
+                            "bundle_directory": None,
+                            **book,
+                        }
+                        for unit in ("u1", "u2")
+                    }
+                    if self.previews > 1
+                    else {}
+                )
+                return {
+                    "status": "EVIDENCE_PREPARATION_READY",
+                    "coverage": {"unit_count": 2},
+                    "next_requests": {
+                        "prepare": {"operation": "EVIDENCE_PREPARE", **book},
+                        **units,
+                    },
+                }
+            case "EVIDENCE_PREPARE":
+                return {"status": "ADMITTED", "task_id": "t-evidence", "lifecycle": "QUEUED"}
+            case "AGENT_BUNDLE_PREPARE":
+                return {
+                    "status": "AGENT_BUNDLE_READY",
+                    "agent_role": "ANALYST",
+                    "bundle_directory": document["bundle_directory"],
+                    "index": "README.md",
+                    "files": [{"name": "README.md", "text": "Read the packet.\n"}],
+                    "next_requests": {"submit": {"operation": "AGENT_ANSWER_SUBMIT"}},
+                }
+        raise AssertionError(document)
+
+
+def _review_args(root: Path) -> SimpleNamespace:
+    return SimpleNamespace(strategy_package_id="pkg", bundle_root=root, max_wait=None)
+
+
+def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_bundle(
+    tmp_path: Path,
+) -> None:
+    """requirement (AGENT-TIME verb 2, approved 2026-10-08): one call sends the requests the
+    answers offer, in their order, following each Task to its end, and returns every Analyst
+    bundle written with its answer path and submit command; each step stays a command."""
+    host = _ScriptedHost(tmp_path / "workspace")
+    answer = client_module._book_review(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
+
+    assert answer["status"] == "BOOK_REVIEW_READY" and answer["next_action"] == "DISPATCH_ANALYSTS"
+    assert [step["step"] for step in answer["steps"]] == [
+        "controls",
+        "book",
+        "book_task",
+        "book_result",
+        "book_readback",
+        "evidence_preview",
+        "evidence",
+        "evidence_task",
+        "evidence_preview_after",
+        "analyst_bundle",
+        "analyst_bundle",
+    ]
+    assert [bundle["unit"] for bundle in answer["analyst_bundles"]] == ["u1", "u2"]
+    for bundle in answer["analyst_bundles"]:
+        folder = Path(bundle["bundle_directory"])
+        assert folder.parent == (tmp_path / "analysts").resolve()
+        assert (folder / "README.md").read_text(encoding="utf-8") == "Read the packet.\n"
+        assert bundle["answer_file"] == str(folder / "answer.json")
+        assert bundle["submit_arguments"][-4:] == [
+            "--dir",
+            str(folder),
+            "--file",
+            bundle["answer_file"],
+        ]
+    assert answer["book"]["review_selector"] == {"result_hash": "b" * 64}
+    assert answer["next_requests"] == {
+        "review": {"operation": "EVIDENCE_CRO", "result_hash": "b" * 64}
+    }
+    assert {d["task_id"] for d in host.sent if d["operation"] == "STATUS"} == {
+        "t-book",
+        "t-evidence",
+    }
+
+
+def test_a_book_review_stops_at_the_first_answer_that_needs_another_step(tmp_path: Path) -> None:
+    """requirement (AGENT-TIME verb 2): a missing prerequisite ends the call with that answer,
+    its way on kept and the steps taken named; no bundle is written."""
+    host = _ScriptedHost(tmp_path / "workspace", prerequisites=False)
+    answer = client_module._book_review(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
+
+    assert answer["status"] == "EVIDENCE_PREREQUISITES_MISSING"
+    assert answer["next_requests"] == {"setup": {"operation": "EVIDENCE_SETUP"}}
+    assert answer["book_review"]["stopped_at"] == "evidence_preview"
+    assert not (tmp_path / "analysts").exists()

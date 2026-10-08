@@ -139,6 +139,7 @@ RULES = [
             "tests/portfolio_strategy_lab/test_native_answer_route_class.py",
             "tests/portfolio_strategy_lab/test_strategy_scoring.py",
             "tests/portfolio_strategy_lab/test_workbench_readback.py",
+            "tests/portfolio_strategy_lab/test_workbench_goal_follow_browser.py",
             "tests/portfolio_strategy_lab/test_workbench_owner_words.py",
             "tests/portfolio_strategy_lab/test_team_scene_producers.py",
             "tests/portfolio_strategy_lab/test_workbench_goal_request_words.py",
@@ -200,6 +201,9 @@ RULES = [
                 "needs the private UI QA kit"
             ),
             "tests/portfolio_strategy_lab/workbench_dom.cjs": "needs the private UI QA kit",
+            "tests/portfolio_strategy_lab/test_workbench_goal_follow_browser.py": (
+                "needs the private UI QA kit"
+            ),
             "tests/portfolio_strategy_lab/workbench_handoffs.cjs": "needs the private UI QA kit",
             "tests/portfolio_strategy_lab/workbench_home_forward.cjs": (
                 "measures Home density with the private UI QA page census"
@@ -297,6 +301,13 @@ RULES = [
         "patterns": [
             "README.md",
             "CONTRIBUTING.md",
+            "CLA.md",
+            "GOVERNANCE.md",
+            "SECURITY.md",
+            ".github/CODEOWNERS",
+            ".github/ISSUE_TEMPLATE/bug_report.yml",
+            ".github/ISSUE_TEMPLATE/feature_request.yml",
+            ".github/PULL_REQUEST_TEMPLATE.md",
             "docs/public-source/**",
             "docs/reference/**",
             "docs/index.md",
@@ -351,10 +362,15 @@ RULES = [
     {
         "rule": "PUBLIC_ASSET",
         "kind": "PUBLIC",
-        "patterns": ["src/alphalattice/**"],
+        "patterns": [
+            "src/alphalattice/**",
+            "docs/images/workbench-light.webp",
+            "docs/images/workbench-dark.webp",
+            "docs/images/goal-conversation.webp",
+        ],
         "reason": (
-            "Non-Python product resources and Local Web source/build assets "
-            "are installed product inputs."
+            "Non-Python product resources, Local Web source/build assets and "
+            "public Workbench illustrations support operation and product guidance."
         ),
     },
     {

@@ -556,7 +556,7 @@ def test_numerical_environment_effective_thread_failure_is_operational(
     )
     monkeypatch.setattr(
         numerical_environment_module,
-        "threadpool_info",
+        "numerical_thread_pools",
         lambda: [{"num_threads": 2}],
     )
 
@@ -982,3 +982,55 @@ def test_dataset_reuse_mutates_every_binning_field_and_preserves_operator_parame
             assert adapter._dataset(Backend, **altered)[1] != key
         assert adapter._dataset(Backend, **(arguments | {"reference_key": "other"}))[1] != key
     assert Backend.calls > 1
+
+
+def test_a_booster_cache_scope_parses_each_model_once_and_predicts_the_same_bits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """requirement (PERF-1 lever 3): a scoring loop reuses each model's Booster by its text."""
+    import lightgbm
+
+    from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological import (
+        CHRONOLOGICAL_LIGHTGBM_CONTENT_FORMAT_ID,
+        chronological_lightgbm_booster_cache,
+    )
+    from alphalattice.capabilities.alpha_modeling.contracts import AlphaEstimatorContent
+
+    rng = np.random.default_rng(7)
+    features = rng.standard_normal((200, 3))
+    targets = features @ np.array([0.5, -0.25, 0.1]) + rng.standard_normal(200) * 0.1
+    model = lightgbm.train(
+        {"objective": "l2", "num_threads": 1, "deterministic": True, "verbosity": -1},
+        lightgbm.Dataset(features, targets),
+        num_boost_round=20,
+    )
+    feature_ids = ("a", "b", "c")
+    adapter = ChronologicalLightGBMAdapter()
+    estimator = AlphaEstimatorContent.create(
+        adapter_id=adapter.adapter_id,
+        content_format_id=CHRONOLOGICAL_LIGHTGBM_CONTENT_FORMAT_ID,
+        ordered_feature_ids=feature_ids,
+        payload={"model_text": model.model_to_string(), "best_iteration": 20},
+    )
+    rows = np.ascontiguousarray(features[:50])
+    rows.setflags(write=False)
+    inputs = BoundAlphaPredictionInput(
+        training_binding_hash="a" * 64, ordered_feature_ids=feature_ids, features=rows
+    )
+    fresh = adapter.predict(estimator=estimator, inputs=inputs).predictions
+
+    parsed = 0
+    booster = lightgbm.Booster
+
+    def counted(*args, **kwargs):
+        nonlocal parsed
+        parsed += 1
+        return booster(*args, **kwargs)
+
+    monkeypatch.setattr(lightgbm, "Booster", counted)
+    with chronological_lightgbm_booster_cache():
+        reused = [adapter.predict(estimator=estimator, inputs=inputs).predictions for _ in range(3)]
+    assert parsed == 1
+    assert all(value.tobytes() == fresh.tobytes() for value in reused)
+    adapter.predict(estimator=estimator, inputs=inputs)
+    assert parsed == 2  # nothing survives the scope

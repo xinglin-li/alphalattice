@@ -56,6 +56,32 @@ Dataset fresh, which is exactly what it did before this existed.
 """
 
 
+_BOOSTER_CACHE: ContextVar[dict[str, Any] | None] = ContextVar(
+    "chronological_lightgbm_booster_cache", default=None
+)
+"""Boosters by their exact model text, for one scoring loop; absent unless a scope opens it."""
+
+
+@contextmanager
+def chronological_lightgbm_booster_cache() -> Iterator[None]:
+    """Reuse each model's Booster across the formations of one scoring loop, then release.
+
+    Rebuilding a Booster parses its whole model text (about 2.3 ms for 300 trees), and a
+    lifecycle study predicts with the same few dozen models at every formation. Boosters are
+    kept by their exact model text, so only identical text answers, and prediction leaves a
+    Booster unchanged. The scope is the loop and nothing survives it: one study's Boosters
+    take about 0.75 MiB each.
+    """
+    token = _BOOSTER_CACHE.set({})
+    try:
+        yield
+    finally:
+        cache = _BOOSTER_CACHE.get()
+        if cache is not None:
+            cache.clear()
+        _BOOSTER_CACHE.reset(token)
+
+
 def load_lightgbm_runtime() -> Any:
     """Expose the shared optional runtime loader to installed sibling adapters."""
     return _load_lightgbm()
@@ -721,7 +747,12 @@ class ChronologicalLightGBMAdapter:
             raise ValueError("ALPHA_CHRONOLOGICAL_LIGHTGBM_ESTIMATOR_BINDING_INVALID")
         model_text = str(estimator.payload["model_text"])
         best_iteration = int(estimator.payload["best_iteration"])
-        booster = _load_lightgbm().Booster(model_str=model_text)
+        boosters = _BOOSTER_CACHE.get()
+        booster = None if boosters is None else boosters.get(model_text)
+        if booster is None:
+            booster = _load_lightgbm().Booster(model_str=model_text)
+            if boosters is not None:
+                boosters[model_text] = booster
         predictions = np.asarray(
             booster.predict(inputs.features, num_iteration=best_iteration), dtype=np.float64
         )

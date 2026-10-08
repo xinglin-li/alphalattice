@@ -24,6 +24,7 @@ from contextlib import suppress
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 import pytest
@@ -44,11 +45,13 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
 from alphalattice.interface.local_application.web import (
+    BROWSER_REFUSED_PORTS,
     CONTENT_SECURITY_POLICY,
     SESSION_COOKIE,
     SESSION_HEADER,
     LocalWebApplication,
     LocalWebService,
+    bind_browser_safe,
     session_cookie_name,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
@@ -372,6 +375,18 @@ def test_a_compact_answer_is_one_read_and_names_each_part_it_left_out() -> None:
     for part in view["omitted_sections"]:
         answer_part(body, part)
     assert len(json.dumps(compact_display(body, budget=8 * 1024))) <= 8 * 1024
+    # The page links are kept whole and a book's activation is drawn before the bulk: what AX's
+    # agents read back from saved answers (AGENT-TIME R2).
+    linked = {
+        **body,
+        "local_web_url": "http://127.0.0.1:1/workbench.html#page=book",
+        "navigation": {"url": "http://127.0.0.1:1/workbench.html#page=book"},
+        "activation": {"status": "INACTIVE", "detail": "Offered.", "reasons": ["REVIEWED"]},
+    }
+    shown = compact_display(linked)["data"]
+    assert shown["local_web_url"] == linked["local_web_url"]
+    assert shown["navigation"] == linked["navigation"]
+    assert shown["activation"] == linked["activation"]
 
     refusal = {"refused": True, "failure_code": "x.y", "allowed": [f"OP_{i}" for i in range(20)]}
     assert compact_display(refusal, whole=True)["data"] == refusal
@@ -2535,7 +2550,8 @@ def test_a_refused_write_ends_its_connection_without_a_reset(
 
 
 def _launch_path(live: LocalPortfolioWebSession) -> str:
-    return live.launch_url.removeprefix(live.url.rstrip("/"))
+    selected = urlsplit(live.launch_url)
+    return selected.path + ("?" + selected.query if selected.query else "")
 
 
 def test_only_the_launch_url_gives_a_browser_the_session(
@@ -4774,6 +4790,56 @@ def test_strategy_controls_offer_each_missing_components_first_step(tmp_path):
     assert again["missing_components"] == required[1:]
     assert f"component:{required[0]}" not in again["next_requests"]
     assert again["next_requests"]["plan"]["operation"] == "RESEARCH_STRATEGY_PLAN"
+    # Risk is offered beside the components until a completed Risk study covers the window a
+    # calibrated Alpha study names (FLOW-3); no window is known before one completes.
+    assert again["risk_windows"] == []
+    assert again["next_requests"]["risk"] == {
+        "operation": "EXPERIMENT_CONTROLS",
+        "research_input_id": None,
+        "experiment_kind": "risk.covariance-development",
+    }
+    studies.append(
+        {
+            "lifecycle": "SUCCEEDED",
+            "kind": "risk.covariance-development",
+            "sessions": {"start": "2020-01-02", "end": "2026-09-10"},
+        }
+    )
+    assert "risk" not in owner.controls()["next_requests"]
+
+
+def test_the_first_intent_is_the_way_forward_and_names_it_in_words() -> None:
+    """regression (FLOW-3, AX's first use of 2026-10-07): the lead followed the inputs' Factor
+    flows, read first, and the Lab book they lead to was never the one a strategy activates.
+    `workspace show` lists `RUN_FORWARD` first: with no strategy installed it names the
+    research strategy's controls and why, and an installed strategy with no book yet offers
+    its book's controls instead of being left out."""
+
+    from types import SimpleNamespace
+
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        INSTALLED_BOOK_WORDS,
+        RUN_FORWARD_WORDS,
+        PortfolioResearchOperations,
+    )
+
+    forward = PortfolioResearchOperations._forward_intents
+    (none,) = forward(SimpleNamespace(_packages={}, activations=None))  # type: ignore[arg-type]
+    assert none["status"] == "NO_RESEARCH_STRATEGY_INSTALLED"
+    assert none["detail"] == RUN_FORWARD_WORDS and "need no Factor study" in RUN_FORWARD_WORDS
+    assert none["next_requests"] == {
+        "strategy_controls": {"operation": "RESEARCH_STRATEGY_CONTROLS"}
+    }
+    installed = SimpleNamespace(
+        _packages={"PKG": object()},
+        activations=object(),
+        _activation_offer=lambda _package: {"status": "INACTIVE"},
+    )
+    (bookless,) = forward(installed)  # type: ignore[arg-type]
+    assert (bookless["status"], bookless["detail"]) == ("NO_BOOK_YET", INSTALLED_BOOK_WORDS)
+    assert bookless["next_requests"] == {
+        "books": {"operation": "CONTROLS", "strategy_package_id": "PKG"}
+    }
 
 
 def test_a_strategy_short_of_risk_history_names_the_start_and_offers_the_risk_study(tmp_path):
@@ -5335,3 +5401,34 @@ def test_a_genuine_fault_stays_a_fault_at_every_web_owner_entry(live, monkeypatc
     from tests.portfolio_strategy_lab.web_refusal_support import exercise_untyped_fault_matrix
 
     exercise_untyped_fault_matrix(live, monkeypatch)
+
+
+def test_a_port_the_browser_refuses_is_never_the_workbenchs():
+    """regression (STOPS-1, 2026-10-08): Windows gave a port-0 bind 1720, which Chromium refuses
+    (ERR_UNSAFE_PORT), and the browser test could not open the Workbench. Each refused port is
+    held while another is bound, then closed; a port the caller asked for is kept as asked."""
+
+    class Bound:
+        def __init__(self, port: int) -> None:
+            self.server_address = ("127.0.0.1", port)
+            self.closed = False
+
+        def server_close(self) -> None:
+            self.closed = True
+
+    ports = iter((1720, 6000, 49152))
+    made: list[Bound] = []
+
+    def bind() -> Bound:
+        made.append(Bound(next(ports)))
+        return made[-1]
+
+    kept = bind_browser_safe(bind, assigned=True)
+    assert kept.server_address[1] == 49152 and not kept.closed
+    assert [(server.server_address[1], server.closed) for server in made[:-1]] == [
+        (1720, True),
+        (6000, True),
+    ]
+    assert {1720, 5060, 6000, 10080} <= BROWSER_REFUSED_PORTS
+    asked = bind_browser_safe(lambda: Bound(1720), assigned=False)
+    assert asked.server_address[1] == 1720 and not asked.closed

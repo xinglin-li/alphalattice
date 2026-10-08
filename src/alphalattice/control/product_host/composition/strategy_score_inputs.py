@@ -516,6 +516,24 @@ def _read_workspace_component_inputs(
     selected_extensions = tuple(
         sorted({"close_to_close", *(name for name in formula_ids if name in extension)})
     )
+    # A kept history serves when it holds every column this capture needs; its prefix is proved
+    # over the Features it was kept for, so a renewal day's wider history serves the next day.
+    kept_stored, kept_extensions = selected_stored, selected_extensions
+    needed = {*stored, *(name for name in formula_ids if name in extension)}
+    kept = needed
+    if capture and history is not None:
+        kept = {name.split("::", 1)[1] for name in history[1] if name.startswith("formula::")}
+        if (
+            needed
+            <= kept
+            <= set(feature._feature_factor_ids(binding.feature_catalog_hash)) | set(extension)
+        ):
+            kept_stored = tuple(
+                sorted({"dist_52w_high", "dist_52w_low", *(kept - extension.keys())})
+            )
+            kept_extensions = tuple(sorted({"close_to_close", *(kept & extension.keys())}))
+        else:
+            history = None
     dependency_prefix_hash = None
     restored: Mapping[str, FloatArray] | None = None
     reused_count = return_start = 0
@@ -542,10 +560,23 @@ def _read_workspace_component_inputs(
                 catalog_hash=binding.feature_catalog_hash,
                 start=sessions[0],
                 ends=(candidate_sessions[-1], sessions[-1])
-                if candidate_sessions is not None
+                if candidate_sessions is not None and kept_stored == selected_stored
                 else (sessions[-1],),
                 factor_ids=selected_stored,
                 _connection=connection,
+            )
+            # A wider kept history's prefix is proved over its own Features, apart.
+            kept_proof = (
+                feature_proofs[0]
+                if candidate_sessions is None or kept_stored == selected_stored
+                else feature.feature_source_prefix_proofs(
+                    listing_ids=listings,
+                    catalog_hash=binding.feature_catalog_hash,
+                    start=sessions[0],
+                    ends=(candidate_sessions[-1],),
+                    factor_ids=kept_stored,
+                    _connection=connection,
+                )[0]
             )
         if history is not None and candidate_sessions is not None:
             head, columns = history
@@ -557,9 +588,9 @@ def _read_workspace_component_inputs(
                     listings=listings,
                     observed_at=observed_at,
                     catalog_hash=binding.feature_catalog_hash,
-                    factor_ids=selected_stored,
-                    extension_factor_ids=selected_extensions,
-                    feature_prefix_proof=feature_proofs[0],
+                    factor_ids=kept_stored,
+                    extension_factor_ids=kept_extensions,
+                    feature_prefix_proof=kept_proof,
                 )
                 == head.dependency_prefix_hash
             ):
@@ -569,10 +600,7 @@ def _read_workspace_component_inputs(
                     "observations::dist_52w_low",
                     "observations::close_to_close",
                     "raw_simple",
-                    *(
-                        "formula::" + name
-                        for name in (*stored, *(name for name in formula_ids if name in extension))
-                    ),
+                    *("formula::" + name for name in kept),
                 }
                 if set(columns) != expected_columns:
                     raise ValueError("strategy_score.prepared_input_axis_invalid")
@@ -598,15 +626,19 @@ def _read_workspace_component_inputs(
     if prepared is None:
         with market._connect(read_only=True) as connection, connection.snapshot():
             with span("materialize", "ohlcv_returns"):
+                # Every listing's bars and actions in one read each, as each listing's own
+                # reads answer them (two queries a listing and component were most of this).
+                bars_by_listing = market.raw_bars_by_listing(
+                    listings,
+                    start=sessions[return_start],
+                    through=formation,
+                    _connection=connection,
+                )
+                actions_by_listing = market.actions_by_listing(listings, _connection=connection)
                 for column, listing in enumerate(listings):
-                    bars = market.raw_bars(
-                        listing,
-                        start=sessions[return_start],
-                        through=formation,
-                        _connection=connection,
-                    )
+                    bars = bars_by_listing[listing]
                     by_session = {bar.session_date: bar for bar in bars}
-                    listing_actions = market.actions(listing, _connection=connection)
+                    listing_actions = actions_by_listing[listing]
                     actions.append(listing_actions)
                     try:
                         dividends = _action_dividends(listing_actions, through=formation)

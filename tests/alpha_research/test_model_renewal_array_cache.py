@@ -220,6 +220,32 @@ def test_generic_request_cache_never_retains_mutable_shells():
     assert second == {"values": []}
 
 
+def test_an_opted_in_mutable_value_is_built_once_and_each_caller_gets_its_own_copy():
+    builds = 0
+
+    def build_mutable():
+        nonlocal builds
+        builds += 1
+        return {"values": ["verified"]}
+
+    key = ("mutable-copied", "exact-source")
+    with content_store.verified_array_read_scope(reuse_verified=True):
+        first = content_store.verified_request_value(
+            key, build_mutable, nbytes=8, copy_mutable=True
+        )
+        first["values"].append("caller mutation")
+        second = content_store.verified_request_value(
+            key, build_mutable, nbytes=8, copy_mutable=True
+        )
+    with content_store.verified_array_read_scope(reuse_verified=True):
+        third = content_store.verified_request_value(
+            key, build_mutable, nbytes=8, copy_mutable=True
+        )
+    assert builds == 1
+    assert second == third == {"values": ["verified"]}
+    assert second is not third and second["values"] is not third["values"]
+
+
 def test_discard_only_npz_proof_rehashes_and_binds_each_store(tmp_path, monkeypatch):
     payload = _payload()
     store, identity = _store_with_arrays(tmp_path / "one", payload)

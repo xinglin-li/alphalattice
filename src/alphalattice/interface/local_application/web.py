@@ -50,7 +50,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, cast
+from typing import Any, Final, Protocol, cast
 from urllib.parse import parse_qs, urlsplit
 
 from alphalattice.interface.local_application.cli_contract import (
@@ -70,6 +70,17 @@ from alphalattice.interface.local_application.failure_codes import (
 from alphalattice.protocols.research_authoring.selection import rewrite_in_declaration_dialect
 
 LOOPBACK_HOST = "127.0.0.1"
+BROWSER_REFUSED_PORTS: Final = frozenset(
+    {1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95}
+    | {101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161}
+    | {179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563}
+    | {587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060}
+    | {5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080}
+)
+"""The ports Chromium refuses to load (`ERR_UNSAFE_PORT`). Windows may assign one to a
+port-0 bind, as the staged gate met at 1720 (STOPS-1), and the Workbench would not open."""
+BROWSER_SAFE_REBINDS: Final = 16
+"""How many refused ports one bind holds while it asks for another, before it keeps one."""
 SESSION_COOKIE = "alphalattice_local_session"
 """Cookie-name prefix; browsers share cookies across ports on one loopback host."""
 SESSION_HEADER = "X-Alphalattice-Session"
@@ -683,6 +694,42 @@ class _Handler(BaseHTTPRequestHandler):
         self._serve("POST")
 
 
+class _Bound(Protocol):
+    @property
+    def server_address(self) -> Any: ...
+
+    def server_close(self) -> None: ...
+
+
+def bind_browser_safe[B: _Bound](bind: Callable[[], B], *, assigned: bool) -> B:
+    """Bind once; when the OS assigned a port a browser refuses, bind again while holding it.
+
+    Each refused socket stays open until a usable one is bound, so the OS cannot hand the
+    same port back, and is closed then. A port the caller asked for is kept as asked.
+
+    Args:
+        bind: Binds one server and returns it.
+        assigned: True when the port was left to the OS (port 0).
+
+    Returns:
+        The bound server; after `BROWSER_SAFE_REBINDS` refused ports, the last one.
+    """
+    refused: list[B] = []
+    try:
+        while True:
+            server = bind()
+            if (
+                not assigned
+                or int(server.server_address[1]) not in BROWSER_REFUSED_PORTS
+                or len(refused) >= BROWSER_SAFE_REBINDS
+            ):
+                return server
+            refused.append(server)
+    finally:
+        for held in refused:
+            held.server_close()
+
+
 class _Server(ThreadingHTTPServer):
     daemon_threads = False
     """A request thread can admit a task, so it is a writer and must be joined.
@@ -771,7 +818,10 @@ class LocalWebService:
         """
         if self._server is not None:
             return self.url
-        server = _Server((LOOPBACK_HOST, self.port), self.application)
+        server = bind_browser_safe(
+            lambda: _Server((LOOPBACK_HOST, self.port), self.application),
+            assigned=self.port == 0,
+        )
         try:
             self._server = server
             host = f"{LOOPBACK_HOST}:{self.bound_port}"

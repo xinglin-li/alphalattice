@@ -16,7 +16,7 @@
 const LiveTeam = (() => {
   const KINDS = {NATIVE_SUBAGENT_START_HOOK: 'hook', NATIVE_SUBAGENT_STOP_HOOK: 'hook', NATIVE_COORDINATION_MESSAGE: 'message', NATIVE_AGENT_USAGE: 'usage'};
   // U25: the decision notes (决策笔记) a member writes are messages of their own kinds, in the conversation
-  const MESSAGE_KINDS = {assignment: ['Assignment', 'arrow'], question: ['Question', 'info'], answer: ['Answer', 'file'], objection: ['Objection', 'warning'], pm_response: ['PM response', 'user'], plan: ['Plan', 'flag'], decision: ['Decision', 'check'], dead_end: ['Dead end', 'ban'], surprise: ['Surprise', 'info']};
+  const MESSAGE_KINDS = {assignment: ['Assignment', 'arrow'], question: ['Question', 'info'], answer: ['Answer', 'file'], objection: ['Objection', 'warning'], pm_response: ['PM response', 'user'], plan: ['Plan', 'flag'], decision: ['Decision', 'check'], dead_end: ['Dead end', 'ban'], surprise: ['Surprise', 'info'], session_bound: ['Session bound', 'check']};
   const NOTE_KINDS = new Set(['plan', 'decision', 'dead_end', 'surprise']);
   const CHANNELS = {CODEX_HOOK: 'Codex hook input · not host-authenticated', CLAUDE_CODE_HOOK: 'Claude Code hook input · not host-authenticated', ACTOR_DECLARED: 'Actor-declared text · not host-verified', PRODUCT_ACCEPTED_ANSWER: 'Accepted structured answer · product record, not a native spoken turn'};
   const PM_ROLE = 'research_lead';

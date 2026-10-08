@@ -231,10 +231,13 @@ class Decision(_Answer):
     """What the decision is about, in words."""
     next_requests: dict[str, Any]
     """The requests that decide it, each ready to send."""
+    waits_on: str
+    """`PERSON` for a step only a person may take; `AGENT` for one the agent takes and tells
+    the person, including advice it reports."""
 
 
 class PendingDecisionsAnswer(_Answer):
-    """What waits on a person, in one read."""
+    """What waits on a person, and what the agent carries, in one read."""
 
     status: str
     """The answer's status."""
@@ -243,7 +246,7 @@ class PendingDecisionsAnswer(_Answer):
     counts: dict[str, int]
     """How many decisions wait, by kind."""
     detail: str
-    """The decisions in one line."""
+    """How many decisions wait on a person, in one line; the agent's are not counted."""
 
 
 class RefusalCount(_Answer):

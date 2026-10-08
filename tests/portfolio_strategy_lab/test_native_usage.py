@@ -399,7 +399,8 @@ def _claude_child(config, agent, role, records):
 def test_the_host_reads_the_lead_and_the_children_its_own_session_records(tmp_path, monkeypatch):
     """requirement (FLOW-1, AU): with no hook and no assignment, a reading opens the bound
     Session's own file and the children its own directory records, each only when its sidecar
-    names this Session and a bound role; a child of another role is named, never read."""
+    names this Session and a bound role; a child of another role is named, never read, and
+    fails nothing (STOPS-1: a lead's general helpers made every reading partial)."""
     config, project = _claude_project(tmp_path, monkeypatch)
     _write(config / "projects/p/lead-session.jsonl", _lead_records()[:-1])
     # The card pins claude-sonnet-5-5; the host ran an older model.
@@ -415,14 +416,14 @@ def test_the_host_reads_the_lead_and_the_children_its_own_session_records(tmp_pa
 
     receipt = read_session_usage(project, binding, publish=publish)
 
-    assert receipt["status"] == "PARTIAL"
+    assert receipt["status"] == "DELIVERED" and "reason" not in receipt
     members = {m["agent_id"]: m for m in receipt["participants"]}
     assert members["lead-session"]["status"] == "DELIVERED"
     assert members["child"]["status"] == "DELIVERED"
     assert members["stranger"] == {
         "agent_id": "stranger",
-        "status": "UNAVAILABLE",
-        "reason": "native_bridge.child_usage_binding_unverified",
+        "status": "NOT_READ",
+        "reason": "native_bridge.child_not_a_specialist",
     }
     led, child = filed
     assert (led["subject"]["native_agent_id"], led["subject"]["role"]) == (

@@ -715,6 +715,166 @@ def test_membership_revision_hydrates_only_additions_and_reuses_retained_history
     assert "REM" not in revision_provider.hydration_calls
 
 
+@pytest.mark.parametrize("anchor_state", ["verified", "missing", "historical_bytes_changed"])
+def test_same_session_membership_uses_its_unchanged_full_anchor_and_real_rolling_audit(
+    tmp_path, anchor_state
+):
+    """behaviour: retained history needs both recorded audit scopes, without a new full audit."""
+    from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
+
+    old_symbols = tuple(f"OLD{i:02d}" for i in range(10))
+    target = date(2026, 8, 3)
+    daily_at = datetime(2026, 8, 3, 23, tzinfo=UTC)
+    membership_at = daily_at + timedelta(minutes=6)
+    history_start = date(2016, 7, 31)
+    schedule = materialize_calendar_schedule(
+        ("XNAS",), start=history_start, end=target, as_of_timestamp=daily_at
+    )
+    sessions = tuple(row["session_date"] for row in schedule.to_pylist())
+    store = MarketDataRepository(tmp_path / "workspace")
+    initial_provider = HydrationFixtureProvider(sessions, provider_wide_failures=0)
+    initial = CurrentUniverseOnboarding(
+        store=store,
+        bootstrap=_bootstrap(old_symbols),
+        profile_path=PROFILE,
+        provider=initial_provider,
+        as_of_session=AS_OF,
+        history_start=history_start,
+    )
+    if anchor_state == "missing":
+        # Real ingestion alone supplies no authority to invent a full-history audit.
+        manifest = initial.acquisition_manifest
+        store.bootstrap(manifest)
+        for symbol in old_symbols:
+            payload = initial_provider.fetch_daily((symbol,), start=history_start, end=AS_OF)
+            store.apply_validated_batch(
+                manifest,
+                sanitize_payload(manifest, initial_provider.name, payload, (symbol,)),
+                ingestion_id=f"unaudited-history:{symbol}",
+                observed_at=OBSERVED_AT,
+            )
+    else:
+        prepared = initial.run(observed_at=OBSERVED_AT)
+        assert prepared.status is CurrentUniverseOnboardingStatus.COMPLETED
+        manifest = prepared.research_manifest
+        assert manifest is not None
+        assert {
+            unit.state for unit in store.current_universe_onboarding_listings(initial.onboarding_id)
+        } == {"FEATURE_READY"}
+    retained_ids = tuple(listing.listing_id for listing in manifest.listings)
+    anchors = store.latest_action_audit_receipts(retained_ids, provider=initial_provider.name)
+    assert len(anchors) == (0 if anchor_state == "missing" else 10)
+    if anchor_state == "missing":
+        # This deliberately unaudited acquisition cannot enter normal maintenance.
+        # Its real next-day ingestion and bounded audit still cannot replace the
+        # missing historical anchor or admit the entire retained history.
+        rolling_start = target - timedelta(days=45)
+        for listing in manifest.listings:
+            payload = initial_provider.fetch_daily(
+                (listing.symbol,), start=AS_OF + timedelta(days=1), end=target
+            )
+            store.apply_validated_batch(
+                manifest,
+                sanitize_payload(manifest, initial_provider.name, payload, (listing.symbol,)),
+                ingestion_id=f"unaudited-tail:{listing.symbol}",
+                observed_at=daily_at,
+            )
+            evidence = initial_provider.fetch_hydration(
+                listing_id=listing.listing_id,
+                provider_symbol=listing.provider_symbol,
+                start=rolling_start,
+                end=target,
+            )
+            store.complete_action_audit(
+                manifest,
+                listing_id=listing.listing_id,
+                provider=initial_provider.name,
+                observed_actions=evidence.actions,
+                observed_adjusted_closes=evidence.adjusted_closes,
+                history_start=rolling_start,
+                history_end=target,
+                requested_as_of=target,
+                observed_at=daily_at,
+            )
+    else:
+        daily = CurrentUniverseMaintenance(
+            store=store,
+            manifest=manifest,
+            provider=initial_provider,
+            as_of_session=target,
+        ).run(observed_at=daily_at)
+        assert daily.status is CurrentUniverseMaintenanceStatus.COMPLETED
+        assert daily.updated == 10 and daily.failed == 0
+    rolling = store.latest_action_audit_receipts(
+        retained_ids, provider=initial_provider.name, requested_as_of=target
+    )
+    assert len(rolling) == 10
+    assert all(
+        receipt.history_start > sessions[0] and receipt.observed_at == daily_at.replace(tzinfo=None)
+        for receipt in rolling.values()
+    )
+    if anchor_state == "historical_bytes_changed":
+        listing = manifest.listings[0]
+        old_bar = store.raw_bars(listing.listing_id, through=AS_OF)[0]
+        row = {key: getattr(old_bar, key) for key in ("open", "high", "low", "close", "volume")}
+        row.update(session_date=old_bar.session_date.isoformat(), volume=old_bar.volume + 1)
+        counts = store.apply_validated_batch(
+            manifest,
+            sanitize_payload(
+                manifest, initial_provider.name, {listing.symbol: (row,)}, (listing.symbol,)
+            ),
+            ingestion_id="historical-correction",
+            observed_at=daily_at + timedelta(minutes=1),
+        )
+        assert counts["corrected"] == 1
+    provider = HydrationFixtureProvider(sessions, provider_wide_failures=0)
+    revised = CurrentUniverseOnboarding(
+        store=store,
+        bootstrap=_bootstrap((*old_symbols, "NEW")),
+        profile_path=PROFILE,
+        provider=provider,
+        as_of_session=target,
+        history_start=history_start,
+        retained_listing_ids=retained_ids,
+    )
+    result = revised.run(observed_at=membership_at)
+    assert result.status is CurrentUniverseOnboardingStatus.COMPLETED
+    units = {
+        unit.symbol: unit
+        for unit in store.current_universe_onboarding_listings(revised.onboarding_id)
+    }
+    rejected = (
+        set(old_symbols)
+        if anchor_state == "missing"
+        else {manifest.listings[0].symbol}
+        if anchor_state == "historical_bytes_changed"
+        else set()
+    )
+    assert {symbol for symbol, unit in units.items() if unit.state == "AUDIT_FAILED"} == rejected
+    assert all(
+        unit.state == "FEATURE_READY" for symbol, unit in units.items() if symbol not in rejected
+    )
+    assert all(
+        units[symbol].failure_code == "data.retained_action_evidence_not_reusable"
+        for symbol in rejected
+    )
+    assert provider.hydration_calls == {"NEW": 1} and provider.daily_calls == {}
+    # Successful same-session admission retains the real daily audit, never a
+    # fabricated current full receipt: the acquisition-budget answer stays None.
+    assert store.latest_action_audit_receipts(retained_ids, provider=provider.name) == anchors
+    for listing_id in retained_ids:
+        assert (
+            store.reusable_action_audit_receipt(
+                revised.acquisition_manifest,
+                listing_id=listing_id,
+                provider=provider.name,
+                requested_as_of=target,
+                now=membership_at,
+            )
+            is None
+        )
+
+
 def test_admission_cache_is_set_only_after_complete_receipt_rebinding(tmp_path, monkeypatch):
     import pytest
 

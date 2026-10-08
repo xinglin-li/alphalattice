@@ -200,11 +200,13 @@ REGISTER: dict[tuple[str, str, str], str] = {
     (
         "control/product_host/composition/task_recovery.py",
         "task_attention",
-        "BLOCKED,RECOVERY_REQUIRED",
+        "BLOCKED,CANCELLED,RECOVERY_REQUIRED",
     ): "blocked or interrupted Tasks owe recovery attention until an exact-version successful "
-    "successor or resolved incident proves resolution (P3a); cancellation intentionally ends, "
-    "deferral waits on time, and other states owe no stopped attention; this owns the former "
-    "pending_decisions._STOPPED classification",
+    "successor or resolved incident proves resolution (P3a), and a ledger-rebuilt one, which "
+    "cannot resume, closes as UNRECOVERABLE; a cancelled Task owes none but folds under an "
+    "exact-version successor that succeeded (BADGE: unrecoverable stops close, resolved stops "
+    "fold under their successor); deferral waits on time, and other states owe no stopped "
+    "attention; this owns the former pending_decisions._STOPPED classification",
     (
         "control/product_host/composition/task_supervision.py",
         "_FINISHED",
@@ -343,6 +345,13 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "DuckDbTaskControlRegistry.request_cancel.operation",
         "CANCELLED,CANCEL_REQUESTED",
     ): "a cancel already asked for or done answers as it stands",
+    (
+        "control/task_control/registry.py",
+        "DuckDbTaskControlRegistry.request_cancel.operation",
+        "BLOCKED,QUEUED",
+    ): "work that never started, or a ledger-rebuilt stop that cannot resume, cancels at once and "
+    "keeps the stop's failure code (BADGE: unrecoverable stops close); running work is asked to "
+    "cancel",
     (
         "control/task_control/registry.py",
         "DuckDbTaskControlRegistry.reconcile_after_writer_acquisition.operation",

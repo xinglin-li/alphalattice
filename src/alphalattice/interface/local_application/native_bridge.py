@@ -84,6 +84,8 @@ USAGE_MODEL_ROWS = 32
 PRODUCERS = {"codex": "codex-native", "claude-code": "claude-code-native"}
 USAGE_CHANNELS = {"codex": "CODEX_SESSION_FILE", "claude-code": "CLAUDE_CODE_SESSION_FILE"}
 LEAD_ROLE = "research_lead"
+PRODUCT_ROLE_PREFIX = "alphalattice_"
+"""Every shipped card's name begins so; a child of any other role is its lead's helper."""
 _USAGE_COUNTS = (
     "responses",
     "input_tokens",
@@ -649,6 +651,33 @@ def observation_request(
         kind, summary, subject = _accepted_content(binding, event)
         identity: list[object] = [kind, subject["native_agent_id"], subject["message_id"]]
         occurred_at = str(event["occurred_at"])
+    elif event["source"] == "product_bound":
+        goal_hash = event.get("goal_hash")
+        kind, summary = MESSAGE_EVENT_KIND, BOUND_WORDS if goal_hash is None else GOAL_HELD_WORDS
+        subject = _subject_bounded(
+            {
+                "native_session_id": binding.session_id,
+                "native_agent_id": binding.session_id,
+                "role": LEAD_ROLE,
+                "message_kind": "session_bound",
+                "message_id": "bound-"
+                + _digest(
+                    [
+                        binding.host,
+                        binding.session_id,
+                        str(binding.workspace),
+                        *([] if goal_hash is None else [goal_hash]),
+                    ]
+                )[:24],
+                "native_host": binding.host,
+                "input_channel": "PRODUCT_OPERATION",
+                "source_time_kind": "BOUND_AT",
+                # The goal the Session holds, as Team reads a lead's research question.
+                **({} if goal_hash is None else {"reference": f"case:{goal_hash}"}),
+            }
+        )
+        identity = [kind, subject["native_agent_id"], subject["message_id"]]
+        occurred_at = str(event["occurred_at"])
     elif event["source"] == "native_usage":
         kind, summary, subject = _usage_content(binding, event["usage"])
         identity = [
@@ -714,6 +743,37 @@ def file_observation(
             if isinstance(response.get(key), str)
         },
     }
+
+
+MESSAGE_EVENT_KIND = "NATIVE_COORDINATION_MESSAGE"
+BOUND_WORDS = (
+    "The Host bound this session to the workspace at its first request; its usage is read when "
+    "goals, answers and pages ask, and the workspace's reading switch governs it."
+)
+GOAL_HELD_WORDS = (
+    "This session holds the goal its reference names; its requests and Tasks count toward it."
+)
+
+
+def file_bound_fact(
+    project: Path,
+    binding: NativeResearchBinding,
+    *,
+    at: datetime,
+    publish: Callable[[dict[str, Any]], dict[str, Any]],
+    goal_hash: str | None = None,
+) -> dict[str, object]:
+    """File one product fact: the Host bound this Session at its first request (AUTOBIND).
+
+    It names the Session in Team and the Goal's Conversation from the first call, whether or
+    not its usage file can be read yet. Filed again, it is the same observation. With
+    `goal_hash` it names the goal the Session holds, which its Sessions row reads as its
+    question (STOPS-1).
+    """
+    event: dict[str, Any] = {"source": "product_bound", "occurred_at": at.isoformat()}
+    if goal_hash is not None:
+        event["goal_hash"] = goal_hash
+    return file_observation(project, binding, event, publish=publish)
 
 
 def deliver_accepted_answer(
@@ -1048,6 +1108,23 @@ def read_session_usage(
                 else claude_thread_spawn(binding.session_id, child)
             )
             if (
+                spawn is not None
+                and spawn.parent_thread_id == binding.session_id
+                and spawn.agent_role is not None
+                and not spawn.agent_role.startswith(PRODUCT_ROLE_PREFIX)
+            ):
+                # The lead's own helper, no product card (a general subagent, or a card started
+                # from its text in the installing session): named, never read, and no failure
+                # of the reading (STOPS-1).
+                members.append(
+                    {
+                        "agent_id": child,
+                        "status": "NOT_READ",
+                        "reason": "native_bridge.child_not_a_specialist",
+                    }
+                )
+                continue
+            if (
                 spawn is None
                 or spawn.parent_thread_id != binding.session_id
                 or spawn.agent_role not in binding.roles
@@ -1080,9 +1157,10 @@ def read_session_usage(
         )
     except Exception:
         members.append({"status": "UNAVAILABLE", "reason": "native_bridge.lead_usage_read_failed"})
-    delivered = sum(1 for member in members if member.get("status") == "DELIVERED")
-    status = "DELIVERED" if delivered == len(members) else "PARTIAL" if delivered else "UNAVAILABLE"
-    first = next((m for m in members if m.get("status") != "DELIVERED"), None)
+    read = [member for member in members if member.get("status") != "NOT_READ"]
+    delivered = sum(1 for member in read if member.get("status") == "DELIVERED")
+    status = "DELIVERED" if delivered == len(read) else "PARTIAL" if delivered else "UNAVAILABLE"
+    first = next((m for m in read if m.get("status") != "DELIVERED"), None)
     return {
         "status": status,
         "participants": members,

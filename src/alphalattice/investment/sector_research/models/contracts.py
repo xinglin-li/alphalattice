@@ -25,8 +25,11 @@ from typing import Literal, Protocol, Self
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from threadpoolctl import threadpool_info, threadpool_limits  # type: ignore[import-untyped]
 
+from alphalattice.kernel.shared_kernel.environment import (
+    numerical_thread_limit,
+    numerical_thread_pools,
+)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.source_identity import (
     switched_source_identity,
@@ -144,10 +147,10 @@ def sector_numerical_thread_policy() -> Iterator[None]:
     observed pools are checked inside the scope and a violation refuses before
     any forecast is returned.
     """
-    with threadpool_limits(limits=SECTOR_NUMERICAL_THREAD_LIMIT):
+    with numerical_thread_limit(SECTOR_NUMERICAL_THREAD_LIMIT):
         if any(
             int(pool["num_threads"]) > SECTOR_NUMERICAL_THREAD_LIMIT
-            for pool in threadpool_info()
+            for pool in numerical_thread_pools()
             if pool.get("num_threads") is not None
         ):
             raise SectorResearchError("sector_research.numerical_thread_policy_failed")

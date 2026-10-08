@@ -2588,10 +2588,16 @@
     "meaning": "The required components no completed lifecycle study holds yet; each has its first step in `next_requests`."
    },
    {
+    "name": "risk_windows",
+    "kind": "array",
+    "required": true,
+    "meaning": "For each completed calibrated Alpha study, the window its strategy's Risk study must cover (`alpha_task_id`, `start`, `end`), declared as the Risk study's `experiment.sessions`; empty until one completes."
+   },
+   {
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "`plan`, whose declaration the reader writes; and for each missing component, `component:<id>`, its first step: its lifecycle study's controls once its training inputs are prepared, else their plan."
+    "meaning": "`plan`, whose declaration the reader writes; and for each missing component, `component:<id>`, its first step: its lifecycle study's controls once its training inputs are prepared, else their plan; and `risk`, the Risk study's controls, until a completed Risk study covers `risk_windows`."
    },
    {
     "name": "claim",
@@ -2766,6 +2772,12 @@
     "kind": "string",
     "required": false,
     "meaning": "What to do next, in words: restart the Local Web service, then select a package for PLAN or RUN. Only after a new installation."
+   },
+   {
+    "name": "next_requests",
+    "kind": "object",
+    "required": false,
+    "meaning": "After the restart, `books:<package>`: each installed package's book controls, whose whole-support book is the one its review and activation read."
    },
    {
     "name": "attributed_goal_id",
@@ -3045,13 +3057,13 @@
     "name": "next_action",
     "kind": "string|null",
     "required": true,
-    "meaning": "The operation to send next: `WORKSPACE_PREPARE_READBACK`, `WORKSPACE_PREPARE_PLAN` or `EXPERIMENT_CONTROLS`; none when no step is open."
+    "meaning": "The operation to send next: `WORKSPACE_PREPARE_READBACK`, `WORKSPACE_PREPARE_PLAN`, or with prepared inputs `RESEARCH_STRATEGY_CONTROLS` (`CONTROLS` once a research strategy is installed); none when no step is open."
    },
    {
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The requests that go on: the successor's readback, a confirm for a blocked Task, a resume for a deferred one, and each input's research controls."
+    "meaning": "The requests that go on: the successor's readback, a confirm for a blocked Task, a resume for a deferred one, `strategy_controls` (or `strategy_book` once a research strategy is installed), the first use's next step, and each input's research controls for exploration."
    },
    {
     "name": "superseded_by_task_id",
@@ -3193,7 +3205,7 @@
     "name": "next_action",
     "kind": "string|null",
     "required": true,
-    "meaning": "The step to take next: `WORKSPACE_PREPARE_CONFIRM`, `ADMIT_SOURCE_ACCESS_THEN_PREVIEW_AGAIN`, `EXPERIMENT_CONTROLS`, or a readback's; none when no step is open."
+    "meaning": "The step to take next: `WORKSPACE_PREPARE_CONFIRM`, `ADMIT_SOURCE_ACCESS_THEN_PREVIEW_AGAIN`, `RESEARCH_STRATEGY_CONTROLS` once inputs are prepared and no research strategy is installed (`CONTROLS` once one is), or a readback's; none when no step is open."
    },
    {
     "name": "next_requests",
@@ -4979,6 +4991,18 @@
     "meaning": "What the Alpha compiler admits: its `controls`, `model_capabilities` and `target_recipe_ids`."
    },
    {
+    "name": "choice_owner",
+    "kind": "string",
+    "required": false,
+    "meaning": "`AGENT_DISCLOSES`: the agent fills the open target, model and parameters within the person's bounds and tells the person in one line what it chose and how to change it, without stopping to ask."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": false,
+    "meaning": "While fields are open: who fills them and how the choice is disclosed, and that a research strategy's required Alpha study needs no model choice."
+   },
+   {
     "name": "ordered_feature_ids",
     "kind": "array",
     "required": true,
@@ -5295,6 +5319,18 @@
     "kind": "object",
     "required": true,
     "meaning": "What the Alpha compiler admits: its `controls`, `model_capabilities` and `target_recipe_ids`."
+   },
+   {
+    "name": "choice_owner",
+    "kind": "string",
+    "required": false,
+    "meaning": "`AGENT_DISCLOSES`: the agent fills the open target, model and parameters within the person's bounds and tells the person in one line what it chose and how to change it, without stopping to ask."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": false,
+    "meaning": "While fields are open: who fills them and how the choice is disclosed, and that a research strategy's required Alpha study needs no model choice."
    },
    {
     "name": "ordered_feature_ids",
@@ -7901,6 +7937,18 @@
     "meaning": "What an assessment is not, as a code: `EXTERNAL_ASSESSMENT_IS_NOT_A_ROUTE_OR_PROTECTED_VALIDATION`."
    },
    {
+    "name": "coverage_words",
+    "kind": "array",
+    "required": false,
+    "meaning": "The dossier's coverage in words: reviewed, quiet and unreached kept apart. A quiet holding filed nothing in the window, was checked and had nothing to read; it is not unread and not a finding of no risk. Only the unreached share was not read."
+   },
+   {
+    "name": "review_state_words",
+    "kind": "object",
+    "required": false,
+    "meaning": "Each issuer `review_state` in words: read with or without findings, checked with nothing filed (not unread), no passage delivered, or source missing."
+   },
+   {
     "name": "external_host_usage",
     "kind": "string",
     "required": true,
@@ -9846,7 +9894,7 @@
     "name": "intents",
     "kind": "array",
     "required": true,
-    "meaning": "Each research input's standard flows, what each needs and asks next, with the requests ready to send; and each installed research strategy's `RUN_FORWARD`, its `activation` as the book's controls offer it and, while it runs forward, its daily update's plan in `next_requests.update`; with no strategy installed, one `RUN_FORWARD` whose `strategy_controls` names each missing component's first step. Its activation carries review_standing from the exact book Task's published Evidence/CRO review owner."
+    "meaning": "First, `RUN_FORWARD`: with no strategy installed its `detail` names the shortest way to a book that runs forward (the research strategy's controls and required studies, no Factor study), and an installed strategy with no book yet offers its book controls; then each research input's standard flows, what each needs and asks next, with the requests ready to send; and each installed research strategy's `RUN_FORWARD`, its `activation` as the book's controls offer it and, while it runs forward, its daily update's plan in `next_requests.update`; with no strategy installed, one `RUN_FORWARD` whose `strategy_controls` names each missing component's first step. Its activation carries review_standing from the exact book Task's published Evidence/CRO review owner."
    }
   ]
  },
@@ -10536,7 +10584,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "`update`: plan a research update for the package."
+    "meaning": "`update`: plan a research update for the package; `deactivate`: the person's one-click stop, which keeps history."
    },
    {
     "name": "attributed_goal_id",

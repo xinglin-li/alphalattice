@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from alphalattice.kernel.shared_kernel.environment import held_offline
+from alphalattice.kernel.shared_kernel.environment import held_offline, numerical_thread_limit
 from alphalattice.kernel.shared_kernel.spans import (
     SpanLedger,
     absorb,
@@ -360,9 +360,7 @@ def _numerical_threads(threads: int | None) -> Iterator[None]:
     if threads is None:
         yield
         return
-    from threadpoolctl import threadpool_limits  # type: ignore[import-untyped]
-
-    with threadpool_limits(limits=threads):
+    with numerical_thread_limit(threads):
         yield
 
 

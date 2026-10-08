@@ -60,6 +60,7 @@ def test_every_goal_navigation_uses_the_current_goal_routes() -> None:
 
     client = object.__new__(LocalResearchClient)
     client.connection = SimpleNamespace(url="http://127.0.0.1:12345")
+    client.goal = None
     before, current = "a" * 64, "b" * 64
     operations = [operation for operation in OPERATIONS if operation.startswith("GOAL_")]
     assert operations
@@ -68,14 +69,152 @@ def test_every_goal_navigation_uses_the_current_goal_routes() -> None:
         answer = {"goal_hash": current}
         selected = client.navigation(document, answer)
         assert selected["kind"] == "goal"
-        assert parse_qs(urlsplit(selected["url"]).fragment) == {"page": ["goal"], "goal": [current]}
+        assert parse_qs(urlsplit(selected["url"]).fragment) == {
+            "page": ["goal"],
+            "goal": [current],
+            "follow": ["latest"],
+        }
         assert parse_qs(urlsplit(client.selected_url(document, {})).fragment) == {
             "page": ["goal"],
             "goal": [before],
+            "follow": ["latest"],
         }
         collection = client.navigation({"operation": operation}, {})
         assert collection["label"] == "Open Goals"
-        assert parse_qs(urlsplit(collection["url"]).fragment) == {"page": ["goals"]}
+        assert parse_qs(urlsplit(collection["url"]).fragment) == {
+            "page": ["goals"],
+            "follow": ["latest"],
+        }
+
+
+def test_every_exact_answer_link_preserves_its_selector_and_follow_scope() -> None:
+    """UIFOLLOW/TE12: early-return and query selectors retain their exact object and Goal."""
+    from types import SimpleNamespace
+    from urllib.parse import parse_qs, urlsplit
+
+    from alphalattice.interface.local_application.client import LocalResearchClient
+
+    client = object.__new__(LocalResearchClient)
+    client.connection = SimpleNamespace(url="http://127.0.0.1:12345/")
+    client.goal = None
+    task, right, goal, explicit = (str(uuid4()) for _ in range(4))
+    digest = "a" * 64
+    cases = [
+        (
+            {"operation": "FEATURE_CATALOG_PLAN"},
+            {"plan_hash": digest},
+            {"feature_plan": [digest]},
+            {},
+        ),
+        (
+            {
+                "operation": "EXPERIMENT_ALPHA_COMPARE",
+                "left_task_id": task,
+                "left_candidate_id": "ridge-1",
+                "right_task_id": right,
+                "right_candidate_id": "ridge-2",
+            },
+            {},
+            {},
+            {
+                "page": ["alpha"],
+                "study": [task],
+                "alpha_left_task": [task],
+                "alpha_left_candidate": ["ridge-1"],
+                "alpha_right_task": [right],
+                "alpha_right_candidate": ["ridge-2"],
+            },
+        ),
+        (
+            {"operation": "GOAL_SHOW"},
+            {"goal_hash": digest},
+            {},
+            {"page": ["goal"], "goal": [digest]},
+        ),
+        (
+            {"operation": "STRATEGY_ACTIVATE"},
+            {"activation": {"book_task_id": task}},
+            {},
+            {"page": ["portfolio"], "book": [task]},
+        ),
+        (
+            {"operation": "CRO_REVIEW"},
+            {"review_publication_hash": digest},
+            {"history": [f"review:{digest}"]},
+            {},
+        ),
+        (
+            {
+                "operation": "CRO_READBACK",
+                "experiment_task_id": task,
+                "experiment_receipt_hash": digest,
+                "portfolio_session": "2026-10-08",
+            },
+            {},
+            {"review_experiment": [task], "r": [digest], "d": ["2026-10-08"]},
+            {},
+        ),
+        (
+            {
+                "operation": "CRO_READBACK",
+                "update_task_id": task,
+                "update_publication_hash": digest,
+                "position_basis": "CURRENT",
+            },
+            {},
+            {"review_update": [task], "p": [digest], "b": ["CURRENT"]},
+            {},
+        ),
+        (
+            {"operation": "EXPERIMENT_RUN"},
+            {"task_id": task, "lifecycle": "RUNNING"},
+            {"task": [task]},
+            {},
+        ),
+        (
+            {"operation": "EXPERIMENT_READBACK"},
+            {"task_id": task, "lifecycle": "SUCCEEDED"},
+            {"history": [f"experiment:{task}"]},
+            {},
+        ),
+        ({"operation": "REPORT", "result_hash": digest}, {}, {"history": [f"result:{digest}"]}, {}),
+        ({"operation": "EXPERIMENT_PLAN"}, {"plan_hash": digest}, {"plan": [digest]}, {}),
+        ({"operation": "DATA_UPDATE_READBACK"}, {}, {"panel": ["workspace"]}, {}),
+    ]
+    for document, body, query, fragment in cases:
+        for attributed in (None, goal):
+            answer = {**body, **({"attributed_goal_id": attributed} if attributed else {})}
+            selected = client.selected_url(document, answer)
+            split = urlsplit(selected)
+            assert parse_qs(split.query) == query
+            assert parse_qs(split.fragment) == {
+                **fragment,
+                "follow": [f"goal:{goal}" if attributed else "latest"],
+            }
+            assert client.navigation(document, answer)["url"] == selected
+    client.goal = explicit
+    assert parse_qs(urlsplit(client.selected_url({}, {})).fragment)["follow"] == [
+        f"goal:{explicit}"
+    ]
+    assert parse_qs(urlsplit(client.selected_url({}, {"attributed_goal_id": goal})).fragment)[
+        "follow"
+    ] == [f"goal:{goal}"]
+    client.goal = None
+    assert parse_qs(
+        urlsplit(client.selected_url({"operation": "GOAL_SHOW"}, {"goal_id": goal})).fragment
+    )["follow"] == [f"goal:{goal}"]
+    assert parse_qs(
+        urlsplit(
+            client.selected_url({"operation": "GOAL_NARRATIVE"}, {"goal": {"goal_id": goal}})
+        ).fragment
+    )["follow"] == [f"goal:{goal}"]
+    for document in ({"operation": "REPORT"}, {"operation": "GOAL_NARRATIVE"}):
+        answer = (
+            {"goal": {"goal_id": goal}} if document["operation"] == "REPORT" else {"goal": goal}
+        )
+        assert parse_qs(urlsplit(client.selected_url(document, answer)).fragment)["follow"] == [
+            "latest"
+        ]
 
 
 @pytest.mark.parametrize(
@@ -2404,6 +2543,11 @@ def test_the_grammar_reads_files_stdin_and_operands_as_gnu_does(
     declaration = tmp_path / "goal.yaml"
     code, body, _ = _cli(live.workspace, "goal", "schema", "--save-declaration", str(declaration))
     assert code == 0, body
+    # The saved declaration heads with its allowed values, which the loader ignores (AGENT-TIME
+    # R2: AX's agents looked them up with `answer show`).
+    head = declaration.read_text(encoding="utf-8").splitlines()
+    assert head[0] == "# Allowed values:"
+    assert any(line.startswith("# research.purpose: NEW_RESEARCH | ") for line in head)
     opened = subprocess.run(
         [
             *(sys.executable, str(SCRIPT), "--workspace", str(live.workspace), "--view", "full"),
@@ -4649,3 +4793,42 @@ def test_recovery_provenance_is_paired_typed_and_worded() -> None:
         words = refusal_words(code)
         assert "recovery" in words["detail"]
         assert words["next_action"] == "READ_THE_TASK_AND_CONFIRM_AGAIN"
+
+
+def test_a_book_review_follows_the_real_book_and_stops_where_evidence_needs_its_source(
+    live, tmp_path
+) -> None:
+    """requirement (AGENT-TIME verb 2): through the real CLI and Host, `strategy-book review`
+    runs the installed strategy's book with its default controls, follows its Task, finds its
+    saved result and reads its report; where Evidence lacks its admitted source, that answer is
+    the command's, its way on kept and its steps named."""
+    from alphalattice.interface.local_application.client import LocalResearchClient
+
+    package = LocalResearchClient(live.workspace).request({"operation": "CONTROLS"})[
+        "strategy_package_id"
+    ]
+    code, answer, _ = _cli(
+        live.workspace,
+        "strategy-book",
+        "review",
+        "--package",
+        package,
+        "--dir",
+        str(tmp_path / "analysts"),
+        "--max-wait",
+        "100",
+    )
+    data = answer["data"]
+    assert answer["outcome"] == "REFUSED" and code != 0, answer
+    assert data["status"] == "EVIDENCE_PREREQUISITES_MISSING"
+    assert data["book_review"]["stopped_at"] == "evidence_preview"
+    assert [step["step"] for step in data["book_review"]["steps"]] == [
+        "controls",
+        "book",
+        "book_task",
+        "book_result",
+        "book_readback",
+        "evidence_preview",
+    ]
+    assert "workspace" in data["next_requests"]
+    assert not (tmp_path / "analysts").exists()

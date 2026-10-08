@@ -14,7 +14,7 @@ alphalattice request --from "<out>/cro-dossier-answer.json" --action cro_bundle 
 
 The Host packs a bounded Markdown bundle with index, coverage, holdings and aliased findings, including unread scope after an absent or exhausted allowance or `NOTHING_RESUMABLE`. The answer names the answer file, files/bytes and one submit command. The JSON dossier remains the audit/UI read. If no product bundle is offered, follow the current answer's action or report its held reason; never rebuild it from edited artifacts or an internal owner.
 
-Give the CRO the bundle path, filenames and answer file, never your interpretation. Confirm source exposure, permissions and budget. On Claude, use `alphalattice_cro` with its shipped model and effort. Codex keeps its own card. Pass no model override. The card reads the bundle and writes its answer file.
+Give the CRO the bundle path, filenames and answer file, never your interpretation. Its source exposure and budget are those the goal declared, or a first use's delegation; hand it on without asking again, and stop only at a source refusal or an exhausted budget. On Claude, use `alphalattice_cro` with its shipped model and effort. Codex keeps its own card. Pass no model override. The card reads the bundle and writes its answer file.
 
 ## Submit and read
 

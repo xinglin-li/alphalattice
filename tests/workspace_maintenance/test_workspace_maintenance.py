@@ -3530,7 +3530,7 @@ def test_unauthorized_restatement_never_reaches_qualification(tmp_path: Path) ->
     The whole point of observing before the write is that the write can be
     refused. Without escalation authority the qualified row keeps its content,
     no ``bar_revision`` appears, the appended session is not admitted either --
-    the batch is refused whole -- and no change document is produced, so no
+    the batch is refused whole -- and only failure facts are recorded, so no
     downstream identity can have moved. Authorizing the listing is what turns
     the observed correction into an explicit qualification with its own
     revision trail.
@@ -3553,7 +3553,16 @@ def test_unauthorized_restatement_never_reaches_qualification(tmp_path: Path) ->
     listing = market_data.current_universe_maintenance_listings(refused.maintenance_id)[0]
     assert listing.state == "FAILED"
     assert listing.failure_code == "data.full_history_audit_approval_required"
-    assert listing.change_document is None
+    assert listing.change_document == {
+        "failure_cause": {
+            "exception_type": "UNKNOWN",
+            "detail": "The source failure cause was not recorded.",
+            "step": "Provider price history",
+            "unit": "AAPL",
+            "row_count": "UNKNOWN",
+            "sanitizer_code": "UNKNOWN",
+        }
+    }
     assert _qualified_state(market_data) == (100.0, 0, 2)
 
     authorized = CurrentUniverseMaintenance(

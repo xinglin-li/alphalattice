@@ -877,7 +877,7 @@ def test_a_holding_that_filed_nothing_in_the_window_is_named_and_not_packed(
             "/api/evidence/prepare", _submission(preview["next_requests"]["prepare"])
         )
         assert nothing["disposition"] == "NOTHING_FILED", nothing
-        assert "Nothing unread is a finding of no risk." in nothing["detail"]
+        assert "Having nothing to read is not a finding of no risk." in nothing["detail"]
         assert len(service.registry.tasks()) == tasks_before, "no Task admitted"
     finally:
         service.session.stop()

@@ -9,14 +9,14 @@ import re
 import sys
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Final, Literal, Self
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
 from alphalattice.interface.local_application.cli_contract import (
@@ -421,6 +421,19 @@ class LocalResearchClient:
         return {**body, "result_hash": result_hash}, raw
 
     def selected_url(self, document: dict[str, Any], body: dict[str, Any]) -> str:
+        """Keep the exact answer's address and the Goal whose work the browser follows."""
+        selected = urlsplit(self._selected_url(document, body))
+        goal = body.get("attributed_goal_id") or self.goal
+        if goal is None and str(document.get("operation", "")).startswith("GOAL_"):
+            named = body.get("goal")
+            goal = body.get("goal_id") or (
+                named.get("goal_id") if isinstance(named, Mapping) else None
+            )
+        fragment = parse_qs(selected.fragment)
+        fragment["follow"] = [f"goal:{goal}" if goal is not None else "latest"]
+        return urlunsplit(selected._replace(fragment=urlencode(fragment, doseq=True)))
+
+    def _selected_url(self, document: dict[str, Any], body: dict[str, Any]) -> str:
         """Only existing public selectors, not an artifact-path or hash guessing rule."""
         query: dict[str, object] = {}
         operation = str(document.get("operation", ""))
@@ -1225,9 +1238,50 @@ def _save_output(
     _write_new(path, payload, replace=replace)
 
 
+def allowed_value_notes(schema: Mapping[str, Any], *, limit: int = 40) -> list[str]:
+    """List each enumerated field of a declaration's schema with its allowed values.
+
+    AX's agents looked them up with `answer show` and `schema show` after saving a
+    declaration (AGENT-TIME R2); the saved file now heads with them.
+
+    Args:
+        schema: The declaration's JSON schema, its `$defs` included.
+        limit: The most fields listed.
+
+    Returns:
+        One ``path: a | b`` line per enumerated field; a list's items are ``path[]``.
+    """
+    definitions = schema.get("$defs") or {}
+    notes: list[str] = []
+
+    def resolve(node: Any) -> Any:
+        while isinstance(node, Mapping) and isinstance(node.get("$ref"), str):
+            node = definitions.get(node["$ref"].rsplit("/", 1)[-1], {})
+        return node
+
+    def walk(node: Any, path: str, depth: int) -> None:
+        node = resolve(node)
+        if not isinstance(node, Mapping) or depth > 6 or len(notes) >= limit:
+            return
+        if isinstance(node.get("enum"), list):
+            notes.append(f"{path}: " + " | ".join(str(value) for value in node["enum"]))
+            return
+        for option in node.get("anyOf") or node.get("oneOf") or ():
+            walk(option, path, depth + 1)
+        if isinstance(node.get("items"), Mapping):
+            walk(node["items"], f"{path}[]", depth + 1)
+        for name, child in (node.get("properties") or {}).items():
+            walk(child, f"{path}.{name}" if path else str(name), depth + 1)
+
+    walk(schema, "", 0)
+    return list(dict.fromkeys(notes))
+
+
 def _save_declaration(path: Path, body: dict[str, Any]) -> None:
     """The answer's editable declaration, for an author to edit (V130): its ``yaml`` part, or
-    its ``template`` in the declaration loader's dialect, as `feature controls` answers (V362)."""
+    its ``template`` in the declaration loader's dialect, as `feature controls` answers (V362).
+    When the answer carries the declaration's schema, its allowed values head the file as
+    comments, which the loader ignores."""
     value = body.get("yaml")
     if not isinstance(value, str) and isinstance(body.get("template"), dict):
         from alphalattice.protocols.research_authoring.selection import dump_declaration
@@ -1235,6 +1289,10 @@ def _save_declaration(path: Path, body: dict[str, Any]) -> None:
         value = dump_declaration(json.loads(json.dumps(body["template"], default=_json_value)))
     if not isinstance(value, str):
         raise LocalResearchClientError("local_client.declaration_unavailable")
+    schema = (body.get("schemas") or {}).get("declaration")
+    notes = allowed_value_notes(schema) if isinstance(schema, Mapping) else []
+    if notes:
+        value = "".join(f"# {note}\n" for note in ["Allowed values:", *notes]) + value
     _write_new(path, value.encode("utf-8"))
 
 
@@ -1568,6 +1626,13 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
         "execution_intent",
         "execution_numerical_call_count",
         "declaration_changes",
+        # What the next step read from saved answers in AX's runs (AGENT-TIME R2): a book's
+        # activation, its dates within it, a curation's choices, an Evidence preview's sources
+        # and scope. A strategy's dates keep their one owner, so they are drawn as part of it.
+        "activation",
+        "choices",
+        "source_inventory",
+        "scope",
     }
 
     def room() -> int:
@@ -1673,9 +1738,20 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
 
     # What a result can claim and what its flow needs next, which an agent reads first, are
     # bounded by their owners (five studies of each result at most), so they show whole and
-    # spend only their own size (V368, V367).
+    # spend only their own size (V368, V367). So do the page links an agent gives the person,
+    # which AX's agents read back from saved answers nine times (AGENT-TIME R2).
     kept = (
-        {key: body[key] for key in ("standing", "review_standing", "prerequisites") if key in body}
+        {
+            key: body[key]
+            for key in (
+                "standing",
+                "review_standing",
+                "prerequisites",
+                "local_web_url",
+                "navigation",
+            )
+            if key in body
+        }
         if isinstance(body, dict) and not section
         else {}
     )
@@ -1992,6 +2068,13 @@ def _entry_of(client: LocalResearchClient) -> tuple[str, ...]:
     return entry(client.workspace, _kept_options(client))
 
 
+_FOLLOW_RETURNS = (
+    "when the Task ends, needs a decision or recovery, or is deferred; let your shell wait or "
+    "run this in the background, and do not poll it"
+)
+"""What a follow tells the agent at its start (AGENT-TIME R1)."""
+
+
 def _follow(
     client: LocalResearchClient,
     body: dict[str, Any],
@@ -2065,6 +2148,9 @@ def _follow(
     if deadline is None and max_wait is not None:
         deadline = time.monotonic() + max_wait
     held = int(body.get("verified_stage_count") or 0)
+    # Said once, as the follow begins: this call is the wait, and the agent's own tool should
+    # not return and poll (AGENT-TIME R1: AX's agents re-checked running waits 104 times).
+    print(json.dumps({"follow": document, "returns": _FOLLOW_RETURNS}), file=sys.stderr, flush=True)
     delay, last, current = 0.25, None, body
     # An incident open when the follow began is not news; a new one wakes it (GY2, WK).
     known = (body.get("incident") or {}).get("key")
@@ -2283,6 +2369,155 @@ def _queue_wake(client: LocalResearchClient, thread: str, event: dict[str, Any])
     return {"channel": "codex-queue", "delivered": False, "failure": failure, "attempts": 3}
 
 
+_REVIEW_READY = "BOOK_REVIEW_READY"
+_UNIT_NAME = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+def _book_review(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
+    """`strategy-book review`, its end queued as one line to a Codex lead when asked (R1).
+
+    A Codex lead starts the review as its own process and ends its turn; the queued line, which
+    names the saved answer to read, opens its next turn, so no turn polls the review.
+    """
+    thread = _codex_queue_ready() if getattr(args, "notify", None) == "codex-queue" else None
+    body = _review_steps(client, args)
+    if thread is None:
+        return body
+    output = getattr(args, "output", None)
+    read = (
+        f"answer show --file {Path(output).resolve()}"
+        if output is not None
+        else "the strategy-book review command's printed answer"
+    )
+    event = {"event": str(body.get("status")), "read": read}
+    return {**body, "wake": _queue_wake(client, thread, event)}
+
+
+def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
+    """`strategy-book review`: an installed strategy's whole-support book, run or reused, its
+    Evidence prepared and every Analyst bundle written, in one call (AGENT-TIME verb 2).
+
+    It sends the requests the answers offer, in their order, and follows each Task to its end:
+    the strategy's controls, its book's run with their defaults, the book's saved result and its
+    report, Evidence's
+    preview and preparation, then each prepared unit's Analyst bundle into ``--dir``. The first
+    answer that stops it (a refusal, a missing prerequisite, a Task waiting on a decision or the
+    wait's cap) is the answer, with the steps it took; nothing runs beyond this call, and every
+    step stays its own command for an agent that would choose otherwise.
+    """
+    package = str(args.strategy_package_id)
+    root = Path(args.bundle_root).resolve()
+    deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
+    steps: list[dict[str, Any]] = []
+
+    def send(step: str, document: dict[str, Any]) -> dict[str, Any]:
+        body = client.request(document)
+        steps.append({"step": step, "sent": document.get("operation"), "outcome": outcome_of(body)})
+        return body
+
+    def stop(step: str, body: dict[str, Any]) -> dict[str, Any]:
+        return {**body, "book_review": {"stopped_at": step, "steps": steps}}
+
+    def followed(step: str, body: dict[str, Any]) -> dict[str, Any] | None:
+        """The admitted Task followed to its end; None when it ended well."""
+        if outcome_of(body) != "PENDING":
+            return None if outcome_of(body) == "OK" else stop(step, body)
+        remaining = None if deadline is None else max(0.1, deadline - time.monotonic())
+        ended = _follow(client, body, remaining, deadline=deadline)
+        steps.append({"step": step + "_task", "sent": "STATUS", "outcome": outcome_of(ended)})
+        return None if outcome_of(ended) == "OK" else stop(step, ended)
+
+    def offered(body: dict[str, Any], name: str) -> dict[str, Any] | None:
+        request = offered_requests(body).get(name)
+        return None if not isinstance(request, dict) or choices(request) else dict(request)
+
+    controls = send("controls", {"operation": "CONTROLS", "strategy_package_id": package})
+    if outcome_of(controls) != "OK" or not isinstance(controls.get("template"), dict):
+        return stop("controls", controls)
+    run = send("book", {"operation": "RUN", "spec": controls["template"]})
+    if (ended := followed("book", run)) is not None:
+        return ended
+    # A book's Task names no result when it ends; the saved results do, by their Task.
+    result_hash = run.get("result_hash")
+    if run.get("task_id"):
+        results = send("book_result", {"operation": "RESULTS"})
+        result_hash = next(
+            (
+                row.get("result_hash")
+                for row in results.get("results") or []
+                if row.get("task_id") == run["task_id"]
+            ),
+            None,
+        )
+        if result_hash is None:
+            return stop("book_result", results)
+    readback = send("book_readback", {"operation": "REPORT", "result_hash": result_hash})
+    preview_request = offered(readback, "evidence_preview")
+    if preview_request is None:
+        return stop("book_readback", readback)
+    preview = send("evidence_preview", preview_request)
+    prepare = offered(preview, "prepare")
+    if preview.get("status") != "EVIDENCE_PREPARATION_READY" or prepare is None:
+        return stop("evidence_preview", preview)
+    prepared = send("evidence", prepare)
+    if (ended := followed("evidence", prepared)) is not None:
+        return ended
+    current = send("evidence_preview_after", preview_request)
+    bundles: list[dict[str, Any]] = []
+    for name, request in offered_requests(current).items():
+        if not name.startswith("analyst_bundle") or not isinstance(request, dict):
+            continue
+        unit = name.removeprefix("analyst_bundle").lstrip("_") or "book"
+        document = _chosen(
+            _request_fields(
+                request, {"bundle_directory": str(root / ("analyst-" + _UNIT_NAME.sub("-", unit)))}
+            )
+        )
+        directory = _bundle_directory(document)
+        body = send("analyst_bundle", document)
+        if outcome_of(body) != "OK" or directory is None:
+            return stop("analyst_bundle", body)
+        written = _write_bundle(directory, body, prefix=_entry_of(client))
+        bundles.append(
+            {
+                "unit": unit,
+                "bundle_directory": written.get("bundle_directory", str(directory)),
+                "index": written.get("index"),
+                "files": written.get("files"),
+                "answer_file": written.get("answer_file"),
+                "submit_command": written.get("submit_command"),
+                "submit_arguments": written.get("submit_arguments"),
+            }
+        )
+    review = offered(readback, "review")
+    return {
+        "status": _REVIEW_READY,
+        "strategy_package_id": package,
+        "book": {
+            "task_id": run.get("task_id"),
+            "result_hash": result_hash,
+            "disposition": run.get("disposition"),
+            "review_selector": readback.get("review_selector"),
+        },
+        "evidence": {
+            "status": current.get("status"),
+            "evidence_as_of": current.get("evidence_as_of"),
+            "coverage": current.get("coverage"),
+            "prepared_task_id": prepared.get("task_id"),
+        },
+        "analyst_bundles": bundles,
+        "steps": steps,
+        "next_action": "DISPATCH_ANALYSTS" if bundles else "READ_EVIDENCE",
+        "detail": (
+            "Give each Analyst its bundle directory, file list and answer path, and submit each "
+            "answer with its submit_command; then read Evidence's review for the CRO's bundle."
+            if bundles
+            else "Evidence offered no Analyst bundle for this book; read its review state."
+        ),
+        "next_requests": {} if review is None else {"review": review},
+    }
+
+
 def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
     """`activity wait`: one waiter, one subscription, one line when its event comes (WK)."""
     if (args.task_id is None) == (args.goal_id is None):
@@ -2458,6 +2693,8 @@ def run(
             document = document_override()
         if args.command == "activity-wait":
             body = _wait(client, args)
+        elif args.command == "book-review":
+            body = _book_review(client, args)
         else:
             if document_override is None:
                 document = _next_request(args)

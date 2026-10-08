@@ -260,7 +260,7 @@ const Controls = (() => {
     rows[next].scrollIntoView({block: 'nearest'});
     rows[next].querySelector('.list-row-main, a[href], button[data-action]')?.focus?.({preventScroll: true});
     Inspect.peekFollow(rows[next]);
-    if (rows[next].classList.contains('tp-task') && typeof LiveTasks !== 'undefined') LiveTasks.follow(rows[next].dataset.key); // round 58: the pane follows
+    if (rows[next].classList.contains('tp-task') && typeof LiveTasks !== 'undefined') { if (typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.(); LiveTasks.follow(rows[next].dataset.key); } // round 58: the pane follows
     e.preventDefault();
     return true;
   }
@@ -360,7 +360,7 @@ const Controls = (() => {
     {group: 'Menus', keys: 'Enter', words: 'Choose'},
     {group: 'Menus', keys: 'Esc', words: 'Close the menu'},
   ];
-  for (const row of KEYMAP) if (row.page) row.run = () => navigate(row.page);
+  for (const row of KEYMAP) if (row.page) row.run = () => { if (typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.(); navigate(row.page); };
   const keymap = () => KEYMAP;
   const chordFor = (page) => KEYMAP.find((r) => r.page === page)?.keys || '';
   const SEARCH = '#inspector input[type="search"], #main input.search-input, #main input[type="search"], #main .es-search input, #main .search-wrap input';

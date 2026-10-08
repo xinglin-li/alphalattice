@@ -390,6 +390,29 @@ class FeatureFoundationService:
             for item in self.catalog.maintenance_contracts
         )
 
+    def observe_candidate_sectors(
+        self, listings: Sequence[ManifestListing]
+    ) -> tuple[dict[str, dict[str, object]], dict[str, dict[str, object]], bool] | None:
+        """The current Sector of a recheck's candidates alone, by the Sector refresh's rules.
+
+        Nothing is staged or activated. None when the provider observes no Sector.
+        """
+        if not hasattr(self.provider, "fetch_current_sector"):
+            return None
+        return SectorRefreshStager(
+            manifest=self.manifest,
+            provider=self.provider,
+            artifact_root=self.feature_state.workspace / "staging" / "sector-reference",
+            staging_id=canonical_hash(
+                {
+                    "kind": "sector-candidate-observation",
+                    "listings": [listing.listing_id for listing in listings],
+                }
+            ),
+            transport_policy=self.sector_transport_policy,
+            activation_coordinator=self.sector_activation,
+        ).observe(listings)
+
     def build(
         self,
         request: FeatureBuildRequest,

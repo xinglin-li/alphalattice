@@ -3010,7 +3010,8 @@ class EvidenceReviewApplication:
                 disposition="NOTHING_FILED",
                 detail=(
                     f"No holding filed anything with the SEC in the last {window} days, so "
-                    "there is nothing to prepare. Nothing unread is a finding of no risk."
+                    "there is nothing to prepare. Having nothing to read is not a finding of "
+                    "no risk."
                 ),
                 evidence_as_of=run.evidence_as_of,
             )

@@ -77,12 +77,16 @@ const LiveViews = (() => {
       if (declared.factor_ids?.length) { const n = countText(declared.factor_ids.length, '{n} factor', '{n} factors'); parts.push(n); brief.push(n); words.push(n + ' · ' + named(declared.factor_ids)); wordsMarkup = html`${n} · <span class="mono">${named(declared.factor_ids)}</span>`; }
     } else if (kind === 'risk.covariance-development') { parts.push(declared.risk_capability_handle); brief.push(declared.risk_capability_handle); words.push(methodWords(declared.risk_capability_handle)); }
     else if (kind === 'portfolio.policy-development') { parts.push(declared.candidate_id ? t('candidate') + ' ' + declared.candidate_id : ''); words.push(declared.portfolio_policy ? bookWords(declared.portfolio_policy) : declared.candidate_id ? t('from Alpha candidate {id}', {id: short(String(declared.candidate_id).replace(/^alpha-candidate-/, ''), SHORT.id)}) : ''); }
-    else if (kind === 'INSTALLED_RESULT') {
+    else if (kind === 'INSTALLED_RESULT' || (kind === 'CRO_REVIEW' && entry?.strategy_package_id)) {
       const packageId = entry?.strategy_package_id;
       // A missing package label is a naming absence, not the book's name. The
       // exact owner code remains metadata and the saved object's coded fact.
       parts.push(packageId);
       words.push(packageId && (labelOf(packageId) || declaredCodeWord(packageId)) ? codeWords(packageId) : t('Installed strategy result'));
+    }
+    else if (kind === 'TASK_RECORD') {
+      const taskKind = entry?.task_kind ? codeWords(entry.task_kind) : '';
+      parts.push(taskKind); words.push(taskKind);
     }
     else { parts.push(entry?.strategy_package_id); words.push(entry?.strategy_package_id ? codeWords(entry.strategy_package_id) : ''); }
     const [type, value] = String(entry?.entry_id || (declared?.task_id ? 'task:' + declared.task_id : '')).split(':');
@@ -149,7 +153,7 @@ const LiveViews = (() => {
   function workspacePopover() {
     const w = Data.workspaceFacts() || {}, clocks = Data.clocks(), prep = Data.preparation(), unprepared = Boolean(prep) && !prep.inputs?.length;
     const fact = (word, value) => html`<div class="menu-row menu-fact" role="presentation"><span class="menu-word">${word}</span><span class="menu-note">${value}</span></div>`;
-    return html`<div class="menu-head"><span class="menu-tile">${icon('cube')}</span><div><strong>${Data.workspace()}</strong><small>${t(unprepared ? 'local · not prepared yet' : 'local')}</small></div></div>${fact(t('Data through'), clocks.data)}${fact(t('Features through'), clocks.feature)}${fact(t('Input versions'), count(Data.inputs().length))}${fact(t('Execution mode'), codeWords(w.execution_mode))}${fact(t('Manifest'), mono(w.workspace_manifest_hash, SHORT.hash))}${fact(t('Open Tasks'), count(openTaskCount()))}<hr class="menu-divider">${menuRow({ic: 'plus', action: 'workspace-how', value: 'create', word: t('Create a workspace'), note: '›'})}${menuRow({ic: 'archive', action: 'workspace-how', value: 'open', word: t('Open an existing workspace'), note: '›'})}${menuRow({ic: 'copy', action: 'copy-text', value: Data.workspace(), word: t('Copy the workspace id')})}<hr class="menu-divider">${menuRow({ic: 'refresh', action: 'go', value: 'upgrade', word: t('What the upgrade changed')})}${menuRow({ic: 'sliders', action: 'go', value: 'settings', word: t('Settings'), note: 'Ctrl ,'})}`;
+    return html`<div class="menu-head"><span class="menu-tile">${icon('cube')}</span><div><strong>${Data.workspace()}</strong><small>${t(unprepared ? 'local · not prepared yet' : 'local')}</small></div></div>${fact(t('Data through'), clocks.data)}${fact(t('Features through'), clocks.feature)}${fact(t('Input versions'), count(Data.inputs().length))}${fact(t('Execution mode'), codeWords(w.execution_mode))}${fact(t('Manifest'), mono(w.workspace_manifest_hash, SHORT.hash))}${fact(t('Tasks needing a decision'), count(openTaskCount()))}<hr class="menu-divider">${menuRow({ic: 'plus', action: 'workspace-how', value: 'create', word: t('Create a workspace'), note: '›'})}${menuRow({ic: 'archive', action: 'workspace-how', value: 'open', word: t('Open an existing workspace'), note: '›'})}${menuRow({ic: 'copy', action: 'copy-text', value: Data.workspace(), word: t('Copy the workspace id')})}<hr class="menu-divider">${menuRow({ic: 'refresh', action: 'go', value: 'upgrade', word: t('What the upgrade changed')})}${menuRow({ic: 'sliders', action: 'go', value: 'settings', word: t('Settings'), note: 'Ctrl ,'})}`;
   }
   function workspaceDialog(view = 'create') {
     if (view === 'choose') return Window.toggleWorkspace();
@@ -177,14 +181,30 @@ const LiveViews = (() => {
     return {kind, subject, name: subject && !typed ? `${kind} · ${subject}` : kind, markup: subject && x.wordsMarkup ? html`${kind} · ${x.wordsMarkup}` : null, truth: ''}; // `markup`: the same name with an identifier in the mono (round 90), for a row's title
   }
   const truthOf = (x) => nameOf(x).truth;
+  const taskSuccessor = (x) => {
+    const fact = Data.taskSuccessor(x);
+    return fact ? btn(html`${t('Superseded by')} ${t('Task')} <span class="mono">${shortRef(fact.successor_task_id)}</span>`, 'task', fact.successor_task_id, 'text-btn') : '';
+  };
+  const taskStopFacts = (x) => {
+    const fact = Data.taskAttention(x);
+    const task = x.object || Data.taskOf(x.task_id || x.raw?.task_id);
+    if (fact?.resolution !== 'UNRECOVERABLE' && !x.raw?.failure_code && !task?.latest_failure_code) return '';
+    const reason = x.raw?.detail || task?.detail, next = x.raw?.stop_next || task?.stop_next;
+    return reason || next ? factsRef(t('Why it stopped'), html`${reason ? html`<p>${t(reason)}</p>` : ''}${next ? html`<p>${t(next)}</p>` : ''}`) : '';
+  };
+  const taskAttentionFacts = (x) => {
+    const successor = taskSuccessor(x), stop = taskStopFacts(x);
+    return successor || stop ? html`${successor} ${stop}` : '';
+  };
   function recordRow(x, extra = {}) {
+    if (x.earlierStops?.length) return earlierStopRows(x, row => recordRow({...row, earlierStops: undefined}, extra));
     const {name, markup} = nameOf(x);
     const on = (key) => extra.show ? extra.show[key] !== false : key !== 'reference'; // round 57: the viewer's display properties; the id is a property, off unless chosen (round 63)
     // a lobby's row carries its reference in its own column (`extra.ref`, law 136); what it continues is a fact
     const reference = extra.ref ? (on('origin') && x.origin ? html`${t('continued from')} <span class="mono">${shortRef(x.origin)}</span>` : '') : on('reference') ? html`<span class="mono">${x.reference}</span>${x.origin ? html` · ${t('continued from')} <span class="mono">${shortRef(x.origin)}</span>` : ''}` : '';
     const props = [reference, on('interval') ? x.interval || '' : '', on('input') && x.input ? ['', html`${x.input} · ${cutoffText(x)}`, 'drop'] : '', on('holdings') && x.holdingsSession ? html`${t('holdings')} ${x.holdingsSession}` : '', ...(extra.props || [])];
     const a = stateOf(x.status), status = a.tone === 'neutral' ? '' : stateLine(x.status, {dot: true, next: '', live: Boolean(a.moving)}); // round 85: the kind's mark leads; a state that is not the plain record is the first fact
-    return objectRow({lead: kindTile(x.raw?.kind, name), name: markup || name, ref: extra.ref || '', to: {action: 'history-open', value: x.id}, cls: 'object-row'}, {key: x.id, props: [status, ...props], columns: ['state', 'reference', 'interval', 'input', 'holdings', ...(extra.columns || [])], time: on('recorded') && (x.raw?.recorded_at || x.recordedAt) ? when(x.raw?.recorded_at || x.recordedAt) : '', actions: extra.actions || ''});
+    return objectRow({lead: kindTile(x.raw?.kind, name), name: markup || name, ref: extra.ref || '', to: {action: 'history-open', value: x.id}, cls: 'object-row'}, {key: x.id, props: [status, ...props, taskAttentionFacts(x)], columns: ['state', 'reference', 'interval', 'input', 'holdings', ...(extra.columns || []), 'recovery'], time: on('recorded') && (x.raw?.recorded_at || x.recordedAt) ? when(x.raw?.recorded_at || x.recordedAt) : '', actions: extra.actions || ''});
   }
   /* One row for every saved study (N6; F2, law 136): the reference, the label, the interval, the
    * input, the day -- the lists of Factor, Foundation, Alpha, Risk and Portfolio studies are one
@@ -252,7 +272,7 @@ const LiveViews = (() => {
       return {state, primary: '', secondary: ''}; // N6: the Needs-a-decision row is the way to prepare (one way)
     }
     const tasks = actionableTasks();
-    const heldTask = tasks.find((v) => stateHeld(v.status)) || tasks.find((v) => stateMoving(v.status));
+    const heldTask = tasks.find((v) => stateHeld(v.status)) || Data.tasks().find((v) => stateMoving(v.lifecycle));
     // the one primary starts work; a held Task and the latest object are rows below
     const primary = link(html`${t('New experiment')}${icon('arrow')}`, 'lab', 'button primary');
     if (heldTask) return {state: stateLine(heldTask, {duration: ''}), primary, secondary: ''};
@@ -289,9 +309,8 @@ const LiveViews = (() => {
       case 'TASK_RECORD_UNREADABLE':
         return {lead: 'task', name: html`${t('Task')} ${hashCell(d.task_id)}`, refusal: d, key: d.task_id};
       case 'STOPPED_TASK': { // N6 (law 58): the stop said once, with its way on -- a data update's in the Data page's words
-        // P3a owns current attention for this exact version. A handled incident or succeeded
-        // successor does not rewrite its historical lifecycle; legacy decisions stay current.
-        if (d.attention?.unresolved === false) return null;
+        // Only the current owner's unresolved fact is a decision; retained lifecycles stay historical.
+        if (Data.taskAttention(d)?.unresolved !== true) return null;
         const v = Data.tasks().find((x) => x.task_id === d.task_id) || {task_id: d.task_id, task_kind: d.task_kind, kind: d.task_kind, lifecycle: d.lifecycle, status: d.lifecycle};
         const stop = LiveWorkspace.stopWords ? LiveWorkspace.stopWords(v) : null, next = v.stop_next ? t(v.stop_next) : stop ? stop.next : wayOn(v.latest_failure_code, v.status);
         return {state: v, place: DATA_TASKS.has(v.task_kind) ? 'data' : '', name: nameOf(v).name, why: v.detail ? t(v.detail) : stop ? stop.title : t(stateOf(v.status).line), next, to: {action: 'task', value: v.task_id}, key: v.task_id, at: v.last_activity_at || ''};
@@ -322,10 +341,10 @@ const LiveViews = (() => {
     }
   }
   function waiting() {
-    const list = Data.decisions() || [], out = list.map((d) => decisionRow(d, list)).filter(Boolean);
+    const all = Data.decisions() || [], list = all.filter(d => d.waits_on !== 'AGENT'), out = list.map((d) => decisionRow(d, list)).filter(Boolean);
     if (!Data.decisions() && Data.decisionsError) out.push({lead: 'warning', name: t('What waits on a person was not read'), why: coded(Data.decisionsError.split(':')[0]), to: {action: 'workspace-refresh'}});
     // the reader's own PLAN, previewed since the Host's answer was read
-    if (app.plan?.plan_hash && !list.some((d) => d.kind === 'PLAN_PREVIEW' && d.plan_hash === app.plan.plan_hash)) out.push({lead: 'lab', name: t('Your PLAN waits to be confirmed'), why: t('Previewed and not run; the confirmation admits a Task.'), to: {page: 'lab'}, by: t('You'), key: app.plan.plan_hash});
+    if (app.plan?.plan_hash && !all.some((d) => d.kind === 'PLAN_PREVIEW' && d.plan_hash === app.plan.plan_hash)) out.push({lead: 'lab', name: t('Your PLAN waits to be confirmed'), why: t('Previewed and not run; the confirmation admits a Task.'), to: {page: 'lab'}, by: t('You'), key: app.plan.plan_hash});
     const team = typeof LiveTeam !== 'undefined' && LiveTeam.summary ? LiveTeam.summary() : null;
     if (team?.unresolved) out.push({lead: 'review', name: countText(team.unresolved, '{n} objection awaits the Main PM', '{n} objections await the Main PM'), why: html`<span class="coded" data-tip="${team.session}">${t('Retained session')}</span> · ${t('Team')}`, to: {page: 'team', extra: team.selected ? {} : {team: team.session, actor: '', event: ''}}, key: team.session, at: team.latest?.at || ''});
     return out;
@@ -378,15 +397,15 @@ const LiveViews = (() => {
   /* The Home's groups (N6): what needs a decision, what runs, what was recorded -- each only when
    * it holds something; a Home with nothing in any shows the one empty state and its way. */
   function homeGroups(unprepared) {
-    const decide = decisionRows(), running = runningRows(), forward = LiveActivation.forwardRows(), recent = Data.recent(8).map((r) => recordRow(r));
-    if (!decide.length && !running.length && !forward.length && !recent.length) return emptyState(t('No saved research yet.'), unprepared ? '' : link(t('New experiment'), 'lab', 'button primary'), 'page-empty');
+    const decide = decisionRows(), running = runningRows(), forward = LiveActivation.forwardRows(), recent = Data.recent(8).map((r) => recordRow(r)), closure = LiveTasks.unrecoverableActions();
+    if (!decide.length && !running.length && !forward.length && !recent.length && !closure) return emptyState(t('No saved research yet.'), unprepared ? '' : link(t('New experiment'), 'lab', 'button primary'), 'page-empty');
     // V593 (U81): what runs forward, after what runs now (LiveActivation reads it from its owners)
-    return html`${decisionGroup(decide)}${group(t('Running'), running)}${group(t('Running forward'), forward)}${group(t('Recently recorded'), recent, undefined, recent.length, '', '', LOBBY.shown)}`;
+    return html`${decisionGroup(decide)}${closure}${group(t('Running'), running)}${group(t('Running forward'), forward)}${group(t('Recently recorded'), recent, undefined, recent.length, '', '', LOBBY.shown)}`;
   }
   function overview() {
     const prep = Data.preparation(), unprepared = Boolean(prep) && !prep.inputs?.length;
     const f = resumeFacts(prep, unprepared);
-    const meta = html`<span>${icon('task')}${countText(openTaskCount(), '{n} open task', '{n} open tasks')}</span><span>${icon('lock')}${t('Local workspace')}</span>`;
+    const meta = html`<span>${icon('task')}${countText(openTaskCount(), '{n} Task needs a decision', '{n} Tasks need a decision')}</span><span>${icon('lock')}${t('Local workspace')}</span>`;
     return html`${objectHead(Data.workspace(), meta, html`${f.secondary}${f.primary}`, f.state, HOME_TOOLS(), {object: true, facts: homeChips().filter(Boolean)})}${unprepared ? html`<section class="first-use" aria-label="${t('First use')}">${LiveWorkspace.firstUse()}</section>` : ''}<section class="home-groups" aria-label="${t('Home')}">${homeGroups(unprepared)}</section>`;
   }
   function tasks() {
@@ -726,5 +745,5 @@ const LiveViews = (() => {
     apply(document.body);
   }
   return {temporalRow, temporalAll, page, existing, studyLobby, savedObjectLink, studyRow, workspaceDialog, workspacePopover, holdingDetail, bookTools, portfolioDetails, bookFactsSections, collaborationRows, comparePage, proofBody, chartData, quickEntries, bind, researchTiming,
-    studyFacts, bookWords, metricAbsence, declaredFromReadback, cutoffText, inputState, shortRef, openerWords: (kind) => t(KIND_OPENERS[kind] || 'Open saved object'), recordRow, governanceBody, nameOf, truthOf, waiting, needs, dataNeeds, runningRows, decisionRows, decisionGroup, reviewWay, realizationWords};
+    studyFacts, bookWords, metricAbsence, declaredFromReadback, cutoffText, inputState, shortRef, openerWords: (kind) => t(KIND_OPENERS[kind] || 'Open saved object'), recordRow, taskSuccessor, taskStopFacts, taskAttentionFacts, governanceBody, nameOf, truthOf, waiting, needs, dataNeeds, runningRows, decisionRow, decisionRows, decisionGroup, reviewWay, realizationWords};
 })();

@@ -10,7 +10,7 @@ fix runtime bugs and add strategies, models and features in source. Use the
 editable checkout and locked environment from [setup](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch).
 Before changing code, follow the [failure and recovery procedure](../../.agents/skills/alphalattice-research/references/operating.md).
 Keep the original Goal, Task and error; a lawful refusal is not a defect to remove.
-The person chooses the lead agent's model; retain the inexpensive specialist
+The lead agent's model is whatever its host runs; retain the inexpensive specialist
 defaults in the shipped cards.
 
 Extend the existing declarations and their execution path:
