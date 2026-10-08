@@ -26,3 +26,31 @@ Xinglin Li created AlphaLattice alone and made this release. It is Apache-2.0; [
 The seven shipped Codex specialist role cards run at `high` reasoning effort instead of `xhigh`:
 in the agent evaluation, `high` completed the same tasks faster. A project configured from 0.1.0
 keeps its copied cards; set `model_reasoning_effort` in its `.codex/agents/` files to choose.
+
+## 0.1.2
+
+**Data**
+
+- A membership update stopped part-way resumes from its approved change and names the failed source.
+
+**Agents**
+
+- Research needs no product hooks or hook trust prompts. Observation needs no poller; usage is read at Goal and answer moments, with a person-only switch in Settings.
+- Claude specialists use the `sonnet` alias at medium effort. On Bedrock, Vertex or Foundry, pin the alias with `ANTHROPIC_DEFAULT_SONNET_MODEL`.
+- A project configured from 0.1.1 keeps its copied cards, just as the 0.1.1 note describes for earlier projects.
+- Guides clarify first-use authority and recovery.
+
+**Workbench**
+
+- Review links open the named review; reading a document from a confirmation keeps that confirmation.
+- Request statuses show in words, installed strategies are visible, and unreadable Tasks are named.
+- Activation offers show the reviewed book's last holdings.
+
+**Speed**
+
+- Daily preparation and forward updates reuse verified inputs. Goal reads and cold training are faster; Task details show stage timing.
+
+**Other**
+
+- Saved answers can be read offline by section; CI verifies source checkouts and the installed wheel.
+- A holding with an earlier finding or open issue stays in the CRO dossier when its new filing cannot be read; it remains unreviewed.
