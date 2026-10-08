@@ -59,11 +59,14 @@ studies whose replay succeeds (V234), so U0 proves reads more than replays until
 whose bytes can move its numbers, never a platform or build file, and a loader that turns bytes into
 numbers is inside it. Since R1 a study's closure is its rule closure: the import closure of its entries inside the
 number-deciding packages (`config/identity-roles.json`), with the entry files it lists by name whatever
-their package, hashed as syntax without docstrings or comments. *Not yet held:* 50 identity sites
+their package, hashed as syntax without docstrings, comments or execution spans: a span measures
+where a run's time goes and decides no number, so a module reads as if each literal `with span(...)`
+were its body (`kernel/shared_kernel/spans.py`). *Not yet held:* 50 identity sites
 still hash raw source bytes and 4 source text, each with the card IS names for it
 (the private identity inventory); the schema prose left with SH (V98, SC3). *Held by:*
 `test: tests/structural/test_source_identity.py::test_study_identities_track_no_platform_or_build_file`,
-`test: tests/structural/test_source_identity.py::test_moves_this_build_cannot_read_are_refused_not_ignored`.
+`test: tests/structural/test_source_identity.py::test_moves_this_build_cannot_read_are_refused_not_ignored`,
+`test: tests/structural/test_source_identity.py::test_a_span_moves_no_identity_and_any_other_form_reads_as_written`.
 
 **ID4. The Risk recipe and the Risk numerical closure move only by a recorded rotation.** The
 default covariance recipe seals to the value Risk studies, and the eight legacy surfaces the original

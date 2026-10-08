@@ -11,6 +11,7 @@ src/alphalattice/kernel/shared_kernel/identity_successors.py
 src/alphalattice/kernel/shared_kernel/retired_spellings.py
 src/alphalattice/kernel/shared_kernel/environment.py
 src/alphalattice/kernel/shared_kernel/sealing.py
+src/alphalattice/kernel/shared_kernel/spans.py
 src/alphalattice/kernel/shared_kernel/domain/__init__.py
 src/alphalattice/kernel/shared_kernel/domain/base.py
 src/alphalattice/kernel/shared_kernel/domain/enums.py

@@ -133,6 +133,7 @@ from alphalattice.foundation.market_data_ops.sources.providers import MarketData
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
+from alphalattice.kernel.shared_kernel.spans import span, spanned
 
 _PANEL_CONNECTION_SESSION_BUDGET = 630
 _LISTING_ROWS = f"{__name__}:materialize_listing_rows"
@@ -206,7 +207,8 @@ def materialize_listing_rows(
     capability the build installed, unless the build sends its own.
     """
     projected_bars = feature_source_frame(source, sessions=source_sessions)
-    stock_input_hash = feature_source_values_hash(projected_bars, _REQUIRED_COLUMNS)
+    with span("hash", "listing_inputs"):
+        stock_input_hash = feature_source_values_hash(projected_bars, _REQUIRED_COLUMNS)
     registry = kernel_registry
     if registry is None:
         registry = _WORKER_KERNELS.get(kernel_capability)
@@ -215,19 +217,21 @@ def materialize_listing_rows(
             if registry.installed_capability_hash != kernel_capability:
                 raise ValueError("feature.worker_kernel_capability_mismatch")
             _WORKER_KERNELS[kernel_capability] = registry
-    block = BaseFeatureMaterializer(catalog, kernel_registry=registry).materialize_listing(
-        listing_id=listing_id, projected_bars=projected_bars, market_bars=market_bars
-    )
+    with span("features", "listing_rows"):
+        block = BaseFeatureMaterializer(catalog, kernel_registry=registry).materialize_listing(
+            listing_id=listing_id, projected_bars=projected_bars, market_bars=market_bars
+        )
     rows = block.values.loc[block.values["session_date"].isin(sessions)].copy()
     if identity_axis is None:
         return rows, block.ineligibility, None, stock_input_hash
     catalog_hash, factor_ids = identity_axis
-    identities = feature_row_identities(
-        rows,
-        catalog_hash=catalog_hash,
-        factor_ids=factor_ids,
-        cutoff_sets=_WORKER_CUTOFF_SETS.setdefault(factor_ids, {}),
-    )
+    with span("hash", "row_identities"):
+        identities = feature_row_identities(
+            rows,
+            catalog_hash=catalog_hash,
+            factor_ids=factor_ids,
+            cutoff_sets=_WORKER_CUTOFF_SETS.setdefault(factor_ids, {}),
+        )
     return rows, block.ineligibility, identities, stock_input_hash
 
 
@@ -268,17 +272,18 @@ def materialize_panel_chunk(
         if materializer.implementation.implementation_binding_hash != implementation_binding_hash:
             raise ValueError("feature.worker_panel_implementation_mismatch")
         _WORKER_PANELS[key] = materializer
-    return materializer.materialize(
-        feature_rows=feature_rows,
-        active_listing_ids=active_listing_ids,
-        manifest_revision=manifest_revision,
-        sector_revision=sector_revision,
-        sector_by_listing_id=sector_by_listing_id,
-        spy_revision=spy_revision,
-        factor_ids=factor_ids,
-        members_by_session=members_by_session,
-        source_exclusions_by_session=source_exclusions_by_session,
-    )
+    with span("features", "panel_chunk"):
+        return materializer.materialize(
+            feature_rows=feature_rows,
+            active_listing_ids=active_listing_ids,
+            manifest_revision=manifest_revision,
+            sector_revision=sector_revision,
+            sector_by_listing_id=sector_by_listing_id,
+            spy_revision=spy_revision,
+            factor_ids=factor_ids,
+            members_by_session=members_by_session,
+            source_exclusions_by_session=source_exclusions_by_session,
+        )
 
 
 @dataclass
@@ -518,13 +523,14 @@ class FeatureFoundationService:
             writes = pending_writes[catalog_hash]
             if not writes:
                 return
-            receipts.extend(
-                self.feature_persistence.persist_batch(
-                    tuple(writes),
-                    connection=base_connection,
-                    timing_sink=self.persistence_timing_sink,
+            with span("write", "feature_rows"):
+                receipts.extend(
+                    self.feature_persistence.persist_batch(
+                        tuple(writes),
+                        connection=base_connection,
+                        timing_sink=self.persistence_timing_sink,
+                    )
                 )
-            )
             writes.clear()
 
         # The calculation axis: every listing some session of the history
@@ -645,6 +651,7 @@ class FeatureFoundationService:
                     connection=base_connection,
                 )
 
+                @spanned("read", "listing_inputs")
                 def read_listing(listing_index: int, listing: ManifestListing) -> _ListingWork:
                     """Read one listing's inputs and hand each part's computation to a worker."""
                     work = _ListingWork(listing_index, listing)
@@ -859,12 +866,13 @@ class FeatureFoundationService:
                             stock_input_hash=stock_input_hash,
                             market_input_hash=market_input_hashes[request.as_of_session],
                         )
-                        selected_rows = self._preserve_unaffected_feature_values(
-                            rows,
-                            part_work.target_factors,
-                            catalog=part_work.catalog,
-                            _connection=base_connection,
-                        )
+                        with span("read", "preserve_unaffected"):
+                            selected_rows = self._preserve_unaffected_feature_values(
+                                rows,
+                                part_work.target_factors,
+                                catalog=part_work.catalog,
+                                _connection=base_connection,
+                            )
                         identity_by_session = (
                             None
                             if identities is None
@@ -934,13 +942,14 @@ class FeatureFoundationService:
                     completed_listing_count = work.index
                 for catalog_hash in pending_writes:
                     flush_feature_writes(base_connection, catalog_hash)
-                self.feature_persistence.complete_first_loads(
-                    first_loads, connection=base_connection
-                )
-                self.feature_persistence.assert_ready(self.catalog.binding.catalog_hash)
-                # Every part now holds the axis; rows of a catalog outside the layer (one a
-                # rotation replaced, a deactivated column) answer for nothing (V398, V92).
-                self.feature_state.retire_rows_outside_layer(_connection=base_connection)
+                with span("write", "feature_finalize"):
+                    self.feature_persistence.complete_first_loads(
+                        first_loads, connection=base_connection
+                    )
+                    self.feature_persistence.assert_ready(self.catalog.binding.catalog_hash)
+                    # Every part now holds the axis; rows of a catalog outside the layer (one a
+                    # rotation replaced, a deactivated column) answer for nothing (V398, V92).
+                    self.feature_state.retire_rows_outside_layer(_connection=base_connection)
                 self._publish_progress(
                     operation_id=request.request_hash,
                     stage_id="base_feature_materialization",
@@ -1345,11 +1354,12 @@ class FeatureFoundationService:
                         for chunk_sessions, run_sessions, _run_sectors in block:
                             panel = cast(PanelMaterialization, panel_calls.answer())
                             panel_batches.append(panel)
-                            composition.stage_patch(
-                                rows=panel.rows,
-                                factor_ids=factor_ids,
-                                materialization_receipt_hash=panel.receipt_hash,
-                            )
+                            with span("write", "panel_patch"):
+                                composition.stage_patch(
+                                    rows=panel.rows,
+                                    factor_ids=factor_ids,
+                                    materialization_receipt_hash=panel.receipt_hash,
+                                )
                             # Measured while transforming, persisted under the
                             # receipt the rows and availability carry, and before
                             # the availability is stamped: a receipt without its

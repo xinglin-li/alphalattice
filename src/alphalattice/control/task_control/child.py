@@ -40,6 +40,12 @@ from pathlib import Path
 from typing import Any
 
 from alphalattice.kernel.shared_kernel.environment import held_offline
+from alphalattice.kernel.shared_kernel.spans import (
+    SpanLedger,
+    absorb,
+    collect,
+    span,
+)
 
 POLL_SECONDS = 0.5
 """How often the waiting parent reads the call's answer and the Task's cancellation."""
@@ -108,7 +114,9 @@ def run_in_child(
     """
     with tempfile.TemporaryDirectory(prefix="alphalattice-call-") as folder:
         flag = Path(folder) / "cancel"
-        answer = _waited(_submitted(0, target, arguments, flag, threads=None), flag, cancelled)
+        with span("wait", "worker"):
+            answer = _waited(_submitted(0, target, arguments, flag, threads=None), flag, cancelled)
+    absorb(answer.get("spans"))
     return _answered(answer)
 
 
@@ -159,7 +167,9 @@ class ChildCalls:
     def answer(self) -> Any:
         """The oldest unanswered call's answer, raising its failure as `run_in_child` does."""
         submitted = self._pending.popleft()
-        answer = _waited(submitted, self._flag, self._cancelled)
+        with span("wait", "worker"):
+            answer = _waited(submitted, self._flag, self._cancelled)
+        absorb(answer.get("spans"))
         if answer["status"] != "OK" or submitted.answer is None:
             return _answered(answer)
         with submitted.answer.open("rb") as source:
@@ -313,12 +323,15 @@ def _call(
     The worker runs a Task's numerical work, which reads only sealed inputs, so each call holds
     its reads offline whatever the workspace allows, as the parent's run does (V116). With
     `threads`, the numerical libraries are held to that many threads for the call; with
-    `answer`, the result is written to that file and the pipe carries only that it was.
+    `answer`, the result is written to that file and the pipe carries only that it was. The
+    call's spans, with the worker's CPU seconds and bytes over it, ride beside the answer for
+    the parent's stage ledger (A4).
     """
+    ledger: SpanLedger | None = None
     try:
         module_name, _, name = target.partition(":")
         function = getattr(importlib.import_module(module_name), name)
-        with held_offline(), _numerical_threads(threads):
+        with held_offline(), _numerical_threads(threads), collect() as ledger:
             result = function(**arguments, cancelled=lambda: os.path.exists(flag))
         if answer is not None:
             with open(answer, "wb") as sink:
@@ -332,8 +345,13 @@ def _call(
             "type": type(error).__name__,
             "message": str(error)[:2000],
             "failure_class": declared if isinstance(declared, str) else None,
+            "spans": None if ledger is None else ledger.readout_value,
         }
-    return {"status": "OK", "result": result}
+    return {
+        "status": "OK",
+        "result": result,
+        "spans": None if ledger is None else ledger.readout_value,
+    }
 
 
 @contextmanager

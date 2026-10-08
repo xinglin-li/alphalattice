@@ -333,6 +333,82 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
     assert identity() != before
 
 
+def test_a_span_moves_no_identity_and_any_other_form_reads_as_written() -> None:
+    """requirement (A4, LAWS.md ID3): a span measures and decides nothing, so a module with
+    `with span("...")`, `@spanned("...")` and their import reads as the module without them. A
+    span imported under another name, called with a value that is not literal text, or beside a
+    rebinding of its name reads as written and moves the identity like any statement."""
+
+    from alphalattice.kernel.shared_kernel.source_identity import (
+        source_bytes_syntax_sha256 as digest,
+    )
+
+    plain = (
+        "import numpy as np\n\n\n"
+        "def fit(x):\n    total = np.sum(x)\n    return total * 2\n\n\n"
+        "class Model:\n    def score(self):\n        return 1\n"
+    )
+    measured = (
+        "import numpy as np\n"
+        "from alphalattice.kernel.shared_kernel.spans import span, spanned\n\n\n"
+        "def fit(x):\n"
+        '    with span("compute", detail="sum"):\n        total = np.sum(x)\n'
+        '    with span("score"):\n        return total * 2\n\n\n'
+        'class Model:\n    @spanned("predict", None)\n    def score(self):\n        return 1\n'
+    )
+    assert digest(measured.encode()) == digest(plain.encode())
+    for written in (
+        measured.replace("import span, spanned", "import span as timed, spanned").replace(
+            'with span("score")', 'with timed("score")'
+        ),
+        measured.replace('span("score")', "span(stage)"),
+        measured + "\nspan = None\n",
+    ):
+        assert digest(written.encode()) != digest(plain.encode())
+
+
+def test_every_span_in_the_source_is_literal_and_names_a_category_its_ledger_counts() -> None:
+    """requirement (A4): every span in the product names a category the ledger counts under a
+    class, with literal arguments, so it lands in its ledger class and reads as its body in every
+    identity that holds its module."""
+
+    from alphalattice.kernel.shared_kernel.source_identity import SPAN_MODULE
+    from alphalattice.kernel.shared_kernel.spans import SPAN_CLASSES
+
+    found: list[str] = []
+    for path in sorted((ROOT / "src").rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if SPAN_MODULE not in text:
+            continue
+        tree = ast.parse(text)
+        names = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module == SPAN_MODULE
+            for alias in node.names
+            if alias.name in {"span", "spanned"} and alias.asname is None
+        }
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in names
+            ):
+                continue
+            where = f"{path.relative_to(ROOT).as_posix()}:{node.lineno}"
+            arguments = [*node.args, *(keyword.value for keyword in node.keywords)]
+            assert all(
+                isinstance(value, ast.Constant)
+                and (value.value is None or isinstance(value.value, str))
+                for value in arguments
+            ), f"{where}: a span's arguments are literal text"
+            assert node.args and node.args[0].value in SPAN_CLASSES, (  # type: ignore[attr-defined]
+                f"{where}: unknown span category"
+            )
+            found.append(where)
+    assert found
+
+
 def test_an_area_reaching_a_role_outside_its_row_is_named_with_its_import() -> None:
     """requirement (GB, LAWS.md ID8): the reach table only shrinks, and a growth names the
     import that caused it."""

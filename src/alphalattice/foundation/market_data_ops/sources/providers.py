@@ -26,6 +26,7 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import (
     SplitAdjustedPriceIntegrityError,
     validate_split_adjusted_history,
 )
+from alphalattice.kernel.shared_kernel.spans import spanned
 
 YFINANCE_PRICE_POLICY: Mapping[str, object] = {
     "actions": True,
@@ -229,6 +230,7 @@ class YFinanceMarketDataProvider:
             self._runtime_module = yf
             return yf
 
+    @spanned("network", "yfinance_daily")
     def fetch_daily(
         self, symbols: Sequence[str], *, start: date, end: date
     ) -> Mapping[str, Sequence[Mapping[str, object]]]:
@@ -268,6 +270,7 @@ class YFinanceMarketDataProvider:
             payload[symbol] = rows
         return payload
 
+    @spanned("network", "yfinance_hydration")
     def fetch_hydration(
         self,
         *,
@@ -329,6 +332,7 @@ class YFinanceMarketDataProvider:
             provider_policy_hash=YFINANCE_PRICE_POLICY_HASH,
         )
 
+    @spanned("network", "yfinance_adjusted_closes")
     def fetch_adjusted_close_history(
         self, *, listing_id: str, provider_symbol: str, start: date, end: date
     ) -> Sequence[ProviderAdjustedClosePoint]:
@@ -398,6 +402,7 @@ class YFinanceMarketDataProvider:
             )
         return tuple(points)
 
+    @spanned("network", "yfinance_actions")
     def fetch_action_history(
         self, *, listing_id: str, provider_symbol: str, start: date, end: date
     ) -> Sequence[CorporateActionEvent]:
@@ -537,6 +542,7 @@ class YFinanceMarketDataProvider:
                 )
         return tuple(events)
 
+    @spanned("network", "yfinance_sector")
     def fetch_current_sector(self, *, provider_symbol: str) -> SectorObservation:
         """Read Yahoo's current sector label without calling it GICS or PIT truth."""
         yf = self._module()

@@ -36,6 +36,7 @@ from alphalattice.investment.alpha_research.scores.lifecycle_preparation import 
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.sealing import seal_model
+from alphalattice.kernel.shared_kernel.spans import span
 
 # This is the repaired fixed sparse-source axis, not today's number of formulas.
 # Existing owners supply the IDs; the pin prevents a later catalogue addition
@@ -144,9 +145,11 @@ def prepare_component_training_inputs(
     components = tuple(
         INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component(name) for name in component_ids
     )
-    bundle = read_factor_bundle(workspace, input_binding_hash)
+    with span("verify", "factor_bundle"):
+        bundle = read_factor_bundle(workspace, input_binding_hash)
     root, _ = factor_input_paths(workspace, input_binding_hash)
-    source_identity = workspace_score_source_identity(root)
+    with span("hash", "score_source_identity"):
+        source_identity = workspace_score_source_identity(root)
     factor_ids = frozen_training_factor_ids()
     features = tuple(
         sorted({name for component in components for name in component.ordered_feature_ids})
@@ -154,14 +157,15 @@ def prepare_component_training_inputs(
     if cancelled():
         raise ValueError("model_training.cancelled_at_safe_checkpoint")
     progress("materialize declared formulas and causal Context from sealed input")
-    source, training = read_workspace_component_inputs(
-        root,
-        formation=bundle.sessions[-1],
-        observed_at=observed_at,
-        expected_source_hash=source_identity,
-        ordered_feature_ids=features,
-        training_factor_ids=factor_ids,
-    )
+    with span("materialize", "component_inputs"):
+        source, training = read_workspace_component_inputs(
+            root,
+            formation=bundle.sessions[-1],
+            observed_at=observed_at,
+            expected_source_hash=source_identity,
+            ordered_feature_ids=features,
+            training_factor_ids=factor_ids,
+        )
     if training is None or training.ordered_factor_ids != factor_ids:
         raise ValueError("model_training.training_source_axis_mismatch")
     store = AlphaCurrentArtifactStore(workspace / "artifacts", packed_capacity=capacity)
@@ -175,15 +179,16 @@ def prepare_component_training_inputs(
     for component in components:
         if cancelled():
             raise ValueError("model_training.cancelled_at_safe_checkpoint")
-        admission, rejected = prepare_component_lifecycle(
-            store,
-            component=component,
-            source=source,
-            training=training,
-            environment_hash=environment,
-            cancelled=cancelled,
-            progress=progress,
-        )
+        with span("features", "component_lifecycle"):
+            admission, rejected = prepare_component_lifecycle(
+                store,
+                component=component,
+                source=source,
+                training=training,
+                environment_hash=environment,
+                cancelled=cancelled,
+                progress=progress,
+            )
         rejected_vintages.extend(
             (component.component_id, vintage, code) for vintage, code in rejected
         )

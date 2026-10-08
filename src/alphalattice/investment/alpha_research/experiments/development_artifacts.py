@@ -96,6 +96,7 @@ from alphalattice.investment.alpha_research.targets.total_return import (
 )
 from alphalattice.kernel.shared_kernel.arrow_identity import canonical_hash_with_rows
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.spans import span, spanned
 
 from .campaign import AlphaDevelopmentProgram
 from .campaign_evidence import (
@@ -378,11 +379,12 @@ class AlphaDevelopmentArtifactStore:
 
     @staticmethod
     def _atomic_write(target: Path, content: bytes) -> None:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
-        staged.write_bytes(content)
-        os.replace(staged, target)
-        staged.unlink(missing_ok=True)
+        with span("write", "alpha_artifact"):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+            staged.write_bytes(content)
+            os.replace(staged, target)
+            staged.unlink(missing_ok=True)
 
     def _publish_identity_json(
         self,
@@ -391,14 +393,17 @@ class AlphaDevelopmentArtifactStore:
         value: BaseModel,
         identity_field: str,
     ) -> str:
-        payload = value.model_dump(mode="json")
+        with span("serialize", "alpha_json"):
+            payload = value.model_dump(mode="json")
         content_hash = str(payload[identity_field])
         self._require_hash(content_hash)
         identity = dict(payload)
         identity.pop(identity_field)
-        if canonical_hash(identity) != content_hash:
-            raise ValueError("Alpha JSON identity field is invalid")
-        serialized = self._json_bytes(payload)
+        with span("hash", "alpha_json"):
+            if canonical_hash(identity) != content_hash:
+                raise ValueError("Alpha JSON identity field is invalid")
+        with span("serialize", "alpha_json"):
+            serialized = self._json_bytes(payload)
         target = self._path(category, content_hash, "json")
         if target.exists():
             if target.read_bytes() != serialized:
@@ -408,7 +413,8 @@ class AlphaDevelopmentArtifactStore:
         return self.uri(category, content_hash)
 
     def _publish_packed_bytes(self, *, category: str, payload: bytes) -> str:
-        content_hash = sha256(payload).hexdigest()
+        with span("hash", "alpha_packed"):
+            content_hash = sha256(payload).hexdigest()
         target = self._path(category, content_hash, "bin")
         if target.exists():
             if target.read_bytes() != payload:
@@ -474,11 +480,12 @@ class AlphaDevelopmentArtifactStore:
         if not resolved.is_relative_to(self.root.parent):
             raise self._packed_readback_error("alpha_research.frozen_input_path_outside_root")
 
-        with path.open("rb") as stream:
+        with span("read", "alpha_packed"), path.open("rb") as stream:
             before = os.fstat(stream.fileno())
             payload = stream.read()
             after = os.fstat(stream.fileno())
-        observed_hash = sha256(payload).hexdigest()
+        with span("hash", "alpha_packed"):
+            observed_hash = sha256(payload).hexdigest()
         if (
             observed_hash != content_hash
             or len(payload) != before.st_size
@@ -546,7 +553,7 @@ class AlphaDevelopmentArtifactStore:
 
         def verify() -> tuple[bytes, tuple[str, ...]]:
             try:
-                with target.open("rb") as stream:
+                with span("read", "alpha_json"), target.open("rb") as stream:
                     before = os.fstat(stream.fileno())
                     raw = stream.read()
                     after = os.fstat(stream.fileno())
@@ -573,8 +580,11 @@ class AlphaDevelopmentArtifactStore:
                 )
             identity = dict(payload)
             identity.pop(identity_field)
-            if canonical_hash(identity) != content_hash:
-                raise AlphaDevelopmentArtifactReadbackError("Alpha JSON payload hash is invalid")
+            with span("hash", "alpha_json"):
+                if canonical_hash(identity) != content_hash:
+                    raise AlphaDevelopmentArtifactReadbackError(
+                        "Alpha JSON payload hash is invalid"
+                    )
             file_identity = (
                 str(resolved),
                 str(after.st_dev),
@@ -1641,6 +1651,7 @@ class AlphaDevelopmentArtifactStore:
             self._atomic_write(pointer, self._json_bytes(payload))
         return sidecar
 
+    @spanned("verify", "model_fit_sidecar")
     def load_model_fit_sidecar(
         self,
         operation_binding_hash: str,

@@ -94,6 +94,7 @@ from alphalattice.investment.alpha_research.targets.component_training import (
     compile_frozen_component_training_targets,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.spans import span, spanned
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -145,7 +146,8 @@ def verified_lifecycle_admissions() -> Iterator[None]:
 
 def _array_file(store: AlphaDevelopmentArtifactStore, **arrays: npt.NDArray[np.generic]) -> str:
     stream = BytesIO()
-    np.savez(stream, **arrays)
+    with span("serialize", "lifecycle_npz"):
+        np.savez(stream, **arrays)
     return str(
         store._publish_packed_bytes(category="current/lifecycle-arrays", payload=stream.getvalue())
     )
@@ -451,7 +453,8 @@ def prepare_alpha_refit(
         AlphaLifecycleError: Plan/source/target binding, label maturity/shape or supported
             training-row count violates admission.
     """
-    source = read_training_prices(store, observations.observation_hash)
+    with span("read", "training_prices"):
+        source = read_training_prices(store, observations.observation_hash)
     expected = resolve_alpha_refit_plan(
         lifecycle=plan.lifecycle,
         vintage=plan.vintage,
@@ -482,11 +485,12 @@ def prepare_alpha_refit(
         raise AlphaLifecycleError("alpha_research.refit_label_axis_invalid")
     # Historical rows use exactly the one-day inference arithmetic; calculate
     # the common history once rather than once per training date or seed.
-    history = prepare_frozen_price_volume_history(
-        source,
-        ordered_feature_ids=plan.ordered_feature_ids,
-        through=plan.training_sessions[-1],
-    )
+    with span("features", "price_volume_history"):
+        history = prepare_frozen_price_volume_history(
+            source,
+            ordered_feature_ids=plan.ordered_feature_ids,
+            through=plan.training_sessions[-1],
+        )
     market = np.array(source.market_context_values, copy=True)
     market[1:, 0] = market[:-1, 0]
     market[0, 0] = np.nan
@@ -533,17 +537,18 @@ def prepare_alpha_refit(
             "positions": sha256(rows.tobytes()).hexdigest(),
         }
     )
-    binding = canonical_hash(
-        {
-            "plan": plan.content_hash,
-            "observations": observations.content_hash,
-            "features": alpha_model_array_content_hash(features),
-            "targets": alpha_model_array_content_hash(targets),
-            "rows": row_hash,
-            "weight_rule": "EQUAL_ROWS",
-            "scale": scale.model_dump(mode="json"),
-        }
-    )
+    with span("hash", "refit_arrays"):
+        binding = canonical_hash(
+            {
+                "plan": plan.content_hash,
+                "observations": observations.content_hash,
+                "features": alpha_model_array_content_hash(features),
+                "targets": alpha_model_array_content_hash(targets),
+                "rows": row_hash,
+                "weight_rule": "EQUAL_ROWS",
+                "scale": scale.model_dump(mode="json"),
+            }
+        )
     value = AlphaPreparedRefit.create(
         plan=plan,
         observations_hash=observations.content_hash,
@@ -583,6 +588,7 @@ class AlphaImportedChild(_LifecycleContract):
     environment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+@spanned("verify", "lifecycle_child")
 def read_lifecycle_child(
     store: AlphaDevelopmentArtifactStore, child: AlphaRenewedChild | AlphaImportedChild
 ) -> tuple[AlphaPreparedRefit, AlphaEstimatorContent]:
@@ -848,18 +854,19 @@ def fit_alpha_refit_child(
             early_stopping_rounds=50,
         )
         budget.charge()
-        fitted = runtime.fit(
-            recipe=recipe,
-            domain=domain,
-            fit_plan=fit_plan,
-            training_input=BoundAlphaTrainingInput(
-                training_binding_hash=binding,
-                ordered_feature_ids=plan.ordered_feature_ids,
-                features=features,
-                targets=targets,
-            ),
-            package_identity_hash=plan.lifecycle.content_hash,
-        )
+        with span("fit", "lifecycle_child"):
+            fitted = runtime.fit(
+                recipe=recipe,
+                domain=domain,
+                fit_plan=fit_plan,
+                training_input=BoundAlphaTrainingInput(
+                    training_binding_hash=binding,
+                    ordered_feature_ids=plan.ordered_feature_ids,
+                    features=features,
+                    targets=targets,
+                ),
+                package_identity_hash=plan.lifecycle.content_hash,
+            )
         budget.numerical_calls += (
             fitted.provenance.fit_call_count + fitted.provenance.predict_call_count
         )
@@ -954,6 +961,7 @@ class AlphaModelSetPublication(_LifecycleContract):
         return self
 
 
+@spanned("verify", "model_set")
 def verify_model_set(store: AlphaDevelopmentArtifactStore, value: AlphaModelSetPublication) -> None:
     """Verify each model child and its prepared values against the declared lifecycle set.
 
@@ -1507,28 +1515,29 @@ class AdmittedRenewingInference:
         """
         if not self.authority.supports(formation):
             raise AlphaLifecycleError("alpha_research.model_epoch_unavailable")
-        scales = tuple(
-            next(p.market_scale for p in self.authority.prepared if p.plan.vintage == vintage)
-            for vintage in self.authority.lifecycle.vintages(formation)
-        )
-        if history is not None:
-            if (
-                history.source is not source
-                or history.feature_ids != self.authority.component.ordered_feature_ids
-            ):
-                raise AlphaLifecycleError("alpha_research.feature_history_source_mismatch")
-            return history.surfaces(
-                formation, scales=scales, authority_hash=self.authority.content_hash
+        with span("features", "lifecycle_surfaces"):
+            scales = tuple(
+                next(p.market_scale for p in self.authority.prepared if p.plan.vintage == vintage)
+                for vintage in self.authority.lifecycle.vintages(formation)
             )
-        return tuple(
-            component_feature_surfaces(
-                source,
-                formation=formation,
-                feature_ids=self.authority.component.ordered_feature_ids,
-                scales=scales,
-                authority_hash=self.authority.content_hash,
+            if history is not None:
+                if (
+                    history.source is not source
+                    or history.feature_ids != self.authority.component.ordered_feature_ids
+                ):
+                    raise AlphaLifecycleError("alpha_research.feature_history_source_mismatch")
+                return history.surfaces(
+                    formation, scales=scales, authority_hash=self.authority.content_hash
+                )
+            return tuple(
+                component_feature_surfaces(
+                    source,
+                    formation=formation,
+                    feature_ids=self.authority.component.ordered_feature_ids,
+                    scales=scales,
+                    authority_hash=self.authority.content_hash,
+                )
             )
-        )
 
     def score(
         self,
@@ -1574,11 +1583,12 @@ class AdmittedRenewingInference:
             store=self.store,
             admission_hash=authority.budget_binding,
         )
-        publication = authority.children_for(
-            self.store,
-            formation,
-            budget=budget,
-        )
+        with span("compute", "renew_children"):
+            publication = authority.children_for(
+                self.store,
+                formation,
+                budget=budget,
+            )
         self.fit_calls = budget.calls
         self.fit_numerical_calls = budget.numerical_calls
         self.model_set_publication_hash = publication.content_hash
@@ -1611,20 +1621,21 @@ class AdmittedRenewingInference:
             component.candidate_semantics,
             lifecycle.score_aggregation,
         )
-        return score_heterogeneous_component(
-            component=view,
-            inputs=HeterogeneousFormationScoreInput.create(
-                formation_session=formation,
-                ordered_listing_ids=listing_ids,
-                decision_eligible=eligible,
-                raw_12_1_momentum=raw_12_1_momentum,
-                feature_surfaces=surfaces,
-                models=tuple(models),
-                model_set_manifest_hash=publication.content_hash,
-            ),
-            prediction_owner=self.prediction_owner,
-            declared_vintages=lifecycle.vintages(formation),
-        )
+        with span("predict", "heterogeneous_score"):
+            return score_heterogeneous_component(
+                component=view,
+                inputs=HeterogeneousFormationScoreInput.create(
+                    formation_session=formation,
+                    ordered_listing_ids=listing_ids,
+                    decision_eligible=eligible,
+                    raw_12_1_momentum=raw_12_1_momentum,
+                    feature_surfaces=surfaces,
+                    models=tuple(models),
+                    model_set_manifest_hash=publication.content_hash,
+                ),
+                prediction_owner=self.prediction_owner,
+                declared_vintages=lifecycle.vintages(formation),
+            )
 
 
 def read_lifecycle_admission(root: Path, *, expected_hash: str) -> AlphaModelLifecycleAdmission:

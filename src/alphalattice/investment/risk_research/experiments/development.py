@@ -66,6 +66,7 @@ from alphalattice.investment.risk_research.surfaces.artifacts import (
 from alphalattice.investment.risk_research.surfaces.returns import CausalRiskReturnReader
 from alphalattice.kernel.quant.sector_history import reclassification_payload, sector_slices
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.spans import span
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
 type FloatArray = NDArray[np.float64]
@@ -176,7 +177,8 @@ def build_development_covariance_surface(
     if len(axis) != expected:
         raise AuthoringError("research_authoring.bounded_window_inconsistent")
 
-    returns = return_reader.read_sessions(return_surface, axis)
+    with span("read", "risk_returns"):
+        returns = return_reader.read_sessions(return_surface, axis)
     equal_weights: FloatArray = np.full(
         len(ordered_listing_ids), 1.0 / len(ordered_listing_ids), dtype=np.float64
     )
@@ -251,33 +253,36 @@ def build_development_covariance_surface(
         # axis, so the run cannot read outside what was sealed.
         end = REQUIRED_LOOKBACK_SESSIONS + offset
         window = returns[end - REQUIRED_LOOKBACK_SESSIONS : end + 1]
-        estimate = adapter.estimate(
-            recipe=recipe_envelope,
-            inputs=BoundRiskReturnInput.create(
-                return_surface_hash=return_surface.surface_hash,
-                ordered_listing_ids=ordered_listing_ids,
-                formation_session=formation_session,
-                returns=window,
-            ),
-        )
+        with span("compute", "covariance_estimate"):
+            estimate = adapter.estimate(
+                recipe=recipe_envelope,
+                inputs=BoundRiskReturnInput.create(
+                    return_surface_hash=return_surface.surface_hash,
+                    ordered_listing_ids=ordered_listing_ids,
+                    formation_session=formation_session,
+                    returns=window,
+                ),
+            )
         estimate_calls += 1
         # Before the estimate is allowed to reach a chunk or a diagnostic.
-        _admit_estimate(
-            estimate,
-            ordered_listing_ids=ordered_listing_ids,
-            formation_session=formation_session,
-        )
-        evaluations.append(
-            evaluate_formation(
-                estimate=estimate,
-                next_session=axis[end + 1],
-                next_return=returns[end + 1],
-                equal_weights=equal_weights,
-                sector_weights=sector_weights[offset],
-                previous_matrix=previous_matrix,
-                previous_maximum_eigenvalue=previous_maximum,
+        with span("verify", "covariance_estimate"):
+            _admit_estimate(
+                estimate,
+                ordered_listing_ids=ordered_listing_ids,
+                formation_session=formation_session,
             )
-        )
+        with span("compute", "formation_evaluation"):
+            evaluations.append(
+                evaluate_formation(
+                    estimate=estimate,
+                    next_session=axis[end + 1],
+                    next_return=returns[end + 1],
+                    equal_weights=equal_weights,
+                    sector_weights=sector_weights[offset],
+                    previous_matrix=previous_matrix,
+                    previous_maximum_eigenvalue=previous_maximum,
+                )
+            )
         for name, intensity in estimate.component_shrinkages:
             component_series.setdefault(name, []).append(float(intensity))
         previous_matrix = np.array(estimate.matrix, copy=True)
@@ -289,13 +294,14 @@ def build_development_covariance_surface(
         if len(chunk_matrices) == DEVELOPMENT_CHUNK_FORMATIONS or offset == (
             len(formation_sessions) - 1
         ):
-            chunks.append(
-                artifact_store.publish_covariance_chunk(
-                    formation_sessions=tuple(chunk_sessions),
-                    matrices=tuple(chunk_matrices),
-                    matrix_hashes=tuple(chunk_hashes),
+            with span("write", "covariance_chunk"):
+                chunks.append(
+                    artifact_store.publish_covariance_chunk(
+                        formation_sessions=tuple(chunk_sessions),
+                        matrices=tuple(chunk_matrices),
+                        matrix_hashes=tuple(chunk_hashes),
+                    )
                 )
-            )
             chunk_sessions.clear()
             chunk_matrices.clear()
             chunk_hashes.clear()
@@ -308,9 +314,10 @@ def build_development_covariance_surface(
             )
             # Reuse the existing Risk atomic writer; this working cursor is
             # separate from its immutable published surface/diagnostic families.
-            artifact_store._atomic_write(
-                checkpoint_path, checkpoint.model_dump_json().encode("utf-8")
-            )
+            with span("write", "risk_checkpoint"):
+                artifact_store._atomic_write(
+                    checkpoint_path, checkpoint.model_dump_json().encode("utf-8")
+                )
 
     if any(len(series) != len(evaluations) for series in component_series.values()):
         # A method that reported components on some formations and not others

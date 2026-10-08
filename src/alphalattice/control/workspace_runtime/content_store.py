@@ -38,6 +38,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
+from alphalattice.kernel.shared_kernel.spans import span
+
 _WINDOWS_REPLACE_ATTEMPTS = 6
 _WINDOWS_WAIT_HANDLE_LIMIT = 64
 _VERIFIED_MODEL_CACHE_LIMIT = 128
@@ -476,7 +478,8 @@ def verified_source_value[T](
         or _VERIFIED_ARRAY_SCOPE.get() is None
         or not _REUSE_VERIFIED_ARRAYS.get()
     ):
-        return builder()
+        with span("verify", "source_value"):
+            return builder()
     key = ("file-read-lease", *identity, *(os.fspath(path) for path in paths))
     while True:
         with _VERIFIED_ARRAY_CACHE_LOCK:
@@ -503,7 +506,8 @@ def verified_source_value[T](
     def build() -> T:
         token = _VERIFIED_SOURCE_BUILD.set(True)
         try:
-            return builder()
+            with span("verify", "source_value"):
+                return builder()
         finally:
             _VERIFIED_SOURCE_BUILD.reset(token)
 
@@ -570,6 +574,7 @@ def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:
         with (
             verified_array_read_scope(reuse_verified=array_reuse),
             verified_model_read_scope(reuse_verified=model_reuse),
+            span("verify", "source_check"),
         ):
             check()
 
@@ -669,7 +674,8 @@ def verified_request_proof(identity: tuple[object, ...], check: Callable[[], Non
                     _VERIFIED_PROOF_CACHE.move_to_end(identity)
                     scope.add(identity)
                     return
-    check()
+    with span("verify", "request_proof"):
+        check()
     if scope is not None:
         scope.add(identity)
         if _REUSE_VERIFIED_ARRAYS.get():
@@ -800,7 +806,10 @@ def verified_npz_arrays(
     """
 
     def build_arrays() -> tuple[tuple[str, npt.NDArray[Any]], ...]:
-        with np.load(BytesIO(payload), allow_pickle=False) as archive:
+        with (
+            span("serialize", "npz_decode"),
+            np.load(BytesIO(payload), allow_pickle=False) as archive,
+        ):
             values: list[tuple[str, npt.NDArray[Any]]] = []
             for name in archive.files:
                 array = archive[name]
@@ -983,10 +992,11 @@ def columns_digest(columns: Mapping[str, npt.NDArray[Any]]) -> str:
     One column's digest is that of its packed bytes, the name its ``.bin`` lane had, so a
     lane keeps its identity across the type change (V210).
     """
-    digest = hashlib.sha256()
-    for values in columns.values():
-        digest.update(np.ascontiguousarray(values).tobytes())
-    return digest.hexdigest()
+    with span("hash", "columns"):
+        digest = hashlib.sha256()
+        for values in columns.values():
+            digest.update(np.ascontiguousarray(values).tobytes())
+        return digest.hexdigest()
 
 
 class ContentAddressedStore:
@@ -1028,11 +1038,12 @@ class ContentAddressedStore:
         """
         if self.capacity is not None:
             self.capacity(len(content))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        staged = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        staged.write_bytes(content)
-        os.replace(staged, path)
-        staged.unlink(missing_ok=True)
+        with span("write", "content_store"):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            staged = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+            staged.write_bytes(content)
+            os.replace(staged, path)
+            staged.unlink(missing_ok=True)
 
     def uri(self, category: str, content_hash: str, *, extension: str = "json") -> str:
         """Construct an artifact URI after validating its content hash.
@@ -1068,9 +1079,10 @@ class ContentAddressedStore:
         """
         content_hash = str(getattr(value, identity_field))
         self.require_hash(content_hash)
-        content = json.dumps(
-            value.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
-        ).encode()
+        with span("serialize", "model"):
+            content = json.dumps(
+                value.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+            ).encode()
         target = self.root / category / f"{content_hash}.json"
         if target.is_file() and target.read_bytes() != content:
             raise ContentAddressedStoreError("content_store.identity_reused")
@@ -1109,7 +1121,8 @@ class ContentAddressedStore:
         def verify() -> ContractT:
             file_identity = None
             try:
-                payload = target.read_bytes()
+                with span("read", "model"):
+                    payload = target.read_bytes()
             except FileNotFoundError as error:
                 raise ContentAddressedStoreError(
                     f"content_store.artifact_missing:{content_hash}"
@@ -1124,7 +1137,8 @@ class ContentAddressedStore:
                     if kept is not None:
                         return cast(ContractT, kept)
             try:
-                value = model.model_validate_json(payload)
+                with span("serialize", "model_validate"):
+                    value = model.model_validate_json(payload)
             except Exception as error:
                 raise ContentAddressedStoreError("content_store.artifact_tampered") from error
             if getattr(value, identity_field) != content_hash:
@@ -1168,10 +1182,11 @@ class ContentAddressedStore:
             if self._packed(target) != b"".join(array.tobytes() for array in arrays.values()):
                 raise ContentAddressedStoreError("content_store.identity_reused")
             return content_hash
-        table = pa.table({name: array.reshape(-1) for name, array in arrays.items()})
-        table = table.replace_schema_metadata({"shape": json.dumps(list(shapes.pop()))})
-        sink = pa.BufferOutputStream()
-        pq.write_table(table, sink, use_dictionary=False)
+        with span("serialize", "columns"):
+            table = pa.table({name: array.reshape(-1) for name, array in arrays.items()})
+            table = table.replace_schema_metadata({"shape": json.dumps(list(shapes.pop()))})
+            sink = pa.BufferOutputStream()
+            pq.write_table(table, sink, use_dictionary=False)
         self.atomic_write(target, sink.getvalue().to_pybytes())
         return content_hash
 
@@ -1197,8 +1212,9 @@ class ContentAddressedStore:
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.parquet"
         payload = self._packed(target) if target.is_file() else self._legacy(category, content_hash)
-        if hashlib.sha256(payload).hexdigest() != content_hash:
-            raise ContentAddressedStoreError("content_store.artifact_tampered")
+        with span("hash", "packed"):
+            if hashlib.sha256(payload).hexdigest() != content_hash:
+                raise ContentAddressedStoreError("content_store.artifact_tampered")
         return payload
 
     def publish_document(self, *, category: str, payload: bytes, extension: str) -> str:
@@ -1218,24 +1234,27 @@ class ContentAddressedStore:
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.{extension}"
         try:
-            payload = target.read_bytes()
+            with span("read", "document"):
+                payload = target.read_bytes()
         except FileNotFoundError:
             payload = self._legacy(category, content_hash)
-        if hashlib.sha256(payload).hexdigest() != content_hash:
-            raise ContentAddressedStoreError("content_store.artifact_tampered")
+        with span("hash", "document"):
+            if hashlib.sha256(payload).hexdigest() != content_hash:
+                raise ContentAddressedStoreError("content_store.artifact_tampered")
         return payload
 
     def _columns(self, target: Path) -> dict[str, npt.NDArray[Any]]:
         try:
             # A Parquet file opens and closes with its magic; the reader checks only the end.
-            with target.open("rb") as handle:
-                if handle.read(4) != b"PAR1":
-                    raise ContentAddressedStoreError("content_store.artifact_tampered")
-            table = pq.read_table(target)
-            return {
-                name: np.ascontiguousarray(table.column(name).to_numpy())
-                for name in table.column_names
-            }
+            with span("read", "columns"):
+                with target.open("rb") as handle:
+                    if handle.read(4) != b"PAR1":
+                        raise ContentAddressedStoreError("content_store.artifact_tampered")
+                table = pq.read_table(target)
+                return {
+                    name: np.ascontiguousarray(table.column(name).to_numpy())
+                    for name in table.column_names
+                }
         except FileNotFoundError as error:
             raise ContentAddressedStoreError(
                 f"content_store.artifact_missing:{target.stem}"

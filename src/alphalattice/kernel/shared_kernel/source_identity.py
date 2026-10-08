@@ -99,8 +99,9 @@ def source_syntax_sha256(path: Path) -> str:
     """Hash a module's executable AST without bare string statements.
 
     A module's identity as its syntax: the parsed tree without its docstrings and other bare
-    string statements. A comment, a docstring or the layout is not syntax, so editing one moves
-    nothing; a changed name, value or statement does (binding plan R1).
+    string statements, and without its execution spans (``without_measurement``). A comment, a
+    docstring, a span or the layout is not syntax, so editing one moves nothing; a changed name,
+    value or statement does (binding plan R1).
 
     Args:
         path: Python module file to parse.
@@ -242,7 +243,122 @@ def _parsed_payload(payload: bytes, *, package: str, filename: str) -> tuple[str
     return kept
 
 
+SPAN_MODULE = "alphalattice.kernel.shared_kernel.spans"
+"""The execution-span owner: a span measures where a stage's time goes and decides nothing."""
+_SPAN_NAMES = frozenset({"span", "spanned"})
+
+
+def without_measurement(tree: ast.Module) -> ast.Module:
+    """The module's tree with its execution spans taken out, as an identity reads it (LAWS ID3).
+
+    In a module that imports ``span`` or ``spanned`` from the span owner under those names and
+    binds them nowhere else, each ``with span("<text>")`` (literal arguments, no ``as``) reads as
+    its body, each ``@spanned("<text>")`` and that import are left out: a span measures and never
+    decides (``shared_kernel.spans``), so adding or moving one moves no identity
+    and no reuse pin. Any other form, or a module that rebinds either name, reads as written.
+    The tree is changed in place and returned.
+
+    Args:
+        tree: A parsed module.
+
+    Returns:
+        The same tree without its spans.
+    """
+    imported = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module == SPAN_MODULE
+        for alias in node.names
+        if alias.name in _SPAN_NAMES and alias.asname is None
+    }
+    if not imported or imported & _rebound(tree):
+        return tree
+    return cast(ast.Module, _WithoutMeasurement(frozenset(imported)).visit(tree))
+
+
+def _rebound(tree: ast.Module) -> set[str]:
+    """Names the module binds other than by importing them from the span owner."""
+    bound: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store | ast.Del):
+            bound.add(node.id)
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            bound.add(node.name)
+        elif isinstance(node, ast.arg):
+            bound.add(node.arg)
+        elif isinstance(node, ast.Import):
+            bound.update((alias.asname or alias.name).split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and not (
+            node.level == 0 and node.module == SPAN_MODULE
+        ):
+            bound.update(alias.asname or alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            bound.update(alias.asname for alias in node.names if alias.asname)
+    return bound
+
+
+def _literal_call(node: ast.expr, names: frozenset[str], name: str) -> bool:
+    """A call of the imported ``name`` whose arguments are all literal text or None."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == name
+        and name in names
+        and all(_literal(argument) for argument in node.args)
+        and all(keyword.arg == "detail" and _literal(keyword.value) for keyword in node.keywords)
+    )
+
+
+def _literal(node: ast.expr) -> bool:
+    return isinstance(node, ast.Constant) and (node.value is None or isinstance(node.value, str))
+
+
+class _WithoutMeasurement(ast.NodeTransformer):
+    """Read spans as their bodies and leave out their import (``without_measurement``)."""
+
+    def __init__(self, names: frozenset[str]) -> None:
+        self.names = names
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> ast.ImportFrom | None:
+        if node.level != 0 or node.module != SPAN_MODULE:
+            return node
+        node.names = [
+            alias for alias in node.names if not (alias.name in self.names and alias.asname is None)
+        ]
+        return node if node.names else None
+
+    def visit_With(self, node: ast.With) -> ast.With | list[ast.stmt]:
+        self.generic_visit(node)
+        kept = [
+            item
+            for item in node.items
+            if item.optional_vars is not None
+            or not _literal_call(item.context_expr, self.names, "span")
+        ]
+        if len(kept) == len(node.items):
+            return node
+        if kept:
+            node.items = kept
+            return node
+        return node.body
+
+    def _undecorated(self, node: ast.AST) -> ast.AST:
+        self.generic_visit(node)
+        decorated = cast(ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, node)
+        decorated.decorator_list = [
+            decorator
+            for decorator in decorated.decorator_list
+            if not _literal_call(decorator, self.names, "spanned")
+        ]
+        return node
+
+    visit_FunctionDef = _undecorated
+    visit_AsyncFunctionDef = _undecorated
+    visit_ClassDef = _undecorated
+
+
 def _syntax_digest(tree: ast.Module) -> str:
+    without_measurement(tree)
     for node in ast.walk(tree):
         body = getattr(node, "body", None)
         if isinstance(body, list) and body and isinstance(body[0], ast.stmt):

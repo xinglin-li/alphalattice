@@ -29,6 +29,7 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     AlphaModelLifecycleRecipe,
     resolve_alpha_refit_plan,
 )
+from alphalattice.kernel.shared_kernel.spans import span
 
 
 def prepare_component_lifecycle(
@@ -63,12 +64,13 @@ def prepare_component_lifecycle(
         ValueError: Cancelled at a checkpoint, no complete model history, a gap inside the
             support, or a refit refusal other than a vintage's missing support.
     """
-    observations = publish_component_training_observations(
-        store,
-        component=component,
-        source=source,
-        training=training,
-    )
+    with span("materialize", "training_observations"):
+        observations = publish_component_training_observations(
+            store,
+            component=component,
+            source=source,
+            training=training,
+        )
     rule = AlphaModelLifecycleRecipe.from_component(component)
     prepared = []
     rejected: list[tuple[str, str]] = []
@@ -87,11 +89,12 @@ def prepare_component_lifecycle(
                 ordered_listing_ids=source.ordered_listing_ids,
                 ordered_feature_ids=component.ordered_feature_ids,
             )
-            prepared.append(
-                prepare_alpha_refit(
-                    store, plan=plan, observations=observations, component=component
+            with span("features", "refit_preparation"):
+                prepared.append(
+                    prepare_alpha_refit(
+                        store, plan=plan, observations=observations, component=component
+                    )
                 )
-            )
         except ValueError as error:
             code = str(error)
             if code not in {

@@ -138,6 +138,7 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import rend
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.spans import span
 
 SCHEMA = "portfolio-conditional-decision-advancement"
 STAGES = (
@@ -987,29 +988,33 @@ class DecisionAdvancementApplication:
             # Tradability needs twenty prior sessions; model inputs have their
             # own captured preparation. Do not duplicate unused decades here.
             market_start = min(warm_start, checkpoint.initial_book.schedule.formation_session)
-            snapshot = read_local_qa_market_snapshot(
-                store=market,
-                start=market_start,
-                through=plan.target,
-                listing_ids=checkpoint.ordered_listing_ids,
-                observed_at=self.clock(),
-                retained_listing_ids=checkpoint.ordered_listing_ids,
-            )
+            with span("materialize", "market_snapshot"):
+                snapshot = read_local_qa_market_snapshot(
+                    store=market,
+                    start=market_start,
+                    through=plan.target,
+                    listing_ids=checkpoint.ordered_listing_ids,
+                    observed_at=self.clock(),
+                    retained_listing_ids=checkpoint.ordered_listing_ids,
+                )
             if not set(plan.decision_sessions) <= {v.session_date for v in snapshot.bars}:
                 raise ValueError("research_update.session_observations_missing")
             previous = self._parent(plan)
             # Verify the as-issued valuation bridge before prediction. Revised
             # inputs still feed new research; old proposals consume their own seal.
-            self.updates.continued_market(snapshot, previous)
-            self._save("market-inputs", snapshot)
+            with span("verify", "valuation_bridge"):
+                self.updates.continued_market(snapshot, previous)
+            with span("write", "market_inputs"):
+                self._save("market-inputs", snapshot)
             products = [snapshot.content_hash]
             effective_authorities = {}
             for index, binding in enumerate(plan.bindings):
                 current_authority = self.scoring._authority(binding)
-                historical = [
-                    self.scoring.store.load_frozen_component_score(h)
-                    for h in plan.history_score_hashes
-                ]
+                with span("read", "historical_scores"):
+                    historical = [
+                        self.scoring.store.load_frozen_component_score(h)
+                        for h in plan.history_score_hashes
+                    ]
                 historical = [
                     s
                     for s in historical
@@ -1049,27 +1054,30 @@ class DecisionAdvancementApplication:
                         index not in prepared_inputs
                         and binding.source_kind == "WORKSPACE_DATA_FEATURE"
                     ):
-                        prepared_inputs[index] = self.scoring.prepare_inputs(
-                            binding,
-                            through=max(pending[index]),
-                            expected_source_hash=source,
+                        with span("materialize", "score_inputs"):
+                            prepared_inputs[index] = self.scoring.prepare_inputs(
+                                binding,
+                                through=max(pending[index]),
+                                expected_source_hash=source,
+                                captured_authority_hash=effective_authorities.get(index),
+                                observed_at=self.clock(),
+                            )
+                    with span("features", "score_features"):
+                        result = self.scoring.execute_step(
+                            score_plan,
+                            SCORE_STAGES[1],
+                            lambda _: "",
                             captured_authority_hash=effective_authorities.get(index),
-                            observed_at=self.clock(),
+                            prepared_inputs=prepared_inputs.get(index),
                         )
-                    result = self.scoring.execute_step(
-                        score_plan,
-                        SCORE_STAGES[1],
-                        lambda _: "",
-                        captured_authority_hash=effective_authorities.get(index),
-                        prepared_inputs=prepared_inputs.get(index),
-                    )
                     held = self._commit(
                         plan,
                         key,
                         (score_plan.plan_hash, str(result.evidence[0].content_hash)),
                         source,
                     )
-                self._verify_features(held)
+                with span("verify", "score_features"):
+                    self._verify_features(held)
                 feature_preparation, _ = self.scoring.store.load_frozen_feature_preparation(
                     held.products[1]
                 )
@@ -1084,11 +1092,14 @@ class DecisionAdvancementApplication:
             for identity in captured.products[1:]:
                 self._cancel(task)
                 features = self._load("decision-stages", identity, DecisionAdvancementStep)
-                sp = self._verify_features(features)
-                result = self.scoring.execute_step(
-                    sp, SCORE_STAGES[2], {SCORE_STAGES[1]: features.products[1]}.__getitem__
-                )
-                self.scoring.verify_step(sp, SCORE_STAGES[2], result.evidence)
+                with span("verify", "score_features"):
+                    sp = self._verify_features(features)
+                with span("predict", "scores"):
+                    result = self.scoring.execute_step(
+                        sp, SCORE_STAGES[2], {SCORE_STAGES[1]: features.products[1]}.__getitem__
+                    )
+                with span("verify", "scores"):
+                    self.scoring.verify_step(sp, SCORE_STAGES[2], result.evidence)
                 products.append(str(result.evidence[0].content_hash))
             return self._commit(plan, stage, tuple(products), source)
         market_snapshot = self._load("market-inputs", captured.products[0], LocalQAMarketSnapshot)
@@ -1115,15 +1126,16 @@ class DecisionAdvancementApplication:
                     held = self._step(plan, key)
                     if held is None and component.weight_rule == "mu.iv0":
                         if market_rows is None:
-                            market_rows = PreparedLocalQASnapshotRows.from_artifact(
-                                source_root=self.ledger.root,
-                                source_category="market-inputs",
-                                content_hash=captured.products[0],
-                                artifact_root=self.session.workspace / "artifacts",
-                                capacity=lambda size: require_storage_capacity(
-                                    self.session.workspace, additional_bytes=size
-                                ),
-                            )
+                            with span("materialize", "calibration_rows"):
+                                market_rows = PreparedLocalQASnapshotRows.from_artifact(
+                                    source_root=self.ledger.root,
+                                    source_category="market-inputs",
+                                    content_hash=captured.products[0],
+                                    artifact_root=self.session.workspace / "artifacts",
+                                    capacity=lambda size: require_storage_capacity(
+                                        self.session.workspace, additional_bytes=size
+                                    ),
+                                )
                         cp = CalibrationPlan.create(
                             workspace_manifest_hash=self._owner_fields(CALIBRATION_PLAN_FIELDS),
                             binding=self.calibration._binding(plan.package_id),
@@ -1137,14 +1149,20 @@ class DecisionAdvancementApplication:
                             implementation_hash=plan.calibration_implementation_hash,
                         )
                         self._save("calibration-programs", cp, "plan_hash")
-                        with self.session.mutation_gate.hold():
+                        with (
+                            self.session.mutation_gate.hold(),
+                            span("compute", "calibration_observations"),
+                        ):
                             obs = self.calibration.execute_step(
                                 cp, CALIBRATION_STAGES[1], lambda _: "", captured=market_rows
                             )
                         obs_hash = str(obs.evidence[0].content_hash)
-                        result = self.calibration.execute_step(
-                            cp, CALIBRATION_STAGES[2], {CALIBRATION_STAGES[1]: obs_hash}.__getitem__
-                        )
+                        with span("compute", "calibration"):
+                            result = self.calibration.execute_step(
+                                cp,
+                                CALIBRATION_STAGES[2],
+                                {CALIBRATION_STAGES[1]: obs_hash}.__getitem__,
+                            )
                         held = self._commit(
                             plan,
                             key,
@@ -1152,7 +1170,8 @@ class DecisionAdvancementApplication:
                             source,
                         )
                     elif held is None:
-                        value = self._ew_input(checkpoint, score, market_snapshot, source)
+                        with span("compute", "ew_input"):
+                            value = self._ew_input(checkpoint, score, market_snapshot, source)
                         self.calibration.store.publish(
                             category="prepared-component-inputs",
                             value=value,
@@ -1169,7 +1188,8 @@ class DecisionAdvancementApplication:
                             ),
                             source,
                         )
-                    self._verify_input(held)
+                    with span("verify", "component_input"):
+                        self._verify_input(held)
                     children.append(held.content_hash)
                 if len(children) == 1:
                     products.append(children[0])
@@ -1258,20 +1278,22 @@ class DecisionAdvancementApplication:
                     self.updates.store.content.publish_model(
                         category="decision-plans", value=dp, identity_field="plan_hash"
                     )
-                    value = advance_decision_state(
-                        checkpoint=checkpoint,
-                        previous=previous,
-                        prepared=prepared,
-                        observed=prefix,
-                        plan_hash=dp.plan_hash,
-                        published_at=self.clock(),
-                        previous_checkpoint=self.updates.prior_checkpoint(previous, checkpoint),
-                        revised_source_hash=raw.content_hash if raw != prefix else None,
-                        source_revision=self.updates.revision_impact(raw, previous),
-                    )
-                    html, _ = self.updates.store.publish_html(
-                        render_decision_update(checkpoint, (value,))
-                    )
+                    with span("compute", "advance_state"):
+                        value = advance_decision_state(
+                            checkpoint=checkpoint,
+                            previous=previous,
+                            prepared=prepared,
+                            observed=prefix,
+                            plan_hash=dp.plan_hash,
+                            published_at=self.clock(),
+                            previous_checkpoint=self.updates.prior_checkpoint(previous, checkpoint),
+                            revised_source_hash=raw.content_hash if raw != prefix else None,
+                            source_revision=self.updates.revision_impact(raw, previous),
+                        )
+                    with span("write", "decision_html"):
+                        html, _ = self.updates.store.publish_html(
+                            render_decision_update(checkpoint, (value,))
+                        )
                     value = PortfolioUpdatePublication.create(
                         **{
                             **{
@@ -1308,11 +1330,12 @@ class DecisionAdvancementApplication:
             )
 
             checkpoint = self.updates.store.load_decision_checkpoint(plan.checkpoint_hash)
-            publish_rolling_report_heads(
-                application=self.updates.application,
-                checkpoint=checkpoint,
-                publications=self.updates.history(plan.checkpoint_hash),
-            )
+            with span("write", "rolling_report"):
+                publish_rolling_report_heads(
+                    application=self.updates.application,
+                    checkpoint=checkpoint,
+                    publications=self.updates.history(plan.checkpoint_hash),
+                )
             return self._commit(plan, stage, tuple(v.content_hash for v in branch), source)
         raise ValueError("research_update.stage_unknown")
 

@@ -219,7 +219,7 @@ from alphalattice.control.task_control.registry import (
     TaskVersionStale,
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReader, TaskHeartbeatReadout
-from alphalattice.control.task_control.timing import task_timing
+from alphalattice.control.task_control.timing import read_stage_spans, task_timing
 from alphalattice.control.workspace_runtime.content_store import (
     CommittedIndex,
     ContentAddressedStoreError,
@@ -3427,7 +3427,12 @@ class PortfolioResearchOperations:
             record, items = registry.task_with_work_items(task_id)
         except (KeyError, ValueError, TaskNotFoundError):
             return body
-        body["timing"] = task_timing(record, items, now=self.dispatcher.clock())
+        body["timing"] = task_timing(
+            record,
+            items,
+            now=self.dispatcher.clock(),
+            spans=read_stage_spans(self.workspace_session.runtime_path, task_id),
+        )
         body["attention"] = self.supervisor.attention((record,))[task_id].model_dump(mode="json")
         # What the stopped stage's owner saw beside its code, as its work item keeps it (V444).
         cause = next((item.failure_cause for item in items if item.failure_cause), None)

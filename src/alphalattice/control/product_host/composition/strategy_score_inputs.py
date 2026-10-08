@@ -74,6 +74,7 @@ from alphalattice.investment.sector_research.inputs.surface import compile_secto
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.quant.sector_history import sector_ids, sector_subset
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.spans import span
 
 
 @dataclass(frozen=True)
@@ -532,7 +533,10 @@ def _read_workspace_component_inputs(
                 == sum(point.holding_end_session <= head.formation_sessions[-1] for point in points)
             ):
                 candidate_sessions = head.formation_sessions
-        with market.database.read_transaction() as connection:
+        with (
+            market.database.read_transaction() as connection,
+            span("verify", "feature_prefix_proofs"),
+        ):
             feature_proofs = feature.feature_source_prefix_proofs(
                 listing_ids=listings,
                 catalog_hash=binding.feature_catalog_hash,
@@ -578,64 +582,70 @@ def _read_workspace_component_inputs(
                 for name in ohlcv:
                     ohlcv[name][:reused_count] = columns["ohlcv::" + name]
                 raw_simple[:reused_count] = columns["raw_simple"]
-        dependency_prefix_hash = _workspace_history_prefix_proof(
-            market,
-            feature,
-            sessions=sessions,
-            listings=listings,
-            observed_at=observed_at,
-            catalog_hash=binding.feature_catalog_hash,
-            factor_ids=selected_stored,
-            extension_factor_ids=selected_extensions,
-            feature_prefix_proof=feature_proofs[-1],
-        )
+        with span("verify", "history_prefix_proof"):
+            dependency_prefix_hash = _workspace_history_prefix_proof(
+                market,
+                feature,
+                sessions=sessions,
+                listings=listings,
+                observed_at=observed_at,
+                catalog_hash=binding.feature_catalog_hash,
+                factor_ids=selected_stored,
+                extension_factor_ids=selected_extensions,
+                feature_prefix_proof=feature_proofs[-1],
+            )
     actions: list[tuple[CorporateActionEvent, ...]] = []
     if prepared is None:
         with market._connect(read_only=True) as connection, connection.snapshot():
-            for column, listing in enumerate(listings):
-                bars = market.raw_bars(
-                    listing, start=sessions[return_start], through=formation, _connection=connection
-                )
-                by_session = {bar.session_date: bar for bar in bars}
-                listing_actions = market.actions(listing, _connection=connection)
-                actions.append(listing_actions)
-                try:
-                    dividends = _action_dividends(listing_actions, through=formation)
-                except ValueError as error:
-                    if proof is not None and _market_source_proof(market) != proof:
-                        raise ValueError("strategy_score.source_revision_changed") from error
-                    raise
-                for bar in bars:
-                    if bar.session_date in positions:
-                        for name in ohlcv:
-                            value = getattr(bar, name)
-                            ohlcv[name][positions[bar.session_date], column] = (
-                                np.nan if value is None else float(value)
-                            )
-                for row in range(return_start, len(sessions)):
-                    session = sessions[row]
-                    point = by_formation.get(session)
-                    if point is None:
-                        continue
-                    value = causal_execution_simple_return(
-                        entry_bar=by_session.get(point.entry_session),
-                        holding_bar=by_session.get(point.holding_end_session),
-                        period_dividend_split_adjusted=period_dividend_for_point(
-                            recipe=method,
-                            dividends=dividends,
-                            ordered_sessions=dividend_axis,
-                            point=point,
-                        ),
+            with span("materialize", "ohlcv_returns"):
+                for column, listing in enumerate(listings):
+                    bars = market.raw_bars(
+                        listing,
+                        start=sessions[return_start],
+                        through=formation,
+                        _connection=connection,
                     )
-                    raw_simple[row, column] = np.nan if value is None else value
-            observations = feature.feature_rows(
-                listing_ids=listings,
-                catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
-                start=sessions[reused_count] if reused_count < len(sessions) else formation,
-                end=formation,
-                factor_ids=("dist_52w_high", "dist_52w_low"),
-                _connection=connection,
-            )
+                    by_session = {bar.session_date: bar for bar in bars}
+                    listing_actions = market.actions(listing, _connection=connection)
+                    actions.append(listing_actions)
+                    try:
+                        dividends = _action_dividends(listing_actions, through=formation)
+                    except ValueError as error:
+                        if proof is not None and _market_source_proof(market) != proof:
+                            raise ValueError("strategy_score.source_revision_changed") from error
+                        raise
+                    for bar in bars:
+                        if bar.session_date in positions:
+                            for name in ohlcv:
+                                value = getattr(bar, name)
+                                ohlcv[name][positions[bar.session_date], column] = (
+                                    np.nan if value is None else float(value)
+                                )
+                    for row in range(return_start, len(sessions)):
+                        session = sessions[row]
+                        point = by_formation.get(session)
+                        if point is None:
+                            continue
+                        value = causal_execution_simple_return(
+                            entry_bar=by_session.get(point.entry_session),
+                            holding_bar=by_session.get(point.holding_end_session),
+                            period_dividend_split_adjusted=period_dividend_for_point(
+                                recipe=method,
+                                dividends=dividends,
+                                ordered_sessions=dividend_axis,
+                                point=point,
+                            ),
+                        )
+                        raw_simple[row, column] = np.nan if value is None else value
+            with span("read", "feature_rows"):
+                observations = feature.feature_rows(
+                    listing_ids=listings,
+                    catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
+                    start=sessions[reused_count] if reused_count < len(sessions) else formation,
+                    end=formation,
+                    factor_ids=("dist_52w_high", "dist_52w_low"),
+                    _connection=connection,
+                )
         observed: dict[str, FloatArray] = {
             name: np.full(shape, np.nan, dtype=np.float64)
             for name in ("dist_52w_high", "dist_52w_low")
@@ -713,20 +723,21 @@ def _read_workspace_component_inputs(
             for value in session_observation_factor_specs()
             if value.factor_id == "close_to_close"
         )
-        observed["close_to_close"] = (
-            append_session_observation_values(
-                observation_frame,
-                observation_spec,
-                previous=(
-                    pd.Series(restored["observations::close_to_close"].reshape(-1))
-                    if restored is not None
-                    else None
-                ),
-                compute=default_extension_kernel_registry().compute,
+        with span("features", "close_to_close"):
+            observed["close_to_close"] = (
+                append_session_observation_values(
+                    observation_frame,
+                    observation_spec,
+                    previous=(
+                        pd.Series(restored["observations::close_to_close"].reshape(-1))
+                        if restored is not None
+                        else None
+                    ),
+                    compute=default_extension_kernel_registry().compute,
+                )
+                .to_numpy(dtype=np.float64)
+                .reshape(shape)
             )
-            .to_numpy(dtype=np.float64)
-            .reshape(shape)
-        )
     formula_values: dict[str, FloatArray] = {}
     if formula_ids:
         required = set(stored) | (set(formula_ids) & extension.keys())
@@ -748,13 +759,14 @@ def _read_workspace_component_inputs(
             selected = (*stored, *(name for name in formula_ids if name in extension))
             formula_values = {name: bounded(prepared.formula_values[name]) for name in selected}
         else:
-            rows = feature.feature_rows(
-                listing_ids=listings,
-                catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
-                start=sessions[reused_count] if reused_count < len(sessions) else formation,
-                end=formation,
-                factor_ids=stored,
-            )
+            with span("read", "formula_rows"):
+                rows = feature.feature_rows(
+                    listing_ids=listings,
+                    catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
+                    start=sessions[reused_count] if reused_count < len(sessions) else formation,
+                    end=formation,
+                    factor_ids=stored,
+                )
             formula_values = {name: np.full(shape, np.nan, dtype=np.float64) for name in stored}
             if restored is not None:
                 for name in stored:
@@ -782,22 +794,23 @@ def _read_workspace_component_inputs(
                     "volume_raw": ohlcv["volume"].reshape(-1),
                 }
             )
-            for name in formula_ids:
-                if name in extension:
-                    formula_values[name] = (
-                        append_session_observation_values(
-                            frame,
-                            extension[name],
-                            previous=(
-                                pd.Series(restored["formula::" + name].reshape(-1))
-                                if restored is not None
-                                else None
-                            ),
-                            compute=default_extension_kernel_registry().compute,
+            with span("features", "extension_formulas"):
+                for name in formula_ids:
+                    if name in extension:
+                        formula_values[name] = (
+                            append_session_observation_values(
+                                frame,
+                                extension[name],
+                                previous=(
+                                    pd.Series(restored["formula::" + name].reshape(-1))
+                                    if restored is not None
+                                    else None
+                                ),
+                                compute=default_extension_kernel_registry().compute,
+                            )
+                            .to_numpy(dtype=np.float64)
+                            .reshape(shape)
                         )
-                        .to_numpy(dtype=np.float64)
-                        .reshape(shape)
-                    )
     # The Sector each session reads, the store's history over these names (V346).
     sector_history = feature.sector_history(manifest, listing_ids=listings)
     if sector_history is None or set(listings) - set(sector_history):

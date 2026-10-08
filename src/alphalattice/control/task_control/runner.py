@@ -22,6 +22,8 @@ from threading import Event, Thread
 from typing import Final, Protocol
 from uuid import UUID, uuid4
 
+from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
+
 from .child import ChildStartFailed
 from .contracts import (
     FAILURE_CODE_MAX_LENGTH,
@@ -38,6 +40,7 @@ from .contracts import (
     WorkItemLifecycle,
 )
 from .registry import DuckDbTaskControlRegistry, TaskTransitionRejected
+from .timing import record_stage_spans
 
 _LOG = logging.getLogger(__name__)
 
@@ -150,6 +153,34 @@ def _bounded_raise(attempt: int, call: Callable[[], StageExecutionResult]) -> St
                 {"exception_type": type(error).__name__, "detail": str(error)}
             ),
         )
+
+
+def _spanned[T](
+    runtime_path: Path,
+    task_id: UUID,
+    execution_id: UUID,
+    stage_id: str,
+    phase: str,
+    call: Callable[[], T],
+) -> T:
+    """Run one phase of a stage inside a span ledger and keep what it spent its time on (A4).
+
+    The readout is kept whether the phase returned or raised; keeping it never fails the stage.
+    """
+    ledger: SpanLedger | None = None
+    try:
+        with collect() as ledger:
+            return call()
+    finally:
+        if ledger is not None and ledger.readout_value is not None:
+            record_stage_spans(
+                runtime_path,
+                task_id=task_id,
+                execution_id=execution_id,
+                stage_id=stage_id,
+                phase=phase,
+                readout=ledger.readout_value,
+            )
 
 
 class _WorkPool:
@@ -381,8 +412,10 @@ class TaskControlRunner:
         self.heartbeat_sink = heartbeat_sink
         self.width = width
         self.worker_instance_id = uuid4()
-        # The runtime file's name names the heartbeat sidecar beside it.
-        self._heartbeat_store = _SqliteHeartbeatStore(heartbeat_store_path(Path(runtime_path)))
+        # The runtime file's name names the heartbeat sidecar beside it; its folder keeps the
+        # stages' spans.
+        self._runtime_path = Path(runtime_path)
+        self._heartbeat_store = _SqliteHeartbeatStore(heartbeat_store_path(self._runtime_path))
 
     def close(self) -> None:
         """Release what the runner holds between executions: nothing since W10's loop."""
@@ -474,11 +507,19 @@ class TaskControlRunner:
                     if item.lifecycle is not WorkItemLifecycle.VERIFIED:
                         continue
                     try:
-                        verified = adapter.verify_stage(
-                            task=task,
-                            execution=execution,
-                            work_item=definitions[item.stage_id],
-                            evidence=item.evidence,
+                        verified = _spanned(
+                            self._runtime_path,
+                            task.task_id,
+                            execution.execution_id,
+                            item.stage_id,
+                            "recovery_verify",
+                            partial(
+                                adapter.verify_stage,
+                                task=task,
+                                execution=execution,
+                                work_item=definitions[item.stage_id],
+                                evidence=item.evidence,
+                            ),
                         )
                         if verified != item.evidence:
                             raise ValueError("verifier changed evidence identity")
@@ -668,13 +709,21 @@ class TaskControlRunner:
             pool.start(
                 definition,
                 partial(
-                    _bounded_raise,
-                    attempt,
+                    _spanned,
+                    self._runtime_path,
+                    task_id,
+                    execution_id,
+                    definition.stage_id,
+                    "execute",
                     partial(
-                        context.adapter.execute_stage,
-                        task=task,
-                        execution=registry.execution(execution_id),
-                        work_item=definition,
+                        _bounded_raise,
+                        attempt,
+                        partial(
+                            context.adapter.execute_stage,
+                            task=task,
+                            execution=registry.execution(execution_id),
+                            work_item=definition,
+                        ),
                     ),
                 ),
             )
@@ -743,8 +792,19 @@ class TaskControlRunner:
                 continue
             definition = definitions[item.stage_id]
             try:
-                verified = adapter.verify_stage(
-                    task=task, execution=execution, work_item=definition, evidence=item.evidence
+                verified = _spanned(
+                    self._runtime_path,
+                    task.task_id,
+                    execution.execution_id,
+                    item.stage_id,
+                    "recovery_verify",
+                    partial(
+                        adapter.verify_stage,
+                        task=task,
+                        execution=execution,
+                        work_item=definition,
+                        evidence=item.evidence,
+                    ),
                 )
             except ChildStartFailed:
                 raise
@@ -787,11 +847,19 @@ class TaskControlRunner:
             evidence=result.evidence,
             observed_at=self._now(),
         )
-        verified = context.adapter.verify_stage(
-            task=registry.task(task_id),
-            execution=execution,
-            work_item=definition,
-            evidence=result.evidence,
+        verified = _spanned(
+            self._runtime_path,
+            task_id,
+            execution.execution_id,
+            definition.stage_id,
+            "verify",
+            partial(
+                context.adapter.verify_stage,
+                task=registry.task(task_id),
+                execution=execution,
+                work_item=definition,
+                evidence=result.evidence,
+            ),
         )
         if verified != result.evidence:
             raise RuntimeError("stage verifier changed the proposed evidence identity")
