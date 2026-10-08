@@ -803,8 +803,36 @@ const Window = (() => {
 /* Remember how the open dialog was produced so a language switch can rebuild it in place. */
 const Dialog = (() => {
   let current = null;
-  function remember(open) {
+  let parents = [];
+  function remember(open, detail = false) {
+    if (!detail) parents = [];
     current = open;
+  }
+  // Read-only documents share the chassis without ending the decision underneath it.
+  function suspend() {
+    const d = $('#dialog');
+    if (!d.open) return false;
+    parents.push({nodes: [...d.childNodes], cls: d.className, label: d.getAttribute('aria-label'),
+      scroll: d.scrollTop, bodyScroll: d.querySelector('.dialog-body')?.scrollTop || 0,
+      focus: document.activeElement, current});
+    return true;
+  }
+  function restore() {
+    const d = $('#dialog'), parent = parents.pop();
+    if (!d.open || !parent) return false;
+    cancelLeave(d);
+    d.replaceChildren(...parent.nodes);
+    d.className = parent.cls;
+    if (parent.label === null) d.removeAttribute('aria-label');
+    else d.setAttribute('aria-label', parent.label);
+    current = parent.current;
+    d.scrollTop = parent.scroll;
+    const body = d.querySelector('.dialog-body');
+    if (body) body.scrollTop = parent.bodyScroll;
+    document.body.classList.add('modal-open');
+    Controls.sync(d);
+    if (parent.focus?.isConnected) parent.focus.focus({preventScroll: true});
+    return true;
   }
   function rerender() {
     const d = $('#dialog');
@@ -822,5 +850,5 @@ const Dialog = (() => {
     if (body) body.scrollTop = scroll;
     Controls.sync(d);
   }
-  return {remember, rerender, clear: () => (current = null)};
+  return {remember, suspend, restore, rerender, clear: () => { current = null; parents = []; }};
 })();

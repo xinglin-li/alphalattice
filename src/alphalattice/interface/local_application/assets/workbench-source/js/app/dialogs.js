@@ -31,7 +31,9 @@ function hideToast() {
   leave($('#toast'), () => { $('#toast').hidden = true; });
 }
 
-function closeDialog() {
+function closeDialog(returnToParent = false) {
+  if (returnToParent && Dialog.restore()) return;
+  Dialog.remember(null);
   LiveResearch.dismissConfirmation(); LiveTasks.dismissConfirmation();
   LiveReview.dismissConfirmation();
   LiveStudy.dismissConfirmation();
@@ -65,24 +67,25 @@ function openPalette(body, again = null) {
   Controls.sync(d);
 }
 /* One chassis: eyebrow, title, close, body, an optional footer; `sheet` is true or a kind (`alert`). */
-function openDialog(eyebrow, heading, body, footer = '', sheet = false, again = null) {
+function openDialog(eyebrow, heading, body, footer = '', sheet = false, again = null, detail = false) {
   const d = $('#dialog');
-  Dialog.remember(again);
+  Dialog.remember(again, detail);
   cancelLeave(d);
   if (!d.open) returnFocus = document.activeElement;
-  if (d.open) d.close();
+  if (d.open && !detail) d.close();
   d.className = sheet === true ? 'sheet' : sheet || '';
   d.innerHTML = html`<header class="dialog-head"><div><p class="dialog-kind">${eyebrow}</p><h2 id="dialogTitle">${heading}</h2></div>${btnAttrs(icon('close'), 'close', '', 'icon-btn', html`aria-label="${t('Close dialog')}"`)}</header><div class="dialog-body">${body}</div>${String(footer || '').trim() ? html`<footer class="dialog-foot">${footer}</footer>` : ''}`;
   document.body.classList.add('modal-open');
-  d.showModal();
+  if (!d.open) d.showModal();
   Controls.sync(d);
+  if (detail) d.querySelector('[data-action="close"]')?.focus({preventScroll: true});
 }
 /* The code dialog (round 92): a document read whole -- the object's name as the eyebrow, the
  * document's title, a copy glyph beside the close, the text in a block that never wraps and
  * scrolls both ways, `Close` in the foot. Nothing else in the product shows raw JSON or YAML. */
-function codeDialog(title, kind, text, {lang = 'json'} = {}) {
+function codeDialog(title, kind, text, {lang = 'json', detail = false} = {}) {
   const body = html`<pre class="code-block code-document" tabindex="0" aria-label="${title}">${raw(codeMarkup(text, lang))}</pre>`;
-  openDialog(kind || t('Document'), title, body, '', 'code-dialog');
+  openDialog(kind || t('Document'), title, body, '', 'code-dialog', null, detail);
   const d = $('#dialog'), close = d.querySelector('.dialog-head > .icon-btn');
   if (close) {
     const tools = document.createElement('div');
@@ -99,7 +102,18 @@ function openCodeRef(id) {
   const tpl = document.querySelector(`template[data-code-id="${id}"]`);
   if (!tpl) return false;
   const name = String(document.querySelector('#main .object-header h1')?.textContent || '').replace(/\s+/g, ' ').trim() || t(ROUTES[app.page]?.[1] || '');
-  codeDialog(tpl.dataset.codeTitle || t('Document'), name, tpl.content.textContent, {lang: tpl.dataset.codeLang || 'json'});
+  const detail = $('#dialog').contains(tpl) && Dialog.suspend();
+  codeDialog(tpl.dataset.codeTitle || t('Document'), name, tpl.content.textContent, {lang: tpl.dataset.codeLang || 'json', detail});
+  return true;
+}
+/* A Facts link inside a confirmation stays in its modal decision, without opening a page panel. */
+function openDialogFacts(id) {
+  const d = $('#dialog'), tpl = d.querySelector(`template[data-facts-id="${id}"]`);
+  if (!d.open || !tpl) return false;
+  const title = tpl.dataset.factsTitle || tpl.previousElementSibling?.textContent || t('Facts');
+  const kind = d.querySelector('.dialog-kind')?.textContent || t('Facts');
+  Dialog.suspend();
+  openDialog(kind, title, raw(tpl.innerHTML), '', false, null, true);
   return true;
 }
 function showInfo(title, text) {

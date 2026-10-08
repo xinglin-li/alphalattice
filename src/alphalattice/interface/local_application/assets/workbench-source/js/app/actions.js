@@ -1,7 +1,7 @@
 /* Global actions and the event delegation that routes clicks, edits and keys to handlers. */
 /* The read-only actions every page shares (the product's own actions are PRODUCT_ACTIONS below). */
 Object.assign(ACTIONS, {
-  close: closeDialog,
+  close: () => closeDialog(true),
   'data-reload': () => Data.reload(),
   'page-reload': () => location.reload(), // the render boundary's way on (round 96)
   'code-open': (id) => openCodeRef(id), // a document's link (round 92)
@@ -42,7 +42,7 @@ Object.assign(ACTIONS, {
   facts: () => Inspect.openFacts('', ['facts', '']),
   record: () => Inspect.openRecord(['record', '']),
   go: (page) => navigate(page),
-  'facts-open': (id) => Inspect.openFacts(id, ['facts-open', id]),
+  'facts-open': (id) => openDialogFacts(id) || Inspect.openFacts(id, ['facts-open', id]),
   'locale-set': (lang) => setLocale(lang),
   'research-update-read': () => Settings.rereadUpdate(),
 });
@@ -517,10 +517,10 @@ const Events = (() => {
       if (!Places.get(Places.key())) scrollTo({top: 0, behavior: 'instant'});
     });
     const dialog = $('#dialog');
-    dialog.addEventListener('cancel', (e) => { document.body.classList.remove('modal-open'); if (dialog.dataset.leaving) return; e.preventDefault(); closeDialog(); }); // round 94: Escape leaves the way the close glyph does
+    dialog.addEventListener('cancel', (e) => { if (dialog.dataset.leaving) return; e.preventDefault(); closeDialog(true); }); // Escape leaves the way the close glyph does
     dialog.addEventListener('close', () => {
-      document.body.classList.remove('modal-open');
       if (!dialog.open) {
+        document.body.classList.remove('modal-open');
         LiveResearch.dismissConfirmation(); LiveTasks.dismissConfirmation(); LiveWorkspace.dismissConfirmation();
         LiveReview.dismissConfirmation();
         LiveStudy.dismissConfirmation();
