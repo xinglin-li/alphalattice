@@ -6555,16 +6555,7 @@
 "native_bridge.files_unavailable": {
 "owner": "native_bridge"
 },
-"native_bridge.history_not_retained": {
-"owner": "native_bridge"
-},
 "native_bridge.history_unavailable": {
-"owner": "native_bridge"
-},
-"native_bridge.hook_model_not_observed": {
-"owner": "native_bridge"
-},
-"native_bridge.hook_trust_not_confirmed": {
 "owner": "native_bridge"
 },
 "native_bridge.lead_usage_file_missing": {
@@ -6580,9 +6571,6 @@
 "owner": "native_bridge"
 },
 "native_bridge.local_environment_missing": {
-"owner": "native_bridge"
-},
-"native_bridge.native_event_delivery_unverified": {
 "owner": "native_bridge"
 },
 "native_bridge.not_bound": {

@@ -235,9 +235,11 @@ held reason when none is offered.
 Before asking a person to activate, review the completed historical book and its review standing, and read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
 After activation, run the offered update and review its first published forward positions at the first actionable session.
 Hold positions only from the first actionable session; sessions before it are a causal replay, inside the research window where marked.
-If the person needs positions before activation and the controls answer offers no
-pre-activation preview, report that gap and stop the activation path: run, build
-or compute nothing to fill it. Report each position with its basis, a close-marked
+Before activation, show the person the offer's `review_holdings`: the reviewed
+book's last sealed holdings and the sessions they were decided and entered, never
+the next positions. Activation is reversible and deactivation keeps history; the
+first forward update after it publishes the first-day positions. Run, build or
+compute nothing to preview them. Report each position with its basis, a close-marked
 conditional estimate or an entry observed at the next session's open, and the
 publication's `claim`; [reading the dates](.agents/skills/alphalattice-research/references/research-lead.md#reading-the-dates)
 works one activation through every timestamp.

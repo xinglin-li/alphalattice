@@ -5522,7 +5522,7 @@
     "name": "activation",
     "kind": "object",
     "required": false,
-    "meaning": "Whether the package runs forward: `ACTIVE` with its book, its first forward session and its horizon; `MOVED` when the package changed since its activation; `INACTIVE` otherwise. Its `next_requests` offer a person `deactivate` while bindings name the package, and `activate` with the newest completed book the activation admits; a newest book it would refuse is `held`, with its Task, refusal code and words. Its activation carries review_standing from the exact book Task's published Evidence/CRO review owner."
+    "meaning": "Whether the package runs forward: `ACTIVE` with its book, its first forward session and its horizon; `MOVED` when the package changed since its activation; `INACTIVE` otherwise. Its `next_requests` offer a person `deactivate` while bindings name the package, and `activate` with the newest completed book the activation admits; a newest book it would refuse is `held`, with its Task, refusal code and words. Its activation carries review_standing from the exact book Task's published Evidence/CRO review owner. With `activate` it carries review_holdings: the offered book's last sealed holdings by listing, its cash and the sessions they were decided and entered, claim `REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS`; activation is reversible, and the first forward update after it publishes the next positions."
    },
    {
     "name": "template",

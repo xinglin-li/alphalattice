@@ -110,6 +110,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
+from alphalattice.investment.portfolio_strategy_lab.reporting.static import format_book_weight
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.data.errors import DataQualityError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -118,6 +119,13 @@ FORWARD_HORIZON: Final = timedelta(days=330)
 """How far past the latest completed session an activation runs its strategy: the installed
 calendar plans a year past the clock, and a schedule reads two weeks past its last formation.
 Past it the research update refuses the epoch, and a person activates a newer book."""
+REVIEW_HOLDINGS_WORDS: Final = (
+    "These are the reviewed book's last sealed holdings and the sessions they were decided and "
+    "entered: the review's last holdings, not the next positions. Activation is reversible, and "
+    "deactivating keeps its history. The first forward update after activation publishes the "
+    "positions for the first actionable session."
+)
+"""What a person reads before activating, in place of a preview the product does not compute."""
 
 _ADMISSIONS: Final = "artifacts/alpha-research/current/lifecycle-admissions"
 
@@ -1475,7 +1483,7 @@ class StrategyActivation:
             )
             if newest is not None:
                 try:
-                    self._activation_book(newest.task_id, manifest)
+                    book = self._activation_book(newest.task_id, manifest)
                 except ValueError as error:
                     state["held"] = {
                         "task_id": str(newest.task_id),
@@ -1484,6 +1492,7 @@ class StrategyActivation:
                 else:
                     if self.read_review is not None:
                         state["review_standing"] = self.read_review(newest.task_id)
+                    state["review_holdings"] = self._review_holdings(book)
                     requests["activate"] = {
                         "operation": "STRATEGY_ACTIVATE",
                         "task_id": str(newest.task_id),
@@ -1491,6 +1500,42 @@ class StrategyActivation:
         if requests:
             state["next_requests"] = requests
         return state
+
+    def _review_holdings(self, book: _Book) -> dict[str, object]:
+        """The reviewed book's last sealed holdings, read where activation reads them (A2).
+
+        Its run's sealed final weights and cash, by listing, with the formation that decided
+        them and the session they were entered. Nothing is computed: the next positions come
+        from the first forward update after a person activates the book.
+        """
+        boundary, axis = book.boundary, book.execution.ordered_listing_ids
+        weights: npt.NDArray[np.float64] = np.frombuffer(
+            self.ledger.load_lane(
+                category="boundary-weights", content_hash=boundary.optimizer_reference_hash
+            ),
+            dtype="<f8",
+        )
+        last = book.execution.formation_sessions[-1]
+        points = planned_local_qa_schedule(last, last)
+        held = sorted(
+            ((axis[i], float(w)) for i, w in enumerate(weights) if w != 0.0),
+            key=lambda row: (-abs(row[1]), row[0]),
+        )
+        return {
+            "claim": "REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS",
+            "detail": REVIEW_HOLDINGS_WORDS,
+            "book_task_id": str(book.task_id),
+            "formation_session": last.isoformat(),
+            "entry_session": points[0].entry_session.isoformat()
+            if points and points[0].formation_session == last
+            else None,
+            "held_count": len(held),
+            "cash": format_book_weight(boundary.optimizer_reference_cash),
+            "positions": [
+                {"listing_id": listing, "weight": format_book_weight(weight)}
+                for listing, weight in held
+            ],
+        }
 
 
 __all__ = ["FORWARD_HORIZON", "StrategyActivation", "admit_decision_checkpoint"]

@@ -478,11 +478,24 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         }, offered
         recorded = live.application.pipeline.find_for_task(UUID(book))
         assert recorded is not None
-        review_standing = _activation_cli(live, capsys, "result", "show", recorded.result_hash)[
-            "review_standing"
-        ]
+        report = _activation_cli(live, capsys, "result", "show", recorded.result_hash)
+        review_standing = report["review_standing"]
         assert review_standing["book_selector"] == {"result_hash": recorded.result_hash}
         assert offered["review_standing"] == review_standing
+        # Before activation the offer shows the reviewed book's last sealed holdings, the
+        # review's last book and never the next positions (A2, FLOW-2): the same holdings its
+        # report shows at the book's end, read from the sealed boundary activation opens from.
+        holdings = offered["review_holdings"]
+        assert holdings["claim"] == "REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS"
+        assert holdings["book_task_id"] == book
+        assert holdings["formation_session"] == report["book"]["formation_session"]
+        assert holdings["entry_session"] > holdings["formation_session"]
+        assert holdings["held_count"] == len(holdings["positions"]) > 0
+        assert {row["listing_id"]: row["weight"] for row in holdings["positions"]} == {
+            row["listing_id"]: row["weight"]
+            for row in report["book"]["positions"]
+            if row["weight"] != "0.000%"
+        }
         # The first read names the strategy's way forward: its activation, a person's (V471).
         shown = operations.execute(PortfolioResearchOperationRequest(operation="WORKSPACE_SHOW"))
         (forward,) = [i for i in shown["intents"] if i.get("strategy_package_id") == PACKAGE]
@@ -751,13 +764,15 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         after = operations.execute(
             PortfolioResearchOperationRequest(operation="CONTROLS", strategy_package_id=PACKAGE)
         )
-        # Stopped, its history kept; its book is offered to a person again (U73).
+        # Stopped, its history kept; its book is offered to a person again (U73), with the
+        # same last holdings it was reviewed on (A2).
         assert after["strategy_dates"]["forward_book_start_basis"] == "IF_ACTIVATED"
         assert after["strategy_dates"]["information_cutoff"] == "2026-09-10"
         assert after["activation"] == {
             "status": "INACTIVE",
             "strategy_dates": after["strategy_dates"],
             "review_standing": review_standing,
+            "review_holdings": holdings,
             "next_requests": {"activate": {"operation": "STRATEGY_ACTIVATE", "task_id": book}},
         }
     finally:

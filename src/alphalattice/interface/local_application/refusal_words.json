@@ -1096,16 +1096,12 @@
   "next_action": "CHOOSE_REPORT_OR_LATEST_PERFORMANCE"
  },
  "native_bridge.event_invalid": {
-  "detail": "The explicit native message does not match the admitted coordination contract. Send safe text through native_research.py message with the bound session, child role, assignment recipient and answer reply-to; no transcript is imported.",
-  "next_action": "SEND_A_SCOPED_NATIVE_MESSAGE"
+  "detail": "The native event request is malformed. The Host reads one native event from a bound Session, a request to read its usage, which the product's own commands send. Nothing was filed.",
+  "next_action": "READ_USAGE_WITH_SESSION_USAGE"
  },
  "native_bridge.files_unavailable": {
-  "detail": "The bridge cannot read or write the named local path category. For a binding or explicit message, start the workspace Host in the configured project and use session bind or native_research.py message. For configure or doctor, the person checks the named declarations from a shell that can access that project. Do not widen the agent sandbox.",
+  "detail": "The bridge cannot read or write the named local path category. For a binding, start the workspace Host in the configured project and use session bind. For configure or doctor, the person checks the named declarations from a shell that can access that project. Do not widen the agent sandbox.",
   "next_action": "USE_THE_WORKSPACE_HOST_OR_CHECK_THE_NAMED_LOCAL_PATH"
- },
- "native_bridge.hook_trust_not_confirmed": {
-  "detail": "Local declarations and a binding do not confirm runtime hook trust or child observation. Inspect this exact project in the host /hooks and approve only its reviewed AlphaLattice hooks. Then start a new native specialist and verify its start, assignment and answer in Team and Sessions.",
-  "next_action": "CHECK_HOST_HOOK_TRUST_THEN_OBSERVE_A_NEW_CHILD"
  },
  "native_bridge.project_mismatch": {
   "detail": "The requested project differs from the configured project found above this served workspace. Start the Host for the workspace inside that project, then run session bind from that same project.",
@@ -1224,19 +1220,19 @@
   "next_action": "READ_LOCAL_READINESS_AND_NAME_THE_WORKSPACE"
  },
  "native_bridge.project_declaration_missing": {
-  "detail": "No configured AlphaLattice project above this workspace declares this host. Run native_research.py configure --host <host> in the intended project, then serve its workspace and retry session bind there. Product hooks are not required.",
-  "next_action": "CONFIGURE_THIS_HOST_THEN_SERVE_AND_BIND_ITS_WORKSPACE"
+  "detail": "No configured AlphaLattice project declares this host for this Session: neither the agent project this command runs from nor a folder above the workspace. Run native_research.py configure --host <host> in your agent project (the checkout, or the folder the installed product configured), then run session bind from it; the workspace may be kept anywhere. A workspace or data folder is never the agent project.",
+  "next_action": "CONFIGURE_THE_AGENT_PROJECT_THEN_BIND_FROM_IT"
  },
  "goal.assignment_closure_invalid": {
-  "detail": "The terminal decision does not name one assignment in this lead's Goal and Session. Read that Goal's Conversation with alphalattice goal narrative <goal_id>, then reply to its exact assignment message ID. No assignment was closed.",
-  "next_action": "READ_THE_GOAL_CONVERSATION_THEN_NAME_ITS_EXACT_ASSIGNMENT"
+  "detail": "A stored acceptance context names both an assignment packet and a missing-assignment diagnostic, so it cannot be read as written. Keep the accepted answer; its Goal record stands without that context.",
+  "next_action": "KEEP_THE_ACCEPTED_ANSWER"
  },
  "native_bridge.configuration_path_invalid": {
   "detail": "The project declaration or binding metadata path is a symlink or leaves the exact configured project. Use ordinary local files under that project; no outside path is read or written by this attachment request.",
   "next_action": "USE_LOCAL_DECLARATIONS_AND_METADATA_IN_THE_EXACT_PROJECT"
  },
  "native_bridge.not_bound": {
-  "detail": "This configured project has no native session binding. Start its workspace Host, then run alphalattice --workspace <dir> session bind inside the intended native agent session before sending a message.",
+  "detail": "This configured project has no native session binding. Start its workspace Host, then run alphalattice --workspace <dir> session bind inside the intended native agent session.",
   "next_action": "SERVE_THE_WORKSPACE_THEN_BIND_THE_NATIVE_SESSION"
  },
  "goal.reference_not_found": {
@@ -1251,25 +1247,9 @@
   "detail": "No retained native Start names this child in the bound parent Session. Start a new native specialist in that Session, then assign its exact prepared bundle to its returned child id. Research and the accepted answer are kept.",
   "next_action": "START_A_NATIVE_SPECIALIST_THEN_ASSIGN_ITS_EXACT_BUNDLE"
  },
- "native_bridge.assignment_not_observed": {
-  "detail": "No retained lead assignment names this exact bundle in the accepted answer's original Goal and Session. Keep the accepted answer. Read alphalattice goal narrative <goal_id>; close an open assignment with a public decision through native_research.py message --kind decision --reply-to <message_id> --terminal-decision COMPLETED --terminal-reason <terminal_reason>. For product-acceptance closure, assign a fresh bundle before its first submission; retries keep the original receipt.",
-  "next_action": "READ_THE_ORIGINAL_GOAL_AND_CLOSE_OR_PREPARE_A_FRESH_ASSIGNMENT"
- },
- "native_bridge.assignment_ambiguous": {
-  "detail": "The exact prepared bundle was assigned to more than one child. Prepare a new bundle and assign it once to the returned id of its native specialist; retain the accepted answer without claiming a child author.",
-  "next_action": "PREPARE_AND_ASSIGN_A_NEW_BUNDLE_ONCE"
- },
- "native_bridge.history_not_retained": {
-  "detail": "The native observation needed for this answer is no longer retained. Keep the accepted answer and start a new native specialist with a new exact bundle assignment to observe a fresh chain.",
-  "next_action": "OBSERVE_A_NEW_NATIVE_CHAIN_WITH_A_NEW_BUNDLE"
- },
  "native_bridge.history_unavailable": {
   "detail": "The native observation ledger could not be read completely. Check the workspace Host connection and its Activity read refusal, then retry the original operation in its exact Session. An unread ledger supplies no child attribution; research and accepted answers are kept.",
   "next_action": "CHECK_THE_WORKSPACE_HOST_THEN_RETRY_THE_ORIGINAL_OPERATION"
- },
- "native_bridge.hook_model_not_observed": {
-  "detail": "The child Start and exact assignment are retained, but no runtime model was observed. Keep the accepted answer and its declared role-card basis; run a new native specialist whose host supplies the model to observe runtime authorship.",
-  "next_action": "OBSERVE_A_NEW_NATIVE_START_WITH_ITS_RUNTIME_MODEL"
  },
  "native_bridge.accepted_author_not_observed": {
   "detail": "The product accepted the answer; its native child author remains NOT_OBSERVED. Keep the accepted answer and contribution; default research can continue. If optional native authorship proof is requested, read the missing-link diagnostic and use a fresh prepared bundle and native chain. Do not relabel the original author.",
@@ -1315,10 +1295,6 @@
   "detail": "The native observation could not be built against the installed product contract. Use the current installed client and Host in the same project, then retry the same observation; research can continue.",
   "next_action": "USE_MATCHING_CLIENT_AND_HOST_THEN_RETRY"
  },
- "native_bridge.native_event_delivery_unverified": {
-  "detail": "Retained participant declarations do not prove native hook delivery. Keep the accepted research answer. Ask the host owner for a verified native delivery read, then run native_research.py doctor --native-proof on a fresh child; do not relabel declarations or repeat a trust review that already holds.",
-  "next_action": "ASK_THE_HOST_OWNER_FOR_VERIFIED_NATIVE_DELIVERY_THEN_RUN_DOCTOR"
- },
  "activity.cursor_invalid": {
   "detail": "The activity cursor must be a positive whole ordinal returned by this workspace Host. Read the newest activity page again, then use its returned older-page cursor.",
   "next_action": "READ_THE_NEWEST_ACTIVITY_PAGE_THEN_USE_ITS_RETURNED_CURSOR"
@@ -1332,8 +1308,8 @@
   "next_action": "KEEP_ONE_ACTIVITY_SELECTOR_THEN_READ_AGAIN"
  },
  "native_bridge.child_usage_binding_unverified": {
-  "detail": "The child's usage could not be linked to the bound parent Session and assigned role. Check that exact child and its assignment in the native host. The workspace Host retries; no child identity or usage was invented, and research can continue.",
-  "next_action": "CHECK_THE_EXACT_CHILD_AND_ASSIGNMENT_WHILE_THE_HOST_RETRIES"
+  "detail": "The child's usage could not be linked to the bound parent Session and an admitted role: its own record does not name this Session as its parent with one of the binding's roles. No child identity or usage was invented, and research can continue.",
+  "next_action": "CONTINUE_RESEARCH_THE_CHILD_STAYS_UNREAD"
  },
  "native_bridge.child_usage_file_missing": {
   "detail": "The host could not locate the assigned child's usage file. Check that exact child in its native host. The workspace Host retries; an absent reading is not zero usage, and research can continue.",
@@ -1352,8 +1328,8 @@
   "next_action": "KEEP_DELIVERED_READINGS_WHILE_THE_HOST_RETRIES"
  },
  "native_bridge.accepted_context_unavailable": {
-  "detail": "The product accepted the answer, but its first acceptance context could not be preserved or verified. Keep the accepted answer. A retry cannot recreate the original Goal or prior assignment. Read the original Goal if one was held; resolve an open assignment with an explicit lead terminal decision, or prepare and assign a fresh bundle before its first submission.",
-  "next_action": "KEEP_THE_ACCEPTED_ANSWER_AND_RESOLVE_OR_PREPARE_FRESH_WORK"
+  "detail": "The product accepted the answer, but its first acceptance context could not be preserved or verified. Keep the accepted answer. A retry cannot recreate the original Goal. Read the original Goal if one was held.",
+  "next_action": "KEEP_THE_ACCEPTED_ANSWER"
  },
  "native_usage.read_limit_exceeded": {
   "detail": "Native usage exceeded its bounded read limit, so no partial counts were published. Research can continue. To turn off optional usage reads, the bound Session runs `alphalattice session unbind`, then `alphalattice --workspace <dir> session bind --usage off`. Keep the original native file unchanged.",
@@ -1362,5 +1338,9 @@
  "native_bridge.usage_reading_human_only": {
   "detail": "Only a person turns reading the agent Sessions' usage on or off, on Settings. Nothing was changed.",
   "next_action": "ASK_A_PERSON_TO_SET_USAGE_READING_ON_SETTINGS"
+ },
+ "native_bridge.local_environment_missing": {
+  "detail": "The folder named for configure has no .venv of its own, so it is not a source checkout. Configure the checkout you work from, or a separate agent folder with the installed product; never a workspace or data folder. A configured project binds a workspace kept anywhere.",
+  "next_action": "CONFIGURE_A_CHECKOUT_OR_AN_INSTALLED_AGENT_FOLDER"
  }
 }
