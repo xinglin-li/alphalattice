@@ -413,6 +413,7 @@ const LiveActivity = (() => {
     if (typeof LiveActivation !== 'undefined' && LiveActivation.observe) void LiveActivation.observe();
     if (typeof Settings !== 'undefined' && Settings.observeUpdate) void Settings.observeUpdate();
     if (typeof Settings !== 'undefined' && Settings.observeStorageCap) void Settings.observeStorageCap();
+    if (typeof Settings !== 'undefined' && Settings.observeUsage) void Settings.observeUsage();
   }
   function markSeen() { S.unseen = 0; S.notice = ''; S.unavailable = 0; paint(); }
   /* Teardown and return. `pagehide` ends the loop for a page that is going away or into the

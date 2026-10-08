@@ -150,6 +150,41 @@ const Settings = (() => {
     if (!v) return formRow({title: t('Network access'), line: cause ? html`${t('Not read')} · ${cause}` : t('Whether this workspace may reach its data sources.')}); // reading: no switch until the owner answers (ST7)
     return switchRow('networkAccess', v.network_allowed === true, t('Network access'), cause ? html`${t('Not set')} · ${cause}` : LiveWorkspace.networkWords(v), {disabled: v.decided_by === 'OPERATOR_OFFLINE_SWITCH'});
   }
+  // FLOW-1: this person's workspace preference comes from its owner, never an assumed default.
+  let usage = {value: null, error: null, read: false}, usageReading = null, usageTicket = 0, usageBusy = false;
+  const repaintUsage = () => { if (app.page === 'settings') repaint(); };
+  function readUsage(again = false) {
+    if (usageReading) return usageReading;
+    if (usageBusy || (usage.read && !again)) return Promise.resolve();
+    usage.read = true;
+    const ticket = ++usageTicket;
+    usageReading = (async () => {
+      try {
+        const value = await Data.readShared('/api/workspace/usage-reading', true);
+        if (ticket === usageTicket) usage = {...usage, value, error: null};
+      } catch (error) { if (ticket === usageTicket) usage = {...usage, error}; }
+      finally { usageReading = null; repaintUsage(); }
+    })();
+    return usageReading;
+  }
+  async function setUsage(on) {
+    const request = usage.value?.next_requests?.set;
+    if (usageBusy || !request || request.usage_reading_enabled !== on || !Data.offers(request.operation)) { repaintUsage(); return; }
+    const {operation, ...payload} = request;
+    usageBusy = true; ++usageTicket; repaintUsage();
+    try { usage = {...usage, value: await Data.post(Data.route(operation), payload), error: null}; }
+    catch (error) { usage = {...usage, error}; }
+    finally { usageBusy = false; repaintUsage(); }
+  }
+  const rereadUsage = () => usageReading ? usageReading.then(() => readUsage(true)) : readUsage(true);
+  const observeUsage = () => app.page === 'settings' && !usageReading && !usageBusy ? readUsage(true) : undefined;
+  function usageRow() {
+    if (!usage.read && typeof queueMicrotask === 'function') queueMicrotask(() => void readUsage());
+    const title = t('Usage reading'), v = usage.value;
+    const failed = usage.error ? notRead(title, usage.error, '', btn(t('Read again'), 'usage-reading-read', '', 'button compact')) : '';
+    if (!['READ', 'OFF'].includes(v?.usage_reading)) return html`${failed}${formRow({title, line: t('Not read')})}`;
+    return html`${failed}${switchRow('usageReading', v.usage_reading === 'READ', title, t(v.detail), {disabled: usageBusy || !Data.offers(v.next_requests?.set?.operation)})}`;
+  }
   /* U73 (LS1, V459): the daily research update, for the strategies that run forward -- the Host lists them
    * (`runs_forward`) and offers turning it on for those alone (`next_requests.enable`) or off (`disable`); a person's
    * switch sends the request it named, and the row says what the owner answered. */
@@ -217,7 +252,7 @@ const Settings = (() => {
   }
   function workspace() {
     const w = Data.workspaceFacts() || {};
-    return formGroup(t('Workspace'), html`${formRow({title: t('Workspace'), detail: Data.workspace()})}${formRow({title: t('Operated by'), detail: t('You and the agent alike')})}${formRow({title: t('Scope'), detail: t('Research only')})}${formRow({title: t('Execution mode'), detail: codeWords(w.execution_mode || '')})}${budgetRow()}${storageCapRow()}${queueRow()}${sweepRow()}${networkRow()}${updateRow()}${formRow({title: t('Manifest'), detail: w.workspace_manifest_hash ? short(w.workspace_manifest_hash, SHORT.hash) : '', mono: true})}${formRow({title: t('Research input'), detail: app.input || ''})}${formRow({title: t('Where you are'), line: t('The workspace popover: its clocks, versions and ways.'), action: 'workspace'})}${formRow({title: t('Create or open a workspace'), action: 'workspace-how', value: 'create'})}`, {note: t('The local research space this window reads; switching never changes it.')});
+    return formGroup(t('Workspace'), html`${formRow({title: t('Workspace'), detail: Data.workspace()})}${formRow({title: t('Operated by'), detail: t('You and the agent alike')})}${formRow({title: t('Scope'), detail: t('Research only')})}${formRow({title: t('Execution mode'), detail: codeWords(w.execution_mode || '')})}${budgetRow()}${storageCapRow()}${queueRow()}${sweepRow()}${networkRow()}${usageRow()}${updateRow()}${formRow({title: t('Manifest'), detail: w.workspace_manifest_hash ? short(w.workspace_manifest_hash, SHORT.hash) : '', mono: true})}${formRow({title: t('Research input'), detail: app.input || ''})}${formRow({title: t('Where you are'), line: t('The workspace popover: its clocks, versions and ways.'), action: 'workspace'})}${formRow({title: t('Create or open a workspace'), action: 'workspace-how', value: 'create'})}`, {note: t('The local research space this window reads; switching never changes it.')});
   }
   function advanced() {
     const {facts, governed} = LiveViews.governanceBody();
@@ -279,5 +314,5 @@ const Settings = (() => {
     if (landing && typeof requestAnimationFrame === 'function') requestAnimationFrame(land);
     return html`${objectHead(t('Settings'), t('What you set once: the appearance, the language, the keys, the workspace.'))}${general()}${workspace()}${advanced()}${tools}${keyboard()}`;
   }
-  return {page, setBudget, setWaiting, setStorageCap, editStorageCap, observeStorageCap, verifyAll, setNetwork, setUpdate, upgrade: upgradePage, readUpgrade, acknowledge, dailyUpdate, rereadUpdate, observeUpdate, updateState};
+  return {page, setBudget, setWaiting, setStorageCap, editStorageCap, observeStorageCap, verifyAll, setNetwork, setUsage, rereadUsage, observeUsage, setUpdate, upgrade: upgradePage, readUpgrade, acknowledge, dailyUpdate, rereadUpdate, observeUpdate, updateState};
 })();

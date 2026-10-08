@@ -45,11 +45,12 @@ Object.assign(ACTIONS, {
   'facts-open': (id) => openDialogFacts(id) || Inspect.openFacts(id, ['facts-open', id]),
   'locale-set': (lang) => setLocale(lang),
   'research-update-read': () => Settings.rereadUpdate(),
+  'usage-reading-read': () => Settings.rereadUsage(),
 });
 
 /* Element-attribute handlers (change events on inputs named by a data attribute). */
 // One dispatch seam for clicks and automation; no design simulation in product mode.
-const READ_ACTIONS = new Set(['portfolio-performance', 'tab-more', 'detail-back', 'close', 'copy-block', 'data-reload', 'page-reload', 'code-open', 'code-copy', 'inspector-tab', 'lab-reader-close', 'review-item-close', 'quick-open', 'quick-pick', 'focus-toggle', 'shortcuts', 'side-toggle', 'side-group', 'inspector-close', 'facts', 'facts-open', 'record', 'copy-link', 'go', 'lab-reader', 'locale-set', 'row-peek', 'peek-open', 'peek-close', 'step-prev', 'step-next', 'proof-open', 'proof-close', 'context', 'research-map', 'tools-menu', 'row-menu', 'display-menu', 'display-set', 'picker-menu', 'theme-select', 'appearance', 'filter-set', 'filter-clear', 'filter-field', 'lobby-fold', 'lobby-more', 'lobby-clear', 'experience-settings', 'section-menu', 'holding', 'holding-page-prev', 'holding-page-next', 'holding-sort', 'portfolio-tab', 'session-prev', 'session-next', 'chart', 'chart-range', 'chart-data', 'history-open', 'history-copy', 'exact', 'research-update-read']);
+const READ_ACTIONS = new Set(['portfolio-performance', 'tab-more', 'detail-back', 'close', 'copy-block', 'data-reload', 'page-reload', 'code-open', 'code-copy', 'inspector-tab', 'lab-reader-close', 'review-item-close', 'quick-open', 'quick-pick', 'focus-toggle', 'shortcuts', 'side-toggle', 'side-group', 'inspector-close', 'facts', 'facts-open', 'record', 'copy-link', 'go', 'lab-reader', 'locale-set', 'row-peek', 'peek-open', 'peek-close', 'step-prev', 'step-next', 'proof-open', 'proof-close', 'context', 'research-map', 'tools-menu', 'row-menu', 'display-menu', 'display-set', 'picker-menu', 'theme-select', 'appearance', 'filter-set', 'filter-clear', 'filter-field', 'lobby-fold', 'lobby-more', 'lobby-clear', 'experience-settings', 'section-menu', 'holding', 'holding-page-prev', 'holding-page-next', 'holding-sort', 'portfolio-tab', 'session-prev', 'session-next', 'chart', 'chart-range', 'chart-data', 'history-open', 'history-copy', 'exact', 'research-update-read', 'usage-reading-read']);
 const PRODUCT_ACTIONS = {
     'copy-text':(text)=>copyText(text),
     'copy-link':()=>copyLink(),
@@ -399,6 +400,7 @@ const Events = (() => {
     if (['opaqueControls', 'wideScrollbars', 'reduceFocusEffects'].includes(el.id)) patchMain();
     if (el.id === 'taskNotices') LiveActivity.setNotices(el.checked);
     if (el.id === 'networkAccess') Settings.setNetwork(el.checked); // the workspace's network control (CLI-15): the owner answers in the row
+    if (el.id === 'usageReading') Settings.setUsage(el.checked);
     if (el.id === 'researchUpdate') Settings.setUpdate(el.checked); // U73: the daily research update, for the strategies that run forward
   }
   function onKeydown(e) {

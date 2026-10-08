@@ -169,13 +169,15 @@ const LiveGoals = (() => {
     return panel(html`${t('Your first use')}${hours ? html` · ${hours}` : ''}`, t('Opened from your sentence: the agent running it takes the first steps as yours, for its hours; Stop ends them.'),
       steps.length ? kv(rows, 'kv-columns') : emptyState(t('No step taken for you yet.')), g.state === 'OPEN' ? btn(t('Stop'), 'goal-first-use-stop', '', 'button compact') : '', 'data-first-use');
   }
+  // FLOW-1 request summaries are owner status codes; authored and accepted-answer text stays exact.
+  const messageSummary = (m) => m.input_channel === 'PRODUCT_OPERATION' ? coded(m.summary) : html`<span class="owner-text">${m.summary}</span>`;
   /* The timeline: the Host's facts (registration, the revision, the Tasks and sessions it recorded), the agents'
    * messages as they arrived and the decision notes; the notes whole in their thread, the sessions' usage (U32). */
   function timeline(b) {
     const g = b.goal, r = b.record || {}, by = actorWords(g.submitted_by);
     const said = (m) => [m.agent_id, m.role ? codeWords(m.role) : ''].filter(Boolean).join(' · ') || t('Agent');
     const lines = [logLine({at: when(g.intent_registered_at || g.recorded_at), by, words: t('Goal registered')}), logLine({at: when(g.recorded_at), by, words: html`${t('Revision {n} recorded', {n: g.revision})}${g.change_reason ? html` · <span class="owner-text">${g.completion ? t(g.change_reason) : g.change_reason}</span>` : ''}`}),
-      ...[...(r.conversation || [])].sort((a, c) => String(a.recorded_at).localeCompare(String(c.recorded_at))).map((m) => logLine({at: when(m.recorded_at), by: said(m), words: html`${codeWords(m.message_kind)}${m.summary ? html` · <span class="owner-text">${m.summary}</span>` : ''}`, code: m.message_id})),
+      ...[...(r.conversation || [])].sort((a, c) => String(a.recorded_at).localeCompare(String(c.recorded_at))).map((m) => logLine({at: when(m.recorded_at), by: said(m), words: html`${codeWords(m.message_kind)}${m.summary ? html` · ${messageSummary(m)}` : ''}`, code: m.message_id})),
       ...g.references.map((x) => logLine({by, words: html`${t('Reference attached')} · ${x.label}`, code: x.reference_id})),
       ...g.statements.map((s) => logLine({by: s.attribution, words: html`${codeWords(s.kind)} · ${codeWords(s.disposition)}`, code: s.statement_id})),
       ...(g.completion ? [logLine({at: when(g.completion.checked_at), by: t('Host'), words: t('Submission checked')})] : []),
@@ -214,11 +216,11 @@ const LiveGoals = (() => {
     const messageTime = (m) => acceptedClock(m) ? m.occurred_at : m.recorded_at;
     const row = (m) => {
       const accepted = m.message_kind === 'answer' && m.input_channel === 'PRODUCT_ACCEPTED_ANSWER';
-      return objectRow({name: m.summary ? html`<span class="owner-text">${m.summary}</span>` : codeWords(m.message_kind), to: m.agent_session ? {page: 'team', extra: {team: m.agent_session, actor: '', event: m.observation_id || ''}} : null}, {key: m.message_id || m.observation_id, columns: ['kind', 'actor', 'recipient', 'submitter', 'reply'], props: [accepted ? hint(t('Accepted answer'), t('Accepted structured answer · product record, not a native spoken turn')) : codeWords(m.message_kind), nameOf(m.agent_id, m), m.recipient_id ? html`${t('to')} ${nameOf(m.recipient_id, m, true)}` : '', accepted ? html`${t('Submitted by')} ${nameOf(m.submitted_by, m)}` : '', m.reply_to ? html`${t('answers')} <span class="mono">${short(m.reply_to)}</span>` : ''], time: acceptedClock(m) ? hint(when(messageTime(m)), `${t(m.source_time_kind === 'PRODUCT_ACCEPTED_AT' ? 'Answer acceptance time' : 'Task admission time')} · ${t('Recorded')} ${whenText(m.recorded_at)}`) : when(messageTime(m))});
+      return objectRow({name: m.summary ? messageSummary(m) : codeWords(m.message_kind), to: m.agent_session ? {page: 'team', extra: {team: m.agent_session, actor: '', event: m.observation_id || ''}} : null}, {key: m.message_id || m.observation_id, columns: ['kind', 'actor', 'recipient', 'submitter', 'reply'], props: [accepted ? hint(t('Accepted answer'), t('Accepted structured answer · product record, not a native spoken turn')) : codeWords(m.message_kind), nameOf(m.agent_id, m), m.recipient_id ? html`${t('to')} ${nameOf(m.recipient_id, m, true)}` : '', accepted ? html`${t('Submitted by')} ${nameOf(m.submitted_by, m)}` : '', m.reply_to ? html`${t('answers')} <span class="mono">${short(m.reply_to)}</span>` : ''], time: acceptedClock(m) ? hint(when(messageTime(m)), `${t(m.source_time_kind === 'PRODUCT_ACCEPTED_AT' ? 'Answer acceptance time' : 'Task admission time')} · ${t('Recorded')} ${whenText(m.recorded_at)}`) : when(messageTime(m))});
     };
     const foot = (r.message_count ?? messages.length) > messages.length ? html`<p class="caption">${t('The newest {n} of {m} messages; the Team session holds them all.', {n: count(messages.length), m: count(r.message_count)})}</p>` : '';
     return html`${openAssignments ? noteLine(t('Open assignments'), countText(openAssignments, '{n} assignment not closed', '{n} assignments not closed'), 'neutral') : ''}${Lobby.render('goal-conversation', {items: messages, row, axes: [{key: 'time', label: t('Time'), group: (m) => timeGroup(messageTime(m))}],
-      words: (m) => [m.summary, m.agent_id, m.role, m.message_kind].join(' '), placeholder: t('Words, agent or kind'),
+      words: (m) => [m.summary, m.input_channel === 'PRODUCT_OPERATION' ? codeWords(m.summary) : '', m.agent_id, m.role, m.message_kind].join(' '), placeholder: t('Words, agent or kind'),
       filters: kinds.length > 1 ? [{field: 'kind', label: t('Kind'), multiple: true, options: kinds.map((k) => [k, codeWords(k)]), test: (m, one) => m.message_kind === one}] : []})}${foot}`;
   }
   /* The results: the submission (its outcome, summary, each criterion's answer, the deliverables and findings,

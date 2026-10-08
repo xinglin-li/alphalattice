@@ -140,6 +140,9 @@ RULES = [
             "tests/portfolio_strategy_lab/test_strategy_scoring.py",
             "tests/portfolio_strategy_lab/test_workbench_readback.py",
             "tests/portfolio_strategy_lab/test_workbench_owner_words.py",
+            "tests/portfolio_strategy_lab/test_team_scene_producers.py",
+            "tests/portfolio_strategy_lab/test_workbench_goal_request_words.py",
+            "tests/portfolio_strategy_lab/test_workbench_usage_reading.py",
             "tests/portfolio_strategy_lab/test_ui_home_forward.py",
             "tests/portfolio_strategy_lab/test_ui_qa_conditions.py",
             "tests/portfolio_strategy_lab/test_ui_qa_launch_session.py",
@@ -181,6 +184,15 @@ RULES = [
             "the private checkout retains its coverage."
         ),
         "path_reasons": {
+            "tests/portfolio_strategy_lab/test_team_scene_producers.py": (
+                "runs the private UI QA Team scene producers"
+            ),
+            "tests/portfolio_strategy_lab/test_workbench_goal_request_words.py": (
+                "uses the private UI QA handoffs harness for Goal request words"
+            ),
+            "tests/portfolio_strategy_lab/test_workbench_usage_reading.py": (
+                "uses the private UI QA handoffs harness for Settings usage reading"
+            ),
             "tests/portfolio_strategy_lab/test_native_answer_route_class.py": (
                 "needs the private native instruction source validator"
             ),
