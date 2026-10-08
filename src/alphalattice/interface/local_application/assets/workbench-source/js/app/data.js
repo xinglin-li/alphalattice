@@ -522,12 +522,21 @@ const Data = (() => {
       const h = new URLSearchParams(location.hash.slice(1));
       const selected = h.get('book') || q.get('task_id');
       const featurePlan = h.get('feature_plan') || q.get('feature_plan');
+      const reviewAddress = q.has('review_experiment') || q.has('review_update');
       // A bare entry (no page, no object) into a workspace without a verified research input
       // opens the preparation scene; any explicit page or saved-object link keeps its route.
-      const bare = !h.get('page') && !selected && !h.get('study') && !h.get('foundation') && !h.get('task') && !q.get('task') && !h.get('plan') && !q.get('plan') && !h.get('follow') && !featurePlan;
+      const bare = !h.get('page') && !reviewAddress && !selected && !h.get('study') && !h.get('foundation') && !h.get('task') && !q.get('task') && !h.get('plan') && !q.get('plan') && !h.get('follow') && !featurePlan;
       if (bare && preparation && !preparation.inputs?.length) { app.page = 'overview'; replaceHash({page: 'overview'}); }
       else if (bare && decisions?.some((d) => d.kind === 'UPGRADE')) { app.page = 'upgrade'; replaceHash({page: 'upgrade'}); } // R1: a start after an upgrade not yet acknowledged shows what it changed
-      if (selected && !h.get('study') && !h.get('foundation') && /^[0-9a-f-]{36}$/i.test(selected)) {
+      if (!h.get('page') && reviewAddress) {
+        // These issued addresses name the owner's exact book, not a latest Portfolio result.
+        // Keep missing/empty/mixed fields for its existing typed selector refusals.
+        const fields = [['review_experiment', 'experiment_task_id'], ['r', 'experiment_receipt_hash'], ['d', 'portfolio_session'], ['review_update', 'update_task_id'], ['p', 'update_publication_hash'], ['b', 'position_basis']];
+        const selector = Object.fromEntries(fields.filter(([key]) => q.has(key)).map(([key, field]) => [field, q.get(key)]));
+        const pending = LiveReview.open(selector, '', 'handoff');
+        navigation = navigationIntent();
+        await pending;
+      } else if (selected && !h.get('study') && !h.get('foundation') && /^[0-9a-f-]{36}$/i.test(selected)) {
         const known = experiments?.find(v=>v.task_id===selected);
         const studyPage = {'factor.screening-development':'factor','alpha.model-development':'alpha','risk.covariance-development':'risk'}[known?.kind];
         if (studyPage) {app.book='';replaceHash({book:'',session:''});await LiveStudy.open(selected,studyPage);}
