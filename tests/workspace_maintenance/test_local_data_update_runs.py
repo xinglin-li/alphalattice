@@ -125,7 +125,18 @@ def test_formation_catchup_distinguishes_absence_from_authority_failure(
     )
 
     calls = []
-    rows = () if failure is None else (SimpleNamespace(state="FAILED", failure_code=failure),)
+    rows = (
+        ()
+        if failure is None
+        else (
+            SimpleNamespace(
+                state="FAILED",
+                failure_code=failure,
+                listing_id="listing-tap",
+                change_document=None,
+            ),
+        )
+    )
     runner = SimpleNamespace(
         maintenance_id="bounded-formation-catchup",
         store=SimpleNamespace(current_universe_maintenance_listings=lambda _: rows),
@@ -143,19 +154,107 @@ def test_formation_catchup_distinguishes_absence_from_authority_failure(
 
     runner.run = run
     owner = object.__new__(WorkspaceDataChanges)
-    monkeypatch.setattr(owner, "formation_scope", lambda *_: object())
+    scope = SimpleNamespace(listings=(SimpleNamespace(listing_id="listing-tap", symbol="TAP"),))
+    monkeypatch.setattr(owner, "formation_scope", lambda *_: scope)
     monkeypatch.setattr(owner, "_quote_runner", lambda *_: runner)
-    assert (
-        owner.maintain_formation(
-            plan=SimpleNamespace(before=None, change=None),
-            provider=None,
-            observed_at=NOW,
-            cancelled=lambda: cancelled,
-        )
-        == expected
+    result = owner.maintain_formation(
+        plan=SimpleNamespace(before=None, change=None),
+        provider=None,
+        observed_at=NOW,
+        cancelled=lambda: cancelled,
     )
+    assert (None if result is None else result[0]) == expected
+    if result is not None:
+        assert result[1] == (
+            None
+            if cancelled
+            else {
+                "exception_type": "UNKNOWN",
+                "detail": "The source failure cause was not recorded.",
+                "step": "Provider price history",
+                "unit": "TAP",
+                "row_count": "UNKNOWN",
+                "sanitizer_code": "UNKNOWN",
+            }
+        )
     assert len(calls) == int(not cancelled)
     assert not calls or calls[0]["work_budget"] == 1
+    assert not rows or rows[0].change_document is None
+
+
+@pytest.mark.parametrize("empty,subcode", [(True, "CORRUPTED_PAYLOAD"), (False, "INVALID_VOLUME")])
+def test_failed_price_history_keeps_source_facts_without_admitting_rows(tmp_path, empty, subcode):
+    from alphalattice.foundation.market_data_ops.runtime.universe_maintenance import (
+        CurrentUniverseMaintenance,
+        CurrentUniverseMaintenanceStatus,
+    )
+    from alphalattice.foundation.market_data_ops.sources.manifest import (
+        build_quality_filtered_research_manifest,
+    )
+    from alphalattice.foundation.market_data_ops.sources.providers import HydrationEvidence
+    from alphalattice.foundation.market_data_ops.sources.sanitization import (
+        CorruptedPayload,
+        sanitize_payload,
+    )
+    from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
+
+    manifest = build_quality_filtered_research_manifest(
+        acquisition_manifest(), eligible_listing_ids=("listing-aapl",)
+    )
+    market = MarketDataRepository(tmp_path / "workspace")
+    market.bootstrap(manifest)
+    valid = {
+        "session_date": "2026-07-30",
+        "open": 100.0,
+        "high": 101.0,
+        "low": 99.0,
+        "close": 100.0,
+        "volume": 1000,
+    }
+    market.apply_validated_batch(
+        manifest,
+        sanitize_payload(manifest, "fixture", {"AAPL": (valid,)}, ("AAPL",)),
+        ingestion_id="qualified-history",
+        observed_at=NOW,
+    )
+    before = market.raw_bars("listing-aapl")
+    rejected = () if empty else ({**valid, "session_date": "2026-07-31", "volume": -1},)
+    with pytest.raises(CorruptedPayload) as caught:
+        sanitize_payload(manifest, "fixture", {"AAPL": rejected}, ("AAPL",))
+    assert caught.value.code == subcode
+
+    class RejectedHistoryProvider:
+        name = "fixture"
+
+        def fetch_hydration(self, *, listing_id, provider_symbol, start, end):
+            assert listing_id == "listing-aapl" and provider_symbol == "AAPL"
+            return HydrationEvidence(daily_rows=rejected, actions=(), adjusted_closes=())
+
+    runner = CurrentUniverseMaintenance(
+        store=market,
+        manifest=manifest,
+        provider=RejectedHistoryProvider(),
+        as_of_session=date(2026, 7, 31),
+    )
+    outcome = runner.run(observed_at=NOW)
+    assert outcome.status is CurrentUniverseMaintenanceStatus.COMPLETED
+    assert outcome.updated == 0 and outcome.failed == 1
+    assert outcome.listing_changes == ()
+    listing = market.current_universe_maintenance_listings(runner.maintenance_id)[0]
+    assert listing.state == "FAILED"
+    assert listing.failure_code == "data.sanitizer.corrupted_payload"
+    assert listing.change_document == {
+        "failure_cause": {
+            "exception_type": "CorruptedPayload",
+            "detail": "The provider price history failed validation.",
+            "step": "Provider price history",
+            "unit": "AAPL",
+            "row_count": len(rejected),
+            "sanitizer_code": subcode,
+        }
+    }
+    assert market.raw_bars("listing-aapl") == before
+    assert market.manifest_raw_through(manifest) == date(2026, 7, 30)
 
 
 @pytest.mark.parametrize("source_unavailable", (False, True))
@@ -1515,7 +1614,7 @@ def test_transient_source_failure_resumes_captured_update(qualified, tmp_path):
         )
         service.dispatcher.drain_for_tests()
         status = _json(service, f"/api/status?task_id={sent['task_id']}")
-        assert status["lifecycle"] == "DEFERRED", status
+        assert status["lifecycle"] == "DEFERRED", status.get("worker_failure") or status
         issues = _json(service, "/api/workspace/data-issues")
         assert issues["status"] == "DATA_TASK_WAITING_OR_BLOCKED" and not issues["issues"]
         calls = list(provider.calls)

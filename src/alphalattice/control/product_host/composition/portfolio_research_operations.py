@@ -828,7 +828,7 @@ class PortfolioResearchOperations:
             else:
                 execution_request = (
                     request
-                    if recovery is None
+                    if recovery is None or request.operation == "DATA_UPDATE_PLAN"
                     else replace(request, recovery_task_id=None, recovery_task_hash=None)
                 )
                 with (
@@ -2616,7 +2616,7 @@ class PortfolioResearchOperations:
                     if self.data_update is None:
                         raise ValueError("workspace_data_update.not_configured")
                     if request.operation == "DATA_UPDATE_PLAN":
-                        return self.data_update.plan()
+                        return self.data_update.plan(recovery_task_id=request.recovery_task_id)
                     if request.operation == "DATA_UPDATE_READBACK":
                         return self._data_update_readback(request.task_id)
                     assert request.update_plan_hash is not None

@@ -412,7 +412,10 @@ def stop_detail(task_kind: str, code: str, source: str) -> str:
             "class; the Task's own lifecycle is the authority on what it may do next."
         )
     if task_kind in _DATA_KINDS:
-        return maintenance_failure_detail(code)[:STOP_WORDS_BOUND]
+        return (
+            (refusal_words(code).get("detail") if code.startswith("data.") else None)
+            or maintenance_failure_detail(code)
+        )[:STOP_WORDS_BOUND]
     # An owner that words its code says what holds and the way on, which a Task stopped on it
     # reads here too, not only a refused request (V504: RR5's book read the bare code).
     worded = explain(code).get("detail")

@@ -943,6 +943,10 @@
   "detail": "The workspace's data changed since this update was planned; plan it again and run the new plan.",
   "next_action": "DATA_UPDATE_PLAN"
  },
+ "workspace_data_update.transition_not_verified": {
+  "detail": "The saved approved membership transition could not be verified against the current Manifest, prior Panel and approved candidate document. Read the stopped update's current record and resolve the mismatch through their original owners before retrying the same approved update. Never edit a stored approval.",
+  "next_action": "DATA_UPDATE_READBACK"
+ },
  "workspace_preparation.preview_required": {
   "detail": "A preparation starts from the exact preview it was planned from, and this plan has none the Host holds; plan it (`preparation plan`) and confirm the plan hash that preview names.",
   "next_action": "PLAN_THE_PREPARATION_AGAIN"
@@ -1022,6 +1026,14 @@
  "INVALID_MEDIA_TYPE": {
   "detail": "The source document has a media type the Evidence owner does not admit. Supply a document declared as `text/html`, `text/plain` or `text/markdown`, then prepare the source again.",
   "next_action": "SUPPLY_A_DOCUMENT_WITH_AN_ADMITTED_MEDIA_TYPE"
+ },
+ "data.empty_payload": {
+  "detail": "The provider returned no daily price history for a listing in the requested period, so no bars were admitted. Read the data update's current record for the affected listing and period. Retry the same approved update later when the source history is available.",
+  "next_action": "DATA_UPDATE_READBACK"
+ },
+ "data.sanitizer.corrupted_payload": {
+  "detail": "The provider price history failed the Data owner's validation and was not admitted. Read the update's current record for the affected listing. Retry the same approved update later after the source is corrected, or preview a new membership change excluding that listing and have a person approve it separately. A new exclusion does not discharge an earlier formation obligation.",
+  "next_action": "DATA_UPDATE_READBACK"
  },
  "data.unrepaired_split_adjustment": {
   "detail": "The provider price history failed the Data owner's integrity checks, so it was not admitted; this provider failure is not retryable. Have the source history corrected, then prepare the source again.",

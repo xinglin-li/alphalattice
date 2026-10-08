@@ -72,8 +72,9 @@ STRICT_READERS = {
     PREPARATION + "research_strategy.py": ("ResearchStrategyPreparation", "plan prepare admit"),
     "control/product_host/maintenance/data_update.py": (
         "WorkspaceDataUpdateApplication",
+        # DUPD: select the exact retained Human approval/journal only from complete authority.
         "_approved_plans _waiting confirm.approve receipt_task "
-        "readback reusable prepare admit execute_step",
+        "readback reusable prepare admit execute_step plan",
     ),
     "control/product_host/storage/input_references.py": ("ResearchInputStorage", "_references"),
     "control/task_control/registry.py": (

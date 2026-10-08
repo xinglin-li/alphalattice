@@ -2129,6 +2129,90 @@ def test_a_door_refusal_filled_with_its_subject_reads_in_chinese(
         cli_contract.ANSWER_LANGUAGE.reset(token)
 
 
+@pytest.mark.parametrize(
+    ("code", "detail", "chinese"),
+    (
+        (
+            "data.empty_payload",
+            "The provider returned no daily price history for a listing in the requested period, "
+            "so no bars were admitted. Read the data update's current record for the affected "
+            "listing and period. Retry the same approved update later when the source history "
+            "is available.",
+            "提供方没有返回某个标的在所请求期间的每日价格历史\uff0c因此没有准入任何行情记录。"
+            "请读取数据更新的当前记录\uff0c查明受影响的标的和期间。待来源历史可用后\uff0c重试同一个"
+            "已获批准的更新。",
+        ),
+        (
+            "data.sanitizer.corrupted_payload",
+            "The provider price history failed the Data owner's validation and was not admitted. "
+            "Read the update's current record for the affected listing. Retry the same approved "
+            "update later after the source is corrected, or preview a new membership change "
+            "excluding that listing and have a person approve it separately. A new exclusion "
+            "does not discharge an earlier formation obligation.",
+            "行情提供方的价格历史未通过数据模块的验证\uff0c没有准入。请读取更新的当前记录\uff0c查明受影响的"
+            "标的。待来源修正后\uff0c重试同一个已获批准的更新\uff1b也可以预览排除该标的新成员变更\uff0c由人"
+            "另行批准。"
+            "新排除不会解除已有的组合形成义务。",
+        ),
+        (
+            "workspace_data_update.transition_not_verified",
+            "The saved approved membership transition could not be verified against the current "
+            "Manifest, prior Panel and approved candidate document. Read the stopped update's "
+            "current record and resolve the mismatch through their original owners before "
+            "retrying the same approved update. Never edit a stored approval.",
+            "已保存并获批的成员变更无法通过当前清单、此前面板及已批准候选文件的核验。"
+            "请读取已停止更新的当前记录\uff0c通过这些记录的原所有者解决不一致后\uff0c再重试同一个"
+            "已获批准的更新。不要修改已存储的批准记录。",
+        ),
+    ),
+)
+def test_data_history_stops_have_installed_words_and_preserve_the_owners_way(
+    code: str, detail: str, chinese: str
+) -> None:
+    """regression (DUPD): refused history and transition bindings read as their causes
+    in either installed language, preserving the owner's request and approval requirements.
+    """
+    from alphalattice.control.product_host.composition.task_recovery import stop_detail
+    from alphalattice.interface.local_application import cli_contract
+
+    request = {"show": {"operation": "DATA_UPDATE_READBACK"}}
+    bare = {"status": "REFUSED", "failure_code": code}
+    worded = cli_contract.worded_refusal(bare)
+    assert worded == {
+        **bare,
+        "detail": detail,
+        "next_action": "DATA_UPDATE_READBACK",
+    }
+    assert cli_contract.refusal_problem(worded) is None
+    offered = cli_contract.worded_refusal({**bare, "next_requests": request})
+    assert offered == {**bare, "detail": detail, "next_requests": request}
+    assert cli_contract.refusal_problem(offered) is None
+    if code.startswith("data."):
+        for kind in (
+            "workspace_preparation",
+            "workspace_data_update",
+            "research_input_capture",
+        ):
+            assert stop_detail(kind, code, "TASK_CONTROL") == detail
+    for language, expected in (("en", detail), ("zh", chinese)):
+        token = cli_contract.ANSWER_LANGUAGE.set(language)
+        try:
+            assert cli_contract.worded(detail) == expected
+        finally:
+            cli_contract.ANSWER_LANGUAGE.reset(token)
+    token = cli_contract.ANSWER_LANGUAGE.set("zh")
+    try:
+        for source_detail, translated in (
+            ("The provider price history failed validation.", "行情提供方的价格历史未通过验证。"),
+            ("The provider price history could not be read.", "无法读取行情提供方的价格历史。"),
+            ("The source failure cause was not recorded.", "没有记录来源失败的原因。"),
+            ("Provider price history", "提供方价格历史"),
+        ):
+            assert cli_contract.worded(source_detail) == translated
+    finally:
+        cli_contract.ANSWER_LANGUAGE.reset(token)
+
+
 def test_a_model_is_activated_by_a_person_only(live: LocalPortfolioWebSession) -> None:
     """requirement (EX, V143): anyone reads the models' review packets; an agent's activation
     is refused by name, since a person activates a model, in the Workbench."""

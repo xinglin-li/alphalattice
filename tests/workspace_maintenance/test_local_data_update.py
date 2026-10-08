@@ -178,6 +178,160 @@ def test_verified_universe_proposal_requires_human_and_binds_book_head(qualified
         stored.write_bytes(original)
 
 
+@pytest.mark.parametrize("repair_source", [True, False])
+def test_a_partial_membership_update_reopens_its_exact_approved_task(
+    qualified, tmp_path, repair_source
+):
+    """A terminal source stop preserves approval and verified work across a real restart."""
+    from dataclasses import asdict
+    from uuid import UUID
+
+    from alphalattice.control.data_platform.readiness import build_workspace_readiness
+    from alphalattice.control.task_control.contracts import TaskLifecycle
+    from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
+
+    workspace = tmp_path / "partial-membership"
+    shutil.copytree(qualified, workspace)
+    binding = bind_existing_data_workspace(workspace)
+    market = MarketDataRepository(workspace)
+    prior = market.load_universe_manifest(
+        market.readiness.load("us-current-index-research").active_manifest_id
+    )
+    source = _bootstrap((*SYMBOLS[1:], "NEW"))
+    changed_at = NOW + timedelta(days=1)
+    provider = recording_provider(symbols=(*SYMBOLS, "NEW"), now=changed_at)
+    provider.sectors["NEW"] = "Sector-0"
+    fetch = provider.fetch_daily
+    corrupt = True
+
+    def source_response(symbols, **kwargs):
+        rows = fetch(symbols, **kwargs)
+        active = market.readiness.load("us-current-index-research")
+        if corrupt and active.active_manifest_revision != prior.revision_sha256:
+            for symbol in symbols:
+                if symbol == SYMBOLS[0] and rows[symbol]:
+                    rows[symbol][0]["volume"] = -1
+        return rows
+
+    provider.fetch_daily = source_response
+    settings = dict(
+        workspace=workspace,
+        workspace_manifest=binding,
+        resolver=_Resolver(_resolved()),
+        data_provider=provider,
+        data_source_loader=lambda **_: source,
+        clock=lambda: changed_at,
+    )
+    with LocalPortfolioWebSession(**settings) as live:
+        build_workspace_readiness(
+            market,
+            profile_path=ROOT / "config/market-profiles/us-current-index-research.yaml",
+            provider=provider,
+            source_loader=lambda **_: source,
+        ).refresh_sources_if_due(observed_at=changed_at)
+        plan = _json(live, "/api/data-update/plan", method="POST", payload={})
+        assert plan["status"] == "CONFIRMATION_REQUIRED"
+        approved = _json(
+            live,
+            "/api/data-update/confirm",
+            method="POST",
+            payload={"update_plan_hash": plan["plan_hash"]},
+        )
+        task_id = UUID(approved["task_id"])
+        _json(
+            live,
+            "/api/data-update/run",
+            method="POST",
+            payload={"update_plan_hash": plan["plan_hash"]},
+        )
+        live.dispatcher.drain_for_tests(timeout=300)
+        stopped = _json(live, "/api/status?task_id=" + str(task_id))
+        assert stopped["lifecycle"] == "BLOCKED", stopped
+        assert stopped["latest_failure_code"] == "data.sanitizer.corrupted_payload"
+        assert stopped["failure_cause"]["unit"] == SYMBOLS[0]
+        assert stopped["failure_cause"]["exception_type"] == "CorruptedPayload"
+        registry = live.session.task_control_registry
+        original = registry.task(task_id)
+        verified = registry.work_items(task_id)[0]
+        assert verified.lifecycle.value == "VERIFIED" and verified.attempt_count == 1
+        journal = market.manifest_transition(plan["change"]["transition_id"])
+        assert journal.lifecycle == "ACTIVATED" and journal.approved_at is not None
+        panel = PanelStateRepository(
+            market.database, market_data=market
+        ).feature_panel_snapshot_for_active("us-current-index-research")
+        assert panel["manifest_revision"] == journal.prior_manifest_revision
+        assert journal.next_manifest_revision != journal.prior_manifest_revision
+        assert live.operations.data_update.readback(task_id)["receipt"] is None
+        events = market.membership_events("us-current-index-research")
+
+    corrupt = not repair_source
+    with LocalPortfolioWebSession(**settings) as live:
+        agent = InstalledAgent(live.operations)
+        recovery = json.loads(
+            agent.invoke(PortfolioResearchAgentRequest(operation="TASK_RECOVERY", task_id=task_id))
+        )
+        assert recovery["health"]["status"] == "TERMINAL_BLOCKED"
+        assert recovery["stop"]["recoverable"] is False
+        replan = recovery["next_requests"]["replan"]
+        assert replan["recovery_task_id"] == str(task_id)
+        fetched = len(provider.calls)
+        stale = json.loads(
+            agent.invoke(
+                PortfolioResearchAgentRequest(**{**replan, "recovery_task_hash": "0" * 64})
+            )
+        )
+        assert stale["failure_code"] == "local_application.confirmation_stale"
+        assert len(provider.calls) == fetched
+        assert live.session.task_control_registry.task(task_id) == original
+        # Hostile drift in synthetic source authority cannot become a continuation grant.
+        # Use its public writer; the unchanged active Manifest and Panel do not excuse a
+        # different candidate document from the one the person approved.
+        readiness = market.readiness.load("us-current-index-research")
+        saved_state = asdict(readiness)
+        saved_state["observed_at"] = saved_state.pop("updated_at")
+        drifted = {**saved_state["active_candidate_manifest_document"], "unapproved": True}
+        market.readiness.save(**{**saved_state, "active_candidate_manifest_document": drifted})
+        try:
+            refused = json.loads(agent.invoke(PortfolioResearchAgentRequest(**replan)))
+            assert refused["failure_code"] == "workspace_data_update.transition_not_verified"
+            assert len(provider.calls) == fetched
+            assert live.session.task_control_registry.task(task_id) == original
+            assert live.session.task_control_registry.work_items(task_id)[0] == verified
+            assert live.operations.data_update.readback(task_id)["receipt"] is None
+        finally:
+            market.readiness.save(**saved_state)
+        assert market.readiness.load("us-current-index-research") == readiness
+        preview = json.loads(agent.invoke(PortfolioResearchAgentRequest(**replan)))
+        assert preview["status"] == "PLANNED"
+        assert preview["plan_hash"] == plan["plan_hash"]
+        assert preview["change"] == plan["change"]
+        assert preview["target_session"] == plan["target_session"]
+        assert preview["next_requests"]["run"]["operation"] == "DATA_UPDATE_RUN"
+        run = json.loads(
+            agent.invoke(PortfolioResearchAgentRequest(**preview["next_requests"]["run"]))
+        )
+        assert run["task_id"] == str(task_id)
+        live.dispatcher.drain_for_tests(timeout=300)
+        registry = live.session.task_control_registry
+        final = registry.task(task_id)
+        assert final.input == original.input and final.admitted_at == original.admitted_at
+        assert registry.work_items(task_id)[0] == verified
+        assert registry.work_items(task_id)[1].attempt_count == 2
+        assert market.manifest_transition(journal.transition_id) == journal
+        assert len([t for t in registry.tasks() if t.task_kind == final.task_kind]) == 1
+        final_events = market.membership_events("us-current-index-research")
+        assert all(event in final_events for event in events)
+        assert len({(e.listing_id, e.kind) for e in final_events}) == len(final_events)
+        if repair_source:
+            assert final.lifecycle is TaskLifecycle.SUCCEEDED, final.failure_code
+            assert live.operations.data_update.readback(task_id)["receipt"] is not None
+        else:
+            assert final.lifecycle is TaskLifecycle.BLOCKED
+            assert final.failure_code == "data.sanitizer.corrupted_payload"
+            assert final_events == events
+            assert live.operations.data_update.readback(task_id)["receipt"] is None
+
+
 @pytest.mark.parametrize(
     "candidate_features_available",
     [True, False, "recoverable_range", "recoverable_sector", "recoverable_history"],
@@ -538,7 +692,7 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
         rerun = _json(live, "/api/data-update/run", method="POST", payload=request)
         live.dispatcher.drain_for_tests(timeout=300)
         status = _json(live, "/api/status?task_id=" + rerun["task_id"])
-        assert status["lifecycle"] == "BLOCKED", status
+        assert status["lifecycle"] == "BLOCKED", status.get("worker_failure") or status
         assert status["latest_failure_code"] == "data.truth_review_required", (
             status["latest_failure_code"],
             f"feature units built before the stop: {len(built) - built_day_one}",
@@ -588,7 +742,7 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
         )
         assert decision["status"] == "CONFIRMED_PENDING_REVALIDATION"
         resumed = _json(live, "/api/data-update/run", method="POST", payload=request)
-        assert resumed["task_id"] == rerun["task_id"]
+        assert resumed["task_id"] == rerun["task_id"], resumed
         live.dispatcher.drain_for_tests(timeout=300)
         status = _json(live, "/api/status?task_id=" + rerun["task_id"])
         assert status["lifecycle"] == "DEFERRED", status

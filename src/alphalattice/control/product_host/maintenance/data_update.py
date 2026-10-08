@@ -704,7 +704,9 @@ class WorkspaceDataUpdateApplication:
             raise ValueError("workspace_data_update.installed_binding_mismatch")
         return binding
 
-    def plan(self, *, fresh: bool = False) -> dict[str, object]:
+    def plan(
+        self, *, fresh: bool = False, recovery_task_id: UUID | None = None
+    ) -> dict[str, object]:
         """Preview exact maintenance, due candidate checks and any explicit membership change.
 
         Raw candidate retries and Feature/Sector rechecks are planned independently. Planning
@@ -715,12 +717,13 @@ class WorkspaceDataUpdateApplication:
         Args:
             fresh: Plan anew even while a data update has not ended: a research update's own
                 data stage, sealed into its own Task.
+            recovery_task_id: The exact stopped Task whose offered continuation is being read.
 
         Returns:
             Transition refusal, ordinary maintenance plan, human confirmation proposal with source
             access and valuation obligations, or the plan of the update that has not ended.
         """
-        waiting = None if fresh else self._waiting()
+        waiting = None if fresh or recovery_task_id is not None else self._waiting()
         if waiting is not None:
             planned = self._plan_of(waiting)
             self.last_plan = planned
@@ -728,6 +731,23 @@ class WorkspaceDataUpdateApplication:
         binding = self._binding()
         state = read_workspace_inputs(self.session.workspace, binding, allow_transition=True)
         now = self.clock()
+        stopped = (
+            (self.session.task_control_registry.task(recovery_task_id),)
+            if recovery_task_id is not None
+            else ()
+            if fresh
+            else reversed(self.session.task_control_registry.tasks())
+        )
+        for task in stopped:
+            if task.task_kind != self.task_kind or task.lifecycle is not TaskLifecycle.BLOCKED:
+                continue
+            planned = self._plan_of(task, require_current=False)
+            if self._partial_transition(task, planned, state):
+                self._require_plan(planned)
+                self.last_plan = planned
+                return self._plan_answer(planned, now, admitted=True)
+        if state.panel_manifest_revision is not None:
+            raise ValueError("workspace_data_update.transition_not_verified")
         target = _latest_common_us_session(on_or_before=now.date(), observed_at=now)
         if state.readiness_status == "ONBOARDING_IN_PROGRESS":
             self.last_plan = None
@@ -806,6 +826,47 @@ class WorkspaceDataUpdateApplication:
         else:
             self._previews.remember(planned)
         return self._plan_answer(planned, now, admitted=False)
+
+    def _partial_transition(
+        self, task: TaskRecord, plan: WorkspaceDataUpdatePlan, state: WorkspaceInputStatus
+    ) -> bool:
+        """Read the exact approved journal that still owes its prior Panel an update (DUPD)."""
+        change = plan.change
+        if (
+            task.input.input_schema_id != "workspace-data-update-human-confirmed"
+            or change is None
+            or change.action != "UNIVERSE"
+            or state.panel_manifest_revision is None
+        ):
+            return False
+        market = MarketDataRepository(self.session.workspace)
+        transition = market.manifest_transition(str(change.transition_id))
+        readiness = market.readiness.load(plan.binding.market_profile_id)
+        if (
+            transition.next_manifest_revision != state.manifest_revision
+            or state.panel_hash != plan.before.panel_hash
+        ):
+            return False
+        if (
+            transition.lifecycle != "ACTIVATED"
+            or transition.approved_at is None
+            or transition.activated_at is None
+            or transition.market_profile_id != plan.binding.market_profile_id
+            or transition.prior_manifest_revision != plan.before.manifest_revision
+            or state.panel_manifest_revision != transition.prior_manifest_revision
+            or transition.additions != tuple(sorted(change.additions))
+            or transition.removals != tuple(sorted(change.removals))
+            or readiness is None
+            or canonical_hash(readiness.active_candidate_manifest_document)
+            != change.candidate_document_hash
+        ):
+            raise ValueError("workspace_data_update.transition_not_verified")
+        execution = self.changes.execution(plan)
+        if execution is not None and (
+            execution.request.membership_revision != transition.next_manifest_revision
+        ):
+            raise ValueError("workspace_data_update.execution_binding_invalid")
+        return True
 
     def _waiting(self) -> TaskRecord | None:
         """The data update that has not ended, if one has not (V604)."""
@@ -1565,8 +1626,19 @@ class WorkspaceDataUpdateApplication:
                 failure_code=task.failure_code or "DATA_UPDATE_RETRY_DUE",
                 observed_at=self.clock(),
             )
-        if task.lifecycle is not TaskLifecycle.BLOCKED or not self.resumes(task.failure_code):
+        if task.lifecycle is not TaskLifecycle.BLOCKED:
             return task
+        if not self.resumes(task.failure_code):
+            if plan.change is None:
+                return task
+            state = read_workspace_inputs(
+                self.session.workspace, plan.binding, allow_transition=True
+            )
+            partial = self._partial_transition(task, plan, state)
+            if state.panel_manifest_revision is not None and not partial:
+                raise ValueError("workspace_data_update.transition_not_verified")
+            if not partial:
+                return task
         if (
             task.failure_code is not None
             and task.failure_code.split(":", 1)[0]
@@ -1582,6 +1654,7 @@ class WorkspaceDataUpdateApplication:
             failure_code=task.failure_code,
             observed_at=self.clock(),
             allow_blocked=True,
+            expected_task_hash=task.record_hash,
         )
 
     def execute(self, task_id: UUID, *, expected_task_hash: str | None = None) -> None:
@@ -1880,13 +1953,14 @@ class WorkspaceDataUpdateApplication:
                         )
                     gate.complete_onboarding(onboarding, outcome, observed_at=self.clock())
                 transition = market.manifest_transition(str(plan.change.transition_id))
+                readiness = market.readiness.load(plan.binding.market_profile_id)
+                assert readiness is not None and readiness.active_manifest_id is not None
                 if (
                     transition.activated_at is None
                     or transition.prior_manifest_revision != plan.before.manifest_revision
+                    or transition.next_manifest_revision != readiness.active_manifest_revision
                 ):
                     raise ValueError("workspace_data_update.transition_not_verified")
-                readiness = market.readiness.load(plan.binding.market_profile_id)
-                assert readiness is not None and readiness.active_manifest_id is not None
                 manifest = market.load_universe_manifest(readiness.active_manifest_id)
             execution = (
                 self.changes.capture_execution(plan, manifest.revision_sha256)
@@ -1904,11 +1978,16 @@ class WorkspaceDataUpdateApplication:
             formation_failure = self.changes.maintain_formation(
                 plan=plan, provider=provider, observed_at=self.clock(), cancelled=cancelled
             )
-            if formation_failure == "workspace_data_update.formation_cancelled":
+            if (
+                formation_failure is not None
+                and formation_failure[0] == "workspace_data_update.formation_cancelled"
+            ):
                 return self._cancelled(plan)
             if formation_failure is not None:
                 return StageExecutionResult(
-                    StageDisposition.BLOCKED, failure_code=formation_failure
+                    StageDisposition.BLOCKED,
+                    failure_code=formation_failure[0],
+                    failure_cause=StageFailureCause.from_facts(formation_failure[1]),
                 )
             runtime = WorkspaceRuntime.create(
                 workspace=self.session.workspace,

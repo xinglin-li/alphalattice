@@ -333,7 +333,9 @@ class CurrentUniverseMaintenance:
                                 systemic_failure = systemic_failure or exc.code
                                 self._record_deferred_failure(item, code=exc.code, observed_at=now)
                             else:
-                                self._record_failure(item, code=exc.code, observed_at=now)
+                                self._record_failure(
+                                    item, code=exc.code, observed_at=now, exception=exc
+                                )
                             self._publish_progress(
                                 self._outcome(CurrentUniverseMaintenanceStatus.RUNNING),
                                 current_item=listing.symbol,
@@ -509,7 +511,7 @@ class CurrentUniverseMaintenance:
                 if exc.code in {"data.rate_limited", "data.provider_session_unstable"}:
                     self._record_deferred_failure(item, code=exc.code, observed_at=observed_at)
                     return f"DEFERRED:{exc.code}"
-                self._record_failure(item, code=exc.code, observed_at=observed_at)
+                self._record_failure(item, code=exc.code, observed_at=observed_at, exception=exc)
                 return "FAILED"
         with self._retained():
             return self._apply_hydration(
@@ -637,11 +639,13 @@ class CurrentUniverseMaintenance:
                 (listing.symbol,),
             )
             raw_through = max(bar.session_date for bar in batch.bars)
-        except (CorruptedPayload, KeyError, ValueError):
+        except (CorruptedPayload, KeyError, ValueError) as exc:
             self._record_failure(
                 item,
                 code="data.sanitizer.corrupted_payload",
                 observed_at=observed_at,
+                exception=exc,
+                row_count=len(hydration.daily_rows),
             )
             return "FAILED"
         # Bounded deterministic sentinels over the sanitized batch, before any
@@ -892,12 +896,19 @@ class CurrentUniverseMaintenance:
                     self._record_deferred_failure(item, code=exc.code, observed_at=observed_at)
                     return f"DEFERRED:{exc.code}"
                 self._record_failure(
-                    item, code="data.full_history_audit_failed", observed_at=observed_at
+                    item,
+                    code="data.full_history_audit_failed",
+                    observed_at=observed_at,
+                    exception=exc,
                 )
                 return "FAILED"
-            except (CorruptedPayload, ValueError):
+            except (CorruptedPayload, ValueError) as exc:
                 self._record_failure(
-                    item, code="data.full_history_audit_failed", observed_at=observed_at
+                    item,
+                    code="data.full_history_audit_failed",
+                    observed_at=observed_at,
+                    exception=exc,
+                    row_count=len(hydration.daily_rows),
                 )
                 return "FAILED"
         adjusted = self.store.provider_adjusted_closes(
@@ -1089,6 +1100,8 @@ class CurrentUniverseMaintenance:
         *,
         code: str,
         observed_at: datetime,
+        exception: Exception | None = None,
+        row_count: int | None = None,
     ) -> None:
         self._mutate(
             self.store.record_failures,
@@ -1109,6 +1122,22 @@ class CurrentUniverseMaintenance:
             listing_id=item.listing_id,
             state="FAILED",
             failure_code=code,
+            change_document={
+                "failure_cause": {
+                    "exception_type": type(exception).__name__ if exception else "UNKNOWN",
+                    "detail": "The provider price history could not be read."
+                    if isinstance(exception, ProviderFetchError)
+                    else "The provider price history failed validation."
+                    if exception
+                    else "The source failure cause was not recorded.",
+                    "step": "Provider price history",
+                    "unit": self._listing(item.listing_id).symbol,
+                    "row_count": row_count if row_count is not None else "UNKNOWN",
+                    "sanitizer_code": exception.code
+                    if isinstance(exception, CorruptedPayload)
+                    else "UNKNOWN",
+                }
+            },
             observed_at=observed_at,
         )
 
@@ -1156,7 +1185,9 @@ class CurrentUniverseMaintenance:
             failed=sum(item.state == "FAILED" for item in listings),
             failure_code=failure_code,
             listing_changes=tuple(
-                item.change_document for item in listings if item.change_document is not None
+                item.change_document
+                for item in listings
+                if item.state == "UPDATED" and item.change_document is not None
             ),
         )
 

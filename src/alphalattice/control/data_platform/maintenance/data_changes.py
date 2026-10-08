@@ -311,7 +311,7 @@ class WorkspaceDataChanges:
         provider: MarketDataProvider,
         observed_at: datetime,
         cancelled: Callable[[], bool],
-    ) -> str | None:
+    ) -> tuple[str, dict[str, object] | None] | None:
         """Acquire the bounded pre-exit source tail before Feature work starts."""
         scope = self.formation_scope(plan.before, plan.change)
         if scope is None:
@@ -319,31 +319,42 @@ class WorkspaceDataChanges:
         runner = self._quote_runner(plan, scope, provider)
         while True:
             if cancelled():
-                return "workspace_data_update.formation_cancelled"
+                return "workspace_data_update.formation_cancelled", None
             outcome = runner.run(observed_at=observed_at, work_budget=1)
             if outcome.status is not CurrentUniverseMaintenanceStatus.RUNNING:
                 break
         if outcome.status is CurrentUniverseMaintenanceStatus.DEFERRED:
-            return outcome.failure_code or "workspace_data_update.formation_source_deferred"
+            return outcome.failure_code or "workspace_data_update.formation_source_deferred", None
         failures = tuple(
-            row.failure_code
+            row
             for row in runner.store.current_universe_maintenance_listings(runner.maintenance_id)
             if row.state == "FAILED"
         )
-        if "data.full_history_audit_approval_required" in failures:
-            return "data.full_history_audit_approval_required"
         # A confirmed empty response leaves the old bars untouched. The installed
         # partial-source Feature policy marks missing sessions unavailable and
         # applies its unchanged coverage floors; it is not a renewed membership
         # or a zero return. Other integrity/permission failures are not absence.
-        return next(
+        failed = next(
             (
-                code or "workspace_data_update.formation_source_incomplete"
-                for code in failures
-                if code != "data.empty_payload"
+                row
+                for row in failures
+                if row.failure_code == "data.full_history_audit_approval_required"
             ),
-            None,
+            next((row for row in failures if row.failure_code != "data.empty_payload"), None),
         )
+        if failed is None:
+            return None
+        facts = (failed.change_document or {}).get("failure_cause")
+        if not isinstance(facts, dict):
+            facts = {
+                "exception_type": "UNKNOWN",
+                "detail": "The source failure cause was not recorded.",
+                "step": "Provider price history",
+                "unit": next(v.symbol for v in scope.listings if v.listing_id == failed.listing_id),
+                "row_count": "UNKNOWN",
+                "sanitizer_code": "UNKNOWN",
+            }
+        return failed.failure_code or "workspace_data_update.formation_source_incomplete", facts
 
     def maintain_valuation(
         self,
