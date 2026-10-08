@@ -303,7 +303,8 @@ def test_a_goal_wait_ends_on_the_next_task_end_it_did_not_see_begin(monkeypatch)
 def test_a_goal_wait_ends_on_the_next_message_under_the_goal(monkeypatch) -> None:
     """requirement (GR2, WK): an assignment made under a goal wakes its assignee's wait on the
     goal, and a reply its sender's, named in the one line; a message heard before does not.
-    A waiter whose agent session is unknown wakes on every new message (V503)."""
+    A waiter whose agent session is unknown wakes on every new message (V503), never on a
+    product request's own Conversation row, which has no observation (FLOW-1)."""
 
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
@@ -324,9 +325,16 @@ def test_a_goal_wait_ends_on_the_next_message_under_the_goal(monkeypatch) -> Non
             "record": {"tasks": [], "conversation": list(messages)},
         }
 
-    stub = _Stub([narrative(heard), narrative(heard), narrative(heard, assigned)])
+    request = {
+        "message_kind": "AGENT_BUNDLE_PREPARE",
+        "message_id": "request-0",
+        "input_channel": "PRODUCT_OPERATION",
+        "agent_id": "lead",
+    }
+    stub = _Stub([narrative(heard), narrative(heard, request), narrative(heard, request, assigned)])
     monkeypatch.setattr(client_module.time, "sleep", lambda _s: None)
     event = client_module._wait_for_goal(stub, goal, None)["wait_event"]  # type: ignore[arg-type]
+    assert len(stub.sent) == 3, "a product request's row ended the wait"
     assert (event["event"], event["message_kind"], event["message_id"]) == (
         "MESSAGE",
         "assignment",

@@ -53,6 +53,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.protocols.actor_execution.bundles import bundle_directory_key, bundle_slot
 
 GOAL_NAMESPACE = UUID("8f1d6c63-3c3e-4f5f-9f0e-5c4b2a7e8d10")
 """A goal opened without an id is named from its declaration and who opened it, so a retried
@@ -95,10 +96,10 @@ COMPARISON_REFUSALS = frozenset(
         "alpha_research.saved_comparison_score_support_mismatch",
     }
 )
-TERMINAL_DECISIONS = frozenset({"COMPLETED", "WITHDRAWN", "DECLINED"})
-CLOSURE_SOURCES = frozenset({"PRODUCT_ACCEPTED_ANSWER", "LEAD_TERMINAL_DECISION"})
 CONVERSATION_SHOWN = 50
-"""A shown record keeps the newest messages; the narrative used by waiters keeps them all."""
+"""A shown record keeps the newest entries; the narrative used by waiters keeps them all."""
+ANSWERED = frozenset({"ACCEPTED", "DONE"})
+"""An answer submission that closes its bundle: the product accepted it."""
 
 _DECLARATION_TEMPLATE: dict[str, object] = {
     "title": "What the goal is called",
@@ -126,7 +127,6 @@ _EVENT_FIELDS = (
     ("recipient_id", "recipient_id"),
     ("reply_to", "reply_to"),
     ("reference", "reference"),
-    ("hook", "native_hook_event"),
     ("input_channel", "input_channel"),
     ("source_time_kind", "source_time_kind"),
     ("submitted_by", "submitted_by"),
@@ -134,16 +134,7 @@ _EVENT_FIELDS = (
     ("answer_reference", "answer_reference"),
     ("authorship_basis", "authorship_basis"),
     ("bundle_role", "bundle_role"),
-    ("terminal_decision", "terminal_decision"),
-    ("terminal_reason", "terminal_reason"),
-    ("closure_source", "closure_source"),
-    ("closure_reason", "closure_reason"),
-    ("assignment_message_id", "assignment_message_id"),
-    ("assignment_packet_hash", "assignment_packet_hash"),
-    ("assigned_agent_id", "assigned_agent_id"),
-    ("closure_diagnostic", "closure_diagnostic"),
 )
-_PACKET_FIELDS = ("message_id", "agent_id", "role", "recipient_id", "message_sha256", "reference")
 USAGE_EVENT = "NATIVE_AGENT_USAGE"
 _USAGE_COUNTS = (
     "responses",
@@ -188,19 +179,68 @@ def _usage_metadata(entry: Mapping[str, object]) -> dict[str, object]:
     return metadata
 
 
-def open_assignments(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Only an owner-sealed terminal link closes the exact session's assignment."""
-    closed = {
-        (m.get("agent_vendor"), m.get("agent_session"), m.get("assignment_packet_hash"))
-        for m in messages
-        if m.get("closure_source") in CLOSURE_SOURCES and m.get("assignment_packet_hash")
+def open_assignments(entries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Each bundle prepared under the goal with no accepted answer yet: a reminder (FLOW-1).
+
+    A bundle is the product's own assignment of a question to a specialist; the product
+    accepting its answer closes it. Nothing here blocks the goal's completion.
+    """
+    answered = {
+        entry.get("bundle_reference")
+        for entry in entries
+        if entry.get("operation") == "AGENT_ANSWER_SUBMIT" and entry.get("status") in ANSWERED
     }
-    return [
-        {"message_id": m["message_id"], "recipient_id": m.get("recipient_id")}
-        for m in messages
-        if m.get("message_kind") == "assignment"
-        and (m.get("agent_vendor"), m.get("agent_session"), m.get("packet_hash")) not in closed
-    ]
+    prepared: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        reference = entry.get("bundle_reference")
+        if (
+            entry.get("operation") == "AGENT_BUNDLE_PREPARE"
+            and entry.get("status") == "AGENT_BUNDLE_READY"
+            and isinstance(reference, str)
+            and reference not in answered
+        ):
+            prepared.setdefault(
+                reference,
+                {
+                    "bundle_reference": reference,
+                    "agent_role": entry.get("agent_role"),
+                    "task_id": entry.get("task_id"),
+                    "prepared_at": entry.get("recorded_at"),
+                },
+            )
+    return list(prepared.values())
+
+
+def conversation_entries(entries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """The goal's conversation: what the product recorded of its Sessions' work, in time order.
+
+    Each request a bound agent Session sent under the goal (bundle preparations and answer
+    submissions among them) is a product fact; so is an accepted answer filed beside it.
+    Messages filed before FLOW-1 stay as they were recorded.
+    """
+    rows: list[dict[str, Any]] = []
+    for number, entry in enumerate(entries):
+        if entry.get("event_kind") == MESSAGE_EVENT:
+            rows.append(dict(entry))
+        elif "operation" in entry and entry.get("agent_session"):
+            rows.append(
+                {
+                    "recorded_at": entry.get("recorded_at"),
+                    "message_kind": entry["operation"],
+                    "message_id": f"request-{number}",
+                    "input_channel": "PRODUCT_OPERATION",
+                    "summary": str(entry.get("status") or ""),
+                    "agent_vendor": entry.get("agent_vendor"),
+                    "agent_session": entry.get("agent_session"),
+                    "agent_id": entry.get("agent_session"),
+                    **{
+                        name: entry[name]
+                        for name in ("task_id", "bundle_reference", "agent_role")
+                        if entry.get(name)
+                    },
+                }
+            )
+    return sorted(rows, key=lambda row: str(row.get("recorded_at") or ""))
 
 
 def session_usage(entries: Sequence[Mapping[str, object]]) -> list[dict[str, Any]]:
@@ -511,6 +551,14 @@ class GoalApplication:
         (V452); a network step records what it set.
         """
         task = body.get("task_id") or body.get("publication_task_id")
+        bundle = body.get("bundle_reference")
+        if (
+            bundle is None
+            and request.operation == "AGENT_ANSWER_SUBMIT"
+            and request.bundle_directory
+        ):
+            # An Analyst's or CRO's answer names its bundle by directory; the record is its slot.
+            bundle = bundle_slot(bundle_directory_key(request.bundle_directory))
         self.store.attribute(
             goal.goal_id,
             {
@@ -521,6 +569,17 @@ class GoalApplication:
                 **(
                     {"feature_trial_id": str(body["feature_trial_id"])}
                     if body.get("feature_trial_id")
+                    else {}
+                ),
+                **(
+                    {"bundle_reference": str(bundle)}
+                    if bundle
+                    and request.operation in {"AGENT_BUNDLE_PREPARE", "AGENT_ANSWER_SUBMIT"}
+                    else {}
+                ),
+                **(
+                    {"agent_role": str(body["agent_role"])}
+                    if request.operation == "AGENT_BUNDLE_PREPARE" and body.get("agent_role")
                     else {}
                 ),
                 "agent_vendor": provenance.vendor if provenance else None,
@@ -543,10 +602,10 @@ class GoalApplication:
         first_submission: bool,
         provenance: RequestProvenance | None,
     ) -> GoalAcceptedAnswerContext:
-        """Keep the first accepted receipt's Goal and prior packet before optional discovery.
+        """Keep the first accepted receipt's Goal before optional filing.
 
-        An older answer without this metadata records no Goal or dispatch, rather than
-        borrowing present work. The existing write-once event receipt holds this context.
+        An older answer without this metadata records no Goal, rather than borrowing present
+        work. The existing write-once event receipt holds this context.
         """
         key = canonical_hash(
             ["PRODUCT_ACCEPTED_ANSWER", bundle_reference, answer_reference, session.model_dump()]
@@ -556,33 +615,7 @@ class GoalApplication:
             if not first_submission:
                 return GoalAcceptedAnswerContext(goal_id=None)
             goal = self.attributed_goal(provenance)
-            if goal is None:
-                return GoalAcceptedAnswerContext(goal_id=None)
-            assignments = [
-                entry
-                for entry in self.store.attributed(goal.goal_id)
-                if entry.get("event_kind") == MESSAGE_EVENT
-                and entry.get("agent_vendor") == session.vendor
-                and entry.get("agent_session") == session.session_id
-                and entry.get("message_kind") == "assignment"
-                and entry.get("agent_id") == session.session_id
-                and entry.get("role") == "research_lead"
-                and entry.get("recipient_id")
-                and entry.get("recipient_id") != session.session_id
-                and entry.get("reference") == bundle_reference
-                and entry.get("packet_hash")
-            ]
-            return GoalAcceptedAnswerContext(
-                goal_id=goal.goal_id,
-                assignment_packet_hash=assignments[0]["packet_hash"]
-                if len(assignments) == 1
-                else None,
-                assignment_diagnostic=None
-                if len(assignments) == 1
-                else "native_bridge.assignment_ambiguous"
-                if assignments
-                else "native_bridge.assignment_not_observed",
-            )
+            return GoalAcceptedAnswerContext(goal_id=None if goal is None else goal.goal_id)
 
         return self.store.accepted_answer_context(key, decide)
 
@@ -601,19 +634,8 @@ class GoalApplication:
         """
         subject = dict(document.subject)
         subject.pop("goal_id", None)
-        # Public event declarations cannot attest that an answer was accepted or closed.
-        # Only the accepted scientific owner passes a receipt outside the event document.
-        for key in (
-            "closure_source",
-            "closure_reason",
-            "assignment_message_id",
-            "assignment_packet_hash",
-            "assigned_agent_id",
-            "closure_diagnostic",
-        ):
-            subject.pop(key, None)
         session = self._event_session(subject, provenance)
-
+        # Only the accepted scientific owner passes a receipt; it must name this very event.
         if accepted_receipt is not None and (
             document.event_kind != MESSAGE_EVENT
             or subject.get("input_channel") != "PRODUCT_ACCEPTED_ANSWER"
@@ -624,7 +646,7 @@ class GoalApplication:
             or subject.get("answer_reference") != accepted_receipt.answer_reference
             or subject.get("bundle_role") != accepted_receipt.bundle_role
         ):
-            raise ValueError("goal.assignment_closure_invalid")
+            raise ValueError("goal.event_not_filed")
 
         def decide() -> UUID | None:
             if accepted_receipt is not None:
@@ -640,141 +662,10 @@ class GoalApplication:
         )
         goal_id = self.store.event_goal(key, decide)
         if accepted_receipt is not None and goal_id != accepted_receipt.goal_id:
-            raise ValueError("goal.assignment_closure_invalid")
+            raise ValueError("goal.event_not_filed")
         goal = None if goal_id is None else self.store.head(goal_id)
         if goal is not None:
             subject["goal_id"] = str(goal.goal_id)
-            entries = self.store.attributed(goal.goal_id)
-            same_session = [
-                entry
-                for entry in entries
-                if session is not None
-                and entry.get("agent_vendor") == session.vendor
-                and entry.get("agent_session") == session.session_id
-                and entry.get("event_kind") == MESSAGE_EVENT
-            ]
-            first_receipt = next(
-                (
-                    entry
-                    for entry in same_session
-                    if entry.get("producer_id") == document.producer_id
-                    and entry.get("producer_session") == document.producer_session
-                    and entry.get("producer_sequence") == document.producer_sequence
-                ),
-                None,
-            )
-            if (
-                document.event_kind == MESSAGE_EVENT
-                and subject.get("reply_to")
-                and "recipient_id" not in subject
-            ):
-                # The Host resolves a reply before either ledger keeps it. An explicit
-                # recipient wins; the parent can be anywhere in this goal's conversation.
-                parent = next(
-                    (
-                        entry
-                        for entry in reversed(same_session)
-                        if entry.get("message_id") == subject["reply_to"]
-                    ),
-                    None,
-                )
-                if parent is not None and parent.get("agent_id"):
-                    subject["recipient_id"] = str(parent["agent_id"])
-            assignments = [
-                entry
-                for entry in same_session
-                if entry.get("message_kind") == "assignment"
-                and session is not None
-                and entry.get("agent_id") == session.session_id
-                and entry.get("role") == "research_lead"
-                and entry.get("recipient_id")
-                and entry.get("recipient_id") != session.session_id
-                and entry.get("packet_hash")
-            ]
-            terminal = subject.get("terminal_decision")
-            note = subject.get("terminal_reason")
-            if terminal is not None or note is not None:
-                if (
-                    terminal not in TERMINAL_DECISIONS
-                    or not note
-                    or session is None
-                    or subject.get("native_agent_id") != session.session_id
-                    or subject.get("role") != "research_lead"
-                    or subject.get("message_kind") not in {"decision", "pm_response"}
-                    or subject.get("input_channel") != "ACTOR_DECLARED"
-                    or not subject.get("reply_to")
-                ):
-                    raise ValueError("goal.assignment_closure_invalid")
-                matching = (
-                    [
-                        e
-                        for e in assignments
-                        if e.get("packet_hash") == first_receipt.get("assignment_packet_hash")
-                    ][:1]
-                    if first_receipt is not None
-                    and first_receipt.get("closure_source") == "LEAD_TERMINAL_DECISION"
-                    else [e for e in assignments if e.get("message_id") == subject["reply_to"]]
-                )
-                if len(matching) != 1:
-                    raise ValueError("goal.assignment_closure_invalid")
-                if (
-                    document.subject.get("recipient_id") is not None
-                    and document.subject["recipient_id"] != matching[0]["recipient_id"]
-                ):
-                    raise ValueError("goal.assignment_closure_invalid")
-                subject["recipient_id"] = str(matching[0]["recipient_id"])
-                subject.update(closure_source="LEAD_TERMINAL_DECISION", closure_reason=terminal)
-            elif accepted_receipt is not None:
-                matching = [
-                    e
-                    for e in assignments
-                    if e.get("reference") == accepted_receipt.bundle_reference
-                    and e.get("packet_hash") == accepted_receipt.assignment_packet_hash
-                    and (not subject.get("reply_to") or e.get("message_id") == subject["reply_to"])
-                ]
-                # More than one dispatch of the same bundle is not an exact closure.
-                if len(matching) == 1:
-                    subject.update(
-                        closure_source="PRODUCT_ACCEPTED_ANSWER", closure_reason="ACCEPTED_ANSWER"
-                    )
-                    subject["reply_to"] = str(matching[0]["message_id"])
-                else:
-                    subject["closure_diagnostic"] = accepted_receipt.assignment_diagnostic or (
-                        "native_bridge.assignment_ambiguous"
-                        if matching
-                        else "native_bridge.assignment_not_observed"
-                    )
-            else:
-                matching = []
-            if subject.get("closure_source"):
-                assigned = matching[0]
-                subject.update(
-                    assignment_message_id=str(assigned["message_id"]),
-                    assignment_packet_hash=str(assigned["packet_hash"]),
-                    assigned_agent_id=str(assigned["recipient_id"]),
-                )
-            if accepted_receipt is not None and first_receipt is not None:
-                # Replays keep the first owner's closure decision even if later dispatches
-                # changed the conversation. The activity owner still checks all other bytes.
-                for field in (
-                    "closure_source",
-                    "closure_reason",
-                    "assignment_message_id",
-                    "assignment_packet_hash",
-                    "assigned_agent_id",
-                    "closure_diagnostic",
-                    "reply_to",
-                ):
-                    value = first_receipt.get(field)
-                    if value is None:
-                        subject.pop(field, None)
-                    else:
-                        subject[field] = str(value)
-        elif (
-            subject.get("terminal_decision") is not None
-            or subject.get("terminal_reason") is not None
-        ):
-            raise ValueError("goal.assignment_closure_invalid")
         return document.model_copy(update={"subject": subject}), goal, session
 
     def record_event(
@@ -784,13 +675,7 @@ class GoalApplication:
         observation_id: str,
         session: GoalSession | None,
     ) -> dict[str, Any]:
-        """Keep one admitted Team event in the goal's record; an assignment seals its packet.
-
-        The packet is what the assignee is handed: the assignment as sent and the goal's
-        revision at that moment. A reply naming the assignment keeps that packet's hash, so
-        the record holds what the assignee saw. Messages stay declarations, and an
-        assignment grants no authority.
-        """
+        """Keep one admitted Team event in the goal's record, as the Host filed it."""
         subject = document.subject
         entry: dict[str, Any] = {
             "recorded_at": self.clock().isoformat(),
@@ -809,31 +694,8 @@ class GoalApplication:
         if document.event_kind == USAGE_EVENT:  # a reading keeps its counts (AU)
             entry.update({name: subject[name] for name in _USAGE_FIELDS if name in subject})
             entry.update(_usage_metadata(entry))
-        if entry["message_kind"] == "assignment":
-            entry["packet_hash"] = canonical_hash(
-                {
-                    "goal_id": str(goal.goal_id),
-                    "goal_hash": goal.goal_hash,
-                    "assignment": {name: entry[name] for name in _PACKET_FIELDS},
-                }
-            )
-        elif entry.get("assignment_packet_hash") is not None:
-            entry["packet_hash"] = entry["assignment_packet_hash"]
-        elif entry["reply_to"] is not None:
-            assigned = [
-                e
-                for e in self.store.attributed(goal.goal_id)
-                if e.get("message_kind") == "assignment"
-                and e.get("message_id") == entry["reply_to"]
-                and e.get("agent_vendor") == entry["agent_vendor"]
-                and e.get("agent_session") == entry["agent_session"]
-            ]
-            entry["packet_hash"] = assigned[0]["packet_hash"] if len(assigned) == 1 else None
         self.store.attribute(goal.goal_id, entry)
-        return {
-            "goal_id": str(goal.goal_id),
-            **({"packet_hash": entry["packet_hash"]} if "packet_hash" in entry else {}),
-        }
+        return {"goal_id": str(goal.goal_id)}
 
     def _event_session(
         self, subject: Mapping[str, str], provenance: RequestProvenance | None
@@ -862,7 +724,7 @@ class GoalApplication:
         """The Host's facts; a waiter reads every message, never only the shown tail."""
         entries = self.store.attributed(goal.goal_id)
         requests = [e for e in entries if "operation" in e]
-        messages = [e for e in entries if e.get("event_kind") == MESSAGE_EVENT]
+        messages = conversation_entries(entries)
         tasks: list[GoalTaskFact] = []
         for task_id in dict.fromkeys(str(e["task_id"]) for e in requests if e.get("task_id")):
             facts = self.task_facts(UUID(task_id))
@@ -898,7 +760,7 @@ class GoalApplication:
             "event_count": len(entries) - len(requests),
             "message_count": len(messages),
             "conversation": messages if whole_conversation else messages[-CONVERSATION_SHOWN:],
-            "open_assignments": open_assignments(messages),
+            "open_assignments": open_assignments(entries),
             "session_usage": session_usage(entries),
         }
 
@@ -1228,7 +1090,6 @@ class GoalApplication:
                 tasks=tasks,
                 verify=verify,
                 cited_known=frozenset(known | declared),
-                open_assignments=tuple(record["open_assignments"]),
             )
         if missing:
             return {
@@ -1269,6 +1130,12 @@ class GoalApplication:
             **answer,
             "status": "COMPLETE",
             "outcome": submission.outcome,
+            # A prepared bundle with no accepted answer is said, never a reason to refuse.
+            **(
+                {"open_assignments": record["open_assignments"]}
+                if record["open_assignments"]
+                else {}
+            ),
             "claim": "Complete means the record is complete and its evidence verified, not "
             "that the objective was met.",
         }

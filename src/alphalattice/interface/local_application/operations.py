@@ -178,6 +178,23 @@ GRAMMAR: Final[dict[str, Command]] = {
         "declare",
         "Records an event this client declares about its own work in the activity feed.",
     ),
+    "SESSION_USAGE_READ": Command(
+        "session",
+        "usage",
+        "Reads the usage of the agent Sessions bound to this workspace now, from their own "
+        "files and the children they record; nothing else runs, and reading off reads nothing.",
+    ),
+    "USAGE_READING": Command(
+        "usage-reading",
+        "show",
+        "Shows whether the Host may read the bound agent Sessions' own files for usage, and "
+        "what it reads.",
+    ),
+    "USAGE_READING_SET": Command(
+        "usage-reading",
+        "set",
+        "Turns reading the bound agent Sessions' usage on or off for this workspace.",
+    ),
     "EVIDENCE_ANALYSIS_SUBMIT": Command(
         "evidence",
         "submit",
@@ -1027,6 +1044,7 @@ FLAGS: Final[dict[str, str]] = {
     "update_publication_hash": "update-publication",
     "update_task_id": "update",
     "upgrade_set_hash": "upgrade-set",
+    "usage_reading_enabled": "enabled",
     "view_last_days": "days",
     "window_limit": "window-limit",
 }
@@ -1155,7 +1173,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
         "Start and follow the work",
         (
             ("workspace", "The workspace: its inputs, recent studies and Tasks, what flows need."),
-            ("session", "An agent session's binding to its workspace: bind, unbind."),
+            ("session", "An agent session's binding to its workspace: bind, unbind, usage."),
             ("goal", "A goal an agent works for: open or take it, note it, submit it."),
             ("task", "A Task, the work a command started: show it, wait on it, cancel it."),
             ("activity", "The activity feed, and a wait on a Task or a goal."),
@@ -1217,6 +1235,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
             ("storage", "Storage clean-up, pins and rebuilds."),
             ("backup", "Backups of what the workspace cannot rebuild, and restores."),
             ("network", "Whether the workspace may reach the network."),
+            ("usage-reading", "Whether the Host may read the bound agent Sessions' usage."),
             ("cpu-budget", "The CPU budget and how many Tasks run at once."),
             ("incident", "The supervisor's incidents and their remedies."),
             ("upgrade", "What an installed upgrade changed."),
@@ -1261,6 +1280,7 @@ as its `oneOf` (V409, the review's F4). The gate holds each group to the request
 PERSON_ONLY: Final[frozenset[str]] = frozenset(
     {
         "NETWORK_ACCESS_SET",
+        "USAGE_READING_SET",
         "STORAGE_CONFIRM",
         "STORAGE_PIN",
         "RESEARCH_INPUT_CONFIRM",

@@ -1,102 +1,35 @@
-"""Native delivery contracts, including persistence through a fixture Host."""
+"""The native bridge after FLOW-1: Session bindings and Host-read observations, no hooks."""
 
 import importlib.util
-import io
 import json
 import os
-import sqlite3
-import subprocess
+import shutil
 import tomllib
-from contextlib import closing
 from dataclasses import asdict
-from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
-from alphalattice.control.workspace_runtime.lock import WorkspaceLock
-from alphalattice.interface.local_application import client as client_module
 from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
     NativeBridgeError,
     NativeResearchBinding,
-    coordination_event,
-    deliver,
-    hook_reply,
+    file_observation,
     observation_request,
 )
-from alphalattice.interface.local_application.native_observation_sequence import (
-    LEGACY_SEQUENCE_NAME,
-    LOCK_NAME,
-    SEQUENCE_NAME,
-    NativeSequenceError,
-    reserve_sequence,
-)
 from alphalattice.interface.local_application.native_setup import (
+    PRODUCT_HOOK_MATCHER,
     declare_project,
-    native_proof_hooks,
+    strip_product_hooks,
 )
 from tests.portfolio_strategy_lab.local_web_support import _json
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.mark.parametrize("character", ("x", "中", "😀"), ids=("ascii", "cjk", "astral"))
-def test_widest_coordination_event_delivers_and_reads_back(live, tmp_path, character):
-    project = tmp_path / "project"
-    binding = _bind(project, live.workspace)
-    event = coordination_event(
-        binding,
-        agent_id=character * 200,
-        role="alphalattice_cro",
-        kind="answer",
-        message_id=character * 200,
-        message=(character * 4000).encode(),
-        reference=character * 200,
-        recipient_id=character * 200,
-        reply_to=character * 200,
-    )
-    result = deliver(project, binding, event)
-    assert result["status"] == "DELIVERED"
-    assert result["summary_truncated"] is True
-    assert result["authority"] == "AGENT_PROPOSAL"
-    (stored,) = _json(live, "/api/activity/external")["items"]
-    assert stored["observation_id"] == result["observation_id"]
-    assert stored["payload"]["summary"] == character * 500
-    for key in ("native_agent_id", "message_id", "reference", "recipient_id", "reply_to"):
-        assert stored["payload"]["subject"][key] == character * 200
-    assert deliver(project, binding, event) == result  # exact retry after the wide append
-    assert len(_json(live, "/api/activity/external")["items"]) == 1
-
-
-def test_host_refusal_is_named_at_the_bridge_entry(live, tmp_path):
-    project = tmp_path / "project"
-    binding = _bind(project, live.workspace)
-    event = coordination_event(binding, kind="plan", message_id="plan", message=b"A plan.")
-    with WorkspaceLock(project / ".codex" / LOCK_NAME):
-        document = observation_request(project, binding, event)
-    client = LocalResearchClient(live.workspace)
-    assert client.publish_event({**document, "summary": "A conflicting claim."})["status"] == (
-        "APPENDED"
-    )
-    refused = deliver(project, binding, event)
-    assert refused["status"] == "REFUSED"
-    assert refused["reason"] == "observation.source_sequence_collision"
-    assert refused["next_action"] == "READ_ACTIVITY_EVENT_CONTRACT"
-    assert len(_json(live, "/api/activity/external")["items"]) == 1
-
-
-@pytest.mark.parametrize("host", ("codex", "claude-code"))
-def test_complete_usage_snapshot_fits_public_event_subject_and_retries_exactly(
-    live, tmp_path, host
-):
-    project = tmp_path / "usage-project"
-    (project / ".codex").mkdir(parents=True)
-    binding = NativeResearchBinding(
-        session_id="parent", workspace=live.workspace, roles=("alphalattice_cro",), host=host
-    )
-    usage = {
+def _usage(host: str, **changes: object) -> dict[str, object]:
+    return {
         "session_id": "parent",
         "agent_id": "child",
         "role": "alphalattice_cro",
@@ -110,19 +43,29 @@ def test_complete_usage_snapshot_fits_public_event_subject_and_retries_exactly(
         "cache_read_tokens": 3,
         "cache_write_tokens": 4,
         "output_tokens": 5,
+        **changes,
     }
+
+
+@pytest.mark.parametrize("host", ("codex", "claude-code"))
+def test_complete_usage_snapshot_fits_public_event_subject_and_files_once(live, tmp_path, host):
+    """A Host-read snapshot fits the event contract, and the same snapshot files one row: its
+    sequence is its own content's, so no stored counter or lock is needed (FLOW-1)."""
+    project = tmp_path / "usage-project"
+    (project / ".codex").mkdir(parents=True)
+    binding = NativeResearchBinding(
+        session_id="parent", workspace=live.workspace, roles=("alphalattice_cro",), host=host
+    )
+    usage = _usage(host)
     event = {"source": "native_usage", "usage": usage}
-    with WorkspaceLock(project / ".codex" / LOCK_NAME):
-        document = observation_request(project, binding, event)
+    document = observation_request(project, binding, event)
     subject = document["subject"]
     assert len(subject) == 15
-    assert "native_event_id" not in subject
-    assert subject["model"] == usage["model"]
+    assert "native_event_id" not in subject and "source_kind" not in subject
     assert subject["efforts"] == "medium,high"
     assert subject["pin_differs"] == "model,effort"
-    assert subject["last_at"] == usage["last_at"]
+    assert subject["last_at"] == document["occurred_at"] == usage["last_at"]
     assert subject["sample_time_kind"] == "LATEST_USAGE_RECORD_AT"
-    assert "source_kind" not in subject
     assert subject["input_channel"] == (
         "CODEX_SESSION_FILE" if host == "codex" else "CLAUDE_CODE_SESSION_FILE"
     )
@@ -134,6 +77,15 @@ def test_complete_usage_snapshot_fits_public_event_subject_and_retries_exactly(
         "output_tokens",
     ):
         assert subject[count] == str(usage[count])
+    assert observation_request(project, binding, event) == document
+    changed = observation_request(
+        project, binding, {"source": "native_usage", "usage": _usage(host, output_tokens=6)}
+    )
+    assert changed["producer_sequence"] != document["producer_sequence"]
+    goal = observation_request(
+        project, binding, event, usage_goal_id="00000000-0000-4000-8000-000000000001"
+    )
+    assert goal["producer_sequence"] != document["producer_sequence"]
 
     client = LocalResearchClient(live.workspace)
     refused = client.publish_event(
@@ -143,20 +95,45 @@ def test_complete_usage_snapshot_fits_public_event_subject_and_retries_exactly(
         }
     )
     assert refused["status"] == "REFUSED"
-    assert refused["failure_code"] == "activity.event_invalid"
     assert refused["reasons"] == {"": "activity.event_subject_too_large"}
-    assert refused["next_action"] == "READ_ACTIVITY_EVENT_CONTRACT"
-    appended = client.publish_event(document)
-    assert appended["status"] == "APPENDED"
-    receipt = deliver(project, binding, event)
-    assert receipt["status"] == "DELIVERED"
-    assert receipt["observation_id"] == appended["observation_id"]
-    assert receipt["source_sequence"] == document["producer_sequence"]
-    assert receipt["authority"] == "AGENT_PROPOSAL"
-    assert deliver(project, binding, event) == receipt
+    first = file_observation(project, binding, event, publish=client.publish_event)
+    assert first["status"] == "DELIVERED"
+    assert file_observation(project, binding, event, publish=client.publish_event) == first
     (stored,) = _json(live, "/api/activity/external")["items"]
-    assert stored["observation_id"] == appended["observation_id"]
+    assert stored["observation_id"] == first["observation_id"]
+    assert stored["source_sequence"] == document["producer_sequence"]
     assert stored["payload"]["subject"] == subject
+
+
+def test_a_reading_with_an_unusable_record_time_files_at_its_reading_time(tmp_path):
+    """A usage record time the activity contract cannot take never makes the reading invalid."""
+    binding = NativeResearchBinding("parent", tmp_path, ("alphalattice_cro",), host="codex")
+    for last_at in ("t", "2026-10-06T12:00:00"):
+        document = observation_request(
+            tmp_path, binding, {"source": "native_usage", "usage": _usage("codex", last_at=last_at)}
+        )
+        assert document["occurred_at"] != last_at and document["occurred_at"].endswith("+00:00")
+
+
+def test_a_filing_failure_is_named_and_never_raised(tmp_path):
+    """Optional observation: a refusal or an exception of the Host's owner is a named result."""
+    binding = NativeResearchBinding("parent", tmp_path, ("alphalattice_cro",), host="codex")
+    event = {"source": "native_usage", "usage": _usage("codex")}
+
+    def refusing(_document):
+        return {"status": "REFUSED", "failure_code": "activity.storage_unavailable"}
+
+    def raising(_document):
+        raise RuntimeError("SECRET-HOST-ERROR")
+
+    assert file_observation(tmp_path, binding, event, publish=refusing) == {
+        "status": "UNAVAILABLE",
+        "reason": "activity.storage_unavailable",
+    }
+    failed = file_observation(tmp_path, binding, event, publish=raising)
+    assert failed["status"] == "UNAVAILABLE" and "SECRET" not in json.dumps(failed)
+    with pytest.raises(NativeBridgeError, match="event_source_invalid"):
+        observation_request(tmp_path, binding, {"source": "actor_declared"})
 
 
 def _entry():
@@ -175,55 +152,14 @@ def _bind(project, workspace):
     return NativeResearchBinding.read(project)
 
 
-@pytest.mark.parametrize(
-    "options",
-    [
-        {"terminal_decision": "COMPLETED"},
-        {"terminal_reason": "Done."},
-        {"terminal_decision": "OPEN", "terminal_reason": "Done."},
-        {"terminal_decision": [], "terminal_reason": "Done."},
-        {"terminal_decision": "COMPLETED", "terminal_reason": " "},
-        {"terminal_decision": "COMPLETED", "terminal_reason": "Done.", "reply_to": None},
-        {"terminal_decision": "COMPLETED", "terminal_reason": "Done.", "kind": "plan"},
-        {
-            "terminal_decision": "COMPLETED",
-            "terminal_reason": "Done.",
-            "agent_id": "child",
-            "role": "alphalattice_cro",
-        },
-    ],
-)
-def test_terminal_fields_require_an_explicit_lead_resolution(tmp_path, options):
-    binding = _bind(tmp_path, tmp_path)
-    arguments = {
-        "kind": "decision",
-        "reply_to": "assigned",
-        "message": b"An explicit terminal decision.",
-        **options,
-    }
-    with pytest.raises(NativeBridgeError, match="assignment_terminal_invalid"):
-        coordination_event(binding, **arguments)
-
-
-def test_terminal_declaration_identity_preserves_retry_and_distinguishes_reason(tmp_path):
-    binding = _bind(tmp_path, tmp_path)
-    arguments = {
-        "kind": "decision",
-        "reply_to": "assigned",
-        "message": b"Resolved the exact dispatch.",
-        "terminal_decision": "WITHDRAWN",
-        "terminal_reason": "A later explicit decision withdrew it.",
-    }
-    event = coordination_event(binding, **arguments)
-    assert coordination_event(binding, **arguments) == event
-    changed = coordination_event(
-        binding, **{**arguments, "terminal_reason": "The scope has changed."}
-    )
-    assert changed["message_id"] != event["message_id"]
-    subject = observation_request(tmp_path, binding, event)["subject"]
-    assert subject["terminal_decision"] == "WITHDRAWN"
-    assert subject["terminal_reason"] == arguments["terminal_reason"]
-    assert "closure_source" not in subject
+def test_a_binding_admits_only_its_own_fields(tmp_path):
+    binding = _bind(tmp_path, tmp_path / "workspace")
+    with pytest.raises(NativeBridgeError):
+        NativeResearchBinding.from_document({**asdict(binding), "authority": "HUMAN"})
+    with pytest.raises(NativeBridgeError, match="binding_invalid"):
+        NativeResearchBinding.from_document(
+            {"session_id": "parent", "workspace": "relative", "roles": ["alphalattice_cro"]}
+        )
 
 
 def test_off_binding_admits_only_its_exact_lead_without_native_discovery(tmp_path, monkeypatch):
@@ -238,378 +174,6 @@ def test_off_binding_admits_only_its_exact_lead_without_native_discovery(tmp_pat
     assert binding.serves(("codex", "parent"))
     assert not binding.serves(("codex", "child"))
     assert not binding.serves(("claude-code", "parent"))
-
-
-@pytest.mark.parametrize("stop_active", (False, True, None))
-def test_activity_mapping_retries_are_stable_and_not_research(tmp_path, monkeypatch, stop_active):
-    # Accepted31 interface, not an installed product/HTTP/host proof. The shared
-    # public client is absent on the lead line until the final merge.
-    seen = []
-    replies = {"accept": True}
-
-    class AcceptedClient:
-        def __init__(self, workspace, *, timeout):
-            assert timeout == 2.0
-
-        def publish_event(self, body):
-            seen.append(body)
-            return {
-                "status": "APPENDED" if replies["accept"] else "REFUSED",
-                "observation_id": "fixture-observation",
-                "source_id": body["producer_id"] + ":" + body["producer_session"],
-                "source_sequence": body["producer_sequence"],
-                "authority": "AGENT_PROPOSAL",
-                "summary_truncated": len(" ".join(body["summary"].split())) > 500,
-            }
-
-    monkeypatch.setattr(client_module, "LocalResearchClient", AcceptedClient)
-    workspace = tmp_path / "workspace"
-    project = tmp_path / "project"
-    binding = _bind(project, workspace)
-    raw = json.dumps(
-        {
-            "hook_event_name": "SubagentStop",
-            "session_id": "parent",
-            "turn_id": "turn",
-            "agent_id": "child",
-            "agent_type": "alphalattice_cro",
-            "cwd": str(project),
-            "stop_hook_active": stop_active,
-            "last_assistant_message": "MUST NOT SEND",
-            "transcript_path": "private.jsonl",
-        }
-    ).encode()
-    assert hook_reply(project, raw) == {}
-    assert hook_reply(project, raw) == {}
-    assert seen[0] == seen[1]  # Includes the exact original sequence and timestamp.
-    assert "MUST NOT SEND" not in json.dumps(seen)
-    assert "private.jsonl" not in json.dumps(seen)
-    assert all(item["event_kind"] == "NATIVE_SUBAGENT_STOP_HOOK" for item in seen)
-    assert all(item["subject"]["native_hook_event"] == "SubagentStop" for item in seen)
-    assert all(item["subject"]["terminal_state"] == "NOT_ESTABLISHED" for item in seen)
-    assert seen[0]["subject"]["stop_hook_active"] == (
-        "unknown" if stop_active is None else str(stop_active).lower()
-    )
-    assert all("task_id" not in item["subject"] and "authority" not in item for item in seen)
-    replies["accept"] = False
-    reply = hook_reply(project, raw)
-    assert set(reply) == {"systemMessage"}
-    assert len(seen) == 3  # No automatic retry on product refusal.
-    event = coordination_event(
-        binding,
-        agent_id="child",
-        role="alphalattice_cro",
-        kind="objection",
-        message_id="review-objection",
-        message=b"Limited coverage; not a clearance.",
-    )
-    assert event["source"] == "actor_declared"
-    assert event["message_sha256"] == sha256(event["message"].encode()).hexdigest()
-    assert deliver(project, binding, event)["status"] == "UNAVAILABLE"
-    assert seen[-1]["producer_sequence"] == 1
-    assert seen[-1]["producer_session"] == seen[0]["producer_session"]
-    metadata = (project / ".codex" / SEQUENCE_NAME).read_bytes()
-    assert event["message"].encode() not in metadata
-    assert b"private.jsonl" not in metadata
-    assert not workspace.exists()  # No product data/Task writes by this adapter.
-    # Separate checkouts have separate sequence files, even for one foreground
-    # session/workspace. They must not reuse the receiver's same source/sequence.
-    other = tmp_path / "other-project"
-    other_binding = _bind(other, workspace)
-    deliver(other, other_binding, event)
-    assert seen[-1]["producer_sequence"] == 0
-    assert seen[-1]["producer_session"] != seen[0]["producer_session"]
-    assert (project / ".codex" / SEQUENCE_NAME).read_bytes() == metadata
-    assert str(other) not in json.dumps(seen[-1])
-
-
-def test_binding_and_hook_errors_do_not_leak_or_steer(tmp_path):
-    assert hook_reply(tmp_path, b"not-json") == {}  # Unbound: no capture or transport.
-    binding = _bind(tmp_path, tmp_path / "workspace")
-    lead = coordination_event(
-        binding,
-        agent_id="parent",
-        role="research_lead",
-        kind="pm_response",
-        message_id="response",
-        message=b"Keep the review's unresolved objection.",
-    )
-    assert lead["agent_id"] == lead["session_id"] == "parent"
-    assert lead["source"] == "actor_declared"
-    with pytest.raises(NativeBridgeError):
-        coordination_event(
-            binding,
-            agent_id="child",
-            role="research_lead",
-            kind="pm_response",
-            message_id="response",
-            message=b"Cannot impersonate the foreground lead.",
-        )
-    with pytest.raises(NativeBridgeError):
-        coordination_event(
-            binding,
-            agent_id="parent",
-            role="alphalattice_cro",
-            kind="answer",
-            message_id="answer",
-            message=b"The parent is not a separate reviewer.",
-        )
-    reply = hook_reply(tmp_path, b'{"secret":"DO NOT ECHO"')
-    assert set(reply) == {"systemMessage"}
-    assert "DO NOT ECHO" not in json.dumps(reply)
-    with pytest.raises(NativeBridgeError):
-        NativeResearchBinding.from_document({**asdict(binding), "authority": "HUMAN"})
-    with pytest.raises(NativeBridgeError):
-        coordination_event(
-            binding,
-            agent_id="child",
-            role="alphalattice_cro",
-            kind="objection",
-            message_id="objection",
-            message=b"x" * 8193,
-        )
-    with pytest.raises(NativeBridgeError):
-        coordination_event(
-            binding,
-            agent_id="child",
-            role="unknown",
-            kind="objection",
-            message_id="x",
-            message=b"text",
-        )
-    for text, code in (
-        (b" " * 600, "message_empty"),
-        (b"x" * 501, "long_message_reference_required"),
-    ):
-        with pytest.raises(NativeBridgeError, match=code):
-            coordination_event(
-                binding,
-                agent_id="child",
-                role="alphalattice_cro",
-                kind="answer",
-                message_id="bounded",
-                message=text,
-            )
-    original = ("A bounded observation. " * 30).encode()
-    long = coordination_event(
-        binding,
-        agent_id="child",
-        role="alphalattice_cro",
-        kind="answer",
-        message_id="long",
-        message=original,
-        reference="playpen://controlled-assessment/" + "a" * 64,
-    )
-    assert long["message"].encode() == original
-    with pytest.raises(NativeBridgeError, match="assignment_recipient_required"):
-        coordination_event(
-            binding,
-            agent_id="parent",
-            role="research_lead",
-            kind="assignment",
-            message_id="assignment",
-            message=b"Read the admitted packet.",
-        )
-    # Decision notes (GR2): either role, at a plan, a decision, a dead end or a surprise; a
-    # reply names what it answers, and an assignment is never a reply.
-    for agent_id, role in (("parent", "research_lead"), ("child", "alphalattice_cro")):
-        for kind in ("plan", "decision", "dead_end", "surprise"):
-            note = coordination_event(
-                binding,
-                agent_id=agent_id,
-                role=role,
-                kind=kind,
-                message_id=f"{kind}-1",
-                message=b"Costs first; the fold sweep waits.",
-            )
-            assert note["kind"] == kind and note["reply_to"] is None
-    answer = coordination_event(
-        binding,
-        agent_id="child",
-        role="alphalattice_cro",
-        kind="answer",
-        message_id="answer-1",
-        message=b"The folds hold.",
-        reply_to="assignment-1",
-    )
-    assert answer["reply_to"] == "assignment-1"
-    with pytest.raises(NativeBridgeError, match="assignment_is_not_a_reply"):
-        coordination_event(
-            binding,
-            agent_id="parent",
-            role="research_lead",
-            kind="assignment",
-            message_id="assignment-2",
-            message=b"Read the admitted packet.",
-            recipient_id="child",
-            reply_to="assignment-1",
-        )
-
-
-def test_missing_activity_client_and_wrong_ack_do_not_claim_delivery(tmp_path, monkeypatch):
-    binding = _bind(tmp_path, tmp_path / "workspace")
-    event = coordination_event(
-        binding,
-        agent_id="child",
-        role="alphalattice_cro",
-        kind="answer",
-        message_id="a",
-        message=b"Scoped assessment returned.",
-    )
-
-    class MissingClient:
-        def __init__(self, *args, **kwargs):
-            pass
-
-    monkeypatch.setattr(client_module, "LocalResearchClient", MissingClient)
-    assert (
-        deliver(tmp_path, binding, event)["reason"] == "native_bridge.activity_client_unavailable"
-    )
-    assert not (tmp_path / ".codex" / SEQUENCE_NAME).exists()
-
-    class WrongAck(MissingClient):
-        def publish_event(self, document):
-            return {
-                "status": "APPENDED",
-                "source_id": "other",
-                "source_sequence": 0,
-                "authority": "AGENT_PROPOSAL",
-                "observation_id": "o",
-            }
-
-    monkeypatch.setattr(client_module, "LocalResearchClient", WrongAck)
-    assert deliver(tmp_path, binding, event)["status"] == "UNAVAILABLE"
-    with WorkspaceLock(tmp_path / ".codex" / LOCK_NAME):
-        assert deliver(tmp_path, binding, event)["reason"] == "native_bridge.observation_busy"
-
-
-def test_retry_metadata_collision_and_corruption_refuse_without_reset(tmp_path):
-    (tmp_path / ".codex").mkdir()
-
-    def reserve(identity="b" * 64, content="c" * 64):
-        with WorkspaceLock(tmp_path / ".codex" / LOCK_NAME):
-            return reserve_sequence(
-                tmp_path, scope="a" * 64, event_id=identity, fingerprint=content
-            )
-
-    first = reserve()
-    assert reserve() == first
-    with pytest.raises(NativeSequenceError, match="event_identity_collision"):
-        reserve(content="d" * 64)
-    metadata = tmp_path / ".codex" / SEQUENCE_NAME
-    original = metadata.read_bytes()
-    metadata.write_bytes(b"not-sqlite")
-    with pytest.raises(NativeSequenceError, match="metadata_invalid"):
-        reserve()
-    assert metadata.read_bytes() == b"not-sqlite"
-    metadata.write_bytes(original)
-    # Even future pruning cannot reset the allocator to a sequence the Host holds.
-    with closing(sqlite3.connect(metadata)) as store, store:
-        store.execute("DELETE FROM native_observation_sequence")
-    assert reserve(identity="e" * 64)[0] == 1
-    with closing(sqlite3.connect(metadata)) as store, store:
-        store.execute("PRAGMA user_version=2")
-    wrong_version = metadata.read_bytes()
-    with pytest.raises(NativeSequenceError, match="metadata_invalid"):
-        reserve()
-    assert metadata.read_bytes() == wrong_version
-
-
-def test_checkout_delivers_beyond_1024_across_sessions_without_reusing_host_sequences(
-    live, tmp_path
-):
-    project = tmp_path / "project"
-    initial_binding = _bind(project, live.workspace)
-    sequences, ids = [], []
-    first = None
-    for index in range(1030):
-        binding = NativeResearchBinding(
-            f"session-{index // 250}", initial_binding.workspace, initial_binding.roles
-        )
-        event = coordination_event(
-            binding, kind="plan", message_id=f"plan-{index}", message=b"A bounded plan."
-        )
-        result = deliver(project, binding, event)
-        assert result["status"] == "DELIVERED", (index, result)
-        sequences.append(result["source_sequence"])
-        ids.append(result["observation_id"])
-        if first is None:
-            first = (binding, event, result)
-    assert sequences == list(range(1030))
-    assert len(set(ids)) == 1030
-    assert deliver(project, *first[:2]) == first[2]  # first session still retries exactly
-    stored = []
-    route = "/api/activity/external?limit=200"
-    while True:
-        page = _json(live, route)
-        stored.extend(page["items"])
-        if not page["more"]:
-            break
-        route = f"/api/activity/external?limit=200&before={page['oldest']}"
-    assert len(stored) == 1030
-    assert {item["observation_id"] for item in stored} == set(ids)
-    assert sorted(item["payload"]["producer_sequence"] for item in stored) == sequences
-    assert len({item["source_id"] for item in stored}) == 5
-
-
-def test_full_legacy_store_migrates_held_host_sequences_and_first_times(live, tmp_path):
-    project = tmp_path / "project"
-    binding = _bind(project, live.workspace)
-    metadata = project / ".codex" / SEQUENCE_NAME
-    legacy = project / ".codex" / LEGACY_SEQUENCE_NAME
-    stamp = "2026-10-01T00:00:00+00:00"
-    rows = [["a" * 64, sha256(str(i).encode()).hexdigest(), "b" * 64, stamp] for i in range(1024)]
-    held = []
-    client = LocalResearchClient(live.workspace)
-    # Generate the hashes with the bridge, then model the old JSON format at its
-    # first and last row positions. The Host already holds those exact documents.
-    for index in (0, 1023):
-        event = coordination_event(
-            binding, kind="plan", message_id=f"old-plan-{index}", message=b"An old plan."
-        )
-        with WorkspaceLock(project / ".codex" / LOCK_NAME):
-            document = observation_request(project, binding, event)
-        with closing(sqlite3.connect(metadata)) as store:
-            row = store.execute(
-                "SELECT scope, event_id, fingerprint, occurred_at FROM native_observation_sequence "
-                "WHERE sequence=?",
-                (document["producer_sequence"] + 1,),
-            ).fetchone()
-        rows[index] = [*(value.hex() for value in row[:3]), row[3]]
-        document["producer_sequence"] = index
-        admitted = client.publish_event(document)
-        assert admitted["status"] == "APPENDED"
-        held.append((event, document, admitted))
-    # Only this synthetic fixture is converted; never delete a person's sequence file.
-    metadata.unlink()
-    original = json.dumps(rows, separators=(",", ":")).encode()
-    legacy.write_bytes(original)
-    for event, document, admitted in held:
-        result = deliver(project, binding, event)
-        assert result["status"] == "DELIVERED"
-        assert result["source_sequence"] == document["producer_sequence"]
-        assert result["observation_id"] == admitted["observation_id"]
-        with WorkspaceLock(project / ".codex" / LOCK_NAME):
-            assert observation_request(project, binding, event) == document
-    next_event = coordination_event(binding, kind="plan", message_id="new-plan", message=b"New.")
-    result = deliver(project, binding, next_event)
-    assert result["status"] == "DELIVERED" and result["source_sequence"] == 1024
-    assert len(_json(live, "/api/activity/external")["items"]) == 3
-    assert legacy.read_bytes() == original
-
-
-@pytest.mark.parametrize("rows", ("not-json", "[[]]", "[[" + ",".join(['"a"'] * 4) + "]]"))
-def test_invalid_legacy_metadata_never_allocates_a_replacement_sequence(tmp_path, rows):
-    (tmp_path / ".codex").mkdir()
-    legacy = tmp_path / ".codex" / LEGACY_SEQUENCE_NAME
-    legacy.write_bytes(rows.encode())
-    for _ in range(2):
-        with (
-            WorkspaceLock(tmp_path / ".codex" / LOCK_NAME),
-            pytest.raises(NativeSequenceError, match="metadata_invalid"),
-        ):
-            reserve_sequence(tmp_path, scope="a" * 64, event_id="b" * 64, fingerprint="c" * 64)
-        assert legacy.read_bytes() == rows.encode()
 
 
 def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypatch, capsys):
@@ -630,7 +194,6 @@ def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypa
         "alphalattice_cro_medium",
     }
     config = tomllib.loads((ROOT / ".codex/config.toml").read_text())
-    binding = NativeResearchBinding("parent", tmp_path, tuple(roles))
     # The specialists run on one model at one reasoning effort. Both are the cards' own settings
     # (a change is made in them alone); a card left on another model or effort than the rest
     # fails here.
@@ -645,17 +208,9 @@ def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypa
         # Every specialist writes: a stage card runs its path and saves the answers it
         # continues from (V384), the two evidence specialists their answer file.
         assert (card["sandbox_mode"], card["approval_policy"]) == ("workspace-write", "never")
-        event = coordination_event(
-            binding,
-            agent_id=f"child/{role}",
-            role=role,
-            kind="answer",
-            message_id=role,
-            message=b"Advisory only.",
-        )
-        assert event["role"] == role and event["source"] == "actor_declared"
     assert len(models) == 1, f"the specialists' cards name different models: {sorted(models)}"
     assert len(efforts) == 1, f"the specialists' cards name different efforts: {sorted(efforts)}"
+    assert "hooks" not in config  # the shipped declaration registers no product hook
     monkeypatch.setattr(entry, "ROOT", tmp_path)
     (tmp_path / ".codex").mkdir()
     hooks = tmp_path / ".codex/hooks.json"
@@ -685,50 +240,77 @@ def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypa
     assert "native_bridge.session_mismatch" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("command", ("configure", "doctor"))
-@pytest.mark.parametrize("nested", (False, True))
-def test_linked_worktree_setup_refuses_before_writing_or_claiming_local_hooks(
-    tmp_path, monkeypatch, capsys, command, nested
-):
-    """Codex 0.156.1 reads linked-worktree hooks from the corresponding main folder."""
-    main = tmp_path / "main"
-    checkout = tmp_path / "linked"
-    checkout.mkdir()
-    directory = main / ".git/worktrees/linked"
-    directory.mkdir(parents=True)
-    (main / ".git/HEAD").write_text("ref: refs/heads/main\n", newline="\n")
-    marker = checkout / ".git"
-    marker.write_text(f"gitdir: {directory}\n", newline="\n")
-    (directory / "gitdir").write_text(str(marker) + "\n", newline="\n")
-    (directory / "commondir").write_text("../..\n", newline="\n")
-    project = checkout / "nested" if nested else checkout
-    (project / ".codex").mkdir(parents=True)
-    (project / ".codex/config.toml").write_bytes((ROOT / ".codex/config.toml").read_bytes())
-    before = {path: path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
-    entry = _entry()
-    monkeypatch.setattr(entry, "INSTALLED", True)
-    monkeypatch.setattr(
-        entry.sys, "argv", ["native", "--project", str(project), command, "--native-proof"]
+def _hook_group(event: str, matcher: str) -> dict[str, object]:
+    command = {"type": "command", "command": f"run-{event} || exit 0", "timeout": 5}
+    return {"matcher": matcher, "hooks": [command]}
+
+
+def test_configure_removes_only_the_products_retired_hook_groups(tmp_path, monkeypatch, capsys):
+    """FLOW-1: an earlier configure's product hooks called a command that no longer exists and
+    kept the host's trust prompts; configuring again removes exactly those groups, keeping every
+    other hook and setting as written."""
+    claude = tmp_path / "claude-project"
+    (claude / ".claude").mkdir(parents=True)
+    settings = {
+        "permissions": {"allow": ["Read"]},
+        "hooks": {
+            "SubagentStart": [
+                _hook_group("SubagentStart", PRODUCT_HOOK_MATCHER),
+                _hook_group("SubagentStart", "^mine$"),
+            ],
+            "SubagentStop": [_hook_group("SubagentStop", PRODUCT_HOOK_MATCHER)],
+            "Stop": [_hook_group("Stop", PRODUCT_HOOK_MATCHER)],
+        },
+    }
+    (claude / ".claude/settings.json").write_text(json.dumps(settings), encoding="utf-8")
+    assert strip_product_hooks(claude, "claude-code") == 2
+    kept = json.loads((claude / ".claude/settings.json").read_text(encoding="utf-8"))
+    assert kept == {
+        "permissions": {"allow": ["Read"]},
+        "hooks": {
+            "SubagentStart": [_hook_group("SubagentStart", "^mine$")],
+            "Stop": [_hook_group("Stop", PRODUCT_HOOK_MATCHER)],
+        },
+    }
+    assert strip_product_hooks(claude, "claude-code") == 0
+
+    codex = tmp_path / "codex-project"
+    (codex / ".codex").mkdir(parents=True)
+    product = (
+        '[[hooks.{event}]]\nmatcher = "^alphalattice_.*$"\n[[hooks.{event}.hooks]]\n'
+        'type = "command"\ncommand = "python -m native_setup hook || exit 0"\ntimeout = 5\n'
     )
-    assert entry.main() == 2
-    result = json.loads(capsys.readouterr().out)
-    assert result["status"] == "REFUSED"
-    assert result["failure_code"] == "native_bridge.configuration_path_invalid"
-    assert result["hook_declaration_root"] == str(main / "nested" if nested else main)
-    assert result["hook_declarations_effective"] is False
-    assert result["host_trust"] == "NOT_CHECKED"
-    assert result["foreground_attachment"] == "NOT_PROVED"
-    assert result["trust_changed"] is False
-    assert "independent ordinary project" in result["detail"] and "/hooks" in result["detail"]
-    assert "native_research.py configure --host codex --native-proof" in result["detail"]
-    assert result["next_action"] == "USE_LOCAL_DECLARATIONS_AND_METADATA_IN_THE_EXACT_PROJECT"
-    assert "next_commands" not in result
-    assert {path: path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()} == before
-    assert not (main / ".codex").exists()
+    text = (
+        '[agents.alphalattice_cro]\nconfig_file = "agents/alphalattice_cro.toml"\n\n'
+        + product.format(event="SubagentStart")
+        + '\n[[hooks.SubagentStart]]\nmatcher = "^mine$"\n[[hooks.SubagentStart.hooks]]\n'
+        'type = "command"\ncommand = "mine"\n\n'
+        + product.format(event="SubagentStop")
+        + "\n[features]\nflag = true\n"
+    )
+    (codex / ".codex/config.toml").write_text(text, encoding="utf-8")
+    entry = _entry()
+    python = codex / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    python.parent.mkdir(parents=True)
+    python.touch()
+    (codex / ".codex/agents").mkdir()
+    shutil.copyfile(
+        ROOT / ".codex/agents/alphalattice_cro.toml", codex / ".codex/agents/alphalattice_cro.toml"
+    )
+    monkeypatch.setattr(entry.sys, "argv", ["native", "--project", str(codex), "configure"])
+    assert entry.main() == 0
+    answer = json.loads(capsys.readouterr().out)
+    assert answer["retired_hook_groups_removed"] == 2 and answer["trust_changed"] is False
+    result = tomllib.loads((codex / ".codex/config.toml").read_text(encoding="utf-8"))
+    assert result["agents"] == {"alphalattice_cro": {"config_file": "agents/alphalattice_cro.toml"}}
+    assert result["features"] == {"flag": True}
+    assert result["hooks"] == {
+        "SubagentStart": [{"matcher": "^mine$", "hooks": [{"type": "command", "command": "mine"}]}]
+    }
 
 
 @pytest.mark.parametrize("git_checkout", (False, True))
-def test_ordinary_project_setup_still_validates_local_declarations_without_trust(
+def test_ordinary_project_setup_validates_local_declarations_without_trust(
     tmp_path, monkeypatch, capsys, git_checkout
 ):
     project = tmp_path / "project"
@@ -746,99 +328,22 @@ def test_ordinary_project_setup_still_validates_local_declarations_without_trust
         ("configure", "LOCAL_DECLARATIONS_VALIDATED", 0),
         ("doctor", "REFUSED", 2),
     ):
-        monkeypatch.setattr(
-            entry.sys, "argv", ["native", "--project", str(project), command, "--native-proof"]
-        )
+        monkeypatch.setattr(entry.sys, "argv", ["native", "--project", str(project), command])
         before = {path: path.read_bytes() for path in project.rglob("*") if path.is_file()}
         assert entry.main() == code
         result = json.loads(capsys.readouterr().out)
         assert result["status"] == status
         if command == "doctor":
-            assert result["failure_code"] == "native_bridge.readiness_incomplete"
-            assert result["host_trust"] == "NOT_CHECKED"
-            assert result["foreground_attachment"] == "NOT_PROVED"
-            assert result["hook_declarations_present"] is True
+            assert result["failure_code"] == "native_bridge.not_bound"
             assert {"alphalattice_evidence_analyst", "alphalattice_cro"} <= set(result["roles"])
             assert result["session_bound"] is False
-            assert result["attachment_preflight"]["failure_code"] == "native_bridge.not_bound"
-            assert result["attachment_preflight"]["foreground_attachment"] == "NOT_REQUESTED"
             assert result["attachment_preflight"]["missing"] == ["native_session_binding"]
-            proof = result["native_proof"]
-            assert proof["status"] == "REFUSED"
-            assert proof["failure_code"] == "native_bridge.readiness_incomplete"
-            assert proof["host_trust"] == "NOT_CHECKED"
-            assert proof["foreground_attachment"] == "NOT_PROVED"
-            assert proof["observation_started_at"] is None
-            assert {
-                "actual_runtime_definitions_and_trust",
-                "active_native_session_attachment",
-                "native_session_binding",
-                "prospective_observation_checkpoint",
-                "native_history",
-                "complete_fresh_native_chain",
-            } <= set(proof["missing"])
-            assert proof["evidence"] == []
-            for role in proof["roles"].values():
-                assert role["status"] == "NOT_PROVED" and role["chains"] == []
-                assert {
-                    "fresh_same_definition_start",
-                    "exact_assignment",
-                    "credited_accepted_answer",
-                } <= set(role["missing"])
-            assert result["research_nonblocking"] is True and result["trust_changed"] is False
+            assert result["research_nonblocking"] is True
+            assert "native_proof" not in result and "host_trust" not in result
             assert {
                 path: path.read_bytes() for path in project.rglob("*") if path.is_file()
             } == before
     assert not (project / ".codex" / BINDING_NAME).exists()
-
-
-def test_a_lead_names_only_the_kind_and_a_message_is_named_by_its_content(
-    tmp_path, monkeypatch, capsys
-):
-    """requirement (V420, an outside review at 3fa785fd): a delegation cost the lead its own id,
-    its role and a message id beside the relation, call after call. The lead's id and role come
-    from its binding and a message's id from its content: an assignment is its kind and
-    recipient, its close its kind and the id the assignment answered, and the same message
-    sent again is the same message while a changed text is a new one."""
-
-    entry = _entry()
-    binding = _bind(tmp_path, tmp_path)
-    assigned = coordination_event(
-        binding, kind="assignment", message=b"Challenge the folds.", recipient_id="child"
-    )
-    assert (assigned["agent_id"], assigned["role"]) == ("parent", "research_lead")
-    again = coordination_event(
-        binding, kind="assignment", message=b"Challenge the folds.", recipient_id="child"
-    )
-    assert again == assigned
-    changed = coordination_event(
-        binding, kind="assignment", message=b"Challenge the costs.", recipient_id="child"
-    )
-    assert changed["message_id"] != assigned["message_id"]
-    closed = coordination_event(
-        binding, kind="pm_response", message=b"Held.", reply_to=str(assigned["message_id"])
-    )
-    assert closed["reply_to"] == assigned["message_id"] and closed["role"] == "research_lead"
-    # A specialist names itself and its role; a sender with no role is not the lead.
-    with pytest.raises(NativeBridgeError, match="message_kind_or_role_invalid"):
-        coordination_event(binding, agent_id="child", kind="answer", message=b"Held.")
-    # Through the command, the answer names the id a reply sends back.
-    # This is labelled fixture provenance, never credit for a live native Session.
-    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
-    monkeypatch.setenv("CODEX_THREAD_ID", "parent")
-    monkeypatch.setattr(entry, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        entry, "deliver", lambda _root, _binding, _event, **_kwargs: {"status": "DELIVERED"}
-    )
-    monkeypatch.setattr(
-        entry.sys, "argv", ["native", "message", "--kind", "assignment", "--to", "child"]
-    )
-    monkeypatch.setattr(entry.sys, "stdin", io.TextIOWrapper(io.BytesIO(b"Challenge the folds.")))
-    assert entry.main() == 0
-    assert json.loads(capsys.readouterr().out) == {
-        "status": "DELIVERED",
-        "message_id": assigned["message_id"],
-    }
 
 
 def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
@@ -867,11 +372,8 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
 
     cards = sorted(path.stem for path in (ROOT / ".claude/agents").glob("alphalattice_*.md"))
     assert {"alphalattice_evidence_analyst_medium", "alphalattice_cro_medium"} <= set(cards)
-    assert (
-        run("configure", "--host", "claude-code", "--native-proof")[1]["status"]
-        == "LOCAL_DECLARATIONS_VALIDATED"
-    )
-    configured_settings = (project / ".claude/settings.json").read_bytes()
+    assert run("configure", "--host", "claude-code")[1]["status"] == "LOCAL_DECLARATIONS_VALIDATED"
+    assert (project / ".claude/settings.json").read_bytes() == settings
     code, bound = run(
         "bind", "--host", "claude-code", "--session-id", "parent", "--workspace", str(workspace)
     )
@@ -880,91 +382,23 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     binding_before_doctor = (project / ".codex" / BINDING_NAME).read_bytes()
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "parent")
-    code, default_report = run("doctor")
-    assert (code, default_report["status"], default_report["native_proof"]["status"]) == (
+    code, report = run("doctor")
+    assert (code, report["status"], report["host"], report["roles"]) == (
         0,
         "READY",
-        "NOT_REQUESTED",
+        "claude-code",
+        cards,
     )
-    code, report = run("doctor", "--native-proof")
-    assert (code, report["host"], report["roles"]) == (2, "claude-code", cards)
-    assert report["status"] == "REFUSED"
-    assert report["failure_code"] == "native_bridge.readiness_incomplete"
-    assert report["foreground_attachment"] == "NOT_PROVED"
-    assert report["attachment_preflight"]["status"] == "READY"
-    assert report["attachment_preflight"]["failure_code"] is None
-    assert report["attachment_preflight"]["foreground_attachment"] == "NOT_REQUESTED"
-    proof = report["native_proof"]
-    assert proof["status"] == "REFUSED"
-    assert proof["failure_code"] == "native_bridge.readiness_incomplete"
-    assert report["hook_declarations_present"] is True
     assert report["session_bound"] is True and report["session_id"] == "parent"
-    assert (
-        proof["observation_started_at"]
-        == NativeResearchBinding.read(project).observation_started_at.isoformat()
-    )
-    assert {
-        "actual_runtime_definitions_and_trust",
-        "active_native_session_attachment",
-        "native_history",
-        "complete_fresh_native_chain",
-    } <= set(proof["missing"])
-    assert "native_session_binding" not in proof["missing"]
-    assert "prospective_observation_checkpoint" not in proof["missing"]
-    assert proof["evidence"] == []
-    for role in proof["roles"].values():
-        assert role["status"] == "NOT_PROVED" and role["chains"] == []
-        assert {
-            "fresh_same_definition_start",
-            "exact_assignment",
-            "credited_accepted_answer",
-        } <= set(role["missing"])
-    assert report["research_nonblocking"] is True and report["trust_changed"] is False
+    assert report["usage_reading"] == "READ"
     assert (project / ".codex" / BINDING_NAME).read_bytes() == binding_before_doctor
-    assert (project / ".claude/settings.json").read_bytes() == configured_settings
     assert not (project / ".codex/config.toml").exists()
     # The Codex host still reads its own file, and refuses without it.
     assert run("configure")[1]["status"] == "REFUSED"
 
 
-def test_hook_bootstrap_failure_cannot_request_subagent_continuation(tmp_path):
-    command = native_proof_hooks(ROOT)["SubagentStop"][0]["hooks"][0]["command"]
-    fake_uv = tmp_path / ("uv.cmd" if os.name == "nt" else "uv")
-    fake_uv.write_text("@exit /b 2\n" if os.name == "nt" else "#!/bin/sh\nexit 2\n")
-    fake_uv.chmod(0o700)
-    result = subprocess.run(
-        command,
-        shell=True,
-        input=b"{}",
-        capture_output=True,
-        env={**os.environ, "PATH": str(tmp_path)},
-        cwd=tmp_path,
-        timeout=5,
-    )
-    assert result.returncode == 0  # Exit2 would ask the host to continue the child.
-
-
-def test_claude_code_host_binds_delivers_and_is_kept_apart_from_codex(tmp_path, monkeypatch):
-    # A binding names its host; a hook from the other host is out of scope, and the producer
-    # id / channel name the host as source information only.
-    seen = []
-
-    class AcceptedClient:
-        def __init__(self, workspace, *, timeout):
-            pass
-
-        def publish_event(self, body):
-            seen.append(body)
-            return {
-                "status": "APPENDED",
-                "observation_id": "fixture-observation",
-                "source_id": body["producer_id"] + ":" + body["producer_session"],
-                "source_sequence": body["producer_sequence"],
-                "authority": "AGENT_PROPOSAL",
-                "summary_truncated": False,
-            }
-
-    monkeypatch.setattr(client_module, "LocalResearchClient", AcceptedClient)
+def test_claude_code_host_binding_is_kept_apart_from_codex(tmp_path):
+    """A binding names its host; producer id and channel name the host as source information."""
     workspace = tmp_path / "workspace"
     project = tmp_path / "project"
     (project / ".codex").mkdir(parents=True)
@@ -983,176 +417,43 @@ def test_claude_code_host_binds_delivers_and_is_kept_apart_from_codex(tmp_path, 
         NativeResearchBinding.from_document({k: v for k, v in document.items() if k != "host"}).host
         == "codex"
     )
-    claude_payload = {
-        "hook_event_name": "SubagentStart",
-        "session_id": "parent",
-        "prompt_id": "prompt-1",
-        "agent_id": "child",
-        "agent_type": "alphalattice_cro",
-        "cwd": str(project),
-        "permission_mode": "default",
-        "transcript_path": "private.jsonl",
-    }
-    assert hook_reply(project, json.dumps(claude_payload).encode()) == {}
-    assert seen[-1]["producer_id"] == "claude-code-native"
-    assert seen[-1]["subject"]["input_channel"] == "CLAUDE_CODE_HOOK"
-    assert seen[-1]["subject"]["native_host"] == "claude-code"
-    assert seen[-1]["subject"]["native_turn_id"] == "prompt-1"
-    assert "private.jsonl" not in json.dumps(seen)
-    codex_payload = {**claude_payload, "turn_id": "turn"}
-    del codex_payload["prompt_id"]
-    reply = hook_reply(project, json.dumps(codex_payload).encode())
-    assert set(reply) == {"systemMessage"} and "event_scope_invalid" in reply["systemMessage"]
-    assert len(seen) == 1
-    message = coordination_event(
-        binding,
-        agent_id="child",
-        role="alphalattice_cro",
-        kind="answer",
-        message_id="answer-1",
-        message=b"One assessment, not a route.",
+    filed = observation_request(
+        project, binding, {"source": "native_usage", "usage": _usage("claude-code")}
     )
-    assert deliver(project, binding, message)["status"] == "DELIVERED"
-    assert seen[-1]["producer_id"] == "claude-code-native"
-    assert seen[-1]["subject"]["native_host"] == "claude-code"
-    assert seen[-1]["subject"]["input_channel"] == "ACTOR_DECLARED"
-
-
-def test_claude_hook_contract_examples_replay_through_host_and_credit_exact_assignment(
-    live, monkeypatch
-):
-    """CONTRACT (V677): Claude Start/Stop examples reach the real observation owner and
-    credit only the bundle assigned to that child. These are the existing synthetic Claude
-    contract examples above, extended with Stop; they are not recorded live Claude payloads.
-    Live Claude authentication and capture remain separate evidence (V697).
-    """
-    from alphalattice.interface.local_application.native_bridge import judgment_agent
-    from alphalattice.protocols.actor_execution.answers import AgentRun
-
-    project = live.workspace.parent
-    (project / ".claude/agents").mkdir(parents=True)
-    for relative in ("settings.json", "agents/alphalattice_cro.md"):
-        (project / ".claude" / relative).write_bytes((ROOT / ".claude" / relative).read_bytes())
-    declare_project(project, "claude-code")
-    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
-    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "parent")
-    client = LocalResearchClient(live.workspace)
-    assert client.bind_native_session(project, usage="off")["status"] == "BOUND"
-    binding = NativeResearchBinding.read(project)
-    assert binding is not None and binding.host == "claude-code"
-
-    start = {
-        "hook_event_name": "SubagentStart",
-        "session_id": "parent",
-        "prompt_id": "prompt-1",
-        "agent_id": "child",
-        "agent_type": "alphalattice_cro",
-        "model": "sonnet",
-        "cwd": str(project),
-        "permission_mode": "default",
-        "transcript_path": "PRIVATE-CONTRACT-TRANSCRIPT.jsonl",
-    }
-    stop = {
-        **start,
-        "hook_event_name": "SubagentStop",
-        "stop_hook_active": False,
-        "agent_transcript_path": "PRIVATE-CONTRACT-CHILD.jsonl",
-        "last_assistant_message": "PRIVATE-CONTRACT-ANSWER",
-    }
-    raw_start, raw_stop = (json.dumps(payload).encode() for payload in (start, stop))
-    assert hook_reply(project, raw_start) == {}
-    assigned = coordination_event(
-        binding,
-        kind="assignment",
-        message=b"Review this contract example's bundle.",
-        recipient_id="child",
-        reference="a" * 64,
-    )
-    receipt = deliver(project, binding, assigned, host_owned=True)
-    assert receipt["status"] == "DELIVERED"
-    assert hook_reply(project, raw_stop) == {}
-
-    rows = _json(live, "/api/activity/external")["items"]
-    ordered = sorted(rows, key=lambda row: row["ordinal"])
-    assert [row["payload"]["event_kind"] for row in ordered] == [
-        "NATIVE_SUBAGENT_START_HOOK",
-        "NATIVE_COORDINATION_MESSAGE",
-        "NATIVE_SUBAGENT_STOP_HOOK",
-    ]
-    assert all(row["authority"] == "AGENT_PROPOSAL" for row in rows)
-    hooks = [row["payload"] for row in rows if "HOOK" in row["payload"]["event_kind"]]
-    for payload in hooks:
-        subject = payload["subject"]
-        assert len(subject) <= 16  # The existing owner contract remains the admission bound.
-        assert subject["native_host"] == "claude-code"
-        assert subject["input_channel"] == "CLAUDE_CODE_HOOK"
-        assert subject["native_turn_id"] == "prompt-1"
-        assert subject["terminal_state"] == "NOT_ESTABLISHED"
-    (stopped,) = [
-        payload for payload in hooks if payload["event_kind"] == "NATIVE_SUBAGENT_STOP_HOOK"
-    ]
-    assert stopped["subject"]["stop_hook_active"] == "false"
-    assert "PRIVATE-CONTRACT" not in json.dumps(rows)
-
-    def credited(reference):
-        return AgentRun.model_validate(
-            judgment_agent(
-                rows,
-                host="claude-code",
-                session_id="parent",
-                bundle_role="CRO",
-                bundle_reference=reference,
-            )
-        )
-
-    author = credited("a" * 64)
-    assert (author.agent_id, author.role, author.model, author.basis) == (
-        "child",
-        "alphalattice_cro",
-        "sonnet",
-        "HOOK",
-    )
-    assert credited("b" * 64) == AgentRun(
-        host="claude-code", session_id="parent", basis="NOT_OBSERVED"
-    )
-    assert hook_reply(project, raw_start) == hook_reply(project, raw_stop) == {}
-    assert deliver(project, binding, assigned, host_owned=True) == receipt
-    assert _json(live, "/api/activity/external")["items"] == rows
+    assert filed["producer_id"] == "claude-code-native"
+    assert filed["subject"]["native_host"] == "claude-code"
+    assert filed["subject"]["input_channel"] == "CLAUDE_CODE_SESSION_FILE"
+    with pytest.raises(NativeBridgeError, match="event_scope_invalid"):
+        observation_request(project, binding, {"source": "native_usage", "usage": _usage("codex")})
 
 
 def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_path):
-    """requirement (V574, an outside review at 5f7e7375): an assignment naming a prepared
-    bundle by its directory was refused once the directory passed 200 characters, though a
-    bundle's directory may be 1,024: the bridge's bounds had drifted from the contracts it
-    carries. Each bound it applies is pinned here against that contract, as the contract's own
-    validator admits it: a bound tighter than its contract refuses what the contract admits, a
-    looser one passes what the Host then refuses under another word. Every length bound in the
-    bridge is a named constant, and every named one is a row of this table."""
+    """requirement (V574): each bound the bridge applies is pinned here against the contract it
+    carries, as the contract's own validator admits it: a bound tighter than its contract refuses
+    what the contract admits, a looser one passes what the Host then refuses under another word.
+    Every length bound in the bridge is a named constant, and every named one is a row."""
 
     import ast
 
     from pydantic import ValidationError
 
     from alphalattice.interface.local_application import native_bridge as bridge
-    from alphalattice.interface.local_application import native_hook_input as hook_input
     from alphalattice.interface.local_application.activity import (
-        SUMMARY_MAXIMUM_CHARACTERS,
         SUMMARY_RETAINED_CHARACTERS,
         ExternalActivityEventDocument,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord, bundle_slot
 
     def admitted(subject=None, correlation_ids=()):
         try:
             ExternalActivityEventDocument.model_validate(
                 {
-                    "event_kind": "NATIVE_COORDINATION_MESSAGE",
+                    "event_kind": "NATIVE_AGENT_USAGE",
                     "producer_id": "codex-native",
                     "producer_session": "a" * 64,
                     "producer_sequence": 0,
                     "occurred_at": "2026-10-03T00:00:00+00:00",
-                    "summary": "A message.",
+                    "summary": "A reading.",
                     "subject": subject or {},
                     "correlation_ids": list(correlation_ids),
                 }
@@ -1171,59 +472,30 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
     correlation = edge(lambda n: admitted(correlation_ids=["s" * n]))
     subject_keys = edge(lambda n: admitted({f"k{i}": "v" for i in range(n)}))
 
-    # The widest event of each kind the bridge sends, as it sends it.
-    project = tmp_path / "project"
-    (project / ".claude" / "agents").mkdir(parents=True)
-    (project / ".codex").mkdir()
-    (project / ".claude" / "agents" / "alphalattice_cro.md").write_text(
-        "---\nname: alphalattice_cro\nmodel: claude-opus-5-5\neffort: medium\n---\nCard.\n"
-    )
     binding = NativeResearchBinding(
         session_id="parent", workspace=tmp_path, roles=("alphalattice_cro",), host="claude-code"
     )
-    hook = {
-        "hook_event_name": "SubagentStart",
+    accepted = {
+        "source": "product_accepted",
         "session_id": "parent",
-        "prompt_id": "prompt-1",
-        "agent_id": "child",
-        "agent_type": "alphalattice_cro",
-        "cwd": str(project),
-        "model": "claude-opus-5-5",
-    }
-    message = coordination_event(
-        binding,
-        agent_id="child",
-        role="alphalattice_cro",
-        kind="answer",
-        message=b"Answered.",
-        reference="r" * 64,
-        recipient_id="parent",
-        reply_to="m-assignment",
-    )
-    usage = {
-        "session_id": "parent",
-        "agent_id": "child",
-        "role": "alphalattice_cro",
-        "host": "claude-code",
-        "model": "claude-opus-5-5",
-        "efforts": ["medium", "high"],
-        "pin_differs": ["model", "effort"],
-        "last_at": "2026-10-03T00:00:00Z",
-        "responses": 1,
-        "input_tokens": 1,
-        "cache_read_tokens": 1,
-        "cache_write_tokens": 1,
-        "output_tokens": 1,
+        "agent_id": "parent",
+        "role": "research_lead",
+        "bundle_role": "CRO",
+        "message_id": "accepted-" + "a" * 24,
+        "message": "Product accepted deliverable (ACCEPTED): text: Read.",
+        "reference": "r" * 36,
+        "bundle_reference": "b" * 64,
+        "answer_reference": "c" * 64,
+        "submitted_by": "parent",
+        "recipient_id": "parent",
+        "occurred_at": "2026-10-03T00:00:00+00:00",
+        "source_time_kind": "PRODUCT_ACCEPTED_AT",
     }
     widest = max(
-        len(bridge.observation_request(project, binding, event)["subject"])
-        for event in (
-            bridge.lifecycle_event(project, binding, json.dumps(hook).encode()),
-            message,
-            {"source": "native_usage", "usage": usage},
-        )
+        len(bridge.observation_request(tmp_path, binding, event)["subject"])
+        for event in (accepted, {"source": "native_usage", "usage": _usage("claude-code")})
     )
-    # The widest binding `native_research.py bind` writes, as it writes it (`_create_or_match`).
+    # The widest binding `session bind` writes, as it writes it (`_create_or_match`).
     document = {
         "session_id": "s" * bridge.CORRELATION_CHARACTERS,
         "workspace": "D:\\" + "\u00e9" * (bridge.TEXT_CHARACTERS - 3),
@@ -1243,7 +515,7 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
             bridge.SUBJECT_VALUE_CHARACTERS,
             "==",
             subject_value,
-            "each id, role, locator and reference an event carries; a message's at entry",
+            "each id, role and reference an event carries",
         ),
         "CORRELATION_CHARACTERS": (
             bridge.CORRELATION_CHARACTERS,
@@ -1251,47 +523,17 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
             correlation,
             "the bound session's id, every event's correlation id, at binding",
         ),
-        "MESSAGE_CHARACTERS": (
-            bridge.MESSAGE_CHARACTERS,
-            "==",
-            SUMMARY_MAXIMUM_CHARACTERS,
-            "a message, the event's summary",
-        ),
         "MESSAGE_KEPT_CHARACTERS": (
             bridge.MESSAGE_KEPT_CHARACTERS,
             "==",
             SUMMARY_RETAINED_CHARACTERS,
-            "what the Host keeps of a message; a longer one cites a reference",
-        ),
-        "MAX_MESSAGE_BYTES": (
-            bridge.MAX_MESSAGE_BYTES,
-            ">=",
-            4 * SUMMARY_MAXIMUM_CHARACTERS,
-            "the message read: the longest summary in UTF-8, four bytes a character at most",
+            "what the Host keeps of an accepted deliverable's preview",
         ),
         "PIN_CHARACTERS": (
             bridge.PIN_CHARACTERS,
             "<=",
             subject_value,
-            "a card's model or effort pin, carried in a start hook's subject",
-        ),
-        "OBSERVATION_ID_CHARACTERS": (
-            bridge.OBSERVATION_ID_CHARACTERS,
-            ">=",
-            len(canonical_hash({"observation": 1})),
-            "an acknowledgment's observation id: the Host's are hashes",
-        ),
-        "FIELD_CHARACTERS": (
-            hook_input.FIELD_CHARACTERS,
-            ">=",
-            subject_value,
-            "a hook's field, read whole; a carried one meets the subject bound at the event",
-        ),
-        "MAX_HOOK_INPUT_BYTES": (
-            hook_input.MAX_HOOK_INPUT_BYTES,
-            ">=",
-            hook_input.FIELD_CHARACTERS * 4 * 8,
-            "a hook's whole input: its eight read fields at their widest, beside what it drops",
+            "a card's model or effort pin, compared with a reading",
         ),
         "BINDING_BYTES": (
             bridge.BINDING_BYTES,
@@ -1347,79 +589,36 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
     for name, (bound, relation, contract, _what) in table.items():
         assert relations[relation](bound, contract), (name, bound, relation, contract)
     assert widest <= subject_keys, widest
-    # A bundle is named by its key, which any message carries; its directory may not fit one.
+    # A bundle is named by its key, which any event carries; its directory may not fit one.
     assert len(bundle_slot("D:\\" + "d" * 1020)) <= subject_value < longest_directory
     for roles in shipped.values():
         assert roles and all(bridge._ROLE_NAME.match(role) for role in roles), roles
 
     # Every length bound is named, and every named one is a row.
-    for module in (bridge, hook_input):
-        tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
-        named = {
-            target.id
-            for node in tree.body
-            if isinstance(node, ast.Assign)
-            for target in node.targets
-            if isinstance(target, ast.Name) and type(getattr(module, target.id)) is int
-        }
-        assert named <= set(table), named - set(table)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Compare):
-                continue
-            operands = [node.left, *node.comparators]
-            if any(
-                isinstance(item, ast.Call) and getattr(item.func, "id", "") == "len"
-                for item in operands
-            ):
-                literals = [
-                    item.value
-                    for item in operands
-                    if isinstance(item, ast.Constant) and item.value not in (0, 1)
-                ]
-                assert not literals, (module.__name__, node.lineno, literals)
-
-    # At its edges: a message's ids and references are refused by name where they enter.
-    fields = {
-        "agent_id": "child",
-        "message_id": "m-1",
-        "reference": "r" * 64,
-        "recipient_id": "parent",
-        "reply_to": "m-0",
+    tree = ast.parse(Path(bridge.__file__).read_text(encoding="utf-8"))
+    named = {
+        target.id
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name) and type(getattr(bridge, target.id)) is int
     }
-    for name in fields:
-        at_bound = {**fields, name: "x" * subject_value}
-        sent = coordination_event(
-            binding, role="alphalattice_cro", kind="answer", message=b"Read.", **at_bound
-        )
-        assert sent[name] == "x" * subject_value
-        past = {**fields, name: "x" * (subject_value + 1)}
-        with pytest.raises(NativeBridgeError, match=f"message_field_invalid:{name}$"):
-            coordination_event(
-                binding, role="alphalattice_cro", kind="answer", message=b"Read.", **past
-            )
-    # The longest message of the widest characters is read whole; one character more is not,
-    # by the character bound, the bytes being within the read's.
-    widest_text = "\U0001f600" * bridge.MESSAGE_CHARACTERS
-    read = coordination_event(
-        binding,
-        agent_id="child",
-        role="alphalattice_cro",
-        kind="answer",
-        message=widest_text.encode(),
-        reference="r" * 64,
-    )
-    assert read["message"] == widest_text
-    longer = (widest_text[:-1] + "xx").encode()
-    assert len(longer) <= bridge.MAX_MESSAGE_BYTES
-    with pytest.raises(NativeBridgeError, match="message_character_limit"):
-        coordination_event(
-            binding,
-            agent_id="child",
-            role="alphalattice_cro",
-            kind="answer",
-            message=longer,
-            reference="r" * 64,
-        )
+    assert named <= set(table), named - set(table)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        operands = [node.left, *node.comparators]
+        if any(
+            isinstance(item, ast.Call) and getattr(item.func, "id", "") == "len"
+            for item in operands
+        ):
+            literals = [
+                item.value
+                for item in operands
+                if isinstance(item, ast.Constant) and item.value not in (0, 1)
+            ]
+            assert not literals, (node.lineno, literals)
+
     # A binding the Host could never correlate, or naming no card, is refused when bound.
     for refused in (
         {**document, "session_id": "s" * (correlation + 1)},
@@ -1427,11 +626,16 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
     ):
         with pytest.raises(NativeBridgeError, match="binding_invalid"):
             NativeResearchBinding.from_document(refused)
-    # A hook's carried value past the subject bound is refused by the bridge, before the Host.
-    long_child = {**hook, "agent_id": "c" * (subject_value + 1)}
-    event = bridge.lifecycle_event(project, binding, json.dumps(long_child).encode())
+    # A carried value past the subject bound is refused by the bridge, before the Host.
     with pytest.raises(NativeBridgeError, match="activity_subject_invalid"):
-        bridge.observation_request(project, binding, event)
+        bridge.observation_request(
+            tmp_path,
+            binding,
+            {
+                "source": "native_usage",
+                "usage": _usage("claude-code", model="m" * (subject_value + 1)),
+            },
+        )
 
 
 def test_a_binding_is_found_up_from_any_folder_and_serves_its_session_and_specialists(
@@ -1630,131 +834,3 @@ def test_an_unrelated_read_binding_cannot_discover_an_off_parents_child(tmp_path
     assert (
         NativeResearchBinding.read(project, session=("codex", "fixture-off-parent")).usage == "OFF"
     )
-
-
-@pytest.mark.parametrize("kind", ("SubagentStart", "SubagentStop"))
-@pytest.mark.parametrize("relation", ("direct", "ancestor", "wrong_parent", "wrong_role"))
-@pytest.mark.parametrize("usage", ["READ", "OFF"])
-def test_new_hook_path_uses_exact_header_role_only_when_native_reads_are_enabled(
-    tmp_path, monkeypatch, kind, relation, usage
-):
-    from uuid import uuid4
-
-    from pydantic import ValidationError
-
-    from alphalattice.interface.local_application import native_bridge as bridge
-    from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
-
-    role, path = "alphalattice_evidence_analyst", "/root/evidence_analyst"
-    project = tmp_path / "project"
-    cards = project / ".codex/agents"
-    cards.mkdir(parents=True)
-    (cards / f"{role}.toml").write_text(
-        'model = "synthetic-model"\nmodel_reasoning_effort = "xhigh"\n', encoding="utf-8"
-    )
-    lead, child, intermediate = (str(uuid4()) for _ in range(3))
-    binding = bridge.NativeResearchBinding(
-        session_id=lead,
-        workspace=tmp_path / "workspace",
-        roles=(role,),
-        host="codex",
-        usage=usage,
-    )
-    (project / ".codex" / BINDING_NAME).write_text(
-        json.dumps(
-            {
-                "session_id": lead,
-                "workspace": str(binding.workspace),
-                "roles": [role],
-                "host": "codex",
-                "usage": usage,
-            }
-        ),
-        encoding="utf-8",
-    )
-    home = tmp_path / "codex-home"
-    day = home / "sessions/2026/10/04"
-    day.mkdir(parents=True)
-    monkeypatch.setenv("CODEX_HOME", str(home))
-
-    def header(thread, parent, agent_role, agent_path):
-        meta = {
-            "id": thread,
-            "agent_path": agent_path,
-            "source": {
-                "subagent": {
-                    "thread_spawn": {
-                        "parent_thread_id": parent,
-                        "agent_role": agent_role,
-                        "agent_path": agent_path,
-                    }
-                }
-            },
-        }
-        (day / f"rollout-2026-10-04T00-00-00-{thread}.jsonl").write_text(
-            json.dumps({"type": "session_meta", "payload": meta})
-            + "\n"
-            + json.dumps({"type": "turn_context", "payload": {"text": "PRIVATE TURN"}})
-            + "\n",
-            encoding="utf-8",
-        )
-
-    parent = intermediate if relation in {"ancestor", "wrong_parent"} else lead
-    if relation == "ancestor":
-        header(intermediate, lead, "alphalattice_cro", "/root/review_lead")
-    header(child, parent, "alphalattice_cro" if relation == "wrong_role" else role, path)
-
-    def no_usage(*_, **__):
-        pytest.fail("Usage OFF must never read responses or the session body")
-
-    if usage == "OFF":
-        monkeypatch.setattr(bridge, "read_session", no_usage)
-        monkeypatch.setattr(bridge, "codex_thread_spawn", no_usage)
-    delivered = []
-
-    def capture(_project, _binding, event):
-        delivered.append(event)
-        return {"status": "DELIVERED"}
-
-    monkeypatch.setattr(bridge, "deliver", capture)
-    hook = json.dumps(
-        {
-            "hook_event_name": kind,
-            "session_id": lead,
-            "turn_id": "turn",
-            "agent_id": child,
-            "agent_type": role,
-            "model": "synthetic-model",
-            "cwd": str(project),
-            "agent_path": "/root/forged",
-            "last_assistant_message": "PRIVATE TURN",
-        }
-    ).encode()
-    assert bridge.handle_hook(project, hook) == {"status": "DELIVERED"}
-    assert len(delivered) == 1
-    with WorkspaceLock(project / ".codex" / LOCK_NAME):
-        request = bridge.observation_request(project, binding, delivered[0])
-    subject = request["subject"]
-    # Validate the complete delivered document, including the event id added after
-    # lifecycle projection. The alias is only two fields: ancestry and exact role
-    # have already been proved by the producer, and the original 16-field bound stays.
-    ExternalActivityEventDocument.model_validate(request)
-    assert subject["hook_model"] == subject["role_model"] == "synthetic-model"
-    assert subject["role_effort"] == "xhigh"
-    assert len(subject["native_event_id"]) == 64
-    assert len(subject) <= 16
-    assert {"native_agent_path_scope", "native_parent_thread_id", "native_spawn_role"}.isdisjoint(
-        subject
-    )
-    if usage == "READ" and relation in {"direct", "ancestor"}:
-        assert subject["native_agent_path"] == path
-        assert subject["native_agent_path_basis"] == "CODEX_SESSION_META"
-        assert len(subject) == 16
-        with pytest.raises(ValidationError, match="event_subject_too_large"):
-            ExternalActivityEventDocument.model_validate(
-                {**request, "subject": {**subject, "unexpected_field": "extra"}}
-            )
-    else:
-        assert "native_agent_path" not in subject
-    assert subject["native_agent_id"] == child
-    assert "PRIVATE TURN" not in json.dumps(request) and "/root/forged" not in json.dumps(request)

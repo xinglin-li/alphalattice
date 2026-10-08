@@ -1,8 +1,8 @@
 # Native sessions and Team
-Date: 2026-10-06
+Date: 2026-10-07
 
-Default research and Team need no product hook or hook approval. Observation starts no model,
-agent or Task and grants no execution or write rights. Configuration alone proves no live child.
+Research and Team need no product hook and no hook approval. Binding starts no model, agent or
+Task and grants no execution or write rights. Configuration alone proves no live child.
 
 ## Configure and bind
 
@@ -14,9 +14,9 @@ environment (`.venv/bin/python` outside Windows), configure once:
 ```
 
 For Claude use `native_research.py configure --host claude-code`. The host-local
-`alphalattice-project.local.json` in `.codex/` or `.claude/` declares the project's host;
-existing settings and hooks remain. `native_research.py doctor` checks default local readiness
-without reading hook trust or requiring native attachment. Bind the actual Session inside it:
+`alphalattice-project.local.json` in `.codex/` or `.claude/` declares the project's host.
+Existing settings remain; configure removes only the product's own retired lifecycle hook
+groups. `native_research.py doctor` checks local readiness. Bind the actual Session inside it:
 
 ```text
 alphalattice --workspace <explicit-workspace> session bind --usage read
@@ -32,57 +32,39 @@ inside it, then bind again. At the end, the agent runs that command itself; it r
 its own record. Research, original Goal and answer context, and retained history stay.
 A person outside an agent Session may unbind a single unambiguous record; with multiple
 records the command refuses to choose. Do not edit or clear another Session's record.
-Use `--usage off` to disable this Session's native file discovery and usage reads; see
-"Continuous usage and optional native proof" below.
 
 `scripts/materialize_claude_host.py` derives Claude cards and byte-identical Skill files from
-Codex cards and this Skill; `--check` reports drift. Neither default host declaration registers
-product lifecycle hooks. Analyst and CRO cards retain their restricted read/answer tools.
+Codex cards and this Skill; `--check` reports drift. Neither host declaration registers a
+product hook. Analyst and CRO cards retain their restricted read/answer tools.
 
-## Public Conversation and closure
+## Team and the Goal's Conversation
 
-Submit only intentional, safe coordination text on stdin. The lead sends an exact assignment
-after preparing its bundle and while holding the [Goal](goals.md):
+Team and the Goal's Conversation show what the product recorded of a bound Session's work:
+its requests, the bundles it prepared, the answers it submitted and the ones the Host accepted,
+and the usage read below. There is no message command. Record a decision or conclusion worth
+keeping with `goal note` ([goals](goals.md)).
 
-```text
-native_research.py message --kind assignment --to <child-id> --reference <bundle-reference>
-```
+The lead submits every answer, so an accepted answer is filed as the lead's. Which specialist
+wrote it is not observed, and its author reads `NOT_OBSERVED`. A prepared bundle with no
+accepted answer is listed under `open_assignments` in `goal show` and in the completion
+answer. It reminds and never blocks submission. A failed filing is named and never changes
+the research result; submitting the same accepted answer again from its original bound
+Session files it.
 
-Use the returned `message_id` in `--reply-to <message-id>`. Kinds are assignment, question,
-answer, objection, pm_response, plan, decision, dead_end and surprise. Specialists publish
-messages only where their loaded card permits the command; Analyst and CRO remain commandless.
-The lead submits their nominated answers. A task name is a locator, not proof of a loaded role.
+## Usage
 
-The Host files each message under its exact bound Goal and Session. Messages are actor-declared,
-not verified findings or native speech. Product operations supply receipts and sealed answers
-through the same bridge. The accepted answer retains its original submission context on retry;
-without strict native proof its author stays `NOT_OBSERVED`.
+With reading on, the Host reads the bound Session's own session file and the specialists that
+file records. It reads when a goal is taken or submitted, an answer is submitted, a Team or Goal
+page opens, or `alphalattice session usage` asks; never on a timer and never another Session's
+file. A Codex lead's rollout names each specialist thread it started. A Claude Code lead's
+specialists are the `subagents` files under its own session directory, each read only when its
+metadata names that lead. The whitelist keeps models, efforts, token counts and times and
+discards conversation and tools. Team and the Goal show each member's latest cumulative reading
+by model, source and source time; parent and child counts are not combined. A format the reader
+does not know reads as unavailable, never as zero. An unavailable reading is named, and
+research continues.
 
-Only the matching bundle's product acceptance, or the lead's explicit terminal decision, closes
-an exact assignment. An ordinary reply leaves it open. For a lead decision use `native_research.py message --kind
-decision --reply-to <assignment-message-id> --terminal-decision COMPLETED --terminal-reason
-<public-reason>`; WITHDRAWN and DECLINED are also allowed. Closure records its source and reason;
-it proves neither child exit nor native authorship. Open assignments block Goal submission.
-
-Text is bounded to 4,000 characters, with 500 retained; identifiers and references to 200.
-Longer content cites an exact Task UUID, 64-hex artifact hash, History entry or `case:<hash>`.
-Never send raw prompts, conversation, credentials or hidden reasoning. Same content retries
-idempotently. Delivery failure is visible and never changes the research result; retry the
-same observation or accepted submission from its original bound context, not the research.
-Do not delete the bounded local sequence store to retry.
-
-## Continuous usage and optional native proof
-
-With usage enabled, the running workspace Host reads the bound lead and exactly assigned
-children independently of Stop. Codex uses exact thread ancestry; Claude uses exact Session,
-agent and admitted metadata, never filename, timing or role guesses. The whitelist discards
-conversation and tools. Team and Goal show each member's latest cumulative reading by model,
-source and source time; missing counts remain absent. Parent and child counts are not combined.
-Unavailable, incomplete or failed delivery readings are diagnostic; research continues.
-
-Legacy Start/Stop observation is explicitly optional: `native_research.py configure --native-proof` and `native_research.py doctor
---native-proof`, with `--host claude-code` for Claude. The person reviews actual definitions in
-the host's first-use or changed-definition trust UI; never bypass trust or edit its records.
-Strict readers verify exact definitions, Start, assignment and accepted-answer attribution;
-declared role names and Stop callbacks alone prove none of these. Default readiness does not
-claim this proof or request its approval.
+Reading is on by default. `session bind --usage off` keeps one Session's files unread. The
+person's switch on **Settings** turns reading off for every Session bound to the workspace;
+`usage-reading show` reads it, and only a person sets it. Either way nothing is read, and
+earlier readings stay.

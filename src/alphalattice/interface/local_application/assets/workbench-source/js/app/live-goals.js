@@ -47,7 +47,7 @@ const LiveGoals = (() => {
     if (pages.has(app.page) && app.page !== 'goals' && !addressed()) { app.page = 'goals'; replaceHash({page: 'goals'}); }
     if (!selected() && !listing()) return;
     const hash = addressed(), key = hash || 'list';
-    if (S.key !== key) { S.key = key; S.ticket++; S.loading = false; S.verifying = false; S.error = ''; S.verifyError = ''; }
+    if (S.key !== key) { S.key = key; S.ticket++; S.loading = false; S.verifying = false; S.error = ''; S.verifyError = ''; if (hash && typeof LiveActivity !== 'undefined') LiveActivity.readSessionUsage?.(); }
     const activity = activitySnapshot();
     if (hash && S.hash === hash && S.body && activityChanged(activity)) { S.dirty = true; S.error = ''; }
     if (S.loading || S.error || (S.verifying && S.dirty)) return;

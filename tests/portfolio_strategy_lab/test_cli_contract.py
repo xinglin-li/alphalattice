@@ -1654,6 +1654,7 @@ def test_an_operation_only_a_person_completes_is_marked_so(
     assert {op for op, contract in contracts.items() if contract.get("person_only")} == PERSON_ONLY
     values = {
         "network_enabled": "true",
+        "usage_reading_enabled": "false",
         "input_pinned": "true",
         "task_id": str(uuid4()),
         "automation_enabled": "true",
@@ -4057,7 +4058,7 @@ def test_a_workspace_left_out_is_the_bound_sessions_and_any_other_is_refused_in_
     assert not (project / ".codex" / BINDING_NAME).exists()
     code, body = run("--workspace", str(workspace), "session", "bind", session=lead)
     assert (code, body["data"]["status"]) == (0, "BOUND")
-    assert body["data"]["foreground_attachment"] == "NOT_REQUESTED"
+    assert "foreground_attachment" not in body["data"], "FLOW-1: no hook asks to attach"
     assert (body["data"]["project"], body["data"]["session_id"]) == (str(project), lead)
     code, body = run("task", "list", session=other)
     assert (code, body["failure_code"]) == (1, "local_client.workspace_unbound")

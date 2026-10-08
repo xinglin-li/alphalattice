@@ -420,13 +420,21 @@ const LiveActivity = (() => {
    * in-flight request instead of starting a second loop, and its completion schedules exactly
    * one timer once the page is live again. */
   function stop() { S.stopped = true; clearTimeout(S.timer); S.timer = null; }
+  /* FLOW-1: a Team or Goal page asks the Host to read the bound Sessions' usage once as it opens;
+   * nothing reads on a timer, and a failed read shows only in the usage state. */
+  let usageAskedAt = 0;
+  function readSessionUsage() {
+    if (!Data.offers('SESSION_USAGE_READ') || Date.now() - usageAskedAt < 10000) return;
+    usageAskedAt = Date.now();
+    Promise.resolve().then(() => Data.post(Data.route('SESSION_USAGE_READ'), {})).catch(() => {});
+  }
   function resume() { if (!S.stopped) return; S.stopped = false; void refresh(); }
   function bind() {
     document.addEventListener('visibilitychange', () => { if (!document.hidden && !S.stopped) refresh(); });
     window.addEventListener('pagehide', stop);
     window.addEventListener('pageshow', (event) => { if (event.persisted) resume(); });
   }
-  return {section, logLines, starterOf, recordOf, refresh, markSeen, bind, facts, nextRead, absorbPage, open, openSavedResult, cadence, stop, resume, follow, pin, setFollowing, taskSettled, setNotices, noticesState,
+  return {section, logLines, starterOf, recordOf, refresh, markSeen, bind, facts, nextRead, absorbPage, open, openSavedResult, cadence, stop, resume, follow, pin, setFollowing, taskSettled, setNotices, noticesState, readSessionUsage,
     retained: () => [...S.groups.values()],
     nativeUsageState: () => S.observer?.native_usage || null,
     state: () => ({cursor: S.cursor, epoch: S.epoch, groups: S.groups.size, unseen: S.unseen, error: S.error, notice: S.notice, tasks: Object.keys(S.tasks).length, watermark: S.watermark, disposition: S.disposition, stale: S.stale, stopped: S.stopped, fetching: Boolean(S.fetching), timer: S.timer !== null, following: S.following, pendingOpen: S.pendingOpen, opening: Boolean(S.opening), generation: S.followGeneration}),

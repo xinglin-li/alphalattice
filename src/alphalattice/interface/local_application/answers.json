@@ -10073,12 +10073,96 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the event was recorded under, by its id. Only when the sending session holds a goal."
+   }
+  ]
+ },
+ "SESSION_USAGE_READ": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "`READ` when the bound Sessions were read now; `OFF` when reading is off and nothing was read; `NOT_BOUND` when no Session is bound to this workspace; `BUSY` while another read runs; `UNAVAILABLE` when the reader is not running."
    },
    {
-    "name": "packet_hash",
-    "kind": "string|null",
+    "name": "sessions",
+    "kind": "array",
     "required": false,
-    "meaning": "A Team assignment's sealed packet, by its hash; a reply carries its assignment's, none if that is not recorded. Only for such events under a goal."
+    "meaning": "One receipt per bound Session: its host and `DELIVERED`, `PARTIAL`, `UNAVAILABLE`, `SKIPPED` or `RECENT` (read moments ago), with each participant's standing; a failure is named, never a refusal of research."
+   },
+   {
+    "name": "reason",
+    "kind": "string",
+    "required": false,
+    "meaning": "Why the reader is unavailable, as a code; only with `UNAVAILABLE`."
+   },
+   {
+    "name": "attributed_goal_id",
+    "kind": "string",
+    "required": false,
+    "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   }
+  ]
+ },
+ "USAGE_READING": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "The answer's status: `USAGE_READING`."
+   },
+   {
+    "name": "usage_reading",
+    "kind": "string",
+    "required": true,
+    "meaning": "`READ` when the Host may read the bound agent Sessions' own files for usage; `OFF` when it reads none. A switch record the product did not write, or cannot read, reads as `OFF`."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": true,
+    "meaning": "What reading means in this state, in words: which files, when, and what is kept."
+   },
+   {
+    "name": "next_requests",
+    "kind": "object",
+    "required": true,
+    "meaning": "The request that turns reading the other way, as `set`; only a person sends it."
+   }
+  ]
+ },
+ "USAGE_READING_SET": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "The answer's status: `USAGE_READING`, after the setting."
+   },
+   {
+    "name": "usage_reading",
+    "kind": "string",
+    "required": true,
+    "meaning": "`READ` when the Host may read the bound agent Sessions' own files for usage; `OFF` when it reads none. A switch record the product did not write, or cannot read, reads as `OFF`."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": true,
+    "meaning": "What reading means in this state, in words: which files, when, and what is kept."
+   },
+   {
+    "name": "next_requests",
+    "kind": "object",
+    "required": true,
+    "meaning": "The request that turns reading the other way, as `set`; only a person sends it."
+   },
+   {
+    "name": "attributed_goal_id",
+    "kind": "string",
+    "required": false,
+    "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
    }
   ]
  },

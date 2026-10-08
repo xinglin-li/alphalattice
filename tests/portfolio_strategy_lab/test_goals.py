@@ -461,76 +461,74 @@ def _filed(app: GoalApplication, document: Any) -> dict[str, Any]:
     return app.record_event(goal, filed, f"observation-{document.producer_sequence}", session)
 
 
-def test_team_messages_are_filed_under_the_goal_their_session_holds(goal_app):
-    """requirement (GR2, OP13): Team and the goal are one record. A message is filed under the
-    goal its session holds at receipt, and a replay under the goal of its first receipt; an
-    assignment seals the packet its assignee is handed, a reply keeps that packet's hash, and
-    an assignment no reply closes is missing at submission. The goal is the Host's word."""
+def _bundle(app, goal, operation, status, bundle_reference, *, role="ALPHA"):
+    """Record one bundle request the goal's Session made, as the Host's attribute does."""
+    fields = (
+        {"agent_role": role, "bundle_directory": "D:/out/bundle"}
+        if operation == "AGENT_BUNDLE_PREPARE"
+        else {"agent_answer": {"text": "Read."}, "bundle_directory": "D:/out/bundle"}
+    )
+    app.attribute(
+        goal,
+        Request(operation=operation, **fields),
+        {"status": status, "bundle_reference": bundle_reference, "agent_role": role},
+        SESSION,
+    )
+
+
+def test_team_events_and_product_facts_are_filed_under_the_goal_their_session_holds(goal_app):
+    """requirement (GR2, OP13, FLOW-1): Team and the goal are one record. An event is filed
+    under the goal its session holds at receipt, and a replay under the goal of its first
+    receipt; the goal's conversation is what the product recorded of its Sessions' work; a
+    prepared bundle with no accepted answer is a reminder, never a reason to refuse completion.
+    The goal is the Host's word."""
 
     app, opened, _calls, _body, _tasks = goal_app
     _attach(app, opened)
     app.operate(Request(operation="GOAL_TAKE", goal_id=UUID(int=1)), "EXTERNAL_AUTOMATION", SESSION)
     lead = {"native_agent_id": SESSION.session, "role": "research_lead"}
-    assignment = _team_event(
-        1,
-        "Challenge the fold evidence.",
-        message_kind="assignment",
-        message_id="assign-1",
-        recipient_id="child",
-        goal_id=str(uuid4()),
-        **lead,
+    note = _team_event(
+        1, "Costs first.", message_kind="decision", message_id="n-1", goal_id=str(uuid4()), **lead
     )
-    filed, _goal, _session = app.file_event(assignment, None)
+    filed, _goal, _session = app.file_event(note, None)
     assert filed.subject["goal_id"] == str(UUID(int=1))
-    assigned = _filed(app, assignment)
-    assert assigned["goal_id"] == str(UUID(int=1)) and len(assigned["packet_hash"]) == 64
-    _filed(app, _team_event(2, "Costs first.", message_kind="decision", message_id="n-1", **lead))
-    unanswered = app.operate(
-        Request(operation="GOAL_SUBMIT", goal_id=UUID(int=1), goal_submission=_submission()),
-        "EXTERNAL_AUTOMATION",
-    )
-    assert unanswered["status"] == "INCOMPLETE"
-    assert unanswered["missing"] == [
-        {"code": "goal.assignment_unanswered", "message_id": "assign-1", "recipient_id": "child"}
+    assert _filed(app, note) == {"goal_id": str(UUID(int=1))}
+    goal = app.store.head(UUID(int=1))
+    _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", "a" * 64)
+    record = app.record(app.store.head(UUID(int=1)))
+    assert record["open_assignments"] == [
+        {
+            "bundle_reference": "a" * 64,
+            "agent_role": "ALPHA",
+            "task_id": None,
+            "prepared_at": record["open_assignments"][0]["prepared_at"],
+        }
     ]
-    replied = _filed(
-        app,
-        _team_event(
-            3,
-            "The folds hold; costs are thin.",
-            native_agent_id="child",
-            role="alphalattice_cro",
-            message_kind="answer",
-            message_id="answer-1",
-            reply_to="assign-1",
-        ),
-    )
-    assert replied["packet_hash"] == assigned["packet_hash"]
+    _bundle(app, goal, "AGENT_ANSWER_SUBMIT", "CORRECT", "a" * 64)
+    assert len(app.record(app.store.head(UUID(int=1)))["open_assignments"]) == 1
+    _bundle(app, goal, "AGENT_ANSWER_SUBMIT", "ACCEPTED", "a" * 64)
+    assert app.record(app.store.head(UUID(int=1)))["open_assignments"] == []
+    _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", "b" * 64, role="RISK")
     record = app.record(app.store.head(UUID(int=1)))
     kinds = [m["message_kind"] for m in record["conversation"]]
-    assert kinds == ["assignment", "decision", "answer"]
-    assert record["open_assignments"] == [{"message_id": "assign-1", "recipient_id": "child"}]
-    assert record["message_count"] == 3
-    page = app.operate(Request(operation="GOAL_EXPORT", goal_id=UUID(int=1)), "HUMAN")["html"]
-    assert "<h2>Conversation</h2>" in page and "The folds hold; costs are thin." in page
-    assert record["request_count"] == 0 and record["sessions"] == [
-        {"vendor": "claude-code", "session_id": SESSION.session}
+    assert kinds == [
+        "decision",
+        "AGENT_BUNDLE_PREPARE",
+        "AGENT_ANSWER_SUBMIT",
+        "AGENT_ANSWER_SUBMIT",
+        "AGENT_BUNDLE_PREPARE",
     ]
-    _filed(
-        app,
-        _team_event(
-            4,
-            "The accepted response resolves this assignment.",
-            message_kind="decision",
-            message_id="terminal-1",
-            reply_to="assign-1",
-            input_channel="ACTOR_DECLARED",
-            terminal_decision="COMPLETED",
-            terminal_reason="Reviewed the supplied response.",
-            **lead,
-        ),
-    )
-    assert app.record(app.store.head(UUID(int=1)))["open_assignments"] == []
+    operations = [m for m in record["conversation"] if m["input_channel"] == "PRODUCT_OPERATION"]
+    assert {m["agent_session"] for m in operations} == {SESSION.session}
+    assert [m["summary"] for m in operations] == [
+        "AGENT_BUNDLE_READY",
+        "CORRECT",
+        "ACCEPTED",
+        "AGENT_BUNDLE_READY",
+    ]
+    assert record["message_count"] == 5 and record["request_count"] == 4
+    page = app.operate(Request(operation="GOAL_EXPORT", goal_id=UUID(int=1)), "HUMAN")["html"]
+    assert "<h2>Conversation</h2>" in page and "Costs first." in page
     follow_up = app.operate(
         Request(
             operation="GOAL_OPEN",
@@ -540,7 +538,7 @@ def test_team_messages_are_filed_under_the_goal_their_session_holds(goal_app):
         "EXTERNAL_AUTOMATION",
         SESSION,
     )
-    replayed, _goal, _session = app.file_event(assignment, None)
+    replayed, _goal, _session = app.file_event(note, None)
     assert replayed.subject["goal_id"] == str(UUID(int=1))
     _later, held, _session = app.file_event(
         _team_event(5, message_kind="plan", message_id="plan-1", **lead), None
@@ -550,7 +548,9 @@ def test_team_messages_are_filed_under_the_goal_their_session_holds(goal_app):
         Request(operation="GOAL_SUBMIT", goal_id=UUID(int=1), goal_submission=_submission()),
         "EXTERNAL_AUTOMATION",
     )
+    # The open Risk bundle is said beside the sealed goal; it refused nothing.
     assert sealed["status"] == "COMPLETE"
+    assert [row["bundle_reference"] for row in sealed["open_assignments"]] == ["b" * 64]
     with pytest.raises(ValueError, match="closed_open_a_follow_up"):
         app.file_event(
             _team_event(6, message_kind="plan", message_id="plan-2", **lead),
@@ -580,125 +580,6 @@ def _reading(sequence: int, kind: str = "NATIVE_AGENT_USAGE", **subject: str) ->
         summary="A reading.",
         subject={"native_host": "claude-code", "native_session_id": SESSION.session, **subject},
     )
-
-
-@pytest.mark.parametrize("kind", ["answer", "objection", "pm_response"])
-def test_ordinary_replies_and_claimed_product_closure_leave_assignment_open(goal_app, kind):
-    """A public message's label cannot become the owner's accepted-receipt authority."""
-    app, _opened, *_ = goal_app
-    app.operate(Request(operation="GOAL_TAKE", goal_id=UUID(int=1)), "EXTERNAL_AUTOMATION", SESSION)
-    _filed(
-        app,
-        _team_event(
-            1,
-            message_kind="assignment",
-            message_id="exact",
-            recipient_id="child",
-            native_agent_id=SESSION.session,
-            role="research_lead",
-            reference="b" * 64,
-        ),
-    )
-    _filed(
-        app,
-        _team_event(
-            2,
-            message_kind=kind,
-            message_id="reply",
-            reply_to="exact",
-            native_agent_id=SESSION.session if kind == "pm_response" else "child",
-            role="research_lead" if kind == "pm_response" else "alphalattice_risk",
-            input_channel="PRODUCT_ACCEPTED_ANSWER",
-            closure_source="PRODUCT_ACCEPTED_ANSWER",
-            closure_reason="ACCEPTED_ANSWER",
-            assignment_message_id="exact",
-            assignment_packet_hash="c" * 64,
-            assigned_agent_id="child",
-        ),
-    )
-    record = app.record(app.store.head(UUID(int=1)))
-    assert record["open_assignments"] == [{"message_id": "exact", "recipient_id": "child"}]
-    assert record["conversation"][-1]["closure_source"] is None
-
-
-@pytest.mark.parametrize("decision", ["COMPLETED", "WITHDRAWN", "DECLINED"])
-def test_lead_terminal_decision_is_exact_and_keeps_its_original_goal_on_retry(goal_app, decision):
-    app, *_ = goal_app
-    app.operate(Request(operation="GOAL_TAKE", goal_id=UUID(int=1)), "EXTERNAL_AUTOMATION", SESSION)
-    lead = {"native_agent_id": SESSION.session, "role": "research_lead"}
-    assigned = _filed(
-        app,
-        _team_event(1, message_kind="assignment", message_id="exact", recipient_id="child", **lead),
-    )
-    terminal = _team_event(
-        2,
-        message_kind="decision",
-        message_id="terminal",
-        reply_to="exact",
-        input_channel="ACTOR_DECLARED",
-        terminal_decision=decision,
-        terminal_reason="The lead explicitly resolved this dispatch.",
-        **lead,
-    )
-    filed, goal, session = app.file_event(terminal, None)
-    assert filed.subject["closure_source"] == "LEAD_TERMINAL_DECISION"
-    assert filed.subject["closure_reason"] == decision
-    assert filed.subject["assignment_packet_hash"] == assigned["packet_hash"]
-    assert filed.subject["recipient_id"] == "child"
-    app.record_event(goal, filed, "terminal-observation", session)
-    assert app.record(goal)["open_assignments"] == []
-    app.operate(
-        Request(
-            operation="GOAL_OPEN",
-            goal_declaration={**DECLARATION, "title": "Later Goal"},
-            change_reason="Begin separate work",
-        ),
-        "EXTERNAL_AUTOMATION",
-        SESSION,
-    )
-    replay, original, _ = app.file_event(terminal, None)
-    assert replay == filed and original.goal_id == UUID(int=1)
-
-
-@pytest.mark.parametrize("change", ["session", "sender", "role", "reply", "recipient"])
-def test_terminal_decision_does_not_close_another_dispatch_scope(goal_app, change):
-    app, *_ = goal_app
-    app.operate(Request(operation="GOAL_TAKE", goal_id=UUID(int=1)), "EXTERNAL_AUTOMATION", SESSION)
-    _filed(
-        app,
-        _team_event(
-            1,
-            message_kind="assignment",
-            message_id="exact",
-            recipient_id="child",
-            native_agent_id=SESSION.session,
-            role="research_lead",
-        ),
-    )
-    subject = {
-        "message_kind": "decision",
-        "message_id": "terminal",
-        "reply_to": "exact",
-        "native_agent_id": SESSION.session,
-        "role": "research_lead",
-        "input_channel": "ACTOR_DECLARED",
-        "terminal_decision": "WITHDRAWN",
-        "terminal_reason": "Resolve only this exact assignment.",
-    }
-    subject.update(
-        {
-            "session": {"native_session_id": "other-session"},
-            "sender": {"native_agent_id": "child"},
-            "role": {"role": "alphalattice_risk"},
-            "reply": {"reply_to": "other-assignment"},
-            "recipient": {"recipient_id": "other-child"},
-        }[change]
-    )
-    with pytest.raises(ValueError, match=r"goal\.assignment_closure_invalid"):
-        app.file_event(_team_event(2, **subject), None)
-    assert app.record(app.store.head(UUID(int=1)))["open_assignments"] == [
-        {"message_id": "exact", "recipient_id": "child"}
-    ]
 
 
 def test_a_goal_record_gives_its_sessions_models_and_tokens(goal_app):
@@ -853,8 +734,7 @@ def test_legacy_accepted_goal_context_keeps_an_unknown_packet_without_backfill(
 
     context = app.store.accepted_answer_context(key, must_not_decide_again)
     assert context.goal_id == original_goal
-    assert context.assignment_packet_hash is None
-    assert context.assignment_diagnostic == "native_bridge.assignment_not_observed"
+    assert context.assignment_packet_hash is None and context.assignment_diagnostic is None
     assert app.store.event_goal(key, must_not_decide_again) == original_goal
 
 
@@ -1752,19 +1632,13 @@ def test_a_session_takes_a_goal_and_its_requests_are_recorded_under_it(
     assert code == 2 and refused["data"]["failure_code"] == "goal.closed_open_a_follow_up"
 
 
-def test_a_team_message_reaches_its_goal_through_the_host(
+def test_a_declared_event_reaches_its_goal_through_the_host(
     live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (GR2, V283): the Host's event ingress files what the native bridge delivers
-    under the goal its session holds; the receipt names the goal and an assignment's packet, a
-    reply binds that packet, and the Team feed's rows keep the goal."""
+    """requirement (GR2, V283): the Host's event ingress files what a Session declares under
+    the goal that Session holds; the receipt names the goal and the Team feed's row keeps it."""
 
-    from alphalattice.interface.local_application.native_bridge import (
-        BINDING_NAME,
-        NativeResearchBinding,
-        coordination_event,
-        deliver,
-    )
+    from alphalattice.interface.local_application.client import LocalResearchClient
     from tests.portfolio_strategy_lab.local_web_support import _json
 
     declaration = tmp_path / "goal.json"
@@ -1775,60 +1649,25 @@ def test_a_team_message_reaches_its_goal_through_the_host(
     code, opened = _cli(live, "goal", "open", "--file", str(declaration))
     assert code == 0, opened
     goal_id = opened["data"]["goal_id"]
-    project = tmp_path / "project"
-    (project / ".codex").mkdir(parents=True)
-    (project / ".codex" / BINDING_NAME).write_text(
-        json.dumps(
-            {
-                "session_id": SESSION.session,
-                "workspace": str(live.workspace),
-                "roles": ["alphalattice_cro"],
-                "host": "claude-code",
-            }
-        ),
-        encoding="utf-8",
-    )
-    binding = NativeResearchBinding.read(project)
-    assert binding is not None
-    assigned = deliver(
-        project,
-        binding,
-        coordination_event(
-            binding,
-            agent_id=SESSION.session,
+    document = json.loads(
+        _team_event(
+            1,
+            "Costs first.",
+            message_kind="plan",
+            message_id="p-1",
+            native_agent_id=SESSION.session,
             role="research_lead",
-            kind="assignment",
-            message_id="assign-1",
-            message=b"Challenge the fold evidence.",
-            recipient_id="child",
-        ),
+        ).model_dump_json()
     )
-    assert assigned["status"] == "DELIVERED" and assigned["goal_id"] == goal_id
-    answered = deliver(
-        project,
-        binding,
-        coordination_event(
-            binding,
-            agent_id="child",
-            role="alphalattice_cro",
-            kind="answer",
-            message_id="answer-1",
-            message=b"The folds hold; costs are thin.",
-            reply_to="assign-1",
-        ),
-    )
-    assert answered["goal_id"] == goal_id
-    assert answered["packet_hash"] == assigned["packet_hash"]
+    filed = LocalResearchClient(live.workspace).publish_event(document)
+    assert filed["status"] == "APPENDED" and filed["goal_id"] == goal_id
     code, shown = _cli(live, "goal", "show", goal_id)
     record = shown["data"]["record"]
-    assert [(m["message_kind"], m["agent_id"]) for m in record["conversation"]] == [
-        ("assignment", SESSION.session),
-        ("answer", "child"),
-    ]
-    assert record["open_assignments"] == [{"message_id": "assign-1", "recipient_id": "child"}]
-    assert record["request_count"] == 0
+    declared = [m for m in record["conversation"] if m["message_kind"] == "plan"]
+    assert [(m["agent_id"], m["summary"]) for m in declared] == [(SESSION.session, "Costs first.")]
+    assert record["open_assignments"] == []
     rows = _json(live, "/api/activity/external")["items"]
-    assert [row["payload"]["subject"]["goal_id"] for row in rows] == [goal_id, goal_id]
+    assert [row["payload"]["subject"]["goal_id"] for row in rows] == [goal_id]
 
 
 def test_the_workbench_reaches_what_the_ui_pass_reads(live, tmp_path: Path):
@@ -2163,156 +2002,3 @@ def test_goal_list_keeps_readable_rows_and_scopes_only_provable_head_refusals(go
     assert [row["goal_id"] for row in theirs["goals"]] == [str(other_id)]
     assert "refused" not in theirs
     assert theirs["goals"][0]["goal_hash"] == other["goal_hash"]
-
-
-@pytest.mark.parametrize(
-    "parent_sender,recipient,flood,wakes",
-    [
-        (SESSION.session, None, False, True),
-        (SESSION.session, None, True, True),
-        ("peer-a", None, False, False),
-        (SESSION.session, "peer-b", False, False),
-    ],
-)
-def test_a_reply_past_the_shown_conversation_reaches_only_its_addressee(
-    live,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    parent_sender: str,
-    recipient: str | None,
-    flood: bool,
-    wakes: bool,
-) -> None:
-    """CONTRACT: full-ledger replies, explicit recipients and between-poll arrivals.
-
-    The real bridge files the assignment and fifty later messages. The real CLI waiter
-    must hear the sender's reply even when its parent, or the reply itself, left the shown
-    tail; a reply addressed to another agent does not wake the lead.
-    """
-    from concurrent.futures import ThreadPoolExecutor
-    from threading import Event
-
-    from alphalattice.interface.local_application.native_bridge import (
-        BINDING_NAME,
-        NativeResearchBinding,
-        coordination_event,
-        deliver,
-    )
-    from tests.portfolio_strategy_lab.local_web_support import _json
-
-    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
-    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION.session)
-    declaration = tmp_path / "goal.json"
-    declaration.write_text(
-        json.dumps({**DECLARATION, "kind": "REVIEW", "research": None}),
-        encoding="utf-8",
-        newline="\n",
-    )
-    code, opened = _cli(live, "goal", "open", "--file", str(declaration))
-    assert code == 0, opened
-    goal_id = opened["data"]["goal_id"]
-    project = tmp_path / "project"
-    (project / ".codex").mkdir(parents=True)
-    (project / ".codex" / BINDING_NAME).write_text(
-        json.dumps(
-            {
-                "session_id": SESSION.session,
-                "workspace": str(live.workspace),
-                "roles": ["alphalattice_cro"],
-                "host": "claude-code",
-            }
-        ),
-        encoding="utf-8",
-        newline="\n",
-    )
-    binding = NativeResearchBinding.read(project)
-    assert binding is not None
-
-    def send(sender: str, kind: str, ident: str, **options: str) -> dict[str, Any]:
-        answer = deliver(
-            project,
-            binding,
-            coordination_event(
-                binding,
-                agent_id=sender,
-                role="research_lead" if sender == SESSION.session else "alphalattice_cro",
-                kind=kind,
-                message_id=ident,
-                message=ident.encode(),
-                **options,
-            ),
-        )
-        assert answer["status"] == "DELIVERED", answer
-        return answer
-
-    assigned = send(
-        parent_sender,
-        "assignment" if parent_sender == SESSION.session else "question",
-        "old-assignment",
-        recipient_id="child",
-    )
-    for index in range(50):
-        send("peer-a", "question", f"later-{index}", recipient_id="peer-b")
-    code, shown = _cli(live, "goal", "show", goal_id)
-    assert code == 0 and shown["data"]["record"]["message_count"] == 51
-    assert all(m["message_id"] != "old-assignment" for m in shown["data"]["record"]["conversation"])
-
-    first_read, arrivals_done = Event(), Event()
-    narrative = live.operations.goals.narrative
-
-    def read_after_arrivals(goal):
-        # Synchronize at the public owner's read, without replacing its result or the waiter.
-        if first_read.is_set():
-            assert arrivals_done.wait(20)
-        body = narrative(goal)
-        first_read.set()
-        return body
-
-    monkeypatch.setattr(live.operations.goals, "narrative", read_after_arrivals)
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        waiting = pool.submit(_cli, live, "activity", "wait", "--goal", goal_id, "--max-wait", "8")
-        try:
-            assert first_read.wait(20)
-            replied = send(
-                "child",
-                "answer",
-                "deep-reply",
-                reply_to="old-assignment",
-                **({"recipient_id": recipient} if recipient else {}),
-            )
-            if parent_sender == SESSION.session:
-                assert replied["packet_hash"] == assigned["packet_hash"]
-            else:
-                assert replied.get("packet_hash") is None
-            if flood:
-                for index in range(50):
-                    send("peer-a", "question", f"after-reply-{index}", recipient_id="peer-b")
-        finally:
-            arrivals_done.set()
-        code, final = waiting.result(timeout=30)
-    event = final["data"]["wait_event"]
-    assert (
-        (code, event["event"]) == (0, "MESSAGE")
-        if wakes
-        else (code, event["event"]) == (3, "MAX_WAIT_REACHED")
-    ), final
-    if wakes:
-        assert (event["message_id"], event["recipient"]) == ("deep-reply", SESSION.session)
-    record = live.operations.goals.narrative(live.operations.goals.store.head(UUID(goal_id)))[
-        "record"
-    ]
-    reply = next(m for m in record["conversation"] if m["message_id"] == "deep-reply")
-    assert reply["recipient_id"] == (recipient or parent_sender)
-    assert record["open_assignments"] == (
-        [{"message_id": "old-assignment", "recipient_id": "child"}]
-        if parent_sender == SESSION.session
-        else []
-    )
-    assert len(record["conversation"]) == record["message_count"] == (102 if flood else 52)
-    rows = _json(live, "/api/activity/external?limit=200")["items"]
-    kept = next(
-        r["payload"]["subject"]
-        for r in rows
-        if r["payload"]["subject"].get("message_id") == "deep-reply"
-    )
-    assert kept["recipient_id"] == reply["recipient_id"], "Team reads the same resolved recipient"

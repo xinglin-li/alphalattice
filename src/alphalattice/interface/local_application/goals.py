@@ -211,19 +211,23 @@ class GoalSession(GoalContract):
 
 
 class GoalAcceptedAnswerContext(GoalContract):
-    """The original Goal and prospective dispatch frozen at genuine first acceptance."""
+    """The original Goal frozen at genuine first acceptance.
+
+    The assignment fields read contexts written before FLOW-1, when a lead's assignment
+    message could close at acceptance; nothing writes them now.
+    """
 
     goal_id: UUID | None
     assignment_packet_hash: str | None = Field(default=None, pattern=_HASH)
     assignment_diagnostic: (
         Literal["native_bridge.assignment_not_observed", "native_bridge.assignment_ambiguous"]
         | None
-    ) = "native_bridge.assignment_not_observed"
+    ) = None
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def exact_or_missing(self) -> Self:
         """An exact captured packet and a missing-link diagnostic cannot both be asserted."""
-        if (self.assignment_packet_hash is None) == (self.assignment_diagnostic is None):
+        if self.assignment_packet_hash is not None and self.assignment_diagnostic is not None:
             raise ValueError("goal.assignment_closure_invalid")
         return self
 
@@ -233,7 +237,7 @@ class GoalAcceptedAnswerReceipt(GoalAcceptedAnswerContext):
 
     The scientific owner has already filed the answer and its Task. The original Goal is
     retained separately before optional observation; an absent old receipt stays unknown.
-    This link closes an exact assignment without claiming native authorship (OP13, ID7).
+    It files the accepted answer under that Goal without claiming native authorship (OP13, ID7).
     """
 
     session: GoalSession

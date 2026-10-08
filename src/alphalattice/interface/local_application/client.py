@@ -2129,15 +2129,19 @@ def _wakes(message: dict[str, Any], me: str | None, mine: set[str]) -> bool:
     return reply is None or reply in mine
 
 
+def _filed(message: dict[str, Any]) -> bool:
+    """A Conversation row filed as an observation, not a product request's own row."""
+    return message.get("input_channel") != "PRODUCT_OPERATION"
+
+
 def _wait_for_goal(
     client: LocalResearchClient, goal_id: str, max_wait: float | None
 ) -> dict[str, Any]:
     """Wait for the next Task of a goal to end or need a decision, the next message under it
-    for this waiter (an assignment wakes its assignee, a reply its sender), or the goal to close.
+    for this waiter (an accepted answer wakes the lead it is filed for), or the goal to close.
 
-    The waiter is the agent session the command runs in, the bound session being the lead's
-    (`native_research.py message`'s default sender); a message between two other agents never
-    wakes it (V503)."""
+    The waiter is the agent session the command runs in; a message between two other agents
+    never wakes it (V503). A request's own Conversation row wakes no one: its Task does."""
     me = agent_provenance_headers(os.environ).get(AGENT_SESSION_HEADER)
     document = {"operation": "GOAL_NARRATIVE", "goal_id": goal_id}
     read = {"operation": "GOAL_SHOW", "goal_id": goal_id}
@@ -2154,7 +2158,7 @@ def _wait_for_goal(
     # Each Task's state as last seen: a Task that recovered and stopped again is news, as
     # its first stop was (V535: a set of first states slept through the second).
     seen = {t["task_id"]: t["state"] for t in current["record"]["tasks"]}
-    heard = {m["observation_id"] for m in current["record"]["conversation"]}
+    heard = {m["observation_id"] for m in current["record"]["conversation"] if _filed(m)}
     delay = 2.0
     while True:
         if current.get("state") != "OPEN":
@@ -2165,7 +2169,11 @@ def _wait_for_goal(
         conversation = current["record"]["conversation"]
         mine = {str(m.get("message_id")) for m in conversation if me and m.get("agent_id") == me}
         for message in conversation:
-            if message["observation_id"] not in heard and _wakes(message, me, mine):
+            if (
+                _filed(message)
+                and message["observation_id"] not in heard
+                and _wakes(message, me, mine)
+            ):
                 return {
                     **current,
                     "wait_event": wait_event(

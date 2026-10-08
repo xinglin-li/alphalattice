@@ -63,9 +63,7 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
-    JUDGMENT_ROLES,
     NativeResearchBinding,
-    coordination_event,
 )
 from alphalattice.interface.local_application.native_setup import (
     PROJECT_DECLARATION_NAME,
@@ -110,6 +108,17 @@ from alphalattice.protocols.actor_execution.bundles import (
 )
 from tests.portfolio_strategy_lab.local_web_support import _json
 from tests.workspace_task_runner.task_control_support import task_contract
+
+JUDGMENT_ROLES = {
+    "ALPHA": ("alphalattice_alpha",),
+    "ANALYST": ("alphalattice_evidence_analyst",),
+    "CRO": ("alphalattice_cro",),
+    "DATA": ("alphalattice_data",),
+    "FACTOR": ("alphalattice_factor",),
+    "PORTFOLIO": ("alphalattice_portfolio",),
+    "RISK": ("alphalattice_risk",),
+}
+"""Each bundle role's shipped card."""
 
 
 def open_goal(live, title):
@@ -303,54 +312,6 @@ def answer_scene(live, tmp_path, monkeypatch):
     return live, bundle, accepted, record, events, publish_events, submit, answers
 
 
-@pytest.mark.parametrize("path_assignment", [False, True])
-def test_accepted_authored_contribution_has_exact_child_parent_and_one_retry(
-    answer_scene, path_assignment
-):
-    """BEHAVIOUR: acceptance projects authored prose, exact attribution and stable retry."""
-    live, bundle, accepted, record, events, publish, submit, answers = answer_scene
-    if path_assignment:
-        events[0][1].update(
-            native_agent_path="/root/analyst", native_agent_path_basis="CODEX_SESSION_META"
-        )
-        events[1][1]["recipient_id"] = "/root/analyst"
-    publish()
-    result = submit()
-    assert result["status"] == "ACCEPTED" and result["conversation"]["status"] == "DELIVERED"
-    (row,) = answers()
-    subject = row["payload"]["subject"]
-    assert row["authority"] == "AGENT_PROPOSAL"
-    assert accepted.findings[0].summary in row["payload"]["summary"]
-    assert row["payload"]["summary"].startswith("Product accepted deliverable (ACCEPTED):")
-    assert (subject["native_agent_id"], subject["submitted_by"], subject["recipient_id"]) == (
-        "fixture-child",
-        "fixture-parent",
-        "fixture-parent",
-    )
-    assert "reply_to" not in subject, "An unbound Goal cannot seal an assignment reply."
-    assert subject["bundle_reference"] == bundle.record_hash
-    assert subject["answer_reference"] == record.record_hash
-    assert subject["source_time_kind"] == "TASK_ADMISSION"
-    assert (
-        row["occurred_at"]
-        == live.session.task_control_registry.task(
-            UUID(subject["reference"])
-        ).admitted_at.isoformat()
-    )
-    # The next trial's apparent author cannot replace the already filed author's credit.
-    retry = record.model_copy(
-        update={
-            "number": 2,
-            "record_hash": answer_slot(record.bundle_key, 2),
-            "agent_run": record.agent_run.model_copy(update={"agent_id": "different-child"}),
-        }
-    )
-    assert submit(retry=retry)["conversation"]["status"] == "DELIVERED"
-    assert answers() == [row]
-    assert submit(disposition="REUSED_EXACT")["conversation"]["status"] == "DELIVERED"
-    assert answers() == [row]
-
-
 @pytest.fixture
 def product_answer_scene(live, tmp_path):
     """Use the actual generic owners and sealed records without native author claims."""
@@ -413,7 +374,7 @@ def product_answer_scene(live, tmp_path):
 
 @pytest.fixture(params=["codex", "claude-code"])
 def no_hook_answer_scene(product_answer_scene, monkeypatch, request):
-    """Public generic answer/Goal/native-message owners, with no lifecycle observations."""
+    """Public generic answer and Goal owners, with no lifecycle observation or message."""
     scene = product_answer_scene
     scene.host = request.param
     scene.project = scene.live.workspace.parent
@@ -450,84 +411,36 @@ def no_hook_answer_scene(product_answer_scene, monkeypatch, request):
             == "GOAL_TAKEN"
         )
 
-    def assign(*, reference=None, message_id="assigned-risk", child=None):
-        return scene.client.publish_native_event(
-            scene.project,
-            coordination_event(
-                scene.binding,
-                kind="assignment",
-                message_id=message_id,
-                message=b"Read the exact Risk bundle and return the screened contribution.",
-                recipient_id=child or str(UUID(int=71)),
-                reference=reference or scene.bundle.record_hash,
-            ),
-        )
-
-    scene.take, scene.assign = take, assign
+    scene.take = take
     return scene
 
 
-@pytest.mark.parametrize("scope", ["exact", "missing", "wrong_bundle", "wrong_role", "ambiguous"])
-def test_no_hook_accepted_answer_closes_only_the_exact_owner_dispatch(no_hook_answer_scene, scope):
+def _accepted_rows(record):
+    return [
+        row
+        for row in record["conversation"]
+        if row.get("input_channel") == "PRODUCT_ACCEPTED_ANSWER"
+    ]
+
+
+def test_an_accepted_answer_is_filed_as_the_leads_product_fact(no_hook_answer_scene):
+    """FLOW-1: with no hook and no dispatch message, the product's acceptance is filed in the
+    Goal's conversation as the lead's fact, its author unobserved; a retry is the same row."""
     scene = no_hook_answer_scene
     goal = open_goal(scene.live, "Default accepted contribution")
     scene.take(goal)
-    assignment = None
-    reference = "f" * 64 if scope == "wrong_bundle" else None
-    if scope == "wrong_role":
-        other = scene.live.operations.execute(
-            PortfolioResearchRequestDocument(
-                operation="AGENT_BUNDLE_PREPARE",
-                agent_role="ALPHA",
-                task_id=scene.task.task_id,
-                bundle_directory=str(scene.project / "other-role-bundle"),
-            ).to_operation_request(),
-            caller="EXTERNAL_AUTOMATION",
-        )
-        assert other["status"] == "AGENT_BUNDLE_READY"
-        reference = other["bundle_reference"]
-    if scope != "missing":
-        assignment = scene.assign(reference=reference)
-        assert assignment["status"] == "DELIVERED"
-    if scope == "ambiguous":
-        assert (
-            scene.assign(message_id="second-dispatch", child=str(UUID(int=72)))["status"]
-            == "DELIVERED"
-        )
     result, returned = scene.submit(goal_id=goal)
     conversation = result["conversation"]
     assert result["status"] == "ACCEPTED" and conversation["status"] == "DELIVERED"
     assert result["recorded_agent"]["basis"] == "NOT_OBSERVED"
-    assert conversation["native_authorship"]["status"] == "UNAVAILABLE"
+    assert "native_authorship" not in conversation and "assignment_closure" not in conversation
     assert conversation["original_goal_id"] == goal
     assert (conversation["original_session_host"], conversation["original_session_id"]) == (
         scene.host,
         scene.parent,
     )
-    closure = conversation["assignment_closure"]
-    if scope == "exact":
-        assert closure == {
-            "status": "CLOSED",
-            "source": "PRODUCT_ACCEPTED_ANSWER",
-            "reason": "ACCEPTED_ANSWER",
-            "message_id": "assigned-risk",
-            "packet_hash": assignment["packet_hash"],
-            "assigned_agent_id": str(UUID(int=71)),
-        }
-    else:
-        assert closure == {
-            "status": "NOT_CLOSED",
-            "reason": "native_bridge.assignment_ambiguous"
-            if scope == "ambiguous"
-            else "native_bridge.assignment_not_observed",
-        }
     record = scene.client.request({"operation": "GOAL_SHOW", "goal_id": goal})["record"]
-    assert len(record["open_assignments"]) == (
-        0 if scope in {"exact", "missing"} else 2 if scope == "ambiguous" else 1
-    )
-    answer = next(
-        row for row in record["conversation"] if row["input_channel"] == "PRODUCT_ACCEPTED_ANSWER"
-    )
+    (answer,) = _accepted_rows(record)
     assert answer["authorship_basis"] == "NOT_OBSERVED" and answer["agent_id"] == scene.parent
     assert answer["bundle_role"] == "RISK"
     selected = scene.client.read_external(observation_id=conversation["observation_id"])
@@ -540,25 +453,13 @@ def test_no_hook_accepted_answer_closes_only_the_exact_owner_dispatch(no_hook_an
     assert not any(
         "HOOK" in row["payload"]["event_kind"] for row in scene.client.read_external()["items"]
     )
-    if scope == "exact":
-        assert scene.assign(message_id="later-dispatch")["status"] == "DELIVERED"
-        retry, _ = scene.submit(goal_id=goal)
-        assert retry["conversation"] == conversation
-        after = scene.client.request({"operation": "GOAL_SHOW", "goal_id": goal})["record"]
-        assert after["open_assignments"] == [
-            {"message_id": "later-dispatch", "recipient_id": str(UUID(int=71))}
-        ]
-        assert (
-            scene.client.read_external(observation_id=conversation["observation_id"])[
-                "accepted_answer"
-            ]["status"]
-            == "AVAILABLE"
-        )
+    retry, _ = scene.submit(goal_id=goal)
+    assert retry["conversation"] == conversation
+    after = scene.client.request({"operation": "GOAL_SHOW", "goal_id": goal})["record"]
+    assert _accepted_rows(after) == [answer]
 
 
-def test_default_retry_keeps_original_goal_and_does_not_close_a_late_assignment(
-    no_hook_answer_scene,
-):
+def test_default_retry_keeps_original_goal(no_hook_answer_scene):
     scene = no_hook_answer_scene
     original = open_goal(scene.live, "Original accepted receipt")
     scene.take(original)
@@ -579,21 +480,13 @@ def test_default_retry_keeps_original_goal_and_does_not_close_a_late_assignment(
     assert len(NativeResearchBinding.bindings(scene.project)) == 2
     assert original_binding.read_bytes() == original_bytes
     first, returned = scene.submit(goal_id=original)
-    assert first["conversation"]["assignment_closure"]["status"] == "NOT_CLOSED"
-    assert scene.assign()["status"] == "DELIVERED"
     later = open_goal(scene.live, "Later work")
     scene.take(later)
     retried, _ = scene.submit(goal_id=later)
     assert retried["conversation"] == first["conversation"]
     assert retried["recorded_agent"] == first["recorded_agent"]
-    original_record = scene.client.request({"operation": "GOAL_SHOW", "goal_id": original})[
-        "record"
-    ]
-    assert original_record["open_assignments"] == [
-        {"message_id": "assigned-risk", "recipient_id": str(UUID(int=71))}
-    ]
     later_record = scene.client.request({"operation": "GOAL_SHOW", "goal_id": later})["record"]
-    assert later_record["conversation"] == []
+    assert _accepted_rows(later_record) == []
     detail = scene.client.read_external(observation_id=first["conversation"]["observation_id"])[
         "accepted_answer"
     ]
@@ -612,7 +505,6 @@ def test_optional_missing_project_observation_recovers_under_original_accepted_g
     scene = no_hook_answer_scene
     original = open_goal(scene.live, "Original optional observation")
     scene.take(original)
-    assert scene.assign()["status"] == "DELIVERED"
     directory = ".claude" if scene.host == "claude-code" else ".codex"
     (scene.project / directory / PROJECT_DECLARATION_NAME).unlink()
     first, _ = scene.submit(goal_id=original)
@@ -623,80 +515,14 @@ def test_optional_missing_project_observation_recovers_under_original_accepted_g
     repaired, _ = scene.submit(goal_id=later)
     assert repaired["status"] == "ACCEPTED" and repaired["conversation"]["status"] == "DELIVERED"
     assert repaired["conversation"]["original_goal_id"] == original
-    assert repaired["conversation"]["assignment_closure"]["status"] == "CLOSED"
     assert repaired["answer_reference"] == first["answer_reference"]
     assert repaired["recorded_agent"] == first["recorded_agent"]
-    assert (
-        scene.client.request({"operation": "GOAL_SHOW", "goal_id": later})["record"]["conversation"]
-        == []
-    )
-
-
-def test_failed_optional_delivery_does_not_borrow_a_late_assignment_on_recovery(
-    no_hook_answer_scene,
-):
-    scene = no_hook_answer_scene
-    original = open_goal(scene.live, "Acceptance before any exact assignment")
-    scene.take(original)
-    directory = ".claude" if scene.host == "claude-code" else ".codex"
-    (scene.project / directory / PROJECT_DECLARATION_NAME).unlink()
-    first, _ = scene.submit(goal_id=original)
-    assert first["status"] == "ACCEPTED" and first["conversation"]["status"] == "UNAVAILABLE"
-    declare_project(scene.project, scene.host)
-    late = scene.assign()
-    assert late["status"] == "DELIVERED"
-    later = open_goal(scene.live, "Independent recovery context")
-    scene.take(later)
-    recovered, _ = scene.submit(goal_id=later)
-    assert recovered["status"] == "ACCEPTED"
-    assert recovered["answer_reference"] == first["answer_reference"]
-    assert recovered["recorded_agent"] == first["recorded_agent"]
-    assert recovered["conversation"]["status"] == "DELIVERED"
-    assert recovered["conversation"]["original_goal_id"] == original
-    assert recovered["conversation"]["assignment_closure"] == {
-        "status": "NOT_CLOSED",
-        "reason": "native_bridge.assignment_not_observed",
-    }
+    later_record = scene.client.request({"operation": "GOAL_SHOW", "goal_id": later})["record"]
+    assert _accepted_rows(later_record) == []
     original_record = scene.client.request({"operation": "GOAL_SHOW", "goal_id": original})[
         "record"
     ]
-    assert original_record["open_assignments"] == [
-        {"message_id": "assigned-risk", "recipient_id": str(UUID(int=71))}
-    ]
-    assert (
-        scene.client.request({"operation": "GOAL_SHOW", "goal_id": later})["record"]["conversation"]
-        == []
-    )
-    scene.take(original)
-    terminal = scene.client.publish_native_event(
-        scene.project,
-        coordination_event(
-            scene.binding,
-            kind="decision",
-            reply_to="assigned-risk",
-            message=b"Resolve this late dispatch; keep the prior accepted answer.",
-            terminal_decision="COMPLETED",
-            terminal_reason="The lead resolved this late dispatch from the retained result.",
-        ),
-    )
-    assert terminal["status"] == "DELIVERED"
-    resolved = scene.client.request({"operation": "GOAL_SHOW", "goal_id": original})["record"]
-    assert resolved["open_assignments"] == []
-    terminal_entry = next(
-        entry
-        for entry in resolved["conversation"]
-        if entry["observation_id"] == terminal["observation_id"]
-    )
-    assert terminal_entry["closure_source"] == "LEAD_TERMINAL_DECISION"
-    assert terminal_entry["assignment_packet_hash"] == late["packet_hash"]
-    unchanged, _ = scene.submit(goal_id=original)
-    assert unchanged["conversation"] == recovered["conversation"]
-    selected = scene.client.read_external(
-        observation_id=recovered["conversation"]["observation_id"]
-    )["accepted_answer"]
-    assert (
-        selected["status"] == "AVAILABLE" and selected["recorded_agent"]["basis"] == "NOT_OBSERVED"
-    )
+    assert len(_accepted_rows(original_record)) == 1
 
 
 def test_unreadable_first_accepted_context_keeps_science_and_cannot_be_recaptured(
@@ -705,39 +531,32 @@ def test_unreadable_first_accepted_context_keeps_science_and_cannot_be_recapture
     scene = no_hook_answer_scene
     original = open_goal(scene.live, "Acceptance context cannot be read")
     scene.take(original)
-    assert scene.assign()["status"] == "DELIVERED"
-    attribution = scene.live.operations.goals.store.content.root / "attribution" / original
-    prior = sorted(attribution.glob("*.json"))[0]
-    saved = prior.read_bytes()
-    prior.write_bytes(b"{not-json:PRIVATE-CONTEXT-READ-ERROR}")
+    goals = scene.live.operations.goals
+    context = goals.accepted_answer_context
+
+    def unreadable(**_kwargs):
+        raise ValueError("PRIVATE-CONTEXT-READ-ERROR")
+
+    goals.accepted_answer_context = unreadable
     first, _ = scene.submit(goal_id=original)
     assert first["status"] == "ACCEPTED"
     assert first["conversation"]["status"] == "UNAVAILABLE"
     assert first["conversation"]["reason"] == "native_bridge.accepted_context_unavailable"
     assert first["conversation"]["missing"] == ["first_accepted_context"]
     assert "PRIVATE-CONTEXT-READ-ERROR" not in str(first)
-    prior.write_bytes(saved)
+    goals.accepted_answer_context = context
     recovered, _ = scene.submit(goal_id=original)
     assert recovered["status"] == "ACCEPTED"
     assert recovered["answer_reference"] == first["answer_reference"]
     assert recovered["recorded_agent"] == first["recorded_agent"]
     assert recovered["conversation"]["status"] == "DELIVERED"
     assert recovered["conversation"]["original_goal_id"] is None
-    assert recovered["conversation"]["assignment_closure"] == {
-        "status": "NOT_CLOSED",
-        "reason": "native_bridge.assignment_not_observed",
-    }
-    record = scene.client.request({"operation": "GOAL_SHOW", "goal_id": original})["record"]
-    assert record["open_assignments"] == [
-        {"message_id": "assigned-risk", "recipient_id": str(UUID(int=71))}
-    ]
 
 
 def test_public_accepted_label_cannot_borrow_the_real_owner_return(no_hook_answer_scene):
     scene = no_hook_answer_scene
     goal = open_goal(scene.live, "Exact selected owner receipt")
     scene.take(goal)
-    assert scene.assign()["status"] == "DELIVERED"
     accepted, _ = scene.submit(goal_id=goal)
     original_id = accepted["conversation"]["observation_id"]
     original = next(
@@ -750,25 +569,11 @@ def test_public_accepted_label_cannot_borrow_the_real_owner_return(no_hook_answe
         "producer_sequence": 0,
         "occurred_at": original["occurred_at"],
         "summary": original["payload"]["summary"],
-        "subject": original["payload"]["subject"],
+        "subject": {
+            key: value for key, value in original["payload"]["subject"].items() if key != "goal_id"
+        },
         "correlation_ids": original["correlation_ids"],
     }
-    declared["subject"] = {
-        key: value
-        for key, value in declared["subject"].items()
-        if key
-        not in {
-            "goal_id",
-            "reply_to",
-            "closure_source",
-            "closure_reason",
-            "assignment_message_id",
-            "assignment_packet_hash",
-            "assigned_agent_id",
-            "closure_diagnostic",
-        }
-    }
-    declared["subject"]["closure_source"] = "PRODUCT_ACCEPTED_ANSWER"
     posted = scene.client.publish_event(declared)
     assert posted["status"] == "APPENDED"
     selected = scene.client.read_external(observation_id=posted["observation_id"])
@@ -776,11 +581,6 @@ def test_public_accepted_label_cannot_borrow_the_real_owner_return(no_hook_answe
     assert selected["accepted_answer"]["missing"] == ["accepted_operation_return"]
     real = scene.client.read_external(observation_id=original_id)["accepted_answer"]
     assert real["status"] == "AVAILABLE" and real["recorded_agent"]["basis"] == "NOT_OBSERVED"
-    record = scene.client.request({"operation": "GOAL_SHOW", "goal_id": goal})["record"]
-    fake = next(
-        row for row in record["conversation"] if row["observation_id"] == posted["observation_id"]
-    )
-    assert fake["closure_source"] is None and fake["assignment_packet_hash"] is None
 
 
 @pytest.mark.parametrize("session", ["owner-submit-first", None], ids=["not-observed", "no-run"])
@@ -1072,9 +872,9 @@ def test_selected_product_return_reopens_and_verifies_its_sealed_content(
     assert "contribution" not in detail and scene.authored["text"] not in json.dumps(detail)
 
 
-def specialist_scene(answer_scene, tmp_path, monkeypatch, role, *, proved=True):
+def specialist_scene(answer_scene, tmp_path, monkeypatch, role):
     """Prepare and submit through the real shared generic doors on one synthetic Task."""
-    live, original, _accepted, _record, events, publish, _submit, answers = answer_scene
+    live, original, _accepted, _record, events, _publish, _submit, answers = answer_scene
     task_id = UUID(original.submission["task_id"])
     task = live.session.task_control_registry.task(task_id)
     directory = str(tmp_path / f"{role.lower()}-bundle")
@@ -1096,8 +896,6 @@ def specialist_scene(answer_scene, tmp_path, monkeypatch, role, *, proved=True):
     binding_path.write_text(json.dumps(binding), encoding="utf-8")
     events[0][1]["role"] = card
     events[1][1]["reference"] = bundle.record_hash
-    if proved:
-        publish()
     accepted_at = datetime(2026, 10, 5, 3, 45, tzinfo=UTC)
     monkeypatch.setattr(live.review, "clock", lambda: accepted_at)
     authored = {
@@ -1126,13 +924,13 @@ def specialist_scene(answer_scene, tmp_path, monkeypatch, role, *, proved=True):
 
 
 @pytest.mark.parametrize("role", ["ALPHA", "DATA", "FACTOR", "PORTFOLIO", "RISK"])
-@pytest.mark.parametrize("proved", [False, True])
 def test_generic_specialist_doors_seal_exact_references_without_scientific_admission(
-    answer_scene, tmp_path, monkeypatch, role, proved
+    answer_scene, tmp_path, monkeypatch, role
 ):
-    """BEHAVIOUR: all five roles keep actual text, source Task and exact HOOK-only credit."""
+    """BEHAVIOUR: all five roles keep actual text and source Task; the conversation row is the
+    lead's product fact, its author unobserved (FLOW-1)."""
     live, task, prepared, bundle, authored, accepted_at, submit, answers = specialist_scene(
-        answer_scene, tmp_path, monkeypatch, role, proved=proved
+        answer_scene, tmp_path, monkeypatch, role
     )
     authored["text"] = (
         f"Distinctive {role} interpretation: the listed Task has no numerical report. " * 20
@@ -1158,72 +956,45 @@ def test_generic_specialist_doors_seal_exact_references_without_scientific_admis
     assert record.read_files == tuple(authored["read"])
     assert record.accepted_at == accepted_at
     assert live.session.task_control_registry.tasks() == (task,)
-    if proved:
-        assert result["conversation"]["status"] == "DELIVERED"
-        (row,) = answers()
-        subject = row["payload"]["subject"]
-        assert len(row["payload"]["summary"]) <= 500
-        assert row["payload"]["summary"] != authored["text"]
-        assert subject["native_agent_id"] == "fixture-child"
-        assert subject["role"] == JUDGMENT_ROLES[role][0]
-        assert subject["submitted_by"] == "fixture-parent"
-        assert subject["reference"] == str(task.task_id)
-        assert subject["answer_reference"] == record.record_hash
-        assert subject["bundle_reference"] == bundle.record_hash
-        assert subject["source_time_kind"] == "PRODUCT_ACCEPTED_AT"
-        assert row["occurred_at"] == accepted_at.isoformat()
-        lookups = []
-        read_observation = ObservationLedger.read
+    assert result["recorded_agent"]["basis"] == "NOT_OBSERVED"
+    assert result["conversation"]["status"] == "DELIVERED"
+    assert result["conversation"]["task_id"] == str(task.task_id)
+    assert result["conversation"]["bundle_reference"] == bundle.record_hash
+    assert result["conversation"]["session_id"] == "fixture-parent"
+    (row,) = answers()
+    subject = row["payload"]["subject"]
+    assert len(row["payload"]["summary"]) <= 500
+    assert row["payload"]["summary"] != authored["text"]
+    assert (subject["native_agent_id"], subject["role"]) == ("fixture-parent", "research_lead")
+    assert subject["authorship_basis"] == "NOT_OBSERVED" and subject["bundle_role"] == role
+    assert subject["submitted_by"] == "fixture-parent"
+    assert subject["reference"] == str(task.task_id)
+    assert subject["answer_reference"] == record.record_hash
+    assert subject["bundle_reference"] == bundle.record_hash
+    assert subject["source_time_kind"] == "PRODUCT_ACCEPTED_AT"
+    assert row["occurred_at"] == accepted_at.isoformat()
 
-        def exact_read(ledger, observation_id):
-            lookups.append(observation_id)
-            return read_observation(ledger, observation_id)
+    def refuse_page_scan(*_args, **_kwargs):
+        pytest.fail("A selected answer must not scan external observation pages.")
 
-        def refuse_page_scan(*_args, **_kwargs):
-            pytest.fail("A selected answer must not scan external observation pages.")
-
-        with monkeypatch.context() as selected_read:
-            selected_read.setattr(ObservationLedger, "read", exact_read)
-            selected_read.setattr(ObservationLedger, "observations_of_kind", refuse_page_scan)
-            selected = _json(live, f"/api/activity/external?observation_id={row['observation_id']}")
-        assert lookups == [row["observation_id"]]
-        assert selected["read_cost"]["observations"] == 1
-        assert selected["observation_id"] == row["observation_id"]
-        assert "items" not in selected
-        detail = selected["accepted_answer"]
-        assert detail["status"] == "AVAILABLE"
-        assert detail["observation_id"] == row["observation_id"]
-        assert detail["native_session_id"] == "fixture-parent"
-        assert detail["native_agent_id"] == "fixture-child"
-        assert detail["submitted_by"] == "fixture-parent"
-        assert detail["task_id"] == str(task.task_id)
-        assert detail["answer_reference"] == record.record_hash
-        assert detail["answer_digest"] == record.answer_digest
-        assert detail["bundle_reference"] == bundle.record_hash
-        assert detail["contribution"] == {
-            "text": authored["text"],
-            "references": authored["references"],
-        }
-        artifact_reads = live.review.artifacts.read_count
-        page = _json(live, "/api/activity/external")
-        assert "accepted_answer" not in page
-        assert live.review.artifacts.read_count == artifact_reads
-        assert page["epoch"] == selected["epoch"]
-        assert answers() == [row]
-    else:
-        assert result["recorded_agent"]["basis"] == "NOT_OBSERVED"
-        assert result["conversation"]["status"] == "DELIVERED"
-        assert (
-            result["conversation"]["native_authorship"]["reason"]
-            == "native_bridge.accepted_author_not_observed"
-        )
-        assert result["conversation"]["assignment_closure"]["status"] == "NOT_CLOSED"
-        assert result["conversation"]["task_id"] == str(task.task_id)
-        assert result["conversation"]["bundle_reference"] == bundle.record_hash
-        assert result["conversation"]["session_id"] == "fixture-parent"
-        (row,) = answers()
-        assert row["payload"]["subject"]["authorship_basis"] == "NOT_OBSERVED"
-        assert row["payload"]["subject"]["native_agent_id"] == "fixture-parent"
+    with monkeypatch.context() as selected_read:
+        selected_read.setattr(ObservationLedger, "observations_of_kind", refuse_page_scan)
+        selected = _json(live, f"/api/activity/external?observation_id={row['observation_id']}")
+    assert selected["observation_id"] == row["observation_id"]
+    assert "items" not in selected
+    detail = selected["accepted_answer"]
+    assert detail["status"] == "AVAILABLE"
+    assert detail["observation_id"] == row["observation_id"]
+    assert detail["recorded_agent"]["basis"] == "NOT_OBSERVED"
+    assert detail["task_id"] == str(task.task_id)
+    assert detail["contribution"] == {
+        "text": authored["text"],
+        "references": authored["references"],
+    }
+    page = _json(live, "/api/activity/external")
+    assert "accepted_answer" not in page
+    assert page["epoch"] == selected["epoch"]
+    assert answers() == [row]
 
 
 @pytest.mark.parametrize(
@@ -1347,7 +1118,9 @@ def test_selected_answer_keeps_both_legal_empty_reference_forms(
 def test_selected_typed_answer_reads_the_whole_accepted_task_contribution(
     answer_scene, monkeypatch, role
 ):
-    """The typed readers reopen admitted input; this seam executes no scientific work."""
+    """The typed readers reopen admitted input; this seam executes no scientific work. A row
+    filed now is the lead's fact and reads through its operation return, which this direct
+    seam has none of; a stored pre-FLOW-1 row with its HOOK credit still reads whole."""
     live, bundle, analyst, record, events, publish, _submit, answers = answer_scene
     prepared_id = UUID(bundle.submission["task_id"])
     prepared = live.session.task_control_registry.task(prepared_id)
@@ -1520,7 +1293,6 @@ def test_selected_typed_answer_reads_the_whole_accepted_task_contribution(
     delivery = live.review.accepted_answer_delivery(
         record, accepted.model_dump(mode="json"), task_id=task.task_id, newly_filed=True
     )
-    history = live.operations.observer.read_external(ExternalActivityReadQuery())["items"]
     token = REQUEST_PROVENANCE.set(RequestProvenance(vendor="codex", session="fixture-parent"))
     try:
         body = {"disposition": "ADMITTED", "answer": {"accepted_delivery": delivery}}
@@ -1529,18 +1301,38 @@ def test_selected_typed_answer_reads_the_whole_accepted_task_contribution(
         assert receipt is not None
         assert receipt.task_id == task.task_id and receipt.answer_reference == record.record_hash
         assert (
-            live.operations.record_agent_answer(
-                bundle,
-                body,
-                history,
-                accepted_receipt=receipt,
-            )["status"]
+            live.operations.record_agent_answer(bundle, body, accepted_receipt=receipt)["status"]
             == "DELIVERED"
         )
     finally:
         REQUEST_PROVENANCE.reset(token)
     (row,) = answers()
     assert len(row["payload"]["summary"]) <= 500 and text not in row["payload"]["summary"]
+    assert row["payload"]["subject"]["authorship_basis"] == "NOT_OBSERVED"
+    current = _json(live, f"/api/activity/external?observation_id={row['observation_id']}")
+    assert current["accepted_answer"]["status"] == "UNAVAILABLE"
+    assert current["accepted_answer"]["missing"] == ["accepted_operation_return"]
+    run = record.agent_run
+    legacy = live.operations.declare_event(
+        live.operations.observer,
+        {
+            "event_kind": row["payload"]["event_kind"],
+            "producer_id": "pre-flow-1-native",
+            "producer_session": row["payload"]["producer_session"],
+            "producer_sequence": 1,
+            "occurred_at": row["occurred_at"],
+            "summary": row["payload"]["summary"],
+            "subject": {
+                **{k: v for k, v in row["payload"]["subject"].items() if k != "goal_id"},
+                "native_agent_id": run.agent_id,
+                "role": run.role,
+                "authorship_basis": "HOOK",
+            },
+            "correlation_ids": row["correlation_ids"],
+        },
+    )
+    assert legacy["status"] == "APPENDED"
+    row = next(item for item in answers() if item["observation_id"] == legacy["observation_id"])
     selected = _json(live, f"/api/activity/external?observation_id={row['observation_id']}")
     assert selected["accepted_answer"]["status"] == "AVAILABLE"
     assert selected["accepted_answer"]["contribution"] == accepted.model_dump(mode="json")
@@ -1548,7 +1340,7 @@ def test_selected_typed_answer_reads_the_whole_accepted_task_contribution(
     assert selected["accepted_answer"]["answer_reference"] == record.record_hash
     assert selected["accepted_answer"]["answer_digest"] == record.answer_digest
     assert selected["accepted_answer"]["bundle_reference"] == bundle.record_hash
-    assert answers() == [row]
+    assert len(answers()) == 2
 
 
 def test_generic_retry_repairs_original_acceptance_after_source_task_changes(
@@ -1625,63 +1417,25 @@ def test_generic_prepare_requires_exact_assigned_task(answer_scene, tmp_path):
     assert result["failure_code"] == "agent_bundle.specialist_task_required"
 
 
-@pytest.mark.parametrize(
-    "case", ["unknown", "role_card", "wrong_bundle", "wrong_child", "ambiguous"]
-)
-def test_unproved_answer_is_accepted_without_a_child_conversation_credit(answer_scene, case):
-    """BEHAVIOUR: absent, mismatched or conflicting authorship never guesses a child."""
-    _live, bundle, _accepted, record, events, publish, submit, answers = answer_scene
-    if case in {"unknown", "role_card"}:
-        run = (
-            AgentRun(host="codex", session_id="fixture-parent", basis="NOT_OBSERVED")
-            if case == "unknown"
-            else record.agent_run.model_copy(update={"basis": "ROLE_CARD"})
-        )
-        record = record.model_copy(update={"agent_run": run})
-    elif case == "wrong_bundle":
-        events[1][1]["reference"] = "f" * 64
-    elif case == "wrong_child":
-        events[1][1]["recipient_id"] = "different-child"
-    else:
-        events.append(
-            (
-                "NATIVE_COORDINATION_MESSAGE",
-                {
-                    **events[1][1],
-                    "message_id": "other-assignment",
-                    "recipient_id": "different-child",
-                },
-            )
-        )
-    publish()
-    result = submit(filed=record)
-    assert result["status"] == "ACCEPTED"
-    if case in {"unknown", "role_card"}:
-        assert result["conversation"]["status"] == "DELIVERED"
-        assert (
-            result["conversation"]["native_authorship"]["reason"]
-            == "native_bridge.accepted_author_not_observed"
-        )
-        (row,) = answers()
-        assert row["payload"]["subject"]["authorship_basis"] == "NOT_OBSERVED"
-        assert row["payload"]["subject"]["native_agent_id"] == "fixture-parent"
-        return
-    assert result["conversation"]["status"] == "UNAVAILABLE"
-    assert (
-        result["conversation"]["reason"]
-        == {
-            "unknown": "native_bridge.accepted_author_not_observed",
-            "role_card": "native_bridge.accepted_author_not_observed",
-            "wrong_bundle": "native_bridge.assignment_not_observed",
-            "wrong_child": "native_bridge.start_not_observed",
-            "ambiguous": "native_bridge.assignment_ambiguous",
-        }[case]
+@pytest.mark.parametrize("basis", ["NOT_OBSERVED", "ROLE_CARD", "HOOK"])
+def test_an_answer_of_any_recorded_basis_is_the_leads_fact_without_child_credit(
+    answer_scene, basis
+):
+    """BEHAVIOUR (FLOW-1): the lead submitted it; no recorded basis, a stored HOOK credit
+    among them, names a child in the conversation."""
+    _live, bundle, _accepted, record, _events, _publish, submit, answers = answer_scene
+    run = (
+        AgentRun(host="codex", session_id="fixture-parent", basis="NOT_OBSERVED")
+        if basis == "NOT_OBSERVED"
+        else record.agent_run.model_copy(update={"basis": basis})
     )
-    assert result["conversation"]["session_id"] == "fixture-parent"
+    result = submit(filed=record.model_copy(update={"agent_run": run}))
+    assert result["status"] == "ACCEPTED"
+    assert result["conversation"]["status"] == "DELIVERED"
     assert result["conversation"]["bundle_reference"] == bundle.record_hash
-    assert result["conversation"]["answer_reference"] == record.record_hash
-    assert result["conversation"]["task_id"] == bundle.submission["task_id"]
-    assert answers() == []
+    (row,) = answers()
+    assert row["payload"]["subject"]["authorship_basis"] == "NOT_OBSERVED"
+    assert row["payload"]["subject"]["native_agent_id"] == "fixture-parent"
 
 
 def test_unfiled_and_correction_records_supply_no_accepted_delivery(answer_scene):
@@ -1701,36 +1455,6 @@ def test_unfiled_and_correction_records_supply_no_accepted_delivery(answer_scene
         )
         is None
     )
-
-
-def test_failed_history_read_is_unavailable_and_preserves_filed_acceptance(
-    answer_scene, monkeypatch
-):
-    """BEHAVIOUR: a failed optional ledger read cannot become an empty record or child credit."""
-    live, bundle, _accepted, record, _events, publish, submit, answers = answer_scene
-    publish()
-    before = live.operations.observer.read_external(ExternalActivityReadQuery())["items"]
-    original = live.operations.observer.read_external
-
-    def unavailable(query):
-        raise OSError("SYNTHETIC-PRIVATE-HISTORY-ERROR")
-
-    with monkeypatch.context() as history:
-        history.setattr(live.operations.observer, "read_external", unavailable)
-        result = submit()
-    assert result["status"] == "ACCEPTED"
-    assert result["conversation"]["status"] == "UNAVAILABLE"
-    assert result["conversation"]["reason"] == "native_bridge.history_unavailable"
-    assert result["conversation"]["missing"] == ["native_history"]
-    assert result["conversation"]["session_id"] == "fixture-parent"
-    assert result["conversation"]["bundle_reference"] == bundle.record_hash
-    assert result["conversation"]["task_id"] == bundle.submission["task_id"]
-    assert "SYNTHETIC-PRIVATE-HISTORY-ERROR" not in str(result)
-    assert (
-        live.review.artifacts.load(ANSWER_CATEGORY, record.record_hash, AgentAnswerRecord) == record
-    )
-    assert original(ExternalActivityReadQuery())["items"] == before
-    assert answers() == []
 
 
 @pytest.mark.parametrize("operation", ["EVIDENCE_ANALYSIS_SUBMIT", "CRO_REVIEW_SUBMIT"])
@@ -1879,7 +1603,6 @@ def test_cro_accepted_risk_and_publication_retry_keep_the_same_stored_author(ans
         record, accepted.model_dump(mode="json"), input_hash=task.input.input_hash
     )
     assert delivery["task_id"] == str(task.task_id)
-    history = live.operations.observer.read_external(ExternalActivityReadQuery())["items"]
     body = {"disposition": "ADMITTED", "answer": {"accepted_delivery": delivery}}
     token = REQUEST_PROVENANCE.set(RequestProvenance(vendor="codex", session="fixture-parent"))
     try:
@@ -1889,19 +1612,19 @@ def test_cro_accepted_risk_and_publication_retry_keep_the_same_stored_author(ans
         assert receipt is not None
         assert receipt.task_id == task.task_id and receipt.answer_reference == record.record_hash
         assert (
-            live.operations.record_agent_answer(
-                accepted_bundle, body, history, accepted_receipt=receipt
-            )["status"]
+            live.operations.record_agent_answer(accepted_bundle, body, accepted_receipt=receipt)[
+                "status"
+            ]
             == "DELIVERED"
         )
         (row,) = answers()
         assert accepted.risks[0].why in row["payload"]["summary"]
-        assert row["payload"]["subject"]["role"] == "alphalattice_cro"
+        assert row["payload"]["subject"]["bundle_role"] == "CRO"
         body["disposition"] = "REUSED_EXACT"
         assert (
-            live.operations.record_agent_answer(
-                accepted_bundle, body, history, accepted_receipt=receipt
-            )["status"]
+            live.operations.record_agent_answer(accepted_bundle, body, accepted_receipt=receipt)[
+                "status"
+            ]
             == "DELIVERED"
         )
         assert answers() == [row]

@@ -12,103 +12,25 @@ from alphalattice.interface.local_application.failure_codes import owner_failure
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
     NativeResearchBinding,
-    deliver_lead_usage_owned,
-    hook_reply,
     pin_differs,
+    read_session_usage,
 )
-from alphalattice.interface.local_application.native_observation_sequence import SEQUENCE_NAME
 from alphalattice.interface.local_application.native_setup import declare_project
 from alphalattice.interface.local_application.native_usage import (
+    CHILDREN,
     HOST_CLAUDE_CODE,
     HOST_CODEX,
     ModelUsage,
     NativeUsageReadLimitError,
     admitted_session_file,
+    claude_children,
     claude_thread_spawn,
-    codex_assigned_spawn,
     codex_session_file,
     read_session,
     session_file,
 )
 
 SECRET = "SECRET-TRANSCRIPT-TEXT"
-
-
-@pytest.mark.parametrize(
-    "role",
-    [
-        "alphalattice_data",
-        "alphalattice_factor",
-        "alphalattice_alpha",
-        "alphalattice_risk",
-        "alphalattice_portfolio",
-        "alphalattice_evidence_analyst",
-        "alphalattice_cro",
-    ],
-)
-@pytest.mark.parametrize(
-    "problem", ["exact", "escaped", "parent", "path", "top_path", "id", "duplicate"]
-)
-def test_codex_canonical_assignment_uses_exact_unique_metadata_only(
-    tmp_path, monkeypatch, role, problem
-):
-    native = tmp_path / "synthetic-codex"
-    monkeypatch.setenv("CODEX_HOME", str(native))
-    parent, child = str(uuid4()), str(uuid4())
-    task = "/root/synthetic_exact_child"
-    spawn = {
-        "parent_thread_id": str(uuid4()) if problem == "parent" else parent,
-        "agent_role": role,
-        "agent_path": "/root/another_child" if problem == "path" else task,
-    }
-    metadata = {
-        "id": str(uuid4()) if problem == "id" else child,
-        "source": {"subagent": {"thread_spawn": spawn}},
-        "base_instructions": SECRET,
-    }
-    if problem == "top_path":
-        metadata["agent_path"] = "/root/another_child"
-    first = json.dumps({"type": "session_meta", "payload": metadata})
-    if problem == "escaped":
-        first = (
-            first.replace(parent, "\\u0030" + parent[1:])
-            if parent.startswith("0")
-            else first.replace("/root/", "\\/root\\/")
-        )
-    path = native / "sessions/2026/10/07" / f"rollout-synthetic-{child}.jsonl"
-    path.parent.mkdir(parents=True)
-    # Invalid UTF-8 after the first record must never be read for this association.
-    path.write_bytes(first.encode() + b"\n\xff" + SECRET.encode())
-    if problem == "duplicate":
-        other = str(uuid4())
-        duplicate = {"type": "session_meta", "payload": {**metadata, "id": other}}
-        path.with_name(f"rollout-synthetic-{other}.jsonl").write_text(
-            json.dumps(duplicate) + "\n", encoding="utf-8"
-        )
-    found = codex_assigned_spawn(parent, task)
-    selected = session_file(HOST_CODEX, parent, task)
-    if problem in {"exact", "escaped"}:
-        assert selected == path and found is not None
-        assert (found.parent_thread_id, found.agent_role, found.agent_path) == (parent, role, task)
-        assert SECRET not in repr(found)
-    else:
-        assert selected is None and found is None
-    assert session_file(HOST_CODEX, str(uuid4()), task) is None
-    assert session_file(HOST_CLAUDE_CODE, parent, task) is None
-
-
-def test_codex_canonical_metadata_census_refuses_its_actual_file_bound(tmp_path, monkeypatch):
-    from alphalattice.interface.local_application.native_usage import CODEX_ASSIGNMENT_FILES
-
-    native = tmp_path / "synthetic-codex"
-    monkeypatch.setenv("CODEX_HOME", str(native))
-    directory = native / "sessions/2026/10/07"
-    directory.mkdir(parents=True)
-    for number in range(CODEX_ASSIGNMENT_FILES + 1):
-        (directory / f"rollout-synthetic-{number}.jsonl").write_bytes(b"")
-    with pytest.raises(NativeUsageReadLimitError) as error:
-        session_file(HOST_CODEX, str(uuid4()), "/root/synthetic_exact_child")
-    assert error.value.limit == "child_metadata_files"
 
 
 @pytest.mark.parametrize(
@@ -131,7 +53,7 @@ def test_codex_canonical_metadata_census_refuses_its_actual_file_bound(tmp_path,
 def test_claude_child_metadata_names_one_exact_direct_parent_and_explicit_role(
     tmp_path, monkeypatch, problem
 ):
-    """Only bounded sidecar/header metadata binds the exact assigned child's count source."""
+    """Only bounded sidecar/header metadata binds an exact child of the lead to its counts."""
     native = tmp_path / "synthetic-claude"
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(native))
     lead = _write(native / "projects/fixture-project/lead-session.jsonl", _lead_records())
@@ -182,102 +104,15 @@ def test_claude_child_metadata_names_one_exact_direct_parent_and_explicit_role(
     result = claude_thread_spawn("lead-session", "exact-child")
     if problem == "exact":
         assert result is not None
-        assert (result.parent_thread_id, result.agent_role, result.agent_path) == (
+        assert (result.parent_thread_id, result.agent_role) == (
             "lead-session",
             "alphalattice_risk",
-            None,
         )
         assert SECRET not in repr(result)
     else:
         assert result is None
     assert claude_thread_spawn("lead-session", "/root/alias") is None
     assert claude_thread_spawn("lead-session", "lead-session") is None
-
-
-@pytest.mark.parametrize("ambiguous", [False, True])
-def test_answer_authorship_reads_older_team_pages_and_keeps_conflicting_assignments_unknown(
-    ambiguous,
-):
-    """CONTRACT: author attribution must use the whole retained Team record, not its tail."""
-    from alphalattice.control.product_host.composition.portfolio_research_operations import (
-        PortfolioResearchOperations,
-    )
-    from alphalattice.interface.local_application.cli_contract import (
-        REQUEST_PROVENANCE,
-        RequestProvenance,
-    )
-
-    # The prepared bundle is now cited by its record hash, not its directory.
-    bundle_reference = "a" * 64
-
-    def event(ordinal, kind, **subject):
-        return {
-            "ordinal": ordinal,
-            "payload": {
-                "event_kind": kind,
-                "subject": {
-                    "native_host": "claude-code",
-                    "native_session_id": "lead",
-                    **subject,
-                },
-            },
-        }
-
-    older = [
-        event(
-            1,
-            "NATIVE_SUBAGENT_START_HOOK",
-            native_agent_id="analyst",
-            role="alphalattice_evidence_analyst",
-            hook_model="synthetic-model",
-        ),
-        event(
-            2,
-            "NATIVE_COORDINATION_MESSAGE",
-            native_agent_id="lead",
-            message_kind="assignment",
-            recipient_id="analyst",
-            reference=bundle_reference,
-        ),
-    ]
-    newer = [event(3, "NATIVE_SUBAGENT_STOP_HOOK", native_agent_id="analyst")]
-    if ambiguous:
-        newer.append(
-            event(
-                4,
-                "NATIVE_COORDINATION_MESSAGE",
-                native_agent_id="lead",
-                message_kind="assignment",
-                recipient_id="another-analyst",
-                reference=bundle_reference,
-            )
-        )
-
-    class Pages:
-        def __init__(self):
-            self.cursors = []
-
-        def read_external(self, query):
-            self.cursors.append(query.before)
-            return (
-                {"items": newer, "oldest": 3, "more": True}
-                if query.before is None
-                else {"items": older, "oldest": 1, "more": False}
-            )
-
-    operations = object.__new__(PortfolioResearchOperations)
-    pages = Pages()
-    operations.observer = pages
-    token = REQUEST_PROVENANCE.set(RequestProvenance(vendor="claude-code", session="lead"))
-    try:
-        run = operations._agent_run("ANALYST", bundle_reference)
-    finally:
-        REQUEST_PROVENANCE.reset(token)
-    assert pages.cursors == [None, 3]
-    assert run is not None
-    assert (run.agent_id, run.basis) == (
-        (None, "NOT_OBSERVED") if ambiguous else ("analyst", "HOOK")
-    )
 
 
 def _write(path: Path, records: list[object]) -> Path:
@@ -518,26 +353,18 @@ def receiver(monkeypatch):
             assert event == {"source": "native_usage_read"}
             binding = NativeResearchBinding.read(project)
             assert binding is not None and binding.workspace == self.workspace
-            return deliver_lead_usage_owned(project, binding, publish=self.publish_event)
+            return read_session_usage(project, binding, publish=self.publish_event)
 
         def publish_event(self, body):
             seen.append(body)
-            return {
-                "status": "APPENDED",
-                "observation_id": f"observation-{len(seen)}",
-                "source_id": body["producer_id"] + ":" + body["producer_session"],
-                "source_sequence": body["producer_sequence"],
-                "authority": "AGENT_PROPOSAL",
-                "summary_truncated": False,
-            }
+            return {"status": "APPENDED", "observation_id": f"observation-{len(seen)}"}
 
     monkeypatch.setattr(client_module, "LocalResearchClient", AcceptedClient)
     return seen
 
 
-def test_a_subagent_stop_delivers_what_it_and_the_lead_spent_without_text(
-    tmp_path, monkeypatch, receiver
-):
+def _claude_project(tmp_path, monkeypatch, *, usage=None, roles=("alphalattice_cro",)):
+    """A configured Claude project bound to ``lead-session`` and its synthetic session root."""
     config = tmp_path / "claude"
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
     project = tmp_path / "project"
@@ -546,123 +373,259 @@ def test_a_subagent_stop_delivers_what_it_and_the_lead_spent_without_text(
     binding = {
         "session_id": "lead-session",
         "workspace": str(tmp_path / "workspace"),
-        "roles": ["alphalattice_cro"],
+        "roles": list(roles),
         "host": "claude-code",
+        **({"usage": usage} if usage else {}),
     }
     (project / ".codex" / BINDING_NAME).write_text(json.dumps(binding))
     (project / ".claude/agents").mkdir(parents=True)
     (project / ".claude/agents/alphalattice_cro.md").write_text(
         "---\nname: alphalattice_cro\nmodel: claude-sonnet-5-5\neffort: high\n---\nThe card.\n"
     )
-    lead = _write(config / "projects/p/lead-session.jsonl", _lead_records())
-    # The card pins claude-sonnet-5-5; the host ran an older model.
-    child = [_assistant("msg_c", "claude-sonnet-5", output=3, at="2026-09-29T01:00:08Z")]
-    agent = _write(config / "projects/p/lead-session/subagents/agent-child.jsonl", child)
-    hook = json.dumps(
-        {
-            "hook_event_name": "SubagentStop",
-            "session_id": "lead-session",
-            "prompt_id": "prompt-1",
-            "agent_id": "child",
-            "agent_type": "alphalattice_cro",
-            "model": "sonnet",
-            "cwd": str(project),
-            "stop_hook_active": False,
-            "transcript_path": str(lead),
-            "agent_transcript_path": str(agent),
-            "last_assistant_message": SECRET,
-        }
-    ).encode()
+    return config, project
 
-    assert hook_reply(project, hook) == {}
-    stop, spent, led = receiver
-    assert [stop["event_kind"], spent["event_kind"], led["event_kind"]] == [
-        "NATIVE_SUBAGENT_STOP_HOOK",
-        "NATIVE_AGENT_USAGE",
-        "NATIVE_AGENT_USAGE",
-    ]
-    assert {key: stop["subject"][key] for key in ("hook_model", "role_model", "role_effort")} == {
-        "hook_model": "sonnet",
-        "role_model": "claude-sonnet-5-5",
-        "role_effort": "high",
-    }
-    assert spent["subject"]["native_agent_id"] == "child"
-    assert spent["subject"]["role"] == "alphalattice_cro"
-    assert (spent["subject"]["model"], spent["subject"]["output_tokens"]) == (
-        "claude-sonnet-5",
-        "3",
+
+def _claude_child(config, agent, role, records):
+    """A child the lead keeps under its own Session directory, with its sidecar."""
+    path = config / f"projects/p/lead-session/subagents/agent-{agent}.jsonl"
+    header = {"type": "user", "sessionId": "lead-session", "agentId": agent, "isSidechain": True}
+    _write(path, [header, *records])
+    path.with_suffix(".meta.json").write_text(
+        json.dumps({"agentType": role, "spawnDepth": 1, "description": SECRET})
     )
-    assert spent["subject"]["pin_differs"] == "model"
-    assert "pin_differs" not in led["subject"]  # the lead has no role card
-    assert led["subject"]["native_agent_id"] == "lead-session"
-    assert led["subject"]["role"] == "research_lead"
-    assert led["subject"]["input_channel"] == "CLAUDE_CODE_SESSION_FILE"
+    return path
+
+
+def test_the_host_reads_the_lead_and_the_children_its_own_session_records(tmp_path, monkeypatch):
+    """requirement (FLOW-1, AU): with no hook and no assignment, a reading opens the bound
+    Session's own file and the children its own directory records, each only when its sidecar
+    names this Session and a bound role; a child of another role is named, never read."""
+    config, project = _claude_project(tmp_path, monkeypatch)
+    _write(config / "projects/p/lead-session.jsonl", _lead_records()[:-1])
+    # The card pins claude-sonnet-5-5; the host ran an older model.
+    spent = [_assistant("msg_c", "claude-sonnet-5", output=3, at="2026-09-29T01:00:08Z")]
+    _claude_child(config, "child", "alphalattice_cro", spent)
+    _claude_child(config, "stranger", "general-purpose", spent)
+    binding = NativeResearchBinding.read(project)
+    filed = []
+
+    def publish(document):
+        filed.append(document)
+        return {"status": "APPENDED", "observation_id": f"observation-{len(filed)}"}
+
+    receipt = read_session_usage(project, binding, publish=publish)
+
+    assert receipt["status"] == "PARTIAL"
+    members = {m["agent_id"]: m for m in receipt["participants"]}
+    assert members["lead-session"]["status"] == "DELIVERED"
+    assert members["child"]["status"] == "DELIVERED"
+    assert members["stranger"] == {
+        "agent_id": "stranger",
+        "status": "UNAVAILABLE",
+        "reason": "native_bridge.child_usage_binding_unverified",
+    }
+    led, child = filed
+    assert (led["subject"]["native_agent_id"], led["subject"]["role"]) == (
+        "lead-session",
+        "research_lead",
+    )
     assert (led["subject"]["responses"], led["subject"]["output_tokens"]) == ("2", "47")
-    # Exact source/time fields leave room for the owner's Goal within its 16-key cap.
-    assert all(len(item["subject"]) <= 15 for item in receiver)
-    assert len(spent["subject"]) == 15
-    assert spent["subject"]["input_channel"] == "CLAUDE_CODE_SESSION_FILE"
-    assert spent["subject"]["sample_time_kind"] == "LATEST_USAGE_RECORD_AT"
-    assert spent["subject"]["last_at"] == "2026-09-29T01:00:08Z"
-    assert led["subject"]["last_at"] == "2026-09-29T01:00:09Z"
-    assert all("native_event_id" not in item["subject"] for item in (spent, led))
-    assert all("source_kind" not in item["subject"] for item in (spent, led))
-    sent = json.dumps(receiver).encode() + (project / ".codex" / SEQUENCE_NAME).read_bytes()
-    assert SECRET.encode() not in sent
-    assert str(config).encode() not in sent and b"transcript" not in sent
+    assert "pin_differs" not in led["subject"]  # the lead has no role card
+    assert (child["subject"]["native_agent_id"], child["subject"]["role"]) == (
+        "child",
+        "alphalattice_cro",
+    )
+    assert child["subject"]["pin_differs"] == "model"
+    assert child["subject"]["input_channel"] == "CLAUDE_CODE_SESSION_FILE"
+    assert child["subject"]["last_at"] == "2026-09-29T01:00:08Z"
+    assert all(len(item["subject"]) <= 15 for item in filed)
+    sent = json.dumps(filed)
+    assert SECRET not in sent and str(config) not in sent and "transcript" not in sent
+    # The same counts read again are the same events: their sequence is their content's.
+    again = []
+    read_session_usage(
+        project, binding, publish=lambda d: again.append(d) or {"status": "APPENDED"}
+    )
+    assert again == filed
+    records = [*_lead_records()[:-1], _assistant("msg_4", "claude-opus-5-5", output=2, at="t")]
+    _write(config / "projects/p/lead-session.jsonl", records)
+    later = []
+    read_session_usage(
+        project, binding, publish=lambda d: later.append(d) or {"status": "APPENDED"}
+    )
+    assert later[0]["subject"]["responses"] == "3"
+    assert later[0]["producer_sequence"] != filed[0]["producer_sequence"]
+    assert later[1] == filed[1]
 
-    # The same counts read again are the same events; a new lead response is a new reading.
-    assert hook_reply(project, hook) == {}
-    assert receiver[3:6] == receiver[0:3]
-    records = [*_lead_records(), _assistant("msg_4", "claude-opus-5-5", output=2, at="t")]
-    _write(lead, records)
-    assert hook_reply(project, hook) == {}
-    assert receiver[7] == receiver[1]
-    assert receiver[8]["subject"]["responses"] == "3"
-    assert receiver[8]["producer_sequence"] > receiver[2]["producer_sequence"]
 
+def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatch):
+    """requirement (FLOW-1): a Codex lead's rollout records each child as a
+    ``SubAgentActivity`` item naming its thread (Codex CLI 0.162.0-alpha.2); only the thread id
+    leaves the record, and a child's own first record must name this lead as its parent."""
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    day = tmp_path / "sessions" / "2026" / "10" / "07"
+    day.mkdir(parents=True)
+    lead, child, stray = (str(uuid4()) for _ in range(3))
 
-def test_a_binding_that_turns_usage_off_reads_no_session_file(tmp_path, monkeypatch, receiver):
-    """requirement (RR, privacy): a session bound with `"usage": "OFF"` reads none of the host's
-    session files at a subagent's stop; the stop itself is still observed."""
+    def rollout(thread, *records):
+        name = f"rollout-2026-10-07T00-00-00-{thread}.jsonl"
+        (day / name).write_text("".join(json.dumps(r) + "\n" for r in records), "utf-8")
 
-    config = tmp_path / "claude"
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    def activity(thread, kind):
+        item = {"type": "SubAgentActivity", "id": SECRET, "kind": kind, "agent_thread_id": thread}
+        return {"type": "event_msg", "payload": {"type": "item_completed", "item": item}}
+
+    def usage(ident):
+        counts = {
+            "input_tokens": 10,
+            "cached_input_tokens": 4,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 2,
+        }
+        return {"type": "token_usage_record", "payload": {"response_id": ident, "usage": counts}}
+
+    turn = {"type": "turn_context", "payload": {"model": "gpt-6-luna", "effort": "high"}}
+    rollout(
+        lead,
+        {"type": "session_meta", "payload": {"id": lead, "source": "cli"}},
+        turn,
+        usage("r1"),
+        activity(child, "started"),
+        activity(child, "completed"),
+        activity(stray, "started"),
+        activity("not-a-thread", "started"),
+        {"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "Other"}}},
+    )
+    spawn = {"parent_thread_id": lead, "agent_role": "alphalattice_risk"}
+    rollout(
+        child,
+        {
+            "type": "session_meta",
+            "payload": {"id": child, "source": {"subagent": {"thread_spawn": spawn}}},
+        },
+        turn,
+        usage("c1"),
+    )
+    other = {"parent_thread_id": str(uuid4()), "agent_role": "alphalattice_risk"}
+    rollout(
+        stray,
+        {
+            "type": "session_meta",
+            "payload": {"id": stray, "source": {"subagent": {"thread_spawn": other}}},
+        },
+    )
+
+    reading = read_session(codex_session_file(lead), host=HOST_CODEX)
+    assert reading.children == (child, stray)
+    assert reading.incomplete == 0 and [r.response_id for r in reading.responses] == ["r1"]
+    assert SECRET not in repr(reading)
+
     project = tmp_path / "project"
     (project / ".codex").mkdir(parents=True)
+    declare_project(project, HOST_CODEX)
     binding = {
-        "session_id": "lead-session",
+        "session_id": lead,
         "workspace": str(tmp_path / "workspace"),
-        "roles": ["alphalattice_cro"],
-        "host": "claude-code",
-        "usage": "OFF",
+        "roles": ["alphalattice_risk"],
+        "host": "codex",
     }
     (project / ".codex" / BINDING_NAME).write_text(json.dumps(binding))
-    (project / ".claude/agents").mkdir(parents=True)
-    (project / ".claude/agents/alphalattice_cro.md").write_text(
-        "---\nname: alphalattice_cro\nmodel: claude-sonnet-5-5\neffort: high\n---\nThe card.\n"
+    filed = []
+    receipt = read_session_usage(
+        project,
+        NativeResearchBinding.read(project),
+        publish=lambda d: filed.append(d) or {"status": "APPENDED"},
     )
-    lead = _write(config / "projects/p/lead-session.jsonl", _lead_records())
-    child = [_assistant("msg_c", "claude-sonnet-5", output=3, at="2026-09-29T01:00:08Z")]
-    agent = _write(config / "projects/p/lead-session/subagents/agent-child.jsonl", child)
-    hook = json.dumps(
-        {
-            "hook_event_name": "SubagentStop",
-            "session_id": "lead-session",
-            "prompt_id": "prompt-1",
-            "agent_id": "child",
-            "agent_type": "alphalattice_cro",
-            "model": "sonnet",
-            "cwd": str(project),
-            "stop_hook_active": False,
-            "transcript_path": str(lead),
-            "agent_transcript_path": str(agent),
-            "last_assistant_message": SECRET,
-        }
-    ).encode()
+    members = {m["agent_id"]: m["status"] for m in receipt["participants"]}
+    assert members == {lead: "DELIVERED", child: "DELIVERED", stray: "UNAVAILABLE"}
+    assert [d["subject"]["native_agent_id"] for d in filed] == [lead, child]
+    assert filed[1]["subject"]["role"] == "alphalattice_risk"
 
-    assert hook_reply(project, hook) == {}
-    assert [item["event_kind"] for item in receiver] == ["NATIVE_SUBAGENT_STOP_HOOK"]
+
+def test_claude_children_are_listed_from_the_leads_own_directory_alone(tmp_path, monkeypatch):
+    """requirement (FLOW-1): only ``<session>/subagents/agent-<id>.jsonl`` beside the bound
+    lead's own file names children; another Session's directory is never listed."""
+    config = tmp_path / "claude"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    assert claude_children("lead-session") == ()
+    _write(config / "projects/p/lead-session.jsonl", _lead_records())
+    assert claude_children("lead-session") == ()
+    for name in ("agent-b.jsonl", "agent-a.jsonl", "agent-a.meta.json", "notes.txt"):
+        _write(config / "projects/p/lead-session/subagents" / name, [])
+    _write(config / "projects/p/other-session/subagents/agent-c.jsonl", [])
+    assert claude_children("lead-session") == ("a", "b")
+    for number in range(CHILDREN + 1):
+        _write(config / f"projects/p/lead-session/subagents/agent-many{number}.jsonl", [])
+    with pytest.raises(NativeUsageReadLimitError):
+        claude_children("lead-session")
+
+
+@pytest.mark.parametrize("off", ["binding", "person", "unknown_control", "unreadable_control"])
+def test_reading_off_opens_no_session_file(tmp_path, monkeypatch, off):
+    """requirement (privacy, FLOW-1): a binding with ``"usage": "OFF"``, or the person's
+    workspace switch turned off, reads nothing at all; a switch record this owner did not
+    write, or cannot read, reads as off."""
+    from alphalattice.interface.local_application import native_bridge
+
+    config, project = _claude_project(
+        tmp_path, monkeypatch, usage="OFF" if off == "binding" else None
+    )
+    _write(config / "projects/p/lead-session.jsonl", _lead_records())
+    workspace = tmp_path / "workspace"
+    assert native_bridge.usage_reading(workspace) is True
+    control = workspace / native_bridge.USAGE_CONTROL_PATH
+    if off == "person":
+        answer = native_bridge.set_usage_reading(workspace, enabled=False)
+        assert answer["usage_reading"] == "OFF"
+        assert answer["next_requests"]["set"]["usage_reading_enabled"] is True
+    elif off != "binding":
+        control.parent.mkdir(parents=True)
+        control.write_text(
+            "{" if off == "unreadable_control" else '{"reading": true}', encoding="utf-8"
+        )
+    assert native_bridge.usage_reading(workspace) is (off == "binding")
+
+    def opened(*_args, **_kwargs):
+        raise AssertionError("a session file was read")
+
+    monkeypatch.setattr(native_bridge, "read_session", opened)
+    monkeypatch.setattr(native_bridge, "session_file", opened)
+    monkeypatch.setattr(native_bridge, "claude_children", opened)
+    filed = []
+    receipt = read_session_usage(
+        project, NativeResearchBinding.read(project), publish=lambda d: filed.append(d) or {}
+    )
+    assert receipt == {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}
+    assert filed == []
+
+
+@pytest.mark.parametrize("host", [HOST_CODEX, HOST_CLAUDE_CODE])
+def test_an_unknown_record_shape_reads_as_unavailable_never_as_zero(tmp_path, monkeypatch, host):
+    """requirement (FLOW-1): a host that changed its usage record files nothing: no zero total,
+    no partial count, and no refusal of research."""
+    from alphalattice.interface.local_application import native_bridge
+
+    if host == HOST_CODEX:
+        records = [
+            {"type": "turn_context", "payload": {"model": "gpt-6-luna"}},
+            {"type": "token_usage_record", "payload": {"response_id": "r", "spent": {"n": 9}}},
+        ]
+    else:
+        records = [{"type": "assistant", "message": {"id": "m", "model": "claude-x", "cost": 9}}]
+    path = _write(tmp_path / "lead.jsonl", records)
+    monkeypatch.setattr(native_bridge, "session_file", lambda *_args: path)
+    binding = NativeResearchBinding(
+        session_id="lead-session", workspace=tmp_path, roles=("alphalattice_cro",), host=host
+    )
+    filed = []
+    receipt = read_session_usage(tmp_path, binding, publish=lambda d: filed.append(d) or {})
+    assert receipt["status"] == "UNAVAILABLE"
+    (lead,) = receipt["participants"]
+    assert lead["reason"] in {
+        "native_bridge.lead_usage_incomplete",
+        "native_bridge.lead_usage_not_observed",
+    }
+    assert filed == []
 
 
 @pytest.mark.parametrize(
@@ -695,7 +658,6 @@ def test_a_lone_lead_is_read_by_its_own_command_under_its_binding(tmp_path, monk
     through the bridge, for the bound session only and never where the binding reads nothing."""
 
     from alphalattice.interface.local_application.native_bridge import lead_readings
-    from alphalattice.interface.local_application.native_usage import session_file
 
     config = tmp_path / "claude"
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
@@ -718,19 +680,23 @@ def test_a_lone_lead_is_read_by_its_own_command_under_its_binding(tmp_path, monk
     assert session_file(HOST_CLAUDE_CODE, "../lead-session") is None
     assert lead_readings(project, {"CLAUDE_CODE_SESSION_ID": "another-session"}) == []
     assert receiver == []
-    assert lead_readings(project, {"CLAUDE_CODE_SESSION_ID": "lead-session"}) == [
-        {
-            "status": "UNAVAILABLE",
-            "reason": "native_bridge.lead_usage_incomplete",
-            "incomplete": 1,
-        }
-    ]
+    (receipt,) = lead_readings(project, {"CLAUDE_CODE_SESSION_ID": "lead-session"})
+    assert receipt["status"] == "UNAVAILABLE"
+    assert receipt["participants"][0] == {
+        "agent_id": "lead-session",
+        "role": "research_lead",
+        "status": "UNAVAILABLE",
+        "reason": "native_bridge.lead_usage_incomplete",
+        "incomplete": 1,
+    }
     assert receiver == []
     # The parser fixture's final empty-usage response is incomplete. Removing only that
     # synthetic record gives a complete source with the same two actual response counts.
     _write(lead, _lead_records()[:-1])
     (receipt,) = lead_readings(project, {"CLAUDE_CODE_SESSION_ID": "lead-session"})
-    assert receipt["status"] == "DELIVERED" and receipt["incomplete"] == 0
+    # The child holds no sidecar, so it names this Session nowhere and is not read.
+    assert receipt["status"] == "PARTIAL"
+    assert [m["status"] for m in receipt["participants"]] == ["DELIVERED", "UNAVAILABLE"]
     [reading] = receiver
     assert reading["event_kind"] == "NATIVE_AGENT_USAGE"
     subject = reading["subject"]
@@ -741,140 +707,12 @@ def test_a_lone_lead_is_read_by_its_own_command_under_its_binding(tmp_path, monk
     assert lead_readings(project, {"CLAUDE_CODE_SESSION_ID": "lead-session"}) == []
 
 
-def test_an_answer_is_credited_to_the_specialist_its_bundle_was_assigned_to() -> None:
-    """requirement (AU3, V300, V555, V574, LAWS.md ID7): a request names its session, never its
-    subagent, so an answer's author is the specialist the session's lead assigned the answered
-    bundle to -- an assignment whose reference is the bundle's key, exactly -- checked by that
-    specialist's start hook in the session under the bundle's role, its model the hook's or else
-    its card's pin. Two Analysts of one role, one stopped and one running, are each credited with
-    their own bundle's answer, whatever order the events arrive in; a bundle no assignment
-    settles is credited to no one -- never the running Analyst, never the lead, never by time;
-    the record keeps it beside the answer, never in its identity."""
-
-    import os
-
-    from alphalattice.interface.local_application.native_bridge import judgment_agent
-    from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AgentRun
-    from alphalattice.protocols.actor_execution.bundles import bundle_slot
-
-    session = "lead-session"
-    root = os.path.abspath("analyst-bundles")
-    first, second, third = (os.path.join(root, name) for name in ("u01", "u02", "u03"))
-
-    def item(ordinal, kind, **subject):
-        base = {"native_session_id": session, "native_host": "claude-code"}
-        return {"ordinal": ordinal, "payload": {"event_kind": kind, "subject": {**base, **subject}}}
-
-    def started(ordinal, agent, role="alphalattice_evidence_analyst", **pins):
-        return item(ordinal, "NATIVE_SUBAGENT_START_HOOK", native_agent_id=agent, role=role, **pins)
-
-    def assigned(ordinal, recipient, directory, sender=session, reference=None):
-        return item(
-            ordinal,
-            "NATIVE_COORDINATION_MESSAGE",
-            native_agent_id=sender,
-            role="research_lead",
-            message_kind="assignment",
-            recipient_id=recipient,
-            reference=reference or bundle_slot(directory),
-        )
-
-    events = [
-        item(
-            1,
-            "NATIVE_AGENT_USAGE",
-            native_agent_id=session,
-            role="research_lead",
-            model="claude-opus-5-5",
-            efforts="max",
-            last_at="2026-09-29T01:00:09Z",
-        ),
-        started(2, "analyst-1", role_model="claude-sonnet-5-5", role_effort="medium"),
-        assigned(3, "analyst-1", first),
-        started(4, "analyst-2", hook_model="sonnet"),
-        assigned(5, "analyst-2", second),
-        item(
-            6,
-            "NATIVE_SUBAGENT_STOP_HOOK",
-            native_agent_id="analyst-1",
-            role="alphalattice_evidence_analyst",
-        ),
-    ]
-
-    def credited(directory, found=events, role="ANALYST"):
-        value = judgment_agent(
-            found,
-            host="claude-code",
-            session_id=session,
-            bundle_role=role,
-            bundle_reference=None if directory is None else bundle_slot(directory),
-        )
-        return AgentRun.model_validate(value)
-
-    # The stopped Analyst's answer, sent while the other runs, is its own; the running one's too.
-    one = credited(first)
-    assert (one.agent_id, one.role, one.model, one.efforts, one.basis) == (
-        "analyst-1",
-        "alphalattice_evidence_analyst",
-        "claude-sonnet-5-5",
-        ("medium",),
-        "ROLE_CARD",
-    )
-    two = credited(second)
-    assert (two.agent_id, two.model, two.basis) == ("analyst-2", "sonnet", "HOOK")
-    assert credited(first, list(reversed(events))) == one
-    unknown = AgentRun(host="claude-code", session_id=session, basis="NOT_OBSERVED")
-    # No assignment of the bundle settles no author: never the running Analyst, never the lead.
-    assert credited(third) == unknown and credited(None) == unknown
-    # The match is exact, by the bundle's key: its directory, however spelled, names it not.
-    by_key = [*events, started(7, "analyst-3"), assigned(8, "analyst-3", third)]
-    assert credited(third, by_key).agent_id == "analyst-3"
-    for spelled in (third, third + os.sep):
-        by_directory = [*events, started(7, "analyst-3"), assigned(8, "analyst-3", third, spelled)]
-        assert credited(third, by_directory) == unknown
-    # Assigned to two, to one never started, by another than the lead, or in another session.
-    assert credited(first, [*events, assigned(7, "analyst-2", first)]) == unknown
-    assert credited(third, [*events, assigned(7, "ghost", third)]) == unknown
-    assert (
-        credited(third, [*events, assigned(7, "analyst-2", third, sender="analyst-1")]) == unknown
-    )
-    elsewhere = assigned(7, "analyst-2", third)
-    elsewhere["payload"]["subject"]["native_session_id"] = "another-session"
-    assert credited(third, [*events, elsewhere]) == unknown
-    # A recipient started under another role answers no Analyst's bundle, and a CRO's it does.
-    cro = [
-        *events,
-        started(7, "cro-1", role="alphalattice_cro_medium"),
-        assigned(8, "cro-1", third),
-    ]
-    assert credited(third, cro) == unknown
-    assert credited(third, cro, role="CRO").agent_id == "cro-1"
-    running = one
-    record = {
-        "bundle_key": "a" * 64,
-        "number": 1,
-        "verdict": "DONE",
-        "corrections_used": 0,
-        "problems": [],
-        "accepted_items": [1],
-        "answer_digest": "b" * 64,
-    }
-    from alphalattice.protocols.actor_execution.answers import answer_slot
-
-    slot = answer_slot("a" * 64, 1)
-    kept = AgentAnswerRecord.model_validate(
-        {**record, "agent_run": running.model_dump(mode="json"), "record_hash": slot}
-    )
-    assert kept.agent_run == running and kept.record_hash == slot
-    assert AgentAnswerRecord.model_validate({**record, "record_hash": slot}).agent_run is None
-
-
 def test_a_codex_thread_names_its_spawn_in_its_first_record_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """requirement (V568, AU1): a Codex specialist runs in a thread of its own whose rollout
     opens with its `session_meta`, naming the thread that spawned it. The one transcript reader
-    reads that first record alone and keeps the parent, role and optional canonical path; it gives
+    reads that first record alone and keeps the parent and role; it gives
     nothing for a thread with no rollout, a top-level thread, a first record of another thread
     or one past its bound, and never reads a turn."""
 
@@ -900,216 +738,10 @@ def test_a_codex_thread_names_its_spawn_in_its_first_record_alone(
     rollout(lead, {"type": "session_meta", "payload": {"id": lead, "source": "cli"}})
     found = codex_thread_spawn(child)
     assert found is not None
-    assert asdict(found) == {
-        "parent_thread_id": lead,
-        "agent_role": "alphalattice_cro",
-        "agent_path": None,
-    }
+    assert asdict(found) == {"parent_thread_id": lead, "agent_role": "alphalattice_cro"}
     assert codex_thread_spawn(lead) is None and codex_thread_spawn(other) is None
     # A first record naming another thread is not this thread's.
     rollout(other, {"type": "session_meta", "payload": {**meta, "id": lead}})
     assert codex_thread_spawn(other) is None
     monkeypatch.setattr(native_usage, "FIRST_RECORD_BYTES", 64)
     assert codex_thread_spawn(child) is None
-
-
-@pytest.mark.parametrize(
-    ("spawn_path", "top_path", "expected"),
-    (
-        ("/root/evidence_analyst", "/root/evidence_analyst", "/root/evidence_analyst"),
-        ("/root/evidence_analyst", "absent", "/root/evidence_analyst"),
-        ("/root/evidence_analyst", "/root/another", None),
-        (None, "/root/evidence_analyst", None),
-        ("/root/../evidence_analyst", "absent", None),
-        ("/root/" + "a" * 65, "absent", None),
-        ("/root/" + "/".join(["a" * 64] * 3), "absent", "/root/" + "/".join(["a" * 64] * 3)),
-        ("/root/" + "/".join(["a" * 64] * 3) + "/b", "absent", None),
-    ),
-)
-def test_codex_spawn_path_is_exact_bounded_header_metadata(
-    tmp_path, monkeypatch, spawn_path, top_path, expected
-):
-    from uuid import uuid4
-
-    from alphalattice.interface.local_application.native_usage import codex_thread_spawn
-
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    child, parent = str(uuid4()), str(uuid4())
-    spawn = {
-        "parent_thread_id": parent,
-        "agent_role": "alphalattice_evidence_analyst",
-        "agent_path": spawn_path,
-    }
-    meta = {"id": child, "source": {"subagent": {"thread_spawn": spawn}}}
-    if top_path != "absent":
-        meta["agent_path"] = top_path
-    file = tmp_path / "sessions/2026/10/04" / f"rollout-2026-10-04T00-00-00-{child}.jsonl"
-    _write(file, [{"type": "session_meta", "payload": meta}])
-    found = codex_thread_spawn(child)
-    assert found is not None
-    assert (found.parent_thread_id, found.agent_role, found.agent_path) == (
-        parent,
-        "alphalattice_evidence_analyst",
-        expected,
-    )
-
-
-def test_codex_spawn_path_reader_never_reads_a_turn(tmp_path, monkeypatch):
-    import io
-    from uuid import uuid4
-
-    from alphalattice.interface.local_application import native_usage
-
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    child, parent = str(uuid4()), str(uuid4())
-    record = {
-        "type": "session_meta",
-        "payload": {
-            "id": child,
-            "agent_path": "/root/evidence_analyst",
-            "base_instructions": SECRET,
-            "source": {
-                "subagent": {
-                    "thread_spawn": {
-                        "parent_thread_id": parent,
-                        "agent_role": "alphalattice_evidence_analyst",
-                        "agent_path": "/root/evidence_analyst",
-                    }
-                }
-            },
-        },
-    }
-    file = tmp_path / "sessions/2026/10/04" / f"rollout-2026-10-04T00-00-00-{child}.jsonl"
-    _write(file, [record, {"type": "turn_context", "payload": {"text": SECRET}}])
-    data = file.read_bytes()
-    original = Path.open
-    reads = []
-
-    class FirstRecordOnly(io.BytesIO):
-        def readline(self, size=-1):
-            assert not reads, "Only the first metadata record may be read"
-            assert size == native_usage.FIRST_RECORD_BYTES + 1
-            reads.append(size)
-            return super().readline(size)
-
-        def read(self, *_):
-            pytest.fail("The spawn owner must never read the session body")
-
-    def opened(path, *args, **kwargs):
-        return FirstRecordOnly(data) if path == file else original(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "open", opened)
-    found = native_usage.codex_thread_spawn(child)
-    assert found is not None and found.agent_path == "/root/evidence_analyst"
-    assert len(reads) == 1 and SECRET not in repr(found)
-
-
-@pytest.mark.parametrize(
-    "case",
-    (
-        "path",
-        "compact",
-        "ancestor",
-        "legacy",
-        "ambiguous",
-        "uuid_ambiguous",
-        "wrong_role",
-        "other_session",
-        "two_paths",
-    ),
-)
-def test_header_proved_path_authorship_keeps_uuid_contract_and_no_file_reads(monkeypatch, case):
-    from alphalattice.interface.local_application.native_bridge import judgment_agent
-    from alphalattice.protocols.actor_execution.answers import AgentRun
-
-    child = "00000000-0000-0000-0000-000000000001"
-    other = "00000000-0000-0000-0000-000000000002"
-    parent = "00000000-0000-0000-0000-000000000003"
-    path = "/root/evidence_analyst"
-    proof = {
-        "native_agent_path": path,
-        "native_agent_path_basis": "CODEX_SESSION_META",
-        "native_agent_path_scope": "BOUND_SESSION_ANCESTRY",
-        "native_parent_thread_id": other if case == "ancestor" else parent,
-        "native_spawn_role": "alphalattice_evidence_analyst",
-    }
-    if case == "legacy":
-        proof = {}
-    if case == "compact":
-        proof = {key: proof[key] for key in ("native_agent_path", "native_agent_path_basis")}
-    if case == "wrong_role":
-        proof["native_spawn_role"] = "alphalattice_cro"
-
-    def row(ordinal, kind, **subject):
-        return {
-            "ordinal": ordinal,
-            "payload": {
-                "event_kind": kind,
-                "subject": {
-                    "native_session_id": parent,
-                    "native_host": "codex",
-                    **subject,
-                },
-            },
-        }
-
-    first = row(
-        1,
-        "NATIVE_SUBAGENT_START_HOOK",
-        native_agent_id=child,
-        role="alphalattice_evidence_analyst",
-        hook_model="synthetic-model",
-        **proof,
-    )
-    if case == "other_session":
-        first["payload"]["subject"]["native_session_id"] = other
-    events = [
-        first,
-        row(
-            2,
-            "NATIVE_COORDINATION_MESSAGE",
-            native_agent_id=parent,
-            message_kind="assignment",
-            reference="a" * 64,
-            recipient_id=child if case == "uuid_ambiguous" else path,
-        ),
-    ]
-    if case in {"ambiguous", "uuid_ambiguous", "two_paths"}:
-        events.append(
-            row(
-                3,
-                "NATIVE_SUBAGENT_START_HOOK",
-                native_agent_id=child if case == "two_paths" else other,
-                role="alphalattice_evidence_analyst",
-                hook_model="synthetic-model",
-                **{**proof, "native_agent_path": "/root/other" if case == "two_paths" else path},
-            )
-        )
-    before = json.dumps(events)
-
-    def forbidden_open(*_, **__):
-        pytest.fail("Authorship reads sealed hook facts, never a session file")
-
-    monkeypatch.setattr(Path, "open", forbidden_open)
-    result = judgment_agent(
-        events,
-        host="codex",
-        session_id=parent,
-        bundle_role="ANALYST",
-        bundle_reference="a" * 64,
-    )
-    assert json.dumps(events) == before
-    if case in {"path", "compact", "ancestor", "uuid_ambiguous"}:
-        assert result["agent_id"] == child and result["basis"] == "HOOK"
-        assert set(result) == {
-            "host",
-            "session_id",
-            "agent_id",
-            "role",
-            "model",
-            "efforts",
-            "basis",
-        }
-        assert AgentRun.model_validate(result).agent_id == child
-    else:
-        assert result == {"host": "codex", "session_id": parent, "basis": "NOT_OBSERVED"}

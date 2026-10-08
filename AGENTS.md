@@ -219,8 +219,8 @@ line: written. This nominated write is the sole exception to ANALYZE/REVIEW's
 write-nothing rule. The child never runs AGENT_ANSWER_SUBMIT; you submit the file
 with the preparation's returned `submit_command`. The Host checks shape and
 bindings, never scientific correctness.
-When native observation is bound, assign the exact `bundle_reference` as soon as
-the native tool returns the child id; the accepted artifact then records its proved child author in Team.
+A prepared bundle with no accepted answer stays an open assignment in `goal show`;
+it reminds and never blocks submission. Accepted answers are filed as yours.
 
 ## Run an installed strategy forward
 

@@ -247,6 +247,9 @@ type PortfolioResearchOperation = Literal[
     "ACTIVITY_LIST",
     "ACTIVITY_RECENT",
     "EVENT_DECLARE",
+    "SESSION_USAGE_READ",
+    "USAGE_READING",
+    "USAGE_READING_SET",
     "CPU_BUDGET_SHOW",
     "CPU_BUDGET_SET",
     "WORKSPACE_BACKUP",
@@ -445,6 +448,7 @@ class PortfolioResearchOperationRequest:
     formation_session: str | None = None
     automation_enabled: bool | None = None
     network_enabled: bool | None = None
+    usage_reading_enabled: bool | None = None
     automation_package_ids: tuple[str, ...] | None = None
     upgrade_set_hash: str | None = None
     """The installed identity set an upgrade overview showed, when acknowledging it."""
@@ -1011,6 +1015,12 @@ class PortfolioResearchOperationRequest:
             "ACTIVITY_LIST": (frozenset(), frozenset({"after", "limit", "watch"})),
             "ACTIVITY_RECENT": (frozenset(), frozenset({"limit"})),
             "EVENT_DECLARE": (frozenset({"event"}), frozenset({"event"})),
+            "SESSION_USAGE_READ": (frozenset(), frozenset()),
+            "USAGE_READING": (frozenset(), frozenset()),
+            "USAGE_READING_SET": (
+                frozenset({"usage_reading_enabled"}),
+                frozenset({"usage_reading_enabled"}),
+            ),
             "CPU_BUDGET_SHOW": (frozenset(), frozenset()),
             # One of the two, which the owner holds to: a setting a request (V100).
             "CPU_BUDGET_SET": (frozenset(), frozenset({"cpu_budget", "tasks_waiting"})),
@@ -1578,6 +1588,9 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """true lets the daily research update run by itself; false stops it."""
     network_enabled: bool | None = Field(default=None, strict=True)
     """true lets this workspace reach the network; false keeps it offline."""
+    usage_reading_enabled: bool | None = Field(default=None, strict=True)
+    """true lets the Host read the bound agent Sessions' own files for usage; false reads
+    nothing."""
     automation_package_ids: tuple[str, ...] | None = None
     """The strategy packages the automatic research update covers."""
     upgrade_set_hash: str | None = None

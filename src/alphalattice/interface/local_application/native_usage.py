@@ -5,8 +5,13 @@ response's id, model, the effort it ran at, its token counts and its time, and t
 and last time; and a child's exact parent and role from Codex's first record or Claude Code's
 bounded sidecar and first record. Everything else in the file, the conversation above all,
 is read past and dropped (LAWS OP14: an agent's reading stays in its own context). A file is
-read only when it lies under the host's own session root, so a hook cannot point at another
-file.
+read only when it lies under the host's own session root.
+
+Only the bound Session's own files are opened: its own file, and the children it records
+there. A Codex lead's rollout records each child as a ``SubAgentActivity`` item naming the
+child's thread; a Claude Code lead keeps its children under ``<session>/subagents/``. No other
+Session's file is listed or read. Checked against Codex CLI 0.162.0-alpha.2 and Claude Code
+2.1.293 (2026-10-07); a record of another shape reads as unavailable, never as zero.
 
 Claude Code writes one record per content block, repeating a response's usage under its message
 id, so a response counts once, at its last record; its `input_tokens` are the uncached input.
@@ -31,8 +36,10 @@ HOST_CLAUDE_CODE = "claude-code"
 HOST_CODEX = "codex"
 _MARKERS = {
     HOST_CLAUDE_CODE: (b'"usage":',),
-    HOST_CODEX: (b"token_usage_record", b"turn_context"),
+    HOST_CODEX: (b"token_usage_record", b"turn_context", b"SubAgentActivity"),
 }
+CHILDREN = 64
+"""The most children one lead's file names that are read; more read as unavailable."""
 
 
 class NativeUsageReadLimitError(ValueError):
@@ -91,6 +98,8 @@ class SessionUsage:
     incomplete: int
     first_at: str | None
     last_at: str | None
+    children: tuple[str, ...] = ()
+    """A Codex lead's children, by thread, in the order its file first names them."""
 
     def by_model(self) -> tuple[ModelUsage, ...]:
         """One row per model, in model order.
@@ -169,29 +178,10 @@ metadata, never a turn after it."""
 
 @dataclass(frozen=True, slots=True)
 class ThreadSpawn:
-    """A child's recorded direct parent, role and optional Codex canonical path (V568)."""
+    """A child's recorded direct parent and role (V568)."""
 
     parent_thread_id: str
     agent_role: str | None
-    agent_path: str | None = None
-
-
-def canonical_agent_path(value: object) -> str | None:
-    """Admit the bounded native task path syntax, without asserting an agent's identity.
-
-    Args:
-        value: A native path selected from session metadata or a tool return.
-
-    Returns:
-        The unchanged canonical ``/root/...`` path, or None for any other shape.
-    """
-    if (
-        not isinstance(value, str)
-        or len(value) > 200
-        or re.fullmatch(r"/root(?:/[a-z0-9_]{1,64})+", value) is None
-    ):
-        return None
-    return value
 
 
 def codex_thread_spawn(thread_id: str) -> ThreadSpawn | None:
@@ -199,10 +189,8 @@ def codex_thread_spawn(thread_id: str) -> ThreadSpawn | None:
 
     Codex opens each rollout with its ``session_meta``; a native subagent's names
     ``source.subagent.thread_spawn``. Only that first record is read, up to
-    `FIRST_RECORD_BYTES`, and only ``parent_thread_id``, ``agent_role`` and an optional
-    canonical ``agent_path`` leave it. The path must be named in the spawn; when the
-    top-level metadata also names it, both must agree. The rest of the record is discarded
-    and every turn after it is never read (LAWS OP14).
+    `FIRST_RECORD_BYTES`, and only ``parent_thread_id`` and ``agent_role`` leave it. The
+    rest of the record is discarded and every turn after it is never read (LAWS OP14).
 
     Args:
         thread_id: The thread, by the id its rollout's name ends with.
@@ -237,96 +225,7 @@ def _codex_spawn_record(first: bytes, thread_id: str) -> ThreadSpawn | None:
     parent = _text(spawn.get("parent_thread_id")) if isinstance(spawn, Mapping) else None
     if parent is None or not isinstance(spawn, Mapping):
         return None
-    agent_path = canonical_agent_path(spawn.get("agent_path"))
-    if "agent_path" in meta and meta.get("agent_path") != agent_path:
-        agent_path = None
-    return ThreadSpawn(
-        parent_thread_id=parent,
-        agent_role=_text(spawn.get("agent_role")),
-        agent_path=agent_path,
-    )
-
-
-CODEX_ASSIGNMENT_FILES = 4096
-CODEX_ASSIGNMENT_BYTES = 512 * 1024 * 1024
-
-
-def _codex_assignment_file(session_id: str, agent_path: str) -> Path | None:
-    """Resolve a canonical tool task name by exact parent/path metadata, never by role or age.
-
-    Only bounded first records are read. Two matching files, unreadable metadata or an
-    exceeded census refuse the association rather than returning a partial match.
-    """
-    if canonical_agent_path(agent_path) != agent_path:
-        return None
-    paths = list(
-        islice(session_root(HOST_CODEX).glob("*/*/*/rollout-*.jsonl"), CODEX_ASSIGNMENT_FILES + 1)
-    )
-    if len(paths) > CODEX_ASSIGNMENT_FILES:
-        raise NativeUsageReadLimitError("child_metadata_files")
-    found = None
-    consumed = 0
-    parent_bytes, path_bytes = session_id.encode("utf-8"), agent_path.encode("utf-8")
-    for candidate in paths:
-        ident = candidate.stem[-36:]
-        try:
-            if str(UUID(ident)) != ident:
-                continue
-        except ValueError:
-            continue
-        path = admitted_session_file(str(candidate), host=HOST_CODEX, stem=candidate.stem)
-        if path is None or path != candidate:
-            return None
-        try:
-            with path.open("rb") as stream:
-                first = stream.readline(FIRST_RECORD_BYTES + 1)
-        except OSError:
-            return None
-        consumed += len(first)
-        if consumed > CODEX_ASSIGNMENT_BYTES:
-            raise NativeUsageReadLimitError("child_metadata_bytes")
-        if len(first) > FIRST_RECORD_BYTES:
-            return None
-        # Reject irrelevant native headers cheaply. This is not an identity match:
-        # every possible match is still parsed and checked below. Escaped identities
-        # take the complete parser path too; no JSON spelling decides an association.
-        if (parent_bytes not in first or path_bytes not in first) and not (
-            b"\\u" in first or b"\\/" in first
-        ):
-            continue
-        spawn = _codex_spawn_record(first, ident)
-        if spawn is None or (spawn.parent_thread_id, spawn.agent_path) != (session_id, agent_path):
-            continue
-        if found is not None:
-            return None
-        found = path
-    return found
-
-
-def codex_assigned_spawn(session_id: str, agent_id: str) -> ThreadSpawn | None:
-    """Read a UUID or unique canonical assignment's exact native parent and role.
-
-    This associates count files only; it supplies no authorship or lifecycle credit.
-    """
-    if canonical_agent_path(agent_id) is None:
-        return codex_thread_spawn(agent_id)
-    path = _codex_assignment_file(session_id, agent_id)
-    if path is None:
-        return None
-    try:
-        with path.open("rb") as stream:
-            first = stream.readline(FIRST_RECORD_BYTES + 1)
-    except OSError:
-        return None
-    if len(first) > FIRST_RECORD_BYTES:
-        return None
-    spawn = _codex_spawn_record(first, path.stem[-36:])
-    return (
-        spawn
-        if spawn is not None
-        and (spawn.parent_thread_id, spawn.agent_path) == (session_id, agent_id)
-        else None
-    )
+    return ThreadSpawn(parent_thread_id=parent, agent_role=_text(spawn.get("agent_role")))
 
 
 def session_file(host: str, session_id: str, agent_id: str | None = None) -> Path | None:
@@ -347,8 +246,6 @@ def session_file(host: str, session_id: str, agent_id: str | None = None) -> Pat
         are unavailable or ambiguous. Claude files are never selected by modification time.
     """
     if host == HOST_CODEX:
-        if agent_id is not None and canonical_agent_path(agent_id) is not None:
-            return _codex_assignment_file(session_id, agent_id)
         return codex_session_file(agent_id or session_id)
     ids = (session_id,) if agent_id is None else (session_id, agent_id)
     if not all(0 < len(v) <= 128 and all(c.isalnum() or c in "-_" for c in v) for v in ids):
@@ -385,7 +282,7 @@ def claude_thread_spawn(session_id: str, agent_id: str) -> ThreadSpawn | None:
 
     Args:
         session_id: The bound lead Session, never a path or role alias.
-        agent_id: The exact native child id named by the assignment.
+        agent_id: The exact native child id, as the lead's own Session directory names it.
 
     Returns:
         The direct-parent and explicit role tuple, or None for unavailable, invalid or
@@ -423,36 +320,34 @@ def claude_thread_spawn(session_id: str, agent_id: str) -> ThreadSpawn | None:
     return ThreadSpawn(parent_thread_id=session_id, agent_role=role)
 
 
-def hook_session_files(
-    payload: Mapping[str, object], *, host: str, session_id: str, agent_id: str
-) -> dict[str, Path]:
-    """The lead's and the agent's session files at a subagent hook, as admitted.
+def claude_children(session_id: str) -> tuple[str, ...]:
+    """The children a Claude Code lead keeps under its own Session directory.
 
-    Claude Code's payload names both files (``transcript_path`` for the session,
-    ``agent_transcript_path`` for the subagent), each admitted only under its own name. Codex
-    names each thread's rollout by the thread's id, so its payload's paths are not read.
+    Only ``<project>/<session>/subagents/agent-<id>.jsonl`` beside the lead's own file is
+    listed; each id is then admitted by ``claude_thread_spawn``.
 
     Args:
-        payload: The hook's decoded input.
-        host: The host the hook came from.
-        session_id: The lead's session.
-        agent_id: The subagent.
+        session_id: The bound lead Session.
 
     Returns:
-        ``lead`` and ``agent`` mapped to the files found; a file not admitted is left out.
+        The child ids in name order; none when the lead's file or its directory is missing.
+
+    Raises:
+        NativeUsageReadLimitError: The directory holds more than `CHILDREN` children.
     """
-    if host == HOST_CODEX:
-        found = {"lead": codex_session_file(session_id), "agent": codex_session_file(agent_id)}
-    else:
-        found = {
-            "lead": admitted_session_file(
-                payload.get("transcript_path"), host=host, stem=session_id
-            ),
-            "agent": admitted_session_file(
-                payload.get("agent_transcript_path"), host=host, stem=f"agent-{agent_id}"
-            ),
-        }
-    return {name: path for name, path in found.items() if path is not None}
+    lead = session_file(HOST_CLAUDE_CODE, session_id)
+    if lead is None:
+        return ()
+    directory = lead.parent / session_id / "subagents"
+    if directory.is_symlink() or not directory.is_dir():
+        return ()
+    names = sorted(
+        path.name[len("agent-") : -len(".jsonl")]
+        for path in islice(directory.glob("agent-*.jsonl"), CHILDREN + 1)
+    )
+    if len(names) > CHILDREN:
+        raise NativeUsageReadLimitError("children")
+    return tuple(name for name in names if re.fullmatch(r"[A-Za-z0-9_-]{1,128}", name))
 
 
 def read_session(
@@ -484,6 +379,7 @@ def read_session(
     first_at: str | None = None
     tail: deque[bytes] = deque(maxlen=8)
     turn: tuple[str | None, str | None] = (None, None)
+    children: dict[str, None] = {}
     for line in _lines(path, max_bytes=max_bytes, max_line_bytes=max_line_bytes):
         tail.append(line)
         if first_at is None:
@@ -493,6 +389,13 @@ def read_session(
         record = _record(line)
         if not record:
             incomplete += 1
+            continue
+        if host == HOST_CODEX and b"SubAgentActivity" in line:
+            child = _codex_child(record)
+            if child is not None:
+                children.setdefault(child)
+                if len(children) > CHILDREN:
+                    raise NativeUsageReadLimitError("children")
             continue
         if host == HOST_CLAUDE_CODE:
             response = _claude_response(record)
@@ -516,7 +419,27 @@ def read_session(
             (stamp for line in reversed(tail) if (stamp := _text(_record(line).get("timestamp")))),
             None,
         ),
+        children=tuple(children),
     )
+
+
+def _codex_child(record: Mapping[str, object]) -> str | None:
+    """A child thread a Codex lead's own rollout names; only its id leaves the record."""
+    payload = record.get("payload")
+    item = payload.get("item") if isinstance(payload, dict) else None
+    if (
+        record.get("type") != "event_msg"
+        or not isinstance(payload, dict)
+        or payload.get("type") != "item_completed"
+        or not isinstance(item, dict)
+        or item.get("type") != "SubAgentActivity"
+    ):
+        return None
+    thread = item.get("agent_thread_id")
+    try:
+        return thread if isinstance(thread, str) and str(UUID(thread)) == thread else None
+    except ValueError:
+        return None
 
 
 def _model_usage(model: str, responses: list[ResponseUsage]) -> ModelUsage:
@@ -673,9 +596,10 @@ __all__ = [
     "ResponseUsage",
     "SessionUsage",
     "admitted_session_file",
-    "codex_assigned_spawn",
+    "claude_children",
+    "claude_thread_spawn",
     "codex_session_file",
-    "hook_session_files",
+    "codex_thread_spawn",
     "read_session",
     "session_file",
     "session_root",

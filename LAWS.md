@@ -101,20 +101,15 @@ and a different answer does. *Why:* role cards and Skills are rewritten as the a
 binding them would retire every earlier judgment for a change of words; which model judges better is
 measured apart, by the agent evaluation's planted-majors yardstick (the maintainer, 2026-09-27). *Not yet held:* an external
 submission binds its answer and what it answers (the dossier, the policy, the schema), not the
-bundle's digest; and the role card's digest is not recorded. The model, effort and host are
-recorded beside each Evidence and CRO answer (AU3) for the specialist the session's lead
-assigned the answered bundle to, the link checked by that specialist's start hook in the
-session under the bundle's role, since a request names its session and not its subagent;
-with no such link the author is unknown, the session alone, never another specialist and
-never a guess by time (V555). Credit requires fresh observed start and assignment events binding
-the child, role, host, session and bundle; hook configuration or fixture payloads alone do not
-prove delivery. Every supported Host must demonstrate its native event delivery; without the
-observed binding, keep `NOT_OBSERVED`, never backfill credit (V677). *Not yet held:* Codex has
-an observed live path, but Claude Code's live delivery proof remains V697; recorded Claude
-payloads and mocked hook listings prove parsing and validation only (V677). *Held by:*
-`test: tests/portfolio_strategy_lab/test_native_usage.py::test_an_answer_is_credited_to_the_specialist_its_bundle_was_assigned_to`,
-`private-test: test_collect_requires_fresh_exact_child_credit_and_a_genuine_completion_record`,
-`private-test: test_runtime_trust_requires_actual_enabled_hooks_from_the_exact_project`.
+bundle's digest; and the role card's digest is not recorded. Each answer records the host and
+the lead's session that submitted it, its author `NOT_OBSERVED`: a request names its session and
+not its subagent, and the Host reads no hook, message or native start to name which of the
+lead's specialists wrote it, so no answer is credited to another specialist and none by a guess
+by time (V555). An answer recorded earlier with `HOOK` credit keeps it as recorded; nothing new
+writes it (V677). *Held by:*
+`test: tests/alternative_evidence_desk/test_evidence_review_http_route.py::test_no_analyst_is_credited_with_another_bundles_answer`,
+`test: tests/portfolio_strategy_lab/test_accepted_answer_conversation.py::test_an_answer_of_any_recorded_basis_is_the_leads_fact_without_child_credit`,
+`private-test: test_existing_answer_contracts_publish_once_as_the_leads_product_fact`.
 
 **ID8. A consumer binds an upstream result's content, not its code.** A role's closure lists its
 owner's code as entries; a result it reads from another owner (a Panel, a Foundation, Alpha scores) is
@@ -416,7 +411,7 @@ of its text (V698). Card and host fixtures prove the protocol, not live executio
 *Not yet held:* an answer must still name the bundle files it read whole, and one that leaves a file
 unnamed is refused before its judgment is read (V260, RX). *Held by:*
 `private-test: test_every_shipped_card_and_registered_answer_door_is_reviewed`,
-`private-test: test_existing_answer_contracts_require_hook_and_publish_once`,
+`private-test: test_existing_answer_contracts_publish_once_as_the_leads_product_fact`,
 `test: tests/portfolio_strategy_lab/test_accepted_answer_conversation.py::test_generic_specialist_doors_seal_exact_references_without_scientific_admission`;
 the remaining judgment and completion boundaries by review.
 
@@ -461,7 +456,7 @@ no one. What happens is the Host's record, never an agent's memory: every admitt
 result carries the agent session that started it (a vendor's session identity, provenance and never
 identity, ID6; a session's binding also gives it its default workspace, a convenience and never
 authority, V568), so a result outlives its session and one read finds it, the latest results grouped
-by session and goal, each with its read command; every Team message and hook keeps the goal its
+by session and goal, each with its read command; every Team event keeps the goal its
 session held when the Host received it, so Team (by session), the goal (its conversation) and the
 recent read (by time) are three reads of one record. *Why:* an agent's goal mode already plans and
 persists, and what it lacks is a record the Host can check and a place to manage it; an agent's

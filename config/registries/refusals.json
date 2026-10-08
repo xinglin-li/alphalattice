@@ -5895,6 +5895,9 @@
 "goal.event_filing_invalid": {
 "owner": "goal"
 },
+"goal.event_not_filed": {
+"owner": "goal"
+},
 "goal.exact_input_required": {
 "owner": "goal"
 },
@@ -6477,9 +6480,6 @@
 "native_bridge.accepted_answer_not_recorded": {
 "owner": "native_bridge"
 },
-"native_bridge.accepted_author_mismatch": {
-"owner": "native_bridge"
-},
 "native_bridge.accepted_author_not_observed": {
 "owner": "native_bridge"
 },
@@ -6492,9 +6492,6 @@
 "native_bridge.accepted_delivery_unavailable": {
 "owner": "native_bridge"
 },
-"native_bridge.activity_client_unavailable": {
-"owner": "native_bridge"
-},
 "native_bridge.activity_correlation_invalid": {
 "owner": "native_bridge"
 },
@@ -6504,16 +6501,7 @@
 "native_bridge.assignment_ambiguous": {
 "owner": "native_bridge"
 },
-"native_bridge.assignment_is_not_a_reply": {
-"owner": "native_bridge"
-},
 "native_bridge.assignment_not_observed": {
-"owner": "native_bridge"
-},
-"native_bridge.assignment_recipient_required": {
-"owner": "native_bridge"
-},
-"native_bridge.assignment_terminal_invalid": {
 "owner": "native_bridge"
 },
 "native_bridge.binding_ambiguous": {
@@ -6552,13 +6540,7 @@
 "native_bridge.configuration_path_invalid": {
 "owner": "native_bridge"
 },
-"native_bridge.event_identity_collision": {
-"owner": "native_bridge"
-},
 "native_bridge.event_invalid": {
-"owner": "native_bridge"
-},
-"native_bridge.event_kind_invalid": {
 "owner": "native_bridge"
 },
 "native_bridge.event_scope_invalid": {
@@ -6577,9 +6559,6 @@
 "owner": "native_bridge"
 },
 "native_bridge.history_unavailable": {
-"owner": "native_bridge"
-},
-"native_bridge.hook_declaration_missing": {
 "owner": "native_bridge"
 },
 "native_bridge.hook_model_not_observed": {
@@ -6603,34 +6582,10 @@
 "native_bridge.local_environment_missing": {
 "owner": "native_bridge"
 },
-"native_bridge.long_message_reference_required": {
-"owner": "native_bridge"
-},
-"native_bridge.message_character_limit": {
-"owner": "native_bridge"
-},
-"native_bridge.message_empty": {
-"owner": "native_bridge"
-},
-"native_bridge.message_encoding_invalid": {
-"owner": "native_bridge"
-},
-"native_bridge.message_field_invalid": {
-"owner": "native_bridge"
-},
-"native_bridge.message_kind_or_role_invalid": {
-"owner": "native_bridge"
-},
-"native_bridge.message_size_invalid": {
-"owner": "native_bridge"
-},
 "native_bridge.native_event_delivery_unverified": {
 "owner": "native_bridge"
 },
 "native_bridge.not_bound": {
-"owner": "native_bridge"
-},
-"native_bridge.observation_busy": {
 "owner": "native_bridge"
 },
 "native_bridge.parent_session_mismatch": {
@@ -6648,46 +6603,13 @@
 "native_bridge.project_path_invalid": {
 "owner": "native_bridge"
 },
-"native_bridge.readiness_incomplete": {
-"owner": "native_bridge"
-},
 "native_bridge.request_invalid": {
 "owner": "native_bridge"
 },
 "native_bridge.roles_missing": {
 "owner": "native_bridge"
 },
-"native_bridge.runtime_attachment_unproved": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_connection_unavailable": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_definition_unproved": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_not_checked": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_read_only": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_request_refused": {
-"owner": "native_bridge"
-},
-"native_bridge.runtime_response_invalid": {
-"owner": "native_bridge"
-},
 "native_bridge.sequence_capacity_reached": {
-"owner": "native_bridge"
-},
-"native_bridge.sequence_identity_invalid": {
-"owner": "native_bridge"
-},
-"native_bridge.sequence_metadata_invalid": {
-"owner": "native_bridge"
-},
-"native_bridge.sequence_path_invalid": {
 "owner": "native_bridge"
 },
 "native_bridge.session_mismatch": {
@@ -6696,41 +6618,11 @@
 "native_bridge.start_not_observed": {
 "owner": "native_bridge"
 },
-"native_bridge.transport_unavailable": {
-"owner": "native_bridge"
-},
 "native_bridge.workspace_mismatch": {
 "owner": "native_bridge"
 },
 "native_bridge.workspace_missing": {
 "owner": "native_bridge"
-},
-"native_hook.agent_mismatch": {
-"owner": "native_hook"
-},
-"native_hook.cwd_mismatch": {
-"owner": "native_hook"
-},
-"native_hook.definition_unreadable": {
-"owner": "native_hook"
-},
-"native_hook.duplicate_field": {
-"owner": "native_hook"
-},
-"native_hook.input_too_large": {
-"owner": "native_hook"
-},
-"native_hook.invalid_json": {
-"owner": "native_hook"
-},
-"native_hook.invalid_stop_hook_active": {
-"owner": "native_hook"
-},
-"native_hook.object_required": {
-"owner": "native_hook"
-},
-"native_hook.session_mismatch": {
-"owner": "native_hook"
 },
 "native_usage.read_limit_exceeded": {
 "owner": "native_usage"

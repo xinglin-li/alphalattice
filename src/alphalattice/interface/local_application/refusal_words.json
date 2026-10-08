@@ -415,10 +415,6 @@
   "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the training inputs again (`training plan`) from the same input and component, then run the plan hash the new answer names.",
   "next_action": "PLAN_THE_TRAINING_INPUTS_AGAIN"
  },
- "native_bridge.message_field_invalid": {
-  "detail": "The message's `{subject}` is empty, longer than 200 characters or holds a control character, so nothing was sent: the Host's activity record holds an id or a reference of at most 200 characters. Send it again with the exact id as it was given, or an exact product reference -- a Task UUID, a 64-hex hash such as a bundle's `bundle_reference`, a History entry id or `case:<hash>`.",
-  "next_action": "SEND_IT_AGAIN_WITH_THE_EXACT_ID_OR_REFERENCE"
- },
  "observation.redaction_failed": {
   "detail": "The event carries a field the activity ledger never keeps (a credential, token or secret, by its name) or a value it cannot record; send it without them.",
   "next_action": "READ_ACTIVITY_EVENT_CONTRACT"
@@ -1215,17 +1211,9 @@
   "detail": "A local Session binding record cannot be read. Run native_research.py doctor in the configured project and retry the read through this Session's permitted tools. Continue research with alphalattice --workspace <dir> <object> <action>; no binding or research record was replaced.",
   "next_action": "READ_LOCAL_READINESS_AND_NAME_THE_WORKSPACE"
  },
- "native_bridge.hook_declaration_missing": {
-  "detail": "The requested optional native proof has no configured project declaring this host's AlphaLattice hooks. The person runs native_research.py configure --host <host> --native-proof in the intended project, reviews first-use or changed definitions in that host, then runs native_research.py doctor --native-proof. Default research needs no product hooks.",
-  "next_action": "CONFIGURE_THIS_HOST_THEN_SERVE_AND_BIND_ITS_WORKSPACE"
- },
  "native_bridge.project_declaration_missing": {
   "detail": "No configured AlphaLattice project above this workspace declares this host. Run native_research.py configure --host <host> in the intended project, then serve its workspace and retry session bind there. Product hooks are not required.",
   "next_action": "CONFIGURE_THIS_HOST_THEN_SERVE_AND_BIND_ITS_WORKSPACE"
- },
- "native_bridge.assignment_terminal_invalid": {
-  "detail": "A terminal assignment decision needs the bound lead, kind decision or pm_response, an exact reply-to message ID, and both terminal_decision and terminal_reason. Send that decision with native_research.py message; use COMPLETED, WITHDRAWN or DECLINED and a public reason. An ordinary reply leaves the assignment open.",
-  "next_action": "SEND_AN_EXACT_LEAD_TERMINAL_DECISION_WITH_ITS_PUBLIC_REASON"
  },
  "goal.assignment_closure_invalid": {
   "detail": "The terminal decision does not name one assignment in this lead's Goal and Session. Read that Goal's Conversation with alphalattice goal narrative <goal_id>, then reply to its exact assignment message ID. No assignment was closed.",
@@ -1246,10 +1234,6 @@
  "operations.schema_reference_not_local": {
   "detail": "The installed command schema refers outside its local definitions, so its command table cannot be generated. Restore the matching build's command schema and generate the table again.",
   "next_action": "RESTORE_THE_MATCHING_COMMAND_SCHEMA"
- },
- "native_bridge.readiness_incomplete": {
-  "detail": "The requested optional native proof is incomplete. Read native_proof.missing and the role diagnostics, then run python -m alphalattice.interface.local_application.native_setup --project <project> doctor --native-proof after the named link is available. Review hooks only when the actual host reports an untrusted or changed definition. Default research can continue.",
-  "next_action": "READ_THE_NAMED_MISSING_LINK_THEN_RUN_NATIVE_DOCTOR"
  },
  "native_bridge.start_not_observed": {
   "detail": "No retained native Start names this child in the bound parent Session. Start a new native specialist in that Session, then assign its exact prepared bundle to its returned child id. Research and the accepted answer are kept.",
@@ -1279,10 +1263,6 @@
   "detail": "The product accepted the answer; its native child author remains NOT_OBSERVED. Keep the accepted answer and contribution; default research can continue. If optional native authorship proof is requested, read the missing-link diagnostic and use a fresh prepared bundle and native chain. Do not relabel the original author.",
   "next_action": "KEEP_THE_ACCEPTED_ANSWER_AND_READ_OPTIONAL_AUTHOR_DIAGNOSTICS"
  },
- "native_bridge.accepted_author_mismatch": {
-  "detail": "The retained native chain differs from the accepted answer's saved author. Keep the saved answer and author; inspect its original parent Session and exact bundle assignment before retrying observation delivery.",
-  "next_action": "CHECK_THE_SAVED_AUTHOR_AND_ORIGINAL_ASSIGNMENT"
- },
  "native_bridge.parent_session_mismatch": {
   "detail": "The current parent Session differs from the accepted answer's saved Session. Deliver its observation from the original bound parent Session; retrying in another Session does not move its Goal or author.",
   "next_action": "DELIVER_FROM_THE_ORIGINAL_BOUND_PARENT_SESSION"
@@ -1303,34 +1283,6 @@
   "detail": "The product accepted the answer, but its exact prepared bundle cannot be read for observation delivery. Check the saved bundle path and its owner refusal, then retry the same submission without changing the answer.",
   "next_action": "CHECK_THE_SAVED_BUNDLE_THEN_RETRY_THE_SAME_SUBMISSION"
  },
- "native_bridge.runtime_connection_unavailable": {
-  "detail": "The native runtime connection could not be read. Open this exact configured project in the intended host, then run native_research.py doctor --native-proof again. A separate CLI runtime does not establish attachment to the App.",
-  "next_action": "OPEN_THE_EXACT_PROJECT_IN_ITS_HOST_THEN_RUN_NATIVE_DOCTOR"
- },
- "native_bridge.runtime_response_invalid": {
-  "detail": "The runtime returned an incomplete or incompatible definition or attachment read. Keep research running and inspect this exact host's hook definitions, then run native_research.py doctor --native-proof again.",
-  "next_action": "CHECK_THE_EXACT_HOST_READ_THEN_RUN_NATIVE_DOCTOR"
- },
- "native_bridge.runtime_request_refused": {
-  "detail": "The host refused the read-only runtime inspection. Read the host's refusal for this exact project and resolve that route before running native_research.py doctor --native-proof again; research can continue.",
-  "next_action": "READ_THE_HOST_REFUSAL_THEN_RUN_NATIVE_DOCTOR"
- },
- "native_bridge.runtime_definition_unproved": {
-  "detail": "The actual host did not confirm these exact enabled project hook definitions and their current hashes as trusted. Inspect those definitions in the intended host; approve only its first-use or changed-definition review, then run native_research.py doctor --native-proof again.",
-  "next_action": "REVIEW_THE_ACTUAL_HOST_DEFINITIONS_THEN_RUN_NATIVE_DOCTOR"
- },
- "native_bridge.runtime_not_checked": {
-  "detail": "This host's live runtime definition and trust inspection is unavailable here. Use that host's own hook review and retain its exact definition hashes and trust receipt; research can continue without native readiness.",
-  "next_action": "READ_THE_INTENDED_HOST_HOOK_REVIEW_AND_RECEIPT"
- },
- "native_bridge.runtime_attachment_unproved": {
-  "detail": "The inspected runtime is not proved to be the active App serving this exact parent Session and project. Use an exact App runtime read before claiming attachment; another daemon or CLI supplies no App trust proof. Research can continue.",
-  "next_action": "OBTAIN_THE_EXACT_APP_RUNTIME_ATTACHMENT_READ"
- },
- "native_bridge.runtime_read_only": {
-  "detail": "Optional native proof permits only definition and attachment reads. Use native_research.py doctor --native-proof; hook approval remains the host's first-use or changed-definition review.",
-  "next_action": "USE_NATIVE_DOCTOR_FOR_READ_ONLY_INSPECTION"
- },
  "native_bridge.lead_usage_file_missing": {
   "detail": "The host could not locate the bound lead Session's usage file. The workspace Host retries while it is running. Check that exact Session in its native host; an absent reading is not zero usage, and research can continue.",
   "next_action": "CHECK_THE_BOUND_LEAD_SESSION_WHILE_THE_HOST_RETRIES"
@@ -1347,25 +1299,9 @@
   "detail": "Complete lead usage records were delivered, but some Session records remain incomplete. Keep the delivered readings; the workspace Host retries while it is running. Research can continue.",
   "next_action": "KEEP_DELIVERED_READINGS_WHILE_THE_HOST_RETRIES"
  },
- "native_bridge.transport_unavailable": {
-  "detail": "The workspace Host did not acknowledge the native observation. Check the Host connection, then retry the same observation or accepted submission from its bound parent Session. Research can continue.",
-  "next_action": "CHECK_THE_HOST_THEN_RETRY_THE_SAME_OBSERVATION"
- },
- "native_bridge.activity_client_unavailable": {
-  "detail": "This client cannot publish the native observation through the workspace Host. Use the current installed client in this exact configured project, then retry the same observation; research can continue.",
-  "next_action": "USE_THE_CURRENT_INSTALLED_CLIENT_THEN_RETRY"
- },
- "native_bridge.observation_busy": {
-  "detail": "The native observation publisher is busy. Keep research running and retry the same observation from its bound parent Session after the current delivery ends.",
-  "next_action": "RETRY_THE_SAME_OBSERVATION_AFTER_DELIVERY_ENDS"
- },
  "native_bridge.product_contract_unavailable": {
   "detail": "The native observation could not be built against the installed product contract. Use the current installed client and Host in the same project, then retry the same observation; research can continue.",
   "next_action": "USE_MATCHING_CLIENT_AND_HOST_THEN_RETRY"
- },
- "native_hook.definition_unreadable": {
-  "detail": "The local lifecycle declarations are missing, unreadable or malformed. The person checks this exact project configuration, then runs native_research.py doctor --native-proof again. Local declarations alone establish no runtime trust; research can continue.",
-  "next_action": "CHECK_THE_EXACT_PROJECT_DECLARATIONS_THEN_RUN_NATIVE_DOCTOR"
  },
  "native_bridge.native_event_delivery_unverified": {
   "detail": "Retained participant declarations do not prove native hook delivery. Keep the accepted research answer. Ask the host owner for a verified native delivery read, then run native_research.py doctor --native-proof on a fresh child; do not relabel declarations or repeat a trust review that already holds.",
@@ -1410,5 +1346,9 @@
  "native_usage.read_limit_exceeded": {
   "detail": "Native usage exceeded its bounded read limit, so no partial counts were published. Research can continue. To turn off optional usage reads, the bound Session runs `alphalattice session unbind`, then `alphalattice --workspace <dir> session bind --usage off`. Keep the original native file unchanged.",
   "next_action": "TURN_OFF_OPTIONAL_USAGE_IN_THE_BOUND_SESSION_THEN_CONTINUE_RESEARCH"
+ },
+ "native_bridge.usage_reading_human_only": {
+  "detail": "Only a person turns reading the agent Sessions' usage on or off, on Settings. Nothing was changed.",
+  "next_action": "ASK_A_PERSON_TO_SET_USAGE_READING_ON_SETTINGS"
  }
 }

@@ -443,18 +443,6 @@
       "retention_owner": "feature_engine",
       "rebuildability": "NONE_RETIRED",
       "artifact_relationship": "NONE"
-    },
-    {
-      "tables": [
-        "native_observation_sequence"
-      ],
-      "database": "native-observation-sequences",
-      "semantic_role": "checkout-local native bridge retry hashes and first receipt times; sequences retain the Host's deduplication identity across sessions and migration",
-      "generation_model": "BY_REVISION",
-      "authority_owner": "local_application.native_observation_sequence.reserve_sequence",
-      "retention_owner": "local_application.native_observation_sequence",
-      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
-      "artifact_relationship": "TRANSPORT_RETRY_METADATA_ONLY"
     }
   ]
 }

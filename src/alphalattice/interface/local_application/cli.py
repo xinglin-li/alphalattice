@@ -1344,11 +1344,11 @@ person's own shell, which names none, may remove it (V586)."""
 def _unbind(args: argparse.Namespace, started: float) -> int:
     """Remove this project's binding (`session unbind`, V586): the bound session's own, or the
     person's from their own shell; never another project's."""
-    from alphalattice.interface.local_application.native_bridge import NativeBridgeError
-    from alphalattice.interface.local_application.native_setup import (
+    from alphalattice.interface.local_application.native_bridge import (
+        NativeBridgeError,
         session_project,
-        unbind_session,
     )
+    from alphalattice.interface.local_application.native_setup import unbind_session
 
     session = agent_session(os.environ)
     try:
@@ -1381,11 +1381,11 @@ def _bind(args: argparse.Namespace, started: float) -> int:
     """Bind this agent session to the workspace named (`session bind`, V568): the binding the
     bridge reads and every later command of the session, or of its own specialists,
     finds from any folder of its project."""
-    from alphalattice.interface.local_application.native_bridge import NativeBridgeError
-    from alphalattice.interface.local_application.native_setup import (
-        files_unavailable,
+    from alphalattice.interface.local_application.native_bridge import (
+        NativeBridgeError,
         session_project,
     )
+    from alphalattice.interface.local_application.native_setup import files_unavailable
 
     # This door now belongs to the served Host. Check its connection before
     # inspecting session/project declarations, like every other Host command.

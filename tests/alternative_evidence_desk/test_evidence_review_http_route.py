@@ -2162,15 +2162,14 @@ def test_two_answers_to_one_bundle_sent_at_once_are_numbered_one_and_two_and_bot
     assert not store.exists(ANSWER_CATEGORY, answer_slot(bundle_key, 3))
 
 
-def test_two_analysts_of_one_role_are_each_credited_with_their_own_bundles_answer(
-    service: _Service, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_no_analyst_is_credited_with_another_bundles_answer(
+    service: _Service, tmp_path: Path
 ) -> None:
-    """regression (V555, the user's CLI review at de555b07, AU3): two Analysts of one role, the
-    first stopped and the second running; the lead submitted the first's bundle answer, and it
-    was recorded with the second's identity, model and effort, the author inferred as the role's
-    last-started session that had not stopped. Each bundle's answer is credited to the
-    specialist the lead assigned that bundle to, in the answer returned and in the record kept,
-    whatever order they end and answer in; a bundle no assignment names is credited to no one."""
+    """regression (V555, the user's CLI review at de555b07, AU3; FLOW-1): two Analysts of one
+    role once had the first's answer recorded with the second's identity, the author inferred
+    from native starts. FLOW-1 reads no child from hooks or messages: every bundle's answer,
+    in whatever order the lead submits them, is recorded as the lead Session's with its author
+    unobserved, in the answer returned and in the record kept, and never as any Analyst's."""
 
     from alphalattice.control.product_host.composition.evidence_review_bundles import (
         EvidenceReviewBundles,
@@ -2187,8 +2186,7 @@ def test_two_analysts_of_one_role_are_each_credited_with_their_own_bundles_answe
     service.drain()
     names = ("one", "two", "three")
     directories = {name: tmp_path / f"analyst-{name}" for name in names}
-    references: dict[str, str] = {}
-    for name, directory in directories.items():
+    for directory in directories.values():
         bundle = run_one(
             service,
             {
@@ -2201,51 +2199,8 @@ def test_two_analysts_of_one_role_are_each_credited_with_their_own_bundles_answe
             },
         )
         assert bundle["status"] == "AGENT_BUNDLE_READY", bundle
-        # The key the lead's assignment names (V574): the bundle record's own slot.
         assert bundle["bundle_reference"] == bundle_slot(str(directory)), bundle
-        references[name] = bundle["bundle_reference"]
     session = "lead-session"
-
-    def item(ordinal: int, kind: str, **subject: str) -> dict[str, Any]:
-        base = {"native_session_id": session, "native_host": "claude-code"}
-        return {"ordinal": ordinal, "payload": {"event_kind": kind, "subject": {**base, **subject}}}
-
-    def started(ordinal: int, name: str) -> dict[str, Any]:
-        return item(
-            ordinal,
-            "NATIVE_SUBAGENT_START_HOOK",
-            native_agent_id=f"analyst-{name}",
-            role="alphalattice_evidence_analyst",
-            role_model=f"model-{name}",
-            role_effort="medium",
-        )
-
-    def assigned(ordinal: int, name: str) -> dict[str, Any]:
-        return item(
-            ordinal,
-            "NATIVE_COORDINATION_MESSAGE",
-            native_agent_id=session,
-            role="research_lead",
-            message_kind="assignment",
-            recipient_id=f"analyst-{name}",
-            reference=references[name],
-        )
-
-    # Both Analysts started, each assigned its bundle; the first has stopped, the second runs.
-    events = [
-        started(1, "one"),
-        assigned(2, "one"),
-        started(3, "two"),
-        assigned(4, "two"),
-        item(
-            5,
-            "NATIVE_SUBAGENT_STOP_HOOK",
-            native_agent_id="analyst-one",
-            role="alphalattice_evidence_analyst",
-        ),
-    ]
-    operations = service.session.operations
-    monkeypatch.setattr(operations.observer, "read_external", lambda _query: {"items": events})
     adapter = service.review.evidence_task_adapter
     packet = adapter.prepared_packet(
         UUID(prepared["task_id"]), now=service.review.clock(), unit_id=ONE_UNIT
@@ -2255,7 +2210,6 @@ def test_two_analysts_of_one_role_are_each_credited_with_their_own_bundles_answe
     answered: dict[str, Any] = {}
     token = REQUEST_PROVENANCE.set(RequestProvenance(vendor="claude-code", session=session))
     try:
-        # Out of order: the running Analyst's bundle first, then the stopped one's.
         for name in ("two", "one", "three"):
             answered[name] = run_one(
                 service,
@@ -2268,15 +2222,10 @@ def test_two_analysts_of_one_role_are_each_credited_with_their_own_bundles_answe
     finally:
         REQUEST_PROVENANCE.reset(token)
     credited = {name: value["recorded_agent"] for name, value in answered.items()}
-    for name in ("one", "two"):
-        assert (credited[name]["agent_id"], credited[name]["model"]) == (
-            f"analyst-{name}",
-            f"model-{name}",
-        ), credited
-        assert credited[name]["basis"] == "ROLE_CARD"
-    # The bundle no assignment names: no author, never the running Analyst.
-    assert credited["three"]["agent_id"] is None and credited["three"]["model"] is None
-    assert (credited["three"]["host"], credited["three"]["session_id"]) == ("claude-code", session)
+    for name in names:
+        assert credited[name]["basis"] == "NOT_OBSERVED", credited
+        assert (credited[name]["agent_id"], credited[name]["model"]) == (None, None), credited
+        assert (credited[name]["host"], credited[name]["session_id"]) == ("claude-code", session)
     context = EvidenceReviewBundles(service.review).agent_bundle(str(directories["one"]))
     assert context is not None
     binding = {
@@ -2292,188 +2241,6 @@ def test_two_analysts_of_one_role_are_each_credited_with_their_own_bundles_answe
         )
         assert kept.agent_run is not None
         assert kept.agent_run.model_dump(mode="json") == credited[name], name
-
-
-def test_an_answer_is_credited_over_the_whole_ledger_never_its_newest_page(
-    service: _Service, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """regression (V570, an outside review at 5f7e7375): the Host settled an answer's author
-    from the newest page of its external events, two hundred, so a session that went on past a
-    page lost the lead's assignment and the specialist's start, and a second assignment of the
-    bundle beyond the page went unseen. Through the bridge's own events, the Host's ledger and
-    its attribution: the lead assigns the unit's bundle to the Analyst it started, and the answer
-    is that Analyst's; after two hundred other subagent events, still; once the same bundle is
-    assigned to another Analyst at the tail, no one's. A session event that retention emptied
-    once the store filled settles no author either: it may be the assignment."""
-
-    from alphalattice.interface.local_application import native_bridge as bridge
-    from alphalattice.interface.local_application.activity import ExternalActivityReadQuery
-    from alphalattice.interface.local_application.cli_contract import (
-        AGENT_SESSION_VARIABLES,
-        REQUEST_PROVENANCE,
-        RequestProvenance,
-    )
-    from tests.alternative_evidence_desk.planted_corpus import _CitingActor
-    from tests.alternative_evidence_desk.portfolio_coverage_support import run_one
-
-    for _vendor, variable in AGENT_SESSION_VARIABLES:
-        monkeypatch.delenv(variable, raising=False)
-    selected = {"result_hash": service.result_hash()}
-    prepared = service.post("/api/evidence/prepare", selected)
-    service.drain()
-    directory = tmp_path / "analyst"
-    bundle = run_one(
-        service,
-        {
-            "operation": "AGENT_BUNDLE_PREPARE",
-            "agent_role": "ANALYST",
-            "task_id": prepared["task_id"],
-            "evidence_unit_id": ONE_UNIT,
-            "bundle_directory": str(directory),
-            **selected,
-        },
-    )
-    assert bundle["status"] == "AGENT_BUNDLE_READY", bundle
-    reference = bundle["bundle_reference"]
-    project = tmp_path / "project"
-    (project / ".codex").mkdir(parents=True)
-    role = "alphalattice_evidence_analyst"
-
-    def lead(session: str) -> bridge.NativeResearchBinding:
-        return bridge.NativeResearchBinding(
-            session_id=session,
-            workspace=Path(service.session.workspace),
-            roles=(role,),
-            host="claude-code",
-        )
-
-    def delivered(binding: bridge.NativeResearchBinding, event: dict[str, Any]) -> None:
-        # This pins ledger attribution, not the native hook's two-second transport budget.
-        # Keep real bridge reservations and the Host's event door, independent of load.
-        answer = bridge.deliver_owned(
-            project,
-            binding,
-            event,
-            publish=lambda document: run_one(
-                service, {"operation": "EVENT_DECLARE", "event": document}
-            ),
-        )
-        assert answer["status"] == "DELIVERED", answer
-
-    def start(binding: bridge.NativeResearchBinding, agent: str) -> None:
-        hook = {
-            "hook_event_name": "SubagentStart",
-            "session_id": binding.session_id,
-            "prompt_id": f"prompt-{agent}",
-            "agent_id": agent,
-            "agent_type": role,
-            "cwd": str(project),
-            "model": f"model-{agent}",
-        }
-        event = bridge.lifecycle_event(project, binding, json.dumps(hook).encode())
-        assert event is not None
-        delivered(binding, event)
-
-    def assign(binding: bridge.NativeResearchBinding, agent: str) -> None:
-        event = bridge.coordination_event(
-            binding,
-            kind="assignment",
-            message=b"Answer the bundle.",
-            recipient_id=agent,
-            reference=reference,
-        )
-        delivered(binding, event)
-
-    operations = service.session.operations
-    adapter = service.review.evidence_task_adapter
-    packet = adapter.prepared_packet(
-        UUID(prepared["task_id"]), now=service.review.clock(), unit_id=ONE_UNIT
-    )
-    full = _CitingActor(topics=adapter.resources.analysis_actor.topics)(packet=packet)
-    written = full.answer.model_dump(mode="json")
-
-    def credited(session: str, handle: str) -> dict[str, Any]:
-        token = REQUEST_PROVENANCE.set(RequestProvenance(vendor="claude-code", session=session))
-        try:
-            answered = run_one(
-                service,
-                {
-                    "operation": "AGENT_ANSWER_SUBMIT",
-                    "bundle_directory": str(directory),
-                    "agent_answer": _invented(written, handle),
-                },
-            )
-        finally:
-            REQUEST_PROVENANCE.reset(token)
-        return dict(answered["recorded_agent"])
-
-    def subject(item: dict[str, Any]) -> dict[str, Any]:
-        return dict((item["payload"] or {}).get("subject") or {})
-
-    first = lead("lead-session")
-    start(first, "analyst-a")
-    assign(first, "analyst-a")
-    one = credited("lead-session", "S997")
-    assert (one["agent_id"], one["model"], one["basis"]) == ("analyst-a", "model-analyst-a", "HOOK")
-    # Two hundred other subagents later, the start and the assignment are off the newest page.
-    for index in range(200):
-        start(first, f"other-{index}")
-    newest = operations.observer.read_external(ExternalActivityReadQuery())["items"]
-    assert not any(subject(item).get("message_kind") == "assignment" for item in newest)
-    assert credited("lead-session", "S998")["agent_id"] == "analyst-a"
-    # The same bundle assigned to another Analyst at the tail: no one's.
-    start(first, "analyst-b")
-    assign(first, "analyst-b")
-    three = credited("lead-session", "S999")
-    assert (three["agent_id"], three["model"], three["session_id"]) == (None, None, "lead-session")
-
-    # A second lead's session, past the ring retention keeps of a session once the store fills.
-    def author(session: str) -> Any:
-        token = REQUEST_PROVENANCE.set(RequestProvenance(vendor="claude-code", session=session))
-        try:
-            return operations._agent_run("ANALYST", reference)
-        finally:
-            REQUEST_PROVENANCE.reset(token)
-
-    # Its first assignment of the bundle, to an Analyst never started, unsettles the second.
-    second = lead("lead-two")
-    assign(second, "analyst-x")
-    ledger = operations.observer._ledger
-    for index in range(ledger._retention_policy.transient_ring_size):
-        start(second, f"more-{index}")
-    start(second, "analyst-c")
-    assign(second, "analyst-c")
-    assert author("lead-two").agent_id is None
-    # The store fills: retention empties the session's oldest events, the first assignment
-    # among them, and what is left would name one Analyst -- the record is not whole.
-    # Automatic capacity follows free disk; other workers may increase it between this
-    # measurement and append. Use the operator's real fixed-cap door for this boundary.
-    configured = run_one(
-        service,
-        {
-            "operation": "STORAGE_CAP_SET",
-            "storage_cap_bytes": str(ledger._retention_policy.workspace_managed_cap_bytes),
-        },
-    )
-    assert configured["status"] == "CONFIGURED", configured
-    full_store = ledger._retention_policy.high_water_bytes + 1
-    monkeypatch.setattr(ledger, "physical_store_bytes", lambda: full_store)
-    start(second, "one-more")
-    walked: list[dict[str, Any]] = []
-    before = None
-    while True:
-        page = operations.observer.read_external(ExternalActivityReadQuery(before=before))
-        walked.extend(page["items"])
-        if not page["more"]:
-            break
-        before = page["items"][0]["ordinal"]
-    emptied = [
-        item for item in walked if item["payload"] is None and "lead-two" in item["correlation_ids"]
-    ]
-    recipients = {subject(item).get("recipient_id") for item in walked}
-    assert emptied and recipients >= {"analyst-c"} and "analyst-x" not in recipients
-    run = author("lead-two")
-    assert (run.agent_id, run.basis) == (None, "NOT_OBSERVED")
 
 
 def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> None:

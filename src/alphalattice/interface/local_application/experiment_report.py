@@ -85,15 +85,20 @@ def render_goal(body: dict[str, Any]) -> str:
         parts.append("<p>No conclusion recorded; completed computation is not an answer.</p>")
     record = body.get("record") or {}
     if record.get("conversation"):
-        # The Team's messages made under the goal: declarations, each with its sender (GR2).
+        # What the product recorded of the goal's Sessions' work, each row with its Session
+        # (GR2, FLOW-1); messages filed before FLOW-1 keep their recipient and reply.
         parts.append("<h2>Conversation</h2>")
         for message in record["conversation"]:
-            recipient = f" → {_text(message['recipient_id'])}" if message["recipient_id"] else ""
+            recipient = (
+                f" → {_text(message['recipient_id'])}" if message.get("recipient_id") else ""
+            )
             parts.append(
                 f"<article><h3>{_text(message['message_kind'])} · "
                 f"{_text(message['agent_id'])}{recipient}</h3>"
                 f"<p>{_text(message['summary'])}</p>"
-                + _facts({"Reply to": message["reply_to"], "Packet": message.get("packet_hash")})
+                + _facts(
+                    {"Reply to": message.get("reply_to"), "Packet": message.get("packet_hash")}
+                )
                 + "</article>"
             )
         parts.append(

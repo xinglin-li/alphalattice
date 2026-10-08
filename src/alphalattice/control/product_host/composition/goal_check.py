@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from typing import Any
 
 from alphalattice.interface.local_application.goals import Goal, GoalSubmission, GoalTaskFact
@@ -20,7 +20,6 @@ def missing_items(
     tasks: tuple[GoalTaskFact, ...],
     verify: Callable[[str], str | None],
     cited_known: frozenset[str],
-    open_assignments: tuple[Mapping[str, Any], ...] = (),
 ) -> list[dict[str, Any]]:
     """Each item a submission lacks, with its code; empty when the record is complete.
 
@@ -30,7 +29,6 @@ def missing_items(
         tasks: The Tasks the goal's sessions started, with their lifecycles.
         verify: Re-reads one reference at its owner; answers a failure code, or nothing.
         cited_known: Every reference id the goal and the submission hold.
-        open_assignments: The Team assignments made under the goal that no reply names yet.
 
     Returns:
         The missing items in a stable order. Nothing here judges whether a summary is true.
@@ -76,10 +74,4 @@ def missing_items(
             need("goal.task_running", task_id=str(task.task_id), state=task.state)
         elif task.state in WAITING and task.task_id not in named:
             need("goal.task_unaccounted", task_id=str(task.task_id), state=task.state)
-    for assignment in open_assignments:
-        need(
-            "goal.assignment_unanswered",
-            message_id=assignment["message_id"],
-            recipient_id=assignment.get("recipient_id"),
-        )
     return missing

@@ -391,7 +391,8 @@ def test_every_product_setup_script_words_an_unexpected_failure(
         monkeypatch.setattr(setup, "materialize", failed)
         arguments = ["--workspace", str(tmp_path)]
     elif script == "native_research":
-        monkeypatch.setattr(setup.NativeResearchBinding, "read", failed)
+        # Every binding read, by Session or by collection, passes through its entries.
+        monkeypatch.setattr(setup.NativeResearchBinding, "binding_entries", failed)
         arguments = ["unbind", "--session-id", "fixture-session"]
     else:
         monkeypatch.setattr(setup.model_store, "recipe_readiness", failed)
@@ -457,7 +458,7 @@ def _setup_runs(setup: Any, script: str, tmp_path: Path) -> list[tuple[str, list
         return [("offline", [], setup, "expected_files")]
     if script == "native_research":
         unbind = ["unbind", "--session-id", "fixture-session"]
-        return [("offline", unbind, setup.NativeResearchBinding, "read")]
+        return [("offline", unbind, setup.NativeResearchBinding, "binding_entries")]
     workspace = ["--workspace", str(tmp_path / "workspace")]
     recorded = ["--source-artifact-root", str(tmp_path / "source"), "--source-set-hash", "a" * 64]
     return [
@@ -599,7 +600,7 @@ def test_setup_validation_and_asset_check_failures_have_words(monkeypatch, capsy
     def unbound(*_args):
         raise bridge.NativeBridgeError("native_bridge.not_bound")
 
-    monkeypatch.setattr(bridge.NativeResearchBinding, "read", unbound)
+    monkeypatch.setattr(bridge.NativeResearchBinding, "binding_entries", unbound)
     monkeypatch.setattr(sys, "argv", ["native_research.py", "unbind", "--session-id", "fixture"])
     assert bridge.main() == 2
     payload = json.loads(capsys.readouterr().out)

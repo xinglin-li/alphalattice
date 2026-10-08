@@ -1,5 +1,5 @@
 # Research field notes
-Date: 2026-10-06
+Date: 2026-10-07
 
 Read the task you are doing. These notes connect observed stops to the maintained procedures; use the current answer for its exact choices and permitted continuation.
 
@@ -9,9 +9,9 @@ Choose the workspace inside the configured project and serve and bind from that 
 
 Binding checks the configured project above the served workspace. A workspace under another checkout can return `native_bridge.project_mismatch`; follow its request to serve and bind the same project workspace.
 
-For optional native proof in a linked worktree, read `hook_declarations_effective`: Codex can read its hooks from the main checkout. Use an independent ordinary project and explicitly configure native proof there; the person reviews actual definitions in `/hooks` ([native setup](native-visibility.md)). Default research needs no product hook or trust approval. `recorded_agent.basis: NOT_OBSERVED` means native authorship was not established, even when the review Task succeeds ([review receipt](cro-handoff.md)).
+`recorded_agent.basis: NOT_OBSERVED` means the lead submitted the answer and which specialist wrote it was not observed, even when the review Task succeeds ([review receipt](cro-handoff.md)).
 
-If the bound Session's public `session unbind` returns `native_bridge.files_unavailable:PermissionError`, its write sandbox can block removal of local binding metadata. Use that Session's host permission flow for the authorized unbind command, then retry the public door. Default research needs no product hook; optional native proof retains the host's trust review ([native setup](native-visibility.md)).
+If the bound Session's public `session unbind` returns `native_bridge.files_unavailable:PermissionError`, its write sandbox can block removal of local binding metadata. Use that Session's host permission flow for the authorized unbind command, then retry the public door. Research needs no product hook ([native setup](native-visibility.md)).
 
 ## Begin the first preparation
 
@@ -37,7 +37,7 @@ Choose a returned action name from `workspace show --list-next`; a nested JSON p
 
 Attach real results through their exact read requests. An existing Factor result may read `POST_HOC`, while a new Task can read `QUESTION_RECORDED_BEFORE_TASK_ADMISSION`; neither establishes independent preregistration ([intent and evidence](goals.md)). Save the completion template after the last attach or revise. An earlier template refuses `goal.revision_conflict_read_latest`; follow its `goal show --from "<out>/refusal.json" --save-declaration "<out>/submission.yaml"`, fill the refreshed slots and submit that request file ([completion](goals.md)).
 
-Read `state` and the caller's submitted outcome separately. `COMPLETE` verifies the record and evidence; it does not establish scientific success. A Goal's `QUESTION_OPEN` describes the absence of an attributed conclusion, even when its record is complete. `goal narrative` leaves references unverified; use `goal show` or `goal export` for verified evidence ([Goal reads](goals.md)). CLI session attribution alone establishes no native Team messages ([Team record](goals.md)).
+Read `state` and the caller's submitted outcome separately. `COMPLETE` verifies the record and evidence; it does not establish scientific success. A Goal's `QUESTION_OPEN` describes the absence of an attributed conclusion, even when its record is complete. `goal narrative` leaves references unverified; use `goal show` or `goal export` for verified evidence ([Goal reads](goals.md)). CLI session attribution names the Session, never which of its specialists wrote an answer ([Team record](goals.md)).
 
 ## Open a historical book's Evidence review
 

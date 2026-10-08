@@ -1148,7 +1148,8 @@ const LiveTeam = (() => {
     while(S.factNew.size > 100) { const id = S.factNew.values().next().value; S.factNew.delete(id); S.factVerified.delete(id); }
   }
   function refresh() {
-    if (!onTeam()) { S.answerDetail = null; return; }
+    if (!onTeam()) { S.answerDetail = null; S.usageAsked = false; return; }
+    if (!S.usageAsked) { S.usageAsked = true; LiveActivity.readSessionUsage?.(); }
     const a = LiveActivity.state(), usage = LiveActivity.nativeUsageState?.();
     const key = [a.epoch, a.cursor, a.watermark, a.error, a.stale, a.disposition, usage?.status, usage?.reason].join('|');
     if (key !== S.paintKey) { S.paintKey = key; paint(); }

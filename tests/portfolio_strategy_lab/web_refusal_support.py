@@ -168,6 +168,7 @@ REQUIRED_SEED_FIELDS = frozenset(
         "task_id",
         "update_plan_hash",
         "upgrade_set_hash",
+        "usage_reading_enabled",
         "window_limit",
     }
 )

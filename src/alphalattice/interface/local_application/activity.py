@@ -104,6 +104,7 @@ READ_OPERATIONS: frozenset[str] = frozenset(
         "TASKS",
         "UPGRADE_OVERVIEW",
         "NETWORK_ACCESS",
+        "USAGE_READING",
         "PENDING_DECISIONS",
         "WORKSPACE_PREPARE_READBACK",
         "ACTIVITY_REFUSALS",
@@ -193,6 +194,7 @@ OBSERVED_OPERATIONS: frozenset[str] = frozenset(
         "STRATEGY_SCORE_RUN",
         "UPGRADE_ACKNOWLEDGE",
         "NETWORK_ACCESS_SET",
+        "USAGE_READING_SET",
         "CPU_BUDGET_SET",
         "WORKSPACE_BACKUP",
         "MODEL_ACTIVATE",
@@ -210,9 +212,10 @@ on return, whatever their outcome. A preview with no Task is recorded as exactly
 that; nothing here admits work or invents a Task."""
 
 
-RECORDS_ITSELF: frozenset[str] = frozenset({"EVENT_DECLARE"})
+RECORDS_ITSELF: frozenset[str] = frozenset({"EVENT_DECLARE", "SESSION_USAGE_READ"})
 """Operations whose own record is what they write: a declared event is its row in the feed,
-so the observer records no operation beside it (V266)."""
+and a usage reading files its readings, so the observer records no operation beside them
+(V266)."""
 
 
 def observed_operation(operation: str) -> bool:

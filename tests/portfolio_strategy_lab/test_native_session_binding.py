@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-import sqlite3
+import os
+import sys
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,10 +18,7 @@ from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
     NativeBridgeError,
     NativeResearchBinding,
-    coordination_event,
-    deliver,
 )
-from alphalattice.interface.local_application.native_observation_sequence import SEQUENCE_NAME
 from alphalattice.interface.local_application.native_setup import (
     PROJECT_DECLARATION_NAME,
     bind_session,
@@ -84,6 +82,7 @@ def test_lead_usage_is_read_and_sequenced_by_the_host_without_a_child_stop(
     first = client.publish_native_event(project, {"source": "native_usage_read"})
     second = client.publish_native_event(project, {"source": "native_usage_read"})
     assert first["status"] == second["status"] == "DELIVERED"
+    # The same snapshot read twice is one observation: its sequence is its content's.
     items = client.read_external()["items"]
     assert len(items) == 1
     payload = items[0]["payload"]
@@ -128,6 +127,14 @@ def test_lead_usage_request_accepts_no_claims_and_keeps_missing_usage_visible(
     if problem == "missing_file":
         assert answer == {
             "status": "UNAVAILABLE",
+            "participants": [
+                {
+                    "agent_id": "fixture-parent",
+                    "role": "research_lead",
+                    "status": "UNAVAILABLE",
+                    "reason": "native_bridge.lead_usage_file_missing",
+                }
+            ],
             "reason": "native_bridge.lead_usage_file_missing",
         }
     elif problem == "off":
@@ -193,11 +200,11 @@ def test_session_bind_uses_the_host_writer_and_never_claims_attachment(
     assert answer["status"] == "BOUND"
     assert answer["detail"]
     assert answer["data"]["project"] == str(project)
-    assert answer["data"]["host_trust"] == "NOT_CHECKED"
-    assert answer["data"]["foreground_attachment"] == "NOT_REQUESTED"
+    # No hook exists to trust or attach: the answer claims neither.
+    assert "host_trust" not in answer["data"] and "foreground_attachment" not in answer["data"]
     assert answer["data"]["attachment_preflight"]["failure_code"] is None
     assert answer["data"]["attachment_preflight"]["missing"] == []
-    assert answer["data"]["attachment_preflight"]["native_proof"]["status"] == "NOT_REQUESTED"
+    assert "native_proof" not in answer["data"]["attachment_preflight"]
     assert (
         "prospective_observation_checkpoint"
         not in answer["data"]["attachment_preflight"]["missing"]
@@ -309,84 +316,6 @@ def test_native_binding_write_failure_names_only_its_safe_path(live, monkeypatch
 
 
 @pytest.mark.parametrize("host", ("codex", "claude-code"))
-def test_explicit_native_message_uses_host_sequence_and_keeps_declared_provenance(
-    live, monkeypatch, host
-):
-    project = _project(live, host)
-    _session(monkeypatch, host)
-    client = LocalResearchClient(live.workspace)
-    assert client.bind_native_session(project)["status"] == "BOUND"
-    binding = NativeResearchBinding.read(project)
-    sequence_path = project / ".codex" / SEQUENCE_NAME
-    opening = Path.open
-    calling_thread = threading.get_ident()
-
-    def agent_cannot_write(path, mode="r", *args, **kwargs):
-        if path.parent == project / ".codex" and any(flag in mode for flag in "wxa+"):
-            assert threading.get_ident() != calling_thread
-        return opening(path, mode, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "open", agent_cannot_write)
-    connect = sqlite3.connect
-
-    def host_connect(database, *args, **kwargs):
-        if str(database) == str(sequence_path):
-            assert threading.get_ident() != calling_thread
-        return connect(database, *args, **kwargs)
-
-    monkeypatch.setattr(sqlite3, "connect", host_connect)
-    assigned = coordination_event(
-        binding, kind="assignment", message=b"Read the fixture packet.", recipient_id="child"
-    )
-    first = deliver(project, binding, assigned, host_owned=True)
-    assert first["status"] == "DELIVERED"
-    assert deliver(project, binding, assigned, host_owned=True) == first
-    answered = coordination_event(
-        binding,
-        agent_id="child",
-        role="alphalattice_cro",
-        kind="answer",
-        message=b"The fixture has no findings.",
-        reply_to=str(assigned["message_id"]),
-    )
-    assert deliver(project, binding, answered, host_owned=True)["status"] == "DELIVERED"
-    assert sequence_path.is_file()
-    rows = _json(live, "/api/activity/external")["items"]
-    assert len(rows) == 2
-    assert {row["payload"]["subject"]["native_host"] for row in rows} == {host}
-    assert {row["payload"]["subject"]["input_channel"] for row in rows} == {"ACTOR_DECLARED"}
-    assert {row["payload"]["event_kind"] for row in rows} == {"NATIVE_COORDINATION_MESSAGE"}
-    assert all(row["authority"] == "AGENT_PROPOSAL" for row in rows)
-
-
-def test_host_native_message_refuses_other_workspace_and_unselected_fields(live, monkeypatch):
-    project = _project(live, "codex")
-    _session(monkeypatch, "codex")
-    other = project / "other-workspace"
-    other.mkdir()
-    bind_session(project, host="codex", session_id="fixture-parent", workspace=other)
-    binding = NativeResearchBinding.read(project)
-    event = coordination_event(binding, kind="plan", message=b"A scoped fixture plan.")
-    client = LocalResearchClient(live.workspace)
-    assert client.publish_native_event(project, event)["failure_code"] == (
-        "native_bridge.workspace_mismatch"
-    )
-    assert not (project / ".codex" / SEQUENCE_NAME).exists()
-    (project / ".codex" / BINDING_NAME).unlink()
-    assert client.bind_native_session(project)["status"] == "BOUND"
-    assert (
-        client.publish_native_event(project, {**event, "transcript": "not selected"})[
-            "failure_code"
-        ]
-        == "native_bridge.event_invalid"
-    )
-    assert not (project / ".codex" / SEQUENCE_NAME).exists()
-    refused = client.publish_native_event(project.parent / "outside-project", event)
-    assert refused["failure_code"] == "native_bridge.project_mismatch"
-    assert _json(live, "/api/activity/external")["items"] == []
-
-
-@pytest.mark.parametrize("host", ("codex", "claude-code"))
 def test_two_named_sessions_keep_their_own_workspace_and_detach_only_their_slot(
     live, monkeypatch, capsys, host
 ):
@@ -448,7 +377,7 @@ def test_two_named_sessions_keep_their_own_workspace_and_detach_only_their_slot(
 
 
 def test_two_hosts_with_the_same_session_text_have_separate_sources_and_detach(
-    live, monkeypatch, capsys
+    live, tmp_path, monkeypatch, capsys
 ):
     """P2-NH: a Session identifier alone grants no other host's binding or public source."""
     project = _project(live, "codex")
@@ -456,6 +385,7 @@ def test_two_hosts_with_the_same_session_text_have_separate_sources_and_detach(
     monkeypatch.chdir(project)
     client = LocalResearchClient(live.workspace)
     session = "fixture-shared-text"
+    _usage_files(tmp_path, monkeypatch, session)
     bindings = {}
     for host in ("codex", "claude-code"):
         _session(monkeypatch, host, session)
@@ -463,8 +393,8 @@ def test_two_hosts_with_the_same_session_text_have_separate_sources_and_detach(
         binding = NativeResearchBinding.read(project, session=(host, session))
         bindings[host] = binding
         assert (binding.host, binding.session_id) == (host, session)
-        event = coordination_event(binding, kind="plan", message=b"A public fixture plan.")
-        assert client.publish_native_event(project, event)["status"] == "DELIVERED"
+        reading = client.publish_native_event(project, {"source": "native_usage_read"})
+        assert reading["status"] == "DELIVERED", reading
     rows = client.read_external()["items"]
     assert len(rows) == 2
     assert {row["source_id"].partition(":")[0] for row in rows} == {
@@ -529,34 +459,24 @@ def test_exact_session_retry_keeps_checkpoint_and_refuses_changed_scope(
 
 
 @pytest.mark.parametrize("relation", ("parented", "foreign", "off"))
-def test_child_public_message_uses_exact_native_ancestry_without_lead_or_closure_credit(
+def test_a_child_is_served_by_its_ancestry_but_never_reads_its_leads_usage(
     live, tmp_path, monkeypatch, relation
 ):
-    """Fixture native metadata admits a public sender; it proves no live Start or author.
-
-    A child may speak as itself in its recorded parent's Goal. It may not read lead usage,
-    claim a sibling or parent sender, or close the assignment with a forged lead decision.
-    """
-    from uuid import UUID, uuid4
+    """A Codex child's command works in its recorded parent's workspace (V568); it asks for no
+    reading, which is the bound Session's own milestone, and a foreign or OFF binding never
+    adopts it."""
+    from uuid import UUID
 
     project = _project(live, "codex")
     parent, child = str(UUID(int=1001)), str(UUID(int=1002))
     home = tmp_path / "synthetic-codex-home"
     day = home / "sessions/2026/10/06"
     day.mkdir(parents=True)
-    header = {
-        "id": child,
-        "agent_path": "/root/cro",
-        "source": {
-            "subagent": {
-                "thread_spawn": {
-                    "parent_thread_id": str(UUID(int=1999)) if relation == "foreign" else parent,
-                    "agent_role": "alphalattice_cro",
-                    "agent_path": "/root/cro",
-                }
-            }
-        },
+    spawn = {
+        "parent_thread_id": str(UUID(int=1999)) if relation == "foreign" else parent,
+        "agent_role": "alphalattice_cro",
     }
+    header = {"id": child, "source": {"subagent": {"thread_spawn": spawn}}}
     (day / f"rollout-2026-10-06T00-00-00-{child}.jsonl").write_text(
         json.dumps({"type": "session_meta", "payload": header}) + "\n", encoding="utf-8"
     )
@@ -569,108 +489,129 @@ def test_child_public_message_uses_exact_native_ancestry_without_lead_or_closure
     )
     binding = NativeResearchBinding.read(project, session=("codex", parent))
     before = binding.record_path(project).read_bytes()
-    goal = client.request(
-        {
-            "operation": "GOAL_OPEN",
-            "goal_id": str(uuid4()),
-            "change_reason": "Labelled public child-message fixture",
-            "goal_declaration": {
-                "title": "Public child-message fixture",
-                "objective": "Keep a scoped public reply without fabricating acceptance.",
-                "kind": "RESEARCH",
-                "criteria": [{"criterion_id": "read", "text": "Read the public reply."}],
-                "deliverables": [
-                    {
-                        "deliverable_id": "result",
-                        "kind": "RESULT",
-                        "description": "The public record.",
-                    }
-                ],
-            },
-        }
-    )["goal_id"]
-    assert client.request({"operation": "GOAL_TAKE", "goal_id": goal})["status"] == "GOAL_TAKEN"
-    assignment = coordination_event(
-        binding, kind="assignment", recipient_id=child, message=b"Read the labelled fixture packet."
-    )
-    assert client.publish_native_event(project, assignment)["status"] == "DELIVERED"
     _session(monkeypatch, "codex", child)
-    other_goal = None
-    if relation == "parented":
-        other_goal = client.request(
-            {
-                "operation": "GOAL_OPEN",
-                "goal_id": str(uuid4()),
-                "change_reason": "Labelled different child Goal",
-                "goal_declaration": {
-                    "title": "Different child Goal",
-                    "objective": "Detect a wrongly reused default Goal.",
-                    "kind": "RESEARCH",
-                    "criteria": [{"criterion_id": "read", "text": "Read the public record."}],
-                },
-            }
-        )["goal_id"]
-        assert (
-            client.request({"operation": "GOAL_TAKE", "goal_id": other_goal})["status"]
-            == "GOAL_TAKEN"
-        )
-    reply = coordination_event(
-        binding,
-        agent_id=child,
-        role="alphalattice_cro",
-        kind="answer",
-        reply_to=str(assignment["message_id"]),
-        message=b"The labelled fixture has no submitted judgment.",
+    answer = client.publish_native_event(project, {"source": "native_usage_read"})
+    assert answer["status"] == "REFUSED"
+    assert answer["failure_code"] == (
+        "native_bridge.event_scope_invalid" if relation == "parented" else "native_bridge.not_bound"
     )
-    answer = client.publish_native_event(project, reply)
-    if relation == "parented":
-        assert answer["status"] == "DELIVERED", answer
-        assert answer["goal_id"] == goal
-        assert (
-            client.publish_native_event(project, {"source": "native_usage_read"})["status"]
-            == "REFUSED"
-        )
-        for forged in (
-            coordination_event(binding, kind="decision", message=b"A forged lead statement."),
-            coordination_event(
-                binding,
-                agent_id=str(UUID(int=1003)),
-                role="alphalattice_cro",
-                kind="answer",
-                message=b"A forged sibling statement.",
-            ),
-            coordination_event(
-                binding,
-                kind="decision",
-                reply_to=str(assignment["message_id"]),
-                terminal_decision="COMPLETED",
-                terminal_reason="A forged close.",
-                message=b"A forged close.",
-            ),
-        ):
-            assert client.publish_native_event(project, forged)["status"] == "REFUSED"
-    else:
-        assert answer["status"] == "REFUSED"
-        assert answer["failure_code"] == "native_bridge.not_bound"
-    _session(monkeypatch, "codex", parent)
-    record = client.request({"operation": "GOAL_SHOW", "goal_id": goal})["record"]
-    assert record["open_assignments"] == [
-        {"message_id": assignment["message_id"], "recipient_id": child}
-    ]
-    assert [row["message_kind"] for row in record["conversation"]] == (
-        ["assignment", "answer"] if relation == "parented" else ["assignment"]
-    )
-    if relation == "parented":
-        spoken = record["conversation"][-1]
-        assert spoken["agent_id"] == child and spoken["role"] == "alphalattice_cro"
-        assert spoken["input_channel"] == "ACTOR_DECLARED"
-        assert (
-            client.request({"operation": "GOAL_SHOW", "goal_id": other_goal})["record"][
-                "conversation"
-            ]
-            == []
-        )
-        rows = client.read_external()["items"]
-        assert all(row["authority"] == "AGENT_PROPOSAL" for row in rows)
-        assert not any("HOOK" in row["payload"]["event_kind"] for row in rows)
+    assert client.read_external()["items"] == []
     assert binding.record_path(project).read_bytes() == before
+
+
+def _usage_files(tmp_path, monkeypatch, session: str) -> None:
+    """One synthetic usage file for ``session`` under each host's own root."""
+    _lead_usage_file(tmp_path, monkeypatch)
+    claude = tmp_path / "synthetic-claude/projects/fixture-project"
+    (claude / "fixture-parent.jsonl").rename(claude / f"{session}.jsonl")
+    home = tmp_path / "synthetic-codex"
+    day = home / "sessions/2026/10/07"
+    day.mkdir(parents=True)
+    counts = {
+        "input_tokens": 9,
+        "cached_input_tokens": 2,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 4,
+    }
+    records = [
+        {"type": "session_meta", "payload": {"id": session, "source": "cli"}},
+        {"type": "turn_context", "payload": {"model": "gpt-6-luna", "effort": "high"}},
+        {
+            "type": "token_usage_record",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "payload": {"response_id": "r1", "usage": counts},
+        },
+    ]
+    (day / f"rollout-2026-10-07T00-00-00-{session}.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
+    )
+    monkeypatch.setenv("CODEX_HOME", str(home))
+
+
+@pytest.mark.parametrize("host", ("codex", "claude-code"))
+def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_configure(
+    live, tmp_path, monkeypatch, capsys, host
+):
+    """regression (AX ACCEPT live04, 2026-10-07): a lead on a fresh clone, its workspace a copy
+    kept outside the clone, was refused ``project_declaration_missing``: the Host looked for the
+    project only up from its workspace. The project ``configure`` declared is admitted by its own
+    declaration, and the Session then reads its usage at a milestone and on a page's request."""
+    from scripts import native_research
+
+    clone = tmp_path / "fresh-clone"
+    (clone / ".codex").mkdir(parents=True)
+    (clone / ".codex/config.toml").write_bytes((ROOT / ".codex/config.toml").read_bytes())
+    if host == "claude-code":
+        (clone / ".claude/agents").mkdir(parents=True)
+        card = ".claude/agents/alphalattice_cro.md"
+        (clone / card).write_bytes((ROOT / card).read_bytes())
+        (clone / ".claude/settings.json").write_bytes((ROOT / ".claude/settings.json").read_bytes())
+    python = clone / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    python.parent.mkdir(parents=True)
+    python.touch()
+    assert not live.workspace.resolve().is_relative_to(clone.resolve())
+    monkeypatch.setattr(
+        sys, "argv", ["native_research.py", "--project", str(clone), "configure", "--host", host]
+    )
+    assert native_research.main() == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "LOCAL_DECLARATIONS_VALIDATED"
+    _session(monkeypatch, host)
+    if host == "codex":
+        _usage_files(tmp_path, monkeypatch, "fixture-parent")
+    else:
+        _lead_usage_file(tmp_path, monkeypatch)
+    client = LocalResearchClient(live.workspace)
+    bound = client.bind_native_session(clone)
+    assert bound["status"] == "BOUND", bound
+    assert bound["attachment_preflight"]["status"] == "READY"
+    binding = NativeResearchBinding.read(clone)
+    assert binding.workspace == live.workspace and binding.host == host
+    reading = client.publish_native_event(clone, {"source": "native_usage_read"})
+    assert reading["status"] == "DELIVERED", reading
+    (row,) = client.read_external()["items"]
+    assert row["payload"]["subject"]["native_agent_id"] == "fixture-parent"
+    # A page's request reads the same Session, found through the project it was admitted from.
+    asked = client.request({"operation": "SESSION_USAGE_READ"})
+    assert asked["status"] == "READ"
+    assert [session["host"] for session in asked["sessions"]] == [host]
+    # A project that declares nothing is not admitted for an outside workspace.
+    plain = tmp_path / "undeclared"
+    (plain / ".codex").mkdir(parents=True)
+    _session(monkeypatch, host, "fixture-other")
+    refused = client.bind_native_session(plain)
+    assert refused["failure_code"] == "native_bridge.project_declaration_missing"
+    assert not (plain / ".codex" / BINDING_NAME).exists()
+
+
+def test_only_a_person_turns_usage_reading_off_and_then_nothing_is_read(
+    live: LocalPortfolioWebSession,
+) -> None:
+    """requirement (privacy, FLOW-1): reading is on by default; a person's Settings switch
+    turns it off for every Session of the workspace, an agent can read the switch but never
+    set it, and with it off a page's or a milestone's request reads no Session file."""
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+
+    client = LocalResearchClient(live.workspace)
+    shown = client.request({"operation": "USAGE_READING"})
+    assert (shown["status"], shown["usage_reading"]) == ("USAGE_READING", "READ")
+    refused = client.request({"operation": "USAGE_READING_SET", "usage_reading_enabled": False})
+    assert refused["failure_code"] == "native_bridge.usage_reading_human_only"
+    assert client.request({"operation": "USAGE_READING"})["usage_reading"] == "READ"
+
+    def person(enabled: bool) -> dict:
+        return live.operations.execute(
+            PortfolioResearchOperationRequest(
+                operation="USAGE_READING_SET", usage_reading_enabled=enabled
+            ),
+            caller="HUMAN",
+        )
+
+    assert person(False)["usage_reading"] == "OFF"
+    assert client.request({"operation": "SESSION_USAGE_READ"}) == {
+        "status": "OFF",
+        "sessions": [],
+    }
+    assert person(True)["usage_reading"] == "READ"
+    assert client.request({"operation": "SESSION_USAGE_READ"})["status"] == "NOT_BOUND"

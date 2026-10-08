@@ -1,4 +1,5 @@
-"""The lead's own optional readings and CLI ordering, independent of child lifecycle."""
+"""The Session's own optional readings and CLI ordering: the lead and the children its own
+files record, with no hook, message or always-running reader (FLOW-1)."""
 
 from __future__ import annotations
 
@@ -24,9 +25,8 @@ from alphalattice.interface.local_application.cli_contract import RequestProvena
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
     NativeResearchBinding,
-    deliver_child_usage_owned,
-    deliver_lead_usage_owned,
     lead_readings,
+    read_session_usage,
 )
 from alphalattice.interface.local_application.native_setup import declare_project
 from alphalattice.interface.local_application.portfolio_research import (
@@ -165,7 +165,8 @@ def lead_scene(request, tmp_path, monkeypatch):
 
     def publish(document, native_provenance):
         if scene.failure == "delivery":
-            raise client.LocalResearchClientError("local_client.host_unavailable")
+            # The Host's own observation owner refuses; nothing is filed.
+            return {"status": "REFUSED", "failure_code": "activity.storage_unavailable"}
         filed, goal, owner_session = goals.file_event(
             ExternalActivityEventDocument.model_validate(document), native_provenance
         )
@@ -197,7 +198,7 @@ def lead_scene(request, tmp_path, monkeypatch):
             assert binding is not None and binding.workspace.resolve() == workspace.resolve()
             native_provenance = RequestProvenance(vendor=host, session=parent, goal_id=self.goal)
             goal = goals.attributed_goal(native_provenance)
-            return deliver_lead_usage_owned(
+            return read_session_usage(
                 requested,
                 binding,
                 publish=lambda document: publish(document, native_provenance),
@@ -314,7 +315,7 @@ def test_lead_workspace_mismatch_and_off_never_read_or_deliver(lead_scene, monke
     assert lead_readings(scene.nested, dict(os.environ), workspace=scene.workspace) == []
     owned = NativeResearchBinding.read(scene.project)
     assert owned is not None
-    assert deliver_lead_usage_owned(
+    assert read_session_usage(
         scene.project, owned, publish=lambda _event: pytest.fail("OFF must not publish.")
     ) == {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}
     assert (
@@ -495,7 +496,7 @@ def test_a_valid_later_response_block_forms_a_new_snapshot_without_counting_it_t
         (None, None),
         ("missing", "native_bridge.lead_usage_file_missing"),
         ("read", "native_bridge.lead_usage_read_failed"),
-        ("delivery", "native_bridge.transport_unavailable"),
+        ("delivery", "activity.storage_unavailable"),
         ("unexpected", "native_bridge.lead_usage_read_failed"),
     ],
 )
@@ -560,7 +561,7 @@ def _write_native(path: Path, records: list[dict]) -> None:
 
 
 def _own_child(scene):
-    child = "synthetic-child-" + uuid4().hex
+    child = str(uuid4()) if scene.host == "codex" else "synthetic-child-" + uuid4().hex
     records = [json.loads(line) for line in scene.session.read_text("utf-8").splitlines()]
     if scene.host == "codex":
         path = scene.session.with_name(scene.session.name.replace(scene.parent, child))
@@ -591,6 +592,16 @@ def _own_child(scene):
             },
         )
     _write_native(path, records)
+    if scene.host == "codex":
+        # The lead's own rollout names the child it started; nothing else selects it.
+        item = {"type": "SubAgentActivity", "kind": "started", "agent_thread_id": child}
+        with scene.session.open("a", encoding="utf-8") as stream:
+            stream.write(
+                json.dumps(
+                    {"type": "event_msg", "payload": {"type": "item_completed", "item": item}}
+                )
+                + "\n"
+            )
     if scene.host == "claude-code":
         # The host's retained sidecar supplies role and direct spawn depth; neither is
         # inferred from the filename, assigned role or a card's model pin.
@@ -610,20 +621,25 @@ def _own_child(scene):
 
 
 def _read_owned_usage(scene, participant, child=None):
+    """One reading of the bound Session; the named participant's own entry from it."""
     binding = NativeResearchBinding.read(scene.project)
     assert binding is not None
-    if participant == "lead":
-        return deliver_lead_usage_owned(
-            scene.project, binding, publish=scene.publish, goal_id=scene.goal_id
-        )
-    return deliver_child_usage_owned(
-        scene.project,
-        binding,
-        agent_id=child,
-        role="alphalattice_risk",
-        publish=scene.publish,
-        goal_id=scene.goal_id,
+    result = read_session_usage(
+        scene.project, binding, publish=scene.publish, goal_id=scene.goal_id
     )
+    if result["status"] == "SKIPPED":
+        return result
+    agent = scene.parent if participant == "lead" else child
+    return next((m for m in result["participants"] if m.get("agent_id") == agent), None)
+
+
+def _rows(scene, agent):
+    """The observations filed for one participant."""
+    return [
+        row
+        for row in scene.observer.read_external(ExternalActivityReadQuery())["items"]
+        if row["payload"]["subject"]["native_agent_id"] == agent
+    ]
 
 
 def test_a_child_usage_snapshot_needs_exact_parent_binding_but_no_lifecycle_hook(lead_scene):
@@ -631,9 +647,14 @@ def test_a_child_usage_snapshot_needs_exact_parent_binding_but_no_lifecycle_hook
     scene = lead_scene
     child, path = _own_child(scene)
     first = _read_owned_usage(scene, "child", child)
-    assert first["status"] == "DELIVERED" and first["incomplete"] == 0
+    assert first == {
+        "agent_id": child,
+        "role": "alphalattice_risk",
+        "status": "DELIVERED",
+        "models": 1,
+    }
     assert _read_owned_usage(scene, "child", child) == first
-    (row,) = scene.observer.read_external(ExternalActivityReadQuery())["items"]
+    (row,) = _rows(scene, child)
     assert row["payload"]["event_kind"] == "NATIVE_AGENT_USAGE"
     assert row["authority"] == "AGENT_PROPOSAL"
     subject = row["payload"]["subject"]
@@ -652,7 +673,7 @@ def test_a_child_usage_snapshot_needs_exact_parent_binding_but_no_lifecycle_hook
     )
     assert "native_hook_event" not in subject and "authorship_basis" not in subject
     assert SECRET not in json.dumps(row) and str(path) not in json.dumps(row)
-    assert first["readings"][0]["goal_id"] == scene.goal_id
+    assert subject["goal_id"] == scene.goal_id
 
 
 def test_a_child_usage_delivery_failure_is_visible_and_retry_keeps_the_same_reading(lead_scene):
@@ -662,13 +683,13 @@ def test_a_child_usage_delivery_failure_is_visible_and_retry_keeps_the_same_read
     scene.failure = "delivery"
     result = _read_owned_usage(scene, "child", child)
     assert result["status"] == "UNAVAILABLE"
-    assert result["reason"] == "native_bridge.transport_unavailable"
+    assert result["reason"] == "activity.storage_unavailable"
     assert scene.observer.read_external(ExternalActivityReadQuery())["items"] == []
     assert SECRET not in json.dumps(result)
     scene.failure = None
     first = _read_owned_usage(scene, "child", child)
     assert first["status"] == "DELIVERED" and _read_owned_usage(scene, "child", child) == first
-    assert len(scene.observer.read_external(ExternalActivityReadQuery())["items"]) == 1
+    assert len(_rows(scene, child)) == 1
 
 
 @pytest.mark.parametrize("lead_scene", ["codex"], indirect=True)
@@ -694,26 +715,24 @@ def test_a_codex_child_usage_refuses_a_missing_or_conflicting_recorded_binding(
         meta["id"] = "another-child"
     _write_native(path, records)
     assert _read_owned_usage(scene, "child", child) == {
+        "agent_id": child,
         "status": "UNAVAILABLE",
         "reason": "native_bridge.child_usage_binding_unverified",
     }
-    assert scene.observer.read_external(ExternalActivityReadQuery())["items"] == []
+    assert _rows(scene, child) == []
 
 
 @pytest.mark.parametrize("lead_scene", ["claude-code"], indirect=True)
 def test_a_claude_child_usage_reads_only_the_bound_parents_own_subagent_file(lead_scene):
-    """BEHAVIOUR: the same parent id under another native project supplies no child usage."""
+    """BEHAVIOUR: the same parent id under another native project names no child of it."""
     scene = lead_scene
     child, path = _own_child(scene)
     foreign = scene.session.parent.parent / "other-project" / scene.parent / "subagents" / path.name
     foreign.parent.mkdir(parents=True)
     foreign.write_bytes(path.read_bytes())
     path.unlink()
-    assert _read_owned_usage(scene, "child", child) == {
-        "status": "UNAVAILABLE",
-        "reason": "native_bridge.child_usage_file_missing",
-    }
-    assert scene.observer.read_external(ExternalActivityReadQuery())["items"] == []
+    assert _read_owned_usage(scene, "child", child) is None
+    assert _rows(scene, child) == []
 
 
 @pytest.mark.parametrize("participant", ["lead", "child"])
@@ -754,13 +773,13 @@ def test_an_optional_usage_snapshot_publishes_all_allowed_models_or_no_overflow_
             )
     _write_native(path, records)
     result = _read_owned_usage(scene, participant, child)
-    rows = scene.observer.read_external(ExternalActivityReadQuery())["items"]
+    rows = _rows(scene, scene.parent if participant == "lead" else child)
     if model_count == 33:
         assert result["status"] == "UNAVAILABLE" and result["read_limit"] == "models"
         assert result["reason"] == f"native_bridge.{participant}_usage_read_failed"
-        assert "readings" not in result and rows == []
+        assert "models" not in result and rows == []
     else:
-        assert result["status"] == "DELIVERED" and len(result["readings"]) == 32
+        assert result["status"] == "DELIVERED" and result["models"] == 32
         assert len(rows) == 32
         assert {row["payload"]["subject"]["model"] for row in rows} == {
             f"synthetic-model-{number}" for number in range(32)
@@ -793,8 +812,8 @@ def test_an_overbound_native_usage_scan_publishes_none_of_its_complete_prefix(
     result = _read_owned_usage(scene, participant, child)
     assert result["status"] == "UNAVAILABLE" and result["read_limit"] == limit
     assert result["reason"] == f"native_bridge.{participant}_usage_read_failed"
-    assert "readings" not in result
-    assert scene.observer.read_external(ExternalActivityReadQuery())["items"] == []
+    assert "models" not in result
+    assert _rows(scene, scene.parent if participant == "lead" else child) == []
     assert path.read_bytes() == original and SECRET not in json.dumps(result)
 
 

@@ -330,33 +330,8 @@ def test_installed_configure_copies_guidance_unchanged_and_refuses_an_overwrite(
             )
     foreign_bytes = declaration.read_bytes()
     assert native_setup.main() == 0
-    assert not json.loads(capsys.readouterr().out)["product_hooks_requested"]
+    assert json.loads(capsys.readouterr().out)["retired_hook_groups_removed"] == 0
     assert declaration.read_bytes() == foreign_bytes
-    monkeypatch.setattr(
-        native_setup.sys, "argv", ["native", "configure", "--host", host, "--native-proof"]
-    )
-    assert native_setup.main() == 0
-    optional = json.loads(capsys.readouterr().out)
-    assert optional["product_hooks_requested"] and not optional["trust_changed"]
-    parsed = (
-        json.loads(declaration.read_bytes())
-        if host == "claude-code"
-        else tomllib.loads(declaration.read_text())
-    )
-    assert parsed["hooks"]["SubagentStart"][0] == foreign
-    for event in ("SubagentStart", "SubagentStop"):
-        owned = [
-            group for group in parsed["hooks"][event] if group["matcher"] == "^alphalattice_.*$"
-        ]
-        assert len(owned) == 1
-        assert (
-            "-m alphalattice.interface.local_application.native_setup"
-            in owned[0]["hooks"][0]["command"]
-        )
-    before = declaration.read_bytes()
-    assert native_setup.main() == 0
-    capsys.readouterr()
-    assert declaration.read_bytes() == before
     (project / "AGENTS.md").write_text("A person's own guide", encoding="utf-8")
     assert native_setup.main() == 2
     refused = json.loads(capsys.readouterr().out)
@@ -371,28 +346,17 @@ def test_installed_configure_copies_guidance_unchanged_and_refuses_an_overwrite(
         str(project),
         "doctor",
     ]
-    assert refused["next_commands"]["doctor"] == [*doctor, "--native-proof", "--host", host]
-    monkeypatch.setattr(native_setup.sys, "argv", ["native", "configure", "--host", host])
-    assert native_setup.main() == 2
-    default_refused = json.loads(capsys.readouterr().out)
-    assert default_refused["reason"] == "native_bridge.existing_configuration_differs"
-    assert default_refused["next_commands"]["doctor"] == doctor
-    assert (project / "AGENTS.md").read_text(encoding="utf-8") == "A person's own guide"
+    assert refused["next_commands"]["doctor"] == doctor
+    assert declaration.read_bytes() == foreign_bytes
 
     binding_path = project / ".codex/native-research.local.json"
     binding_path.parent.mkdir(exist_ok=True)
     binding_path.write_text("{", encoding="utf-8")
-    for native_proof in (False, True):
-        argv = ["native", "doctor", "--host", host]
-        if native_proof:
-            argv.append("--native-proof")
-        monkeypatch.setattr(native_setup.sys, "argv", argv)
-        assert native_setup.main() == 2
-        refused = json.loads(capsys.readouterr().out)
-        assert refused["reason"] == "native_bridge.binding_invalid"
-        assert refused["next_commands"]["doctor"] == (
-            [*doctor, "--native-proof", "--host", host] if native_proof else doctor
-        )
+    monkeypatch.setattr(native_setup.sys, "argv", ["native", "doctor", "--host", host])
+    assert native_setup.main() == 2
+    refused = json.loads(capsys.readouterr().out)
+    assert refused["reason"] == "native_bridge.binding_invalid"
+    assert refused["next_commands"]["doctor"] == doctor
     assert binding_path.read_text(encoding="utf-8") == "{"
 
 

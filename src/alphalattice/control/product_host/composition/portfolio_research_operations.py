@@ -246,7 +246,6 @@ from alphalattice.interface.local_application.activity import (
     ACTIVITY_REFUSAL_DAYS,
     ActivityReadQuery,
     ExternalActivityEventDocument,
-    ExternalActivityReadQuery,
     OperationObserver,
     observed_operation,
     refusal_code,
@@ -282,12 +281,11 @@ from alphalattice.interface.local_application.goals import (
 from alphalattice.interface.local_application.native_bridge import (
     NativeResearchBinding,
     deliver_accepted_answer,
-    judgment_agent,
-)
-from alphalattice.interface.local_application.native_setup import (
-    admitted_session_project,
     session_project,
+    set_usage_reading,
+    usage_reading_answer,
 )
+from alphalattice.interface.local_application.native_setup import admitted_session_project
 from alphalattice.interface.local_application.operations import OPERATIONS, PERSON_ONLY
 from alphalattice.interface.local_application.portfolio_research import (
     FrozenCandidateProjection,
@@ -472,6 +470,12 @@ class PortfolioResearchOperations:
     """Records entry, return and refusal of the operations it classifies as
     activity. Optional: every path below runs identically without one, and an
     observer that raises is counted here and otherwise ignored."""
+
+    read_native_usage: Callable[[], dict[str, object]] | None = None
+    """Reads the bound Sessions' usage now (`NativeUsageReader.read`); None without a Host."""
+    native_projects: set[Path] = field(default_factory=set)
+    """Agent projects this Host admitted a Session binding from, for a workspace kept outside
+    them; found again after a restart by the next bind or milestone (FLOW-1)."""
 
     observer_failures: int = field(default=0, init=False)
     last_observer_failure: str | None = field(default=None, init=False)
@@ -1496,59 +1500,18 @@ class PortfolioResearchOperations:
                 return self.export(request.result_hash)
         raise ValueError("portfolio_research.operation_unknown")
 
-    def _agent_history(self) -> list[dict[str, Any]] | None:
-        """Read the whole retained native record; a partial read settles no author."""
-        items: list[dict[str, Any]] = []
-        if self.observer is not None:
-            try:
-                before: int | None = None
-                while True:
-                    page = self.observer.read_external(ExternalActivityReadQuery(before=before))
-                    items.extend(cast(list[dict[str, Any]], page.get("items") or []))
-                    if not page.get("more"):
-                        break
-                    oldest = page.get("oldest")
-                    if (
-                        not isinstance(oldest, int)
-                        or oldest <= 0
-                        or (before is not None and oldest >= before)
-                    ):
-                        raise ValueError("Team history pagination did not advance")
-                    before = oldest
-            except Exception:
-                return None
-            return items
-        return None
+    def _agent_run(self) -> AgentRun | None:
+        """The Session that submitted an answer, recorded beside it (V300, AU3, LAWS.md ID7).
 
-    def _agent_run(
-        self,
-        role: str,
-        bundle_reference: str,
-        *,
-        events: list[dict[str, Any]] | None = None,
-        history_available: bool = True,
-    ) -> AgentRun | None:
-        """Who made an answer to one bundle, recorded beside it (V300, AU3, LAWS.md ID7).
-
-        The specialist the session's lead assigned the bundle to by its key, the record's hash
-        its prepare answer gave (V574), as the hook events and messages the Host holds settle
-        it, else an unknown author of that session (V555); none for a request that names no
-        agent session. It decides over the whole ledger of the Host's external events, every
-        page, never its newest: an assignment or a start that a long session pushed out of one
-        page still counts, and so does a second assignment of the bundle that unsettles it
-        (V570). A read that fails part way settles no author.
+        The lead submits every answer; which of its children wrote it is not observed, so the
+        record names the host and Session alone, never a guess. None for a request that names
+        no agent Session.
         """
         provenance = REQUEST_PROVENANCE.get()
         if provenance is None or provenance.vendor is None or provenance.session is None:
             return None
         run: AgentRun = AgentRun.model_validate(
-            judgment_agent(
-                self._agent_history() if events is None and history_available else events,
-                host=provenance.vendor,
-                session_id=provenance.session,
-                bundle_role=role,
-                bundle_reference=bundle_reference,
-            )
+            {"host": provenance.vendor, "session_id": provenance.session, "basis": "NOT_OBSERVED"}
         )
         return run
 
@@ -1556,7 +1519,6 @@ class PortfolioResearchOperations:
         self,
         bundle: AgentBundleRecord | None,
         body: Mapping[str, object],
-        events: list[dict[str, Any]] | None,
         *,
         accepted_receipt: GoalAcceptedAnswerReceipt | None = None,
     ) -> dict[str, object] | None:
@@ -1641,13 +1603,8 @@ class PortfolioResearchOperations:
             bundle=bundle,
             answer=record,
             contribution=delivery["contribution"],
-            parent={
-                "vendor": provenance.vendor if provenance is not None else None,
-                "session": provenance.session if provenance is not None else None,
-            },
             task_id=str(task.task_id),
             admitted_at=task.admitted_at,
-            events=events,
             publish=lambda document: self.declare_event(
                 observer, document, accepted_receipt=receipt
             ),
@@ -1705,16 +1662,13 @@ class PortfolioResearchOperations:
         self,
         body: dict[str, object],
         bundle: AgentBundleRecord | None,
-        events: list[dict[str, Any]] | None,
         *,
         accepted_receipt: GoalAcceptedAnswerReceipt | None = None,
     ) -> dict[str, object]:
         """Keep observation optional at every registered accepted-answer return door."""
         failures = self.observer_failures
         conversation = self._observe(
-            lambda: self.record_agent_answer(
-                bundle, body, events, accepted_receipt=accepted_receipt
-            )
+            lambda: self.record_agent_answer(bundle, body, accepted_receipt=accepted_receipt)
         )
         if conversation is not None:
             body["conversation"] = conversation
@@ -1760,7 +1714,6 @@ class PortfolioResearchOperations:
         read_files: tuple[str, ...] | None = None,
         agent_run: AgentRun | None = None,
         accepted_bundle: AgentBundleRecord | None = None,
-        accepted_events: list[dict[str, Any]] | None = None,
     ) -> dict[str, object] | None:
         """Research review does not require installing a frozen strategy.
 
@@ -1828,13 +1781,7 @@ class PortfolioResearchOperations:
                 # The files the agent names as read whole are its own word, kept with
                 # its answer as provenance; the answer is read whatever they are (OP11).
                 answer, read = answer_read(request.agent_answer or {})
-                events = self._agent_history()
-                agent_run = self._agent_run(
-                    bundle.role,
-                    bundle.record_hash,
-                    events=events,
-                    history_available=events is not None,
-                )
+                agent_run = self._agent_run()
                 if bundle.role not in ANSWER_FIELDS:
                     try:
                         with self.workspace_session.mutation_gate.hold():
@@ -1852,7 +1799,7 @@ class PortfolioResearchOperations:
                             raise
                         return agent_bundle_refusal(str(error), role=bundle.role)
                     generic_body = self.observe_accepted_answer(
-                        generic_body, bundle, events, accepted_receipt=accepted_receipt
+                        generic_body, bundle, accepted_receipt=accepted_receipt
                     )
                     answered = agent_answer_result(bundle.role, generic_body)
                     if answered["status"] in {"ACCEPTED", "DONE"}:
@@ -1872,7 +1819,6 @@ class PortfolioResearchOperations:
                         read_files=read,
                         agent_run=agent_run,
                         accepted_bundle=bundle,
-                        accepted_events=events,
                     )
                 except ValidationError as error:
                     # The answer passed its format and the record it would seal did
@@ -2110,10 +2056,7 @@ class PortfolioResearchOperations:
                         lambda: self.capture_accepted_answer_context(accepted_bundle, analysis_body)
                     )
                 return self.observe_accepted_answer(
-                    analysis_body,
-                    accepted_bundle,
-                    accepted_events,
-                    accepted_receipt=accepted_receipt,
+                    analysis_body, accepted_bundle, accepted_receipt=accepted_receipt
                 )
             case "EVIDENCE_SELECT":
                 assert request.analysis_publication_hash is not None
@@ -2175,7 +2118,7 @@ class PortfolioResearchOperations:
                         lambda: self.capture_accepted_answer_context(accepted_bundle, body)
                     )
                 return self.observe_accepted_answer(
-                    body, accepted_bundle, accepted_events, accepted_receipt=accepted_receipt
+                    body, accepted_bundle, accepted_receipt=accepted_receipt
                 )
         raise ValueError("portfolio_research.operation_unknown")
 
@@ -5389,6 +5332,21 @@ class PortfolioResearchOperations:
             return self.client_session(request, caller=caller)
         if operation == "CPU_BUDGET_SHOW":
             return self.cpu_budget()
+        if operation == "USAGE_READING":
+            return usage_reading_answer(self.workspace_session.workspace)
+        if operation == "USAGE_READING_SET":
+            # The person's privacy choice: an Agent reads it and never turns reading back on.
+            if caller != "HUMAN":
+                return refused("native_bridge.usage_reading_human_only")
+            assert request.usage_reading_enabled is not None
+            return set_usage_reading(
+                self.workspace_session.workspace, enabled=request.usage_reading_enabled
+            )
+        if operation == "SESSION_USAGE_READ":
+            # Optional reading: a missing reader or a failed read never refuses research.
+            if self.read_native_usage is None:
+                return {"status": "UNAVAILABLE", "reason": "native_bridge.lead_usage_read_failed"}
+            return self.read_native_usage()
         if operation in {"WORKSPACE_BACKUP", "WORKSPACE_BACKUPS"}:
             return self._backup_operation(request, make=operation == "WORKSPACE_BACKUP")
         if operation == "CPU_BUDGET_SET":
@@ -5521,26 +5479,6 @@ class PortfolioResearchOperations:
                 "next_action": "NAME_AN_OPEN_GOAL_OR_NONE",
             }
         answer = observer.admit_external_event(filed)
-        if accepted_receipt is not None and answer.get("status") in {"APPENDED", "REUSED_EXACT"}:
-            subject = filed.subject
-            closure = (
-                {
-                    "status": "CLOSED",
-                    "source": subject["closure_source"],
-                    "reason": subject["closure_reason"],
-                    "message_id": subject["assignment_message_id"],
-                    "packet_hash": subject["assignment_packet_hash"],
-                    "assigned_agent_id": subject["assigned_agent_id"],
-                }
-                if subject.get("closure_source")
-                else {
-                    "status": "NOT_CLOSED",
-                    "reason": subject.get(
-                        "closure_diagnostic", "native_bridge.assignment_not_observed"
-                    ),
-                }
-            )
-            answer = {**answer, "assignment_closure": closure}
         if goal is None or answer.get("status") not in {"APPENDED", "REUSED_EXACT"}:
             return answer
         if answer["status"] == "REUSED_EXACT":
@@ -5553,15 +5491,7 @@ class PortfolioResearchOperations:
                 None,
             )
             if original is not None:
-                return {
-                    **answer,
-                    "goal_id": str(goal.goal_id),
-                    **(
-                        {"packet_hash": original["packet_hash"]}
-                        if original.get("packet_hash")
-                        else {}
-                    ),
-                }
+                return {**answer, "goal_id": str(goal.goal_id)}
         # The ledger can have appended before a failed Goal attribution. A verified
         # exact retry repairs that missing projection once, without another event.
         return {

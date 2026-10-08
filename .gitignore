@@ -73,7 +73,9 @@ Thumbs.db
 .idea/
 .vscode/
 .venv-retrieval/
-.codex/native-research-sequences.local.lock
+.codex/native-research.local.d/
+# Retired with FLOW-1's producer sequences; an older checkout may still hold them.
+.codex/native-research-sequences.local.*
 .codex/native-sequence-*/
 .venv-gpu/
 .claude/settings.local.json
