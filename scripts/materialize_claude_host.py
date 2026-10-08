@@ -2,11 +2,9 @@
 
 Owners: the seven role cards `.codex/agents/*.toml` (their `developer_instructions` are the
 professional role text) and the PM Skill `.agents/skills/alphalattice-research/`.
-Derivatives: `.claude/agents/<name>.md` (one
-subagent per card: sonnet -- the evidence specialists a pinned Sonnet -- high effort, the
-tools its card's sandbox allows, no delegation),
-a medium-effort variant `<name>_medium.md` of each evidence specialist, a byte copy of the
-Skill under `.claude/skills/` (Claude Code reads only that directory). Default
+Derivatives: `.claude/agents/<name>.md` (one subagent per card: sonnet, medium effort, the
+tools its card's sandbox allows, no delegation), and a byte copy of the Skill under
+`.claude/skills/` (Claude Code reads only that directory). Default
 `.claude/settings.json` has no product lifecycle hooks; unrelated settings are preserved.
 
 Each stage card carries its reads, EXECUTE commands and graph (V384, V386), generated
@@ -39,18 +37,7 @@ SKILL_NAME = "alphalattice-research"
 SKILL_SOURCE = ROOT / ".agents" / "skills" / SKILL_NAME
 CLAUDE = ROOT / ".claude"
 CLAUDE_MODEL = "sonnet"
-EVIDENCE_MODEL = "claude-sonnet-5-5"
-"""The evidence specialists' model, pinned: an alias moves with each release, and their
-recall is measured against the model the card names. A `model` given with the call
-overrides the card, so the lead passes none (the Skill's handoff references). Moving it is
-a card change (the frozen Evidence/CRO strategy's change rule)."""
-CLAUDE_EFFORT = "high"
-MEDIUM_EFFORT_ROLES = ("alphalattice_cro", "alphalattice_evidence_analyst")
-"""The evidence specialists also get a medium-effort card, `<name>_medium`: the same role text
-for small material. Adopted by plan X9 (its recall held on the re-planted yardstick): the lead
-gives it a bundle no larger than the one it was measured on (the Skill's handoff references),
-and a binding made for the Claude host names it (`scripts/native_research.py`). Claude-side
-only: the Codex cards and their model lines are unchanged."""
+CLAUDE_EFFORT = "medium"
 CLAUDE_TOOLS = {
     # No Agent tool for any card, so a specialist cannot delegate.
     "read-only": "Read, Grep, Glob",
@@ -793,19 +780,15 @@ def role_cards() -> list[dict[str, str]]:
     return cards
 
 
-def agent_markdown(card: dict[str, str], *, effort: str = CLAUDE_EFFORT) -> str:
-    """Claude Code subagent frontmatter, then the role text verbatim; a variant at another
-    effort is named `<name>_<effort>` and says so in its description."""
+def agent_markdown(card: dict[str, str]) -> str:
+    """Claude Code subagent frontmatter, then the role text verbatim."""
     name, description = card["name"], card["description"]
-    if effort != CLAUDE_EFFORT:
-        name = f"{name}_{effort}"
-        description = f"{description} Reasoning effort {effort}: for small material only."
     lines = [
         "---",
         f"name: {name}",
         f"description: {json.dumps(description, ensure_ascii=False)}",
-        f"model: {EVIDENCE_MODEL if card['name'] in MEDIUM_EFFORT_ROLES else CLAUDE_MODEL}",
-        f"effort: {effort}",
+        f"model: {CLAUDE_MODEL}",
+        f"effort: {CLAUDE_EFFORT}",
         "tools: "
         + (STAGE_TOOLS if card["name"] in ROLE_COMMANDS else CLAUDE_TOOLS[card["sandbox_mode"]]),
         "---",
@@ -859,10 +842,6 @@ def expected_files() -> dict[Path, bytes]:
             files[path] = card_text(path).encode("utf-8")
     for card in role_cards():
         files[CLAUDE / "agents" / f"{card['name']}.md"] = agent_markdown(card).encode("utf-8")
-        if card["name"] in MEDIUM_EFFORT_ROLES:
-            files[CLAUDE / "agents" / f"{card['name']}_medium.md"] = agent_markdown(
-                card, effort="medium"
-            ).encode("utf-8")
     if not (SKILL_SOURCE / "SKILL.md").is_file():
         raise MaterializationError("skill.missing")
     skill = skill_text().encode("utf-8")

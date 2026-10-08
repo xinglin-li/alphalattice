@@ -188,11 +188,7 @@ def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypa
         "alphalattice_evidence_analyst",
         "alphalattice_cro",
     }
-    # The Claude host's binding also names the evidence specialists' medium cards (X9).
-    assert set(entry._roles("claude-code")) == set(roles) | {
-        "alphalattice_evidence_analyst_medium",
-        "alphalattice_cro_medium",
-    }
+    assert set(entry._roles("claude-code")) == set(roles)
     config = tomllib.loads((ROOT / ".codex/config.toml").read_text())
     # The specialists run on one model at one reasoning effort. Both are the cards' own settings
     # (a change is made in them alone); a card left on another model or effort than the rest
@@ -371,7 +367,15 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
         return code, json.loads(capsys.readouterr().out)
 
     cards = sorted(path.stem for path in (ROOT / ".claude/agents").glob("alphalattice_*.md"))
-    assert {"alphalattice_evidence_analyst_medium", "alphalattice_cro_medium"} <= set(cards)
+    assert set(cards) == {
+        "alphalattice_data",
+        "alphalattice_factor",
+        "alphalattice_alpha",
+        "alphalattice_risk",
+        "alphalattice_portfolio",
+        "alphalattice_evidence_analyst",
+        "alphalattice_cro",
+    }
     assert run("configure", "--host", "claude-code")[1]["status"] == "LOCAL_DECLARATIONS_VALIDATED"
     assert (project / ".claude/settings.json").read_bytes() == settings
     code, bound = run(

@@ -2,7 +2,7 @@
 name: alphalattice_factor
 description: "Analyze a supplied Factor report and its exact product-generated curation choices."
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 <!-- Derived from .codex/agents/alphalattice_factor.toml by scripts/materialize_claude_host.py; edit the TOML, then rerun the script. -->

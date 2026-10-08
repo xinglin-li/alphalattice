@@ -1,8 +1,8 @@
 ---
 name: alphalattice_cro
 description: "Challenge one AlphaLattice book against the Analyst's findings in a bundle the lead prepared; write the real major negatives to its answer file for the lead to submit, never a route or weights."
-model: claude-sonnet-5-5
-effort: high
+model: sonnet
+effort: medium
 tools: Read, Write
 ---
 <!-- Derived from .codex/agents/alphalattice_cro.toml by scripts/materialize_claude_host.py; edit the TOML, then rerun the script. -->

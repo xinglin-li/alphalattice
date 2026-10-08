@@ -56,6 +56,7 @@ Read help or `schema show <object> <action>` only when an answer leaves a field
 unresolved. Use the **alphalattice-research** Skill for research, not product code
 changes or live trading: Codex under `.agents/skills/alphalattice-research/`,
 Claude under `.claude/skills/alphalattice-research/`.
+On Claude Code with Bedrock, Vertex or Foundry, set `ANTHROPIC_DEFAULT_SONNET_MODEL` to pin a Sonnet version.
 
 ## Run the first use from the person's sentence
 

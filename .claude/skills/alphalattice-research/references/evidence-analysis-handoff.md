@@ -19,7 +19,7 @@ An experiment book uses `--study`, `--receipt` and `--session` instead of `--res
 
 ## Assign, submit, correct
 
-Give each unit to its own Analyst with the bundle path, filenames and answer file, not your conclusion. Confirm permitted exposure and permissions. On Claude, bundles up to 171,877 bytes may use `alphalattice_evidence_analyst_medium`; larger bundles use `alphalattice_evidence_analyst`. This measured recall boundary is not a product limit. Codex has the high card only. Pass no model override.
+Give each unit to its own Analyst with the bundle path, filenames and answer file, not your conclusion. Confirm permitted exposure and permissions. On Claude, use `alphalattice_evidence_analyst` with its shipped model and effort. Codex keeps its own card. Pass no model override.
 
 Run the returned `submit_command`. The Host rechecks Task, sources, scope, expiry and policy; screens findings and maps aliases back. On `CORRECT`, the same Analyst fixes only named problems, never changes judgment to win approval; make at most two corrections and rerun the same command. `ACCEPTED` admits the answer; `DONE` admits acceptable findings and records the rest as dropped. Keep the receipt, not the answer. Submissions use EXTERNAL_AUTOMATION provenance. Wait for the receipt Task to publish, then read the exact book's current Evidence answer. Select among eligible analyses with `evidence select`; never move files. Source-exact citations prove traceability, not truth or investment significance.
 

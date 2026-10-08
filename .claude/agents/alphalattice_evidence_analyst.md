@@ -1,8 +1,8 @@
 ---
 name: alphalattice_evidence_analyst
 description: "Read one AlphaLattice evidence bundle the lead prepared and write cited issuer findings to its answer file for the lead to submit; never a Portfolio judgment."
-model: claude-sonnet-5-5
-effort: high
+model: sonnet
+effort: medium
 tools: Read, Write
 ---
 <!-- Derived from .codex/agents/alphalattice_evidence_analyst.toml by scripts/materialize_claude_host.py; edit the TOML, then rerun the script. -->

@@ -2,7 +2,7 @@
 name: alphalattice_data
 description: "Advise on one product-exported Data/Feature issue or update state, preserving its evidence and permission limits."
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 <!-- Derived from .codex/agents/alphalattice_data.toml by scripts/materialize_claude_host.py; edit the TOML, then rerun the script. -->

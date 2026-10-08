@@ -34,6 +34,11 @@ def test_each_role_card_becomes_one_subagent_with_its_sandbox_tools(materialize)
         "alphalattice_portfolio",
         "alphalattice_risk",
     }
+    agent_directory = ROOT / ".claude" / "agents"
+    assert {path.stem for path in agent_directory.glob("alphalattice_*.md")} == set(cards)
+    assert {
+        path.stem for path in materialize.expected_files() if path.parent == agent_directory
+    } == set(cards)
     for name, card in cards.items():
         text = (ROOT / ".claude" / "agents" / f"{name}.md").read_text(encoding="utf-8")
         head, body = text.split("\n---\n", 1)
@@ -43,28 +48,14 @@ def test_each_role_card_becomes_one_subagent_with_its_sandbox_tools(materialize)
         tools = {tool.strip() for tool in fields["tools"].split(",")}
         # No Agent for any card. The two evidence specialists read their bundle whole and
         # write their own answer file, and run nothing: the lead submits it. The stage roles
-        # run their own commands and write their declarations (V384). The evidence
-        # specialists' model is pinned, the others' is the alias.
+        # run their own commands and write their declarations (V384).
         evidence = name in {"alphalattice_evidence_analyst", "alphalattice_cro"}
         assert card["sandbox_mode"] == "workspace-write"
         stage = {"Read", "Grep", "Glob", "Edit", "Write", "Bash"}
         assert tools == ({"Read", "Write"} if evidence else stage)
-        model = "claude-sonnet-5-5" if evidence else "sonnet"
-        assert (fields["model"], fields["effort"]) == (model, "high")
+        assert (fields["model"], fields["effort"]) == ("sonnet", "medium")
         assert body.strip().endswith(card["developer_instructions"].strip())
         assert "\r" not in text
-    # The evidence specialists alone have a medium-effort variant (plan X9): the same role
-    # text, the same tools, only the effort and the name differ.
-    variants = sorted(path.stem for path in (ROOT / ".claude" / "agents").glob("*_medium.md"))
-    assert variants == ["alphalattice_cro_medium", "alphalattice_evidence_analyst_medium"]
-    for variant in variants:
-        high = (ROOT / ".claude" / "agents" / f"{variant.removesuffix('_medium')}.md").read_text(
-            encoding="utf-8"
-        )
-        medium = (ROOT / ".claude" / "agents" / f"{variant}.md").read_text(encoding="utf-8")
-        assert medium.split("\n---\n", 1)[1] == high.split("\n---\n", 1)[1]
-        assert "effort: medium" in medium and f"name: {variant}" in medium
-        assert "tools: Read, Write\n" in medium and "model: claude-sonnet-5-5\n" in medium
 
 
 def _sections(card: Path) -> dict[str, str]:

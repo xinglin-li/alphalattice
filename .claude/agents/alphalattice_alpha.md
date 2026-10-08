@@ -2,7 +2,7 @@
 name: alphalattice_alpha
 description: "Analyze installed Alpha experiment candidates, fold support and predictive evidence."
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 <!-- Derived from .codex/agents/alphalattice_alpha.toml by scripts/materialize_claude_host.py; edit the TOML, then rerun the script. -->

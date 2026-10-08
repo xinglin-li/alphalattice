@@ -2,7 +2,7 @@
 name: alphalattice_portfolio
 description: "Analyze exact Portfolio research results and legal construction alternatives."
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 <!-- Derived from .codex/agents/alphalattice_portfolio.toml by scripts/materialize_claude_host.py; edit the TOML, then rerun the script. -->
