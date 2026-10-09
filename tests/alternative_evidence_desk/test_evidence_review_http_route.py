@@ -1416,18 +1416,15 @@ def test_the_real_composition_starts_and_refuses_without_a_provider_credential(
         assert refresh["disposition"] == "REFUSED_MODEL_AUTHORITY_NOT_ADMITTED"
         review = service.post("/api/cro-review", {"result_hash": result_hash})
         assert review["disposition"] == "REFUSED_MODEL_AUTHORITY_NOT_ADMITTED"
-        # Each refusal carries its code and the bundle request its words name, the book filled
-        # (V305).
         for answer, role in ((refresh, "ANALYST"), (review, "CRO")):
             assert answer["failure_code"] == "evidence_review.model_authority_not_admitted"
             (bundle,) = answer["next_requests"].values()
-            assert bundle == {
-                "operation": "AGENT_BUNDLE_PREPARE",
-                "agent_role": role,
-                "result_hash": result_hash,
-            }
+            assert bundle == dict(
+                operation="AGENT_BUNDLE_PREPARE", agent_role=role, result_hash=result_hash
+            )
+            command = re.search(r"\(([^)]+)\)", answer["detail"])
+            assert command and shlex.split(command[1]) == ["bundle", "prepare"]
 
-        # Refused before Task admission, and nothing queued behind it.
         assert len(service.registry.tasks()) == tasks
         service.drain()
         assert len(service.registry.tasks()) == tasks

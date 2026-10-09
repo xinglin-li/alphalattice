@@ -2539,7 +2539,7 @@ class EvidenceReviewApplication:
                 failure_code="evidence_review.model_authority_not_admitted",
                 detail=(
                     "The product runs no model of its own: an agent answers the Analyst's "
-                    "packet through its bundle (agent bundle-prepare). Saved evidence and "
+                    "packet through its bundle (bundle prepare). Saved evidence and "
                     "reviews remain readable."
                 ),
                 # The request the words name, the book filled (V305).
@@ -3285,7 +3285,7 @@ class EvidenceReviewApplication:
                 failure_code="evidence_review.model_authority_not_admitted",
                 detail=(
                     "The product runs no model of its own: an agent answers the CRO's "
-                    "dossier through its bundle (agent bundle-prepare). Saved reviews "
+                    "dossier through its bundle (bundle prepare). Saved reviews "
                     "remain readable."
                 ),
                 # The request the words name, the book filled (V305).

@@ -30,7 +30,7 @@ upgrading the checkout.
 This checkout is the person's workspace to change. Fix runtime bugs and add
 strategies, models and Features: read the failure's cause, fix its source owner,
 add a regression test and run again ([failure and
-recovery](.agents/skills/alphalattice-research/references/operating.md#failure-and-recovery)).
+recovery](.agents/skills/alphalattice-research/references/operating.md)).
 Under `src/alphalattice/`, strategies are declared in
 `investment/portfolio_strategy_lab/policies/installed_strategies.py`, models in
 `capabilities/alpha_modeling/extensions/`, and Feature kernels in
@@ -46,7 +46,7 @@ refusal at its cause; never bypass the check or edit a stored record to make it 
 If you installed AlphaLattice in this session, continue here: read this guide and
 the research Skill by the paths `configure` printed under `continue_here`, start
 each specialist as a general subagent whose prompt is its card's text, and tell the
-person its `disclosure` in one line ([setup](.agents/skills/alphalattice-research/references/operating.md#setup-and-launch)).
+person its `disclosure` in one line ([setup](.agents/skills/alphalattice-research/references/operating.md)).
 Use a new workspace for new research:
 
 ```powershell
@@ -59,7 +59,7 @@ watch; otherwise print the link and go on. Never navigate or click the Workbench
 to show work. Your Session binds itself when it first works on the workspace, and
 its first research request opens a goal when it holds none; commands then omit
 `--workspace`. Use the **alphalattice-research** Skill for research
-([command contract](.agents/skills/alphalattice-research/references/operating.md#command-contract)).
+([command contract](.agents/skills/alphalattice-research/references/operating.md)).
 
 ## Run the first use from the person's sentence
 
@@ -76,8 +76,9 @@ date, from `first_use.date`: the positions are entered on its `entry_session`,
 decided at the `formation_session` close, and a date that is not a session says
 so. They correct it with one note. `first_use.road` is the whole first use, one
 command per step, each answer names its next action, and `first_use.setup` names
-anything this session's setup still lacks, with its way on. `ask_now` is what only
-the person decides that the first use will need: ask for it at once, in one line.
+anything this session's setup still lacks, with its way on. Follow `ask_now`'s
+returned words: disclose delegated steps in one line, and ask only for a decision
+it leaves to the person.
 
 The road: data, the strategy's models and Risk, its whole-support book (the
 numerical check), activation with the date's update in the same act, then Evidence
@@ -88,30 +89,21 @@ step under the delegation, then run the same command again. The network setting 
 when an answer refuses for them. Never restart the Host or serve a second one for
 network access, and never ask the person to.
 
-On Claude Code, run every `--wait`, `activity wait` and agent verb (`first-use
-prepare`, `strategy build`, `strategy-book review`, `review continue`) with the
-Bash tool's `run_in_background`, then act on its completion notice; never read its
-output or check its Task before the notice. Whenever a step goes to the person,
-keep `activity wait --goal <goal>` running in the background: their act's Task ends
-it. On Codex, add `--notify codex-queue`: at its first running Task the command
-registers the Host's wake and returns, and you end your turn; the wake names the
-command to run again, which reuses what is done and goes on. The Host also wakes a
-Codex lead when the person's act admits work under the first use.
+Follow the wait and first-use wake procedure in [operating](.agents/skills/alphalattice-research/references/operating.md).
 
 While the goal is open, for 24 hours from opening, it delegates to you: opening
 the preparation's network, confirming the preparation and its resumes, deciding
-its data issues, confirming its membership changes, and activating its book. Tell
+its data issues, confirming its membership changes, activating its book, and
+setting up Evidence with recent SEC filings within the default budget and the
+retrieval model download at the size its setup states. Tell
 the person each act in one line; they stop the book by telling you, or on
 **Portfolio**. Accepted submission, abandonment or expiry ends the delegation and
 closes the network it opened. The `FIRST_USE` declaration is never revised.
 
 `strategy build` runs the research strategy's required whole-support Alpha and
 Risk studies and installs it, reusing completed studies, and offers each installed
-package's book run. Training prepares the light lifecycle by default, one seed of
-each model vintage, as its answers' `model_lifecycle` says; tell the person so.
-When they ask for the full one, plan it by name with `training plan --input
-<input-id> --component <component-id> --lifecycle FULL`, then `study controls
---input <input-id> --component <component-id> --lifecycle FULL`.
+package's book run.
+For the model lifecycle, follow [leading research](.agents/skills/alphalattice-research/references/research-lead.md).
 
 ## Choose the path by intent
 
@@ -184,7 +176,7 @@ then review its published positions on their own publication. Hold positions onl
 from the first actionable session; sessions before it are a causal replay, inside
 the research window where marked. Report each position with its basis, dates and
 the publication's `claim`
-([reading the dates](.agents/skills/alphalattice-research/references/research-lead.md#reading-the-dates)):
+([reading the dates](.agents/skills/alphalattice-research/references/research-lead.md)):
 research positions, never orders or advice. Past the horizon, about eleven
 months, request a newer book. Time a phase from its Goal and Task records, never
 from one `--wait`, and resume a stopped Task as itself after a fix.
@@ -205,7 +197,8 @@ with their words, `--person-said "<their words>" --asked "<your question>"`.
 Never paraphrase or invent the words, and never send the person to a page to
 click. Each yes answers one request, once.
 
-- Network access, except the first use's preparation.
+- Network access, except preparation and default SEC acquisition under the first
+  use's delegation.
 - Strategy activation, except under the first use's delegation; deactivation
   always. Model and Factor activation.
 - Daily research automation and the usage-reading switch.
@@ -213,8 +206,8 @@ click. Each yes answers one request, once.
 - Preparation, data issues and membership changes outside the first use's
   delegation, and a new research-input version: keep the current input and tell
   the person newer data exists.
-- Source scope beyond the default budget; retrieval model downloads; a
-  dependency outside the lock.
+- Source scope beyond the default budget; retrieval model downloads outside the
+  first use's delegation; a dependency outside the lock.
 - Scope: a request authorizes its stated scope only. Updating source data,
   sealing a new input or starting a different experiment is a new decision.
 - External sharing or publication. A paid action is never relayed. Isolation the

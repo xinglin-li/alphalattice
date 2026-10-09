@@ -332,8 +332,7 @@ def test_every_command_example_writes_and_reads_under_out_or_the_workspace(mater
 
 
 def test_both_agent_guides_read_the_dates_before_activation_and_review_the_positions_after():
-    """requirement: both hosts read the cutoff and first actionable session before activating,
-    review the date's positions on their own publication after it, and keep the causal replay."""
+    """Both guides bind activation and position review to their dates and publication."""
     for path in (
         ROOT / "AGENTS.md",
         ROOT / ".agents/skills/alphalattice-research/SKILL.md",
@@ -343,4 +342,5 @@ def test_both_agent_guides_read_the_dates_before_activation_and_review_the_posit
         dates = text.index("`strategy_dates.first_actionable_session`")
         assert text.index("`strategy_dates.information_cutoff`") < dates
         assert dates < text.index("admits the first update") < text.index("own publication")
-        assert "causal replay" in text and "--update" in text
+        assert "causal replay" in text
+        assert re.search(r"strategy-book review[^`\n]*--update\b", text)

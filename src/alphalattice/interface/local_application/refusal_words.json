@@ -8,11 +8,11 @@
   "next_action": "PREPARE_AND_ANALYSE_THE_EVIDENCE"
  },
  "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY": {
-  "detail": "No issuer registry and listing authority are admitted for this workspace, so a book's holdings cannot be named as issuers and no evidence is prepared; a person admits them when serving the Host.",
+  "detail": "No issuer registry and listing authority are admitted for this workspace, so a book's holdings cannot be named as issuers and no evidence is prepared; use the offered `evidence install` setup in the running Host to install and admit them.",
   "next_action": "ADMIT_ISSUER_REGISTRY_AND_LISTING_AUTHORITY"
  },
  "REFUSED_NO_ADMITTED_EVIDENCE_RUNTIME": {
-  "detail": "This workspace has no admitted evidence runtime, so nothing is acquired; a person admits it when serving the Host.",
+  "detail": "This workspace has no admitted evidence runtime, so nothing is acquired; use the offered `evidence install` setup in the running Host to install and admit it.",
   "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME"
  },
  "REFUSED_NO_ADMITTED_REVIEW_ACTOR": {
@@ -616,7 +616,7 @@
   "next_action": "NAME_THE_UPDATES_OWN_TASK"
  },
  "product_host.evidence_task_adapter_absent": {
-  "detail": "This Host was served without the evidence source package and its retrieval runtime, so no evidence is prepared or read here; under the source consent already given, install them and serve the Host again with them.",
+  "detail": "This Host has no admitted evidence source package and retrieval runtime, so no evidence is prepared or read here; under the source consent already given, use the offered `evidence install` setup to install them in the running Host.",
   "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME"
  },
  "research_authoring.document_unparsable": {

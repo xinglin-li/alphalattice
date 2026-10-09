@@ -495,7 +495,7 @@ def explain(
         return {
             "detail": (
                 "A person activates a model after a sandbox trial of this identity passed: "
-                "one Alpha study on a copy of the workspace, read back, and U0 on the copy. "
+                "one Alpha study on a workspace copy, read back, with saved reads preserved. "
                 f"`model sandbox {subject}` runs one, with the Host stopped."
             ),
             "next_requests": {"models": {"operation": "MODEL_EXTENSIONS"}},
