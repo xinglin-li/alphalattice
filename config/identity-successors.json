@@ -11971,6 +11971,125 @@
    "successor": "a497fd06c9bcfe1f1f56cb28ba282a5798ea2b7cc62c2c515b277ef993f42ef9",
    "change": "One verified-facts owner and an incremental audit (2026-10-09)",
    "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "0683a5346672ca6725d825ed8fb63e91ac86eae908489c5d7335163c4a87f8b4",
+   "successor": "0c0dce72abc68a75f2fc84db57aa2bca432b83808bed52f73f512e1e39cd8490",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "953dd502551ec543b9dfcf388e870eb37be8fb111a29c3510ffd3ffdd9fd9289",
+   "successor": "5bf929e513a035dc128199108f74b032798b83a2bde2fe12d5ed4614372f3277",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "953dd502551ec543b9dfcf388e870eb37be8fb111a29c3510ffd3ffdd9fd9289",
+   "successor": "5bf929e513a035dc128199108f74b032798b83a2bde2fe12d5ed4614372f3277",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "b0f6304077bb620fcc1ff8c098fc4003ef701c172e7f46d397dbedf27cf8dd54",
+   "successor": "ff5aabbd8441eefc3fdb1771f2a36e94975f1f7e0a260f5b34b5ab8c69c5ef03",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "8b310f8bab5d462b844955432d92de7a3469ebb5433331f8249db2ea2ceee161",
+   "successor": "ead284e19b92b03194e42b0e432d297ce011bd64c7624c7d6626d1244d39aca2",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "ef9d5e16471c381cc4a630308b0d7decd1dd9e810c4701534510e4c5c431b17a",
+   "successor": "a3856e63cfeb42faeb8a6a912c52557fb85e6b775c28e9be48f00ce333423827",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "30dcae5b6d8720e71559adb0998079c3be3598e67e050e173f2ee3084024d17b",
+   "successor": "cc5c4c3f68db3b77add34da35de69f6773f9aa476873de7f66855b5147e59a09",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "546d6af3bbd7b5890ff6dd55d9ade86ade9e93c27196a2de572aecd35d573d4e",
+   "successor": "ba8ff2007947d23f5210de144f3fdd035587b737cb28c492de37ef96cffe22c9",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "03ddf3b59b4602ed7c4c69f5846cb6625e839db57090c90cf01512974dbf82a3",
+   "successor": "6f0face835fa761f3179a6b84cea2b2b4285992ccf0f682eadc8c97b4845c0e6",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "dce872ff620fe007099e9724b08f62571d27f189287852c198c56086ced3c4ec",
+   "successor": "8fcf1f06dee6a9a4c99e5282fcdf885927dbeb2b30f6554e7fe6626f070a0016",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "b54664913625393950b0b73a568447ca88c6a8431c3aa06c3c9ac00b3c181999",
+   "successor": "c1f8d36a16ec03f99c1da7777dfcada070dfd0740ca023ad55dbc73ee509d167",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "6ba703b50f9c1b5b4a0afd30fb79e1d3bf825eaec6a267dd60904fe186460047",
+   "successor": "54ce66b1b68065da710627b399988fc6d5a56fdd73d7870e3208448fe936b13a",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "3a358052457a8faa9a6019748f31fd34ddd9dbfbd26a6042491e0ab0b7d04850",
+   "successor": "e3e021b06f6bd743f80b9b28b6b5a0b3d5855c5127fd20825513bb4cf6662302",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "product_host.research_input_capture",
+   "predecessor": "ab7168868cc6e46bc15a4d9534d37add9eeb45cbe40f2ce8b603202ffb288e4a",
+   "successor": "d7dee472e2a34ed6e2154d9b5d475a1efeb14b5096f7be6834a642b98647f1b3",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "a753a0eda6f1f28e3e1589ee8b7208a79eec48bef2e71c530636d10de105ccf2",
+   "successor": "a25f68e2493840e877f8fc20545e4adfa0fd004dabbf5cf014f254721fbb1327",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "68a35d0f50e62d20990743aa0d4226935068d0d4464ec91ff0cfc59f4fa5b2ad",
+   "successor": "aaa7167ebad7263378671ab1b682821ae28c1b51cf303afe58da22661c38acd7",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "e53470d618761f72748810947ccf0fbaeb867660deb0d3892f891d989fae598c",
+   "successor": "4e416ae6e81473c802d2c82478e3de8546a11e022ab474cdccf1814619e41379",
+   "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
+   "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
   }
  ]
 }
