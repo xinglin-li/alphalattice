@@ -145,7 +145,7 @@ def test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg() ->
     """Both guides start with the editable leg and name the installed leg."""
     owner = ".agents/skills/alphalattice-research/references/operating.md"
     for name in ("AGENTS.md", "README.md"):
-        assert f"({owner}#setup-and-launch)" in (ROOT / name).read_text(encoding="utf-8")
+        assert f"({owner})" in (ROOT / name).read_text(encoding="utf-8")
     guide = (ROOT / owner).read_text(encoding="utf-8")
     assert guide.index("uv sync --locked") < guide.index("wheel")
     assert "function alphalattice" not in guide

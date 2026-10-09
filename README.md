@@ -39,7 +39,7 @@ first use; the guide names [what only you decide](AGENTS.md#what-only-a-person-d
 
 ## Setup and research
 
-The [setup procedure](.agents/skills/alphalattice-research/references/operating.md#setup-and-launch)
+The [setup procedure](.agents/skills/alphalattice-research/references/operating.md)
 covers locked dependencies on Windows with Python 3.12 and uv, an editable
 checkout or installed wheel, and Local Web. **Windows is verified; macOS and
 Linux are unverified.** Downloads need applicable consent. Measured time and
