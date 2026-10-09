@@ -789,6 +789,7 @@ class CurrentUniverseMaintenance:
                 observed_at=observed_at,
                 hydration=hydration,
                 audit_start=audit_start,
+                written_from=min(candidate_sessions),
                 before_bars=before_bars,
                 before_actions=before_actions,
                 before_adjusted_through=before_adjusted_through,
@@ -824,6 +825,7 @@ class CurrentUniverseMaintenance:
         observed_at: datetime,
         hydration: HydrationEvidence,
         audit_start: date,
+        written_from: date,
         before_bars: dict[date, object],
         before_actions: tuple[object, ...],
         before_adjusted_through: date | None,
@@ -832,9 +834,17 @@ class CurrentUniverseMaintenance:
         restatement_observation: RestatementObservationReceipt,
         connection: DuckDBPyConnection | None = None,
     ) -> str:
-        bars = self.store.raw_bars(
-            item.listing_id, through=self.as_of_session, _connection=connection
-        )
+        # The batch wrote only its own sessions: the bars before them are as they were read.
+        after = {session: bar for session, bar in before_bars.items() if session < written_from} | {
+            bar.session_date: bar
+            for bar in self.store.raw_bars(
+                item.listing_id,
+                start=written_from,
+                through=self.as_of_session,
+                _connection=connection,
+            )
+        }
+        bars = tuple(after[session] for session in sorted(after))
         force_full_audit = False
         adjusted_return_change_sessions: set[date] = set()
         try:

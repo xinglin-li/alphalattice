@@ -39,6 +39,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
+from alphalattice.control.workspace_runtime.verified_facts import file_fact, record_file_fact
 from alphalattice.kernel.shared_kernel.spans import span
 
 _WINDOWS_REPLACE_ATTEMPTS = 6
@@ -1236,8 +1237,11 @@ class ContentAddressedStore:
         content_hash = columns_digest(arrays)
         target = self.root / category / f"{content_hash}.parquet"
         if target.is_file():
-            if self._packed(target) != b"".join(array.tobytes() for array in arrays.values()):
-                raise ContentAddressedStoreError("content_store.identity_reused")
+            if file_fact(target, "columns") != content_hash:
+                stat = os.stat(target)
+                if self._packed(target) != b"".join(array.tobytes() for array in arrays.values()):
+                    raise ContentAddressedStoreError("content_store.identity_reused")
+                record_file_fact(target, "columns", content_hash, stat=stat)
             return content_hash
         with span("serialize", "columns"):
             table = pa.table({name: array.reshape(-1) for name, array in arrays.items()})
@@ -1245,6 +1249,7 @@ class ContentAddressedStore:
             sink = pa.BufferOutputStream()
             pq.write_table(table, sink, use_dictionary=False)
         self.atomic_write(target, sink.getvalue().to_pybytes())
+        record_file_fact(target, "columns", content_hash, written=True)
         return content_hash
 
     def holds_columns(self, *, category: str, content_hash: str) -> bool:
@@ -1256,9 +1261,14 @@ class ContentAddressedStore:
         """Read one table's columns, flat, and prove they are the ones its digest names."""
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.parquet"
+        if file_fact(target, "columns") == content_hash:
+            return self._columns(target)
+        stat = os.stat(target) if target.is_file() else None
         columns = self._columns(target)
         if columns_digest(columns) != content_hash:
             raise ContentAddressedStoreError("content_store.artifact_tampered")
+        if stat is not None:
+            record_file_fact(target, "columns", content_hash, stat=stat)
         return columns
 
     def load_packed_bytes(self, *, category: str, content_hash: str) -> bytes:
@@ -1268,10 +1278,18 @@ class ContentAddressedStore:
         """
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.parquet"
-        payload = self._packed(target) if target.is_file() else self._legacy(category, content_hash)
+        if not target.is_file():
+            payload, stat = self._legacy(category, content_hash), None
+        elif file_fact(target, "columns") == content_hash:
+            return self._packed(target)
+        else:
+            stat = os.stat(target)
+            payload = self._packed(target)
         with span("hash", "packed"):
             if hashlib.sha256(payload).hexdigest() != content_hash:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
+        if stat is not None:
+            record_file_fact(target, "columns", content_hash, stat=stat)
         return payload
 
     def publish_document(self, *, category: str, payload: bytes, extension: str) -> str:

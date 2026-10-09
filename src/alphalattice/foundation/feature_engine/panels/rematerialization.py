@@ -19,6 +19,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_BINDING,
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
@@ -299,7 +300,7 @@ class ArtifactOnlyPanelRematerializer:
                 }
                 output = temp_root / f"{expected.year}.parquet"
                 pq.write_table(hashed.replace_schema_metadata(metadata), output, compression="zstd")
-                physical_sha = _file_sha256(output)
+                physical_sha = file_sha256(output)
                 metadata_hash = _metadata_hash(output)
                 if metadata_hash != expected.metadata_hash:
                     raise PanelRematerializationMismatch(
@@ -1027,14 +1028,6 @@ def _metadata_hash(path: Path) -> str:
     }
     payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def recipe_sector_history(

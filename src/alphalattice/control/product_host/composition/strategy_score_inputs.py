@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
-from hashlib import file_digest
 from itertools import groupby
 from pathlib import Path
 from types import MappingProxyType
@@ -23,6 +22,7 @@ from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
     read_workspace_inputs,
 )
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.causal_outcomes.execution.compile import (
     _action_dividends,
     causal_execution_simple_return,
@@ -103,36 +103,20 @@ class PreparedWorkspaceComponentInputs:
     reused_history_hash: str | None = None
 
 
-_SOURCE_FILE_DIGESTS: dict[str, tuple[tuple[int, int], str]] = {}
-"""Each store file's sha256 with the size and mtime it had when hashed, for this process."""
-
-
 def _market_source_proof(market: MarketDataRepository) -> tuple[tuple[str, str | None], ...]:
     # A revision journal is not a content proof. Include the WAL's presence and
     # exact bytes: a live writable instance can commit without checkpointing.
-    # The first proof of a file in a process hashes it whole; a later one whose
-    # size and mtime are unchanged since that hash (any write moves one) reuses
-    # it, and any other hashes it whole again.
+    # A file is hashed whole unless its verified fact still holds (any write
+    # moves its size or mtime).
     proof = []
     for path in (market.path, Path(str(market.path) + ".wal")):
-        resolved = str(path.resolve())
         try:
-            before = path.stat()
-            fingerprint = (before.st_size, before.st_mtime_ns)
-            held = _SOURCE_FILE_DIGESTS.get(resolved)
-            if held is not None and held[0] == fingerprint:
-                digest = held[1]
-            else:
-                with path.open("rb") as handle:
-                    digest = file_digest(handle, "sha256").hexdigest()
-                after = path.stat()
-                if (after.st_size, after.st_mtime_ns) == fingerprint:
-                    _SOURCE_FILE_DIGESTS[resolved] = (fingerprint, digest)
+            digest = file_sha256(path)
         except FileNotFoundError:
             if path == market.path:
                 raise
             digest = None
-        proof.append((resolved, digest))
+        proof.append((str(path.resolve()), digest))
     return tuple(proof)
 
 

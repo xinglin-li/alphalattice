@@ -50,7 +50,6 @@ from alphalattice.control.product_host.composition.application_session import (
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     RESEARCH_WORKSPACE_MANIFEST_NAME,
-    ResearchWorkspaceError,
     ResearchWorkspaceManifest,
     ResearchWorkspaceManifestHolder,
     create_research_workspace_manifest,
@@ -65,9 +64,8 @@ from alphalattice.control.product_host.research_authoring.feature_activations im
     workspace_feature_catalog,
 )
 from alphalattice.control.product_host.storage.backup import (
-    WorkspaceBackupError,
-    WorkspaceBackups,
-    record_backup_failure,
+    defer_automatic_backup,
+    settle_automatic_backup,
 )
 from alphalattice.control.product_host.storage.inventory import require_storage_capacity
 from alphalattice.control.product_host.storage.plan_previews import (
@@ -135,7 +133,6 @@ from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.spans import span
 
 PROFILE = (
     resolve_playpen_root(Path(__file__)) / "config/market-profiles/us-current-index-research.yaml"
@@ -165,6 +162,9 @@ _RECOVERABLE_BLOCKS = {
     # Its way on is the plan run again once a person allows the network: the rerun resumes the
     # stopped Task, and is refused while the network stays closed (V600).
     "workspace_data_update.source_access_not_admitted",
+    # Its way on is the backup's cause resolved and the plan run again: the rerun resumes the
+    # stopped Task, whose first stage takes the backup again.
+    "workspace_data_update.archive_failed",
 }
 """The stops a rerun of the same plan resumes, once a person has cleared their cause."""
 
@@ -1778,22 +1778,6 @@ class WorkspaceDataUpdateApplication:
             self._require_plan(plan)
         return cast(WorkspaceDataUpdatePlan, plan)
 
-    def _back_up_held_state(self) -> None:
-        """A backup of the held state after each data update (V209): a failure leaves the
-        update published and is recorded where the next backup answer reads it."""
-        workspace = self.session.workspace
-        try:
-            with span("copy", "held_state_backup"):
-                WorkspaceBackups(
-                    workspace,
-                    workspace_id=read_research_workspace_manifest(workspace).workspace_id,
-                    clock=self.clock,
-                ).create(reason="DATA_UPDATE")
-        except (WorkspaceBackupError, ResearchWorkspaceError, OSError, duckdb.Error) as error:
-            record_backup_failure(workspace, error, at=self.clock())
-        else:
-            record_backup_failure(workspace, None, at=self.clock())
-
     def _registry(self) -> DuckDbWorkspaceMaintenanceRegistry:
         return DuckDbWorkspaceMaintenanceRegistry(
             self.session.workspace / "market-data.duckdb", gate=self.session.mutation_gate
@@ -2014,12 +1998,12 @@ class WorkspaceDataUpdateApplication:
         self._require_plan(plan)
         if stage == _STAGES[0]:
             return self._step(plan, stage, cancelled=cancelled, bound_to=bound_to)
-        # The data stage and the receipt's publication with its backup each keep one writable
-        # instance of the market store from their first read to their last write, so the
-        # cycles' holds, the runner's units, the backup's table exports and every other thread's
-        # reads attach to it instead of reopening the file with a cold cache and checkpointing
-        # it at each close. Writable, it is no lock: every thread attaches without waiting, and
-        # each cycle still releases the write gate at its network edges.
+        # The data stage and the receipt's publication each keep one writable instance of the
+        # market store from their first read to their last write, so the cycles' holds, the
+        # runner's units and every other thread's reads attach to it instead of reopening the
+        # file with a cold cache and checkpointing it at each close. Writable, it is no lock:
+        # every thread attaches without waiting, and each cycle still releases the write gate
+        # at its network edges.
         with WorkspaceDatabase(self.session.workspace).retain(read_only=False):
             return self._step(plan, stage, cancelled=cancelled, bound_to=bound_to)
 
@@ -2032,6 +2016,13 @@ class WorkspaceDataUpdateApplication:
         bound_to: tuple[TaskRecord, TaskExecution] | None,
     ) -> StageExecutionResult:
         if stage == _STAGES[0]:
+            # The last update's backup, if the Host never took it or it failed, is taken first.
+            if settle_automatic_backup(
+                self.session.workspace, clock=self.clock, gate=self.session.mutation_gate
+            ):
+                return StageExecutionResult(
+                    StageDisposition.BLOCKED, failure_code="workspace_data_update.archive_failed"
+                )
             if (
                 read_workspace_inputs(
                     self.session.workspace, plan.binding, allow_transition=plan.change is not None
@@ -2266,7 +2257,8 @@ class WorkspaceDataUpdateApplication:
                     removed_member_tails=self.changes.removed_member_tails(plan),
                 )
                 self._registry().publish_data_update_receipt(receipt)
-                self._back_up_held_state()
+                # The backup is archive work: the Host takes it once idle.
+                defer_automatic_backup(self.session.workspace, at=self.clock())
             content = receipt.content_hash
         else:
             raise ValueError("workspace_data_update.stage_unknown")

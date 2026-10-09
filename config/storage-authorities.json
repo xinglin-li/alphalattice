@@ -228,12 +228,12 @@
     },
     {
       "tables": [
-        "feature_year_seal"
+        "verified_year_fact"
       ],
       "database": "workspace",
-      "semantic_role": "closed-year digests of the base Feature rows that a Feature prefix proof reads in place of those years",
-      "generation_model": "BY_CATALOG",
-      "authority_owner": "feature_engine.storage.FeatureStateRepository",
+      "semantic_role": "closed-year facts the store's writers keep current under its seal epoch: the Feature rows' year digests a prefix proof reads, and the adjusted series' year digests the action audit reads",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "workspace_runtime.verified_facts",
       "retention_owner": "current-state storage governance",
       "rebuildability": "RECOMPUTABLE_FROM_BASE_AND_POLICY",
       "artifact_relationship": "OPERATIONAL_PROJECTION"
@@ -446,10 +446,11 @@
     {
       "tables": [
         "feature_ineligibility",
-        "feature_ineligibility_legacy"
+        "feature_ineligibility_legacy",
+        "feature_year_seal"
       ],
       "database": "workspace",
-      "semantic_role": "retired Feature eligibility tables, altered and dropped by the migration that replaced them",
+      "semantic_role": "retired Feature tables (eligibility, year seals), altered and dropped by the migrations that replaced them",
       "generation_model": "LEGACY_MIGRATION_ONLY",
       "authority_owner": "feature_engine.storage.FeatureStateRepository",
       "retention_owner": "feature_engine",

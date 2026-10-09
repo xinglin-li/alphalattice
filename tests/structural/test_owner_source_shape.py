@@ -788,7 +788,8 @@ def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_
     assert "self._drive_waiting()" in inspect.getsource(held._drain)
     assert "self._drive_waiting()" in inspect.getsource(held.request_cancel)
     assert "self._waiting" in inspect.getsource(held.command_running)
-    assert "TaskLifecycle.DEFERRED" in inspect.getsource(operations.sweep_if_due)
+    assert "self._tasks_wait()" in inspect.getsource(operations.sweep_if_due)
+    assert "TaskLifecycle.DEFERRED" in inspect.getsource(operations._tasks_wait)
 
 
 def test_no_generic_layer_module_names_a_strategy() -> None:

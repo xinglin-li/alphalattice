@@ -27,6 +27,11 @@ from alphalattice.control.workspace_runtime.database import (
 from alphalattice.control.workspace_runtime.storage.readiness import (
     WorkspaceReadinessRepository,
 )
+from alphalattice.control.workspace_runtime.verified_facts import (
+    forget_year_facts,
+    record_year_facts,
+    year_facts,
+)
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.layer import FeatureCatalogLayer
 from alphalattice.foundation.feature_engine.contracts import (
@@ -127,6 +132,10 @@ class _QuarantineContinuationLike(Protocol):
 
     def document(self) -> dict[str, object]: ...
 
+
+FEATURE_YEAR = "feature_year"
+"""The year fact a closed year's Feature rows are sealed by: every listing and stored factor of
+the catalog in that year, hashed, under the runtime view's definition (`runtime_view_hash`)."""
 
 _INELIGIBILITY_RUN_COLUMNS = (
     "run_id",
@@ -2252,24 +2261,14 @@ class FeatureStateRepository(WorkspaceRepository):
         write's own transaction. One computed here is not stored: it is only slower.
         """
         wanted = tuple(years)
-        if not wanted:
-            return {}
-        stored = {
-            int(year): str(digest)
-            for year, digest in connection.execute(
-                """
-                SELECT year, digest FROM feature_year_seal
-                WHERE catalog_hash = ? AND view_hash = ? AND epoch = ?
-                  AND list_contains(?::INTEGER[], year)
-                """,
-                [
-                    catalog_hash,
-                    runtime_view_hash(connection),
-                    self.database.seal_epoch(),
-                    list(wanted),
-                ],
-            ).fetchall()
-        }
+        stored = year_facts(
+            connection,
+            kind=FEATURE_YEAR,
+            scope=catalog_hash,
+            basis=runtime_view_hash(connection),
+            epoch=self.database.seal_epoch(),
+            years=wanted,
+        )
         return {
             year: stored[year]
             if year in stored
@@ -2314,29 +2313,23 @@ class FeatureStateRepository(WorkspaceRepository):
             ).fetchone()
             sealed: list[int] = []
             if bounds is not None and bounds[0] is not None:
-                view_hash, epoch = runtime_view_hash(connection), self.database.seal_epoch()
-                held = {
-                    int(row[0])
-                    for row in connection.execute(
-                        "SELECT year FROM feature_year_seal "
-                        "WHERE catalog_hash = ? AND view_hash = ? AND epoch = ?",
-                        [catalog_hash, view_hash, epoch],
-                    ).fetchall()
+                fact = {
+                    "kind": FEATURE_YEAR,
+                    "scope": catalog_hash,
+                    "basis": runtime_view_hash(connection),
+                    "epoch": self.database.seal_epoch(),
                 }
-                for year in range(bounds[0].year, bounds[1].year):
-                    if year in held:
-                        continue
-                    connection.execute(
-                        "INSERT OR REPLACE INTO feature_year_seal VALUES (?, ?, ?, ?, ?)",
-                        [
-                            catalog_hash,
-                            year,
-                            view_hash,
-                            epoch,
-                            self._feature_year_digest(connection, catalog_hash, year),
-                        ],
-                    )
-                    sealed.append(year)
+                closed = range(bounds[0].year, bounds[1].year)
+                held = year_facts(connection, **fact, years=closed)
+                sealed = [year for year in closed if year not in held]
+                record_year_facts(
+                    connection,
+                    **fact,
+                    values={
+                        year: self._feature_year_digest(connection, catalog_hash, year)
+                        for year in sealed
+                    },
+                )
             connection.execute("COMMIT")
         except BaseException:
             connection.execute("ROLLBACK")
@@ -2351,14 +2344,11 @@ class FeatureStateRepository(WorkspaceRepository):
 
         Every catalog's: a layered catalog's rows compose from its parts' rows. None clears all.
         """
-        if sessions is None:
-            connection.execute("DELETE FROM feature_year_seal")
-            return
-        years = sorted({session.year for session in sessions})
-        if years:
-            connection.execute(
-                "DELETE FROM feature_year_seal WHERE list_contains(?::INTEGER[], year)", [years]
-            )
+        forget_year_facts(
+            connection,
+            FEATURE_YEAR,
+            years=None if sessions is None else {session.year for session in sessions},
+        )
 
     def materialization_source_windows(
         self,

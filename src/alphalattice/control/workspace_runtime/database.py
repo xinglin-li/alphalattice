@@ -168,7 +168,17 @@ class WorkspaceConnection:
     statements for a consistent read.
     """
 
-    __slots__ = ("_closed", "_guarded", "_instance", "_owner", "_path", "_pinned", "_raw", "_top")
+    __slots__ = (
+        "__weakref__",
+        "_closed",
+        "_guarded",
+        "_instance",
+        "_owner",
+        "_path",
+        "_pinned",
+        "_raw",
+        "_top",
+    )
 
     def __init__(
         self,

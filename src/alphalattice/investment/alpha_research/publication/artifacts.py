@@ -128,12 +128,16 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         columns: Mapping[str, npt.NDArray[Any]],
         reuse: WorkspaceObservationHistoryHead | None = None,
         capacity: Callable[[int], None],
+        loaded: tuple[WorkspaceObservationHistoryHead, Mapping[str, npt.NDArray[np.float64]]]
+        | None = None,
     ) -> WorkspaceObservationHistoryHead:
         """Persist float64 Parquet segments and commit the stable slot's marker last.
 
         Capacity admission covers every new part, head and marker staging write. The caller
         holds the workspace mutation gate; semantic selection changes rebuild the slot, while
-        verified identical complete stable-prefix segments may be reused.
+        verified identical complete stable-prefix segments may be reused. ``loaded`` is the
+        caller's `load_workspace_observation_history` of the slot, read again only if the
+        marker moved since.
         """
         published = _WorkspaceObservationHistoryStore(
             self.root, error=AlphaCurrentArtifactReadbackError
@@ -147,6 +151,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             columns=columns,
             reuse=reuse,
             capacity=capacity,
+            loaded=loaded,
         )
         return cast(WorkspaceObservationHistoryHead, published)
 

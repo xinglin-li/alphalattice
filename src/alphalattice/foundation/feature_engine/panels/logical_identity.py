@@ -18,6 +18,7 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
     ordered_key_hash,
@@ -751,7 +752,7 @@ def _physical_chunk(
         logical_annual_hash=canonical_hash(annual.model_dump(mode="json")),
         legacy_chunk_hash=str(raw_chunk["chunk_hash"]),
         uri=str(raw_chunk["uri"]),
-        raw_sha256=_file_sha256(path),
+        raw_sha256=file_sha256(path),
         byte_count=path.stat().st_size,
         row_count=annual.row_count,
         schema_hash=schema_hash,
@@ -759,14 +760,6 @@ def _physical_chunk(
         compression_codecs=tuple(sorted(codecs)),
         parquet_created_by=metadata.created_by,
     )
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def _identified[Model: BaseModel](

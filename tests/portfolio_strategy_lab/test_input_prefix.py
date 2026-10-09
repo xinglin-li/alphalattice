@@ -14,6 +14,7 @@ from alphalattice.control.product_host.composition.strategy_score_inputs import 
     read_workspace_component_inputs,
     workspace_score_source_identity,
 )
+from alphalattice.control.workspace_runtime import verified_facts
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
 from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT
@@ -264,13 +265,14 @@ def test_repeat_source_proofs_in_a_process_hash_no_unchanged_store_file(
         expected_source_hash=source_hash,
     )
     hashed: list[str] = []
-    whole = strategy_score_inputs.file_digest
+    whole = strategy_score_inputs.file_sha256
 
-    def counted(handle, name):  # type: ignore[no-untyped-def]
-        hashed.append(handle.name)
-        return whole(handle, name)
+    def counted(path):  # type: ignore[no-untyped-def]
+        if path.exists() and verified_facts.file_fact(path, "sha256") is None:
+            hashed.append(path.name)
+        return whole(path)
 
-    monkeypatch.setattr(strategy_score_inputs, "file_digest", counted)
+    monkeypatch.setattr(strategy_score_inputs, "file_sha256", counted)
     build_workspace_score_inputs(
         input_workspace,
         formation=DAYS[0],

@@ -7,12 +7,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
+from alphalattice.control.workspace_runtime.verified_facts import (
+    keep_file_facts,
+    release_file_facts,
+)
+
 
 @dataclass
 class WorkspaceWriterLease:
-    """An advisory OS lock held for the lifetime of a writable runtime."""
+    """An advisory OS lock held for the lifetime of a writable runtime.
+
+    Its holder is the workspace's one writer, so it also keeps the workspace's file facts
+    (`verified_facts`) while it holds the lock.
+    """
 
     _handle: BinaryIO | None
+    _workspace: Path | None = None
 
     @property
     def held(self) -> bool:
@@ -57,13 +67,16 @@ class WorkspaceWriterLease:
         except OSError as exc:
             handle.close()
             raise RuntimeError("workspace runtime writer is already owned") from exc
-        return cls(_handle=handle)
+        keep_file_facts(workspace)
+        return cls(_handle=handle, _workspace=workspace)
 
     def close(self) -> None:
         """Release the advisory writer lock and close its handle; absence is a no-op."""
         handle = self._handle
         if handle is None:
             return
+        if self._workspace is not None:
+            release_file_facts(self._workspace)
         handle.seek(0)
         if os.name == "nt":
             import msvcrt

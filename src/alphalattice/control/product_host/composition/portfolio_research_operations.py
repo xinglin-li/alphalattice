@@ -193,6 +193,7 @@ from alphalattice.control.product_host.storage.backup import (
     WorkspaceBackupError,
     WorkspaceBackups,
     backup_answer,
+    take_automatic_backup,
 )
 from alphalattice.control.product_host.storage.input_references import ResearchInputStorage
 from alphalattice.control.product_host.storage.inventory import StorageInventoryError
@@ -612,8 +613,10 @@ class PortfolioResearchOperations:
             clock=self.dispatcher.clock,
         )
         self.dispatcher.on_idle = self._worker_idle
-        # A trial the Host was running when it stopped moves on when it starts again.
+        # A trial the Host was running when it stopped moves on when it starts again, and a
+        # data update's backup it never took is taken.
         self.trials.advance_all()
+        self._take_backup()
         self._packages = {}
         if self.review is not None:
             self.review.read_experiment = self.experiments.readback
@@ -670,12 +673,28 @@ class PortfolioResearchOperations:
         self.dispatcher.on_idle = self._worker_idle
 
     def _worker_idle(self) -> None:
-        """The Task worker went idle: wake the update automation, move feature trials on."""
+        """The Task worker went idle: wake the update automation, move feature trials on, admit
+        the sweep if it is due, then take a data update's waiting backup while no Task waits."""
 
         if self.automation is not None:
             self.automation.command_completed()
         self.trials.advance_all()
         self.sweep_if_due()
+        self._take_backup()
+
+    def _take_backup(self) -> None:
+        take_automatic_backup(
+            self.workspace_session.workspace,
+            clock=self.dispatcher.clock,
+            gate=self.workspace_session.mutation_gate,
+            stop=lambda: self.dispatcher.closing or self._tasks_wait(),
+        )
+
+    def _tasks_wait(self) -> bool:
+        return any(
+            task.lifecycle in {TaskLifecycle.QUEUED, TaskLifecycle.RUNNING, TaskLifecycle.DEFERRED}
+            for task in self.workspace_session.task_control_registry.tasks()
+        )
 
     def sweep_if_due(self) -> None:
         """Admit the verification sweep when it is due and nothing else waits (V89).
@@ -684,11 +703,7 @@ class PortfolioResearchOperations:
         a deferral holds the running place, which it would only queue behind (V604).
         """
         with self.sweep.admission:
-            if self.sweep.due() and not any(
-                task.lifecycle
-                in {TaskLifecycle.QUEUED, TaskLifecycle.RUNNING, TaskLifecycle.DEFERRED}
-                for task in self.workspace_session.task_control_registry.tasks()
-            ):
+            if self.sweep.due() and not self._tasks_wait():
                 self.dispatcher.submit(StudyVerificationSweepCommand(self.sweep, "DUE"))
 
     def verify_all(self) -> dict[str, object]:

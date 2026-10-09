@@ -201,8 +201,13 @@ class _WorkspaceObservationHistoryStore:
         columns: Mapping[str, npt.NDArray[Any]],
         reuse: WorkspaceObservationHistoryHead | None,
         capacity: Callable[[int], None],
+        loaded: tuple[WorkspaceObservationHistoryHead, _Columns] | None = None,
     ) -> WorkspaceObservationHistoryHead:
-        """Admit every staging write and commit a marker after all exact parts and head."""
+        """Admit every staging write and commit a marker after all exact parts and head.
+
+        ``loaded`` is the caller's `load` of this slot; it stands for the current head while
+        the marker still names it, so the slot is not read a second time.
+        """
         for value in (scope_hash, selection_hash, dependency_prefix_hash):
             self._require_hash(value)
         if (
@@ -231,7 +236,14 @@ class _WorkspaceObservationHistoryStore:
             name: np.frombuffer(columns[name].tobytes(order="C"), dtype=np.float64).reshape(shape)
             for name in sorted(columns)
         }
-        current = self.load(scope_hash)
+        marker = self._marker(scope_hash) if loaded is not None else None
+        current = (
+            loaded
+            if loaded is not None
+            and marker is not None
+            and loaded[0].head_hash == marker.current_head_hash
+            else self.load(scope_hash)
+        )
         reusable: tuple[WorkspaceObservationHistoryPart, ...] = ()
         if reuse is not None:
             old = (
@@ -310,8 +322,9 @@ class _WorkspaceObservationHistoryStore:
             },
             "head_hash",
         )
+        # The reused parts were verified when this call read them; the new ones are read back.
         verified: dict[str, _PartColumns] = {}
-        for part in head.parts:
+        for part in head.parts[len(reusable) :]:
             self._part(head, part, verified)
         try:
             content.publish_model(category=_HEADS, value=head, identity_field="head_hash")

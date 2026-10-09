@@ -20,12 +20,15 @@ for the market store's rebuild to take; the listed entries are named, not writte
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import json
 import os
 import shutil
+import sys
 import tempfile
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, Self
@@ -43,10 +46,14 @@ from alphalattice.control.task_control.registry import (
     TASK_CONTROL_DATABASE_FILENAME,
     DuckDbTaskControlRegistry,
 )
-from alphalattice.control.workspace_runtime.database import open_workspace_database
+from alphalattice.control.workspace_runtime.database import (
+    WorkspaceDatabase,
+    open_workspace_database,
+)
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.spans import span
 
 MARKET_DATABASE: Final = "market-data.duckdb"
 TASK_CONTROL_DATABASE: Final = Path("runtime") / TASK_CONTROL_DATABASE_FILENAME
@@ -327,12 +334,14 @@ class WorkspaceBackups:
         *,
         reason: Literal["DATA_UPDATE", "REQUEST"],
         generations_kept: int = GENERATIONS_KEPT,
+        stop: Callable[[], bool] = lambda: False,
     ) -> BackupGeneration:
         """Back up the held set as one generation, then keep the newest `generations_kept`.
 
         Args:
             reason: What asked for it: a data update, or a request.
             generations_kept: How many generations to keep, at least one.
+            stop: Asked between tables and folders; True leaves without a generation.
 
         Returns:
             The new generation.
@@ -354,6 +363,8 @@ class WorkspaceBackups:
             ):
                 present = _existing_tables(database) if database.is_file() else set()
                 for table in tables:
+                    if stop():
+                        raise _Stopped
                     if table not in present:
                         absent.append(f"{store}/{table}")
                         continue
@@ -369,6 +380,8 @@ class WorkspaceBackups:
                         )
                     )
         for relative in COPIED:
+            if stop():
+                raise _Stopped
             source = self.workspace / relative
             if not source.exists():
                 absent.append(relative)
@@ -722,14 +735,130 @@ def record_backup_failure(workspace: Path, error: BaseException | None, *, at: d
         error: What refused the backup; None when it succeeded.
         at: When it was attempted.
     """
+    code = None if error is None else str(getattr(error, "failure_code", "") or error)
+    _record_attempt(
+        workspace,
+        "BACKED_UP" if error is None else "FAILED",
+        None if code is None else code.split(":")[0][:200],
+        at,
+    )
+
+
+def defer_automatic_backup(workspace: Path, *, at: datetime) -> None:
+    """Record that a data update's backup waits for the Host's idle time.
+
+    The update publishes without it; `take_automatic_backup` takes it once no Task runs, and
+    the next update's first stage settles one still waiting or failed
+    (`settle_automatic_backup`).
+
+    Args:
+        workspace: The workspace directory.
+        at: When the update deferred it.
+    """
+    _record_attempt(workspace, "PENDING", None, at)
+
+
+def take_automatic_backup(
+    workspace: Path,
+    *,
+    clock: Callable[[], datetime],
+    gate: WorkspaceMutationGate,
+    stop: Callable[[], bool],
+) -> None:
+    """Take a waiting automatic backup in the Host's idle time, at below-normal priority.
+
+    It holds the workspace's write gate, and leaves the backup waiting whenever ``stop`` says a
+    Task waits or the Host closes (checked between tables and folders) or the gate stays busy.
+
+    Args:
+        workspace: The workspace directory.
+        clock: The time the generation and its outcome are stamped with.
+        gate: The workspace's mutation gate.
+        stop: Whether to leave the backup waiting now.
+    """
+    if (last_automatic_attempt(workspace) or {}).get("status") != "PENDING" or stop():
+        return
+    with _below_normal_thread():
+        _take(workspace, clock=clock, gate=gate, stop=stop, wait_seconds=1.0)
+
+
+def settle_automatic_backup(
+    workspace: Path, *, clock: Callable[[], datetime], gate: WorkspaceMutationGate
+) -> str | None:
+    """Take the last update's backup if it still waits or failed, with one retry, in an update.
+
+    A waiting backup gets its one retry here; a failed one has had its first attempt in the
+    Host's idle time.
+
+    Args:
+        workspace: The workspace directory.
+        clock: The time the generation and its outcome are stamped with.
+        gate: The workspace's mutation gate.
+
+    Returns:
+        The failure code the backup still ends with; None when it succeeded or none was due.
+    """
+    status = (last_automatic_attempt(workspace) or {}).get("status")
+    if status not in {"PENDING", "FAILED"}:
+        return None
+    for _attempt in range(2 if status == "PENDING" else 1):
+        failure = _take(workspace, clock=clock, gate=gate, stop=lambda: False, wait_seconds=30.0)
+        if failure is None:
+            return None
+    return failure
+
+
+class _Stopped(Exception):
+    """The backup was left waiting: a Task waits, the Host closes, or the gate stays busy."""
+
+
+def _take(
+    workspace: Path,
+    *,
+    clock: Callable[[], datetime],
+    gate: WorkspaceMutationGate,
+    stop: Callable[[], bool],
+    wait_seconds: float,
+) -> str | None:
+    try:
+        with (
+            gate.try_hold(timeout_seconds=wait_seconds),
+            WorkspaceDatabase(workspace).retain(read_only=False),
+            span("copy", "held_state_backup"),
+        ):
+            WorkspaceBackups(
+                workspace,
+                workspace_id=read_research_workspace_manifest(workspace).workspace_id,
+                clock=clock,
+            ).create(reason="DATA_UPDATE", stop=stop)
+    except (_Stopped, TimeoutError):
+        return None
+    except Exception as error:
+        record_backup_failure(workspace, error, at=clock())
+        return str((last_automatic_attempt(workspace) or {}).get("failure_code"))
+    record_backup_failure(workspace, None, at=clock())
+    return None
+
+
+@contextmanager
+def _below_normal_thread() -> Iterator[None]:
+    if sys.platform != "win32":
+        yield
+        return
+    kernel = ctypes.windll.kernel32
+    thread = kernel.GetCurrentThread()
+    before = kernel.GetThreadPriority(thread)
+    kernel.SetThreadPriority(thread, -1)  # THREAD_PRIORITY_BELOW_NORMAL
+    try:
+        yield
+    finally:
+        kernel.SetThreadPriority(thread, before)
+
+
+def _record_attempt(workspace: Path, status: str, code: str | None, at: datetime) -> None:
     path = workspace / ATTEMPT
     path.parent.mkdir(parents=True, exist_ok=True)
-    code = None if error is None else str(getattr(error, "failure_code", "") or error)
-    payload = {
-        "status": "BACKED_UP" if error is None else "FAILED",
-        "failure_code": None if code is None else code.split(":")[0][:200],
-        "at": at.isoformat(),
-    }
+    payload = {"status": status, "failure_code": code, "at": at.isoformat()}
     staged = path.with_suffix(".partial")
     staged.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     os.replace(staged, path)
@@ -819,6 +948,9 @@ __all__ = [
     "WorkspaceBackups",
     "backup_answer",
     "default_backup_root",
+    "defer_automatic_backup",
     "last_automatic_attempt",
     "record_backup_failure",
+    "settle_automatic_backup",
+    "take_automatic_backup",
 ]

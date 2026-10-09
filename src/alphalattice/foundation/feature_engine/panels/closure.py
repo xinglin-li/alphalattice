@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
 from collections import defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
-from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
@@ -17,6 +15,7 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
     PanelSourceExclusion,
@@ -588,7 +587,7 @@ class PanelClosurePublisher:
                         row_count=int(item["row_count"]),
                         chunk_hash=str(item["chunk_hash"]),
                         metadata_hash=str(item["metadata_hash"]),
-                        physical_sha256=_file_sha256(path),
+                        physical_sha256=file_sha256(path),
                         byte_count=path.stat().st_size,
                         uri=str(item["uri"]),
                         origin_binding_hash=str(origin) if origin is not None else None,
@@ -867,14 +866,6 @@ def _identified[ContractT: BaseModel](
         ContractT,
         model.model_validate({**values, hash_field: canonical_hash(identity)}),
     )
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 __all__ = [

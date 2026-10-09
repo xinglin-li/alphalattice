@@ -915,6 +915,10 @@
   "detail": "The Host cannot create or write the backup root, so no generation was made; the root is the application-data directory unless ALPHALATTICE_BACKUP_ROOT names another. Serve the Host with ALPHALATTICE_BACKUP_ROOT naming a directory it can write, outside the workspace, then back up again.",
   "next_action": "SERVE_WITH_A_WRITABLE_BACKUP_ROOT"
  },
+ "workspace_data_update.archive_failed": {
+  "detail": "The last data update's backup could not be taken, neither while the Host was idle after it nor again when this update started; nothing was changed. Read `backup list`, whose last automatic attempt names the cause, resolve it, then run this update again. What the last update published stands.",
+  "next_action": "READ_BACKUP_LIST_THEN_RUN_THE_UPDATE_AGAIN"
+ },
  "workspace_data_update.artifact_missing": {
   "detail": "A file the data update's record names is missing from the workspace; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and update there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"

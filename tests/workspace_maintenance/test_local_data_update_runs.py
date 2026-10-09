@@ -1605,6 +1605,48 @@ def test_transient_source_failure_resumes_captured_update(qualified, tmp_path):
         service.stop()
 
 
+def test_a_failed_backup_stops_the_next_update_by_name_and_its_rerun_resumes(
+    qualified, tmp_path, monkeypatch
+):
+    """requirement: the next update's first stage retries the backup the last one deferred; a
+    failure stops it by name as recoverable, and its plan run again resumes the same Task."""
+    from alphalattice.control.product_host.storage.backup import defer_automatic_backup
+
+    workspace = tmp_path / "workspace"
+    shutil.copytree(qualified, workspace)
+    manifest = bind_existing_data_workspace(workspace)
+    wall = tmp_path / "wall"
+    wall.write_text("a file, not a directory", encoding="utf-8")
+    monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(wall / "store"))
+    defer_automatic_backup(workspace, at=NOW)
+    service = LocalPortfolioWebSession(
+        workspace=workspace,
+        workspace_manifest=manifest,
+        resolver=_Resolver(_resolved()),
+        data_provider=recording_provider(),
+        data_source_loader=unchanged_membership_source(SYMBOLS),
+        clock=lambda: NOW,
+    )
+    service.start()
+    try:
+        planned = _json(service, "/api/data-update/plan", method="POST", payload={})
+        run = {"update_plan_hash": planned["plan_hash"]}
+        sent = _json(service, "/api/data-update/run", method="POST", payload=run)
+        service.dispatcher.drain_for_tests()
+        stopped = _json(service, f"/api/status?task_id={sent['task_id']}")
+        assert stopped["lifecycle"] == "BLOCKED", stopped
+        assert stopped["failure_code"] == "workspace_data_update.archive_failed"
+        monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(tmp_path / "backups"))
+        resumed = _json(service, "/api/data-update/run", method="POST", payload=run)
+        assert resumed["task_id"] == sent["task_id"]
+        service.dispatcher.drain_for_tests()
+        final = _json(service, f"/api/status?task_id={sent['task_id']}")
+        assert final["lifecycle"] == "SUCCEEDED", final
+        assert list((tmp_path / "backups").rglob("generations/*.json"))
+    finally:
+        service.stop()
+
+
 def test_a_deferred_feature_build_is_built_again_once_its_retry_is_due(
     qualified, tmp_path, monkeypatch
 ):

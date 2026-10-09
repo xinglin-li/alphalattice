@@ -953,6 +953,8 @@ class DecisionAdvancementApplication:
         if stage == STAGES[0]:
             self._fresh(plan)
             result = self.data.execute_step(plan.data_plan, DATA_STAGES[0], cancelled=lambda: False)
+            if result.disposition is not StageDisposition.READY:
+                raise ValueError(result.failure_code or "research_update.inputs_incomplete")
             self.data.verify_step(plan.data_plan, DATA_STAGES[0], result.evidence)
             return self._commit(plan, stage, (), plan.data_plan.content_hash)
         if stage == STAGES[1]:

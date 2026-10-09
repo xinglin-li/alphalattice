@@ -274,6 +274,11 @@ class LocalBackgroundDispatcher:
         return True
 
     @property
+    def closing(self) -> bool:
+        """Whether `close` was asked: idle work in hand stops at its next boundary."""
+        return self._closed
+
+    @property
     def worker_alive(self) -> bool:
         """Whether the one owned worker is still running. Never inferred."""
         worker = self._worker

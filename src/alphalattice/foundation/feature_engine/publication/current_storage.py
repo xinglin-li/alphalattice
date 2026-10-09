@@ -17,6 +17,7 @@ from typing import Literal
 
 import duckdb
 
+from alphalattice.control.workspace_runtime.verified_facts import ensure_year_fact_schema
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 FeatureStorageLayout = Literal["CURRENT_BY_ROW_CATALOG", "CURRENT_ONLY", "LEGACY_BY_CATALOG"]
@@ -138,18 +139,9 @@ def ensure_feature_current_schema(
         )
         """
     )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS feature_year_seal (
-            catalog_hash VARCHAR NOT NULL,
-            year INTEGER NOT NULL,
-            view_hash VARCHAR NOT NULL,
-            epoch VARCHAR NOT NULL,
-            digest VARCHAR NOT NULL,
-            PRIMARY KEY (catalog_hash, year)
-        )
-        """
-    )
+    # The year seals are year facts now; 0.1.3's own table goes with this schema.
+    connection.execute("DROP TABLE IF EXISTS feature_year_seal")
+    ensure_year_fact_schema(connection)
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS feature_input_cutoff_set (

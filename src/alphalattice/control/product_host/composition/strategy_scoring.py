@@ -846,6 +846,7 @@ class StrategyScoringApplication:
                 capacity=lambda size: require_storage_capacity(
                     self.session.workspace, additional_bytes=size
                 ),
+                loaded=candidate,
             )
         return prepared
 

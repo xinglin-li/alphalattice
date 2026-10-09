@@ -1015,3 +1015,56 @@ print(len(calls))
     )
     assert restarted.returncode == 42, restarted.stderr
     assert restarted.stdout.strip() == "sealed bytes changed"
+
+
+@contextmanager
+def _kept_facts(tmp_path: Path):
+    """A workspace whose file facts this process keeps, and one file in it, written now."""
+    from alphalattice.control.workspace_runtime import verified_facts as facts
+
+    workspace = tmp_path / "workspace"
+    target = workspace / "store" / "part.parquet"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"one")
+    facts.keep_file_facts(workspace)
+    try:
+        yield facts, workspace, target
+    finally:
+        facts.release_file_facts(workspace)
+
+
+def _aged(target: Path) -> None:
+    os.utime(target, (target.stat().st_atime - 10, target.stat().st_mtime - 10))
+
+
+def test_a_fresh_files_digest_is_kept_from_its_writer_never_from_a_reader(
+    tmp_path: Path,
+) -> None:
+    """requirement: a reader's digest of a file modified within two seconds is not kept, since
+    a write in the same clock tick could leave its stamp; the writer's own digest is."""
+    with _kept_facts(tmp_path) as (facts, _workspace, target):
+        facts.record_file_fact(target, "columns", "a" * 64)
+        assert facts.file_fact(target, "columns") is None
+        facts.record_file_fact(target, "columns", "a" * 64, written=True)
+        assert facts.file_fact(target, "columns") == "a" * 64
+
+
+def test_a_file_fact_outlives_its_process_for_the_lease_holders_workspace(
+    tmp_path: Path,
+) -> None:
+    """requirement: a digest verified once is kept for the next process of the workspace."""
+    with _kept_facts(tmp_path) as (facts, workspace, target):
+        _aged(target)
+        facts.record_file_fact(target, "columns", "a" * 64)
+        facts.release_file_facts(workspace)
+        facts.keep_file_facts(workspace)
+        assert facts.file_fact(target, "columns") == "a" * 64
+
+
+def test_a_change_to_the_file_ends_its_fact(tmp_path: Path) -> None:
+    """tamper: a file rewritten in place, same size, loses its fact and is digested again."""
+    with _kept_facts(tmp_path) as (facts, _workspace, target):
+        _aged(target)
+        facts.record_file_fact(target, "columns", "a" * 64)
+        target.write_bytes(b"two")
+        assert facts.file_fact(target, "columns") is None

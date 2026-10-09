@@ -776,7 +776,10 @@ def _seal(feature, catalog):
 def _sealed_years(feature):
     with feature.database.read_transaction() as connection:
         return [
-            row[0] for row in connection.execute("SELECT year FROM feature_year_seal").fetchall()
+            row[0]
+            for row in connection.execute(
+                "SELECT year FROM verified_year_fact WHERE kind = 'feature_year'"
+            ).fetchall()
         ]
 
 
@@ -786,7 +789,7 @@ def _across_years(feature, catalog):
 
 def _without_seals(feature, catalog):
     with feature.database.connect(read_only=False) as connection:
-        connection.execute("DELETE FROM feature_year_seal")
+        connection.execute("DELETE FROM verified_year_fact WHERE kind = 'feature_year'")
     return _across_years(feature, catalog)
 
 

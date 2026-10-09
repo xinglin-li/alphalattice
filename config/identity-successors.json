@@ -11873,6 +11873,104 @@
    "successor": "6795836b3da658306d4705a57ba0c1be324e54227b350b17aece35e7aa72742d",
    "change": "A first use runs from one sentence and a strategy builds in one command (2026-10-09)",
    "reason": "The strategy controls fill the plan's declaration once its parents are determined and list each covering Risk study once; the preparation computes nothing new and no value moves."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "6cff0dbcc5d89ed7552df5cf4c84131c7891082ca1c51c9aeff07fc04c1fc757",
+   "successor": "eae71eea8b199dbeaee63c52456526edfd00109d2696b45fc5c7721fe5c4b094",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "2ef4208d63fc3051684dafed2f38d943a166c1463cd6a026a1677f0fe1b94e69",
+   "successor": "03ddf3b59b4602ed7c4c69f5846cb6625e839db57090c90cf01512974dbf82a3",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "845aa8defb5c1fd2f167c331be2a96d2213864b2c46c764fba01699583d6545e",
+   "successor": "6ba703b50f9c1b5b4a0afd30fb79e1d3bf825eaec6a267dd60904fe186460047",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "d4e2d8b117cd5203e1f1889d8b6d63f5c6e735e5953591c2b8a66e0c5c9072e4",
+   "successor": "a753a0eda6f1f28e3e1589ee8b7208a79eec48bef2e71c530636d10de105ccf2",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "c5cfdfb20de97cc72dfb4dc7f9976e9451eef47192671f14ba922d19b2663eea",
+   "successor": "30dcae5b6d8720e71559adb0998079c3be3598e67e050e173f2ee3084024d17b",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "a29ed3eb5262fff388b906f897b12bc6547605a440ad2304463c100f016d1470",
+   "successor": "cfb6bde97086e3ca43573e4042556b3725f75d12b06eb54d7c202265dc1da302",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "22673892a219ee77eae3a3a68f19fa782ddefadaf8301baa2d931bf5c82d660d",
+   "successor": "44a9d0c4653132f7ecff210fbb40df5f8d3308b701bace6b08cbd2c0a99290ad",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "6795836b3da658306d4705a57ba0c1be324e54227b350b17aece35e7aa72742d",
+   "successor": "546d6af3bbd7b5890ff6dd55d9ade86ade9e93c27196a2de572aecd35d573d4e",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "15121677b086d3c6837996087d5cf52d4417748ece6969d3f8c803212c598dc0",
+   "successor": "b54664913625393950b0b73a568447ca88c6a8431c3aa06c3c9ac00b3c181999",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "af81e625975765e2822e7b00417d484d32ec329d6480a89a99712a15f6c29a5d",
+   "successor": "dce872ff620fe007099e9724b08f62571d27f189287852c198c56086ced3c4ec",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "44cf7c12c6f4e00d6dbae8f49b0d87615ecd0c755aa2aa9e7e970d01235c8279",
+   "successor": "3a358052457a8faa9a6019748f31fd34ddd9dbfbd26a6042491e0ab0b7d04850",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "c389b7946de40214ad64829dbb541c2cd718243e0afa43f1ac6dda74875e88a2",
+   "successor": "953dd502551ec543b9dfcf388e870eb37be8fb111a29c3510ffd3ffdd9fd9289",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "c389b7946de40214ad64829dbb541c2cd718243e0afa43f1ac6dda74875e88a2",
+   "successor": "953dd502551ec543b9dfcf388e870eb37be8fb111a29c3510ffd3ffdd9fd9289",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "1cf9bfeb228d55b197976b944c49d53b6dfcb0141706d4267a8de5f4d0bf64d3",
+   "successor": "a497fd06c9bcfe1f1f56cb28ba282a5798ea2b7cc62c2c515b277ef993f42ef9",
+   "change": "One verified-facts owner and an incremental audit (2026-10-09)",
+   "reason": "Year and file facts are kept by one owner across processes, the adjusted series is audited by closed-year facts and the held-state backup moved to Host idle time; these closures changed through shared modules, and every score, input and observation is equal."
   }
  ]
 }

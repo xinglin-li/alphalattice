@@ -119,10 +119,10 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): "cancelled or cancelling: the run stops at its boundary",
     (
         "control/product_host/composition/portfolio_research_operations.py",
-        "PortfolioResearchOperations.sweep_if_due",
+        "PortfolioResearchOperations._tasks_wait",
         "DEFERRED,QUEUED,RUNNING",
-    ): "a busy queue puts the verification sweep off, a deferral holding the running place too, "
-    "which the sweep would only queue behind (V604)",
+    ): "a busy queue puts the verification sweep and the held-state backup off, a deferral "
+    "holding the running place too, which they would only queue behind (V604)",
     (
         "control/product_host/composition/portfolio_research_operations.py",
         "PortfolioResearchOperations._workspace_operation",

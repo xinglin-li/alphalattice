@@ -1246,7 +1246,7 @@ const LiveWorkspace = (() => {
     const refused=s?.error ? notRead(t('Backups not read'),s.error,explain(String(s.error).split(':')[0])) : '';
     if(!bk) return panel(t('Backups'),caption,refused || skeleton('rows'),make,'data-storage="backups"');
     const a=bk.last_automatic_attempt, gens=bk.generations || [], refusedGenerations=(bk.refusals || []).map(r=>refusal(r,'warning',{catalog:true,more:html`<p>${t('Generation')} ${locatorCell(r.generation_file || r.generation_hash || '')}</p>`,next:prerequisiteWays(r.next_requests)}));
-    const last=!a ? t('None attempted yet; one follows each data update') : a.status==='FAILED' ? html`${t('Failed {when}',{when:when(a.at)})} · ${coded(a.failure_code)}` : t('Backed up {when}',{when:when(a.at)});
+    const last=!a ? t('None attempted yet; one follows each data update') : a.status==='FAILED' ? html`${t('Failed {when}',{when:when(a.at)})} · ${coded(a.failure_code)}` : a.status==='PENDING' ? t('Waiting since {when}; taken once the Host is idle',{when:when(a.at)}) : t('Backed up {when}',{when:when(a.at)});
     const failed=a?.status==='FAILED' ? banner(t('The last automatic backup failed'),t('The data update it followed stays published; back up now once the failure is resolved.'),'warning') : '';
     const {shown,start,page,pages}=pageOf(gens,S.backupPage);
     const rows=shown.map((g,i)=>tr([count(start+i+1),when(g.created_at),t(BACKUP_REASON[g.reason] || g.reason),count(g.files),count(g.tables),count(g.listed),count((g.absent || []).length),hashCell(g.generation_hash,SHORT.hash)]));

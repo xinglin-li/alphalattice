@@ -26,6 +26,12 @@ from alphalattice.control.workspace_runtime.storage.readiness import (
     WorkspaceReadinessRecord,
     WorkspaceReadinessRepository,
 )
+from alphalattice.control.workspace_runtime.verified_facts import (
+    ensure_year_fact_schema,
+    forget_year_facts,
+    record_year_facts,
+    year_facts,
+)
 from alphalattice.foundation.market_data_ops.publication.projection import (
     ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH,
     action_set_hash,
@@ -389,6 +395,18 @@ def _table_exists(connection: duckdb.DuckDBPyConnection, name: str) -> bool:
         "SELECT count(*) FROM information_schema.tables WHERE table_name = ?", [name]
     ).fetchone()
     return bool(row is not None and int(row[0]) > 0)
+
+
+ADJUSTED_YEAR = "adjusted_year"
+"""The year fact a closed year of a listing's adjusted series is held by: its (session, close)
+pairs' digest, recorded by the refresh that read or wrote that year
+(`_reconcile_provider_adjusted_series`, the series' only writer)."""
+_ADJUSTED_YEAR_BASIS = "provider_adjusted_series.year_blocks.v1"
+"""The rule the series and year digests are made by (`_provider_adjusted_series_hash`)."""
+
+
+def _adjusted_scope(listing_id: str, provider: str) -> str:
+    return f"{provider}:{listing_id}"
 
 
 _RAW_BAR_COLUMNS = (
@@ -896,6 +914,7 @@ class MarketDataRepository(WorkspaceRepository):
                 )
                 """
             )
+            ensure_year_fact_schema(connection)
             # Old ignored playpen stores may contain a diagnostic column on
             # raw bars and an earlier receipt layout.  Keep them readable, but
             # make all new writes independent from that legacy column.
@@ -4542,9 +4561,22 @@ class MarketDataRepository(WorkspaceRepository):
         return _canonical_hash({"current": current, "revisions": revisions})
 
     @staticmethod
-    def _provider_adjusted_series_hash(values: Mapping[date, float]) -> str:
+    def _adjusted_year_digests(values: Mapping[date, float]) -> dict[int, str]:
+        years: dict[int, list[tuple[str, float]]] = {}
+        for session in sorted(values):
+            years.setdefault(session.year, []).append((session.isoformat(), float(values[session])))
+        return {year: _canonical_hash(pairs) for year, pairs in years.items()}
+
+    @classmethod
+    def _provider_adjusted_series_hash(
+        cls, values: Mapping[date, float], held: Mapping[int, str] | None = None
+    ) -> str:
+        """A series' digest over its calendar years' digests, in order (year blocks).
+
+        `held` gives the digests of closed years whose values are not in `values` (their facts).
+        """
         return _canonical_hash(
-            [(session.isoformat(), float(values[session])) for session in sorted(values)]
+            sorted({**(held or {}), **cls._adjusted_year_digests(values)}.items())
         )
 
     @staticmethod
@@ -4593,9 +4625,17 @@ class MarketDataRepository(WorkspaceRepository):
         scope_start: date,
         scope_end: date,
         full_history: bool,
+        earliest_session: date | None,
         source_receipt_hash: str,
         observed_at: datetime,
     ) -> ProviderAdjustedSeriesRevision:
+        """Write a refresh of the listing's adjusted series and record its revision.
+
+        A rolling refresh reads the stored series only from its scope's calendar year: each
+        earlier year, back to the first raw bar's, is held by its fact (`ADJUSTED_YEAR`), or the
+        whole series is read. Every closed year it read is recorded as it leaves it; a full
+        refresh first forgets every year of the series it replaces.
+        """
         ordered = tuple(sorted(points, key=lambda item: item.session_date))
         if not ordered or len({item.session_date for item in ordered}) != len(ordered):
             raise ValueError("provider adjusted series must be non-empty and session-unique")
@@ -4608,15 +4648,38 @@ class MarketDataRepository(WorkspaceRepository):
             for item in ordered
         ):
             raise ValueError("provider adjusted series is outside its declared scope")
-        prior_rows = connection.execute(
-            """
-            SELECT session_date, adjusted_close FROM provider_adjusted_close_current
-            WHERE listing_id = ? AND provider = ? ORDER BY session_date
-            """,
-            [listing_id, provider],
-        ).fetchall()
-        prior = {row[0]: float(row[1]) for row in prior_rows}
+        scope = _adjusted_scope(listing_id, provider)
+        facts: dict[int, str] = {}
+        held: dict[int, str] = {}
+        if not full_history and earliest_session is not None:
+            # The written years too, so a fact this refresh does not renew can be ended.
+            facts = year_facts(
+                connection,
+                kind=ADJUSTED_YEAR,
+                scope=scope,
+                basis=_ADJUSTED_YEAR_BASIS,
+                epoch=self.database.seal_epoch(),
+                years=range(earliest_session.year, scope_end.year + 1),
+            )
+            closed = range(earliest_session.year, scope_start.year)
+            if all(year in facts for year in closed):
+                held = {year: facts[year] for year in closed}
+
+        def stored(start: date) -> dict[date, float]:
+            rows = connection.execute(
+                """
+                SELECT session_date, adjusted_close FROM provider_adjusted_close_current
+                WHERE listing_id = ? AND provider = ? AND session_date >= ? ORDER BY session_date
+                """,
+                [listing_id, provider, start],
+            ).fetchall()
+            return {row[0]: float(row[1]) for row in rows}
+
         observed = {item.session_date: float(item.adjusted_close) for item in ordered}
+        prior = stored(date(scope_start.year, 1, 1) if held else date.min)
+        if held and not any(session < ordered[0].session_date for session in prior):
+            # The refresh's first return reads the session before it, in a closed year.
+            held, prior = {}, stored(date.min)
         prior_in_scope = {
             session: value
             for session, value in prior.items()
@@ -4633,12 +4696,16 @@ class MarketDataRepository(WorkspaceRepository):
             raise ValueError("full provider adjusted series changed its historical session set")
         if full_history:
             next_values = observed
-        prior_hash = self._provider_adjusted_series_hash(prior) if prior else None
-        next_hash = self._provider_adjusted_series_hash(next_values)
+        prior_hash = self._provider_adjusted_series_hash(prior, held) if prior or held else None
+        next_hash = self._provider_adjusted_series_hash(next_values, held)
         changed_values = sum(
             1 for session, value in observed.items() if prior.get(session) != value
         )
-        session_set_changed = bool(prior) and set(prior) != set(next_values)
+        if full_history:
+            forget_year_facts(
+                connection, ADJUSTED_YEAR, pairs=[(scope, session.year) for session in prior]
+            )
+        session_set_changed = bool(prior or held) and set(prior) != set(next_values)
         return_changes = (
             self._provider_adjusted_return_changes(
                 prior, next_values, refreshed_from=None if full_history else min(observed)
@@ -4674,6 +4741,34 @@ class MarketDataRepository(WorkspaceRepository):
             )
         finally:
             connection.unregister(stage_name)
+        # The closed years this refresh read, as it leaves them, are held for the next one; a
+        # written year's fact it does not renew ends.
+        renewed = (
+            {
+                year: digest
+                for year, digest in self._adjusted_year_digests(next_values).items()
+                if year < scope_end.year
+            }
+            if min(next_values).year < scope_end.year
+            else {}
+        )
+        record_year_facts(
+            connection,
+            kind=ADJUSTED_YEAR,
+            scope=scope,
+            basis=_ADJUSTED_YEAR_BASIS,
+            epoch=self.database.seal_epoch(),
+            values=renewed,
+        )
+        forget_year_facts(
+            connection,
+            ADJUSTED_YEAR,
+            pairs=[
+                (scope, session.year)
+                for session in observed
+                if session.year in facts and session.year not in renewed
+            ],
+        )
         payload = {
             "listing_id": listing_id,
             "provider": provider,
@@ -5366,6 +5461,7 @@ class MarketDataRepository(WorkspaceRepository):
                 scope_start=history_start,
                 scope_end=history_end,
                 full_history=history_start == earliest_session,
+                earliest_session=earliest_session,
                 source_receipt_hash=receipt.receipt_hash,
                 observed_at=observed_at,
             )
