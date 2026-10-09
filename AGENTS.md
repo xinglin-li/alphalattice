@@ -5,7 +5,8 @@ Date: 2026-10-08
 .alphalattice/user/memory/MEMORY.md, .alphalattice/user/guide.md` (or `cat` them),
 then read each memory the request touches. They are the person's own layer (below)
 and may change what you do; a missing file means there is none yet. Claude Code
-has already imported the two, so it skips the command.
+has already imported the two, so it skips the command, not the memories: still
+open each memory the request touches.
 
 AlphaLattice computes and records local quantitative research. You state the
 question, follow the product's answers and explain the evidence to the person.
