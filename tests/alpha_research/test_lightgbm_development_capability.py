@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from copy import deepcopy
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from importlib import import_module
 from importlib.metadata import version
@@ -16,6 +17,7 @@ from alphalattice.capabilities.alpha_modeling.adapters.lightgbm import (
 )
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological import (
     ChronologicalLightGBMAdapter,
+    chronological_lightgbm_dataset_cache,
 )
 from alphalattice.capabilities.alpha_modeling.adapters.regularized_linear_dynamic_panel import (
     DynamicPanelRegularizedLinearAdapter,
@@ -900,7 +902,6 @@ def test_dataset_reuse_mutates_every_binning_field_and_preserves_operator_parame
 
     from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological import (
         ChronologicalLightGBMParameters,
-        chronological_lightgbm_dataset_cache,
     )
 
     class Backend:
@@ -964,7 +965,12 @@ def test_dataset_reuse_mutates_every_binning_field_and_preserves_operator_parame
             altered["ordered_feature_ids"] = tuple(axis)
             assert adapter._dataset(Backend, **altered)[1] != key
         assert adapter._dataset(Backend, **(arguments | {"reference_key": "other"}))[1] != key
-    assert Backend.calls > 1
+    distinct = len(parameters) + sum(arguments[field].size for field in ("features", "targets"))
+    distinct += len(arguments["ordered_feature_ids"]) + 2
+    assert Backend.calls == distinct, (
+        f"COUNT STOP op=dataset_key observed={Backend.calls} budget={distinct} "
+        "fixture=complete-key-mutations wayon=reduce-work"
+    )
 
 
 def test_a_booster_cache_scope_parses_each_model_once_and_predicts_the_same_bits(
@@ -1057,6 +1063,14 @@ def test_a_fixed_fit_measures_its_training_error_unless_the_plan_reads_none(
         return original_predict(booster, data, **kwargs)
 
     monkeypatch.setattr(lightgbm.Booster, "predict", observe)
+    constructed = []
+
+    class CountedDataset(lightgbm.Dataset):
+        def __init__(self, *args, **kwargs):
+            constructed.append(kwargs["params"])
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(lightgbm, "Dataset", CountedDataset)
 
     def fit(**plan: object) -> AlphaModelFitResult:
         predictions.clear()
@@ -1073,11 +1087,26 @@ def test_a_fixed_fit_measures_its_training_error_unless_the_plan_reads_none(
                 ),
             )
 
-    measured = fit()
-    assert predictions == [inputs.features.shape] and measured.predict_call_count == 1
-    assert isinstance(measured.measured_training_mse(), float)
-    unread = fit(training_error=None)
-    assert predictions == [] and unread.predict_call_count == 0 and unread.training_mse is None
+    with chronological_lightgbm_dataset_cache():
+        measured = fit()
+        assert predictions == [inputs.features.shape] and measured.predict_call_count == 1
+        assert isinstance(measured.measured_training_mse(), float)
+        unread = fit(training_error=None)
+        assert predictions == [] and unread.predict_call_count == 0 and unread.training_mse is None
+        assert len(constructed) == 1, (
+            f"COUNT STOP op=fit_dataset observed={len(constructed)} budget=1 "
+            "fixture=same-binning wayon=reduce-work"
+        )
+        other_leaf = 200 if parameters.min_child_samples == 50 else 50
+        recipe = build_dynamic_panel_lightgbm_recipe(
+            replace(parameters, min_child_samples=other_leaf)
+        )
+        fit(training_error=None)
+        fit(training_error=None)
+        assert len(constructed) == 2, (
+            f"COUNT STOP op=fit_dataset observed={len(constructed)} budget=2 "
+            "fixture=two-binning-keys wayon=reduce-work"
+        )
     assert unread.estimator_content == measured.estimator_content
     assert unread.state_projection == measured.state_projection
     assert unread.selection_diagnostic == measured.selection_diagnostic

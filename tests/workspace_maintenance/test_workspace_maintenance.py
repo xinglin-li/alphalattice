@@ -1,7 +1,5 @@
 """Offline acceptance for stable daily maintenance contracts."""
 
-# The ignored case adds playpen/src explicitly.
-
 from __future__ import annotations
 
 import json
@@ -11,6 +9,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from threading import Barrier, Event, get_ident
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -152,14 +151,10 @@ def _maintenance_workspace(
     tmp_path: Path,
     *,
     eligible_listing_ids: tuple[str, ...] = ("listing-aapl",),
-) -> tuple[
-    UniverseManifest,
-    MarketDataRepository,
-    FeatureStateRepository,
-    PanelStateRepository,
-]:
+    acquisition: UniverseManifest | None = None,
+) -> tuple[UniverseManifest, MarketDataRepository, FeatureStateRepository, PanelStateRepository]:
     manifest = build_quality_filtered_research_manifest(
-        acquisition_manifest(), eligible_listing_ids=eligible_listing_ids
+        acquisition or acquisition_manifest(), eligible_listing_ids=eligible_listing_ids
     )
     market_data = MarketDataRepository(tmp_path / "workspace")
     feature_state = FeatureStateRepository(market_data.database, market_data=market_data)
@@ -3573,15 +3568,19 @@ def test_maintenance_observes_restatement_before_explicit_qualification(
     assert current_close is not None and float(current_close[0]) == 100.5
 
 
-def _two_listings_one_session_due(
-    tmp_path: Path, *, dividend: bool = False
+def _listings_one_session_due(
+    tmp_path: Path, *, dividend: bool = False, count: int = 2
 ) -> tuple[UniverseManifest, MarketDataRepository, object, date]:
-    """Two listings holding two sessions, and a provider answering the third.
-
-    With ``dividend``, the provider also observes a cash dividend on the third session.
-    """
-    listing_ids = ("listing-aapl", "listing-msft")
-    manifest, market_data, _, _ = _maintenance_workspace(tmp_path, eligible_listing_ids=listing_ids)
+    acquisition = acquisition_manifest()
+    extra = tuple(
+        ManifestListing(f"listing-{i}", f"T{i}", "XNAS", f"T{i}") for i in range(2, count)
+    )
+    acquisition = replace(acquisition, listings=(*acquisition.listings, *extra))
+    manifest, market_data, _, _ = _maintenance_workspace(
+        tmp_path,
+        eligible_listing_ids=tuple(item.listing_id for item in acquisition.listings),
+        acquisition=acquisition,
+    )
     sessions = (date(2026, 7, 29), date(2026, 7, 30), date(2026, 7, 31))
 
     def rows(through: date, start: date = sessions[0]) -> tuple[dict[str, object], ...]:
@@ -3598,7 +3597,7 @@ def _two_listings_one_session_due(
             if start <= session <= through
         )
 
-    symbols = ("AAPL", "MSFT")
+    symbols = tuple(item.symbol for item in manifest.listings)
     market_data.apply_validated_batch(
         manifest,
         sanitize_payload(manifest, "fixture", dict.fromkeys(symbols, rows(sessions[1])), symbols),
@@ -3611,46 +3610,40 @@ def _two_listings_one_session_due(
 
         def fetch_hydration(self, *, listing_id, provider_symbol, start, end):
             fetched = rows(end, start)
-            return HydrationEvidence(
-                daily_rows=fetched,
-                actions=(
+            actions = ()
+            if dividend and start <= sessions[2] <= end:
+                actions = (
                     CorporateActionEvent(
-                        listing_id=listing_id,
-                        provider=self.name,
-                        effective_date=sessions[2],
-                        action_kind="CASH_DIVIDEND",
-                        cash_amount=0.25,
+                        listing_id, self.name, sessions[2], "CASH_DIVIDEND", cash_amount=0.25
                     ),
                 )
-                if dividend and start <= sessions[2] <= end
-                else (),
-                adjusted_closes=tuple(
-                    ProviderAdjustedClosePoint(
-                        listing_id=listing_id,
-                        provider=self.name,
-                        session_date=date.fromisoformat(str(row["session_date"])),
-                        adjusted_close=float(str(row["close"])),
-                    )
-                    for row in fetched
-                ),
+            adjusted = tuple(
+                ProviderAdjustedClosePoint(
+                    listing_id, self.name, date.fromisoformat(row["session_date"]), row["close"]
+                )
+                for row in fetched
             )
+            return HydrationEvidence(fetched, actions, adjusted)
 
     return manifest, market_data, Provider(), sessions[2]
 
 
+@pytest.mark.parametrize("count", (2, 8))
+@pytest.mark.parametrize("sink", (True, False))
 def test_progress_counts_listings_without_reading_every_change_document(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, count, sink
 ) -> None:
-    """Progress counts listings without reading every change document."""
-    manifest, market_data, provider, as_of = _two_listings_one_session_due(tmp_path)
-    read_whole = market_data.current_universe_maintenance_listings
-    reads: list[str] = []
-
-    def counted(maintenance_id: str):  # type: ignore[no-untyped-def]
-        reads.append(maintenance_id)
-        return read_whole(maintenance_id)
-
-    monkeypatch.setattr(market_data, "current_universe_maintenance_listings", counted)
+    manifest, market_data, provider, as_of = _listings_one_session_due(tmp_path, count=count)
+    reads = Mock(wraps=market_data.current_universe_maintenance_listings)
+    monkeypatch.setattr(market_data, "current_universe_maintenance_listings", reads)
+    if not sink:
+        monkeypatch.setattr(
+            market_data,
+            "current_universe_maintenance_counts",
+            lambda _: pytest.fail(
+                "COUNT STOP op=progress_read observed=1 budget=0 fixture=no-sink wayon=reduce-work"
+            ),
+        )
     progress = []
     outcome = CurrentUniverseMaintenance(
         store=market_data,
@@ -3659,11 +3652,11 @@ def test_progress_counts_listings_without_reading_every_change_document(
         as_of_session=as_of,
         max_workers=1,
         mutation_gate=WorkspaceMutationGate(),
-        progress_sink=progress.append,
+        progress_sink=progress.append if sink else None,
     ).run(observed_at=NOW)
     assert (outcome.status, outcome.updated, outcome.failed) == (
         CurrentUniverseMaintenanceStatus.COMPLETED,
-        2,
+        count,
         0,
     )
     per_listing = [
@@ -3671,13 +3664,14 @@ def test_progress_counts_listings_without_reading_every_change_document(
         for u in progress
         if u.status == "RUNNING" and u.current_item is not None
     ]
-    assert per_listing == [
-        (1, 2, {"updated": 1, "failed": 0, "pending": 1}),
-        (2, 2, {"updated": 2, "failed": 0, "pending": 0}),
-    ]
-    # Whole reads only where an outcome is built (the run's opening report, its last chunk and
-    # its close), not one more per listing.
-    assert len(reads) == 3
+    assert per_listing == (
+        [(i, count, {"updated": i, "failed": 0, "pending": count - i}) for i in range(1, count + 1)]
+        if sink
+        else []
+    )
+    assert reads.call_count == 3, (
+        f"COUNT STOP op=whole_read observed={reads.call_count} budget=3 wayon=reduce-work"
+    )
 
 
 _MAINTENANCE_TABLES = (
@@ -3710,7 +3704,7 @@ def test_a_listing_that_fails_inside_its_transaction_is_rolled_back_and_applied_
     """A listing that fails inside its transaction is rolled back and applied again."""
 
     def run(root: Path, *, fault: bool) -> dict[str, list[tuple[object, ...]]]:
-        manifest, market_data, provider, as_of = _two_listings_one_session_due(root, dividend=True)
+        manifest, market_data, provider, as_of = _listings_one_session_due(root, dividend=True)
         update = market_data.update_current_universe_maintenance_listing
         faults: list[str] = []
 

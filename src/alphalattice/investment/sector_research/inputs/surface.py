@@ -24,6 +24,7 @@ from alphalattice.kernel.shared_kernel.sector_treatment import (
     SECTOR_HISTORY_BACKFILLED,
     SectorHistoryTreatment,
 )
+from alphalattice.kernel.shared_kernel.spans import active_ledger
 
 from .contracts import (
     SectorContextManifest,
@@ -220,6 +221,26 @@ def _sector_event_returns(
     return result
 
 
+def _context_clocks(ordered: pa.Table, shape: tuple[int, int]) -> tuple[list[datetime], int, int]:
+    """Admit matching timestamp columns and causal clocks, then retain availability per session."""
+    clocks = (ordered["formation_close_at"], ordered["holding_end_open_at"])
+    if any(not pa.types.is_timestamp(clock.type) or clock.null_count for clock in clocks):
+        raise SectorContextBoundaryError("alpha_research.sector_context_clock_invalid")
+    for clock in clocks:
+        instants = clock.cast(pa.int64()).to_numpy().reshape(shape)
+        if bool((instants != instants[:, :1]).any()):
+            raise SectorContextBoundaryError("alpha_research.sector_context_clock_mismatch")
+    first_rows = ordered.take(np.arange(0, ordered.num_rows, shape[1]))
+    formation_ats = first_rows["formation_close_at"].to_pylist()
+    available_ats = first_rows["holding_end_open_at"].to_pylist()
+    causal_checks = 0
+    for left, right in zip(formation_ats, available_ats, strict=True):
+        causal_checks += 1
+        if left >= right:
+            raise SectorContextBoundaryError("alpha_research.sector_context_causal_order_invalid")
+    return available_ats, len(formation_ats) + len(available_ats), causal_checks
+
+
 def compile_sector_context_surface(
     *,
     source_table: pa.Table,
@@ -232,13 +253,13 @@ def compile_sector_context_surface(
     """Publish only context observable by each formation close."""
     policy = SectorContextPolicy.model_validate(policy)
     ordered = _ordered(source_table)
-    event_sessions = tuple(
-        sorted(cast(list[date], pc.unique(ordered["formation_session"]).to_pylist()))
-    )
+    event_values = cast(list[date], pc.unique(ordered["formation_session"]).to_pylist())
+    event_sessions = tuple(sorted(event_values))
     output_sessions = formation_sessions or event_sessions
     if output_sessions != tuple(sorted(set(output_sessions))):
         raise SectorContextBoundaryError("alpha_research.sector_context_session_axis_invalid")
-    listings = tuple(sorted({str(value) for value in pc.unique(ordered["listing_id"]).to_pylist()}))
+    listing_values = pc.unique(ordered["listing_id"]).to_pylist()
+    listings = tuple(sorted({str(value) for value in listing_values}))
     if ordered.num_rows != len(event_sessions) * len(listings):
         raise SectorContextBoundaryError("alpha_research.sector_context_source_incomplete")
     if set(listings) - set(sector_by_listing_id):
@@ -298,19 +319,9 @@ def compile_sector_context_surface(
             )
         )
 
-    # Every clock is a timestamp, one per session; the session's first row then reads them all.
-    clocks = (ordered["formation_close_at"], ordered["holding_end_open_at"])
-    if any(not pa.types.is_timestamp(clock.type) or clock.null_count for clock in clocks):
-        raise SectorContextBoundaryError("alpha_research.sector_context_clock_invalid")
-    for clock in clocks:
-        instants = clock.cast(pa.int64()).to_numpy().reshape(len(event_sessions), len(listings))
-        if bool((instants != instants[:, :1]).any()):
-            raise SectorContextBoundaryError("alpha_research.sector_context_clock_mismatch")
-    first_rows = ordered.take(np.arange(0, ordered.num_rows, len(listings)))
-    formation_ats = first_rows["formation_close_at"].to_pylist()
-    available_ats = first_rows["holding_end_open_at"].to_pylist()
-    if any(left >= right for left, right in zip(formation_ats, available_ats, strict=True)):
-        raise SectorContextBoundaryError("alpha_research.sector_context_causal_order_invalid")
+    available_ats, clock_objects, causal_checks = _context_clocks(
+        ordered, (len(event_sessions), len(listings))
+    )
 
     trend_decay = exp(log(0.5) / policy.trend_half_life_sessions)
     surprise_decay = exp(log(0.5) / policy.surprise_half_life_sessions)
@@ -356,7 +367,16 @@ def compile_sector_context_surface(
     values.setflags(write=False)
     table = _table(values, output_sessions, sectors)
     payload = _payload(table)
-    table_hash = str(canonical_hash({"schema": str(table.schema), "rows": table.to_pylist()}))
+    rows = table.to_pylist()
+    table_hash = str(canonical_hash({"schema": str(table.schema), "rows": rows}))
+    if ledger := active_ledger():
+        for detail, count in (
+            ("sector_axes", len(event_values) + len(listing_values)),
+            ("sector_clocks", clock_objects),
+            ("sector_causal", causal_checks),
+            ("sector_rows", len(rows)),
+        ):
+            ledger.add("serialize", detail, origin="host", count=count, inclusive=0, exclusive=0)
     manifest = seal_sector_context_contract(
         SectorContextManifest,
         "manifest_hash",

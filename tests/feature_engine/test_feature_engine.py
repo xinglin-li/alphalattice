@@ -1713,7 +1713,7 @@ def test_feature_materialization_failure_keeps_bounded_diagnostics(tmp_path, mon
     assert failure["detail"] == "replacement of pending.json is blocked by an open handle"
 
 
-def test_a_build_writes_the_same_bytes_whatever_its_workers(tmp_path) -> None:
+def test_a_build_writes_the_same_bytes_whatever_its_workers(tmp_path, monkeypatch) -> None:
     """A build writes the same bytes whatever its workers."""
 
     written: dict[int, tuple[str, ...]] = {}
@@ -1757,7 +1757,29 @@ def test_a_build_writes_the_same_bytes_whatever_its_workers(tmp_path) -> None:
             history_start=SESSIONS[0],
             as_of_session=SESSIONS[-1],
         )
+        reads = {"sets": 0, "fallbacks": 0}
+        listed = {item.listing_id for item in manifest.listings}
+        set_read, single_read = (
+            feature_state.feature_source_inputs_by_listing,
+            feature_state.feature_source_inputs,
+        )
+
+        def counted_set(*args, read=set_read, counts=reads, **kwargs):
+            counts["sets"] += 1
+            return read(*args, **kwargs)
+
+        def counted_single(*args, read=single_read, counts=reads, scope=listed, **kwargs):
+            counts["fallbacks"] += kwargs["listing_id"] in scope
+            return read(*args, **kwargs)
+
+        monkeypatch.setattr(feature_state, "feature_source_inputs_by_listing", counted_set)
+        monkeypatch.setattr(feature_state, "feature_source_inputs", counted_single)
         service.build(request, observed_at=NOW, refresh_sector=False)
+        budget = math.ceil(len(listed) / 25)
+        assert reads == {"sets": budget, "fallbacks": 0}, (
+            f"COUNT STOP op=healthy_build_reads observed={reads} budget={budget}/0 "
+            f"fixture=15-listings/workers-{workers} wayon=reduce-work"
+        )
         (finished,) = (
             update
             for update in updates
@@ -1766,8 +1788,7 @@ def test_a_build_writes_the_same_bytes_whatever_its_workers(tmp_path) -> None:
         assert finished.counters["workers"] == workers
         head = ledger.current_head(service.catalog.binding.catalog_hash)
         assert head is not None
-        connection = duckdb.connect(str(market_data.path), read_only=True)
-        try:
+        with duckdb.connect(str(market_data.path), read_only=True) as connection:
             tables = tuple(
                 json.dumps(
                     connection.execute(f"SELECT * FROM {table} ORDER BY ALL").fetchall(),
@@ -1781,8 +1802,6 @@ def test_a_build_writes_the_same_bytes_whatever_its_workers(tmp_path) -> None:
                     "feature_ineligibility_run",
                 )
             )
-        finally:
-            connection.close()
         written[workers] = (head.head_hash, head.feature_row_hash_digest, *tables)
     assert written[1] == written[3]
 

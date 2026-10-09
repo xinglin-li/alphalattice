@@ -554,21 +554,16 @@ experiment:
   schema_id: research-experiment-envelope
   data_snapshot_handle: component-training.g6_r0_fast_rebound
   universe_handle: us-current-index-research
-  sessions:
-    start: 2025-07-02
-    end: 2025-07-02
-    as_of: {session: 2025-07-02, phase: OFFICIAL_CLOSE}
+  sessions: {start: 2025-07-02, end: 2025-07-02,
+             as_of: {session: 2025-07-02, phase: OFFICIAL_CLOSE}}
   budget: {maximum_candidates: 20, maximum_numerical_calls: 100}
   determinism: {seed: 1729, thread_limit: 1, network_disabled: true}
   output_workspace: output
 alpha:
   methodology_id: MODEL_LIFECYCLE_REPLAY
   component_recipe_id: G6_R0_FAST_REBOUND
-  lifecycle:
-    month_interval: 1
-    training_window_sessions: 50
-    seeds: [1729]
-    vintage_weights: [1]
+  lifecycle: {month_interval: 1, training_window_sessions: 50, seeds: [1729],
+              vintage_weights: [1]}
 """)
 
     class Authority:
@@ -607,24 +602,33 @@ alpha:
     denied_dispatcher = ResearchExperimentDispatcher(compilers=(denied,), authority=Authority())
     with pytest.raises(ValueError, match="refit_period_not_admitted"):
         denied_dispatcher.compile(document)
-    # Every binary read from here on is counted, so the process's first read of an array --
-    # the one that leaves its OS-backed proof -- is seen, not only the readbacks after it.
-
+    # Count the first array read as well as the subsequent proof-backed readbacks.
     opened: Counter[Path] = Counter()
+    written: Counter[Path] = Counter()
     open_file = Path.open
 
     def counted_open(file, *args, **kwargs):
-        if (args[0] if args else kwargs.get("mode", "r")) == "rb":
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if mode == "rb":
             opened[file] += 1
+        if any(flag in mode for flag in "wax+") and any(
+            file.is_relative_to(tmp_path / root) for root in ("source", "output")
+        ):
+            written[file] += 1
         return open_file(file, *args, **kwargs)
 
     monkeypatch.setattr(Path, "open", counted_open)
     evidence, _ = workflow.run_sealed(document, **actor)
     assert evidence.program_hash == sealed.program_hash
-    # One real tiny fit and one score: a lifecycle child's fit takes no training prediction,
-    # since its evidence stores no training error.
+    # One fit plus one score; this child's fit stores no training-error prediction.
     assert evidence.numerical_call_count == 2
+    assert written  # The counter observed the producer before checking replay.
+    written.clear()
     replay, _ = workflow.replay(document, **actor)
+    assert not written, (
+        f"COUNT STOP op=replay_writable_open observed={dict(written)} budget=0 "
+        "fixture=monthly-yaml wayon=reduce-work"
+    )
     assert replay.numerical_call_count == 0
     assert replay.artifact_uris == evidence.artifact_uris
     bad = dict(document)
@@ -644,28 +648,21 @@ alpha:
     path = output_store._path("current/lifecycle-arrays", receipt.projection_files[0], "bin")
     assert opened[path] >= 1  # the run and its replay read the array in full
     original = path.read_bytes()
-    # Separate complete owner readbacks retain only an OS-backed proof, never
-    # a timestamp shortcut; the workflow's full numeric checks still execute. On
-    # Windows both readbacks reuse the proof the replay left; elsewhere each reads again.
+    # Complete readbacks retain the OS proof on Windows; other platforms read again.
     from alphalattice.investment.alpha_research.experiments.lifecycle_authoring import (
         verify_lifecycle_research,
     )
 
     seeded = opened[path]
-    assert (
-        verify_lifecycle_research(
-            program=sealed, evidence=evidence, output_workspace=tmp_path / "output"
+    for _ in range(2):
+        before_read = opened[path]
+        assert (
+            verify_lifecycle_research(
+                program=sealed, evidence=evidence, output_workspace=tmp_path / "output"
+            )
+            == "CURRENT"
         )
-        == "CURRENT"
-    )
-    first_reads = opened[path]
-    assert (
-        verify_lifecycle_research(
-            program=sealed, evidence=evidence, output_workspace=tmp_path / "output"
-        )
-        == "CURRENT"
-    )
-    assert opened[path] == (seeded if os.name == "nt" else first_reads + 1)
+        assert opened[path] == (seeded if os.name == "nt" else before_read + 1)
 
     before = path.stat()
     path.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
@@ -673,7 +670,12 @@ alpha:
     with pytest.raises(ValueError, match="frozen_input_content_invalid"):
         workflow.replay(document, **actor)
     path.write_bytes(original)
+    written.clear()
     restored, _ = workflow.replay(document, **actor)
+    assert not written, (
+        f"COUNT STOP op=restored_replay_writable_open observed={dict(written)} budget=0 "
+        "fixture=monthly-yaml wayon=reduce-work"
+    )
     assert restored.numerical_call_count == 0
     assert restored.artifact_uris == evidence.artifact_uris
 
@@ -962,12 +964,14 @@ def test_score_dispatch_uses_captured_formation_membership(tmp_path, monkeypatch
     np.testing.assert_array_equal(captured[0]["eligible"], expected)
 
 
-def test_context_history_uses_each_dates_reference_not_the_latest_roster():
+def test_context_history_uses_each_dates_reference_not_the_latest_roster(monkeypatch):
 
     from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
         assemble_panel_context_arrays,
     )
+    from alphalattice.investment.sector_research.inputs import surface
     from alphalattice.investment.sector_research.inputs.surface import compile_sector_context_arrays
+    from alphalattice.kernel.shared_kernel.spans import collect, readout
 
     days = tuple(date(2024, 1, 1) + timedelta(days=i) for i in range(300))
     ends = tuple(day + timedelta(days=1) for day in days)
@@ -976,16 +980,29 @@ def test_context_history_uses_each_dates_reference_not_the_latest_roster():
     def context(raw, mask):
         ids = tuple(f"L{i:03d}" for i in range(raw.shape[1]))
         sectors = MappingProxyType({name: f"S{i % 2}" for i, name in enumerate(ids)})
-        state, identity = compile_sector_context_arrays(
-            sessions=days,
-            holding_end_sessions=ends,
-            listing_ids=ids,
-            raw_log_returns=raw,
-            target_evidence_hash="a" * 64,
-            sector_by_listing_id=sectors,
-            sector_revision="b" * 64,
-            reference_eligible=mask,
-        )
+        with collect() as ledger:
+            state, identity = compile_sector_context_arrays(
+                sessions=days,
+                holding_end_sessions=ends,
+                listing_ids=ids,
+                raw_log_returns=raw,
+                target_evidence_hash="a" * 64,
+                sector_by_listing_id=sectors,
+                sector_revision="b" * 64,
+                reference_eligible=mask,
+            )
+        work = {row["detail"]: row["count"] for row in readout(ledger)["spans"]}
+        for operation, budget in (
+            ("sector_axes", len(days) + len(ids)),
+            ("sector_clocks", 2 * len(days)),
+            ("sector_causal", len(days)),
+            ("sector_rows", len(days) * len(set(sectors.values()))),
+        ):
+            observed = work[operation]
+            assert observed <= budget, (
+                f"COUNT STOP op={operation} observed={observed} budget={budget} "
+                "way_on=reduce_context_before_python"
+            )
         sector, market = assemble_panel_context_arrays(
             formation_sessions=days,
             holding_end_sessions=ends,
@@ -1010,6 +1027,29 @@ def test_context_history_uses_each_dates_reference_not_the_latest_roster():
     mask = np.ones(extended.shape, dtype=np.bool_)
     mask[:-1, -1] = False
     after = context(extended, mask)
+    unique = surface.pc.unique
+
+    def repeated_listing_objects(column):
+        distinct = unique(column)
+        if surface.pa.types.is_string(distinct.type):
+            return surface.pa.concat_arrays((distinct, distinct))
+        return distinct
+
+    with monkeypatch.context() as repeated:
+        repeated.setattr(surface.pc, "unique", repeated_listing_objects)
+        with pytest.raises(AssertionError, match="COUNT STOP op=sector_axes"):
+            context(values, np.ones(values.shape, dtype=np.bool_))
+    make_table = surface.pa.table
+
+    def divergent_clock(columns, *args, **kwargs):
+        clocks = columns["holding_end_open_at"].to_pylist()
+        clocks[1] += timedelta(seconds=1)
+        return make_table({**columns, "holding_end_open_at": clocks}, *args, **kwargs)
+
+    with monkeypatch.context() as divergence:
+        divergence.setattr(surface.pa, "table", divergent_clock)
+        with pytest.raises(surface.SectorContextBoundaryError, match="clock_mismatch"):
+            context(values, np.ones(values.shape, dtype=np.bool_))
     for baseline, result in zip(before[:3], after[:3], strict=True):
         np.testing.assert_array_equal(baseline[:-1].view("u8"), result[:-1].view("u8"))
     assert not np.array_equal(before[2][-1], after[2][-1])

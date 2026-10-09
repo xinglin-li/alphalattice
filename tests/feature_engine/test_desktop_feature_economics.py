@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +29,7 @@ from alphalattice.foundation.feature_engine.producers.base_materializer import (
 from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross_section import (
     SOURCE_ELIGIBILITY_POLICY_HASH,
 )
+from alphalattice.foundation.feature_engine.runtime import factor_invalidation
 from alphalattice.foundation.feature_engine.runtime.factor_invalidation import (
     compile_listing_plan,
     compile_panel_plan,
@@ -427,7 +429,17 @@ def test_catalog_identity_binds_independent_semantics() -> None:
 
 
 def test_return_delta_and_factor_specific_sparse_ranges() -> None:
-    dates = tuple(pd.bdate_range("2024-01-02", periods=360).date)
+    hashes: Counter[int] = Counter()
+
+    class CountedDate(date):
+        def __hash__(self):
+            hashes[self.toordinal()] += 1
+            return date.__hash__(self)
+
+    dates = tuple(
+        CountedDate(day.year, day.month, day.day)
+        for day in pd.bdate_range("2024-01-02", periods=360).date
+    )
     prior = {session: 100.0 + index for index, session in enumerate(dates[:-1])}
     appended = {**prior, dates[-1]: 100.0 + len(dates) - 1}
     assert MarketDataRepository._provider_adjusted_return_changes(prior, appended) == (dates[-1],)
@@ -448,6 +460,7 @@ def test_return_delta_and_factor_specific_sparse_ranges() -> None:
         history_start=dates[0],
         as_of_session=dates[-1],
     )
+    hashes.clear()
     plan = compile_listing_plan(
         catalog=catalog,
         request=request,
@@ -463,6 +476,20 @@ def test_return_delta_and_factor_specific_sparse_ranges() -> None:
             ),
         ),
     )
+    untouched = (*dates[:120], *dates[184:])
+
+    def bounded_scans():
+        # The initial map and affected-session validation each hash the calendar once.
+        scans = {hashes[day.toordinal()] - 2 for day in untouched}
+        assert scans == {0}, (
+            f"COUNT STOP op=calendar_rescan observed={scans} budget=0 "
+            "fixture=360-session-sparse wayon=reduce-work"
+        )
+
+    bounded_scans()
+    set(dates)  # Plant one real full-calendar membership pass in the measured span.
+    with pytest.raises(AssertionError, match="COUNT STOP op=calendar_rescan"):
+        bounded_scans()
     by_factor = {item.factor_id: expand_ranges(item.ranges, dates) for item in plan.items}
     # A Formula with no economic skip consumes the corrected session itself, so
     # invalidation now starts at that session rather than one after it.
@@ -560,7 +587,7 @@ def test_panel_binding_change_rebuilds_panel_without_base_feature_work() -> None
     assert set(targets_by_session(changed, sessions)) == set(sessions[-2:])
 
 
-def test_full_catalog_plan_keeps_exact_dense_identity_and_targets() -> None:
+def test_full_catalog_plan_keeps_exact_dense_identity_and_targets(monkeypatch) -> None:
     sessions = tuple(pd.bdate_range("2026-01-02", periods=12).date)
     catalog = FeatureCatalog.load()
     request = FeatureBuildRequest.create(
@@ -596,6 +623,34 @@ def test_full_catalog_plan_keeps_exact_dense_identity_and_targets() -> None:
     assert targets_by_session(plan, sessions) == {
         session: expected.factor_ids for session in active_sessions
     }
+    expansions = []
+
+    def counted(ranges, calendar):
+        expansions.append(tuple(ranges))
+        return expand_ranges(ranges, calendar)
+
+    monkeypatch.setattr(factor_invalidation, "expand_ranges", counted)
+    panel = compile_panel_plan(
+        catalog=catalog,
+        request=request,
+        invalidations=(FeatureInvalidation("normal_new_session"),),
+        listing_plans=(plan, plan),
+        sessions=sessions,
+    )
+    assert panel.items == plan.items
+    assert len(expansions) == 1, (
+        f"COUNT STOP op=panel_expansion observed={len(expansions)} budget=1 "
+        "fixture=shared-range wayon=reduce-work"
+    )
+    expansions.clear()
+    restricted = restrict_plan_to_sessions(
+        plan, calendar=sessions, allowed=active_sessions.__contains__
+    )
+    assert restricted == plan
+    assert len(expansions) == 1, (
+        f"COUNT STOP op=restrict_expansion observed={len(expansions)} budget=1 "
+        "fixture=shared-range wayon=reduce-work"
+    )
 
 
 def test_real_calendar_warmup_preserves_seasonality_month_anchor() -> None:

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
+from collections import Counter
 from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -257,6 +260,20 @@ def test_repeat_source_proofs_in_a_process_hash_no_unchanged_store_file(
 ):
     """regression: a process hashes a store file whole at its first proof and
     again only once its size or mtime moves (an edit is then refused, as the test above holds)."""
+    market = MarketDataRepository(input_workspace)
+    files = [path for path in (market.path, Path(str(market.path) + ".wal")) if path.exists()]
+    for path in files:
+        stat = path.stat()
+        os.utime(path, (stat.st_atime, stat.st_mtime - verified_facts.RACY_SECONDS - 1))
+    hashed: Counter[Path] = Counter()
+    whole = strategy_score_inputs.file_sha256
+
+    def counted(path):  # type: ignore[no-untyped-def]
+        if path.exists() and verified_facts.file_fact(path, "sha256") is None:
+            hashed[path] += 1
+        return whole(path)
+
+    monkeypatch.setattr(strategy_score_inputs, "file_sha256", counted)
     source_hash = workspace_score_source_identity(input_workspace)
     prepared = prepare_workspace_component_inputs(
         input_workspace,
@@ -264,15 +281,11 @@ def test_repeat_source_proofs_in_a_process_hash_no_unchanged_store_file(
         observed_at=OBSERVED_AT,
         expected_source_hash=source_hash,
     )
-    hashed: list[str] = []
-    whole = strategy_score_inputs.file_sha256
-
-    def counted(path):  # type: ignore[no-untyped-def]
-        if path.exists() and verified_facts.file_fact(path, "sha256") is None:
-            hashed.append(path.name)
-        return whole(path)
-
-    monkeypatch.setattr(strategy_score_inputs, "file_sha256", counted)
+    assert hashed == Counter({path: 1 for path in files}), (
+        f"COUNT STOP op=store_file_hash observed={dict(hashed)} budget=1/file "
+        "fixture=aged-store wayon=reduce-work"
+    )
+    first = hashed.copy()
     build_workspace_score_inputs(
         input_workspace,
         formation=DAYS[0],
@@ -280,7 +293,10 @@ def test_repeat_source_proofs_in_a_process_hash_no_unchanged_store_file(
         expected_source_hash=source_hash,
         prepared=prepared,
     )
-    assert hashed == []
+    assert hashed == first, (
+        f"COUNT STOP op=repeat_store_hash observed={dict(hashed - first)} budget=0 "
+        "fixture=aged-store wayon=reduce-work"
+    )
 
 
 def test_invalid_future_action_does_not_advance_an_earlier_formation_refusal(input_workspace):

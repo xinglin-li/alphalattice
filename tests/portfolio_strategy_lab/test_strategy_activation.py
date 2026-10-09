@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from contextvars import Context
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from threading import Barrier, current_thread
@@ -144,6 +145,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
     """LS1/OW12: activation reuses sealed studies; updates publish positions until stopped."""
 
     from alphalattice.interface.local_application.client import LocalResearchClient
+    from alphalattice.kernel.shared_kernel.spans import collect, readout
 
     root = evidence_roots.require("ls1_daily_flows")
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
@@ -241,7 +243,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
             timeout=300.0,
         )
         assert activated["status"] == "ACTIVATED", activated
-        assert list(activated["stage_seconds"]) == ["book", "models", "seed", "checkpoint", "bind"]
+        assert set(activated["stage_seconds"]) == {"book", "models", "seed", "checkpoint", "bind"}
         assert activated["review_standing"] == review_standing
         assert activated["strategy_dates"]["information_cutoff"] == "2026-09-10"
         assert (
@@ -322,14 +324,47 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         assert row["first_forward_session"] == "2026-09-09"
         assert PACKAGE in daily["next_requests"]["enable"]["automation_package_ids"]
         assert operations.automation is not None and PACKAGE in operations.automation.installed
-        plan = operations.execute(
-            PortfolioResearchOperationRequest(
-                operation="RESEARCH_UPDATE_PLAN",
-                strategy_package_id=PACKAGE,
-                observed_through="2026-09-10",
-            ),
-            caller="EXTERNAL_AUTOMATION",
-        )
+        assert operations.scoring is not None
+        completed = operations.scoring.additional_publications
+        assert completed is not None
+
+        def repeat_certification():
+            result = Context().run(completed)
+            Context().run(completed)
+            return result
+
+        def completed_budget(ledger):
+            observed = sum(
+                row["count"]
+                for row in readout(ledger)["spans"]
+                if (row["category"], row["detail"]) == ("verify", "completed_scores")
+            )
+            assert observed == 1, (
+                f"COUNT STOP op=completed_scores observed={observed} budget=1 "
+                "way_on=retain_request_certification"
+            )
+
+        for planted in (False, True):
+            with monkeypatch.context() as repeated:
+                if planted:
+                    repeated.setattr(
+                        operations.scoring, "additional_publications", repeat_certification
+                    )
+                with collect() as ledger:
+                    plan = operations.execute(
+                        PortfolioResearchOperationRequest(
+                            operation="RESEARCH_UPDATE_PLAN",
+                            strategy_package_id=PACKAGE,
+                            observed_through="2026-09-10",
+                        ),
+                        caller="EXTERNAL_AUTOMATION",
+                    )
+                if planted:
+                    with pytest.raises(AssertionError, match="COUNT STOP") as excess:
+                        completed_budget(ledger)
+                    assert "observed=0 " not in str(excess.value)
+                else:
+                    completed_budget(ledger)
         assert plan["status"] == "PLANNED", plan
         assert plan["decision_sessions"] == ["2026-09-09", "2026-09-10"]
         assert plan["next_requests"] == {

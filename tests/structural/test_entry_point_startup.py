@@ -29,7 +29,6 @@ PARSER_BUILT_ELSEWHERE = frozenset(
 
 ENTRY_POINTS_WITHOUT_A_PARSER = frozenset(
     {
-        "check_test_shape.py",
         "configure_playpen_dev.py",
         "run_playpen_precommit.py",
     }

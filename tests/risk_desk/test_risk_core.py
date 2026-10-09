@@ -388,31 +388,23 @@ def test_unadjusted_risk_return_basis_fails_closed() -> None:
 
 def test_return_chunk_rejects_value_tamper_with_preserved_footer(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first = date(2026, 1, 2)
     second = first + timedelta(days=1)
+    third = second + timedelta(days=1)
     rows = derive_risk_return_rows(
         manifest=_manifest(),
         listing_id="listing-a",
         symbol="AAA",
-        bars=(_bar(first, 100.0), _bar(second, 101.0)),
+        bars=(_bar(first, 100.0), _bar(second, 101.0), _bar(third, 102.0)),
         actions=(),
-        required_sessions=(first, second),
+        required_sessions=(first, second, third),
     )
     store = RiskReturnArtifactStore(tmp_path)
-    chunk = store.publish_chunk(pa.Table.from_pylist(rows))
+    chunk = store.publish_chunk(pa.Table.from_pylist(rows[:1]))
+    later = store.publish_chunk(pa.Table.from_pylist(rows[1:]))
     target = store.resolve_chunk(chunk)
-    table = pq.read_table(target).combine_chunks()
-    column = table.schema.get_field_index("open_total_return_log")
-    tampered = table.set_column(
-        column,
-        "open_total_return_log",
-        pa.array([float(table.column(column)[0].as_py()) + 0.1], type=pa.float64()),
-    )
-    pq.write_table(tampered, target, compression="zstd")
-    with pytest.raises(RiskReturnSurfaceError, match="return_chunk_tampered"):
-        store.resolve_chunk(chunk)
-
     epoch = seal_contract(
         RiskUniverseEpoch,
         "epoch_hash",
@@ -425,13 +417,48 @@ def test_return_chunk_rejects_value_tamper_with_preserved_footer(
         kind="CausalRiskReturnSurface",
         epoch=epoch,
         first_formation_session=second,
-        last_formation_session=second,
-        formation_count=1,
+        last_formation_session=third,
+        formation_count=2,
         source_watermark_hash="c" * 64,
-        chunks=(chunk,),
+        chunks=(chunk, later),
         limitations=("fixture",),
         surface_hash="d" * 64,
     )
+    certifications = {}
+    resolve = RiskReturnArtifactStore.resolve_chunk
+
+    def count_certification(owner, value):
+        key = (owner, value.content_hash)
+        certifications[key] = certifications.get(key, 0) + 1
+        observed = certifications[key]
+        assert observed <= 1, (
+            f"COUNT STOP op=resolve_chunk observed={observed} budget=1 "
+            "way_on=retain_reader_certification"
+        )
+        return resolve(owner, value)
+
+    with monkeypatch.context() as counts:
+        counts.setattr(RiskReturnArtifactStore, "resolve_chunk", count_certification)
+        for _ in range(2):
+            reader = CausalRiskReturnReader(tmp_path)
+            assert reader.available_sessions(surface) == (second, third)
+            assert reader.read_sessions(surface, (second, third)).shape == (2, 1)
+            assert reader.read_sessions(surface, (second,)).shape == (1, 1)
+            assert reader.available_sessions(surface) == (second, third)
+        assert len(certifications) == 4
+        assert set(certifications.values()) == {1}
+        with pytest.raises(AssertionError, match="COUNT STOP"):
+            reader.artifacts.resolve_chunk(chunk)
+    table = pq.read_table(target).combine_chunks()
+    column = table.schema.get_field_index("open_total_return_log")
+    tampered = table.set_column(
+        column,
+        "open_total_return_log",
+        pa.array([float(table.column(column)[0].as_py()) + 0.1], type=pa.float64()),
+    )
+    pq.write_table(tampered, target, compression="zstd")
+    with pytest.raises(RiskReturnSurfaceError, match="return_chunk_tampered"):
+        store.resolve_chunk(chunk)
     with pytest.raises(RiskReturnSurfaceError, match="return_chunk_tampered"):
         CausalRiskReturnReader(tmp_path).read_sessions(surface, (second,))
 

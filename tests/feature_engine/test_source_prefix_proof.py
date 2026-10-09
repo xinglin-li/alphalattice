@@ -783,8 +783,8 @@ def _sealed_years(feature):
         ]
 
 
-def _across_years(feature, catalog):
-    return _proof(feature, catalog, start=OLDER_DAYS[0], end=DAYS[1])
+def _across_years(feature, catalog, *, connection=None):
+    return _proof(feature, catalog, start=OLDER_DAYS[0], end=DAYS[1], connection=connection)
 
 
 def _without_seals(feature, catalog):
@@ -802,7 +802,24 @@ def test_a_closed_year_answers_by_its_seal_as_its_values_would(feature_source):
     assert _seal(feature, catalog) == (2025,)
     assert _seal(feature, catalog) == ()
     assert _sealed_years(feature) == [2025]
-    assert _across_years(feature, catalog) == unsealed
+    starts = []
+
+    class CountingConnection:
+        def execute(self, query, parameters=()):
+            if "FROM feature_daily_runtime" in str(query):
+                starts.append(parameters[-2])
+            return inner.execute(query, parameters)
+
+        def __getattr__(self, name):
+            return getattr(inner, name)
+
+    with feature.database.read_transaction() as inner:
+        assert _across_years(feature, catalog, connection=CountingConnection()) == unsealed
+    old_reads = sum(start < date(DAYS[1].year, 1, 1) for start in starts)
+    assert starts and old_reads == 0, (
+        f"COUNT STOP op=closed_year_read observed={old_reads} budget=0 "
+        "fixture=sealed-2025 wayon=reduce-work"
+    )
 
 
 def test_a_write_to_a_closed_year_removes_its_seal_and_moves_the_proof(feature_source):

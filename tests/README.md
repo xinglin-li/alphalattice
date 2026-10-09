@@ -46,6 +46,7 @@ A test is kept only while it holds a requirement nothing else holds. The fast
 guard (`scripts/check_test_shape.py`, run by `scripts/check_playpen.py --staged
 --fast`) refuses rules 3, 7 and 9, a sentence pin of five or more words (rule 4)
 and the docstring bound in rule 1 on what a change adds; review holds the rest.
+Source growth past 100 KiB or 120 function lines/20 decisions, copied eight-line blocks and added performance lints are refused by the fast guard; owner count-budget excess is a COUNT STOP, and a higher pin needs maintainer approval.
 
 1. A test holds one requirement: a behaviour a user or a consumer relies on, a
    regression, a tamper or recovery case, or a boundary nothing else covers. Its

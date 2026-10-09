@@ -196,7 +196,10 @@ def test_failed_semantic_builder_is_never_retained():
     with content_store.verified_array_read_scope(reuse_verified=True):
         reused = content_store.verified_request_value(("semantic", "exact"), build, nbytes=4)
 
-    assert builds == 2
+    assert builds == 2, (
+        f"COUNT STOP op=rejected_builder observed={builds} budget=2 "
+        "fixture=one-refusal wayon=reduce-work"
+    )
     assert accepted is reused
 
 
@@ -241,9 +244,40 @@ def test_an_opted_in_mutable_value_is_built_once_and_each_caller_gets_its_own_co
         third = content_store.verified_request_value(
             key, build_mutable, nbytes=8, copy_mutable=True
         )
-    assert builds == 1
+    assert builds == 1, (
+        f"COUNT STOP op=mutable_builder observed={builds} budget=1 "
+        "fixture=one-key wayon=reduce-work"
+    )
     assert second == third == {"values": ["verified"]}
     assert second is not third and second["values"] is not third["values"]
+
+
+@pytest.mark.parametrize("reuse_verified", (False, True))
+def test_byte_bounds_rebuild_rejected_and_evicted_values(reuse_verified):
+    """A rejected size is never cached and an evicted value builds once on its next use."""
+    builds: Counter[str] = Counter()
+    limit = 512 * 1024 * 1024
+
+    def read(name, size):
+        def build():
+            builds[name] += 1
+            return (name,)
+
+        return content_store.verified_request_value(
+            ("byte-bound", reuse_verified, name), build, nbytes=size
+        )
+
+    with content_store.verified_array_read_scope(reuse_verified=reuse_verified):
+        for _ in range(2):
+            assert read("rejected", limit + 1) == ("rejected",)
+        assert read("evicted", limit) == read("evicted", limit) == ("evicted",)
+        assert read("replacement", limit) == ("replacement",)
+    with content_store.verified_array_read_scope(reuse_verified=reuse_verified):
+        assert read("evicted", limit) == read("evicted", limit) == ("evicted",)
+    assert builds == {"rejected": 2, "evicted": 2, "replacement": 1}, (
+        f"COUNT STOP op=bounded_builder observed={dict(builds)} budget=2/2/1 "
+        "fixture=512MiB-metadata wayon=reduce-work"
+    )
 
 
 def test_discard_only_npz_proof_rehashes_and_binds_each_store(tmp_path, monkeypatch):

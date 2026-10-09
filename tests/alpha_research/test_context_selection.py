@@ -1,5 +1,6 @@
 """Named Context selection preserves full-history bytes and source admission."""
 
+from dataclasses import replace
 from datetime import date, timedelta
 
 import numpy as np
@@ -254,7 +255,7 @@ def test_installed_component_feature_history_keeps_exact_selected_context_bytes(
 
 @pytest.mark.parametrize("component_id", ("G6_R0_FAST_REBOUND", "G2_R0_TREND"))
 def test_a_formation_row_from_its_window_is_the_full_pass_row_on_every_day(
-    context_source, component_id
+    context_source, component_id, monkeypatch
 ):
     """A formation row from its window is the full pass row on every day."""
     component = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component(component_id)
@@ -303,6 +304,43 @@ def test_a_formation_row_from_its_window_is_the_full_pass_row_on_every_day(
         assert row.tobytes() == np.ascontiguousarray(expected).tobytes(), day
         compared += 1
     assert compared > 200
+    names = ("open", "high", "low", "volume")
+    borrowed = tuple(getattr(source, name) for name in names)
+    consumed = []
+    asarray = np.asarray
+
+    def count_rows(value, *args, **kwargs):
+        if isinstance(value, np.ndarray) and any(
+            np.shares_memory(value, lane) for lane in borrowed
+        ):
+            consumed.append(len(value))
+        return asarray(value, *args, **kwargs)
+
+    def bounded_formation():
+        observed = max(consumed)
+        assert observed <= 128, (
+            f"COUNT STOP op=formation_rows observed={observed} budget=128 "
+            "way_on=bound_price_volume_kernels"
+        )
+
+    with monkeypatch.context() as counts:
+        counts.setattr(np, "asarray", count_rows)
+        row = prepare_frozen_price_volume_features(source, **arguments, formation_session=days[-1])
+        bounded_formation()
+        consumed.clear()
+        overworked = prepare_frozen_price_volume_history(source, **arguments, through=days[-1])[-1]
+        assert overworked.tobytes() == row.tobytes()
+        with pytest.raises(AssertionError, match="COUNT STOP"):
+            bounded_formation()
+    poisoned = {name: lane.copy() for name, lane in zip(names, borrowed, strict=True)}
+    for lane in poisoned.values():
+        lane[:-128] = np.nan
+    assert (
+        prepare_frozen_price_volume_features(
+            replace(source, **poisoned), **arguments, formation_session=days[-1]
+        ).tobytes()
+        == row.tobytes()
+    )
 
 
 @pytest.mark.parametrize(
