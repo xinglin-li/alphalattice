@@ -30,7 +30,7 @@ EXCLUDED_PACKAGES = (
     # as packages rather than modules because the property is "the public path
     # never reaches this lane", and a single module inside one is enough to
     # falsify it. `campaign` now holds only the lanes the paired research route
-    # reads (the campaign itself retired with RT R01).
+    # reads (the campaign itself retired with R01).
     f"{_PSL}.regularization",
     f"{_PSL}.optimizer",
     f"{_PSL}.search",
@@ -236,8 +236,8 @@ def test_the_split_policy_owner_is_singular_and_correctly_placed() -> None:
 
     `anchored_fold_geometry` lives in `regularization/split_policy.py` because the
     regularization record contracts consume it: `regularization/contracts.py`
-    imports it relatively (its runtime retired with the lab, RT R06; the Stage-6
-    campaign's split-policy binding with RT R01).
+    imports it relatively (its runtime retired with the lab, R06; the Stage-6
+    campaign's split-policy binding with R01).
 
     The module's own docstring records that it exists to collapse three copies of
     one geometry, which is the duplication this asserts has not returned.

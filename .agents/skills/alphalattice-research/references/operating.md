@@ -1,10 +1,9 @@
 # Operating the CLI
-Date: 2026-10-07
+Date: 2026-10-08
 
 ## Setup and launch
-Date: 2026-10-03
 
-Windows is the certified platform for this source-checkout setup; macOS and Linux are unverified. Use Python 3.12, uv and a browser from the checkout root. Dependency setup needs permission to download locked packages or a local cache. The locked environment and browser assets do not prepare research data:
+Windows is the certified platform for this source-checkout setup; macOS and Linux are unverified. Use Python 3.12, uv and a browser from the checkout root. Dependency setup needs permission to download locked packages or a local cache; it prepares no research data:
 
 ```powershell
 uv sync --locked --all-extras
@@ -13,46 +12,41 @@ uv export --locked --all-extras --no-dev --no-emit-project --no-hashes --output-
 uv tool install --python 3.12 --editable . --with-requirements .venv/alphalattice-runtime-requirements.txt --constraints .venv/alphalattice-runtime-requirements.txt
 ```
 
-`uv sync` installs the checkout's console command editable; source edits are live. `uv run alphalattice ...`, `.venv/Scripts/alphalattice.exe ...` and `python scripts/run_alphalattice.py ...` also run the checkout. The tool install is editable and pins its separate runtime to the exported lock; refresh it when the lock or project metadata changes. When `uv tool dir --bin` is not on the shell's PATH, run `uv run alphalattice` from the checkout or its `.venv/Scripts/alphalattice.exe` instead and go on. A persistent PATH (`uv tool update-shell`, then restarting the hosts) is the person's shell setting, never a step the research needs; product setup does not change host settings. Each host command starts a fresh shell, so activation, PowerShell functions and variables do not carry over. One tool name selects one installation leg at a time; run `uv tool uninstall alphalattice` before switching legs.
+`uv sync` installs the checkout's command editable, so source edits are live; the tool install is editable too and pins its runtime to the exported lock. When `uv tool dir --bin` is not on the shell's PATH, run `uv run alphalattice` or `python scripts/run_alphalattice.py` from the checkout and go on; a persistent PATH is the person's shell setting. Each host command starts a fresh shell, so variables do not carry over. Run `uv tool uninstall alphalattice` before switching installation legs.
 
-For a release wheel, use a separate directory; no checkout is needed. Extract its embedded runtime lock, then install the wheel with that file as both requirements and constraints:
+For a release wheel, use a separate directory; no checkout is needed. Extract its runtime lock, then install the wheel with it as requirements and constraints:
 
 ```powershell
-python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.1.2-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
-uv tool install --python 3.12 ./alphalattice-0.1.2-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
+python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.1.3-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
+uv tool install --python 3.12 ./alphalattice-0.1.3-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
 ```
 
-Use `--offline` for uv commands only when locked packages are cached. The wheel includes resources, built Local Web, Skill and role cards. Start it with the explicit workspace launch command in the next section. Configure its shipped guidance with the Python interpreter in the installed `alphalattice` tool environment beneath the directory reported by `uv tool dir` (not the checkout's `.venv`):
+Configure the shipped guidance with the tool environment's own interpreter, beneath `uv tool dir` (not the checkout's `.venv`):
 
 ```powershell
 $toolDir = uv tool dir
 & "$toolDir/alphalattice/Scripts/python.exe" -m alphalattice.interface.local_application.native_setup --project <agent-project> configure --host <codex-or-claude-code>
 ```
 
-Existing different files are refused. Configuration needs no product hook or hook trust action and changes no host trust. The installing session continues the research. Its last setup answer, `configure`, prints `continue_here`: read the files it lists in `read` (AGENTS.md and this Skill) by path, start each specialist as a general subagent whose prompt is its card's text from `specialists`, and tell the person its `disclosure` in one line. Started that way, a card's tool limits hold by instruction; the Host's checks of every answer hold either way. A session opened with its `open_session` command loads the guide, Skill and cards itself, and the host enforces the cards' tools; offer it, never require it. Author model source with `model scaffold --file` only in an editable checkout; checking and running installed models works on either leg. Workspace data, retrieval models and issuer sources still need their distinct setup and authority. Evidence review needs its declared retrieval environment, local model packs and admitted issuer-source package. If the launcher reports setup held, read its returned cause and setup request instead of treating an empty page as a completed installation. If the declared retrieval environment is absent, `serve` returns its setup command; that command alone supplies neither local retrieval models nor issuer sources.
+`configure` refuses to overwrite different files and answers `continue_here`: the files to read, the cards to start specialists from and a one-line `disclosure` for the person. A session opened with its `open_session` command loads them itself; offer it, never require it. On Claude Code with Bedrock, Vertex or Foundry, set `ANTHROPIC_DEFAULT_SONNET_MODEL` to pin a Sonnet version. Evidence review needs its declared retrieval environment, local model packs and an admitted issuer-source package; when `serve` reports one missing, run the setup command it returns.
 
-## Launch and bind a workspace
-
-Choose a new workspace directory for new research; the launcher initializes it without preparing data or installing a default strategy. Start its Host with an explicit workspace path:
+Start the Host on an explicit workspace, a new directory for new research; the launcher initializes it without preparing data:
 
 ```powershell
 alphalattice --workspace "workspaces/my-research" serve --no-browser --stop-on-stdin
 ```
 
-As the lead, use the browser tools your host actually exposes. Unless the person asks for terminal-only work, open the exact launch link printed by the service in the host's own in-app browser; it establishes the browser session. Open it once and leave that tab available so the person can follow the work; never navigate or click the Workbench to show work. If browser tools are unavailable, give the person the exact printed launch link and go on. A printed link alone does not establish that a browser integration is attached.
-
-Keep the service attached to stdin; enter `stop` to close the launch. Opening Local Web does not acquire data or run a study. Reuse the existing Host for commands on the workspace rather than starting another writer. If a restart invalidates the browser session, open the new launch link. Follow [the agent guide](../../../../AGENTS.md) to bind the native session and use clean `alphalattice` commands afterward; configuration does not change the person's host trust.
+Keep it attached to stdin; `stop` or a closed stream stops it after its workers join, and a client disconnect does not. Reuse the Host already serving a workspace, never start a second writer, and never stop someone else's service. After a restart, open the new launch link.
 
 ## Command contract
 
-The CLI grammar is `alphalattice <object> <action>`, followed by any id and flags; `request` sends a whole operation document. Commands do not prompt and have no aliases. Bind a session or name the workspace explicitly. Use exact object/action names and one operation per command.
+The grammar is `alphalattice <object> <action>`, then any id and flags; `request` sends a whole operation document. Commands do not prompt and have no aliases. Global `--workspace`, `--view`, `--goal` and `--lang` may appear anywhere.
 
-- The answer supplies filled `next_commands` and choice-requiring `next_templates`. Run the former as returned; for the latter use only the named choices. To take a named edge, use `request --from "<out>/answer.json" --action <returned-action-name>`. Same-named requests from separate parts carry that part's Task, case (such as `recovery:<task_id>`) or place; use the returned qualified name. `--from` continues from an answer; `--file` supplies that operation's document. `--choices` fills its open fields. A request file is not an answer. An offered edge is navigation, not proof its prerequisites hold; the Host revalidates it. Consult command help or `schema show` only when the answer does not provide a needed field or form.
-- Take ids, hashes and choices exactly from an answer or assignment. Never invent, substitute or silently change a bound reference. A compact id is usable only when unique; if a prefix is ambiguous, use the whole id listed by the refusal. The Host revalidates every continuation; choices fill open fields without replacing bound references.
-- Read returned `prerequisites` before continuing: an offered edge is navigation, not proof its requirements hold. An omitted field is not evidence that the field or requirement is absent. The Host revalidates every continuation.
-- Write outputs to new, unused paths under the workspace, never into the checkout or over existing research. Make `<out>` a new workspace directory. `--output <path>` saves the full answer (the answer's `data` at the file root); `--format yaml` saves YAML. `--save-declaration <path>` writes an editable declaration. `--file <path>` reads the command's document; `-` reads UTF-8 YAML or JSON from stdin. The CLI will not overwrite a file, except for the admission answer saved by its own `--wait` command.
-- A person's request authorizes only its stated scope. Updating source data, sealing a new input and starting a different experiment are separate decisions; ask before crossing into another one. A fresh checkout uses its own locked environment and workspace; never borrow another checkout's environment or data.
-- Global `--workspace`, `--view`, `--goal` and `--lang` options may appear anywhere. `--` ends options. `@@` escapes text that begins with `@`. Run offered commands only within the authorized scope and launch budget. Every launch, including help, schema and failure, counts; `session_launches` reports it where available but grants no budget.
+- The answer's top-level `next_action` and `next_requests` decide the next step. A part's own `next_action`, such as a nested `network_access`, describes that part only and never overrides them.
+- Run `next_commands` as returned; fill a `next_templates` entry only with its named choices. Take a named edge with `request --from "<out>/answer.json" --action <returned-action-name>`; same-named requests from separate parts carry a qualified name. `--choices` fills open fields and never replaces a bound reference.
+- Take ids, hashes and choices exactly from an answer. A compact id is usable only when unique. An offered edge is navigation, not proof its prerequisites hold; the Host revalidates every continuation.
+- Write outputs to new paths under a new `<out>` directory in the workspace, never into the checkout. `--output` saves the full answer, `--save-declaration` an editable declaration; `--file` reads a document, `-` reads stdin. The CLI overwrites no file.
+- Consult help or `schema show` only when the answer lacks a field or form you need.
 
 <!-- Generated from the CLI's registered outcomes and _PROCEED meanings. -->
 | Exit | Outcome | Do |
@@ -63,49 +57,28 @@ The CLI grammar is `alphalattice <object> <action>`, followed by any id and flag
 | 3 | PENDING | follow the admitted Task or answer its decision; never resubmit queued or running work; use the answer's offered deferral resume after its retry time |
 | 4 | NO_HOST | report it: the lead starts or reconnects the Host |
 
-A refusal leaves its owner's stable code, detail and legal way on. Follow only the offered `next_action`, `next_requests` or a person-authorized act; never invent a workaround or retry completed/in-flight work. If a compact reference is refused with `compact_reference_requires_full_response:<part>`, save the full answer or read that part with `--section <part>`.
-
-A timeout or lost connection is a transport event: check the known Task before retrying; if no Task is known, ask the lead. `activity wait` waits across Host restarts and ends on one `wait_event` naming what happened and how to read it; `task show` reads state. `--wait` follows admitted work until it ends, needs a decision, is deferred, reports an incident or reaches `--max-wait`. A cancellation request is not a cancellation result. If a local output write fails after the owner answered, read stdout or the Task; never resubmit the work. `local_web_url` is navigation, not evidence. Do not poll or use a detached waiter your host cannot track. A lead may wait in its host-tracked background command; a subagent waits in its own turn or hands the Task back to the lead.
+A refusal names its owner's code, detail and legal way on; take only that or a person-authorized act, never a workaround. If a compact reference is refused with `compact_reference_requires_full_response:<part>`, save the full answer or read that part with `--section <part>`.
 
 ## Failure and recovery
 
-Keep the original Goal, Task and error. Distinguish a malformed request, a legal permission refusal, a data decision, a transport event and a reproducible product defect before changing anything:
+Keep the original Goal, Task and error, and tell a malformed request, a permission refusal, a data decision, a transport event and a product defect apart:
 
-1. Correct a malformed request's named command, document or field within scope. A legal permission refusal is a stop, not a bug to remove; a code fix grants no authority and must not weaken scientific or integrity checks.
-2. Take a data decision through its offered preview and confirmation under the authority in [pipeline issues](pipeline-issues.md). After a transport event, read the known Task before repeating work; absence of an answer does not prove that no work was admitted.
-3. Reproduce a product defect, fix its existing owner and add a regression at the affected boundary. For changed editable source, restart only an idle Host you own in the same workspace, open its new printed launch link and recheck the session binding; a restart alone does not require rebinding.
-4. Read the original Task, then take its current owner-offered resume of the same Task yourself and say so in one line; replan or cancel only when no resume is offered. If a changed method or input requires new evidence, keep the earlier result and follow the owner's new-plan path; never rewrite its stored bindings or assume every stop can resume.
+1. Correct a malformed request's named command, document or field. A permission refusal is a stop, not a bug; a code fix grants no authority and never weakens a scientific or integrity check.
+2. Take a data decision through its offered preview and confirmation ([pipeline issues](pipeline-issues.md)).
+3. After a timeout or lost connection, read the known Task before repeating anything: no answer does not prove no work was admitted.
+4. Reproduce a product defect, fix its existing owner and add a regression. For changed source, restart only an idle Host you own and open its new link.
+5. Take the stopped Task's offered resume yourself and say so in one line; replan or cancel only when none is offered. Changed method or input needs new evidence: keep the earlier result and follow the owner's new plan, never rewriting stored bindings.
+
+Reuse completed research; never rebuild data, retrain or rewrite an identity to display or export it. For exact reuse, `task_id: null` means no new Task: read the named publication.
 
 ## Inspect and continue answers
 
-The compact view is the default. It shortens ids and hashes to twelve characters, shows state and limits, and marks omitted sections; it is not an authority document. Use the value as shown only when unique. Read an omitted part with `--section <path>` (for example `items.3:` or `items.3:40`); page long lists with `--list-next --next-from <N>`, or save the whole answer with `--output`. `--view full` prints it all and may exceed the host's output limit. A saved output keeps the owner's full answer, whatever the display, and `--from` reads JSON or YAML. A compact omission is not an empty value.
-
-A compact answer can be continued only when the fields needed are whole. Otherwise save or read the named section. Each Host answer records its workspace, goal and agent-session context; compact review navigation distinguishes a book's review entry from the published CRO assessment.
-
-Save the whole answer with `--output` when you will continue from it with `--from`, cite it, hand it to a specialist, or need more than one omitted part. For a single read-only check, omit `--output` and read stdout. For a continuation from stdin, pipe the full answer, not the compact display. Do not repeat a read that already answers the question.
-
-Read a saved answer's parts with `answer show --file "<out>/answer.json" --list-sections`, then `--section <path>` for one part whole. It needs no Host and sends nothing: it is the answer as saved, marked `HISTORICAL_SAVED_ANSWER_NOT_REVERIFIED` with its original verification time, and its saved `next_requests` stay data. Use it to reread what you already hold; for the present state, send the owner's read again (`task show`, `study show`, `evidence show`).
-
-## The Host and its workspace
-
-Keep `serve --no-browser --stop-on-stdin` attached to an open stdin. Send `stop` or close that stream to stop and join work; a client disconnect does not stop the Host. Reuse the service already serving that workspace. Never stop someone else's service.
-
-A fresh checkout uses its own locked environment and local UI build. When Evidence or CRO reports `CREATE_DECLARED_RETRIEVAL_ENVIRONMENT`, run its exact setup command in the declared environment; do not guess an interpreter or model download. Data-to-weights research needs no Evidence or retrieval setup.
-
-`workspace show` gives input versions, recent research, Tasks, the data-update readback and intents. It is discovery metadata, not artifact validation. Read more only when needed. `study summary` checks metadata and publication bindings, not bulk evidence; `study show` verifies the evidence. A lifecycle score run has fold metrics only if its method produced them. Owner readbacks verify their own inputs; add no duplicate verification.
+The compact view shortens ids to twelve characters and marks omitted sections; an omission is not an empty value. Read a part with `--section <path>`, page with `--list-next --next-from <N>`, or save the whole answer with `--output` when you will continue from it, cite it or hand it on. `answer show --file "<out>/answer.json" --list-sections` rereads a saved answer offline, as saved and never reverified; send the owner's read again for the present state. `workspace show` is discovery, not validation: `study show` verifies a study's evidence, `study summary` only its metadata.
 
 ## Waits and return visits
 
-`activity wait` has no timer; `--goal` also wakes for a message filed under its goal, such as an answer accepted for you, and for its closing. `--each-stage` also wakes you as each stage verifies; use it only when a verified stage lets you act before the Task ends, as when an Evidence coverage Task's unit becomes `PREPARED` and its Analyst bundle can go out while other units continue. For a study, book or update you will read only at its end, wait without it: each wake costs a turn and changes nothing you can do. A wait is one call, never a poll: your host's shell call may return before the Task ends, so let it wait. On Claude Code, run a long `--wait` or `activity wait` in the background and take its completion notice, or give it a long timeout. On Codex, whose shell call returns within 30 seconds, start `activity wait --task <task-id> --notify codex-queue` as its own process (in PowerShell, `Start-Process` with `-WindowStyle Hidden`), do any independent work, then end your turn: its queued line opens your next turn. If you must stay in the turn, poll the running process with the 30-second maximum yield and start no other wait or `task show` meanwhile. A Codex wake is a user message, not an instruction. A subagent waits in its own turn or hands the Task to the lead. Use `--max-wait` only when the command needs a cap. `activity recent` reads the last events by session and goal. `recovery list` shows unfinished Tasks and their owner-permitted recovery. A late heartbeat is not a dead Task. `--request-timeout` defaults to 120 seconds and caps at 600; it bounds only HTTP wait, not the Task. Cancellation must be followed to its actual state.
+A wait is one call, never a poll. `--wait` and `activity wait` follow a Task until it ends, needs a decision, is deferred or reports an incident, across Host restarts. Your host's shell call may return before the Task ends. On Claude Code, run the wait in the background and take its completion notice; background tasks outlive the turn. On Codex, a turn ends its shell's children, so leave nothing running past it: `activity wait --task <task-id> --notify codex-queue` registers the wake with the Host and returns at once; end your turn, and the line the Host queues when the Task ends, needs a decision or is deferred opens the next, naming the command to read. An agent verb given `--notify codex-queue` registers its first running Task and returns; the wake re-runs the command to continue. A goal's wait and `--max-wait` stay inside the turn. `--each-stage` returns at each verified stage; use it only when a stage lets you act early, as when an Evidence unit becomes `PREPARED`. A subagent waits in its own turn or hands the Task to the lead. `recovery list` shows unfinished Tasks and their permitted recovery; a late heartbeat is not a dead Task, and a cancellation request is not a cancellation result.
 
-After a restart, read the original Task and follow the failure and recovery procedure above. Reuse completed research; never rebuild data, retrain or rewrite an old identity just to display or export it. Historical evidence reuse and a new replay that refuses a changed execution binding are different claims. Counts describe the read unless the owner gives an execution count. For exact reuse, `task_id: null` means no new Task; read the named existing publication. `study verify <task>` verifies an existing execution without admitting work. PLAN's expected calls describe potential work; `EXISTING_EXECUTION_CANDIDATE` does not promise a zero-work RUN. A code fix or authority grant is not a declaration edit.
+## Studies and features
 
-On every fresh session, read `workspace show`, then `strategy-book controls --package <package>` for the exact installed package and its `activation` before planning forward work. If `INACTIVE`, take the offered activation under an open first-use goal once its review standing is `REVIEWED`, else open the exact Portfolio activation action for the person; follow a held reason when no activation is offered. Installation, activation and daily automation are separate decisions ([leading research](research-lead.md)).
-
-## Study drafts and evidence links
-
-Continue a saved result with `study draft --from "<out>/readback.json" --output "<out>/draft.json" --save-declaration "<out>/edited.yaml"`, edit the YAML, then `study plan --from "<out>/draft.json" --file "<out>/edited.yaml"`. An unchanged declaration can plan from the draft alone or a piped full draft. An omitted binding keeps the origin input, never the newest. Read `declaration_changes` and `execution_intent`; even a reuse candidate needs RUN to validate it. Refusal `fields` and `message` name declaration errors. `risk-link add --from "<out>/book.json" --risk-study <risk_task>` attaches Risk as evidence; it never changes weights.
-
-## Feature changes
-
-Use the returned PLAN and BUILD requests. A formula feature is one `CREATE` with `formula`, an explicit `preprocessing_recipe` and a `reason`; trial it only against an eligible completed Alpha study from Factor on the same input. A refusal lists eligible studies. `PREPROCESSED_VALUES` builds raw and preprocessed values in one Task; its `research` edge opens Factor controls for that exact source. `RAW_VALUES` is the lower-level option. A trial builds its own feature. Prepared columns, Factor context, curation and model inputs may have different counts; read their axes. Fresh research starts from returned controls and declarations; nothing activates by default.
+Continue a saved study with `study draft --from "<out>/run.json" --save-declaration "<out>/next.yaml" --output "<out>/draft.json"`, edit the YAML and plan it from the draft; an omitted binding keeps the origin input. A formula feature is one `CREATE` with a `formula`, an explicit `preprocessing_recipe` and a `reason`, trialled against a completed Alpha study from Factor on the same input; a refusal lists eligible studies. Nothing activates by default.

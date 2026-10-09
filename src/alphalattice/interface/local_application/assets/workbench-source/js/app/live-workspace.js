@@ -48,12 +48,12 @@ const LiveWorkspace = (() => {
    * Task of that kind and pins it in place so a later Task does not replace it silently. */
   const SCENE_ROUTE={welcome:'preparation',data:'update'};
   const selectedTask=(page)=>SCENE_ROUTE[page] && typeof hashParams==='function' ? (hashParams().get(SCENE_ROUTE[page]) || null) : null;
-  const selectedPreparation=()=>selectedTask('welcome');
   const pinTask=(page,id)=>{ if(typeof replaceHash!=='function' || here()!==page) return false; replaceHash({[SCENE_ROUTE[page]]:id}); return true; };
   const REFUSALS={
     'workspace_preparation.task_not_found':'No preparation Task has this id in this workspace.','workspace_preparation.task_kind_mismatch':'This Task is not a workspace preparation; it has its own page.',
     'workspace_data_update.task_not_found':'No data update Task has this id in this workspace.','workspace_data_update.task_kind_mismatch':'This Task is not a data update; it has its own page.'};
   const refusalOf=(message)=>Object.keys(REFUSALS).find(code=>String(message || '').startsWith(code)) || null;
+  const notConfigured=state=>String(state?.error || '').startsWith('workspace_data_update.not_configured');
   const stringify = v => v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
   const facts = rows => kv(rows.map(([k,v]) => [t(k),stringify(v)]));
   const detail = (b, title='Exact identity, scope and receipt') => html`${codeRef(t(title), b)}`;
@@ -108,6 +108,7 @@ const LiveWorkspace = (() => {
     // late answer is only ever kept, marked or shown as the Task it was asked for.
     const same=!SCENE_ROUTE[page] || (previous?.requested ?? '')===(wanted || '');
     const state={body:same ? get(page) : null,view:same ? previous?.view || null : null,viewError:'',readAt:same ? previous?.readAt || 0 : 0,stale:same ? previous?.stale || null : null,loading:!quiet,error:'',requested:wanted || '',lateReads:same ? previous?.lateReads || 0 : 0};states.set(page,state);
+    state.decisionStamp=previous?.decisionStamp;
     if(!quiet) render();
     try {
       const query=cursor ? {history_cursor:cursor} : wanted ? {task_id:wanted} : null;
@@ -180,8 +181,19 @@ const LiveWorkspace = (() => {
   function observe() {
     if(S.busy || S.observing) return;
     if(!SCENE_ROUTE[here()]) return settleWatched();
-    const page=here(), state=states.get(page);
-    if(!state?.body?.task_id || state.loading) return;
+    const page=here()==='data' && notConfigured(states.get('data')) ? 'welcome' : here(), state=states.get(page);
+    if(!state?.body || state.loading) return;
+    const issueState=states.get('issues'), tokens=new Set((issueState?.body?.issues || []).map(x=>x.case.case_token)), activity=typeof LiveActivity==='undefined' || !LiveActivity.state || !LiveActivity.retained ? null : LiveActivity.state();
+    const ordinal=activity?.epoch && !activity.stale && !activity.error ? Math.max(0,...LiveActivity.retained().flatMap(g=>g.items || []).filter(x=>x.schema_kind==='ProductOperationObserved' && x.payload?.operation==='DATA_ISSUE_CONFIRM' && x.payload.phase==='RETURNED' && x.payload.status==='CONFIRMED_PENDING_REVALIDATION' && tokens.has(x.payload.subject?.data_issue_case_token)).map(x=>x.ordinal)) : 0;
+    const stamp=ordinal ? activity.epoch+':'+ordinal : '';
+    if(stamp && issueState.decisionStamp!==stamp) {
+      issueState.decisionStamp=stamp;
+      const origin=here();
+      S.observing=Data.refreshDecisions().then(()=>{if(here()===origin)return refresh('issues','',true);}).finally(()=>{S.observing=null;});
+      return;
+    }
+    // A preparation admitted elsewhere can arrive after Home read an empty workspace.
+    if(!state.body.task_id && !(page==='welcome' && !state.body.inputs?.length && !selectedTask(page) && Data.tasks().some(x=>x.task_id && x.task_kind==='workspace_preparation'))) return;
     const v=state.view, projection=Data.tasks().find(x=>x.task_id===state.body.task_id);
     // A projection that no longer agrees with the view (a resumed Task already finished between
     // two reads, a stage verified) is a reason to read the owners again, moving or not.
@@ -219,7 +231,7 @@ const LiveWorkspace = (() => {
    * pressing Refresh. A first entry reads through `page()`; the scenes keep their own rule. */
   function entered() {
     const name=here(), state=states.get(name);
-    if(name==='data' && String(state?.error || '').startsWith('workspace_data_update.not_configured')) void refresh('issues','',true);
+    if(name==='data' && notConfigured(state)) void refresh('issues','',true);
     if(!pages.has(name) || SCENE_ROUTE[name] || !state || state.loading || S.observing) return;
     if(!settleWatched()) void refresh(name,'',true);
   }
@@ -575,7 +587,7 @@ const LiveWorkspace = (() => {
     const truthPending=b.confirmation_available===false && b.next_requests?.issues?.operation==='DATA_ISSUES';
     const truth=b.failure_code==='data.truth_review_required' ? issuesAsking() : null;
     const reason=get('issues')?.continuations?.find(c=>c.task_id===id)?.failure_reason?.explanation;
-    const shown=truth ? html`<strong>${t(!truthPending && truth.decided && !truth.count ? 'Your decision is recorded' : 'A data decision is needed')}</strong> · ${reason || explain(b.failure_code)}` : text;
+    const shown=truth ? html`<strong>${t(truth.agent ? 'Agent is deciding data issues' : truth.decided && !truth.count ? 'Decision recorded' : 'A data decision is needed')}</strong> · ${truth.agent ? t('The agent is deciding under the first-use delegation; the issue states are shown below.') : truth.decided && !truth.count ? t('Decided · applied when the update continues') : reason || explain(b.failure_code)}` : text;
     const by=Object.fromEntries(v.actions.map(a=>[a.action,a]));
     const off=(a)=>S.busy || !a?.available ? (a?.reason || '') : '';
     let consequence='', actions='';
@@ -600,7 +612,7 @@ const LiveWorkspace = (() => {
           actions=action('Inspect successor Task','task',b.superseded_by_task_id);
           break;
         }
-        if(truthPending) {
+        if(truthPending || (truth?.decided && !truth.count)) {
           actions=link(t('Data issues'),'issues','button compact');
           break;
         }
@@ -642,6 +654,7 @@ const LiveWorkspace = (() => {
     log.snapshot={observed:la.observed,retained:la.retained,dropped:la.dropped,written_at:la.written_at,age:la.age_seconds,availability:la.availability,sequence:la.sequence};
   }
   const STEP_TEXT={
+    PENDING:(r)=>r.raw_through ? t('history retained through {d}; waiting to retry the provider',{d:r.raw_through}) : t('waiting for provider data'),
     RAW_READY:(r)=>r.origin==='RETAINED' ? (r.tail_acquired ? t('durable history reused, tail acquired through {d}',{d:r.raw_through || ''}) : t('durable history reused through {d}',{d:r.raw_through || ''})) : t('raw bars acquired through {d}',{d:r.raw_through || ''}),
     QUALITY_ELIGIBLE:()=>t('quality: eligible'),
     QUALITY_INELIGIBLE:(r)=>html`${t('quality: ineligible')} · ${(r.reasons || []).map(x=>codeWords(x)).join(', ') || ''}`,
@@ -649,7 +662,7 @@ const LiveWorkspace = (() => {
     RAW_FAILED:(r)=>html`${t('failed')} · ${said(r.failure_code)}`,
     AUDIT_FAILED:(r)=>html`${t('audit failed')} · ${said(r.failure_code)}`,
   };
-  const STATE_WORD={RAW_READY:'raw bars',QUALITY_ELIGIBLE:'eligible',QUALITY_INELIGIBLE:'ineligible',FEATURE_READY:'admitted',RAW_FAILED:'failed',AUDIT_FAILED:'audit failed'};
+  const STATE_WORD={PENDING:'waiting for provider data',RAW_READY:'raw bars',QUALITY_ELIGIBLE:'eligible',QUALITY_INELIGIBLE:'ineligible',FEATURE_READY:'admitted',RAW_FAILED:'failed',AUDIT_FAILED:'audit failed'};
   const stepText=(r)=>(STEP_TEXT[r.state] || (()=>r.state))(r);
   /* One listing, one line (N6): the time, the symbol, what the owner recorded for it in order;
    * the listing's identity is the symbol's tip. */
@@ -677,7 +690,7 @@ const LiveWorkspace = (() => {
       const empty=html`<p class="caption prep-log-empty">${history ? t('No listing unit was retained for this stage.') : t('Listings appear here as the data owner records each unit; a chunk of parallel fetches completes as several units at once.')}</p>`;
       return W.logShell(PREPARATION,{label:t('Recent listing activity'),title:t('Recent listing activity'),caption:t('Units the data owner recorded · newest last · a bounded snapshot, not a complete history'),history,moving,rows:rows.map(listingRow),empty,status,rail});
     }
-    if(shown==='prepare_features') return featureAside(PREPARATION,b.work_progress,state,t(b.progress?.status ? 'The Feature owner reports its status only: {status}.' : 'The Feature owner has not reported a step yet.',{status:b.progress?.status || ''}));
+    if(shown==='prepare_features') return featureAside(PREPARATION,b.work_progress,state,t(b.progress?.status ? 'The Feature owner reports its status only: {status}.' : 'The Feature owner has not reported a step yet.',{status:codeWords(b.progress?.status || '')}));
     return null; // the stage's retained record
   }
   const PREPARATION={key:'preparation',page:'overview',title:'Preparation work',railLabel:'Preparation stages; select to inspect, not execute',factsLabel:'Preparation facts',steps:PREPARATION_STEPS,lines:stageLines(PREPARATION_STEPS.map(([id])=>id)),fallbackLine:'Continuing the reported preparation stage.',
@@ -878,7 +891,7 @@ const LiveWorkspace = (() => {
     const s=states.get('issues');
     if(!s) { void refresh('issues','',true); return {count:0,decided:0,names:[],read:false}; }
     const list=s.body?.issues || [], asking=list.filter(x=>['AWAITING_CHOICE','OPTION_REFUSED'].includes(x.status));
-    return {count:asking.length,decided:list.filter(x=>x.status==='CONFIRMED_PENDING_REVALIDATION').length,names:asking.flatMap(x=>(x.case?.listing_ids || []).map(id=>x.subjects?.[id] || short(id,SHORT.id))),read:Boolean(s.body)};
+    return {count:asking.length,agent:asking.length>0 && asking.every(issueAgent),decided:list.filter(x=>x.status==='CONFIRMED_PENDING_REVALIDATION').length,names:asking.flatMap(x=>(x.case?.listing_ids || []).map(id=>x.subjects?.[id] || short(id,SHORT.id))),read:Boolean(s.body)};
   }
   /* A held data update as the Home and Tasks name it (N6, law 58): the Data page's title and way
    * on -- a case that asks first, then a recorded decision, then the owner's code in words. */
@@ -957,11 +970,12 @@ const LiveWorkspace = (() => {
     const b=state.body, v=state.view;
     if(refusalOf(state.error)) return refusedScene(state,'data');
     const info=html`<p class="lede">${t('The working store: one explicit update at a time; publishing an input and selecting one are separate steps.')}</p>`;
-    if(String(state.error || '').startsWith('workspace_data_update.not_configured')) {
+    if(notConfigured(state)) {
       // whether the workspace can be prepared is Home's owner's answer, read quietly here where it is not yet
       if(!states.get('welcome')) void refresh('welcome','',true);
       if(!states.get('issues')) void refresh('issues','',true);
-      return html`${objectHead(t('Data maintenance'),info)}${prepareRefused() ? cannotPrepare() : emptyState(t('No maintained data yet'),link(t('Prepare workspace'),'welcome','button primary'),'page-empty')}${issuesSection(true)}`;
+      const preparation=states.get('welcome');
+      return html`${objectHead(t('Data maintenance'),info)}${prepareRefused() ? cannotPrepare() : preparation?.body?.task_id ? firstUse() : !preparation?.body ? skeleton('rows') : emptyState(t('No maintained data yet'),link(t('Prepare workspace'),'overview','button primary'),'page-empty')}${issuesSection(true)}`;
     }
     const settled=!v || SETTLED.has(v.lifecycle), between=b?.next_action==='DATA_UPDATE_PLAN';
     const head=objectHead(t('Data maintenance'),info,b?.task_id && settled && !between ? action('Preview update','preview','update') : '');
@@ -990,6 +1004,7 @@ const LiveWorkspace = (() => {
    * the owner's own actions apart; the recorded decision in the form's place; an earlier decision
    * on the same listing beside it. The rules are the page's (i). ---- */
   const ISSUE_STATUS={AWAITING_CHOICE:['review_pending','Your decision is asked'],CONFIRMED_PENDING_REVALIDATION:['planned','Decided · applied when the update continues'],WAITING_FOR_RETRY:['deferred','Waiting for the owner\'s retry time'],OPTION_REFUSED:['blocked','The chosen response was refused at execution']};
+  const issueAgent=issue=>['AWAITING_CHOICE','OPTION_REFUSED'].includes(issue.status) && (Data.decisions() || []).some(d=>d.kind==='DATA_ISSUE' && d.case_token===issue.case.case_token && d.waits_on==='AGENT');
   const pct=(a,b)=>{ if(!(Number.isFinite(a)&&Number.isFinite(b)&&b)) return ''; const c=(a/b-1)*100; return (c>0 ? '+' : '')+pctNumber(c); }; // the shared percentage rule, a move with its sign
   /* The owner's checks of one listing's evidence, in words: what explains the move and what does not. */
   const checksText=(e)=>{const parts=[];if(e.action_explained===false)parts.push(t('no corporate action explains it'));if(e.provider_correction_observed===false)parts.push(t('no provider correction observed'));if(e.identity_verified===true)parts.push(t('listing identity verified'));if(e.retry_exhausted)parts.push(t('retries exhausted'));if(e.range_start||e.range_end)parts.push(t('audited {a} – {b}',{a:e.range_start || '',b:e.range_end || ''}));const moves=Array.isArray(e.unexplained_moves) ? e.unexplained_moves.length : 0;if(moves>1)parts.push(countText(moves-1,'{n} more unexplained move','{n} more unexplained moves'));else if(!moves&&Array.isArray(e.unexplained_sessions)&&e.unexplained_sessions.length)parts.push(pluralText(e.unexplained_sessions.length,'{n} unexplained session: {s}','{n} unexplained sessions: {s}',{n:count(e.unexplained_sessions.length),s:e.unexplained_sessions.slice(0,4).join(', ')+(e.unexplained_sessions.length>4 ? ' …' : '')}));return parts.join(' · ') || t('evidence recorded');};
@@ -1010,7 +1025,7 @@ const LiveWorkspace = (() => {
     return html`<ul class="issue-earlier" aria-label="${t('Earlier decisions on this listing')}">${all.map(d=>html`<li>${icon('history')}<span>${t('Earlier decision')}: <strong>${optionText({option_id:d.option})}</strong>${d.retry ? html` · ${t('retry after {t}',{t:when(d.retry)})}` : ''} · ${t(d.refused ? 'refused at execution' : 'ran its course')}</span></li>`)}</ul>`;
   }
   function issueBody(issue, history) {
-    const c=issue.case, selected=S.options.get(c.case_token)||'', [tone,word]=ISSUE_STATUS[issue.status] || ['review_pending',issue.status];
+    const c=issue.case, selected=S.options.get(c.case_token)||'', [tone,word]=ISSUE_STATUS[issue.status] || ['review_pending',issue.status], agent=issueAgent(issue);
     const resolution=issue.resolution, effect=resolution?.effect, receipt=resolution?.receipt;
     const decided=Boolean(resolution) && issue.status!=='OPTION_REFUSED';
     const asking=!decided && issue.options_current;
@@ -1024,8 +1039,8 @@ const LiveWorkspace = (() => {
     const optionRow=(o)=>html`<label class="issue-option${selected===o.option_id ? ' is-selected' : ''}"><input type="radio" name="issue-${c.case_token}" value="${o.option_id}" data-workspace-option="${c.case_token}"${selected===o.option_id ? ' checked' : ''}><span><strong>${optionText(o)}</strong>${optionNote(o) ? html`<small>${optionNote(o)}</small>` : ''}</span></label>`;
     const delegateActions=(get('issues')?.continuations || []).filter(v=>v.task_kind==='workspace_preparation' && v.lifecycle==='BLOCKED' && v.failure_code==='data.truth_review_required')
       .map(v=>action(t('Authorize external executor for Task {id}',{id:short(v.task_id,SHORT.id)}),'delegate',JSON.stringify([c.case_token,v.task_id]),!selected ? t('Choose a permitted response') : ''));
-    const form=asking ? html`<fieldset class="issue-options"><legend>${t('Your decision')}</legend>${yours.map(optionRow)}</fieldset><div class="flow">${action('Preview decision','issue',c.case_token,!selected ? t('Choose a permitted response') : '','button primary')}${delegateActions}</div>` : '';
-    const recorded=decided ? html`<p class="issue-decision">${icon('checkcircle')}<span>${t('Your decision')}: <strong>${optionText((c.options || []).find(o=>o.option_id===receipt?.policy_decision?.option_id) || {option_id:receipt?.policy_decision?.option_id})}</strong>${effect?.retry_after_at ? html` · ${t('retry after {t}',{t:when(effect.retry_after_at)})}` : ''} · ${t(issue.status==='WAITING_FOR_RETRY' ? 'the owner retries then' : 'applied when the update continues')}</span></p>` : '';
+    const form=asking && !agent ? html`<fieldset class="issue-options"><legend>${t('Your decision')}</legend>${yours.map(optionRow)}</fieldset><div class="flow">${action('Preview decision','issue',c.case_token,!selected ? t('Choose a permitted response') : '','button primary')}${delegateActions}</div>` : agent ? noteLine(t('Agent is deciding data issues')) : '';
+    const recorded=decided ? html`<p class="issue-decision">${icon('checkcircle')}<span>${t('Decision')}: <strong>${optionText((c.options || []).find(o=>o.option_id===receipt?.policy_decision?.option_id) || {option_id:receipt?.policy_decision?.option_id})}</strong>${effect?.retry_after_at ? html` · ${t('retry after {t}',{t:when(effect.retry_after_at)})}` : ''} · ${t(issue.status==='WAITING_FOR_RETRY' ? 'the owner retries then' : 'applied when the update continues')}</span></p>` : '';
     const expired=!decided && !issue.options_current ? noteLine(t('These options expired'),t('The owner must assess the case again (run the update again) before a decision can be confirmed.'),'warning') : '';
     const theirs=owners.length && asking ? html`<div class="issue-owner-actions"><p class="issue-owner-label">${t('The data owner\'s own actions')}${infoMark(t('Responses only the data owner takes; they are not confirmable here.'))}</p><ul>${owners.map(o=>html`<li>${optionText(o)}${optionNote(o) ? html` <span class="muted">· ${optionNote(o)}</span>` : ''}</li>`)}</ul></div>` : '';
     return html`<section class="panel issue-card" data-box="decision" data-issue-status="${issue.status}"><div class="panel-body">${evidenceMarkup}${earlierDecisions(issue,history)}${why}${recorded}${expired}${form}${theirs}${detail(issue,'Exact case, evidence and decision record')}</div></section>${delegationRows((get('issues')?.delegations || []).filter(g=>g.case_token===c.case_token))}`;
@@ -1042,10 +1057,10 @@ const LiveWorkspace = (() => {
     const history=b.recorded_decisions || [], standing=b.continued_dispositions || [];
     const issue=(b.issues || []).find(v=>v.case.case_token===token);
     if(issue) {
-      const [tone,word]=ISSUE_STATUS[issue.status] || ['review_pending',issue.status], m=firstMove(issue.case), actor=issue.resolution?.receipt?.actor_submission?.actor_kind;
+      const [tone,word]=ISSUE_STATUS[issue.status] || ['review_pending',issue.status], m=firstMove(issue.case), actor=issue.resolution?.receipt?.actor_submission;
       // the way on once decided (N6): the Task that waits for the reader, offered as on the lobby -- only when no case asks first
       const asking=(b.issues || []).some(v=>['AWAITING_CHOICE','OPTION_REFUSED'].includes(v.status)), decided=(b.issues || []).some(v=>v.status==='CONFIRMED_PENDING_REVALIDATION');
-      return html`${objectHead(issueName(subjectsOf(issue),issue.case.failure_code),'','',stateLine(tone,{word:t(word),next:''}),[],{object:true,id:token,facts:[[t('Move session'),m?.session || ''],[t('Decided by'),actor ? actorWords(actor) : '']].filter(([,v])=>v)})}${issueBody(issue,history)}${asking ? '' : (b.continuations || []).map((c,i)=>continuationCard(c,i,decided))}`;
+      return html`${objectHead(issueName(subjectsOf(issue),issue.case.failure_code),'','',stateLine(tone,{word:t(issueAgent(issue) ? 'Agent is deciding data issues' : word),next:''}),[],{object:true,id:token,facts:[[t('Move session'),m?.session || ''],actor?.actor_id?.startsWith('first-use-goal:') ? [t('Decision'),t('Decided under first-use delegation')] : [t('Decided by'),actor?.actor_kind ? actorWords(actor.actor_kind) : '']].filter(([,v])=>v)})}${issueBody(issue,history)}${asking ? '' : (b.continuations || []).map((c,i)=>continuationCard(c,i,decided))}`;
     }
     const names=Object.assign({},...(b.issues || []).map(x=>x.subjects || {}));
     const h=history.find(v=>v.case_token===token);
@@ -1067,10 +1082,10 @@ const LiveWorkspace = (() => {
   function issuesLobby(b) {
     const cases=b.issues || [], history=b.recorded_decisions || [], standing=b.continued_dispositions || [];
     const names=Object.assign({},...cases.map(x=>x.subjects || {}));
-    const items=[...cases.map(x=>({kind:'case',key:x.case.case_token,status:x.status,subjects:subjectsOf(x),code:x.case.failure_code,move:firstMove(x.case),more:(x.case.evidence || []).length-1})),
+    const items=[...cases.map(x=>({kind:'case',key:x.case.case_token,status:x.status,agent:issueAgent(x),subjects:subjectsOf(x),code:x.case.failure_code,move:firstMove(x.case),more:(x.case.evidence || []).length-1})),
       ...standing.map(d=>({kind:'standing',key:'q:'+d.listing_id,subjects:[d.symbol || short(d.listing_id,SHORT.id)],d})),
       ...history.map(h=>({kind:'recorded',key:h.case_token,subjects:(h.listing_ids || []).map(id=>names[id] || short(id,SHORT.id)),code:h.failure_code,option:h.resolution?.receipt?.policy_decision?.option_id}))];
-    const group=(x)=>x.kind==='standing' ? {key:'standing',label:t('Standing quarantine'),rank:4,open:true} : x.kind==='recorded' ? {key:'recorded',label:t('Recorded'),rank:5,open:false} : {key:x.status,label:t((ISSUE_STATUS[x.status] || ['',x.status])[1]),rank:LIFECYCLE[x.status] ?? 3.5,open:true};
+    const group=(x)=>x.kind==='standing' ? {key:'standing',label:t('Standing quarantine'),rank:4,open:true} : x.kind==='recorded' ? {key:'recorded',label:t('Recorded'),rank:5,open:false} : {key:x.status+(x.agent ? ':agent' : ''),label:t(x.agent ? 'Agent is deciding data issues' : (ISSUE_STATUS[x.status] || ['',x.status])[1]),rank:LIFECYCLE[x.status] ?? 3.5,open:true};
     const to=(x)=>({action:'workspace-issue-open',value:x.key});
     const row=(x)=>x.kind==='case' ? objectRow({lead:statusDot((ISSUE_STATUS[x.status] || ['review_pending'])[0]),ref:short(x.key,SHORT.id),name:issueName(x.subjects,x.code),to:to(x),cls:'issue-row'},{key:x.key,columns:['price-change','session','disposition'],props:[x.move ? html`<span class="num">${pct(Number(x.move.close),Number(x.move.previous_close))}</span>` : '',x.move?.session || '',x.more>0 ? countText(x.more,'{n} more listing','{n} more listings') : '']})
       : x.kind==='recorded' ? objectRow({ref:short(x.key,SHORT.id),name:issueName(x.subjects,x.code),to:to(x),cls:'issue-row'},{key:x.key,columns:['price-change','session','disposition'],props:['','',x.option ? optionText({option_id:x.option}) : '']})
@@ -1084,9 +1099,10 @@ const LiveWorkspace = (() => {
   function continuationCard(c, i, decided) {
     const code=c.failure_code || c.failure_reason?.code || '', update=c.operation==='DATA_UPDATE_RUN';
     const verb=action(update ? 'Continue this update' : 'Continue this Task','continue',String(i),'','button primary'); // the Data page's and the Home's verb for the same Task
+    if(!update && code==='data.truth_review_required' && decided) return banner(t('Decision recorded'),t('Decided · applied when the update continues'),'neutral',verb,'checkcircle',true);
     if(update && code==='data.truth_review_required' && decided) return banner(t('Your decision is recorded'),t('Continue the update: the owner checks the evidence again and applies your decision; nothing recorded is undone.'),'neutral',verb,'checkcircle',true); // law 148: the stopped update waits for the reader -- a decision
     const why=c.failure_reason?.explanation && !String(c.failure_reason.explanation).includes(code || '\0') ? c.failure_reason.explanation : explain(code) || (code ? codeWords(code) : t('The Task stopped by name.'));
-    return banner(t(update ? 'The data update waits for you to continue it' : 'The preparation waits for you to continue it'),why,'neutral',verb,'clock',true); // law 148: a decision
+    return banner(t((Data.decisions() || []).some(d=>d.kind==='STOPPED_TASK' && d.task_id===c.task_id && d.waits_on==='AGENT') ? update ? 'Data update needs attention' : 'Preparation needs attention' : update ? 'The data update waits for you to continue it' : 'The preparation waits for you to continue it'),why,'neutral',verb,'clock',true); // law 148: a decision
   }
   function dispositionCard(d) {
     const original=d.original || {}, chain=d.continuations || [];
@@ -1286,7 +1302,7 @@ const LiveWorkspace = (() => {
       ${noticeFor(name)?noteLine(t('Last operation'),t(noticeFor(name))):''}${token && b ? noteLine(t(name==='issues' ? 'This case is not in the owner\'s list now' : 'This version is not in the owner\'s list now'),html`<span class="mono">${short(token,SHORT.hash)}</span>`,'neutral') : ''}${state.loading?skeleton('head'):''}
       ${state.body?({issues,inputs,storage}[name])(state.body):name==='storage'?backupsPanel():''}`;
   }
-  return {pages,page,firstUse,prepareRefused,refresh,preview,commit,turnBackups,selectInput,observe,notice,fold,inspect,follow,current,stopWords,networkWords,deferWords,afterPaint:(pageChanged=false)=>{W.afterPaint();if(pageChanged)entered();},bind:()=>W.bind(),selectedPreparation,selectedTask,
+  return {pages,page,firstUse,prepareRefused,refresh,preview,commit,turnBackups,selectInput,observe,notice,fold,inspect,follow,current,stopWords,networkWords,deferWords,afterPaint:(pageChanged=false)=>{W.afterPaint();if(pageChanged)entered();},bind:()=>W.bind(),selectedTask,
     task:id=>LiveTasks.open(id),more:cursor=>refresh('issues',cursor),openIssue:(token)=>{objectEntry('issue:'+token);navigate('issues',{issue:token});},openVersion:(hash)=>{const via=app.page==='storage' ? 'storage' : '';objectEntry('version:'+hash);navigate('inputs',{version:hash,via});},dismissConfirmation:()=>{S.revision++;S.pending=null;},
     changed:(name,value)=>{invalidate();if(name==='family')S.family=value;else S.options.set(name,value);render();},
     scene:(page='welcome')=>{const s=states.get(page);return s ? {body:s.body,view:s.view,loading:s.loading,readAt:s.readAt} : null;},

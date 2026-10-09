@@ -57,7 +57,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): RESUMABLE,
     (
         "control/product_host/composition/decision_advancement.py",
-        "DecisionAdvancementApplication.plan",
+        "DecisionAdvancementApplication._plan",
         "DEFERRED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "a pending advancement of the strategy answers its own plan whatever target is asked, a "
     "deferred one too, whose run resumes it once due (V601, V604); a cancelling one is not pending",
@@ -87,6 +87,11 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "_TERMINAL",
         "BLOCKED,CANCELLED,SUCCEEDED",
     ): ENDED,
+    (
+        "control/product_host/composition/resource_estimates.py",
+        "_HOLDING_MEMORY",
+        "CANCEL_REQUESTED,RUNNING",
+    ): "Tasks still executing hold the memory a refused heavy run waits for (PERF-1)",
     (
         "control/product_host/composition/goal_check.py",
         "MOVING",

@@ -459,7 +459,7 @@ def test_a_reused_selection_is_the_span_set_the_receipt_names(
 def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_index(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (record section Y, P1): a refresh whose selection is
+    """requirement (record section Y): a refresh whose selection is
     reused whole from a sealed receipt builds, materializes and proves no
     index. `build_retrieval(reuse_for=request)` seals the generation record
     the build would seal -- the same identity -- after proving the sealed
@@ -568,7 +568,7 @@ def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_ind
 def test_a_fresh_index_holds_the_origin_whatever_the_scan_order(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scan: str
 ) -> None:
-    """regression (C4): a reuse seals a copy of the origin's receipt under
+    """Regression: a reuse seals a copy of the origin's receipt under
     its own span set, so one selection key holds the origin and its copies.
     A fresh index resolves to the origin in either scan order: the proof a
     reuse reads -- and a tamper of it refused by name -- never depended on

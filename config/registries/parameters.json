@@ -1992,7 +1992,15 @@
 "class": "METHOD",
 "count": 2
 },
+"src/alphalattice/evidence/alternative_evidence/runtime/coverage.py::UNIT_FAILURE_EXCEPTION_TYPE_LIMIT::120": {
+"class": "LIMIT",
+"count": 1
+},
 "src/alphalattice/evidence/alternative_evidence/runtime/coverage.py::max_length::200": {
+"class": "LIMIT",
+"count": 1
+},
+"src/alphalattice/evidence/alternative_evidence/runtime/coverage.py::UNIT_FAILURE_EXCEPTION_MESSAGE_LIMIT::400": {
 "class": "LIMIT",
 "count": 1
 },
@@ -4104,6 +4112,10 @@
 "class": "LIMIT",
 "count": 1
 },
+"src/alphalattice/foundation/feature_engine/runtime/service.py::_SET_READ_LISTINGS::25": {
+"class": "EXECUTION",
+"count": 1
+},
 "src/alphalattice/foundation/feature_engine/runtime/service.py::_bounded_warmup_sessions::2": {
 "class": "LIMIT",
 "count": 1
@@ -6052,23 +6064,27 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/investment/alpha_research/inputs/frozen_price_volume.py::prepare_frozen_price_volume_history::21": {
+"src/alphalattice/investment/alpha_research/inputs/frozen_price_volume.py::_FORMATION_WINDOW::128": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/investment/alpha_research/inputs/frozen_price_volume.py::_prepared_rows::21": {
 "class": "METHOD",
 "count": 3
 },
-"src/alphalattice/investment/alpha_research/inputs/frozen_price_volume.py::prepare_frozen_price_volume_history::252.0": {
+"src/alphalattice/investment/alpha_research/inputs/frozen_price_volume.py::_prepared_rows::252.0": {
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/investment/alpha_research/inputs/frozen_price_volume.py::prepare_frozen_price_volume_history::5": {
+"src/alphalattice/investment/alpha_research/inputs/frozen_price_volume.py::_prepared_rows::5": {
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/investment/alpha_research/inputs/frozen_price_volume.py::prepare_frozen_price_volume_history::63": {
+"src/alphalattice/investment/alpha_research/inputs/frozen_price_volume.py::_prepared_rows::63": {
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/investment/alpha_research/inputs/frozen_price_volume.py::prepare_frozen_price_volume_history::9": {
+"src/alphalattice/investment/alpha_research/inputs/frozen_price_volume.py::_prepared_rows::9": {
 "class": "METHOD",
 "count": 1
 },

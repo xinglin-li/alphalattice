@@ -18,10 +18,6 @@ def maintenance_failure_detail(code: str) -> str:
             "Listings need a data decision before the update can continue. Open the "
             "data issues, choose a permitted option for each, then continue the Task."
         ),
-        "data.truth_review_required": (
-            "Listings need a data decision before the update can continue. Open the "
-            "data issues, choose a permitted option for each, then continue the Task."
-        ),
         "DATA_REMEDIATION_BUSINESS_VALIDATION_FAILED": (
             "A recorded data decision could not be applied and no stable reason was "
             "declared. The decision is kept; continue the Task to apply it again, or "
@@ -43,6 +39,18 @@ def maintenance_failure_detail(code: str) -> str:
             "The membership the data decision derived could not inherit its parent's "
             "audit evidence: a listing's evidence is missing, expired or changed since "
             "the audit. Run the update again to re-audit before the membership changes."
+        ),
+        # The owner's own words (refusal_words.json), so the stop and its Chinese read alike.
+        "data.truth_review_required": (
+            "A data decision is needed before this Task can continue: the data owner found "
+            "an unexplained move and asks for a permitted response on the Data issues page."
+        ),
+        "workspace_maintenance.membership_revision_mismatch": (
+            "The research membership changed after this update was planned, so it stopped "
+            "before using it. Plan the update again. If a stock-list change stopped "
+            "part-way, the new plan is refused: this version cannot finish that change, the "
+            "research and history stay readable, and daily updates resume with a later "
+            "AlphaLattice release."
         ),
         "workspace_data_update.membership_changed_review_required": (
             "The data decision changed the research membership, which this update plan "

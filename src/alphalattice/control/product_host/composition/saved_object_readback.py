@@ -58,7 +58,7 @@ def verdict(status: int, body: bytes) -> str:
         parts.append(str(data["method_standing"]))
     if data.get("research_lane"):
         parts.append(str(data["research_lane"]))
-    if data.get("recommendation_reproduced") is False:  # a tree before V90
+    if data.get("recommendation_reproduced") is False:
         parts.append("NOT_REPRODUCED")
     if data.get("review_under_installed_policy") is False:
         parts.append("EARLIER_POLICY")
@@ -87,7 +87,7 @@ _VOLATILE = re.compile(
 def numbers(status: int, body: bytes) -> dict[str, str]:
     """Hash numerical leaves by section, preserving their count.
 
-    V277: an OPENS verdict alone did not detect a change from `rank_ic` 0.01 to 0.9.
+    an OPENS verdict alone did not detect a change from `rank_ic` 0.01 to 0.9.
 
     A section is an answer's first two keys; list positions are kept in each leaf's path and
     left out of its section. Booleans, strings and the keys `_VOLATILE` names are not numbers of

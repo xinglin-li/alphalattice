@@ -638,7 +638,7 @@ def _load_outcome_surface(
         )
         if plan.sector_by_listing_id is None:
             raise AlphaArrayBoundaryError("alpha_research.target_sector_map_incomplete")
-        # The history, when the plan holds one, travels whole (V346).
+        # The history, when the plan holds one, travels whole.
         sector_map = plan.sector_by_listing_id
         if plan.target_method is not None:
             # One development route, and the method compiles itself. This used to

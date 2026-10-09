@@ -15,6 +15,7 @@ from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 
@@ -520,15 +521,30 @@ def test_a_tampered_workspace_document_is_a_named_packet_refusal(tmp_path: Path)
     runtime.close()
 
 
-def test_a_stage_failure_names_the_owners_own_code() -> None:
-    """A knowledge failure carries its code; a contract refusal its message; the rest stays bare."""
+def test_a_stage_failure_names_the_owners_own_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An owner's failure keeps its code, fits its diagnostics and offers the real retry preview."""
 
     from pydantic import BaseModel, ValidationError, model_validator
 
     from alphalattice.control.task_control.contracts import FAILURE_CODE_MAX_LENGTH
-    from alphalattice.evidence.alternative_evidence.runtime.task_adapter import _failure_code
+    from alphalattice.evidence.alternative_evidence.runtime.coverage import (
+        AlternativeEvidenceUnitFailure,
+        seal_unit_failure,
+    )
+    from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
+        UNIT_FAILURE_CATEGORY,
+        _failure_code,
+    )
     from alphalattice.kernel.knowledge.hybrid import _retrieval_error
     from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
+    from tests.alternative_evidence_desk.portfolio_coverage_support import run_one
+    from tests.alternative_evidence_desk.review_http_support import (
+        build_authority,
+        build_workspace,
+        start_service,
+    )
 
     corrupt = _retrieval_error(
         "hybrid projection differs from source", code="retrieval.index_corrupt"
@@ -553,6 +569,74 @@ def test_a_stage_failure_names_the_owners_own_code() -> None:
     assert len(_failure_code(_retrieval_error("x" * 300, code="retrieval." + "y" * 200))) <= (
         FAILURE_CODE_MAX_LENGTH
     )
+    legacy = {
+        "kind": "AlternativeEvidenceUnitFailure",
+        "run_hash": "a" * 64,
+        "unit_id": "u01",
+        "ordered_entity_ids": ["AAPL"],
+        "stage_id": "build_retrieval_generation",
+        "failure_code": _failure_code(corrupt),
+        "recorded_at": _NOW.isoformat().replace("+00:00", "Z"),
+    }
+    historical = AlternativeEvidenceUnitFailure.model_validate(
+        {**legacy, "failure_hash": canonical_hash(legacy)}
+    )
+    assert historical.model_dump(mode="json", exclude={"failure_hash"}) == legacy
+    assert historical.exception_type is historical.exception_message is None
+    recorded = seal_unit_failure(
+        **historical.model_dump(exclude={"failure_hash"}),
+        exception_type=type(corrupt).__name__,
+        exception_message=str(corrupt),
+    )
+    assert recorded.failure_code == historical.failure_code
+    assert recorded.exception_type == "KnowledgeRetrievalError"
+    assert recorded.exception_message == "hybrid projection differs from source"
+    with pytest.raises(ValidationError, match="identity_invalid"):
+        AlternativeEvidenceUnitFailure.model_validate(
+            {**recorded.model_dump(), "exception_message": "different failure"}
+        )
+    with pytest.raises(ValidationError, match="at most 400 characters"):
+        seal_unit_failure(
+            **historical.model_dump(exclude={"failure_hash"}), exception_message="x" * 401
+        )
+
+    workspace, report = build_workspace(tmp_path)
+    authority = build_authority(tmp_path=tmp_path, report=report)
+    long_error = type("KnowledgeRetrievalError" + "Long" * 40, (KnowledgeRetrievalError,), {})
+    message = "   index    mismatch\tfor\nsource  " * 40
+    raised = long_error(message, code="retrieval.index_corrupt")
+
+    def fail_canonicalization(*_args: object, **_kwargs: object) -> object:
+        raise raised
+
+    monkeypatch.setattr(authority.evidence_runtime, "canonicalize", fail_canonicalization)
+    service = start_service(workspace, authority, tmp_path)
+    try:
+        preview = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        prepared = run_one(service, preview["next_requests"]["prepare"])
+        service.drain()
+        task = service.registry.task(UUID(prepared["task_id"]))
+        assert task.lifecycle is TaskLifecycle.SUCCEEDED, task.failure_code
+        adapter = service.review.evidence_task_adapter
+        (state,) = adapter.unit_states(task).values()
+        assert state["state"] == "FAILED"
+        assert state["failure_code"] == _failure_code(raised)
+        assert state["failed_stage"] == "canonicalize_documents"
+        (failure,) = service.review.artifacts.values(
+            UNIT_FAILURE_CATEGORY, AlternativeEvidenceUnitFailure
+        )
+        assert failure.exception_type == long_error.__name__[:120]
+        assert len(failure.exception_type) == 120
+        assert failure.exception_message == " ".join(message.split())[:400]
+        assert len(failure.exception_message) == 400
+        assert failure.failure_code == _failure_code(raised)
+
+        completed = run_one(service, {"operation": "STATUS", "task_id": task.task_id})
+        assert completed["lifecycle"] == "SUCCEEDED" and completed["units_failed"] == 1
+        assert completed["failed_units"][0]["failure_code"] == _failure_code(raised)
+        assert completed["next_requests"]["preview"] == {"operation": "EVIDENCE_PREVIEW"}
+    finally:
+        service.session.stop()
 
 
 def test_recovery_at_the_analysis_stage_keeps_the_index_and_publishes_once(

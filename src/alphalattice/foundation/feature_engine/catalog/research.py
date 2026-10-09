@@ -185,7 +185,7 @@ def research_feature_execution_spec(plan: ResearchFeaturePlan) -> dict[str, obje
 
 
 def _kept(specification: FactorSpec | None) -> FactorSpec | None:
-    """A formula factor's spec as its kernel keeps it (EX, V88); any other spec as written."""
+    """A formula factor's spec as its kernel keeps it (EX); any other spec as written."""
     if specification is None or specification.formula_ref not in FORMULA_IDS:
         return specification
     try:

@@ -6,7 +6,7 @@ Owners raise codes -- dotted names (`research_experiment.input_not_admitted`) or
 document -- is not served or persisted: its name has a space, or it has a quote or a path
 separator, which a code never has. The Web handler, the Agent bridge, the activity ledger and the
 recovery view say a typed code instead, and the Host's log keeps the detail under an
-incident that code carries (binding plan, C1 rule 2): a caller learns that something failed
+incident that code carries (binding plan, rule 2): a caller learns that something failed
 and where to look, never the Host's internals.
 """
 
@@ -171,7 +171,7 @@ def public_failure(error: BaseException, fallback: str) -> str:
                 f"={reason or item.get('type', 'invalid')}"
             )
         # As many fields as the code holds, the rest counted: a document broken in many places
-        # still refuses by its fields, never as a fingerprint (V449).
+        # still refuses by its fields, never as a fingerprint.
         for count in range(len(fields), 0, -1):
             rest = len(fields) - count
             shown = ",".join(fields[:count]) + (f",+{rest}" if rest else "")
@@ -187,7 +187,7 @@ _UNTYPED: Final = re.compile(r"^[a-z0-9_.]+:[A-Z][A-Za-z0-9_]*:[0-9a-f]{8}$")
 
 
 def untyped_failure(code: str) -> bool:
-    """Whether a code is an exception that reached an answer without a product code (V449).
+    """Whether a code is an exception that reached an answer without a product code.
 
     A crash, or an owner's failure that names no rule, which a caller cannot act on.
 
@@ -201,7 +201,7 @@ def untyped_failure(code: str) -> bool:
 
 
 def located_failure(error: BaseException, fallback: str) -> dict[str, object]:
-    """The code an answer gives for `error`, and each field a contract refused (V248).
+    """The code an answer gives for `error`, and each field a contract refused.
 
     One shape at every operation: a document that fails its contract answers the owner's code
     (`fallback`), its fields by location (`fields`, each a path), the reason for each by its
@@ -223,7 +223,7 @@ def located_failure(error: BaseException, fallback: str) -> dict[str, object]:
     for item, place in zip(items, located, strict=True):
         kind = str(item.get("type", "invalid"))
         # A list whose item failed counts only the items that passed: its "too short" is that
-        # failure again, never a reason of its own (V453).
+        # failure again, never a reason of its own.
         if kind == "too_short" and any(
             len(other) > len(place) and other[: len(place)] == place for other in located
         ):
@@ -242,7 +242,7 @@ def located_failure(error: BaseException, fallback: str) -> dict[str, object]:
         fields.append(location)
         reasons[".".join(location)] = reason
         said = reason if kind == "value_error" else str(item.get("msg", kind))
-        # An owner's code says what its rule expects, in its own words (V453).
+        # An owner's code says what its rule expects, in its own words.
         expected = refusal_words(code).get("detail") if code is not None else None
         words.append(f"{'.'.join(location)}: {said}" + (f" ({expected})" if expected else ""))
     return {
@@ -289,7 +289,7 @@ def typed_failures(body: dict[str, object]) -> dict[str, object]:
 
 def _withheld(text: str, *, prefix: str = FAILURE_DETAIL_WITHHELD, incident: bool = True) -> str:
     """`prefix:<incident>`, the incident a digest of the text, which the Host's log keeps."""
-    import logging  # only a withheld failure is logged; a call's imports are its cost (W12, V29)
+    import logging  # only a withheld failure is logged; a call's imports are its cost (W12)
 
     digest = sha256(text.encode("utf-8", "replace")).hexdigest()[:8]
     logging.getLogger("alphalattice.local_web").error("%s:%s %s", prefix, digest, text[:2000])

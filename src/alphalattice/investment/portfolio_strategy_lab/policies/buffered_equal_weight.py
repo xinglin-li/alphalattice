@@ -30,7 +30,7 @@ _TOLERANCE = 1e-8
 
 
 class WholeBookHysteresisEqualWeightRecipe(BaseModel):  # type: ignore[misc]
-    """The one fixed C1 recipe supplied by the immutable baseline package."""
+    """The one fixed recipe supplied by the immutable baseline package."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -169,7 +169,7 @@ def whole_book_equal_weight_target(
 
 
 class WholeBookHysteresisEqualWeightAdapter:
-    """Direct C1 decision owner: no optimizer, solver, cap, or covariance read."""
+    """Direct decision owner: no optimizer, solver, cap, or covariance read."""
 
     policy_id = WHOLE_BOOK_HYSTERESIS_EQUAL_WEIGHT_POLICY_ID
     solver_backed = False

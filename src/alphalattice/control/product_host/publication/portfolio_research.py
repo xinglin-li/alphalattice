@@ -108,7 +108,7 @@ class PortfolioResearchPipelineStore:
             index.parent.mkdir(parents=True, exist_ok=True)
             index.write_bytes(payload)
         # Every Task that published is named, a reuse of an earlier result
-        # included (V189): the by-result index keeps the first, this keeps each.
+        # included: the by-result index keeps the first, this keeps each.
         used = self._task_index(value.task_id)
         if not used.is_file():
             used.parent.mkdir(parents=True, exist_ok=True)

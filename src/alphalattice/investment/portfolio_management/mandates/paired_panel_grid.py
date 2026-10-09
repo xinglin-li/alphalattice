@@ -1,4 +1,4 @@
-"""The Portfolio grid a paired panel study runs, defined once (OW10, V150).
+"""The Portfolio grid a paired panel study runs, defined once (OW10).
 
 Alpha's authoring check admits a paired panel request only when its Portfolio stage is one of
 these grids, and the Portfolio lab runs the grid the request names, so what may be submitted and

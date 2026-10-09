@@ -73,13 +73,13 @@ class AnswerProblem(BaseModel):  # type: ignore[misc]
 class AgentRun(BaseModel):  # type: ignore[misc]
     """Which host, session, agent, model and effort made one answer, as found when it arrived.
 
-    Provenance beside the judgment, never in its identity (LAWS.md ID7, V300). A request names
+    Provenance beside the judgment, never in its identity (LAWS.md ID7). A request names
     its session, never its subagent, so the agent is the specialist the session's lead assigned
     the answered bundle to, started in the session under the bundle's role; with no such link
-    the author is unknown, the host and session alone (AU3, V555). ``basis`` says where the
+    the author is unknown, the host and session alone (AU3). ``basis`` says where the
     model came from: ``HOOK``, the agent's start hook; ``ROLE_CARD``, its card's pin;
-    ``SESSION_FILE``, the lead's newest reading of its own file, on a record written before
-    V555; ``NOT_OBSERVED``, nothing but the session.
+    ``SESSION_FILE``, the lead's newest reading of its own file on a legacy record;
+    ``NOT_OBSERVED``, nothing but the session.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -116,7 +116,7 @@ class AgentAnswerRecord(BaseModel):  # type: ignore[misc]
     """The canonical digest of the answer as written."""
     read_files: tuple[str, ...] | None = Field(default=None, max_length=256)
     """The bundle files the answer named as read whole, as it named them: provenance, never a
-    condition of reading it (OP11, V260); absent on a record written before it was kept."""
+    condition of reading it (OP11); absent on a record written before it was kept."""
     agent_run: AgentRun | None = None
     """Who made the answer (AU3): absent when the request named no agent session, and on a
     record written before it was kept."""

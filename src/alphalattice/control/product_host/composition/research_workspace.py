@@ -322,7 +322,7 @@ class ResearchWorkspaceManifest(_Contract):
                 raise ResearchWorkspaceError("research_workspace.uninstalled_strategy_conflict")
         elif self.strategy_installation == "NON_DEFAULT_RESEARCH":
             # A research installation has no default; its live bindings are a person's
-            # activation of one of its books (LS1, V459), so they may stand beside it.
+            # activation of one of its books (LS1), so they may stand beside it.
             if (
                 self.default_strategy_package_id is not None
                 or self.default_score_source_mode is not None
@@ -421,7 +421,7 @@ def publish_research_workspace_manifest(
 
     The product never calls it beside its writes: a new workspace's first manifest is
     `create_research_workspace_manifest`, and every change of an existing one is
-    `update_research_workspace_manifest` (WM, V219). What still calls it holds the
+    `update_research_workspace_manifest` (WM). What still calls it holds the
     workspace alone: a test's fixture, or a script under the workspace's writer lease.
     """
     root = workspace.resolve()
@@ -434,7 +434,7 @@ def publish_research_workspace_manifest(
         handle.flush()
         os.fsync(handle.fileno())
     try:
-        replace_shared_file(temporary, destination)  # every request reads it (V477)
+        replace_shared_file(temporary, destination)  # every request reads it
     finally:
         if temporary.exists():
             temporary.unlink()
@@ -473,11 +473,11 @@ def update_research_workspace_manifest(
 
     The manifest is one file its writers replace whole. A writer that read it, built its
     change and published later lost whatever another wrote in between: a strategy
-    installation beside a model-training publication (V193), an installation beside a
-    preparation's recovery (V194). Here each writer's change is applied to the manifest
+    installation beside a model-training publication, an installation beside a
+    preparation's recovery. Here each writer's change is applied to the manifest
     read under the gate, so none replaces what another wrote; a change refuses by
     raising when a field it planned on has moved. The one write of an existing
-    manifest (WM, V219).
+    manifest (WM).
 
     Args:
         workspace: The workspace whose manifest changes.
@@ -504,7 +504,7 @@ def update_research_workspace_manifest(
 
 
 class ResearchWorkspaceManifestHolder:
-    """The one copy of the workspace manifest the Host's applications read (V182).
+    """The one copy of the workspace manifest the Host's applications read.
 
     The Host refreshes it once when a verified publication moves the manifest, and every
     application reads its `current`, so none keeps a copy of its own to fall behind.
@@ -530,7 +530,7 @@ def manifest_fields_hash(manifest: ResearchWorkspaceManifest, fields: Iterable[s
 
     A plan binds these, never the whole manifest, so another owner's publication of
     fields the plan does not read leaves it applicable: a model-training publication
-    no longer stops a strategy installation or an input capture (V180).
+    no longer stops a strategy installation or an input capture.
 
     Args:
         manifest: The manifest as the plan read it, or as it stands when it applies.
@@ -582,7 +582,7 @@ def read_research_workspace_manifest(workspace: Path) -> ResearchWorkspaceManife
     plain. A change that is not additive brings its own schema name and an
     upgrader from the previous one, here. A manifest holding a spelling NM2 retired
     was prepared before the 2026-10-02 renames, which this build does not read; it is
-    refused by that name, the spelling its subject, and left as it is (V481).
+    refused by that name, the spelling its subject, and left as it is.
     """
     path = workspace.resolve() / RESEARCH_WORKSPACE_MANIFEST_NAME
     try:
@@ -614,7 +614,7 @@ def read_research_workspace_manifest(workspace: Path) -> ResearchWorkspaceManife
                 "research_workspace.manifest_from_newer_build:" + ",".join(newer)
             ) from error
         # Each field refused and its rule, never the contract's text or a value: a caller
-        # reads the code (V449: the text reached an answer as an untyped failure).
+        # reads the code (the text reached an answer as an untyped failure).
         raise ResearchWorkspaceError(
             public_failure(error, "research_workspace.manifest_refused")
         ) from error

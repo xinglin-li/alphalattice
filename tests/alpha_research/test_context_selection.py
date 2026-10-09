@@ -7,6 +7,7 @@ import pytest
 
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
+    prepare_frozen_price_volume_features,
     prepare_frozen_price_volume_history,
 )
 from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
@@ -249,6 +250,65 @@ def test_installed_component_feature_history_keeps_exact_selected_context_bytes(
     actual = prepare_frozen_price_volume_history(selected, **arguments)
     assert actual.shape == (300, 12, component.feature_count)
     _same_bytes(expected, actual)
+
+
+@pytest.mark.parametrize("component_id", ("G6_R0_FAST_REBOUND", "G2_R0_TREND"))
+def test_a_formation_row_from_its_window_is_the_full_pass_row_on_every_day(
+    context_source, component_id
+):
+    """regression: the seal ran every kernel over the whole history to keep one row.
+
+    That pass took 11.5 s for one component on the journey. The bounded kernels now read the
+    formation's trailing window and the recursions their whole history. On every fixture day, with
+    gaps, a late entrant, a Sector history and dated members, the row must be the full pass's row
+    bit for bit.
+    """
+    component = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component(component_id)
+    sector, market = assemble_panel_context_arrays(
+        **context_source,
+        selected_sector_source_ids=INFERENCE_SECTOR_IDS,
+        selected_market_source_ids=INFERENCE_MARKET_IDS,
+    )
+    rng = np.random.default_rng(7)
+    close = 100.0 * np.exp(np.cumsum(rng.normal(0.0, 0.008, (300, 12)), axis=0))
+    close[:150, 3] = np.nan
+    close[[40, 41, 200], 6] = np.nan
+    days = context_source["formation_sessions"]
+    source = FrozenPriceVolumeInputs(
+        formation_sessions=days,
+        ordered_listing_ids=context_source["ordered_listing_ids"],
+        sector_by_listing_id=context_source["sector_by_listing_id"],
+        open=close * 0.999,
+        high=close * 1.01,
+        low=close * 0.99,
+        close=close,
+        volume=rng.uniform(1e5, 1e6, (300, 12)),
+        formula_values={
+            name.split("::")[1]: rng.normal(size=(300, 12))
+            for name in component.ordered_feature_ids
+            if name.startswith(
+                ("RELATIVE_STOCK_CROSS_SECTION::", "NON_NEUTRAL_STOCK_CROSS_SECTION::")
+            )
+        },
+        reference_eligible=context_source["reference_eligible"],
+        source_binding_hash="c" * 64,
+        market_context_values=market,
+        sector_trend_values=sector[:, :, 0],
+    )
+    compared = 0
+    for day in days:
+        arguments = {"ordered_feature_ids": component.ordered_feature_ids}
+        try:
+            expected = prepare_frozen_price_volume_history(source, **arguments, through=day)[-1]
+        except PanelFeatureBoundaryError as error:
+            # A history shorter than a kernel's window refuses alike either way.
+            with pytest.raises(PanelFeatureBoundaryError, match=str(error)):
+                prepare_frozen_price_volume_features(source, **arguments, formation_session=day)
+            continue
+        row = prepare_frozen_price_volume_features(source, **arguments, formation_session=day)
+        assert row.tobytes() == np.ascontiguousarray(expected).tobytes(), day
+        compared += 1
+    assert compared > 200
 
 
 @pytest.mark.parametrize(

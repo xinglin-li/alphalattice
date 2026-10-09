@@ -536,8 +536,9 @@ def test_unavailable_process_issuer_forces_full_verification(tmp_path, monkeypat
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows RH breaks must close before rename proceeds")
-@pytest.mark.parametrize("stage", ("acquisition", "cached-access"))
+@pytest.mark.parametrize("stage", ("acquisition", "cached-access", "identity-check"))
 def test_an_access_check_does_not_obstruct_an_ancestor_rename(tmp_path, monkeypatch, stage):
+    """Access checks open files outside the lease lock so an ancestor rename can close the lease."""
     path = tmp_path / "source" / "sealed.bin"
     read, calls = _reader(path)
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -546,21 +547,30 @@ def test_an_access_check_does_not_obstruct_an_ancestor_rename(tmp_path, monkeypa
     outcomes = []
     acquisition_opens = 0
 
+    blocked = []
+
     def create(*args):
         nonlocal acquisition_opens
         issuer = current_thread().name == "content-store-read-leases"
-        if issuer:
+        reader = current_thread().name == "cached-source-reader"
+        identity = args[1] == 0x80  # the path identity's attribute-only open
+        if issuer and not identity:
             acquisition_opens += 1
-        if (stage == "acquisition" and issuer and acquisition_opens == 2) or (
-            stage == "cached-access" and current_thread().name == "cached-source-reader"
+        if not blocked and (
+            (stage == "acquisition" and issuer and not identity and acquisition_opens == 2)
+            or (stage == "cached-access" and reader and not identity)
+            or (stage == "identity-check" and reader and identity)
         ):
+            blocked.append(args[0])
             entered.set()
-            assert release.wait(timeout=5)
+            # Longer than the rename's own timeout: a lease lock held across this open
+            # fails the rename rather than racing it.
+            assert release.wait(timeout=30)
         return original_create(*args)
 
     monkeypatch.setattr(kernel, "CreateFileW", create)
     monkeypatch.setattr(ctypes, "WinDLL", lambda *args, **kwargs: kernel)
-    if stage == "cached-access":
+    if stage != "acquisition":
         assert read() == b"sealed"
         assert len(calls) == 1
 
@@ -771,6 +781,47 @@ def test_os_changes_reverify_and_refuse_even_with_restored_size_and_time(tmp_pat
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     assert read() == b"sealed"
     assert len(calls) == 4
+
+
+def _directory_link(link: Path, target: Path) -> None:
+    """A junction on Windows (no privilege needed), a directory symlink elsewhere."""
+    if os.name == "nt":
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            check=True,
+            capture_output=True,
+            timeout=10,
+        )
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def test_a_directory_link_repointed_after_the_first_read_reverifies_and_refuses(tmp_path):
+    """regression: the identity check reads the path's resolution and file from one
+    handle; a junction (a symlink elsewhere) repointed after the first verified read is a
+    changed path even with the same size and time, so the read verifies again and refuses."""
+    sealed, other, link = tmp_path / "sealed", tmp_path / "other", tmp_path / "link"
+    sealed.mkdir()
+    other.mkdir()
+    _directory_link(link, sealed)
+    read, calls = _reader(link / "sealed.bin")
+    read()
+    read()
+    assert len(calls) == (1 if os.name == "nt" else 2)  # reused through the link while it holds
+    before = (sealed / "sealed.bin").stat()
+    (other / "sealed.bin").write_bytes(b"broken")
+    os.utime(other / "sealed.bin", ns=(before.st_atime_ns, before.st_mtime_ns))
+    os.rmdir(link) if os.name == "nt" else link.unlink()
+    _directory_link(link, other)
+    seen = len(calls)
+    for _ in range(2):
+        with pytest.raises(ValueError, match="sealed bytes changed"):
+            read()
+    assert len(calls) == seen + 2  # failures are never retained
+    os.rmdir(link) if os.name == "nt" else link.unlink()
+    _directory_link(link, sealed)
+    assert read() == b"sealed"
+    assert len(calls) == seen + 3
 
 
 @pytest.mark.parametrize("fault", ("unavailable", "wait-failed", "signal-exception", "read-access"))

@@ -205,6 +205,7 @@ OBSERVED_OPERATIONS: frozenset[str] = frozenset(
         "STRATEGY_DEACTIVATE",
         "WORKSPACE_PREPARE_CONFIRM",
         "WORKSPACE_PREPARE_PLAN",
+        "WAKE_REGISTER",
     }
 )
 """Previews, submissions, confirmations and Task commands: recorded on entry and

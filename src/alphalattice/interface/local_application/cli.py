@@ -73,6 +73,9 @@ CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     ("strategy-book", "review"): "Run or reuse an installed strategy's whole-support book, "
     "prepare its Evidence and write every Analyst bundle, following each Task to its end; "
     "the first stop is the answer.",
+    ("review", "continue"): "Submit every specialist answer in a folder and follow each "
+    "publication; after the Analysts, write the CRO's bundle; after the CRO, read the review and "
+    "the strategy's activation offer. The first stop is the answer.",
     ("backup", "restore"): "Restore a backup generation of the held state onto a new "
     "directory, from the backup root alone.",
     ("model", "scaffold"): "Write a new Alpha model's adapter, declaration and contract test "
@@ -284,7 +287,9 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
         child.add_argument(
             "--notify",
             choices=("codex-queue",),
-            help="Also queue the event's one line to this Codex thread (CODEX_THREAD_ID).",
+            help="With --task: register the Task's wake with the Host for this Codex thread "
+            "(CODEX_THREAD_ID) and return at once; the Host queues one line when the Task ends, "
+            "needs a decision or is deferred.",
         )
         child.add_argument(
             "--each-stage",
@@ -314,7 +319,40 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
         child.add_argument(
             "--notify",
             choices=("codex-queue",),
-            help="Also queue one line to this Codex thread (CODEX_THREAD_ID) when it ends.",
+            help="At the first running Task, register its wake with the Host for this Codex "
+            "thread (CODEX_THREAD_ID) and return; the wake names this command to run again, "
+            "which reuses each finished step.",
+        )
+    elif (noun, verb) == ("review", "continue"):
+        child.add_argument(
+            "--dir",
+            dest="bundle_root",
+            type=Path,
+            required=True,
+            help="A bundle folder with its answer.json, or a folder of such bundles.",
+        )
+        child.add_argument(
+            "--cro-dir",
+            dest="cro_root",
+            type=Path,
+            help="A new folder for the CRO's bundle, needed after the Analysts' answers.",
+        )
+        child.add_argument(
+            "--package",
+            dest="strategy_package_id",
+            help="After the CRO's answer: the installed strategy whose activation offer to read.",
+        )
+        child.add_argument(
+            "--max-wait",
+            type=float,
+            help="The only timer, for a command run under a cap; omit it to follow each Task.",
+        )
+        child.add_argument(
+            "--notify",
+            choices=("codex-queue",),
+            help="At the first running Task, register its wake with the Host for this Codex "
+            "thread (CODEX_THREAD_ID) and return; the wake names this command to run again, "
+            "which reuses each finished step.",
         )
     elif (noun, verb) == ("model", "scaffold"):
         given = child.add_mutually_exclusive_group(required=True)
@@ -638,6 +676,15 @@ def _field_help(name: str, required: set[str] | frozenset[str]) -> str | None:
 def _client_fields(args: argparse.Namespace) -> dict[str, Any]:
     """The client's own waiter or book review, in the fields the research client's `run`
     reads."""
+    if args.client_command == ("review", "continue"):
+        return {
+            "command": "review-continue",
+            "bundle_root": args.bundle_root,
+            "cro_root": args.cro_root,
+            "strategy_package_id": args.strategy_package_id,
+            "max_wait": args.max_wait,
+            "notify": args.notify,
+        }
     if args.client_command == ("strategy-book", "review"):
         return {
             "command": "book-review",

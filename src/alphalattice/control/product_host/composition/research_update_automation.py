@@ -79,7 +79,7 @@ _AUTOMATION_SETTINGS = CommittedKind(
 )
 
 _MOVING = frozenset({"QUEUED", "RUNNING", "RECOVERY_REQUIRED", "CANCEL_REQUESTED"})
-"""An attended update still on its way, as its readback's status names it (V604)."""
+"""An attended update still on its way, as its readback's status names it."""
 _STOPPED = frozenset({"BLOCKED", "CANCELLED"})
 """An attended update that stopped: its words name the way on, never a new plan at once."""
 _INPUTS_NOT_READY = "strategy_score.workspace_inputs_not_ready"
@@ -125,7 +125,7 @@ class ResearchUpdateAutomation:
         self._pending: list[str] = []  # Scheduling order only; Tasks remain durable elsewhere.
         self._round: date | None = None
         """The session whose data readiness last owed every package its cycle."""
-        # Attendance (V604): the update a package's cycle admitted or resumed, read once the Task
+        # Attendance: the update a package's cycle admitted or resumed, read once the Task
         # worker is idle; when a deferred one may run again; and the packages refused while the
         # workspace's inputs were not ready, cycled again once the worker is next idle.
         self._watched: dict[str, str] = {}
@@ -236,7 +236,7 @@ class ResearchUpdateAutomation:
             return self.readback()
 
     def _attend_afresh(self) -> None:
-        """Forget what earlier cycles attended (V604).
+        """Forget what earlier cycles attended.
 
         The next cycle reads each package's update from its durable Tasks again, its plan
         answering one that waits.
@@ -290,7 +290,7 @@ class ResearchUpdateAutomation:
         """Wake once the dispatcher's queue is idle.
 
         The remaining packages are cycled then, and the updates the automation attends: one it
-        admitted or resumed is read then (V604).
+        admitted or resumed is read then.
         """
         with self._lock:
             if (self._pending or self._watched or self._after) and not self._closing:
@@ -308,7 +308,7 @@ class ResearchUpdateAutomation:
                 self._arm(None)
                 return
             watched = dict(self._watched)
-        # The updates earlier cycles admitted or resumed, read now the worker is idle (V604).
+        # The updates earlier cycles admitted or resumed, read now the worker is idle.
         reads = {
             package: self.execute(
                 PortfolioResearchOperationRequest(
@@ -337,7 +337,7 @@ class ResearchUpdateAutomation:
                 self._round = latest
                 self._pending += [p for p in settings.package_ids if p not in self._pending]
             # A deferred update is resumed once its retry time has passed, and a package refused
-            # while the workspace's inputs were not ready is tried again (V604).
+            # while the workspace's inputs were not ready is tried again.
             owed = [
                 p for p, at in sorted(self._retry.items(), key=lambda item: item[1]) if at <= now
             ]
@@ -378,7 +378,7 @@ class ResearchUpdateAutomation:
             if result.get("task_id"):
                 self._watched[package] = str(result["task_id"])
             elif result.get("retry_after_at"):
-                # Its deferred update, refused before its retry time, is resumed then (V604).
+                # Its deferred update, refused before its retry time, is resumed then.
                 at = datetime.fromisoformat(str(result["retry_after_at"]))
                 self._retry[package] = at
                 if self._next_due is None or at < self._next_due:
@@ -395,7 +395,7 @@ class ResearchUpdateAutomation:
 
         Still on its way, it is read at the next idle; deferred, it is resumed at its retry
         time; published short of the latest ready session, that session is planned at once;
-        stopped, its words name the way on and the next ready session plans again (V604).
+        stopped, its words name the way on and the next ready session plans again.
         """
         status = read.get("status")
         if status in _MOVING or self._watched.get(package) != task_id:

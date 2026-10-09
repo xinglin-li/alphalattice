@@ -1878,10 +1878,11 @@ class WorkspaceDataUpdateApplication:
         advancement Task passes nothing and keeps the projection alone, as before.
         """
         self._require_plan(plan)
-        if stage != _STAGES[1]:
+        if stage == _STAGES[0]:
             return self._step(plan, stage, cancelled=cancelled, bound_to=bound_to)
-        # The data stage keeps one writable instance of the market store from its first read
-        # to its last write, so its cycles' holds, the runner's units and every other thread's
+        # The data stage and the receipt's publication with its backup each keep one writable
+        # instance of the market store from their first read to their last write, so the
+        # cycles' holds, the runner's units, the backup's table exports and every other thread's
         # reads attach to it instead of reopening the file with a cold cache and checkpointing
         # it at each close. Writable, it is no lock: every thread attaches without waiting, and
         # each cycle still releases the write gate at its network edges.

@@ -303,7 +303,7 @@ class PortfolioResearchTaskAdapter:
             )
         except EligiblePoolShort as refused:
             # The book refused before it opened, by the formation too short for a rebalance: the
-            # owner's stop, which a resume of the same Program would only meet again (V519).
+            # owner's stop, which a resume of the same Program would only meet again.
             return StageExecutionResult(
                 disposition=StageDisposition.BLOCKED, failure_code=str(refused)
             )

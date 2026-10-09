@@ -330,7 +330,7 @@ def test_a_resealed_decision_naming_its_own_policy_is_refused() -> None:
 
 
 def test_a_recorded_curation_reads_without_recompiling_or_current_admission(monkeypatch, tmp_path):
-    """requirement (V90, LAWS.md OP6): a read reopens what was sealed and computes nothing.
+    """requirement (LAWS.md OP6): a read reopens what was sealed and computes nothing.
 
     A recorded readback took the decision's standing from the installed policy
     and recompiled its dossier and research input on every read; it now reopens

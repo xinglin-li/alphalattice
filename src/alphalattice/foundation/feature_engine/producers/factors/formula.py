@@ -1,10 +1,10 @@
-"""The factor formula kernel: one callable computes every declared formula (EX, V88).
+"""The factor formula kernel: one callable computes every declared formula (EX).
 
 A formula factor is data. Its `FactorSpec` names `formula_ref: factor.formula` and carries its
 canonical expression, and this one callable computes it, so adding a factor adds a catalog entry
 and moves no code identity (a factor's identity is its id, its kernel's and its numerical spec).
 A formula reading the Sector leaf is kept under a second registration of the same callable,
-`factor.formula.sector`, whose fields add the Sector's: the plan derives which (V359), and the
+`factor.formula.sector`, whose fields add the Sector's: the plan derives which, and the
 price kernel, with every formula kept before, stays as it was.
 
 The user's scale-invariant rule (2026-09-30): no source the product holds is point in time, so
@@ -17,20 +17,20 @@ close at none. A kernel sees one listing, so the cross-section is the preprocess
 a formula's; a window counts the listing's own rows, as every kernel's does; the lookback and the
 skip fit the catalog's invalidation budget. The Sector leaf, `sector_return`, reads the day's
 equal-weight log return of the listing's Sector (`sector_return_log`, built with the Sector in force
-at each session since V346): point in time from T0, the first recorded classification backfilled
-before it, which a study's temporal statement says (V347). It is a research leaf until the daily
-build carries its Sector child (V359); the market and registered-factor leaves wait for
-point-in-time sources (V345).
+at each session): point in time from T0, the first recorded classification backfilled
+before it, which a study's temporal statement says. It is a research leaf until the daily
+build carries its Sector child; the market and registered-factor leaves wait for
+point-in-time sources.
 
-The point-in-time leaves (V345) -- `open_pit`, `high_pit`, `low_pit`, `close_pit` and
+The point-in-time leaves -- `open_pit`, `high_pit`, `low_pit`, `close_pit` and
 `volume_pit` -- read each session's values as they traded, re-based to the session the value is
 for: a price at session t as it read at T is its as-traded price times the product of the
 recorded ratios to t over that product to T, a share volume the reverse over the share splits
-alone (a fractional ratio is a price adjustment, V348). No later event moves them, so any form of
+alone (a fractional ratio is a price adjustment). No later event moves them, so any form of
 them is admitted, a level and its bound included; mixed with a split-basis leaf, the scale rule
 holds for that leaf. A formula reading one is kept under `factor.formula.point_in_time` (or
 `factor.formula.sector.point_in_time` with the Sector leaf); the daily build carries the
-as-traded fields for a catalog that reads them (V395), so it is activated as any formula is.
+as-traded fields for a catalog that reads them, so it is activated as any formula is.
 """
 
 from __future__ import annotations
@@ -68,11 +68,11 @@ from .formula_language import (
 
 FORMULA_ID: Final = "factor.formula"
 FORMULA_SECTOR_ID: Final = "factor.formula.sector"
-"""The kernel a formula reading the Sector leaf is kept under (V359)."""
+"""The kernel a formula reading the Sector leaf is kept under."""
 FORMULA_POINT_IN_TIME_ID: Final = "factor.formula.point_in_time"
-"""The kernel a formula reading a point-in-time leaf is kept under (V345)."""
+"""The kernel a formula reading a point-in-time leaf is kept under."""
 FORMULA_SECTOR_POINT_IN_TIME_ID: Final = "factor.formula.sector.point_in_time"
-"""The kernel a formula reading the Sector leaf and a point-in-time leaf is kept under (V345)."""
+"""The kernel a formula reading the Sector leaf and a point-in-time leaf is kept under."""
 FORMULA_IDS: Final = (
     FORMULA_ID,
     FORMULA_SECTOR_ID,
@@ -80,10 +80,10 @@ FORMULA_IDS: Final = (
     FORMULA_SECTOR_POINT_IN_TIME_ID,
 )
 FORMULA_POINT_IN_TIME_IDS: Final = (FORMULA_POINT_IN_TIME_ID, FORMULA_SECTOR_POINT_IN_TIME_ID)
-"""The kernels whose formulas read a point-in-time leaf (V345)."""
+"""The kernels whose formulas read a point-in-time leaf."""
 FORMULA_RESEARCH_IDS: Final = (FORMULA_SECTOR_ID, FORMULA_SECTOR_POINT_IN_TIME_ID)
 """The kernels whose leaves the daily build does not carry yet: a formula reading the Sector leaf,
-a research factor until the daily build carries its Sector child (V359)."""
+a research factor until the daily build carries its Sector child."""
 FORMULA_METHOD_FAMILY: Final = "FACTOR_FORMULA"
 FORMULA_LEAVES: Final[Mapping[str, str]] = {
     "open": "open_split_adjusted",
@@ -100,8 +100,8 @@ FORMULA_LEAVES: Final[Mapping[str, str]] = {
     "volume_pit": "volume_as_traded",
 }
 """Each leaf's source field: the provider's split basis (its OHLCV arrive split-adjusted as of
-the download), its adjusted close, the day's Sector return (V359), and each session's values as
-they traded (V345)."""
+the download), its adjusted close, the day's Sector return, and each session's values as
+they traded."""
 FORMULA_POINT_IN_TIME_INDEX: Final[Mapping[str, tuple[str, int]]] = {
     "open_pit": ("price_adjustment_index", 1),
     "high_pit": ("price_adjustment_index", 1),
@@ -111,7 +111,7 @@ FORMULA_POINT_IN_TIME_INDEX: Final[Mapping[str, tuple[str, int]]] = {
 }
 """Each point-in-time leaf's index and its exponent: the leaf at session t as read at T is its
 as-traded value times (index(t) / index(T)) to that power, so a price is divided by the ratios
-recorded after t up to T and a share volume multiplied by the share splits among them (V345)."""
+recorded after t up to T and a share volume multiplied by the share splits among them."""
 FORMULA_SECTOR_FIELD: Final = "sector_return_log"
 """The Sector leaf's field: built across the cross-section before a kernel sees one listing
 (`producers/sector_aggregates.py`), so a formula names it only where it reads it."""
@@ -150,8 +150,8 @@ FORMULA_PREPROCESSING_RECIPES: Final = (
 """The preprocessing recipes a formula factor's declaration may choose: the installed ones that
 take one factor (the joint-primary and interaction recipes need a verified child). The choice is
 the author's: a quantity whose Sector level is structural (liquidity, turnover) takes the Sector
-demean; a return, a price or a move size is better universe-centred (`ROBUST_UNIVERSE_Z`,
-V346); the absolute-state recipe standardizes a listing over its own trailing year."""
+demean; a return, a price or a move size is better universe-centred (`ROBUST_UNIVERSE_Z`);
+the absolute-state recipe standardizes a listing over its own trailing year."""
 FORMULA_DECLARATION: Final[Mapping[str, str]] = {
     "implementation_id": FORMULA_ID,
     "algorithm": "evaluate(spec.formula) over each listing's ordered rows, then skip",
@@ -332,7 +332,7 @@ def formula_specification(specification: FactorSpec) -> FactorSpec:
     """The spec a formula factor is kept as: its canonical formula and what the formula decides.
 
     The author states the id, the formula, the family, the skip, the literature, the tolerances
-    and the track; the formula decides its kernel and the kernel's fields (V359), the window, the
+    and the track; the formula decides its kernel and the kernel's fields, the window, the
     minimum rows and the return convention.
 
     Args:
@@ -371,7 +371,7 @@ _KERNELS: Final[Mapping[tuple[bool, bool], tuple[str, tuple[str, ...]]]] = {
 
 
 def formula_required_fields(tree: Tree) -> tuple[str, ...]:
-    """The fields a formula requires: its kernel's (V359, V345).
+    """The fields a formula requires: its kernel's.
 
     Args:
         tree: The formula's tree.
@@ -693,7 +693,7 @@ def _point_in_time_series(source: Mapping[str, tuple[float, ...]]) -> dict[str, 
     A 1.25 price adjustment a third of the way in and a 2-for-1 share split two thirds of the
     way in, each undone as the provider applied it: the prices times the ratios after a row, the
     volume divided by them; the price index the product of the ratios to a row, the share index
-    the product of the share split alone (V345, V348).
+    the product of the share split alone.
     """
     rows = len(source["close_split_adjusted"])
     events = ((rows // 3, 1.25, False), (2 * rows // 3, 2.0, True))
@@ -755,10 +755,10 @@ def formula_goldens(
     ):
         source = golden_series(count)
         if FORMULA_SECTOR_FIELD in specification.required_fields:
-            # The Sector leaf's rows, only for a formula that reads it (V359).
+            # The Sector leaf's rows, only for a formula that reads it.
             source = dict(sorted({**source, FORMULA_SECTOR_FIELD: _sector_series(count)}.items()))
         if "close_as_traded" in specification.required_fields:
-            # The as-traded rows, only for a formula that reads a point-in-time leaf (V345).
+            # The as-traded rows, only for a formula that reads a point-in-time leaf.
             source = dict(sorted({**source, **_point_in_time_series(source)}.items()))
         by_leaf = {leaf: source[field] for leaf, field in FORMULA_LEAVES.items() if field in source}
         by_leaf.update(

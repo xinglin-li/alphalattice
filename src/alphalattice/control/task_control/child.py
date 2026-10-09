@@ -34,7 +34,7 @@ from concurrent import futures
 from concurrent.futures import Future, ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from concurrent.futures.process import BrokenProcessPool
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -55,6 +55,19 @@ PARENT_WATCH_SECONDS = 2.0
 _WORKERS: dict[int, ProcessPoolExecutor] = {}
 """The kept workers by position; 0 is the Task's."""
 _WORKER_LOCK = threading.Lock()
+_SHARED: dict[str, dict[str, Any]] = {}
+"""In a kept worker, by call set, the values that set shipped once, by content key. Sets may
+interleave on one worker; each set's close forgets its own."""
+
+
+@dataclass(frozen=True)
+class _Shared:
+    """An argument a call set ships to each worker once: its content key, and its value on the
+    first call to that worker (`carried`), resolved from the worker's holding after that."""
+
+    key: str
+    value: Any = None
+    carried: bool = False
 
 
 class ChildRefused(ValueError):
@@ -145,19 +158,33 @@ class ChildCalls:
         self._made = 0
         self._pending: deque[_Submitted] = deque()
         self._folder = tempfile.TemporaryDirectory(prefix="alphalattice-calls-")
+        self._shipped: dict[tuple[int, str], ProcessPoolExecutor] = {}
         self._flag = Path(self._folder.name) / "cancel"
 
-    def make(self, arguments: Mapping[str, Any]) -> None:
+    def make(
+        self, arguments: Mapping[str, Any], *, shared: Mapping[str, tuple[str, Any]] | None = None
+    ) -> None:
         """Make the next call on `arguments` without waiting for it.
 
         It goes to the first worker with none of these calls pending; with all of them busy,
-        behind the oldest call, whose worker frees first.
+        behind the oldest call, whose worker frees first. Each of `shared` -- an argument's
+        name to its content key and value, the same for many calls -- goes to each worker
+        once in these calls: later calls name it by its key, and the worker holds it until
+        these calls close. A worker started again receives it again.
         """
         busy = {item.worker for item in self._pending}
         worker = next(
             (index for index in range(self._workers) if index not in busy),
             self._pending[0].worker if self._pending else 0,
         )
+        if shared:
+            pool = _worker(worker)
+            sent: dict[str, Any] = {"__call_set__": self._folder.name}
+            for name, (key, value) in shared.items():
+                carried = self._shipped.get((worker, key)) is not pool
+                self._shipped[(worker, key)] = pool
+                sent[name] = _Shared(key, value if carried else None, carried)
+            arguments = {**arguments, **sent}
         answer = Path(self._folder.name) / f"{self._made}.answer"
         self._made += 1
         self._pending.append(
@@ -184,6 +211,18 @@ class ChildCalls:
         if running:
             self._flag.touch()
             futures.wait(running)
+        # Each worker these calls shipped to forgets them, after their calls, in its own order.
+        for worker in {worker for worker, _key in self._shipped}:
+            if _WORKERS.get(worker) in self._shipped.values():
+                # A worker that has ended took its holding with it.
+                with suppress(ChildInterrupted):
+                    _submitted(
+                        worker,
+                        f"{__name__}:_forget",
+                        {"call_set": self._folder.name},
+                        self._flag,
+                        threads=1,
+                    )
         self._folder.cleanup()
 
 
@@ -329,6 +368,7 @@ def _call(
     """
     ledger: SpanLedger | None = None
     try:
+        arguments = _held(arguments)
         module_name, _, name = target.partition(":")
         function = getattr(importlib.import_module(module_name), name)
         with held_offline(), _numerical_threads(threads), collect() as ledger:
@@ -352,6 +392,25 @@ def _call(
         "result": result,
         "spans": None if ledger is None else ledger.readout_value,
     }
+
+
+def _held(arguments: dict[str, Any]) -> dict[str, Any]:
+    """A call's arguments with each shipped-once value resolved from this worker's holding."""
+    call_set = arguments.pop("__call_set__", None)
+    if call_set is None:
+        return arguments
+    holding = _SHARED.setdefault(call_set, {})
+    for name, value in arguments.items():
+        if isinstance(value, _Shared):
+            if value.carried:
+                holding[value.key] = value.value
+            arguments[name] = holding[value.key]
+    return arguments
+
+
+def _forget(call_set: str, cancelled: Callable[[], bool]) -> None:
+    """In a kept worker, drop what a closed call set shipped (`ChildCalls.close`)."""
+    _SHARED.pop(call_set, None)
 
 
 @contextmanager

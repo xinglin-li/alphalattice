@@ -19,6 +19,7 @@ from alphalattice.investment.alpha_research.targets.execution_outcome import (
 )
 from alphalattice.investment.sector_research.inputs.storage import SectorContextStore
 from alphalattice.investment.sector_research.inputs.surface import (
+    SectorContextBoundaryError,
     build_sector_context_policy,
     compile_sector_context_surface,
 )
@@ -247,6 +248,39 @@ def test_sector_context_is_causal_and_uses_four_shared_features(tmp_path) -> Non
         store.load(surface.manifest.manifest_hash).values,
         surface.values,
     )
+
+
+@pytest.mark.parametrize(
+    ("column", "edit", "code"),
+    [
+        ("holding_end_open_at", lambda values: [*values[:5], None, *values[6:]], "clock_invalid"),
+        (
+            "formation_close_at",
+            lambda values: [*values[:13], values[13] + timedelta(seconds=1), *values[14:]],
+            "clock_mismatch",
+        ),
+        (
+            "holding_end_open_at",
+            lambda values: [v - timedelta(hours=41) for v in values],
+            "causal_order_invalid",
+        ),
+    ],
+)
+def test_sector_context_refuses_each_unusable_clock(column, edit, code) -> None:
+    """regression: the clocks are checked as arrays, not one value at a time; a
+    missing clock, one listing's close apart from its session's, and an availability no later
+    than the close each still refuse by name."""
+    source, sectors = _source(30)
+    values = edit(source[column].to_pylist())
+    index = source.schema.get_field_index(column)
+    source = source.set_column(index, column, pa.array(values, type=source[column].type))
+    with pytest.raises(SectorContextBoundaryError, match=f"sector_context_{code}$"):
+        compile_sector_context_surface(
+            source_table=source,
+            source_surface_hash="d" * 64,
+            policy=build_sector_context_policy(sector_revision="c" * 64),
+            sector_by_listing_id=sectors,
+        )
 
 
 def _canonical_source(

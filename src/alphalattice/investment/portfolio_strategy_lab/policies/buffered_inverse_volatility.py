@@ -39,7 +39,7 @@ class InverseVolatilityAllocation:
 
 
 class WholeBookHysteresisInverseVolatilityRecipe(BaseModel):  # type: ignore[misc]
-    """The one fixed C2 recipe supplied by the immutable baseline package."""
+    """The one fixed recipe supplied by the immutable baseline package."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -107,7 +107,7 @@ def whole_book_inverse_volatility_target(
     """Weight a whole selected book by inverse diagonal volatility.
 
     A malformed selected volatility cannot silently change the selected support:
-    it degrades the entire selected book to C1's equal-weight allocation, while
+    it degrades the entire selected book to equal-weight allocation, while
     retaining that owner's frozen/untradable carry semantics.
     """
     if covariance.ndim != 2 or covariance.shape != (reference_weights.size, reference_weights.size):
@@ -140,7 +140,7 @@ def whole_book_inverse_volatility_target(
 
 
 class WholeBookHysteresisInverseVolatilityAdapter:
-    """Direct C2 decision owner: Risk diagonal input, but no optimizer or solver."""
+    """Direct decision owner: Risk diagonal input, but no optimizer or solver."""
 
     policy_id = INVERSE_VOLATILITY_POLICY_ID
     solver_backed = False

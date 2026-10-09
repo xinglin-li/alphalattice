@@ -145,7 +145,7 @@ def test_both_methods_reach_real_evidence_through_one_artifact_path(
     capability: str,
     parameters: dict[str, Any],
 ) -> None:
-    """requirement (P1-2): two different recipe schemas, one chain, one shape.
+    """requirement (-2): two different recipe schemas, one chain, one shape.
 
     Parametrised deliberately. If the production method and the alternate method
     took different artifact paths, this case could not be written once and run
@@ -339,7 +339,7 @@ def test_installing_the_alternate_does_not_move_the_production_method_identity(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """P1-3 restated where it matters most: installing this method is not a change.
+    """3 restated where it matters most: installing this method is not a change.
 
     This is the case that would have failed before the selected-method identity
     was separated from catalog governance -- installing the alternate adapter
@@ -382,7 +382,7 @@ def test_a_seed_is_refused_by_a_deterministic_method(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """requirement (P2): a seed nothing consumes cannot create a second identity.
+    """Requirement: a seed nothing consumes cannot create a second identity.
 
     ``seed`` is folded into ``envelope_hash`` and therefore into
     ``program_hash``, so two documents differing only in seed used to produce two

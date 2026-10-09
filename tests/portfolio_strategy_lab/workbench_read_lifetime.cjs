@@ -62,7 +62,7 @@ function fixture(owners = {}, initial = '#page=history', search = '') {
         text: async () => { request.textReads++; return reply.text ?? JSON.stringify(reply.value); }};
     },
   };
-  vm.createContext(c);
+  vm.createContext(library.into(c, appDir));
   for (const name of ['data.js', 'router.js']) vm.runInContext(fs.readFileSync(path.join(appDir, name), 'utf8'), c, {filename: name});
   vm.runInContext('render = () => globalThis.paints.push(app.page); patchMain = render; globalThis.D=Data; globalThis.go=navigate;', Object.assign(c, {paints}));
   function hold(matches) {
@@ -101,6 +101,9 @@ async function wire() {
   assert.equal((await strict).body.failure_code, 'fixture.missing');
   assert.equal((await descriptive).status, 'UNAVAILABLE', 'each caller applies its own refusal policy');
   assert.equal(prefixCount(f, '/api/unavailable'), 1);
+  const named=f.hold('/api/refused'), refusal=f.D.read('/api/refused').catch(error=>error);
+  await entered(named);named.release({value:{status:'REFUSED',refusal_code:'fixture.named',detail:'Exact owner detail'}});
+  assert.equal((await refusal).message,'fixture.named: Exact owner detail','transport uses the same refusal fields as page readers');
 
   for (const reply of [{error: Error('fixture disconnected')}, {text: 'unreadable JSON'}]) {
     const held = f.hold('/api/retry');

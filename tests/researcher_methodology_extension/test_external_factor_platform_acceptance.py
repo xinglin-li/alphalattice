@@ -206,8 +206,8 @@ def external_outcomes(external_factor_workspace: RealRiskWorkspace) -> RealRiskW
     """The external workspace with the causal outcomes a Factor program reads, published once.
 
     Every test that runs a Factor program here names this rather than counting on another
-    test to have published them first: a scheduler that starts the longest work first (TS1)
-    can run such a test first on its worker, where nothing published them (V532).
+    test to have published them first: a scheduler that starts the longest work first
+    can run such a test first on its worker, where nothing published them.
     """
 
     publish_causal_outcomes(external_factor_workspace, at=_PUBLISHED_AT)

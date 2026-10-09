@@ -38,7 +38,7 @@ from u0_probe import _copy
 
 @pytest.mark.parametrize("status", ("BLOCKED", "DEFERRED", "PROPOSAL_PUBLISHED"))
 def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status):
-    """V599: adding the previous publication's review must keep the stop's way on."""
+    """adding the previous publication's review must keep the stop's way on."""
     from alphalattice.control.product_host.composition import portfolio_research_operations as ops
 
     publication = SimpleNamespace(content_hash="a" * 64)
@@ -76,7 +76,7 @@ def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status)
 def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_need(
     tmp_path, evidence_roots, monkeypatch, capsys, record_property
 ):
-    """V599: real installed fits and writers; synthetic Friday preparation on a QA copy.
+    """real installed fits and writers; synthetic Friday preparation on a QA copy.
 
     The held history and Data membership are retained. One missing current Sector
     observation, like Friday's new prices, is synthetic. This checks continuation and dates,

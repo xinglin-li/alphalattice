@@ -161,7 +161,7 @@ def test_the_shrunk_diagonal_reproduces_the_control_at_zero_and_deletes_it_at_on
 # ----------------------------------------------------------- rebalance cadence
 def test_a_second_rebalance_clock_installs_through_the_catalog() -> None:
     catalog = build_installed_rebalance_clock_catalog()
-    # The whole-book clock joined the catalog with the C1 baseline package at
+    # The whole-book clock joined the catalog with the baseline package at
     # `ea28c8a8` (2026-08-27); the seam this proves is that installation is the
     # catalog's, so the expected set names every installed clock. The later
     # score-axis contract also installs SCORED_FORMATIONS; it is not a test plugin.
@@ -247,7 +247,7 @@ def test_a_portfolio_that_reproduces_its_benchmark_has_infinite_information_rati
 
 # ----------------------------------------------------------- execution budget
 def test_the_budget_owner_is_shared_and_keeps_each_desks_error_strings() -> None:
-    # The owner reads no environment: the workflow holds a run offline (V116), so no switch is
+    # The owner reads no environment: the workflow holds a run offline, so no switch is
     # set here.
     from alphalattice.protocols.research_authoring.contracts import (
         ResearchExperimentEnvelope,

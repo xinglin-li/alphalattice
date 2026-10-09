@@ -178,6 +178,13 @@ GRAMMAR: Final[dict[str, Command]] = {
         "declare",
         "Records an event this client declares about its own work in the activity feed.",
     ),
+    "WAKE_REGISTER": Command(
+        "activity",
+        "notify",
+        "Asks the Host to queue one line to a Codex thread, naming the exact read, when the Task "
+        "ends, needs a decision or is deferred; returns at once, the wake held in the Task's "
+        "journal across turns and restarts.",
+    ),
     "SESSION_USAGE_READ": Command(
         "session",
         "usage",
@@ -723,8 +730,8 @@ GRAMMAR: Final[dict[str, Command]] = {
     "RESEARCH_STRATEGY_INSTALL": Command(
         "strategy",
         "install",
-        "Installs a prepared strategy as non-default research in this workspace; the service must "
-        "restart.",
+        "Installs a prepared strategy as non-default research in this workspace; the running "
+        "service serves its packages at once.",
     ),
     "RESEARCH_STRATEGY_PLAN": Command(
         "strategy",
@@ -960,6 +967,7 @@ FLAGS: Final[dict[str, str]] = {
     "citation_page": "citation-page",
     "citation_unit_id": "citation-unit",
     "component_id": "component",
+    "model_lifecycle": "lifecycle",
     "continuation_of": "continues",
     "continuation_spans": "spans",
     "storage_cap_bytes": "cap-bytes",
@@ -1046,6 +1054,8 @@ FLAGS: Final[dict[str, str]] = {
     "upgrade_set_hash": "upgrade-set",
     "usage_reading_enabled": "enabled",
     "view_last_days": "days",
+    "wake_read": "read",
+    "wake_thread": "thread",
     "window_limit": "window-limit",
 }
 """A field's flag where it is not the field's own name, hyphenated: a selector names its object

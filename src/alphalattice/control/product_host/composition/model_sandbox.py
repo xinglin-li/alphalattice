@@ -1,10 +1,12 @@
 """`model sandbox`: an agent's model tried on a copy of the workspace before a person activates it.
 
 EX, the model point. The workspace at rest (its writer lease held, so no Host serves it) is
-copied beside it, hard links kept; U0 reads every saved object of the copy; the model is
+copied beside it, hard links kept; saved-object readback opens every object of the copy;
+the model is
 installed as the copy's trial alone; one Alpha study runs on the copy -- the workspace's latest
 Alpha study declared anew with the model and its reference recipe, or the study `--study` names
--- and is read back, its run time and the process's peak memory recorded; U0 reads the copy
+-- and is read back, its run time and the process's peak memory recorded;
+saved-object readback opens the copy
 again, and every earlier read must keep its verdict and the new study's must open. The trial's
 record goes into the workspace's registry (`runtime/extensions/alpha-models.json`), where a
 person's activation reads it, and the copies are deleted. The entry composes it into the CLI as
@@ -118,7 +120,7 @@ def _declared_study(session: Any, copy: Path, model_id: str, study: Path | None)
     """The study the trial runs, the model in its place: `--file`'s, or the latest published.
 
     Either is an Alpha study that names a model; only the model and its recipe change, so a
-    study declared for another model never runs as this one's trial (V414).
+    study declared for another model never runs as this one's trial.
     """
     import yaml  # type: ignore[import-untyped]
 
@@ -195,7 +197,7 @@ def _run_study(copy: Path, model_id: str, study: Path | None) -> tuple[str, floa
         if body.get("status") != "EXPERIMENT_PUBLISHED":
             raise ValueError(f"model_sandbox.study_not_published:{lifecycle}")
         # The record names the model the study ran, read back from it, never the one asked:
-        # a trial of another model is no trial of this one (V414).
+        # a trial of another model is no trial of this one.
         ran = next(
             (
                 str(row.get("model_adapter_id"))

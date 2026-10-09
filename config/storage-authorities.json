@@ -228,6 +228,18 @@
     },
     {
       "tables": [
+        "feature_year_seal"
+      ],
+      "database": "workspace",
+      "semantic_role": "closed-year digests of the base Feature rows that a Feature prefix proof reads in place of those years",
+      "generation_model": "BY_CATALOG",
+      "authority_owner": "feature_engine.storage.FeatureStateRepository",
+      "retention_owner": "current-state storage governance",
+      "rebuildability": "RECOMPUTABLE_FROM_BASE_AND_POLICY",
+      "artifact_relationship": "OPERATIONAL_PROJECTION"
+    },
+    {
+      "tables": [
         "feature_ineligibility_run"
       ],
       "database": "workspace",

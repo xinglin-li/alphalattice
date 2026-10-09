@@ -32,7 +32,7 @@ from alphalattice.kernel.shared_kernel.identity_successors import is_current, re
 
 DESKTOP_FEATURE_CATALOG_ID = "feature-catalog.desktop-core-equity"
 SOURCE_AVAILABILITY_ROLE = "feature_engine.source_availability_catalog"
-"""The source-availability catalog's role in ``config/identity-roles.json`` (V345)."""
+"""The source-availability catalog's role in ``config/identity-roles.json``."""
 _RESOURCE_NAME = "resources/desktop-feature-catalog.json"
 
 
@@ -519,7 +519,7 @@ class FeatureCatalog:
 
 
 def source_availability_binding(catalog_hash: str) -> str:
-    """The value a Feature catalog binds for a source-availability catalog (LAWS.md ID1, V345).
+    """The value a Feature catalog binds for a source-availability catalog (LAWS.md ID1).
 
     Every catalog binding, Panel lineage and Alpha source identity compares it by equality, so
     it is held at its recorded origin: a move recorded as keeping when every existing field may
@@ -536,7 +536,7 @@ def source_availability_binding(catalog_hash: str) -> str:
 
 
 def source_availability_is_current(recorded: str, installed: str) -> bool:
-    """Whether a recorded source-availability catalog names the installed one (V345).
+    """Whether a recorded source-availability catalog names the installed one.
 
     Args:
         recorded: The catalog hash a Panel's lineage recorded.

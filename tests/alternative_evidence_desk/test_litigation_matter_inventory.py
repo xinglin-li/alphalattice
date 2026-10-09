@@ -1,6 +1,6 @@
 """The provisional litigation matter inventory: navigation over a filing's
 Legal Proceedings item and contingencies note, never discovery proof or
-extraction. Controlled fixtures cover the shapes the S4 scope names as
+extraction. Controlled fixtures cover the shapes the scope names as
 controls: two distinct matters with similar party names, a dated procedural
 filing that continues a matter rather than opening one, a late-in-note
 statement, text no signpost claims and a note whose end the structure

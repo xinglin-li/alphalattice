@@ -1,4 +1,4 @@
-"""The Sector map in force at each formation, as the target compilers read it (V346).
+"""The Sector map in force at each formation, as the target compilers read it.
 
 A target surface is one cross-section per formation session. Each run of formations that
 reads one Sector map (`sector_positions`: one run while no reclassification falls inside the

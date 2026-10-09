@@ -1,4 +1,4 @@
-"""The research desk's two candidate inventories, the tests' fixtures since V327: the
+"""The research desk's two candidate inventories, the tests' fixtures since: the
 four-card prototype and the 36-card role-aware Alpha set, built from the product's inventory
 contracts (their loaders left the product with the PM's effort resolution)."""
 

@@ -103,19 +103,36 @@ class PreparedWorkspaceComponentInputs:
     reused_history_hash: str | None = None
 
 
+_SOURCE_FILE_DIGESTS: dict[str, tuple[tuple[int, int], str]] = {}
+"""Each store file's sha256 with the size and mtime it had when hashed, for this process."""
+
+
 def _market_source_proof(market: MarketDataRepository) -> tuple[tuple[str, str | None], ...]:
     # A revision journal is not a content proof. Include the WAL's presence and
     # exact bytes: a live writable instance can commit without checkpointing.
+    # The first proof of a file in a process hashes it whole; a later one whose
+    # size and mtime are unchanged since that hash (any write moves one) reuses
+    # it, and any other hashes it whole again.
     proof = []
     for path in (market.path, Path(str(market.path) + ".wal")):
+        resolved = str(path.resolve())
         try:
-            with path.open("rb") as handle:
-                digest = file_digest(handle, "sha256").hexdigest()
+            before = path.stat()
+            fingerprint = (before.st_size, before.st_mtime_ns)
+            held = _SOURCE_FILE_DIGESTS.get(resolved)
+            if held is not None and held[0] == fingerprint:
+                digest = held[1]
+            else:
+                with path.open("rb") as handle:
+                    digest = file_digest(handle, "sha256").hexdigest()
+                after = path.stat()
+                if (after.st_size, after.st_mtime_ns) == fingerprint:
+                    _SOURCE_FILE_DIGESTS[resolved] = (fingerprint, digest)
         except FileNotFoundError:
             if path == market.path:
                 raise
             digest = None
-        proof.append((str(path.resolve()), digest))
+        proof.append((resolved, digest))
     return tuple(proof)
 
 

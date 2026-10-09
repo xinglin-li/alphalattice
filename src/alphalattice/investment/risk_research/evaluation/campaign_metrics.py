@@ -2,9 +2,7 @@
 
 The paired route's covariance lanes (``portfolio_strategy_lab/campaign/authority.py``)
 read the matrices a development build published without re-running an estimator.
-The Risk estimator campaign's measurements and its replay verifier, which this
-module also held, retired with V312 (RT); ``evaluation/formation.py`` still owns
-every per-formation diagnostic.
+``evaluation/formation.py`` owns every per-formation diagnostic.
 """
 
 from __future__ import annotations

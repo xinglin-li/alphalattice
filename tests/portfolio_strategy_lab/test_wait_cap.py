@@ -95,7 +95,7 @@ class _Host:
 @pytest.mark.parametrize("kind", ["goal", "activity-task", "task", "trial"])
 @pytest.mark.parametrize("arrival", [None, 0.5, 1.0])
 def test_every_cli_wait_reads_at_its_cap(tmp_path, monkeypatch, capsys, kind, arrival) -> None:
-    """V581: every wait reaches its cap, sees the final interval and never extends it."""
+    """every wait reaches its cap, sees the final interval and never extends it."""
     clock = _Clock()
     host = _Host(tmp_path, clock, "goal" if kind == "goal" else kind, arrival)
     monkeypatch.setattr(client.time, "monotonic", clock.monotonic)
@@ -132,7 +132,7 @@ def test_every_cli_wait_reads_at_its_cap(tmp_path, monkeypatch, capsys, kind, ar
 def test_a_restart_near_the_cap_gets_its_last_cli_read(
     tmp_path, monkeypatch, capsys, kind, available
 ) -> None:
-    """V581: a reconnect at 0.9 seconds still attempts its last read at one second."""
+    """a reconnect at 0.9 seconds still attempts its last read at one second."""
     clock = _Clock()
     host = _Host(tmp_path, clock, "goal" if kind == "goal" else kind, None, restart=True)
     request = host.request

@@ -157,7 +157,7 @@ class _WindowsReadLease:
         self.path = path
         self.lock = Lock()
         self.file_id_type = FileIdInformation
-        self.identity = self._path_identity()
+        self.information_type = FileInformation
         self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
         declarations = {
             "CreateFileW": (
@@ -194,6 +194,10 @@ class _WindowsReadLease:
                 [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD],
                 wintypes.BOOL,
             ),
+            "GetFinalPathNameByHandleW": (
+                [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD],
+                wintypes.DWORD,
+            ),
             "WaitForSingleObject": ([wintypes.HANDLE, wintypes.DWORD], wintypes.DWORD),
             "WaitForMultipleObjects": (
                 [wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE), wintypes.BOOL, wintypes.DWORD],
@@ -210,6 +214,7 @@ class _WindowsReadLease:
             function = getattr(self.kernel, name)
             function.argtypes = arguments
             function.restype = result
+        self.identity = self._path_identity()
         self.handle = None
         self.event = None
         self.pending = False
@@ -260,38 +265,63 @@ class _WindowsReadLease:
             raise
 
     def _path_identity(self) -> tuple[object, ...]:
-        info = self.path.stat()
-        return (
-            os.fspath(self.path.resolve(strict=True)),
-            info.st_dev,
-            info.st_ino,
-            info.st_size,
-            info.st_mtime_ns,
-            info.st_ctime_ns,
-        )
+        """The path's current resolution and file, all read from one handle opened by it.
+
+        The final path is what realpath reads (GetFinalPathNameByHandle on a handle opened by
+        the path), here without its second open to drop the long-path prefix. Taking it with
+        the file ID, size and times from one attribute-only open, which breaks no oplock,
+        means every field names the same file: no swap fits between them.
+        """
+        handle = self.kernel.CreateFileW(os.fspath(self.path), 0x80, 7, None, 3, 0x02000000, None)
+        if handle in (None, ctypes.c_void_p(-1).value):
+            raise OSError("OS read lease path unavailable")
+        try:
+            size = 1024
+            while True:
+                final = ctypes.create_unicode_buffer(size)
+                length = self.kernel.GetFinalPathNameByHandleW(handle, final, size, 0)
+                if length < size:
+                    break
+                size = length + 1
+            observed = self.information_type()
+            file_id = self.file_id_type()
+            if not (
+                length
+                and self.kernel.GetFileInformationByHandle(handle, ctypes.byref(observed))
+                and self.kernel.GetFileInformationByHandleEx(
+                    handle, 18, ctypes.byref(file_id), ctypes.sizeof(file_id)
+                )
+            ):
+                raise OSError("OS read lease path unavailable")
+            return (
+                final.value,
+                file_id.volume,
+                int.from_bytes(bytes(file_id.file_id), "little"),
+                (observed.size_high << 32) | observed.size_low,
+                (observed.write.dwHighDateTime << 32) | observed.write.dwLowDateTime,
+                (observed.creation.dwHighDateTime << 32) | observed.creation.dwLowDateTime,
+            )
+        finally:
+            self.kernel.CloseHandle(handle)
 
     def unchanged(self) -> bool:
         """Fail closed for a signalled event, an API failure or any path identity change."""
         try:
-            with self.lock:
-                if not (
-                    self.pending
-                    and self.kernel.WaitForSingleObject(self.event, 0) == 258
-                    and self._path_identity() == self.identity
-                ):
-                    return False
-            # A competing open can wait for the RH break to be acknowledged. Never keep
-            # the lease lock across that open: the break thread needs it to close us.
+            # A competing open, the path identity's included, can wait for the RH break to be
+            # acknowledged. Never keep the lease lock across an open: the break thread needs it
+            # to close us, and an ancestor rename waits on that close.
+            if not (self._pending() and self._path_identity() == self.identity):
+                return False
             if not self._current_read_access():
                 return False
-            with self.lock:
-                return bool(
-                    self.pending
-                    and self.kernel.WaitForSingleObject(self.event, 0) == 258
-                    and self._path_identity() == self.identity
-                )
+            return self._pending() and self._path_identity() == self.identity
         except Exception:
             return False
+
+    def _pending(self) -> bool:
+        """Whether the oplock request is still pending: no break, no failure, not closed."""
+        with self.lock:
+            return bool(self.pending and self.kernel.WaitForSingleObject(self.event, 0) == 258)
 
     def _current_read_access(self) -> bool:
         """Prove current read permission and exact file ID without reading its bytes."""

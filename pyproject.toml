@@ -12,7 +12,7 @@
 # product needs all of them; a narrower environment is a deliberate choice.
 [project]
 name = "alphalattice"
-version = "0.1.2"
+version = "0.1.3"
 description = "A local quantitative research workstation for Codex and Claude Code."
 authors = [{ name = "Xinglin Li", email = "xinglin789@outlook.com" }]
 readme = "README.md"

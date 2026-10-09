@@ -375,7 +375,7 @@ def scale_alpha_stock_cross_section(
     """MAD bound then exactly one declared center/demean and sample-std Z.
 
     A Sector-neutral scale of rows whose `sessions` a reclassification splits scales each run
-    of sessions by the Sectors in force there (V346); a scale of one run is the one it was.
+    of sessions by the Sectors in force there; a scale of one run is the one it was.
 
     Args:
         values: The rows to scale, one a session.
@@ -559,7 +559,7 @@ def _scale_stock_rows(
 def _map_sector_to_listings(
     values: FloatArray, source: PanelFeatureSourceArrays, sessions: Sequence[date]
 ) -> FloatArray:
-    # Each row takes its session's Sector of each listing (V346).
+    # Each row takes its session's Sector of each listing.
     codes = sector_codes(
         source.sector_by_listing_id,
         sessions,
@@ -619,7 +619,7 @@ def _output_sessions(
 def _category_values(
     source: PanelFeatureSourceArrays, *, output_positions: IntArray | None = None
 ) -> FloatArray:
-    # Each session's Sector of each listing (V346).
+    # Each session's Sector of each listing.
     sessions = (
         source.formation_sessions
         if output_positions is None
@@ -823,7 +823,7 @@ def _role_availability(
 
     session_count = len(source.formation_sessions)
     listing_count = len(source.ordered_listing_ids)
-    # Each session's Sector of each listing (V346).
+    # Each session's Sector of each listing.
     listing_sector_codes = sector_codes(
         source.sector_by_listing_id,
         source.formation_sessions,

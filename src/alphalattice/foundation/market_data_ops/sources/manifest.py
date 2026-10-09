@@ -159,7 +159,7 @@ class UniverseManifest:
 
 
 class MarketProfileDocument(BaseModel):  # type: ignore[misc]
-    """A market profile as its YAML declares it: the keys a profile holds, typed (V275).
+    """A market profile as its YAML declares it: the keys a profile holds, typed.
 
     An unknown key or a wrong type is refused where the profile is read, before any manifest
     carries it: a `provider` is a provider's name, never a callable path.

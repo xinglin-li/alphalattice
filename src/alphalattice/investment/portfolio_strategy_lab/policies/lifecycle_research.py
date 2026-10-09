@@ -26,7 +26,7 @@ from alphalattice.investment.alpha_research.scores.heterogeneous_product import 
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
 )
 from alphalattice.investment.alpha_research.scores.product_lifecycle import (
-    AlphaModelLifecycleRecipe,
+    model_lifecycle_of,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioResearchSpec,
@@ -75,6 +75,8 @@ class LifecycleScoreEvidence(BaseModel):  # type: ignore[misc]
     def validate_frozen_recipe(self) -> Self:
         """Require installed component/lifecycle recipes and nonempty ordered score support.
 
+        An installed lifecycle is the light default or the component's full one.
+
         Returns:
             This contract after its declared consistency checks.
 
@@ -85,7 +87,7 @@ class LifecycleScoreEvidence(BaseModel):  # type: ignore[misc]
         recipe = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component(self.component_id)
         if (
             recipe.recipe_hash != self.component_recipe_hash
-            or AlphaModelLifecycleRecipe.from_component(recipe).content_hash != self.lifecycle_hash
+            or model_lifecycle_of(recipe, self.lifecycle_hash) is None
             or not self.formation_sessions
             or self.formation_sessions != tuple(sorted(set(self.formation_sessions)))
         ):
@@ -308,6 +310,23 @@ class LifecycleResearchScoreSource:
             Manifest authority_hash.
         """
         return self.manifest.authority_hash
+
+    @property
+    def model_lifecycle_hashes(self) -> dict[str, str]:
+        """The lifecycle of each book component whose studies ran other than its full one.
+
+        A package states these and no others, so a book of full lifecycles keeps its hash.
+
+        Returns:
+            Component id to lifecycle hash, for the light ones only.
+        """
+        hashes = {}
+        for value in self.recipe.components:
+            evidence = self._components[value.component_id]
+            recipe = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component(value.component_id)
+            if model_lifecycle_of(recipe, evidence.lifecycle_hash) != "FULL":
+                hashes[value.component_id] = evidence.lifecycle_hash
+        return hashes
 
     @property
     def tradability_decision_hash(self) -> str:

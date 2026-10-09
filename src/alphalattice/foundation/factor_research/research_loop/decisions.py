@@ -358,7 +358,7 @@ def verify_factor_research_curation(
 
     Writers, current reuse and handoff require it, with the installed policy. A
     recorded readback reopens the decision as it was sealed and computes nothing
-    (LAWS.md OP6, V90): its hashes and its actor's binding were checked as it
+    (LAWS.md OP6): its hashes and its actor's binding were checked as it
     loaded, the file it was read from is filed under the checkpoint it answers,
     and its caller labels the recorded policy historical, not current authority.
     Recompiling what a read reopened is the verify-all operation's work.

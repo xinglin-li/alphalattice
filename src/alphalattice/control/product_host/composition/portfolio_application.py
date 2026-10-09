@@ -16,6 +16,7 @@ from alphalattice.control.product_host.publication.portfolio_research import (
     PortfolioResearchPipelineStore,
 )
 from alphalattice.control.product_host.storage.input_references import ResearchInputStorage
+from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord, TaskReplan
 from alphalattice.control.task_control.runner import TaskControlRunner
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
@@ -454,6 +455,7 @@ class PortfolioResearchApplication:
             adapters={adapter.task_kind: adapter},
             runtime_path=str(self.session.runtime_path),
             clock=self.clock,
+            stage_scope=storage_capacity_scope,
         )
         try:
             record = self.session.task_control_registry.task(admitted.task_id)

@@ -71,7 +71,7 @@ def test_a_pack_is_installed_whole_or_not_at_all(tmp_path: Path) -> None:
 
 
 def test_an_interrupted_install_is_continued_and_a_bad_file_is_refused(tmp_path: Path) -> None:
-    """requirement (S4, first-day speed): a cancelled or broken install is never an
+    """requirement (first-day speed): a cancelled or broken install is never an
     installed pack, and what it staged is kept -- the next install fetches only
     what is missing; a file that arrives with another hash is removed and refused
     by name; an unadmitted file in the staging directory is not carried."""
@@ -121,7 +121,7 @@ def test_an_interrupted_install_is_continued_and_a_bad_file_is_refused(tmp_path:
 def test_a_broken_download_continues_from_its_last_byte(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (S4): the Hub fetcher streams into `<name>.part`, reports the
+    """Requirement: the Hub fetcher streams into `<name>.part`, reports the
     bytes as they arrive, and a transfer that breaks asks only for the rest (an
     HTTP range) -- in the same install, or in the next one; a server that sends
     the whole file again replaces the partial; the store verifies the result."""
@@ -211,7 +211,7 @@ def test_the_store_root_is_the_users(tmp_path: Path, monkeypatch: pytest.MonkeyP
 def test_a_retained_copy_is_linked_to_the_store_only_when_it_holds_the_packs_bytes(
     tmp_path: Path,
 ) -> None:
-    """requirement (V208): the retained recipe's own copy becomes links to the store's verified
+    """Requirement: the retained recipe's own copy becomes links to the store's verified
     packs, its bytes (which the capability hash binds) unchanged and read through the links; a
     copy whose bytes differ is refused by name; a swap cut short is finished by the next call;
     a layout already linked releases nothing."""

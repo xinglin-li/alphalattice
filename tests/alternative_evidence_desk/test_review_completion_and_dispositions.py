@@ -1,6 +1,6 @@
 """Completion is what was delivered; a review names the major negatives it finds.
 
-ER1 and ER5 on the controlled fifty-issuer book through the real service. An
+ and ER5 on the controlled fifty-issuer book through the real service. An
 issuer whose documents state nothing is read and clean of reported findings --
 not incomplete, not proof of no risk; an issuer with no source could not be
 read, and its healthy unit peers go on without it; both stay in the book's
@@ -77,7 +77,7 @@ def _prepared_and_analysed(service: Any) -> dict[str, Any]:
 def test_a_quiet_issuer_is_checked_and_a_sourceless_issuer_is_not_counted_as_reviewed(
     book: Any, tmp_path: Path
 ) -> None:
-    """requirement (ER1): completion comes from delivery facts. QA05's
+    """Requirement: completion comes from delivery facts. QA05's
     documents state no claim: it was read, nothing was reported, and it is
     reviewed. QA17 has no document: its unit's seven peers are prepared and
     analysed without it; QA17 is `SOURCE_MISSING`, named, in the denominator

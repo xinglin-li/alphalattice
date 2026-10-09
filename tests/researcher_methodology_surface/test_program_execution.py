@@ -506,7 +506,7 @@ def test_each_command_resolves_authority_and_compiles_once(
 def test_a_study_whose_inputs_moved_reads_by_its_recorded_program(
     real_risk_workspace: RealRiskWorkspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression (V108): a study whose upstream inputs moved compiles another Program, so its
+    """Regression: a study whose upstream inputs moved compiles another Program, so its
     live inspect read as not found unless `--program-hash` named the old one; it reads by the
     Program its document sealed, from the store's index, as `NOT_CURRENT`."""
 
@@ -539,7 +539,7 @@ def test_a_study_whose_inputs_moved_reads_by_its_recorded_program(
 def test_a_run_is_held_offline_and_a_plan_over_budget_is_refused_at_plan(
     real_risk_workspace: RealRiskWorkspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression (V116, V120): the offline rule read the process switch and only Risk's
+    """Regression: the offline rule read the process switch and only Risk's
     executor checked it, so an outcome followed the shell that started the process, and a Risk
     PLAN over its budget was stored and refused only at RUN. Every Desk's call runs held offline
     whatever its workspace allows, so a network open for an update refuses no study, and Risk's

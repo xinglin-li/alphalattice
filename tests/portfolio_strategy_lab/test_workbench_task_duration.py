@@ -17,7 +17,7 @@ pytestmark = pytest.mark.usefixtures("workbench_build")
 
 @pytest.mark.parametrize("case", ["collection-owner-spans", "selected-task-status"])
 def test_task_duration_reads_owner_spans_and_exact_selected_status(case):
-    """BEHAVIOUR F31/U174: public Task timing producer and retired-reader controls."""
+    """BEHAVIOUR F31/: public Task timing producer and retired-reader controls."""
     started = datetime(2026, 8, 1, 9, tzinfo=UTC)
     timing: dict[str, object] = {}
     for lifecycle in (TaskLifecycle.RUNNING, TaskLifecycle.SUCCEEDED):

@@ -212,7 +212,7 @@ class SealedBook:
     experiment_positions: tuple[PortfolioListingPosition, ...] | None = None
     experiment_effective_n: float = 0.0
     temporal_statements: tuple[str, ...] = ()
-    """What the book's window can claim about time, from its readback's Panel marks (V347):
+    """What the book's window can claim about time, from its readback's Panel marks:
     T0, the initial cohort, survivorship, the Sector treatment and the price basis."""
 
     @property
@@ -267,7 +267,7 @@ class BookSelector:
         another = (self.result_hash, self.handoff_hash, self.update_task_id)
         if named and len(named) < len(experiment) and any(v is not None for v in another):
             # A study's parts beside another book do not apply: named, so the request without
-            # them is offered (V546), as a stray position basis is (V290).
+            # them is offered, as a stray position basis is.
             raise PortfolioEvidenceReviewError(
                 "product_host.evidence_review_experiment_selector_invalid:" + ",".join(named)
             )
@@ -281,7 +281,7 @@ class BookSelector:
             and self.update_publication_hash is None
         ):
             # A position basis names an update's book only; beside another book it is refused
-            # by its name, with the request that works (V290).
+            # by its name, with the request that works.
             raise PortfolioEvidenceReviewError(
                 "product_host.evidence_review_update_selector_invalid:position_basis"
             )
@@ -321,7 +321,7 @@ class PortfolioEvidenceReviewInputs:
     read_update: Callable[[UUID, str], dict[str, object]] | None = None
     read_experiment: Callable[[UUID, str], dict[str, object]] | None = None
     installed_temporal_statements: Callable[[date, date], tuple[str, ...]] | None = None
-    """The installed strategy's research input stated for a window (V347): what an update, a
+    """The installed strategy's research input stated for a window: what an update, a
     handoff or a result book can claim about time."""
 
 
@@ -452,7 +452,7 @@ def open_sealed_book(inputs: PortfolioEvidenceReviewInputs, selector: BookSelect
 
 
 def _refuse_if_absent(error: ValueError, code: str) -> None:
-    """Refuse a book the workspace does not hold by its own code (V546).
+    """Refuse a book the workspace does not hold by its own code.
 
     The content-store owner identifies absence; a present artifact that does not validate
     keeps its corruption refusal. No caller inspects a filesystem cause.

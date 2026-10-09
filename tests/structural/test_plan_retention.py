@@ -1,5 +1,5 @@
-"""An owner reopens every plan an answer named by its hash (V493), after a restart too (V525),
-and builds each answer from that plan alone (V534)."""
+"""An owner reopens every plan an answer named by its hash, after a restart too,
+and builds each answer from that plan alone."""
 
 import ast
 import re
@@ -17,7 +17,7 @@ SINGLE_PLAN_STORES = frozenset(
 
 
 def test_an_answer_and_its_run_read_their_own_plan_never_the_owners_last() -> None:
-    """regression (V493; V534, V536, V537, the user's review at a84e523f): an owner kept only its
+    """Regression: an owner kept only its
     last plan, so two score plans in one Host left the first answer's run refused
     `strategy_score.plan_required`. Then the owners kept every plan by its hash, yet an input's
     capture, a strategy's preparation, the score, the calibration and the data update still
@@ -50,11 +50,11 @@ def test_an_answer_and_its_run_read_their_own_plan_never_the_owners_last() -> No
 
 
 def test_every_plan_is_sealed_on_disk_until_it_expires() -> None:
-    """regression (V525, S3, the user's review at d1ed8a25): a training plan saved by
+    """regression (S3, the user's review at d1ed8a25): a training plan saved by
     `training plan --output training.json` died with a Host restart, refused
     `model_training.preview_required`, since its owner kept plans in memory; the score, the
     calibration, a strategy's preparation, an input's capture and the workspace preparation
-    did too, and a data update's maintenance plan (V537). No owner keeps plans in a bare
+    did too, and a data update's maintenance plan. No owner keeps plans in a bare
     mapping: each keeps them in the plan store, rooted in the workspace's `runtime/`, and only a
     single-plan owner keeps its newest alone."""
 
@@ -89,9 +89,7 @@ def test_every_plan_is_sealed_on_disk_until_it_expires() -> None:
 
 
 def test_no_owner_keeps_a_preview_in_one_slot() -> None:
-    """regression (V543, the sweep of V534): the Foundation kept its preview in one attribute,
-    so a second preview took the first one's place and a Host restart lost it, refusing
-    `foundation seal` with no words. An attribute named for a preview holds the plan store."""
+    """Plan-store previews survive later previews and restarts."""
 
     slots = []
     for path in sorted(SRC.rglob("*.py")):
@@ -142,11 +140,7 @@ EXPIRY_WITHOUT_REPLAN = {
 
 
 def test_every_plan_expiry_refusal_offers_its_replan() -> None:
-    """regression (V543, the sweep of S1 and V537): S1 bound a re-plan to five expired plans,
-    while the data update's `plan_required`, the workspace preparation's `preview_required` and
-    the Foundation's seal answered a code with no request, the last with no words either. Every
-    plan-expiry code a request can meet has words and is answered beside a `replan` offer; the
-    rest are named with their reason."""
+    """Every plan-expiry refusal has words and a re-plan offer, or names its exception's reason."""
 
     import json
 
@@ -169,12 +163,7 @@ def test_every_plan_expiry_refusal_offers_its_replan() -> None:
 
 
 def test_the_study_kinds_goal_summaries_are_pinned() -> None:
-    """regression (V518 reverted, the fork's BLOCKING finding at 6ea56841c): a book Task's goal
-    summary is bytes of its goal and plan hashes, which `_checked_plan` rebuilds from the
-    current code and compares by equality. A reworded summary refused every book Task stored
-    before it, and no new book could be planned beside one. Each kind's summary is pinned here;
-    changing one needs a reader for the stored ones first (a hash rule change needs its stored
-    readers)."""
+    """A study Task's goal summary stays byte-identical so stored goal and plan hashes read back."""
 
     import inspect
 

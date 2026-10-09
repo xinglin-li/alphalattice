@@ -221,7 +221,7 @@ def alpha_verification_domain(path: str) -> AlphaVerificationDomain:
     if value.startswith("src/alphalattice/capabilities/alpha_modeling/") or value in {
         "src/alphalattice/investment/alpha_research/scores/refit.py",
         "src/alphalattice/investment/alpha_research/scores/model_renewal.py",
-        # One component's lifecycle admission, beside the renewal it prepares (V325).
+        # One component's lifecycle admission, beside the renewal it prepares.
         "src/alphalattice/investment/alpha_research/scores/lifecycle_preparation.py",
         "src/alphalattice/investment/alpha_research/targets/component_training.py",
         "src/alphalattice/investment/alpha_research/scores/product_lifecycle.py",

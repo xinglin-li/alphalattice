@@ -185,7 +185,7 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
     args.source_set_hash = result["source_set_hash"]
     replay = setup.materialize(args)
     # The first install replaced the workspace's prior package and says so, with what that does
-    # to the packets prepared under it (V547); the replay installs the same package again and
+    # to the packets prepared under it; the replay installs the same package again and
     # replaces nothing.
     assert result["replaced"] == old_binding.relative_path
     assert result["replaced_package_rule"] == PACKAGE_RULE
@@ -295,7 +295,7 @@ CUTOFF = "2026-08-12T00:00:00+00:00"
 def _rr5f_book(
     tmp_path, monkeypatch, capsys, universe, *, filed: int, quiet: int, failed: int
 ) -> Any:
-    """RR5f's first Evidence setup in small (V587): a book whose `filed` holdings filed an 8-K
+    """RR5f's first Evidence setup in small: a book whose `filed` holdings filed an 8-K
     inside the 30-day window before the cutoff, whose `quiet` ones filed a 10-Q a quarter
     before it, and whose `failed` ones filed inside it a body the source fails to serve, the
     installer's universe set to them. The workspace, the holdings by kind, the transport, and
@@ -395,7 +395,7 @@ def _rr5f_book(
 def test_the_installer_leaves_quiet_holdings_out_of_its_floor_as_the_coverage_run_does(
     tmp_path, monkeypatch, capsys, installer_universe
 ):
-    """requirement (V587, RR5f): the first Evidence authority setup judges its floor as the
+    """requirement (RR5f): the first Evidence authority setup judges its floor as the
     coverage run does -- an issuer whose filing index at the cutoff shows nothing filed in the
     window holds nothing to count -- the floor, cutoff and source checks unchanged. Four holdings
     with filings and four quiet install at 0.60 and the answer names which were quiet; the
@@ -444,7 +444,7 @@ def test_the_installer_leaves_quiet_holdings_out_of_its_floor_as_the_coverage_ru
 def test_a_failed_acquisition_counts_against_the_floor_and_its_refusal_offers_the_cutoff_again(
     tmp_path, monkeypatch, capsys, installer_universe
 ):
-    """requirement (V587, TE12): a quiet issuer leaves the share and a failed acquisition stays
+    """requirement (TE12): a quiet issuer leaves the share and a failed acquisition stays
     in it. Four holdings with filings, two quiet and two failed install at 0.60 -- four of six
     counted -- and the same book under a floor of 0.70 is refused with its numbers in words:
     covered, needed, quiet and failed. The refusal offers the same official acquisition again,
@@ -490,7 +490,7 @@ def test_a_failed_acquisition_counts_against_the_floor_and_its_refusal_offers_th
 def test_a_recorded_import_names_the_root_it_could_not_read_and_its_own_check_is_its_way_on(
     tmp_path, monkeypatch, capsys, installer_universe
 ):
-    """requirement (V590, RR5f): a recorded import given the artifact store's parent as its root
+    """requirement (RR5f): a recorded import given the artifact store's parent as its root
     is refused naming the option it read, the file it failed on relative to that root and what
     the option should hold, no absolute path, and its way on is the import's own check, offline,
     offered at the one directory below that root holding the named source set. That check, run
@@ -563,7 +563,7 @@ def test_a_recorded_import_names_the_root_it_could_not_read_and_its_own_check_is
 def test_a_recorded_import_whose_knowledge_root_lacks_an_object_names_it_under_that_option(
     tmp_path, monkeypatch, capsys, installer_universe
 ):
-    """requirement (V592): a recorded import whose knowledge root exists but lacks an object
+    """Requirement: a recorded import whose knowledge root exists but lacks an object
     the source set names is refused by that option, naming the object relative to the root and
     what the option must hold, its way on the import's own check and nothing created in the
     root it was given; a root that is not there is refused the same way, at the root itself,
@@ -642,7 +642,7 @@ _OPTION_CASES = {
     "source_artifact_root": ("--source-set-hash", "a" * 64),
     "source_set_hash": ("--source-set-hash", "../escape"),
 }
-"""A value of each option the setup refuses on, through its real entry (V591, V592); the
+"""A value of each option the setup refuses on, through its real entry; the
 knowledge root's own case is the recorded import's above."""
 
 
@@ -650,7 +650,7 @@ knowledge root's own case is the recorded import's above."""
 def test_every_option_the_setup_refuses_on_names_what_it_must_hold_from_the_offers_table(
     option, tmp_path, monkeypatch, capsys, installer_universe
 ):
-    """requirement (V591, V592, TE12): a setup refused on what an option holds names that
+    """requirement (TE12): a setup refused on what an option holds names that
     option and what it must hold, from the one table the Host's offer states (`SETUP_OPTIONS`),
     whichever option it is."""
 
@@ -688,7 +688,7 @@ def test_every_option_the_setup_refuses_on_names_what_it_must_hold_from_the_offe
 
 
 def test_the_setup_offer_and_its_refusals_read_one_table_of_what_each_option_must_hold() -> None:
-    """requirement (V591, TE12): the Host's setup offer states, for each option it leaves to
+    """requirement (TE12): the Host's setup offer states, for each option it leaves to
     the person, what it must hold, from `SETUP_OPTIONS`, as every refusal on an option names it;
     the installer keeps no text of its own, every option it refuses on is in the table, and the
     table holds exactly the options offered or refused on."""

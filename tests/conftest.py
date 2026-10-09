@@ -157,6 +157,23 @@ def plan_admission_check():
 
 
 @pytest.fixture(autouse=True)
+def _memory_checks_read_no_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The early memory refusal reads unknown memory, and skips, unless a test sets it.
+
+    The refusal compares a plan's estimate with the machine's free memory. A fixture's work
+    passes or fails by its own code, never by what else the host runs (PERF-1 item 3: a
+    preparation fixture was refused while another heavy set held commit).
+    """
+    # Found by its class among the loaded modules, as below: any test that can reach the gate
+    # loaded it at collection through the Host's composition.
+    for module in list(sys.modules.values()):
+        gate = getattr(module, "ResourceGate", None)
+        if isinstance(gate, type) and gate.__module__ == getattr(module, "__name__", None):
+            monkeypatch.setattr(module, "available_work_memory_bytes", lambda: None)
+            return
+
+
+@pytest.fixture(autouse=True)
 def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]:
     """Every answer an operation gives a test holds the model `schema show` publishes for it.
 

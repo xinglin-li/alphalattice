@@ -96,7 +96,7 @@ class HeldDataProvider:
     For the sessions the copy holds: each held member's stored bars, actions and adjusted
     closes, so an update's overlap refetch restates nothing. For each later session through
     ``through``: a bar a few basis points from the last, its adjusted close moving with it, so
-    an update past the copy's data publishes offline (V604). Read before the Host opens the
+    an update past the copy's data publishes offline. Read before the Host opens the
     copy; it records every fetch and, like ``RecordingProvider``, refuses them all while
     ``unavailable``.
     """
@@ -105,7 +105,7 @@ class HeldDataProvider:
 
     def __init__(self, workspace: Path, *, through: date, window_days: int = 70) -> None:
         market = MarketDataRepository(workspace)
-        # The admitted source root, every held member beside the research subset, as V599's held
+        # The admitted source root, every held member beside the research subset, as held
         # Friday serves it: a candidate's raw retry reads its own held history.
         manifest = market.source_admission_manifest(market_profile_id="us-current-index-research")
         covered = None if manifest is None else market.manifest_raw_range(manifest)
@@ -118,7 +118,7 @@ class HeldDataProvider:
         if reference is not None:
             listings[str(reference["symbol"])] = str(reference["listing_id"])
         self.listings = listings
-        # Each member's held current Sector, as V599's held Friday serves it; a member the copy
+        # Each member's held current Sector, as held Friday serves it; a member the copy
         # holds none for takes a populated held group's, a synthetic observation, not a claim
         # about its real Sector.
         self.sectors = {
@@ -216,7 +216,7 @@ class HeldDataProvider:
             listing_id = self.listings.get(symbol)
             if listing_id is None or not self.bars[listing_id]:
                 # A candidate the copy holds no history for: its retry records it unavailable,
-                # as V599's held Friday does; no data is invented for it.
+                # as held Friday does; no data is invented for it.
                 raise ProviderFetchError(
                     "data.empty_payload", "No fixture history", retryable=False
                 )

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from alphalattice.control.task_control.child import child_calls, run_in_child
-from alphalattice.control.task_control.contracts import TaskEvidence
+from alphalattice.control.task_control.contracts import TaskEvidence, TaskLifecycle
 from alphalattice.control.task_control.registry import (
     DuckDbTaskControlRegistry,
     resolve_task_control_database,
@@ -195,3 +195,84 @@ def test_each_stage_phase_keeps_its_spans_and_its_timing_reads_them_back(tmp_pat
     assert all(phase["execution_id"] for phase in first)
     plain = task_timing(record, items, now=now + timedelta(seconds=2))
     assert all(stage["phases"] == [] for stage in plain["stages"])  # type: ignore[union-attr]
+
+
+def test_a_stage_gate_refusal_blocks_the_stage_before_its_work(tmp_path: Path) -> None:
+    """requirement (PERF-1): the Host's memory check blocks a stage, recoverably, unexecuted."""
+    now = datetime(2026, 10, 8, 11, tzinfo=UTC)
+    registry = DuckDbTaskControlRegistry(
+        resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
+    )
+    envelope, goal, plan = task_contract(salt="stage-gate")
+    task = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+    runtime = tmp_path / "runtime" / "task-runtime.sqlite"
+    runtime.parent.mkdir(exist_ok=True)
+    executed: list[str] = []
+
+    class Recording(_SpannedAdapter):
+        def execute_stage(self, *, task, execution, work_item):  # type: ignore[no-untyped-def]
+            executed.append(work_item.stage_id)
+            return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+    runner = TaskControlRunner(
+        registry=registry,
+        adapters={"factor_research": Recording()},
+        runtime_path=str(runtime),
+        clock=lambda: now + timedelta(seconds=1),
+        heartbeat_seconds=0.01,
+        stage_gate=lambda _task: "execution.memory_insufficient",
+    )
+    try:
+        runner.run_next()
+    finally:
+        runner.close()
+    record = registry.task(task.task_id)
+    assert record.lifecycle is TaskLifecycle.BLOCKED
+    assert record.failure_code == "execution.memory_insufficient"
+    assert executed == []
+
+
+def test_each_stage_on_the_runners_thread_measures_storage_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """requirement: the runner opens the Host's storage scope around each stage
+    it runs alone, so a stage's admissions share one walk and the next stage walks again."""
+    from alphalattice.control.product_host.storage import inventory
+
+    now = datetime(2026, 10, 8, 14, tzinfo=UTC)
+    registry = DuckDbTaskControlRegistry(
+        resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
+    )
+    envelope, goal, plan = task_contract(salt="storage-scope")
+    task = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+    workspace = tmp_path / "workspace"
+    (workspace / "artifacts").mkdir(parents=True)
+    (workspace / "artifacts/panel.bin").write_bytes(b"p" * 100)
+    walks: list[Path] = []
+    walk = inventory.managed_file_inventory
+    monkeypatch.setattr(
+        inventory, "managed_file_inventory", lambda root: walks.append(root) or walk(root)
+    )
+
+    class Admitting(_SpannedAdapter):
+        def execute_stage(self, *, task, execution, work_item):  # type: ignore[no-untyped-def]
+            for _ in range(3):
+                inventory.require_storage_capacity(workspace, additional_bytes=10)
+            return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+    runtime = tmp_path / "runtime" / "task-runtime.sqlite"
+    runtime.parent.mkdir(exist_ok=True)
+    runner = TaskControlRunner(
+        registry=registry,
+        adapters={"factor_research": Admitting()},
+        runtime_path=str(runtime),
+        clock=lambda: now + timedelta(seconds=1),
+        heartbeat_seconds=0.01,
+        stage_scope=inventory.storage_capacity_scope,
+    )
+    try:
+        runner.run_next()
+    finally:
+        runner.close()
+    assert registry.task(task.task_id).lifecycle is TaskLifecycle.SUCCEEDED
+    assert len(walks) == 2  # one walk for each of the two stages, not one per admission

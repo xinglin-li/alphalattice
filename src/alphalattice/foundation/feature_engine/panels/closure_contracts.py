@@ -272,7 +272,7 @@ class PanelPartitionOrigin(_Contract):
     sector revisions may differ too, and are recorded, so a rematerializer
     can rebuild the exact binding a receipt group or chunk was produced
     under. An origin under a catalog the recipe's only adds columns to
-    records that catalog (V92): its batches computed cells the recipe's
+    records that catalog: its batches computed cells the recipe's
     catalog computes alike, and are replayed under their own binding.
     """
 
@@ -341,7 +341,7 @@ class PanelMembershipRecord(_Contract):
 
 
 class PanelSectorReclassification(_Contract):
-    """One listing's move to another Sector, read from its effective session on (V346)."""
+    """One listing's move to another Sector, read from its effective session on."""
 
     listing_id: str = Field(min_length=1)
     effective_session: date
@@ -385,7 +385,7 @@ class PanelDerivationRecipe(_Contract):
     # grid of ``sessions`` times ``listing_ids``.
     row_identity_basis: str | None = None
     membership: PanelMembershipRecord | None = None
-    # The reclassifications its sessions read (V346), in the order the Panel recorded them;
+    # The reclassifications its sessions read, in the order the Panel recorded them
     # absent while none is in force, so a recipe of such a Panel is what it was.
     sector_reclassifications: tuple[PanelSectorReclassification, ...] | None = Field(
         default=None, exclude_if=lambda value: value is None

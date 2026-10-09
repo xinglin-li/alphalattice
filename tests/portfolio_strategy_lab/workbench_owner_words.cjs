@@ -3,6 +3,10 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const library=require('./workbench_library.cjs'),finish=library.guard('workbench_owner_words');
 const appDir=process.argv[2],groups=JSON.parse(process.argv[3]),details=JSON.parse(process.argv[4]),w=library.words(appDir);
 const missing=[];
+const cause={exception_type:'DataTargetSessionLag',step:'prepare_data',detail:'At 2026-10-07, 0 of 10 listings have a market bar; the baseline needs at least 5. Latest common bar: 2026-09-10.'};
+w.I18N.set('en');const englishCause=String(w.causeLine(cause));w.I18N.set('zh');const chineseCause=String(w.causeLine(cause));
+assert.ok(chineseCause!==englishCause&&/[\u3400-\u9fff]/.test(chineseCause)&&!chineseCause.includes(cause.detail),'generated stop detail reads through its catalog key');
+assert.deepEqual(chineseCause.match(/\d+/g)?.sort(),englishCause.match(/\d+/g)?.sort(),'translated stop keeps every owner date and count');
 for(const [owner,codes] of Object.entries(groups)) {
   assert.ok(codes.length,'nonempty owner declaration: '+owner);
   for(const code of codes)if(owner==='actor kinds' ? !w.ACTORS[code] : !w.declaredCodeWord(code))missing.push(`${owner}: ${code}`);
@@ -43,6 +47,11 @@ for(const lang of ['en','zh']) {
 }
 // Every word table participates, even a branch this particular owner matrix does not render.
 w.I18N.set('zh');
+for(const [word,variants] of [['Case',['case']],['Human review required',['human review required']],['gaps',['gap','gap(s)']]]) {
+  assert.notEqual(w.t(word),word,'the canonical noun has a Chinese key: '+word);
+  for(const variant of variants)assert.equal(w.t(variant),w.t(word),'one declared noun translation: '+variant);
+  w.I18N.set('en');for(const variant of variants)assert.equal(w.t(variant),variant,'English spelling stays owned');w.I18N.set('zh');
+}
 for(const word of [...Object.values(w.CODE_WORDS),...Object.values(w.STATES).map(s=>s.word),...Object.values(w.STAGES).map(s=>s.word),...Object.values(w.ACTORS)])w.t(word);
 assert.deepEqual(Array.from(w.I18N.untranslated()),[],'all word declarations are keyed');
 const {babelParse,traverse}=require('../../third_party/playwright/node_modules/playwright/lib/transform/babelBundle.js');

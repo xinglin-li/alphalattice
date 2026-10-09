@@ -66,7 +66,7 @@ class TrancheExecutionError(PortfolioWalkForwardError):
 
 
 class EligiblePoolShort(TrancheExecutionError):
-    """A walk refused before its book opens, by a formation too short for a rebalance (V519).
+    """A walk refused before its book opens, by a formation too short for a rebalance.
 
     The formation has fewer tradable, scored names than a rebalance selects. It is the owner's
     stop, by that session, not a failure a resume clears: the same resolution refuses the same
@@ -430,7 +430,7 @@ class TrancheBookDecisionProvider(_SleeveBookProvider):
 
         The installed strategies' Risk is a factor model, whose report reads the attribution
         beside the holdings; a research study weighing by a development covariance's volatility
-        has no factor block, so it carries none (V310).
+        has no factor block, so it carries none.
         """
         if any(
             item.risk_allocation is not None
@@ -588,7 +588,7 @@ class TrancheBookDecisionProvider(_SleeveBookProvider):
             decision_eligible=resolved.decision_eligible,
             risk_allocation=resolved.risk_allocation,
             reference_weights=np.asarray(reference_weights, dtype=np.float64),
-            # A Sector history's per-session lanes read the formation's (V346).
+            # A Sector history's per-session lanes read the formation's.
             sector_exposure_matrix=(
                 self._sector_exposure_matrix[formation_index]
                 if self._sector_exposure_matrix.ndim == 3
@@ -1608,7 +1608,7 @@ def open_component_book(
                 )
     # Every formation the walk decides selects each component's names for a due sleeve from
     # those both tradable and scored; one with fewer is refused here, by its session, before
-    # the book opens, never in the middle of the walk (V519, V500's class).
+    # the book opens, never in the middle of the walk (class).
     for component in components:
         short = component.first_short_formation(
             len(component.formation_sessions) if formation_sessions is None else walked

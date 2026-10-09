@@ -140,6 +140,18 @@ def ensure_feature_current_schema(
     )
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS feature_year_seal (
+            catalog_hash VARCHAR NOT NULL,
+            year INTEGER NOT NULL,
+            view_hash VARCHAR NOT NULL,
+            epoch VARCHAR NOT NULL,
+            digest VARCHAR NOT NULL,
+            PRIMARY KEY (catalog_hash, year)
+        )
+        """
+    )
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS feature_input_cutoff_set (
             cutoff_set_hash VARCHAR PRIMARY KEY,
             input_cutoffs_json VARCHAR NOT NULL,
@@ -223,6 +235,14 @@ def ensure_feature_current_schema(
             "CREATE VIEW feature_daily_runtime AS SELECT * FROM feature_daily_current"
         )
     return layout
+
+
+def runtime_view_hash(connection: duckdb.DuckDBPyConnection) -> str:
+    """The runtime view's definition, by hash: a seal of its rows holds under that one only."""
+    row = connection.execute(
+        "SELECT sql FROM duckdb_views() WHERE view_name = 'feature_daily_runtime' AND NOT internal"
+    ).fetchone()
+    return sha256(str(row[0] if row is not None else "").encode()).hexdigest()
 
 
 def layered_row_hash(catalog_hash: str, part_row_hashes: Sequence[str]) -> str:

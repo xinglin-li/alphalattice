@@ -1,16 +1,16 @@
-"""What a result can claim: one typed standing generated from its owners' marks (V368).
+"""What a result can claim: one typed standing generated from its owners' marks.
 
 Whether a result ran to its end, whether its contract passed, whether it was compared with its
 baseline, what its evidence supports and whether a person may activate it are separate marks,
 each recorded by its owner in its own place: a Task's lifecycle or a trial's state, the Desk
-verifier's method standing or a formula factor's goldens, the owner's comparison (V363), the
+verifier's method standing or a formula factor's goldens, the owner's comparison, the
 study's lane, its qualification or the trial's screening, the activation registry and its
 preconditions. Every result answer -- a study, a book, a trial, a review packet -- carries them
 as one `standing`, each field from one mark and each value with one statement, so an agent and a
 person read one answer to what the result can claim, and a mark's new value changes the
-statement with no carrier edited, as V347's temporal statement does. The comparison comes first
-(V363). The launch budget is an agent session's, which every answer carries as
-`session_launches` (V364), never a result's mark.
+statement with no carrier edited, as the temporal statement does. The comparison comes first.
+The launch budget is an agent session's, which every answer carries as
+`session_launches`, never a result's mark.
 """
 
 from __future__ import annotations
@@ -76,8 +76,8 @@ _STATEMENTS: Final[Mapping[str, Mapping[str, str]]] = {
         "NONE": "No evidence yet.",
     },
     "activation": {
-        "ACTIVE": "Active: a person activated it, and a person deactivates it.",
-        "A_PERSON_MAY_ACTIVATE": "A person may activate it after reading it; an agent never does.",
+        "ACTIVE": "Active: its activation is recorded.",
+        "A_PERSON_MAY_ACTIVATE": "Read the exact activation offer for who may activate it.",
         "HELD": "It cannot be activated yet ({reason}).",
         "NOT_ACTIVATABLE": (
             "Nothing activates from it: it is evidence a person's decision rests on."
@@ -97,7 +97,7 @@ class ResultStanding(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     comparison: Comparison
-    """First (V363): whether its owner compared it with its baseline."""
+    """First: whether its owner compared it with its baseline."""
     execution: Execution
     contract: Contract
     evidence: Evidence
@@ -211,7 +211,7 @@ def trial_standing(
     stopped: Mapping[str, Any] | None,
     comparison: Mapping[str, Any] | None,
 ) -> ResultStanding:
-    """A feature trial's standing: its state, its screening and its comparison (V363).
+    """A feature trial's standing: its state, its screening and its comparison.
 
     Args:
         state: `RUNNING`, `COMPLETED` or `STOPPED`.

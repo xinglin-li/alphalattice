@@ -148,7 +148,7 @@ MAXIMUM_ANSWER_RESOLUTIONS = next(
     if isinstance(getattr(bound, "max_length", None), int)
 )
 """The open issues one answer resolves, the answer model's own bound, which the screen reads
-so the one past it is corrected by its author, never refused as the Host's limit (V576)."""
+so the one past it is corrected by its author, never refused as the Host's limit."""
 
 _SEVERITY: dict[CRORiskSeverity, CROSeverityIfTrue] = {
     CRORiskSeverity.HIGH: CROSeverityIfTrue.HIGH,
@@ -226,7 +226,7 @@ def screen_review_answer(raw: object, *, dossier: PortfolioReviewDossier) -> Scr
         problems.append(AnswerProblem(text="'resolved' must be a list."))
         written_resolutions = ()
     if len(written_resolutions) > MAXIMUM_ANSWER_RESOLUTIONS:
-        # As a list of risks past its bound: the first are read and the author corrects (V576).
+        # As a list of risks past its bound: the first are read and the author corrects.
         problems.append(
             AnswerProblem(
                 text=(

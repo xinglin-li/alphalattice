@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
@@ -33,6 +34,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 SESSION = "00000000-0000-4000-8000-0000000000f1"
+OTHER_SESSION = "00000000-0000-4000-8000-0000000000f2"
 FIRST_USE = {
     "title": "First use",
     "objective": "Build me a reviewed book from public data.",
@@ -41,7 +43,7 @@ FIRST_USE = {
 }
 
 
-def _cli(live: Any, *arguments: str) -> tuple[int, dict[str, Any]]:
+def _cli(live: Any, *arguments: str, session: str = SESSION) -> tuple[int, dict[str, Any]]:
     """One agent session's command, as its CLI sends it."""
     result = subprocess.run(
         [
@@ -56,7 +58,7 @@ def _cli(live: Any, *arguments: str) -> tuple[int, dict[str, Any]]:
         capture_output=True,
         text=True,
         timeout=60,
-        env={**os.environ, "CLAUDE_CODE_SESSION_ID": SESSION},
+        env={**os.environ, "CLAUDE_CODE_SESSION_ID": session},
     )
     return result.returncode, json.loads(result.stdout)["data"]
 
@@ -246,3 +248,105 @@ def test_a_first_use_is_the_one_before_the_first_preparation(
         caller="EXTERNAL_AUTOMATION",
     )
     assert answer["failure_code"] == "goal.first_use_after_preparation", answer
+
+
+def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on(
+    tmp_path: Path,
+) -> None:
+    """A first-use preparation's delegated data decision is recorded, shown and continued."""
+    from alphalattice.control.product_host.composition.local_web_session import (
+        LocalPortfolioWebSession,
+    )
+    from tests.researcher_methodology_surface.real_workspace import (
+        OBSERVED_AT,
+        _source_loader_for,
+    )
+    from tests.workspace_readiness.unexplained_move import unexplained_move
+
+    provider, symbols = unexplained_move()
+    live = LocalPortfolioWebSession.from_workspace(
+        tmp_path / "first-use", clock=lambda: OBSERVED_AT
+    )
+    live.data_provider = provider
+    live.data_source_loader = _source_loader_for(symbols)
+
+    def send(document: dict[str, Any], session: str = SESSION) -> tuple[int, dict[str, Any]]:
+        path = tmp_path / f"request-{len(list(tmp_path.glob('request-*')))}.json"
+        path.write_text(json.dumps(document), encoding="utf-8")
+        return _cli(live, "request", "--file", str(path), session=session)
+
+    with live:
+        declaration = tmp_path / "first-use.json"
+        declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
+        code, opened = _cli(live, "goal", "open", "--file", str(declaration))
+        assert code == 0, opened
+        delegation = f"first-use-goal:{opened['goal_id']}"
+        code, plan = _cli(live, "preparation", "plan")
+        code, started = send(plan["next_requests"]["confirm"])
+        assert started["status"] == "ADMITTED", started  # exit 3: the queued Task is pending
+        live.dispatcher.drain_for_tests(timeout=900)
+        registry = live.session.task_control_registry
+        stopped = registry.task(UUID(started["task_id"]))
+        assert stopped.failure_code == "data.truth_review_required", stopped
+
+        def page_projection() -> dict[str, Any]:
+            requests = {
+                "preparation": Request(operation="WORKSPACE_PREPARE_READBACK"),
+                "issues": Request(operation="DATA_ISSUES"),
+                "decisions": Request(operation="PENDING_DECISIONS"),
+                "recovery": Request(operation="TASK_RECOVERY", task_id=stopped.task_id),
+                "dataUpdate": Request(operation="DATA_UPDATE_READBACK"),
+                "activity": Request(operation="ACTIVITY_LIST", limit=200, watch=(stopped.task_id,)),
+            }
+            return {
+                key: live.operations.execute(request, caller="HUMAN")
+                for key, request in requests.items()
+            }
+
+        blocked_page = page_projection()
+
+        code, issues = _cli(live, "issue", "list")
+        assert issues["delegated_by"] == delegation
+        assert not any(name.startswith("delegate:") for name in issues["next_requests"])
+        previews = sorted(name for name in issues["next_requests"] if name.startswith("preview:"))
+        choice = min(previews, key=lambda name: ("retain" not in name, name))
+        code, preview = send(issues["next_requests"][choice])
+        assert preview["confirmation"] == "FIRST_USE_DELEGATION", preview
+        assert preview["executors"]["delegated_confirmation"] == delegation
+
+        # Another agent, outside the goal, may not decide it.
+        code, refused = send(preview["next_requests"]["confirm"], session=OTHER_SESSION)
+        assert code == 2 and _code(refused) == "feature_input.human_confirmation_required"
+
+        code, decided = send(preview["next_requests"]["confirm"])
+        assert code == 0 and _code(decided) is None, decided
+        node = shutil.which("node")
+        assert node is not None, "The Workbench holder requires the installed Node runtime."
+        app_dir = SCRIPT.parent.parent / "src/alphalattice/interface/local_application/assets"
+        subprocess.run(
+            [
+                node,
+                str(Path(__file__).with_name("workbench_workspace.cjs")),
+                str(app_dir / "workbench-source/js/app"),
+                "--blocked-preparation",
+            ],
+            input=json.dumps({**blocked_page, "decided": page_projection()}),
+            text=True,
+            check=True,
+            timeout=15,
+        )
+        code, successor_plan = send(decided["next_requests"][f"continue:{stopped.task_id}"])
+        assert successor_plan["predecessor_task_id"] == str(stopped.task_id), successor_plan
+        code, successor = send(successor_plan["next_requests"]["confirm"])
+        assert successor["status"] == "ADMITTED", successor
+        assert UUID(str(successor["task_id"])) != stopped.task_id
+
+        code, shown = _cli(live, "goal", "show", opened["goal_id"])
+        (step,) = [
+            s for s in shown["record"]["delegated_steps"] if s["operation"] == "DATA_ISSUE_CONFIRM"
+        ]
+        assert (step["delegation"], step["agent_session"]) == (delegation, SESSION)
+        assert (step["case_token"], step["option_id"]) == (
+            preview["next_requests"]["confirm"]["data_issue_case_token"],
+            preview["next_requests"]["confirm"]["data_issue_option_id"],
+        )

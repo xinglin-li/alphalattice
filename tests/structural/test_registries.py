@@ -63,7 +63,7 @@ def test_each_kind_of_new_entry_is_refused_by_its_registry(tmp_path: Path) -> No
 
 
 def test_the_tests_ratchet_refuses_an_entry_its_base_did_not_hold() -> None:
-    """regression (V16, LAWS.md TE5): five private imports passed the gate on 2026-09-30, each
+    """regression (LAWS.md TE5): five private imports passed the gate on 2026-09-30, each
     registered by hand beside its test; against the registry a change starts from, a new entry
     or a raised count is refused, and an entry kept or lowered is not."""
 
@@ -79,7 +79,7 @@ def test_the_tests_ratchet_refuses_an_entry_its_base_did_not_hold() -> None:
 
 
 def test_a_format_that_names_no_reader_or_a_missing_one_is_refused(tmp_path: Path) -> None:
-    """requirement (LAWS.md DA6, V267): a persisted format names its version, its readers and
+    """requirement (LAWS.md DA6): a persisted format names its version, its readers and
     its upgraders; an entry that names none, or a reader that is not a file, is refused."""
 
     registries = tmp_path / "config" / "registries"
@@ -207,7 +207,7 @@ def _owner_tree(root: Path) -> None:
 
 
 def test_a_decision_is_refused_outside_its_owner_naming_the_owner(tmp_path: Path) -> None:
-    """requirement (G2, V178; LAWS.md OW1, OP12): a Portfolio admission added to an existing Risk
+    """requirement (G2,; LAWS.md OW1, OP12): a Portfolio admission added to an existing Risk
     module, its imports otherwise unchanged, is refused by the decision it makes, naming the
     owner to write it in; in the owner it passes, and reading the type anywhere is a use."""
 

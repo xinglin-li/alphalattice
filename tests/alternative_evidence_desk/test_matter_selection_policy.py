@@ -237,8 +237,8 @@ def test_a_workspace_under_a_retired_selection_is_refused_by_name(
         assert preview["status"] == "EVIDENCE_PREREQUISITES_MISSING"
         assert preview["failure_code"] == "alternative_evidence.matter_selection_policy_retired"
         assert preview["next_action"] == "REINSTALL_THE_AUTHORITY_UNDER_THE_INTEGRATED_SELECTION"
-        assert "setup_help" not in preview  # the page reads `setup` since U68
-        # The rebind as it is typed, its workspace filled in (V405).
+        assert "setup_help" not in preview
+        # The rebind as it is typed, its workspace filled in.
         rebind = preview["setup"]["authority"]["install"]
         assert rebind.endswith(
             "--rebind-installed --matter-selection INTEGRATED_TOPIC_ROUTING --install"

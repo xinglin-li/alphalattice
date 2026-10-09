@@ -542,7 +542,7 @@ def test_one_reader_names_the_session_a_request_and_its_launches_count_to(
                     readers.setdefault(path.name, set()).add(node.name)
     assert readers == {
         "cli_contract.py": {"agent_session", "request_provenance"},
-        "client.py": {"_codex_queue_ready"},
+        "client.py": {"_codex_thread"},
     }, readers
 
 
@@ -2104,7 +2104,8 @@ def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_
     ], deferring
     plans = {
         "research update": (
-            inspect.getsource(decision_advancement.DecisionAdvancementApplication.plan),
+            # The plan's body; `plan` holds one request's completed scores around it.
+            inspect.getsource(decision_advancement.DecisionAdvancementApplication._plan),
             "TaskLifecycle.DEFERRED",
             "workspace_score_source_identity(",
         ),
@@ -2295,13 +2296,16 @@ def test_a_door_refusal_filled_with_its_subject_reads_in_chinese(
         ),
         (
             "workspace_data_update.transition_not_verified",
-            "The saved approved membership transition could not be verified against the current "
-            "Manifest, prior Panel and approved candidate document. Read the stopped update's "
-            "current record and resolve the mismatch through their original owners before "
-            "retrying the same approved update. Never edit a stored approval.",
-            "已保存并获批的成员变更无法通过当前清单、此前面板及已批准候选文件的核验。"
-            "请读取已停止更新的当前记录\uff0c通过这些记录的原所有者解决不一致后\uff0c再重试同一个"
-            "已获批准的更新。不要修改已存储的批准记录。",
+            "The approved stock-list change could not be verified against the current "
+            "membership, prior Panel and approved candidate document. If it stopped part-way, "
+            "with its new membership active while the Panel is still on the earlier one, this "
+            "version can neither resume nor re-plan it: the research and history already "
+            "recorded stay readable, and this workspace's daily updates resume with a later "
+            "AlphaLattice release. Never edit a stored approval.",
+            "已获批准的股票清单变更无法通过当前成员、此前面板及已批准候选文件的核验。若它在中途停止"
+            "\uff08新成员已生效而面板仍停在此前的成员上\uff09\uff0c当前版本既不能继续也不能重新计划它"
+            "\uff1a已记录的研究和历史仍可读取\uff0c这个工作区的每日更新将在 AlphaLattice 的"
+            "后续版本中恢复。不要修改已存储的批准记录。",
         ),
     ),
 )

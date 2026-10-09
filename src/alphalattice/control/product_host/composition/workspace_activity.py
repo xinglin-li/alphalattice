@@ -32,14 +32,18 @@ message, no worker error text, no owner refusal prose.
 
 from __future__ import annotations
 
+import functools
 import re
+import shutil
+import subprocess
 import threading
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Protocol, cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from alphalattice.control.observation_runtime.adapters import safe_observation_draft
@@ -63,11 +67,8 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
     PortfolioResearchOperations,
     task_status_body,
 )
-from alphalattice.control.task_control.contracts import (
-    TaskLifecycle,
-    TaskRecord,
-)
-from alphalattice.control.task_control.registry import TaskProjectionBatch
+from alphalattice.control.task_control.contracts import TaskLifecycle
+from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application.activity import (
     ActivityReadQuery,
@@ -85,6 +86,8 @@ from alphalattice.interface.local_application.activity import (
 )
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
+    WAIT_EXITS,
+    outcome_of,
     refusal_words,
 )
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
@@ -157,32 +160,6 @@ with its reference, or `None` when that kind publishes nothing this observer
 names. Opening is the verification: an index entry alone must not answer."""
 
 
-class TaskRegistryReader(Protocol):
-    """The registry surface this observer reads: one lookup and one bounded page."""
-
-    def task(self, task_id: UUID) -> TaskRecord:
-        """Read one exact retained task declaration.
-
-        Args:
-            task_id: Exact task identity.
-
-        Returns:
-            Durable task record supplied by Task Control.
-        """
-        ...
-
-    def projection_collection(self, task_ids: Iterable[UUID]) -> TaskProjectionBatch:
-        """Read a bounded Task projection collection with per-Task recovery refusals.
-
-        Args:
-            task_ids: Explicit selected identities.
-
-        Returns:
-            Valid projections and exact Task ids whose projections could not be rebuilt.
-        """
-        ...
-
-
 @dataclass
 class WorkspaceActivity:
     """One recorder and one bounded reader over the workspace ledger."""
@@ -203,7 +180,8 @@ class WorkspaceActivity:
     _sequences: dict[tuple[str, str], int] = field(default_factory=dict, init=False, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _dispatcher: LocalBackgroundDispatcher | None = field(default=None, init=False, repr=False)
-    _registry: TaskRegistryReader | None = field(default=None, init=False, repr=False)
+    _registry: DuckDbTaskControlRegistry | None = field(default=None, init=False, repr=False)
+    _wake_sender: ThreadPoolExecutor | None = field(default=None, init=False, repr=False)
     _operations: PortfolioResearchOperations | None = field(default=None, init=False, repr=False)
     _artifacts: ArtifactResolver | None = field(default=None, init=False, repr=False)
     _missing: int = field(default=0, init=False)
@@ -240,21 +218,106 @@ class WorkspaceActivity:
         self,
         *,
         dispatcher: LocalBackgroundDispatcher,
-        registry: TaskRegistryReader,
+        registry: DuckDbTaskControlRegistry,
         artifacts: ArtifactResolver,
         operations: PortfolioResearchOperations | None = None,
     ) -> None:
-        """Bind the owners read at command return; installs the dispatcher hook."""
+        """Bind the owners read at command return; installs the dispatcher hook.
+
+        Each Codex wake a stopped Host left mid-send is named uncertain here, never sent again.
+        """
         self._dispatcher = dispatcher
         self._registry = registry
         self._artifacts = artifacts
         self._operations = operations
         dispatcher.on_command_returned = self.command_returned
+        self._wake_sender = ThreadPoolExecutor(max_workers=1, thread_name_prefix="codex-wake")
+        for held in registry.interrupt_wakes(observed_at=self.clock()):
+            self._isolated(functools.partial(self._record_wake, held))
+
+    def replay_wakes(self) -> None:
+        """Send every pending wake whose Task reached its event while no hook saw it.
+
+        The start's replay, once the Host has resumed its Tasks.
+        """
+        self._wake_changed(None)
 
     def close(self) -> None:
-        """Close the optional observation ledger when it was successfully opened."""
+        """Finish the wake being sent, then close the optional observation ledger."""
+        sender, self._wake_sender = self._wake_sender, None
+        if sender is not None:
+            sender.shutdown(wait=True)
         if self._ledger is not None:
             self._ledger.close()
+
+    # ------------------------------------------------------------ Codex wakes
+
+    def _wake_changed(self, task_id: UUID | str | None) -> None:
+        """A Task may have reached a registered wake's event: send it on the wake thread."""
+        if self._wake_sender is not None:
+            self._wake_sender.submit(self._isolated, lambda: self._send_wakes(task_id))
+
+    def drain_wakes(self) -> None:
+        """Wait for the wakes already handed to the wake thread (tests)."""
+        if self._wake_sender is not None:
+            self._wake_sender.submit(lambda: None).result(timeout=120)
+
+    def _send_wakes(self, task_id: UUID | str | None) -> None:
+        """Send each pending wake whose Task needs its lead now, once (WAKE, R1).
+
+        A Codex turn ends its shell's children with it, so the Host, which outlives turns,
+        queues the one line. The attempt is committed before the call; a failure is named in the
+        Task's activity and never retried, and the lead's next read of the Task shows its state.
+        """
+        registry, dispatcher = self._registry, self._dispatcher
+        if registry is None or dispatcher is None:
+            return
+        for held in registry.wake_registrations(None if task_id is None else UUID(str(task_id))):
+            if held["state"] != "PENDING":
+                continue
+            task = UUID(held["task_id"])
+            lifecycle = dispatcher.status(task).lifecycle.value
+            event = WAIT_EXITS.get(lifecycle)
+            if event is None and outcome_of({"lifecycle": lifecycle}) != "PENDING":
+                event = "ENDED"
+            claimed = (
+                None
+                if event is None
+                else registry.claim_wake(
+                    held["registration_id"],
+                    task,
+                    event=event,
+                    lifecycle=lifecycle,
+                    observed_at=self.clock(),
+                )
+            )
+            if claimed is None:
+                continue
+            result = _queue_wake(
+                claimed["thread_id"],
+                f"Host event {event}: read and verify it with {claimed['read_command']}",
+            )
+            registry.finish_wake(held["registration_id"], task, result, observed_at=self.clock())
+            self._record_wake({**claimed, "result": result})
+
+    def _record_wake(self, held: Mapping[str, Any]) -> None:
+        """Name a wake's outcome in its Task's activity: delivered, or its failure."""
+        task_id = str(held["task_id"])
+        result = held["result"]
+        self._append(
+            schema_kind="TaskControlTransition",
+            source_kind=TASK_SOURCE_KIND,
+            source_id=self.source_id,
+            authority=ObservationAuthority.TASK_CONTROL_ASSERTION,
+            task_id=task_id,
+            run_id=task_run_id(task_id),
+            correlation_ids=(task_id,),
+            payload={
+                "task_lifecycle": held["lifecycle"],
+                "disposition": "WAKE_DELIVERED" if result["delivered"] else "WAKE_UNDELIVERED",
+                **({} if result["delivered"] else {"failure_code": result["failure"]}),
+            },
+        )
 
     @property
     def available(self) -> bool:
@@ -393,6 +456,10 @@ class WorkspaceActivity:
             )
 
         self._isolated(record)
+        # A registration, a cancel or a decision may have reached a wake's event.
+        task_id = returned_task_id(body)
+        if task_id is not None:
+            self._wake_changed(task_id)
 
     def failed(self, span: OperationSpan, error: BaseException) -> None:
         """Record a bounded safe operation failure while withholding arbitrary detail.
@@ -529,6 +596,7 @@ class WorkspaceActivity:
         owner that cannot answer degrades this observer, never the Task.
         """
         self._isolated(lambda: self._record_command_return(command_kind, task_id, failure))
+        self._wake_changed(task_id)
 
     def _record_command_return(self, command_kind: str, task_id: UUID, failure: str | None) -> None:
         dispatcher = self._dispatcher
@@ -976,6 +1044,12 @@ class WorkspaceActivity:
                 continue  # a watched id this workspace never admitted
             body = task_status_body(shown)
             body["task_record_hash"] = shown.task_record_hash
+            body["wakes"] = [
+                {**held, **refusal_words(held["result"]["failure"])}
+                if not held.get("result", {}).get("delivered", True)
+                else held
+                for held in registry.wake_registrations(task_id)
+            ]
             failure = dispatcher.failure(shown.task_id)
             body["worker_failure"] = failure
             body["worker_failure_type"] = failure_class_name(failure)
@@ -1129,6 +1203,32 @@ class WorkspaceActivity:
         return f"{ledger.store_epoch}:{ledger.head_ordinal()}"
 
 
+def _queue_wake(thread: str, message: str) -> dict[str, Any]:
+    """Queue one line to a Codex thread, once, and name the outcome.
+
+    A queued message arrives as a user message, so it carries no event body and no instruction:
+    only what happened and the command that reads it.
+    """
+    result: dict[str, Any] = {"channel": "codex-queue", "delivered": False}
+    codex = shutil.which("codex")
+    if codex is None:
+        return {**result, "failure": "CODEX_COMMAND_MISSING"}
+    try:
+        subprocess.run(
+            [codex, "queue", "--thread", thread, "--message", message],
+            check=True,
+            capture_output=True,
+            timeout=60,
+        )
+    except subprocess.CalledProcessError:
+        return {**result, "failure": "CODEX_QUEUE_FAILED"}
+    except subprocess.TimeoutExpired:
+        return {**result, "failure": "CODEX_QUEUE_TIMED_OUT"}
+    except OSError:
+        return {**result, "failure": "CODEX_QUEUE_START_FAILED"}
+    return {**result, "delivered": True}
+
+
 def _persisted_code(value: object) -> str | None:
     """A typed code as-is; any other failure text becomes the withheld marker."""
 
@@ -1162,7 +1262,6 @@ __all__ = [
     "TASK_SOURCE_KIND",
     "ArtifactReference",
     "ArtifactResolver",
-    "TaskRegistryReader",
     "WorkspaceActivity",
     "failure_class_name",
     "safe_enum_token",

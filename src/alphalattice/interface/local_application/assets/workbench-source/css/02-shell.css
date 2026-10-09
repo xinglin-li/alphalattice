@@ -1,8 +1,4 @@
-/* 02-shell — The window (phase 9, round 62): a sidebar of the objects that collapses to nothing
-   (Linear's), a slim top row over one lane, and the detail (law 149) that floats beside the lane
-   from the pane step up and is the pane's layer below it. The side sits on the canvas step; the lane is the face, inset
-   with a hairline and a rounded corner when the side is beside it. Files are concatenated in
-   name order by build.py; that order is the cascade order. */
+/* Files are concatenated in name order; that order is the cascade order. */
 [hidden] {
   display: none !important;
 }
@@ -23,11 +19,10 @@
 .window {
   display: grid;
   grid-template-columns: var(--grid-master);
-  --lead: var(--side-width, var(--side-default)); /* round 86: the person's width, dragged at the side's edge */
+  --lead: var(--side-width, var(--side-default));
   min-height: var(--vh);
   background: var(--surface-page);
 }
-/* Round 87: the fold animates (the dock to the rail and back); a drag is immediate. */
 .window {
   transition: grid-template-columns var(--dur-2) var(--curve-move);
 }
@@ -48,9 +43,6 @@ html.is-resizing .window {
   padding: var(--space-3) var(--space-2) var(--space-3);
   scrollbar-width: thin;
 }
-/* The dock's edge (round 86, Codex's): a 6 px grip inside the side's padding, at the lane's
-   side (round 87: mirrored for a right dock); a hairline shows under the pointer and while it
-   drags; the arrow keys move it when focused; past the fold the dock dims (it will fold). */
 .side-resize {
   display: none;
   position: absolute;
@@ -111,7 +103,6 @@ html.is-resizing {
   margin-top: var(--space-2);
   min-height: calc(var(--vh) - var(--space-2)); /* the face reaches the window's foot on a short page */
 }
-/* The face is inset on the dock's side (round 87): the corner and the hairline turn toward it. */
 html[data-dock=right] .lane-frame {
   border-left: 0;
   border-right: 1px solid var(--edge-card);
@@ -157,7 +148,7 @@ html[data-dock=right] .lane-frame {
   flex: none;
 }
 .top-where > .top-page:not([aria-current]) {
-  flex: 0 10 auto; /* round 87: the object's name gives way ten times before the current place does */
+  flex: 0 10 auto;
   min-width: 0;
   max-width: var(--share-crumb);
 }
@@ -172,9 +163,6 @@ html[data-dock=right] .lane-frame {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* N1 (law 129): folded, the verbs leave the row and stand as the page menu's first rows; then
-   the window's Recent and appearance leave it; then the state keeps its mark and says its word to
-   a reader of the page alone. */
 #top[data-fold~=verbs] .top-actions,
 #top[data-fold~=tools] :is(.top-recent-wrap, .top-appearance),
 .top-where > [data-folded],
@@ -182,8 +170,6 @@ html[data-dock=right] .lane-frame {
 .menu-row.menu-verb {
   display: none;
 }
-/* F3 (law 135): the folded upper levels are the `…` menu's rows; the `…` and its separator stand
-   where they stood, as narrow as a word (at 375 the place keeps the room). */
 .top-where > .top-fold-wrap {
   position: relative;
   display: inline-flex;
@@ -211,7 +197,6 @@ html[data-dock=right] .lane-frame {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-/* the list's word before an object gives way ten times before the object's name does (round 87) */
 .top-where > .top-group {
   flex: 0 10 auto;
   min-width: 0;
@@ -219,8 +204,6 @@ html[data-dock=right] .lane-frame {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* N1 (law 119): the page's (i) and its state follow the path's last segment; its actions stand in
-   the row's slot, a hairline between them and the window's own tools. */
 .top-where .top-info {
   display: inline-flex;
   flex: none;
@@ -241,8 +224,6 @@ html[data-dock=right] .lane-frame {
   align-items: center;
   gap: var(--space-2);
 }
-/* law 129: the top row is quiet -- a page's verb here is a word (and its glyph) without a ground or
-   a rim, the muted ink until the pointer comes; a filled button belongs to the content. */
 #top .top-actions :is(.button, .text-btn, a.button) {
   height: var(--control-sm);
   min-height: var(--control-sm);
@@ -351,7 +332,6 @@ main {
     padding: 0;
   }
 }
-/* ---- the side: the product at the head, the workspace at the foot (round 81) ---- */
 .side-head {
   display: flex;
   align-items: center;
@@ -444,7 +424,7 @@ main {
   height: var(--shell-row-height);
   padding: 0 var(--space-2);
   border-radius: var(--radius-control);
-  color: var(--text); /* round 84: a place is bright (Codex's nav); only a section label is muted */
+  color: var(--text);
   font-size: var(--style-callout-size);
   line-height: var(--style-callout-leading);
   text-decoration: none;
@@ -509,8 +489,7 @@ main {
   grid-auto-rows: max-content;
   margin-top: var(--space-2);
 }
-/* Studies' `+` (law 145): the group's new work, beside its chevron on the head's line -- quiet until the
-   pointer comes; its menu drops from it. It stands outside the head (a button in a button is none). */
+/* The Studies control stands outside the group head because a button cannot contain another button. */
 .side-group-new {
   position: absolute;
   top: calc((var(--shell-row-height) - var(--shell-tool-size)) / 2);
@@ -551,9 +530,6 @@ main {
 .side-group-head[aria-expanded=false] .icon:last-child {
   transform: rotate(-90deg);
 }
-/* Round 94 (Linear's group, the user's screenshot): the rows slide open over --dur-2 while the
-   chevron turns -- the fold is one grid row of 0fr → 1fr with the rows' box clipped inside it;
-   the words fade over --dur-1; a closed group's rows are hidden to the keyboard and the reader. */
 .side-group-fold {
   display: grid;
   grid-template-rows: 1fr;
@@ -587,13 +563,6 @@ main {
   padding-top: var(--space-2);
   border-top: 1px solid var(--edge-hair);
 }
-/* The placement (round 81, the Navigation setting; round 87, the Dock side: `html[data-nav]` is
-   the resolved layout, `html[data-dock]` the side). The dock is one column at the left or the
-   right -- expanded, the sidebar of words (`data-side=open`); folded, the 48 px rail of the
-   groups' glyphs (`data-side=closed`, a group's pages as a menu beside its glyph, the product
-   at the head, the workspace at the foot; it stays under the pushed layer). The drawer: no
-   column, the side is a panel over the lane from the dock's side, opened by its toggle, Ctrl \
-   or a mouse held at that edge, closed by Esc, a click outside or a navigation. */
 html[data-dock=right] .window {
   grid-template-columns: var(--grid-aside);
   --aside: var(--lead);
@@ -631,7 +600,7 @@ html[data-nav=drawer] .window[data-side=open] .side {
   inset: 0 auto 0 0;
   width: var(--side-default);
   z-index: var(--layer-menu);
-  animation: side-in var(--dur-2) var(--curve-move); /* its material the glass's (law 150, 12-material) */
+  animation: side-in var(--dur-2) var(--curve-move);
 }
 html[data-dock=right][data-nav=drawer] .window[data-side=open] .side {
   inset: 0 0 0 auto;
@@ -718,12 +687,6 @@ html[data-dock=right][data-nav=drawer] .window[data-side=open] .side[data-leavin
 @keyframes side-out-right {
   to { transform: translateX(100%); }
 }
-/* ---- the detail (law 149): one floating layer beside what it details ---- */
-/* A detail beside its list (the lane's reading column, 06-pages: a book's desk item, the Lab's PLAN, and
-   the window's detail a list hosts -- a Task's record, a factor's or a fold's evidence, a holding, a
-   saved object) and a detail of the page itself floating over the lane (`#inspector`: the page's
-   Facts and Record) are one layer: the glass (law 150, 12-material), `detail-width` wide, as tall as what
-   it holds up to the window's, pinned while the page scrolls under it, its own scroll kept to itself. */
 [data-layer="detail"] {
   min-width: 0;
   display: flex;
@@ -755,8 +718,6 @@ html[data-dock=right][data-nav=docked] .inspector[data-open] {
     right: calc(var(--lead) + var(--layout-pad));
   }
 }
-/* The detail's head (round 92): the kind line over the name (two lines, then an ellipsis), the close at
-   the right; the panel's tabs (Facts, Record) under them, the current one underlined in the text ink. */
 .reading-pane-head.detail-head { /* two classes: the reading's own head rule (06-pages) comes later in the cascade */
   flex-direction: column;
   align-items: stretch;
@@ -774,14 +735,13 @@ html[data-dock=right][data-nav=docked] .inspector[data-open] {
 .detail-head h2 {
   overflow: hidden;
   text-overflow: ellipsis;
-  display: -webkit-box; /* round 92: the name wraps to two lines, then an ellipsis -- never to nothing */
+  display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: var(--clamp-short);
 }
 .detail-head .inspector-tabs {
   margin: var(--space-2) 0 calc(-1 * var(--space-3));
 }
-/* The Facts mode's sections (round 64): a title-3 each, a hairline between them. */
 .inspector-section + .inspector-section {
   margin-top: var(--space-6);
   padding-top: var(--space-5);
@@ -790,9 +750,7 @@ html[data-dock=right][data-nav=docked] .inspector[data-open] {
 .inspector-section > h3 {
   margin-bottom: var(--space-3);
 }
-[data-layer="detail"] .list-row-main > strong { white-space: normal; } /* round 92: a worded row wraps in the column, never an ellipsis */
-/* The pane (round 81): one layer at a time -- the inspector covers the lane under the top row,
-   the top row's ← and Esc pop it, the rail stays at the right as the way out. */
+[data-layer="detail"] .list-row-main > strong { white-space: normal; }
 @media (width < 900px) {
 .rest {
     display: block;
@@ -824,7 +782,7 @@ html[data-dock=left][data-nav=docked] :is(.inspector[data-open], .lane-split.has
 .lane-frame {
     border: 0;
     border-radius: 0;
-    margin-top: 0; /* the pane is flat (round 81) */
+    margin-top: 0;
   }
 }
 @keyframes inspector-in {
@@ -871,8 +829,6 @@ html[data-dock=left][data-nav=docked] :is(.inspector[data-open], .lane-split.has
   display: flex;
   flex-shrink: 0;
 }
-/* A scroll region keeps its gutter and a thumb over no track; each region's owner says so for its
-   own (the table 04, the dialog 05, the editor 06; C1). */
 .inspector {
   scrollbar-gutter: stable;
 }
@@ -884,9 +840,6 @@ html[data-dock=left][data-nav=docked] :is(.inspector[data-open], .lane-split.has
   font-size: var(--style-callout-size);
   line-height: var(--style-callout-leading);
 }
-/* The page tools (round 19, revised): one ··· button after a hairline at the row's end; its menu
- * is a popover anchored under it, one step above the page on the ladder, each item a word and a
- * line. The one icon-only control a head carries, and the one everyone knows. */
 .object-actions > .rail-tools {
   position: relative;
   display: inline-flex;

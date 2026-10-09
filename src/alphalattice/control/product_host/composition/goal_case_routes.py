@@ -1,8 +1,8 @@
-"""The research case page's routes over goals, until the UI pass gives goals a section (U23).
+"""The research case page's compatibility routes over goals.
 
 The Workbench's case page still saves a research case document and reads a case record. This
-module translates both ways, so the page keeps working while goals replace research cases; it
-retires whole at the UI pass (ui-ledger U23), with the page's `/api/research/case*` calls.
+module translates both ways, so the page's `/api/research/case*` calls keep working while goals
+replace research cases.
 """
 
 from __future__ import annotations
@@ -144,7 +144,7 @@ def case_record(goal: Mapping[str, Any]) -> dict[str, Any]:
         "document": case_document(goal["declaration"]),
         "references": goal["references"],
         "statements": goal["statements"],
-        # Assignments are Team's now, in the goal's conversation; the UI pass shows them (U23).
+        # Assignments are Team's now, in the goal's conversation; the UI pass shows them.
         "assignments": [],
         "case_hash": goal["goal_hash"],
     }

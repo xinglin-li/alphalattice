@@ -112,7 +112,7 @@ def test_the_store_places_what_it_does_not_hold_and_verifies_what_it_holds(
 
 
 def test_an_operation_verifies_each_record_once(tmp_path: Path) -> None:
-    """regression (V87): inside one operation's scope a record loaded by its
+    """regression: inside one operation's scope a record loaded by its
     identity is read and verified once and its later loads return it; an
     operation inside another joins the scope; a record that is not frozen is
     never kept; outside a scope every load reads the file and verifies it

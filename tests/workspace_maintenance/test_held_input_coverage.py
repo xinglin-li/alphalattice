@@ -53,12 +53,12 @@ def _owner():
     ],
 )
 def test_all_three_held_bounds_include_the_target_only_when_research_ready(bounds, ready, expected):
-    """V599: an equal final session is held; one incomplete lane never is."""
+    """an equal final session is held; one incomplete lane never is."""
     assert _owner().historical_inputs_cover(_plan(bounds, ready)) is expected
 
 
 def test_zero_gap_refresh_planner_retains_overlap_but_does_not_decide_a_fetch():
-    """V599: the coordinator decides whether to invoke this refresh planner."""
+    """the coordinator decides whether to invoke this refresh planner."""
     from alphalattice.foundation.market_data_ops.runtime.refresh import normal_refresh_plan
 
     day = date(2026, 10, 2)

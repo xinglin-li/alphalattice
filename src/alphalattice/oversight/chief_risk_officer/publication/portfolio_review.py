@@ -69,7 +69,7 @@ class PortfolioReviewView:
 
     `under_installed_policy` is whether the review was sealed under the installed CRO
     review policy or one its recorded moves lead to, read from the receipt and
-    never recompiled (OP6, V90): the policy binds the compiler that chose the
+    never recompiled (OP6): the policy binds the compiler that chose the
     route. One sealed under an earlier policy reads back exactly as recorded;
     it is never reused as a current answer.
     """
@@ -83,7 +83,7 @@ class PortfolioReviewView:
 
     @property
     def person_action(self) -> dict[str, object] | None:
-        """What this review's recommendation asks a person to do, or None (V46).
+        """What this review's recommendation asks a person to do, or None.
 
         Read from the sealed recommendation, never decided here: its route when that route
         needs a person, and each required action only a person takes (a human review, a

@@ -42,7 +42,7 @@ const Controls = (() => {
     note.hidden = false;
     const described = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter((x) => x && x !== id);
     el.setAttribute('aria-describedby', [...described, id].join(' '));
-    el.dataset.tip = t(source); // round 93: the reason is the tooltip's, never the browser's title
+    el.dataset.tip = t(source); // Keep the reason in the product tooltip.
     el.dataset.reasonTitle = 'true';
   }
   function clearReason(el) {
@@ -57,12 +57,7 @@ const Controls = (() => {
       delete el.dataset.reasonTitle;
     }
   }
-  /* Round 90 (law 75, the sentence budget): outside rows and tables a grey line is one clause. A
-   * caption, a table's note, a form row's line, a note's explanation, an empty state's sentence or
-   * a definition longer than the budget keeps its first clause; the rest folds behind an (i) the
-   * peek card reads (`data-explain`). The words are the same; the page reads one line. A line
-   * with a control or a document inside, a lede, and a row's own line are left as written; a
-   * folded line carries its (i), so a repaint that keeps the element folds only fresh words. */
+
   const FOLD_AT = 90, FOLD_LINES = '.caption, .table-note, .form-line, .form-note, .note-line > span, .data-readiness-line > span, .section-empty > p, .kv > dd, .term-list dd, .sub-cell, .stat-basis > span, .field > small, .panel-body > p:not([class]), .proof-intro';
   const FOLD_ROOTS = ['#main', '#inspector', '#dialog'].map((r) => `${r} :is(${FOLD_LINES})`).join(', ');
   // every repaint is folded, whichever path painted it: the observer coalesces a paint's mutations into one pass
@@ -156,7 +151,7 @@ const Controls = (() => {
       if (!el.getAttribute('aria-describedby')) {
         const factor = el.matches('[data-factor],#factorLimits');
         // an option in a choice list (a radio, a checkbox) carries its own reason line: the note is
-        // for assistive technology only, never a visible column inside the option (round 22)
+
         const own = el.matches('input[type="radio"],input[type="checkbox"]');
         setReason(el, el.dataset.tip || el.title || 'Not available yet: it follows a choice or read that has not happened.', !own);
       }
@@ -182,33 +177,7 @@ const Controls = (() => {
       el.append(b);
     }
   }
-  /* Busy means "preparing a local preview", never queued, running or computed. */
-  function setPending(selector, on) {
-    for (const b of $$(selector)) {
-      if (on) {
-        b.dataset.uiState = 'pending';
-        b.setAttribute('aria-busy', 'true');
-        b.setAttribute('aria-disabled', 'true');
-        if (!b.querySelector('.busy-dot')) { // the label stays, dimmed, with the live dot before it
-          const s = document.createElement('i');
-          s.className = 'busy-dot';
-          s.setAttribute('aria-hidden', 'true');
-          b.prepend(s);
-        }
-      } else {
-        delete b.dataset.uiState;
-        b.removeAttribute('aria-busy');
-        b.removeAttribute('aria-disabled');
-        b.querySelector('.busy-dot')?.remove();
-      }
-    }
-  }
-  /* The keyboard walks a list (round 15): j / k and the arrows move the selection, Home / End
-   * jump, Enter opens the row's way, Escape clears it -- only when no field, editor, dialog or
-   * drawer has focus and no modifier is held. Round 52: one held row (`data-held`) in one list
-   * or table at a time (the list under focus, else the one holding a row, else the first); the
-   * held row is not the open record (`aria-current`). Tables walk like lists: every body row is
-   * a row, Enter follows its first link or button. */
+
   const ROW = '[data-row], tbody > tr';
   const LISTS = '#main .card-list, #main .data-table tbody';
   const rowsOf = (list) => [...list.querySelectorAll(ROW)].filter((r) => r.parentElement === list || r.closest('.card-list, tbody') === list);
@@ -218,7 +187,7 @@ const Controls = (() => {
     if (!['j', 'k', 'ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', 'Escape', ' '].includes(e.key)) return false;
     const a = document.activeElement, tag = a?.tagName || '';
     if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tag))) return false;
-    if (a && a.closest('[data-chart], .chart-navigator, .choice-list')) return false; // the chart, its navigator and the choice list own their keys (round 95)
+    if (a && a.closest('[data-chart], .chart-navigator, .choice-list')) return false; // Charts, navigators and choice lists handle their own keys.
     if ($('#dialog')?.open) return false;
     if (e.key === ' ' && a && a.matches('button:not(.list-row-main):not(.holding-name), a[href]') && !a.closest('[data-held]')) return false; // Space presses a control the reader focused
     const lists = $$(LISTS).filter((l) => l.offsetParent && rowsOf(l).length);
@@ -260,14 +229,11 @@ const Controls = (() => {
     rows[next].scrollIntoView({block: 'nearest'});
     rows[next].querySelector('.list-row-main, a[href], button[data-action]')?.focus?.({preventScroll: true});
     Inspect.peekFollow(rows[next]);
-    if (rows[next].classList.contains('tp-task') && typeof LiveTasks !== 'undefined') { if (typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.(); LiveTasks.follow(rows[next].dataset.key); } // round 58: the pane follows
+    if (rows[next].classList.contains('tp-task') && typeof LiveTasks !== 'undefined') { if (typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.(); LiveTasks.follow(rows[next].dataset.key); }
     e.preventDefault();
     return true;
   }
-  /* Round 42: the layer's keys, one owner. The topmost open surface (a popover, the drawer, a
-   * dialog; Quick Open keeps its input's keys) takes the arrows: Down / Up move focus among its
-   * items (wrapping in a menu, clamped in a sheet), Home / End jump; the row walker never sees a
-   * key while a surface is open. */
+
   const LAYER = ['.menu:not(.picker-pop):not([hidden])', '#dialog[open]:not(.quick-dialog)'];
   function layerKeys(e) {
     if (e.altKey || e.ctrlKey || e.metaKey) return false;
@@ -276,7 +242,7 @@ const Controls = (() => {
     const a = document.activeElement, tag = a?.tagName || '';
     if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tag))) return false;
     const menu = surface.matches('.menu');
-    const typeAhead = menu && !surface.querySelector('.menu-search') && /^[a-z0-9]$/i.test(e.key); // round 55: first letters where there is no field
+    const typeAhead = menu && !surface.querySelector('.menu-search') && /^[a-z0-9]$/i.test(e.key);
     if (!typeAhead && !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return false;
     if (!menu && !surface.contains(a)) return false;
     const items = [...surface.querySelectorAll('a[href], button:not([disabled]), [tabindex="0"]')].filter((x) => x.tabIndex >= 0 && x.getClientRects().length && !x.closest('[hidden]'));
@@ -302,10 +268,7 @@ const Controls = (() => {
     const row = $$('#main [data-row], #main tbody > tr').find((r) => r.dataset.key === walkKey);
     if (row) row.setAttribute('data-held', '');
   }
-  /* Round 51: the keyboard map (Linear's): one table, read by the key handler and rendered as
-   * the shortcuts sheet, so they never disagree. A chord ("G then H") waits 800 ms for its
-   * second key. A row with `run` is bound here; a row without one documents a key another owner
-   * implements. No row binds inside a field or while a layer is open. */
+
   const KEYMAP = [
     {group: 'General', keys: 'Ctrl K', words: 'Search pages, records and actions'},
     {group: 'General', keys: '?', single: '?', words: 'Keyboard shortcuts', run: () => Inspect.openShortcuts()},
@@ -382,7 +345,7 @@ const Controls = (() => {
       return false;
     }
     if (layerOpen()) { clearChord(); return false; }
-    if (e.key === ' ' && document.activeElement?.matches?.(Inspect.HOVER_LINKS)) { e.preventDefault(); Inspect.hoverCard(document.activeElement, true); return true; } // round 58: a focused link's card
+    if (e.key === ' ' && document.activeElement?.matches?.(Inspect.HOVER_LINKS)) { e.preventDefault(); Inspect.hoverCard(document.activeElement, true); return true; }
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (chord) {
       const row = KEYMAP.find((r) => r.chord === chord + ' ' + key);
@@ -403,18 +366,16 @@ const Controls = (() => {
     row.run();
     return true;
   }
-  /* Esc steps back one layer in one order: a menu (its own listener), the command menu and the
-   * dialogs (the native dialog), the peek, the detail (the window's column or the lane's reading,
-   * law 149), the drawer, focus mode, then the held row (the walk). Never two at once. */
+
   function escape(e) {
     if (e.key !== 'Escape' || $('#dialog')?.open) return false;
     if (Inspect.peekOpen()) { e.preventDefault(); Inspect.closePeek(); return true; }
-    if (Window.detailOpen()) { e.preventDefault(); Window.closeDetail(); return true; } // round 62: the inspector is one layer; law 149: the reading is the same layer
+    if (Window.detailOpen()) { e.preventDefault(); Window.closeDetail(); return true; } // The inspector and reading pane share one detail layer.
     if (!Window.docked() && Window.sideOpen()) { e.preventDefault(); Window.closeSideOverlay(); return true; } // the side's overlay
     if (Inspect.focus) { e.preventDefault(); Inspect.toggleFocus(); return true; }
     return false;
   }
-  return {sync, foldLines, setReason, clearReason, setPending, walk, keepWalk, layerKeys, keys, escape, keymap, chordFor, focusSearch};
+  return {sync, foldLines, setReason, clearReason, walk, keepWalk, layerKeys, keys, escape, keymap, chordFor, focusSearch};
 })();
 
 /* Layout is CSS-owned. The observer only reports measured boxes and content density. */
@@ -431,7 +392,7 @@ const Geometry = (() => {
     quiet = true;
     try { el.focus({preventScroll: true}); } finally { quiet = false; }
   }
-  // Law 149: a lane reading's height limit is the window under where it stands: it pins under the top
+
   // row once the page scrolls, and until then (opened near the list's top, under the page's head) its
   // foot stays in view -- `--detail-top`, in layout px like `--vh`, held by the lane so a reading a
   // repaint draws anew stands at its height from its first frame (never the pinned height for one).
@@ -458,7 +419,7 @@ const Geometry = (() => {
     const wrap = $('.lane-frame');
     if (!main || !wrap) return;
     const box = layoutRect(main);
-    const frame = layoutRect(wrap); // layout px (round 95): the reading space is judged in the layout's measure, not the zoomed one
+    const frame = layoutRect(wrap); // Judge reading space in layout pixels so zoom keeps one coordinate system.
     b.dataset.reading = readingRole();
     geometry = {page: app.page, profile: readingRole(), viewport: document.documentElement.clientWidth, frameLeft: frame.left, frameWidth: frame.width, contentLeft: box.left, contentWidth: box.width, authority: 'CSS_FRAME_1440', horizontalWrites: false};
   }
@@ -519,7 +480,7 @@ const Places = (() => {
     const main = $('#main');
     const active = document.activeElement;
     const scrolls = {};
-    // N5 (law 113): the Team's thread is the page's own scroll, kept as every page's is
+
     for (const sel of ['#yamlEditor', '.table-scroll']) {
       const el = $(sel);
       if (el) scrolls[sel] = {top: el.scrollTop, left: el.scrollLeft};

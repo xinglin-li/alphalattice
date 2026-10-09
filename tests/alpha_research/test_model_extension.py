@@ -166,7 +166,7 @@ def test_a_model_is_scaffolded_checked_and_passes_once_it_fits_and_predicts(
 def test_an_incomplete_state_names_each_field_it_lacks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (V350, AX9): a LINEAR state without its summaries is refused by a code that
+    """Requirement: a LINEAR state without its summaries is refused by a code that
     names each absent field, and the finding gives each one's type and shape, so an author reads
     no source to find them."""
 
@@ -216,7 +216,7 @@ def test_a_scaffold_refuses_a_new_dependency_and_an_existing_model(
 def test_the_host_runs_a_models_contract_once_per_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (V353): the Host keeps each model's contract answer by what it depends on, so
+    """Requirement: the Host keeps each model's contract answer by what it depends on, so
     a Models read runs no contract a second time; a model whose source moves is checked again."""
 
     root = _checkout(tmp_path)
@@ -413,7 +413,7 @@ def test_a_sandbox_tries_an_agents_model_on_a_workspace_at_rest(
 def test_a_model_begins_from_the_declaration_its_contract_writes(
     tmp_path: Path, capsys: Any
 ) -> None:
-    """requirement (V413, an outside review of the Skill and cards): a model's first step was
+    """requirement (an outside review of the Skill and cards): a model's first step was
     to guess a six-field declaration, refused as `model_declaration.invalid` alone. `model
     scaffold --save-declaration` writes one to edit, which the scaffold takes as it stands; a
     refused declaration names its fields; the sandbox's refusal names the flag it has."""
@@ -462,7 +462,7 @@ def test_a_model_begins_from_the_declaration_its_contract_writes(
 def test_a_sandbox_trial_runs_the_model_it_names_whatever_study_declares_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression (V414, an outside review at 3fa785fd): `model sandbox <model> --file <study>`
+    """regression (an outside review at 3fa785fd): `model sandbox <model> --file <study>`
     ran the file's own model and recorded the trial under <model>. The sandbox puts the model in
     the declared study's place, refuses a study that names none, and records a trial only when
     the study's readback names the model."""

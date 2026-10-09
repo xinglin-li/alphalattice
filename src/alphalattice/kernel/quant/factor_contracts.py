@@ -56,7 +56,7 @@ class FactorSpec(DomainModel):
     core_anchor: bool = False
 
     # Each rule refuses with its code at its field, so a refusal names the field and the rule
-    # and never a value (V453).
+    # and never a value.
     @field_validator("required_fields", "literature_sources")
     @classmethod
     def sorted_unique(cls, values: tuple[str, ...]) -> tuple[str, ...]:

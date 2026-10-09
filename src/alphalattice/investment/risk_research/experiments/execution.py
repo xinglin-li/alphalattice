@@ -276,7 +276,7 @@ class RiskExperimentExecutor:
         # bound a run to whichever file was read first.
         self._surface_provider = surface_provider
         self._return_reader = return_reader
-        # A history is immutable and read per formation (V346); a plain map is copied.
+        # A history is immutable and read per formation; a plain map is copied.
         self._sector_by_listing_id: Mapping[str, str] = (
             sector_by_listing_id
             if isinstance(sector_by_listing_id, SectorHistory)
@@ -320,7 +320,7 @@ class RiskExperimentExecutor:
             # would produce evidence for identity nobody admitted.
             raise AuthoringError("research_authoring.replay_identity_mismatch")
 
-        # The compile above checked the declared budget and threads (V120).
+        # The compile above checked the declared budget and threads.
         authorities = tuple(authority.for_scope(scope) for scope in authority.listing_scopes) or (
             authority,
         )

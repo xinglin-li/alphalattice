@@ -1,5 +1,5 @@
 # AlphaLattice first release
-Date: 2026-10-03
+Date: 2026-10-08
 
 The `0.1.0` first release is a local equity research workstation for a person and a Codex or Claude Code agent. Factor evidence and curation lead to Alpha; Risk runs on the same input. Portfolio consumes Alpha and only uses Risk when its allocation reads it. Evidence and the CRO review the exact book and retain coverage gaps. A report-only Risk association does not mean weights used a Risk model.
 
@@ -54,3 +54,26 @@ keeps its copied cards; set `model_reasoning_effort` in its `.codex/agents/` fil
 
 - Saved answers can be read offline by section; CI verifies source checkouts and the installed wheel.
 - A holding with an earlier finding or open issue stays in the CRO dossier when its new filing cannot be read; it remains unreviewed.
+
+## 0.1.3
+
+**Agents and Workbench**
+
+- Sessions bind automatically on their first workspace command; research opens a Goal automatically. The installing agent continues in the same session.
+- Only decisions outside the agent's authority wait for you; stopped steps keep their way on. Local Web follows the session's Goal and opens its progress, results and decisions.
+- Answers carry the next step's fields. The agent can wait in one call instead of sending repeated status commands.
+- One call prepares an installed strategy's book and its review bundles; Evidence and the CRO still supply their judgments.
+
+**Speed and Risk**
+
+- Recorded Windows runs with a four-core execution budget reduced an Alpha lifecycle replay from 718 to 235 seconds. Preparing training history took 8.3 seconds instead of 98 for one component, and 3.5 instead of 82 for another.
+- A measured daily update after model renewal fell from about 223 to 198 seconds; its seal fell from about 82 to 59 seconds. These are measured runs, not runtime guarantees.
+- Risk diagnostics are now computed single-threaded and reproducible across machines; re-run Risk studies made before 0.1.3.
+
+**Contributions and security**
+
+- Contribution and governance policies are available; contributions open once the CLA bot is active. Report vulnerabilities privately through GitHub's Security tab.
+
+**Known issue**
+
+- An existing workspace whose daily update crosses an index membership change (S&P 500 additions and removals) can stop part-way. That happens, for example, when a new company has no sector classification yet, a departing company's last prices are invalid, or a member needs a full-history audit. This release can neither resume nor re-plan that update. The workspace's research and history stay readable, and its daily updates resume with a later release. A new workspace is not affected.

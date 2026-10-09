@@ -1,20 +1,41 @@
-"""First use judges U0 from the rows the current source still explains,
+"""First use judges the counterexample from the rows the current source still explains,
 through real numerical owners with recorded source adapters."""
 
 from __future__ import annotations
 
 import json
+from contextvars import copy_context
+from datetime import date
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
-from alphalattice.control.task_control.contracts import TaskLifecycle
+from alphalattice.control.task_control.contracts import TaskLifecycle, WorkItemLifecycle
+from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
+from alphalattice.interface.local_application.client import LocalResearchClient
 from tests.portfolio_strategy_lab.local_web_support import _json
 from tests.researcher_methodology_surface.real_workspace import (
+    AS_OF,
     OBSERVED_AT,
     _source_loader_for,
 )
+from tests.workspace_maintenance.local_data_provider import RecordingProvider, recording_provider
+
+
+class LaggingProvider(RecordingProvider):
+    def __init__(self, symbols, *, lag_sessions=1):
+        super().__init__(symbols, recording_provider(now=OBSERVED_AT, symbols=symbols).sessions)
+        self.covered = dict.fromkeys(symbols, self.sessions[-lag_sessions - 1])
+
+    def fetch_daily(self, requested, *, start, end):
+        return {
+            symbol: super(LaggingProvider, self).fetch_daily(
+                (symbol,), start=start, end=min(end, self.covered.get(symbol, end))
+            )[symbol]
+            for symbol in requested
+        }
 
 
 def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
@@ -23,7 +44,7 @@ def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
     """counterexample: a row that exists is not a row that still applies to the source.
 
     First use has materialized every candidate's as-of row (the build that
-    the partial sector then refused) and U0 is not frozen. At the lawful
+    the partial sector then refused) and the counterexample is not frozen. At the lawful
     pause between two cycles -- the coordinator answered RUNNING after the
     sector exclusion, the next cycle has not started -- two legitimate
     corrections land through the existing write and audit entries, each
@@ -39,7 +60,7 @@ def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
     The early baseline judgement must not exclude A from its stale row: the
     row's source-verification receipt no longer verifies against today's
     inputs, so the judgement is left to the build, which recomputes both and
-    is then judged by the owner it always was. U0 therefore holds A and not
+    is then judged by the owner it always was. The counterexample therefore holds A and not
     B -- the same membership the original order (judge after the build)
     produces -- and B's exclusion carries its recomputed reason; the
     qualification obligation written into the membership earlier skips no
@@ -146,7 +167,7 @@ def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
 
     monkeypatch.setattr(WorkspaceMaintenanceCoordinator, "run", correct_between_cycles)
     with live:
-        # Keep the full U0 counterexample, with two cores per parallel test worker.
+        # Keep the full counterexample, with two cores per parallel test worker.
         budget = live.operations.set_cpu_budget("2", chosen_by="EXTERNAL_AUTOMATION")
         assert budget["status"] == "CPU_BUDGET" and budget["cpu_budget"] == 2
         plan = _json(live, "/api/workspace/preparation/plan", method="POST", payload={})
@@ -200,7 +221,7 @@ def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
         # The stale exclusion deferred the judgement to the sector-exclusion child, a
         # membership of its own (both corrected rows recomputed there); the membership that
         # judgement derived was built once more and published as the one Panel. Since W10
-        # (V102) the build is its maintenance cycle's step, so the passes are the cycle's
+        # the build is its maintenance cycle's step, so the passes are the cycle's
         # records.
         connection = market.database.connect(read_only=True)
         try:
@@ -238,3 +259,95 @@ def readiness_before_final(market, parent_revision: str, final):
     assert len(revisions) == 1, revisions
     assert revisions[0] != final.revision_sha256
     return revisions[0]
+
+
+def test_a_baseline_short_of_qualified_names_says_how_many_why_and_the_way_on(tmp_path: Path):
+    """Partial lag with five current names still reaches Feature's per-sector judgement.
+    The real numerical qualification and Host need more than ten seconds."""
+
+    symbols = tuple(f"F{i:03d}" for i in range(10))
+    provider = LaggingProvider(symbols, lag_sessions=20)
+    latest = provider.sessions[-21]
+    provider.covered.update(dict.fromkeys((*symbols[:2], *symbols[5:8]), AS_OF))
+    live = LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT)
+    live.data_provider = provider
+    live.data_source_loader = _source_loader_for(symbols)
+    with live:
+        plan = _json(live, "/api/workspace/preparation/plan", method="POST", payload={})
+        admitted = _json(
+            live,
+            "/api/workspace/preparation/confirm",
+            method="POST",
+            payload={"preparation_plan_hash": plan["plan_hash"]},
+        )
+        live.dispatcher.drain_for_tests(timeout=900)
+        task = live.session.task_control_registry.task(UUID(admitted["task_id"]))
+        assert task.failure_code == "feature.baseline_qualified_population_insufficient", task
+        shown = LocalResearchClient(live.workspace).request(
+            {"operation": "STATUS", "task_id": admitted["task_id"]}
+        )
+    assert "five in each sector present" in shown["detail"], shown["detail"]
+    cause = shown["failure_cause"]
+    assert cause["exception_type"] == "FeatureBaselinePopulationError"
+    assert cause["detail"].startswith(f"5 of 10 candidates qualify at {AS_OF}"), cause
+    assert f"5 no market observation at the session (latest bar {latest})" in cause["detail"]
+
+
+def test_a_lagging_provider_resumes_its_data_stage_before_any_feature_work(tmp_path, monkeypatch):
+    """Real Host, source admission and publication's 100-listing floor take over ten seconds."""
+    symbols = tuple(f"L{i:03d}" for i in range(100))
+    provider = LaggingProvider(symbols)
+    target, latest = provider.sessions[-1], provider.sessions[-2]
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    monkeypatch.setenv("CODEX_THREAD_ID", "00000000-0000-4000-8000-0000000000d1")
+    live = LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT)
+    live.data_provider, live.data_source_loader = provider, _source_loader_for(symbols)
+    with live:
+        agent = LocalResearchClient(tmp_path)
+        goal = dict(kind="FIRST_USE", title="First use", objective="Build a reviewed book.")
+        goal["criteria"] = [dict(criterion_id="book", text="A reviewed book.")]
+        opened = agent.request(
+            dict(operation="GOAL_OPEN", goal_declaration=goal, change_reason="First")
+        )
+        assert opened["goal_id"]
+        budget = agent.request(dict(operation="CPU_BUDGET_SET", cpu_budget="2"))
+        assert budget["cpu_budget"] == 2
+        plan = agent.request({"operation": "WORKSPACE_PREPARE_PLAN"})
+        admitted = agent.request(plan["next_requests"]["confirm"])
+        assert admitted["status"] == "ADMITTED", admitted
+        task_id = UUID(admitted["task_id"])
+        registry = live.session.task_control_registry
+        read = dict(operation="WORKSPACE_PREPARE_READBACK", task_id=str(task_id))
+        chinese = copy_context()
+        chinese.run(ANSWER_LANGUAGE.set, "zh")
+        for reaching in (0, 4):
+            live.dispatcher.drain_for_tests(timeout=900)
+            record, stages = registry.task_with_work_items(task_id)
+            stages = {stage.stage_id: stage for stage in stages}
+            assert record.lifecycle is TaskLifecycle.DEFERRED
+            assert record.failure_code == "data.target_session_not_covered"
+            assert stages["freeze_sources"].lifecycle is WorkItemLifecycle.VERIFIED
+            status = agent.request({"operation": "STATUS", "task_id": str(task_id)})
+            assert status["failure_cause"]["step"] == "prepare_data"
+            detail = status["failure_cause"]["detail"]
+            facts = (str(target), f"{reaching} of 100", "at least 5", str(latest))
+            assert all(value in detail for value in facts)
+            translated = chinese.run(worded, detail)
+            assert translated != detail and any("\u4e00" <= c <= "\u9fff" for c in translated)
+            assert all(str(v) in translated for v in (target, latest, reaching, 100, 5))
+            assert stages["prepare_features"].attempt_count == 0
+            assert date.fromisoformat(record.input.payload["plan"]["target_session"]) == target
+            held = agent.request(read)
+            assert held["failure_code"] == record.failure_code
+            resume = held["next_requests"]["resume"]
+            assert resume["preparation_plan_hash"] == plan["plan_hash"]
+            covered = symbols[:4] if reaching == 0 else symbols
+            provider.covered.update(dict.fromkeys(covered, target))
+            provider.calls.clear()
+            assert agent.request(resume)["task_id"] == str(task_id)
+        live.dispatcher.drain_for_tests(timeout=900)
+        assert registry.task(task_id).lifecycle is TaskLifecycle.SUCCEEDED
+        finished = agent.request(read)
+        assert finished["inputs"] and finished["published_binding_hash"]
+        fetched = {symbol for names, _, _ in provider.calls for symbol in names}
+        assert fetched.intersection(symbols) == set(symbols[4:])

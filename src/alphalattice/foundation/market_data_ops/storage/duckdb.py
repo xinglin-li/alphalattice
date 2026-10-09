@@ -6,6 +6,7 @@ import functools
 import hashlib
 import json
 import math
+from bisect import bisect_left
 from collections.abc import Buffer, Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass
@@ -414,6 +415,21 @@ _SELECTED_PROVIDER_SQL = """
     )
 """
 """Each listing's latest provider mapping, ``_provider_for_listing``'s rule, for a listing set."""
+
+
+def _selected_providers(
+    connection: duckdb.DuckDBPyConnection, listing_ids: Sequence[str]
+) -> dict[str, str | None]:
+    """Each listing's latest provider mapping by `_SELECTED_PROVIDER_SQL`, None without one."""
+    if not listing_ids:
+        return {}
+    return {
+        str(listing): None if provider is None else str(provider)
+        for listing, provider in connection.execute(
+            _SELECTED_PROVIDER_SQL + "SELECT listing_id, provider FROM selected_provider",
+            [list(listing_ids)],
+        ).fetchall()
+    }
 
 
 def _raw_bar_query(
@@ -3427,6 +3443,27 @@ class MarketDataRepository(WorkspaceRepository):
             raise ValueError("current-universe maintenance does not exist")
         return CurrentUniverseMaintenanceRun(*row)
 
+    def current_universe_maintenance_counts(self, maintenance_id: str) -> tuple[int, int, int]:
+        """One maintenance's units, and those UPDATED and FAILED, counted in the engine.
+
+        The counts ``current_universe_maintenance_listings`` would give, without reading or
+        parsing any unit's change document: what a run's progress reports.
+        """
+        connection = self._connect(read_only=True)
+        try:
+            row = connection.execute(
+                """
+                SELECT count(*), count(*) FILTER (WHERE state = 'UPDATED'),
+                       count(*) FILTER (WHERE state = 'FAILED')
+                FROM current_universe_maintenance_listing WHERE maintenance_id = ?
+                """,
+                [maintenance_id],
+            ).fetchone()
+        finally:
+            connection.close()
+        assert row is not None
+        return int(row[0]), int(row[1]), int(row[2])
+
     def current_universe_maintenance_listings(
         self, maintenance_id: str
     ) -> tuple[CurrentUniverseMaintenanceListing, ...]:
@@ -3569,14 +3606,17 @@ class MarketDataRepository(WorkspaceRepository):
         maintenance_id: str,
         listing_id: str,
         observed_at: datetime,
+        _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> int:
         """Record one resumable listing attempt before any Provider call.
 
         The attempt consumes a held retry grant: the grant was for this
         attempt, whatever its outcome, so a later restart or continuation
         cannot spend it again.
+
+        ``_connection`` is the caller's open transaction, which the caller commits.
         """
-        connection = self._connect()
+        connection = _connection or self._connect()
         try:
             row = connection.execute(
                 """
@@ -3595,7 +3635,8 @@ class MarketDataRepository(WorkspaceRepository):
                 raise ValueError("maintenance listing is not pending")
             return int(row[0])
         finally:
-            connection.close()
+            if _connection is None:
+                connection.close()
 
     def requeue_failed_current_universe_maintenance_listings(
         self,
@@ -3689,9 +3730,13 @@ class MarketDataRepository(WorkspaceRepository):
         failure_code: str | None = None,
         raw_through: date | None = None,
         change_document: dict[str, object] | None = None,
+        _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> None:
-        """Update one maintenance listing's state and observed evidence."""
-        connection = self._connect()
+        """Update one maintenance listing's state and observed evidence.
+
+        ``_connection`` is the caller's open transaction, which the caller commits.
+        """
+        connection = _connection or self._connect()
         try:
             result = connection.execute(
                 """
@@ -3715,7 +3760,8 @@ class MarketDataRepository(WorkspaceRepository):
             if result.rowcount == 0:
                 raise ValueError("maintenance listing does not exist")
         finally:
-            connection.close()
+            if _connection is None:
+                connection.close()
 
     def set_current_universe_maintenance_lifecycle(
         self,
@@ -4060,12 +4106,14 @@ class MarketDataRepository(WorkspaceRepository):
         *,
         ingestion_id: str,
         observed_at: datetime,
+        _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> dict[str, int]:
         """Apply a normal, bounded refresh atomically.
 
         The normal 45-day overlap may add or correct observed action rows, but
         never retracts an action that is simply absent from a partial refresh.
         Only :meth:`complete_action_audit` has that authority.
+        ``_connection`` is the caller's open transaction, which the caller commits.
         """
         observed_at = _utc_naive(observed_at)
         self._assert_manifest_scope(manifest, (item.listing_id for item in batch.bars))
@@ -4088,10 +4136,11 @@ class MarketDataRepository(WorkspaceRepository):
             for bar in batch.bars
         ]
         stage_name = "validated_raw_bar_stage"
-        connection = self._connect()
+        connection = _connection or self._connect()
         inserted = corrected = action_inserted = action_corrected = 0
         try:
-            connection.execute("BEGIN TRANSACTION")
+            if _connection is None:
+                connection.execute("BEGIN TRANSACTION")
             connection.register(stage_name, pa.Table.from_pylist(bar_rows))
             inserted, corrected = connection.execute(
                 f"""
@@ -4220,7 +4269,8 @@ class MarketDataRepository(WorkspaceRepository):
                     observed_at,
                 ],
             )
-            connection.execute("COMMIT")
+            if _connection is None:
+                connection.execute("COMMIT")
             return {
                 "inserted": inserted,
                 "corrected": corrected,
@@ -4228,12 +4278,14 @@ class MarketDataRepository(WorkspaceRepository):
                 "action_corrected": action_corrected,
             }
         except Exception:
-            connection.execute("ROLLBACK")
+            if _connection is None:
+                connection.execute("ROLLBACK")
             raise
         finally:
             with suppress(duckdb.Error):
                 connection.unregister(stage_name)
-            connection.close()
+            if _connection is None:
+                connection.close()
 
     def _mapping_revision(
         self,
@@ -4418,24 +4470,55 @@ class MarketDataRepository(WorkspaceRepository):
         history_start: date,
         history_end: date,
     ) -> str:
-        current = connection.execute(
+        return self._raw_evidence_hashes(
+            connection, {listing_id: (provider, history_start, history_end)}
+        )[listing_id]
+
+    @staticmethod
+    def _raw_evidence_hashes(
+        connection: duckdb.DuckDBPyConnection, ranges: Mapping[str, tuple[str, date, date]]
+    ) -> dict[str, str]:
+        """Each listing's raw-evidence hash over its own provider and sessions, read once.
+
+        A listing's current payload hashes and bar revisions in its range, by session (and
+        revisions by observation), under one provider: the evidence an action audit and a
+        Feature write bind. ``ranges`` maps a listing to its provider and first and last session.
+        """
+        if not ranges:
+            return {}
+        scope = sorted(ranges)
+        low = min(start for _provider, start, _end in ranges.values())
+        high = max(end for _provider, _start, end in ranges.values())
+        current: dict[str, list[tuple[object, ...]]] = {listing: [] for listing in scope}
+        for listing, provider, *row in connection.execute(
             """
-            SELECT session_date, payload_hash FROM raw_daily_bar_current
-            WHERE listing_id = ? AND provider = ? AND session_date BETWEEN ? AND ?
-            ORDER BY session_date
+            SELECT listing_id, provider, session_date, payload_hash FROM raw_daily_bar_current
+            WHERE listing_id IN (SELECT unnest(?::VARCHAR[])) AND session_date BETWEEN ? AND ?
+            ORDER BY listing_id, session_date
             """,
-            [listing_id, provider, history_start, history_end],
-        ).fetchall()
-        revisions = connection.execute(
+            [scope, low, high],
+        ).fetchall():
+            selected, start, end = ranges[listing]
+            if provider == selected and start <= row[0] <= end:
+                current[listing].append(tuple(row))
+        revisions: dict[str, list[tuple[object, ...]]] = {listing: [] for listing in scope}
+        for listing, provider, *row in connection.execute(
             """
-            SELECT session_date, prior_payload_hash, next_payload_hash, observed_at
+            SELECT listing_id, provider, session_date, prior_payload_hash, next_payload_hash,
+                   observed_at
             FROM bar_revision
-            WHERE listing_id = ? AND provider = ? AND session_date BETWEEN ? AND ?
-            ORDER BY session_date, observed_at
+            WHERE listing_id IN (SELECT unnest(?::VARCHAR[])) AND session_date BETWEEN ? AND ?
+            ORDER BY listing_id, session_date, observed_at
             """,
-            [listing_id, provider, history_start, history_end],
-        ).fetchall()
-        return _canonical_hash({"current": current, "revisions": revisions})
+            [scope, low, high],
+        ).fetchall():
+            selected, start, end = ranges[listing]
+            if provider == selected and start <= row[0] <= end:
+                revisions[listing].append(tuple(row))
+        return {
+            listing: _canonical_hash({"current": current[listing], "revisions": revisions[listing]})
+            for listing in scope
+        }
 
     def _action_evidence_hash(
         self, connection: duckdb.DuckDBPyConnection, *, listing_id: str, provider: str
@@ -4468,7 +4551,21 @@ class MarketDataRepository(WorkspaceRepository):
     def _provider_adjusted_return_changes(
         prior: Mapping[date, float],
         current: Mapping[date, float],
+        *,
+        refreshed_from: date | None = None,
     ) -> tuple[date, ...]:
+        """The sessions whose log return differs between two adjusted series.
+
+        `refreshed_from` names the first session a rolling refresh replaced, every earlier one
+        kept as it was: a return can then change only from the kept session before it, so the
+        earlier returns, which read the same two closes on both sides, are not compared.
+        """
+        if refreshed_from is not None:
+            since = max((session for session in prior if session < refreshed_from), default=None)
+            if since is not None:
+                prior = {session: close for session, close in prior.items() if session >= since}
+                current = {session: close for session, close in current.items() if session >= since}
+
         def returns(values: Mapping[date, float]) -> dict[date, float]:
             sessions = sorted(values)
             return {
@@ -4542,7 +4639,13 @@ class MarketDataRepository(WorkspaceRepository):
             1 for session, value in observed.items() if prior.get(session) != value
         )
         session_set_changed = bool(prior) and set(prior) != set(next_values)
-        return_changes = self._provider_adjusted_return_changes(prior, next_values) if prior else ()
+        return_changes = (
+            self._provider_adjusted_return_changes(
+                prior, next_values, refreshed_from=None if full_history else min(observed)
+            )
+            if prior
+            else ()
+        )
         uniform_rescale = bool(changed_values) and not return_changes and not session_set_changed
         stage_name = "provider_adjusted_close_stage"
         stage = pa.Table.from_pylist(
@@ -4636,9 +4739,13 @@ class MarketDataRepository(WorkspaceRepository):
         *,
         through: date,
         start: date | None = None,
+        _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> tuple[ProviderAdjustedClosePoint, ...]:
-        """Read provider-adjusted closes for one listing within a date range."""
-        connection = self._connect(read_only=True)
+        """Read provider-adjusted closes for one listing within a date range.
+
+        ``_connection`` is the caller's connection: it sees that transaction's own writes.
+        """
+        connection = _connection or self._connect(read_only=True)
         try:
             provider = self._provider_for_listing(connection, listing_id)
             rows = connection.execute(
@@ -4654,7 +4761,8 @@ class MarketDataRepository(WorkspaceRepository):
                 for row in rows
             )
         finally:
-            connection.close()
+            if _connection is None:
+                connection.close()
 
     def provider_adjusted_close_panel(
         self,
@@ -4737,10 +4845,13 @@ class MarketDataRepository(WorkspaceRepository):
         )
 
     def provider_adjusted_revision(
-        self, source_receipt_hash: str
+        self, source_receipt_hash: str, *, _connection: duckdb.DuckDBPyConnection | None = None
     ) -> ProviderAdjustedSeriesRevision | None:
-        """Read a series revision linked to one source receipt, if present."""
-        connection = self._connect(read_only=True)
+        """Read a series revision linked to one source receipt, if present.
+
+        ``_connection`` is the caller's connection: it sees that transaction's own writes.
+        """
+        connection = _connection or self._connect(read_only=True)
         try:
             row = connection.execute(
                 """
@@ -4775,7 +4886,8 @@ class MarketDataRepository(WorkspaceRepository):
                 observed_at=_utc_aware(row[13]),
             )
         finally:
-            connection.close()
+            if _connection is None:
+                connection.close()
 
     def provider_adjusted_semantic_ledger(
         self,
@@ -5118,12 +5230,14 @@ class MarketDataRepository(WorkspaceRepository):
         history_end: date,
         requested_as_of: date,
         observed_at: datetime,
+        _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> tuple[ActionAuditReceipt, dict[str, int]]:
         """Reconcile one bounded or full provider action observation and issue a receipt.
 
         The caller is the deterministic provider adapter. Missing current actions
         are marked ``RETRACTED`` only inside the declared scope, never silently
         deleted. Adjusted closes remain audit evidence only.
+        ``_connection`` is the caller's open transaction, which the caller commits.
         """
         observed_at = _utc_naive(observed_at)
         self._assert_manifest_scope(manifest, [listing_id])
@@ -5148,10 +5262,11 @@ class MarketDataRepository(WorkspaceRepository):
             for item in adjusted_closes
         ):
             raise ValueError("adjusted-close audit observation is outside its declared scope")
-        connection = self._connect()
+        connection = _connection or self._connect()
         inserted = corrected = retracted = 0
         try:
-            connection.execute("BEGIN TRANSACTION")
+            if _connection is None:
+                connection.execute("BEGIN TRANSACTION")
             inserted, corrected = self._upsert_actions(connection, events, observed_at=observed_at)
             retracted = self._retract_absent_actions(
                 connection,
@@ -5285,17 +5400,20 @@ class MarketDataRepository(WorkspaceRepository):
                     receipt.observed_at,
                 ],
             )
-            connection.execute("COMMIT")
+            if _connection is None:
+                connection.execute("COMMIT")
             return receipt, {
                 "inserted": inserted,
                 "corrected": corrected,
                 "retracted": retracted,
             }
         except Exception:
-            connection.execute("ROLLBACK")
+            if _connection is None:
+                connection.execute("ROLLBACK")
             raise
         finally:
-            connection.close()
+            if _connection is None:
+                connection.close()
 
     def reusable_action_audit_receipt(
         self,
@@ -5997,11 +6115,20 @@ class MarketDataRepository(WorkspaceRepository):
         finally:
             connection.close()
 
-    def record_failures(self, failures: Iterable[FailureEvidence]) -> None:
-        """Persist listing and marketwide failure evidence in one transaction."""
-        connection = self._connect()
+    def record_failures(
+        self,
+        failures: Iterable[FailureEvidence],
+        *,
+        _connection: duckdb.DuckDBPyConnection | None = None,
+    ) -> None:
+        """Persist listing and marketwide failure evidence in one transaction.
+
+        ``_connection`` is the caller's open transaction, which the caller commits.
+        """
+        connection = _connection or self._connect()
         try:
-            connection.execute("BEGIN TRANSACTION")
+            if _connection is None:
+                connection.execute("BEGIN TRANSACTION")
             for evidence in failures:
                 observed_at = _utc_naive(evidence.observed_at)
                 attempt_id = _canonical_hash(
@@ -6034,12 +6161,15 @@ class MarketDataRepository(WorkspaceRepository):
                     """,
                     [evidence.failure_code, observed_at, evidence.listing_id],
                 )
-            connection.execute("COMMIT")
+            if _connection is None:
+                connection.execute("COMMIT")
         except Exception:
-            connection.execute("ROLLBACK")
+            if _connection is None:
+                connection.execute("ROLLBACK")
             raise
         finally:
-            connection.close()
+            if _connection is None:
+                connection.close()
 
     def health_report(
         self, manifest: UniverseManifest, *, run_id: str, case_token: str, as_of_session: date
@@ -6178,6 +6308,68 @@ class MarketDataRepository(WorkspaceRepository):
         ).to_arrow_table()
         return table
 
+    @staticmethod
+    def _raw_bar_tables(
+        connection: duckdb.DuckDBPyConnection, starts: Mapping[str, date], *, through: date
+    ) -> dict[str, pa.Table]:
+        """``_raw_bar_table`` of many listings in one read, each from its own start."""
+        if not starts:
+            return {}
+        table: pa.Table = connection.execute(
+            f"SELECT {', '.join(_RAW_BAR_COLUMNS)} FROM raw_daily_bar_current "
+            "WHERE listing_id IN (SELECT unnest(?::VARCHAR[])) AND session_date BETWEEN ? AND ? "
+            "ORDER BY listing_id, session_date",
+            [sorted(starts), min(starts.values()), through],
+        ).to_arrow_table()
+        listings = table.column("listing_id").to_pylist()
+        sessions = table.column("session_date").to_pylist()
+        bounds: dict[str, tuple[int, int]] = {}
+        for index, listing in enumerate(listings):
+            bounds[listing] = (bounds.get(listing, (index, index))[0], index + 1)
+        out: dict[str, pa.Table] = {}
+        for listing, start in starts.items():
+            first, last = bounds.get(listing, (0, 0))
+            begin = bisect_left(sessions, start, first, last)
+            out[listing] = table.slice(begin, last - begin)
+        return out
+
+    def raw_bar_sessions_by_listing(
+        self,
+        listing_ids: Sequence[str],
+        *,
+        through: date | None = None,
+        _connection: duckdb.DuckDBPyConnection | None = None,
+    ) -> dict[str, tuple[date, ...]]:
+        """``raw_bar_sessions`` of many listings in one read: each one's session axis.
+
+        Args:
+            listing_ids: Durable listing identities; each answers, empty without bars.
+            through: Last included session, if bounded.
+            _connection: Existing read connection for a larger transaction.
+
+        Returns:
+            Each listing's ordered sessions.
+        """
+        connection = _connection or self._connect(read_only=True)
+        owns_connection = _connection is None
+        try:
+            sql = (
+                "SELECT listing_id, session_date FROM raw_daily_bar_current "
+                "WHERE listing_id IN (SELECT unnest(?::VARCHAR[]))"
+            )
+            params: list[object] = [list(listing_ids)]
+            if through is not None:
+                sql += " AND session_date <= ?"
+                params.append(through)
+            rows = connection.execute(sql + " ORDER BY listing_id, session_date", params).fetchall()
+        finally:
+            if owns_connection:
+                connection.close()
+        out: dict[str, list[date]] = {listing: [] for listing in listing_ids}
+        for listing, session in rows:
+            out[listing].append(session)
+        return {listing: tuple(sessions) for listing, sessions in out.items()}
+
     def raw_bar_sessions(
         self,
         listing_id: str,
@@ -6191,20 +6383,9 @@ class MarketDataRepository(WorkspaceRepository):
         targets but none of the bar values for that; this is the same rows,
         filter and order projected to their dates.
         """
-        connection = _connection or self._connect(read_only=True)
-        owns_connection = _connection is None
-        try:
-            sql = "SELECT session_date FROM raw_daily_bar_current WHERE listing_id = ?"
-            params: list[object] = [listing_id]
-            if through is not None:
-                sql += " AND session_date <= ?"
-                params.append(through)
-            sql += " ORDER BY session_date"
-            rows = connection.execute(sql, params).fetchall()
-        finally:
-            if owns_connection:
-                connection.close()
-        return tuple(row[0] for row in rows)
+        return self.raw_bar_sessions_by_listing(
+            (listing_id,), through=through, _connection=_connection
+        )[listing_id]
 
     def raw_close_volume_observations(
         self,
@@ -6627,11 +6808,9 @@ class MarketDataRepository(WorkspaceRepository):
         connection = _connection or self._connect(read_only=True)
         owns_connection = _connection is None
         try:
-            providers = connection.execute(
-                _SELECTED_PROVIDER_SQL + "SELECT listing_id, provider FROM selected_provider",
-                [scope],
-            ).fetchall()
-            if any(provider is None for _listing_id, provider in providers):
+            if any(
+                provider is None for provider in _selected_providers(connection, scope).values()
+            ):
                 raise ValueError("listing has no provider mapping")
             rows = connection.execute(
                 _SELECTED_PROVIDER_SQL

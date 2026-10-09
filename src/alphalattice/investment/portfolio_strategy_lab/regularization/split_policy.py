@@ -10,9 +10,7 @@ length, and a policy that is not written out below cannot be resolved.
 
 One policy is installed: ``PORTFOLIO_ANCHORED_THREE_FOLD``, the frozen
 746-observation geometry the regularization program used, which its kept record
-contracts still validate against. The Stage-6 campaign's two development policies
-(492 and 494 observations) and its cross-fitted prefix selection retired with it
-(RT R01).
+contracts still validate against.
 """
 
 from __future__ import annotations

@@ -76,7 +76,7 @@ class FeatureBaseClosureCoordinator:
         # Per catalog: the head this coordinator sealed last and the digest
         # state it sealed, so a daily append extends it (see ``_digest_after``).
         self._digest_states: dict[str, tuple[str, FeatureRowHashDigestState]] = {}
-        # Per catalog: the first load this coordinator began and has not completed (V92).
+        # Per catalog: the first load this coordinator began and has not completed.
         self._first_loads: dict[str, str] = {}
 
     def persist_batch(
@@ -218,7 +218,7 @@ class FeatureBaseClosureCoordinator:
 
         Such a part has no prior row to compare, revise or recover to: its rows are written as
         the build computes them, with no per-key transition, and ``complete_first_loads``
-        advances its head to their digest (V92). Any other part's batches pass per-key
+        advances its head to their digest. Any other part's batches pass per-key
         transitions as before.
 
         Returns:
@@ -385,7 +385,7 @@ class FeatureBaseClosureCoordinator:
         # A build reconciles before it begins its own first loads, so a pending one is an
         # earlier build's, this coordinator's own included: complete when its head names it;
         # interrupted otherwise, and its rows are discarded back to the empty part its genesis
-        # head attests, to be built again (V92).
+        # head attests, to be built again.
         self._first_loads.pop(catalog_hash, None)
         if first_load is not None:
             if head.last_transition_hash != first_load.first_load_hash:
@@ -734,7 +734,7 @@ class FeatureBaseClosureCoordinator:
 
 
 class FeatureLayerClosures:
-    """The Feature closures of an installed catalog's layer, one coordinator per part (V92).
+    """The Feature closures of an installed catalog's layer, one coordinator per part.
 
     An unlayered catalog is its own only part, and this is its coordinator. A layered catalog
     has no closure of its own: its rows are its parts', each batch is written through its own

@@ -9,8 +9,6 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,7 +18,6 @@ from threadpoolctl import threadpool_limits
 
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_workspace import (
-    ResearchWorkspaceArtifact,
     ResearchWorkspaceManifest,
     publish_research_workspace_manifest,
     read_research_workspace_manifest,
@@ -46,8 +43,12 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _resolved,
     _Resolver,
 )
+from tests.researcher_methodology_surface.factor_web_support import (
+    _alpha_payload,
+    _drain_trial,
+    _session,
+)
 from tests.researcher_methodology_surface.real_workspace import (
-    build_real_risk_workspace,
     publish_causal_outcomes,
 )
 from tests.researcher_methodology_surface.session_workspace import (
@@ -56,108 +57,11 @@ from tests.researcher_methodology_surface.session_workspace import (
 )
 
 
-@pytest.fixture(scope="module")
-def input_seed(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The exact original real input build, once per run, including its bind/reuse assertions."""
-
-    def build(root: Path) -> dict:
-        real_risk_workspace = build_real_risk_workspace(
-            tmp_path_factory.mktemp("factor-input-source"),
-            symbols=tuple(f"F{i:03d}" for i in range(120)),
-        )
-        # The Portfolio artifact is deliberately not consumed by this Factor-only
-        # composition harness; its typed reference must nevertheless survive bind.
-        manifest = _manifest("factor-web")
-        artifact = ResearchWorkspaceArtifact(
-            artifact_key="BROAD_ENSEMBLE_EVIDENCE_ROOT", relative_path="retained-strategy-artifacts"
-        )
-        manifest = ResearchWorkspaceManifest.create(
-            workspace_id=manifest.workspace_id,
-            default_strategy_package_id=manifest.default_strategy_package_id,
-            default_score_source_mode=manifest.default_score_source_mode,
-            strategy_artifacts=(artifact,),
-        )
-        publish_research_workspace_manifest(root, manifest)
-        outcome, _ref = publish_causal_outcomes(
-            real_risk_workspace, at=datetime(2026, 8, 2, tzinfo=UTC)
-        )
-        first = bind_factor_inputs(
-            workspace=root, source=real_risk_workspace.workspace, outcome_snapshot_hash=outcome
-        )
-        before = (root / "research-workspace.json").read_bytes()
-        assert (
-            bind_factor_inputs(
-                workspace=root, source=real_risk_workspace.workspace, outcome_snapshot_hash=outcome
-            )
-            == first
-        )
-        assert (root / "research-workspace.json").read_bytes() == before
-        assert read_research_workspace_manifest(root).strategy_artifacts == (artifact,)
-        assert not tuple((root / "research-inputs").rglob("sealed-holdout"))
-        return {}
-
-    source, _metadata = session_workspace(tmp_path_factory, "factor_input", build)
-    return source
-
-
-@pytest.fixture
-def inputs(request: pytest.FixtureRequest, input_seed: Path, tmp_path: Path) -> Path:
-    # Only tests asking for the published study receive its records. Others
-    # keep the original empty-study precondition, in their own writable copy.
-    source = input_seed
-    if "published" in request.fixturenames:
-        source = request.getfixturevalue("factor_seed")[0]
-    return copy_workspace(source, tmp_path / "factor-web")
-
-
 def _facts(body: dict) -> dict:  # type: ignore[type-arg]
     """A study answer's facts, without how this read proved them (`verification_basis`, L1): a
     read that reused an earlier full verification and one that verified afresh answer the same."""
 
     return {key: value for key, value in body.items() if key != "verification_basis"}
-
-
-@contextmanager
-def _session(root: Path) -> Iterator[LocalPortfolioWebSession]:
-    session = LocalPortfolioWebSession(
-        workspace=root,
-        workspace_manifest=read_research_workspace_manifest(root),
-        resolver=_Resolver(_resolved()),
-    )
-    with session as live:
-        # Four pytest workers share this machine. The operator's real budget
-        # limits execution width, while every listing, session, fold and model
-        # parameter stays unchanged; model fits still prove their thread canary.
-        budget = live.operations.set_cpu_budget("2", chosen_by="EXTERNAL_AUTOMATION")
-        assert budget["status"] == "CPU_BUDGET" and budget["cpu_budget"] == 2
-        assert live.dispatcher is not None
-        event = threading.Event()
-        callback = live.dispatcher.on_idle
-
-        def idle() -> None:
-            try:
-                if callback is not None:
-                    callback()
-            finally:
-                event.set()
-
-        _IDLE_EVENTS[id(live)] = event
-        live.dispatcher.on_idle = idle
-        try:
-            yield live
-        finally:
-            live.dispatcher.on_idle = callback
-            del _IDLE_EVENTS[id(live)]
-
-
-_IDLE_EVENTS: dict[int, threading.Event] = {}
-
-
-def _drain_trial(live: LocalPortfolioWebSession) -> threading.Event:
-    event = _IDLE_EVENTS[id(live)]
-    event.clear()
-    live.dispatcher.drain_for_tests(timeout=600)
-    return event
 
 
 def _wait_for_boundary(process: subprocess.Popen[bytes], marker: Path, timeout: float) -> bool:
@@ -174,82 +78,6 @@ def _wait_for_boundary(process: subprocess.Popen[bytes], marker: Path, timeout: 
     reader.start()
     ready.wait(timeout)
     return marker.exists()
-
-
-@pytest.fixture(scope="module")
-def alpha_seed(factor_seed, tmp_path_factory):
-    """The same bound input and curated Factor study, published once across workers."""
-
-    def build(root: Path) -> dict:
-        copy_workspace(factor_seed[0], root)
-        factor_task, report, _export = factor_seed[1:]
-        source = root / report["document"]["experiment"]["baseline_workspace"]
-        original = read_factor_bundle(root, source.parent.name)
-        enhanced = bind_factor_inputs(
-            workspace=root,
-            source=source,
-            input_id="alpha-development",
-            panel_snapshot_hash=original.panel_snapshot_hash,
-            outcome_snapshot_hash=original.outcome_snapshot_hash,
-            include_alpha_handoff=True,
-        )
-        with _session(root) as live:
-            choices = _json(live, f"/api/experiments/curation?task_id={factor_task}")
-            choice = next(v for v in choices["choices"] if v["roles"])
-            result = _json(
-                live,
-                "/api/experiments/curation",
-                method="POST",
-                payload={
-                    "task_id": factor_task,
-                    "experiment_curation": {
-                        "expected_receipt_hash": choices["receipt_hash"],
-                        "choices": [
-                            {
-                                "factor_id": choice["factor_id"],
-                                "role": choice["roles"][0],
-                                "rationale": "Fixed offline Alpha acceptance declaration.",
-                            }
-                        ],
-                        "limitations_acknowledged": choices["limitations"],
-                    },
-                },
-            )
-            decision = result["decision"]["receipt_hash"]
-            draft = _json(
-                live,
-                "/api/experiments/handoff",
-                method="POST",
-                payload={
-                    "task_id": factor_task,
-                    "curation_receipt_hash": decision,
-                    "research_input_id": enhanced.input_id,
-                    "input_binding_hash": enhanced.binding_hash,
-                },
-            )
-            assert draft["status"] == "DRAFT_INCOMPLETE", draft
-        return {
-            "input_id": enhanced.input_id,
-            "binding_hash": enhanced.binding_hash,
-            "factor_task": factor_task,
-            "decision": decision,
-            "draft": draft["document"],
-        }
-
-    root, metadata = session_workspace(tmp_path_factory, "alpha_seed", build)
-    enhanced = next(
-        value
-        for value in read_research_workspace_manifest(root).experiment_inputs
-        if value.input_id == metadata["input_id"]
-    )
-    assert enhanced.binding_hash == metadata["binding_hash"]
-    return root, enhanced, metadata["factor_task"], metadata["decision"], metadata["draft"]
-
-
-@pytest.fixture
-def alpha_case(alpha_seed, tmp_path_factory):
-    root = copy_workspace(alpha_seed[0], tmp_path_factory.mktemp("alpha-web") / "workspace")
-    return root, *alpha_seed[1:4], deepcopy(alpha_seed[4])
 
 
 @pytest.fixture(scope="module")
@@ -295,25 +123,6 @@ def _lightgbm_parameters(seed=1729):
     return dict(
         build_dynamic_panel_lightgbm_recipe(PRODUCT_ESTIMATOR_POINT.resolve(seed=seed)).parameters
     )
-
-
-def _alpha_payload(case, parameters=None, handle="capability-1"):
-    from copy import deepcopy
-
-    _root, binding, factor_task, decision, original = case
-    document = deepcopy(original)
-    document["alpha"].update(
-        target_recipe_id="SECTOR_RESIDUAL_ROBUST_Z",
-        model_capability_handle=handle,
-        model_parameters=parameters or {"family": "ridge", "alpha": 1.0},
-    )
-    return {
-        "research_input_id": binding.input_id,
-        "input_binding_hash": binding.binding_hash,
-        "factor_task_id": factor_task,
-        "curation_receipt_hash": decision,
-        "experiment_document": document,
-    }
 
 
 def test_completed_alpha_hands_off_to_portfolio_without_refitting(
@@ -545,7 +354,7 @@ def _exercise_authored_review(root, selected, tmp_path):
     try:
         with boot(authority) as live:
             service = _Service(live, tmp_path)
-            assert live.application is None and live.resolver is None
+            assert not live.operations.installed()
             section = service.get("/api/evidence-cro?" + query)
             subject = section["book"]["experiment_subject"]
             assert subject["experiment_receipt_hash"] == selected["receipt"]["receipt_hash"]
@@ -1263,33 +1072,18 @@ def test_pending_task_damage_keeps_curation_for_a_readable_factor_study(inputs, 
         }
 
 
-def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offers(alpha_case):
+def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offers(
+    sampled_alpha_case,
+):
     """V661: a real completed exploration and runnable preview need complete Task authority."""
     from uuid import UUID
 
     import duckdb
 
+    alpha_case, sampled = sampled_alpha_case
     root, _binding, factor_task, _decision, _draft = alpha_case
+    sent = {"task_id": sampled["task_id"]}
     with _session(root) as live:
-        # A product-completed sample study makes promotion an actual pending choice.
-        sampled = _alpha_payload(alpha_case)
-        sampled_document = sampled["experiment_document"]
-        whole_universe = sampled_document["experiment"]["universe_handle"]
-        sampled_document["experiment"]["universe_handle"] = f"{whole_universe}.sample-110"
-        sample_plan = _json(live, "/api/experiments/plan", method="POST", payload=sampled)
-        assert sample_plan["status"] == "PLANNED", sample_plan
-        sent = _json(
-            live,
-            "/api/experiments/run",
-            method="POST",
-            payload={"experiment_plan_hash": sample_plan["plan_hash"]},
-        )
-        live.dispatcher.drain_for_tests()
-        report = _json(live, f"/api/experiments/readback?task_id={sent['task_id']}")
-        assert (report["status"], report["research_lane"]) == (
-            "EXPERIMENT_PUBLISHED",
-            "EXPLORATION",
-        ), report
         preview = _json(
             live,
             "/api/experiments/plan",
@@ -2021,73 +1815,6 @@ def test_handoff_binding_adds_logical_closure_without_mutating_factor_inputs(
     assert read_factor_bundle(inputs, original.binding_hash) == bundle
 
 
-@pytest.fixture(scope="module")
-def factor_seed(input_seed: Path, tmp_path_factory):
-    """One actual Factor execution and its original publication/reuse assertions."""
-
-    def build(root: Path) -> dict:
-        copy_workspace(input_seed, root)
-        task_id, report, exported = _publish_factor(root)
-        return {"task_id": task_id, "report": report, "exported": exported}
-
-    root, metadata = session_workspace(tmp_path_factory, "factor_publication", build)
-    return root, metadata["task_id"], metadata["report"], metadata["exported"]
-
-
-@pytest.fixture
-def published(factor_seed):
-    return deepcopy(factor_seed[1:])
-
-
-def _publish_factor(root: Path):
-    with _session(root) as session:
-        controls = _json(session, "/api/experiments/controls")
-        assert controls["status"] == "READY", controls
-        document = controls["template"]
-        # The universe is offered whole or sampled (V339, R4).
-        (universe,) = (
-            v for v in controls["controls"] if v["path"] == ["experiment", "universe_handle"]
-        )
-        assert (universe["type"], universe["value"]) == (
-            "universe",
-            document["experiment"]["universe_handle"],
-        )
-        document["factor"]["factor_ids"] = controls["factor_options"][:4]
-        plan = _json(
-            session,
-            "/api/experiments/plan",
-            method="POST",
-            payload={"experiment_document": document},
-        )
-        assert plan["status"] == "PLANNED", plan
-        assert plan["numerical_call_count"] == 0
-        run = _json(
-            session,
-            "/api/experiments/run",
-            method="POST",
-            payload={"experiment_plan_hash": plan["plan_hash"]},
-        )
-        assert run["task_id"], run
-        assert session.dispatcher is not None
-        session.dispatcher.drain_for_tests()
-        task_id = run["task_id"]
-        report = _json(session, f"/api/experiments/readback?task_id={task_id}")
-        assert report["status"] == "EXPERIMENT_PUBLISHED", (
-            report,
-            _json(session, f"/api/status?task_id={task_id}"),
-        )
-        assert report["program"] == plan["program"]
-        repeat = _json(
-            session,
-            "/api/experiments/run",
-            method="POST",
-            payload={"experiment_plan_hash": plan["plan_hash"]},
-        )
-        assert repeat["status"] == "REUSED_EXACT" and repeat["task_id"] is None
-        exported = _json(session, f"/api/experiments/export?task_id={task_id}")
-    return task_id, report, exported
-
-
 def test_bound_input_runs_reopens_and_replays_the_real_factor_owner(
     inputs: Path, published
 ) -> None:
@@ -2116,9 +1843,7 @@ def test_bound_input_runs_reopens_and_replays_the_real_factor_owner(
         )
 
 
-def test_controls_and_a_missing_prerequisite_name_the_flows_way_on(
-    inputs: Path, published, tmp_path: Path
-) -> None:
+def test_controls_and_a_missing_prerequisite_name_the_flows_way_on(inputs: Path, published) -> None:
     """requirement (V367): each kind's controls, and a refusal that means a prerequisite result
     is missing, name the flow's prerequisites on the input: the completed studies it holds,
     what is missing and the requests allowed next."""
@@ -2126,8 +1851,7 @@ def test_controls_and_a_missing_prerequisite_name_the_flows_way_on(
     from uuid import UUID
 
     task_id, _report, _exported = published
-    root = tmp_path / "workspace"
-    shutil.copytree(inputs, root)
+    root = inputs
     with _session(root) as live:
         controls = _json(live, "/api/experiments/controls")
         factor, factor_binding = controls["prerequisites"], controls["input_binding_hash"]
@@ -2541,7 +2265,7 @@ def test_input_and_result_tamper_refuse_without_losing_historical_readback(
 
 
 def test_a_read_reuses_the_study_verification_while_its_files_are_unchanged(
-    inputs: Path, published, tmp_path: Path, monkeypatch
+    inputs: Path, published, monkeypatch
 ) -> None:
     """requirement (binding plan, L1; V265, V89): a readback answers from the study's last full
     verification while its files keep their path, size, time and identity, and says it checked
@@ -2549,8 +2273,7 @@ def test_a_read_reuses_the_study_verification_while_its_files_are_unchanged(
     the sweep, which names the study and drops what reads keep of it; a change of size or time
     is verified at the next read."""
 
-    root = tmp_path / "workspace"
-    shutil.copytree(inputs, root)
+    root = inputs
     task_id = published[0]
     with _session(root) as live:
         readback = f"/api/experiments/readback?task_id={task_id}"
@@ -2583,7 +2306,7 @@ def test_a_read_reuses_the_study_verification_while_its_files_are_unchanged(
 
 
 def test_an_alpha_studys_full_verification_is_kept_on_disk_across_a_restart(
-    alpha_case, tmp_path: Path, monkeypatch
+    alpha_case, monkeypatch
 ) -> None:
     """requirement (V89, V265, decision 5): an Alpha study's full verification is kept on disk
     as its read shows it, so a Host that starts again reads it without re-deriving every chunk;
@@ -2592,8 +2315,7 @@ def test_an_alpha_studys_full_verification_is_kept_on_disk_across_a_restart(
 
     from alphalattice.control.product_host.composition import research_experiments as owner
 
-    root = tmp_path / "workspace"
-    shutil.copytree(alpha_case[0], root)
+    root = alpha_case[0]
     with _session(root) as live:
         # A penalty no other case in this module runs: the shared workspace may already hold
         # another case's study, which a run would answer as its exact reuse, with no Task.
@@ -2629,7 +2351,7 @@ def test_an_alpha_studys_full_verification_is_kept_on_disk_across_a_restart(
 
 
 def test_the_sweep_is_due_after_a_week_or_an_upgrade_and_takes_up_what_it_left(
-    inputs: Path, published, tmp_path: Path, monkeypatch
+    inputs: Path, published, monkeypatch
 ) -> None:
     """requirement (V89, decision 5): an idle Host admits the sweep when none ran since an
     upgrade or a week; it stops as soon as another Task waits, and the next sweep takes up the
@@ -2637,8 +2359,7 @@ def test_the_sweep_is_due_after_a_week_or_an_upgrade_and_takes_up_what_it_left(
 
     from datetime import timedelta
 
-    root = tmp_path / "workspace"
-    shutil.copytree(inputs, root)
+    root = inputs
     with _session(root) as live:
         sweep = live.operations.sweep
         assert sweep.saved_studies() and not sweep.due()  # before the first, a week of work
@@ -3682,16 +3403,13 @@ def test_a_compact_prefixed_history_entry_reads_back_through_the_cli(inputs, pub
         assert selected["entries"][0]["entry_id"] == f"experiment:{published[0]}"
 
 
-def test_the_study_reads_answer_their_published_models(
-    inputs: Path, published, tmp_path: Path
-) -> None:
+def test_the_study_reads_answer_their_published_models(inputs: Path, published) -> None:
     """contract (binding plan C2, CLI-16): beside a published study, each typed study read's
     answer validates against the model `alphalattice schema show` publishes for it."""
 
     from alphalattice.interface.local_application.answers import ANSWERS
 
-    root = tmp_path / "workspace"
-    shutil.copytree(inputs, root)
+    root = inputs
     with _session(root) as live:
         bridge = InstalledAgent(live.operations)
         for operation, fields in (
@@ -3905,36 +3623,27 @@ def test_a_qualification_concludes_every_study_on_its_question_since_the_goal_op
 
 
 @pytest.fixture(scope="module")
-def risk_seed(alpha_seed, tmp_path_factory):
-    """One real Alpha/Risk prerequisite, verified once in each worker that needs it."""
+def risk_seed(completed_alpha_seed, tmp_path_factory):
+    """One real Risk prerequisite over the already published Alpha study."""
     from urllib.parse import urlencode
 
     def build(root: Path) -> dict:
-        alpha_case = alpha_seed
-        shutil.copytree(alpha_case[0], root)
+        alpha_case = completed_alpha_seed
+        copy_workspace(alpha_case[0], root)
         with _session(root) as live:
-            # A penalty no other case in this module runs, so the study is computed here.
-            plan = _json(
-                live,
-                "/api/experiments/plan",
-                method="POST",
-                payload=_alpha_payload(alpha_case, {"family": "ridge", "alpha": 11.0}),
+            parent_id = next(
+                row["task_id"]
+                for row in _json(live, "/api/experiments")["experiments"]
+                if row["kind"] == "alpha.model-development" and row["lifecycle"] == "SUCCEEDED"
             )
-            sent = _json(
-                live,
-                "/api/experiments/run",
-                method="POST",
-                payload={"experiment_plan_hash": plan["plan_hash"]},
-            )
-            live.dispatcher.drain_for_tests()
-            alpha = _json(live, f"/api/experiments/readback?task_id={sent['task_id']}")
+            alpha = _json(live, f"/api/experiments/readback?task_id={parent_id}")
             assert alpha["status"] == "EXPERIMENT_PUBLISHED", alpha
             draft = _json(
                 live,
                 "/api/experiments/portfolio-draft",
                 method="POST",
                 payload={
-                    "task_id": sent["task_id"],
+                    "task_id": parent_id,
                     "candidate_id": alpha["result"]["candidates"][0]["candidate_id"],
                 },
             )

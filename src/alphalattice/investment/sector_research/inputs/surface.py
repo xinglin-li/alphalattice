@@ -85,7 +85,7 @@ def build_sector_context_policy(
 
     Args:
         sector_revision: Classification revision identity used by the context.
-        sector_history_treatment: What its sessions read of the classification (V346).
+        sector_history_treatment: What its sessions read of the classification.
 
     Returns:
         Fixed context policy and its canonical policy_hash.
@@ -168,20 +168,20 @@ def compile_sector_context_arrays(
     """Compose known execution observations onto a possibly later formation axis."""
     formation_values = tuple(datetime.combine(value, time(16, 0)) for value in sessions)
     holding_values = tuple(datetime.combine(value, time(9, 30)) for value in holding_end_sessions)
+    # Each session's values once, repeated for its listings by position.
+    by_session: IntArray = np.repeat(np.arange(len(sessions)), len(listing_ids))
     source = pa.table(
         {
-            "formation_session": pa.array(
-                np.repeat(np.asarray(sessions, dtype=object), len(listing_ids)), type=pa.date32()
+            "formation_session": pa.array(sessions, type=pa.date32()).take(by_session),
+            "formation_close_at": pa.array(formation_values, type=pa.timestamp("us")).take(
+                by_session
             ),
-            "formation_close_at": pa.array(
-                np.repeat(np.asarray(formation_values, dtype=object), len(listing_ids)),
-                type=pa.timestamp("us"),
+            "holding_end_open_at": pa.array(holding_values, type=pa.timestamp("us")).take(
+                by_session
             ),
-            "holding_end_open_at": pa.array(
-                np.repeat(np.asarray(holding_values, dtype=object), len(listing_ids)),
-                type=pa.timestamp("us"),
+            "listing_id": pa.array(listing_ids, type=pa.string()).take(
+                np.tile(np.arange(len(listing_ids)), len(sessions))
             ),
-            "listing_id": pa.array(np.tile(np.asarray(listing_ids, dtype=object), len(sessions))),
             # This existing field is LOG_EXECUTION_RETURN, never Target-Z.
             "fit_target": pa.array(raw_log_returns.reshape(-1), type=pa.float64()),
         }
@@ -232,18 +232,18 @@ def compile_sector_context_surface(
     """Publish only context observable by each formation close."""
     policy = SectorContextPolicy.model_validate(policy)
     ordered = _ordered(source_table)
-    row_sessions = tuple(cast(list[date], ordered["formation_session"].to_pylist()))
-    row_listings = tuple(str(value) for value in ordered["listing_id"].to_pylist())
-    event_sessions = tuple(sorted(set(row_sessions)))
+    event_sessions = tuple(
+        sorted(cast(list[date], pc.unique(ordered["formation_session"]).to_pylist()))
+    )
     output_sessions = formation_sessions or event_sessions
     if output_sessions != tuple(sorted(set(output_sessions))):
         raise SectorContextBoundaryError("alpha_research.sector_context_session_axis_invalid")
-    listings = tuple(sorted(set(row_listings)))
+    listings = tuple(sorted({str(value) for value in pc.unique(ordered["listing_id"]).to_pylist()}))
     if ordered.num_rows != len(event_sessions) * len(listings):
         raise SectorContextBoundaryError("alpha_research.sector_context_source_incomplete")
     if set(listings) - set(sector_by_listing_id):
         raise SectorContextBoundaryError("alpha_research.sector_context_sector_map_incomplete")
-    # Each run of event sessions aggregates the Sectors in force there (V346); the Sector axis
+    # Each run of event sessions aggregates the Sectors in force there; the Sector axis
     # is every Sector some session reads, one run's while no reclassification falls inside it.
     runs = sector_positions(sector_by_listing_id, event_sessions, listings)
     sectors = tuple(
@@ -298,29 +298,18 @@ def compile_sector_context_surface(
             )
         )
 
-    formation_clock = np.asarray(ordered["formation_close_at"].to_pylist(), dtype=object).reshape(
-        len(event_sessions), len(listings)
-    )
-    availability_clock = np.asarray(
-        ordered["holding_end_open_at"].to_pylist(), dtype=object
-    ).reshape(len(event_sessions), len(listings))
-    if any(
-        not isinstance(value, datetime)
-        for value in (*formation_clock.reshape(-1), *availability_clock.reshape(-1))
-    ):
+    # Every clock is a timestamp, one per session; the session's first row then reads them all.
+    clocks = (ordered["formation_close_at"], ordered["holding_end_open_at"])
+    if any(not pa.types.is_timestamp(clock.type) or clock.null_count for clock in clocks):
         raise SectorContextBoundaryError("alpha_research.sector_context_clock_invalid")
-    if any(
-        len(set(row)) != 1
-        for matrix in (formation_clock, availability_clock)
-        for row in matrix.tolist()
-    ):
-        raise SectorContextBoundaryError("alpha_research.sector_context_clock_mismatch")
-    if any(
-        left >= right
-        for left, right in zip(
-            formation_clock.reshape(-1), availability_clock.reshape(-1), strict=True
-        )
-    ):
+    for clock in clocks:
+        instants = clock.cast(pa.int64()).to_numpy().reshape(len(event_sessions), len(listings))
+        if bool((instants != instants[:, :1]).any()):
+            raise SectorContextBoundaryError("alpha_research.sector_context_clock_mismatch")
+    first_rows = ordered.take(np.arange(0, ordered.num_rows, len(listings)))
+    formation_ats = first_rows["formation_close_at"].to_pylist()
+    available_ats = first_rows["holding_end_open_at"].to_pylist()
+    if any(left >= right for left, right in zip(formation_ats, available_ats, strict=True)):
         raise SectorContextBoundaryError("alpha_research.sector_context_causal_order_invalid")
 
     trend_decay = exp(log(0.5) / policy.trend_half_life_sessions)
@@ -333,7 +322,6 @@ def compile_sector_context_surface(
     surprises: list[list[float]] = [[] for _ in sectors]
     values: FloatArray = np.full((len(output_sessions), len(sectors), 4), np.nan, dtype=np.float64)
     next_event = 0
-    available_ats = availability_clock[:, 0]
     for formation_index, formation_session in enumerate(output_sessions):
         while (
             next_event < len(event_sessions)

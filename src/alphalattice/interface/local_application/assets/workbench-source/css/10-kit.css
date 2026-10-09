@@ -1,5 +1,3 @@
-/* 10-kit — the workshop page (#page=kit, law 106): its own layout only. The specimens are the
-   product's components, drawn by their own sheets; every value here reads design/parameters.json. */
 .kit-section {
   margin: 0 0 var(--space-8);
 }

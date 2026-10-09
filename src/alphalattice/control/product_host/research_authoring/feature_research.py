@@ -210,7 +210,7 @@ class ResearchFeatureDefinitions:
             "numerical_call_count": 0,
             "document": document,
             # The declaration itself, as `feature plan --file` reads it and the controls'
-            # template is, never a whole request around it (V559).
+            # template is, never a whole request around it.
             "yaml": yaml.safe_dump(document, allow_unicode=True, sort_keys=False),
             "materialization": "NOT_CHECKED_USE_EXACT_BUILD_TASK_NO_FACTOR_OR_ALPHA_ADMISSION",
             "next_requests": {

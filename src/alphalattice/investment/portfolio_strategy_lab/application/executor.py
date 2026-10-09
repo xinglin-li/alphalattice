@@ -107,7 +107,7 @@ class ResolvedPortfolioExecution:
     secondary_benchmark_disposition: str = "SECONDARY_BENCHMARK_NOT_REQUESTED"
     reference_mark: ReferenceMarkLane | None = None
     sector_history_hash: str | None = None
-    """The Sector history's identity while a reclassification is in force (V346)."""
+    """The Sector history's identity while a reclassification is in force."""
 
 
 @dataclass(frozen=True, slots=True)

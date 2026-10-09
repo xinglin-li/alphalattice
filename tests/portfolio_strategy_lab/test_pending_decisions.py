@@ -161,6 +161,7 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
 ) -> None:
     """UIFOLLOW seam: actual Goal attribution and canonical Task contracts reach the pending
     operation; data cases follow issued source pairs and async CRO follows its sealed review key.
+    The CLI keeps each data case's actor consistent with the active first-use delegation.
     Metadata fixtures stand in for read-only owners; no scientific result is invented.
     """
     from contextlib import nullcontext
@@ -170,7 +171,10 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
         PortfolioResearchOperations,
     )
     from alphalattice.control.product_host.publication.goals import GoalStore
-    from alphalattice.interface.local_application.cli_contract import RequestProvenance
+    from alphalattice.interface.local_application.cli_contract import (
+        RequestProvenance,
+        envelope,
+    )
     from alphalattice.interface.local_application.portfolio_research import (
         PortfolioResearchOperationRequest as Request,
     )
@@ -355,19 +359,40 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
         )
         assert unrelated["goal_ids"] == [], "a non-CRO Task input never declares a review binding"
         assert items["WORKSPACE_PREPARATION"]["goal_ids"] == []
+        shown = envelope(
+            operation="PENDING_DECISIONS", outcome="OK", body=answer, elapsed_seconds=0
+        )
         cases = {
-            item["case_token"]: item for item in answer["decisions"] if item["kind"] == "DATA_ISSUE"
+            item["case_token"]: item
+            for item in shown["data"]["decisions"]
+            if item["kind"] == "DATA_ISSUE"
         }
         assert cases[case_token]["goal_ids"] == [str(first.goal_id)]
         assert cases[unbound_token]["goal_ids"] == []
         assert cases[case_token]["waits_on"] == "PERSON"
-        assert answer["detail"] == "3 decisions wait on a person."
+        assert sum(item["waits_on"] == "PERSON" for item in answer["decisions"]) == 3
+        assert shown["detail"] == answer["detail"]
+        assert all(case["waits_on"] == "PERSON" for case in cases.values())
         first_use = open_goal("FIRST_USE")
         delegated = operations.pending_decisions()
         item = next(item for item in delegated["decisions"] if item["kind"] == "FIRST_USE")
         assert item["goal_ids"] == [str(first_use.goal_id)]
         assert item["waits_on"] == "AGENT"
-        assert delegated["detail"] == "Nothing waits on a person."
+        assert not any(item["waits_on"] == "PERSON" for item in delegated["decisions"])
+        shown = envelope(
+            operation="PENDING_DECISIONS", outcome="OK", body=delegated, elapsed_seconds=0
+        )
+        assert shown["detail"] == delegated["detail"]
+        delegated_cases = {
+            item["case_token"]: item
+            for item in shown["data"]["decisions"]
+            if item["kind"] == "DATA_ISSUE"
+        }
+        assert delegated_cases.keys() == cases.keys()
+        for token, item in delegated_cases.items():
+            assert item["waits_on"] == "AGENT"
+            assert item["detail"] == cases[token]["detail"]
+            assert item["next_requests"] == cases[token]["next_requests"]
 
 
 @pytest.mark.parametrize("stopped", [TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED])

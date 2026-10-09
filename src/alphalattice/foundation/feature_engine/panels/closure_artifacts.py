@@ -31,7 +31,7 @@ def ordered_key_hash(session_dates: Iterable[object], listing_ids: Iterable[str]
 
     Each key is its session's text, a zero byte, its listing's length and its listing; each
     session's and listing's bytes are encoded once and every key's hashed in one update, the
-    same bytes in the same order as one update per field (V92).
+    same bytes in the same order as one update per field.
     """
     sessions: dict[tuple[type, object], bytes] = {}
     listings: dict[tuple[type, object], bytes] = {}

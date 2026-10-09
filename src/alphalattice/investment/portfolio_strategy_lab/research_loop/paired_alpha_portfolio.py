@@ -258,12 +258,12 @@ def sector_exposures(
     sector_by_listing_id: Mapping[str, str],
     sessions: tuple[date, ...] = (),
 ) -> tuple[FloatArray, FloatArray]:
-    """The sector exposure matrix and the equal-weight book's exposure to each sector (V152).
+    """The sector exposure matrix and the equal-weight book's exposure to each sector.
 
     One row a sector and one column a listing, in their orders, each listing exposed to its one
     sector; the equal-weight exposure is that matrix applied to equal weights. Both read-only.
     A Sector history whose reclassification falls inside `sessions` gives one of each per
-    session (V346).
+    session.
     """
     exposure = sector_exposure(
         sector_by_listing_id, sessions, ordered_listing_ids, ordered_sector_ids

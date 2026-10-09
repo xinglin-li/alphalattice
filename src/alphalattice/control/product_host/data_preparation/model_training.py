@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -31,6 +31,7 @@ from alphalattice.control.product_host.research_authoring.input_revisions import
 from alphalattice.control.product_host.research_authoring.model_training import (
     FROZEN_TRAINING_FACTOR_AXIS_HASH,
     ComponentTrainingPreparationReceipt,
+    model_lifecycle_disclosure,
     prepare_component_training_inputs,
 )
 from alphalattice.control.product_host.storage.inventory import require_storage_capacity
@@ -62,7 +63,15 @@ from alphalattice.interface.local_application.dispatcher import (
     LocalBackgroundDispatcher,
 )
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
+from alphalattice.investment.alpha_research.scores.heterogeneous_product import (
+    INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
+)
 from alphalattice.investment.alpha_research.scores.model_renewal import read_lifecycle_admission
+from alphalattice.investment.alpha_research.scores.product_lifecycle import (
+    DEFAULT_MODEL_LIFECYCLE,
+    AlphaModelLifecycleRecipe,
+    ModelLifecycle,
+)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
@@ -70,9 +79,9 @@ from alphalattice.kernel.shared_kernel.source_identity import source_rule_closur
 
 PLAN_FIELDS = ("experiment_inputs",)
 """The manifest fields a plan reads: the research input it selects its binding from; its own
-publication writes `model_training_inputs`, merged into the manifest as it stands (V193). A plan
+publication writes `model_training_inputs`, merged into the manifest as it stands. A plan
 binds them, never the whole manifest, so a publication of fields it does not read leaves it
-applicable (V223, OW10)."""
+applicable (OW10)."""
 
 TASK_KIND = "model_training_input_preparation"
 STAGES = ("prepare_component_training_inputs", "bind_research_training_sources")
@@ -116,6 +125,10 @@ class ModelTrainingInputPlan(BaseModel):  # type: ignore[misc]
     listing_count: int
     source_session_count: int
     implementation_hash: str
+    model_lifecycle: ModelLifecycle = Field(
+        default="FULL", exclude_if=lambda value: value == "FULL"
+    )
+    """The lifecycle the admission binds; a FULL plan keeps the hash it had before LIGHT."""
     plan_hash: str
 
     @classmethod
@@ -132,7 +145,8 @@ class ModelTrainingInputPlan(BaseModel):  # type: ignore[misc]
         Raises:
             pydantic.ValidationError: Fields or declared consistency violate the concrete model.
         """
-        return cls(**values, plan_hash=canonical_hash(values))
+        sealed = {k: v for k, v in values.items() if (k, v) != ("model_lifecycle", "FULL")}
+        return cls(**values, plan_hash=canonical_hash(sealed))
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def verify(self) -> Self:
@@ -230,8 +244,7 @@ class ModelTrainingInputApplication:
             admitting="MODEL_TRAINING_INPUT_PREPARE",
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
 
     def __init__(self, session: WorkspaceApplicationSession, *, clock: Callable[[], datetime]):
         """Wire retained task session, exact Alpha store and bounded input-plan previews.
@@ -243,7 +256,7 @@ class ModelTrainingInputApplication:
         self.session, self.clock = session, clock
         self.store = AlphaCurrentArtifactStore(session.workspace / "artifacts")
         # Every plan an answer named, by its hash, sealed on disk until it expires: a run
-        # from any of them, after a restart too, reopens it and checks it again (V493, V525).
+        # from any of them, after a restart too, reopens it and checks it again.
         self._plans: PreviewRegistry[ModelTrainingInputPlan] = PreviewRegistry(
             model=ModelTrainingInputPlan,
             clock=self.clock,
@@ -251,13 +264,20 @@ class ModelTrainingInputApplication:
             root=self.session.workspace / "runtime" / PLAN_PREVIEWS_DIRECTORY / "model-training",
         )
 
-    def plan(self, input_id: str, binding_hash: str | None, component_id: str) -> dict[str, object]:
+    def plan(
+        self,
+        input_id: str,
+        binding_hash: str | None,
+        component_id: str,
+        model_lifecycle: ModelLifecycle = DEFAULT_MODEL_LIFECYCLE,
+    ) -> dict[str, object]:
         """Select an admitted component/input and retain its exact preparation preview.
 
         Args:
             input_id: Explicit research input.
             binding_hash: Optional exact input revision.
             component_id: Installed component selection.
+            model_lifecycle: The lifecycle to prepare: the light default, or FULL by name.
 
         Returns:
             Exact plan, source axes/counts and declared preparation request; model_fit_calls is
@@ -288,8 +308,12 @@ class ModelTrainingInputApplication:
             listing_count=listing_count,
             source_session_count=len(bundle.sessions),
             implementation_hash=_implementation(),
+            model_lifecycle=model_lifecycle,
         )
         self._plans.remember(plan)
+        rule = AlphaModelLifecycleRecipe.named(
+            INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component(component_id), model_lifecycle
+        )
         return {
             "status": "PLANNED",
             "plan_hash": plan.plan_hash,
@@ -301,6 +325,7 @@ class ModelTrainingInputApplication:
             "source_session_count": len(bundle.sessions),
             "source_listing_count": listing_count,
             "model_fit_calls": 0,
+            "model_lifecycle": model_lifecycle_disclosure(model_lifecycle, rule),
             "claim": "INPUT_PREPARATION_ONLY; complete model support is resolved before any fit",
             "next_requests": {
                 "prepare": {
@@ -340,6 +365,8 @@ class ModelTrainingInputApplication:
             "component_id": plan.component_ids[0],
             "research_input_id": plan.input_id,
             "input_binding_hash": plan.input_binding_hash,
+            # Named always: an omitted lifecycle plans the light default.
+            "model_lifecycle": plan.model_lifecycle,
         }
 
     def _require(self, plan: ModelTrainingInputPlan) -> None:
@@ -349,7 +376,7 @@ class ModelTrainingInputApplication:
         ):
             raise ValueError("model_training.execution_changed")
         # Its own publication writes `model_training_inputs`, which it does not read, so a
-        # plan it published under still applies (V223).
+        # plan it published under still applies.
         if manifest_fields_hash(current, PLAN_FIELDS) != plan.workspace_manifest_hash:
             raise ValueError("model_training.configuration_changed")
 
@@ -400,6 +427,7 @@ class ModelTrainingInputApplication:
                 "component_id": component,
                 "research_input_id": kept.plan.input_id,
                 "input_binding_hash": kept.plan.input_binding_hash,
+                "model_lifecycle": kept.plan.model_lifecycle,
             }
             for component in kept.plan.component_ids
         }
@@ -454,7 +482,7 @@ class ModelTrainingInputApplication:
                 )
             elif existing.lifecycle is not TaskLifecycle.RECOVERY_REQUIRED:
                 return self.readback(existing.task_id)
-            # This plan's Task only, never another of its kind (V529).
+            # This plan's Task only, never another of its kind.
             dispatcher.resume(
                 {TASK_KIND: ModelTrainingInputCommand(self)}, only_task_id=existing.task_id
             )
@@ -597,14 +625,14 @@ class ModelTrainingInputApplication:
                         self.session.workspace,
                         additional_bytes=amount,
                     ),
+                    lifecycle=plan.model_lifecycle,
                 )
                 category, identity = RECEIPTS, receipt.receipt_hash
             elif work_item.stage_id == STAGES[1]:
                 receipt = self._preparation(task)
                 recorded = [self._publication(plan.plan_hash)]
 
-                # Applied to the manifest as it stands, under the gate: a strategy
-                # installation since the preparation read it is kept (V193).
+                # Apply to the manifest as it stands, keeping a concurrent strategy installation.
                 def publish(current: ResearchWorkspaceManifest) -> ResearchWorkspaceManifest:
                     known = {v.authority_hash: v for v in current.model_training_inputs or ()}
                     known.update({v.authority_hash: v for v in receipt.bindings})
@@ -778,7 +806,7 @@ class ModelTrainingInputApplication:
             "next_requests": {
                 "readback": {"operation": "MODEL_TRAINING_INPUT_READBACK", "task_id": str(task_id)},
                 # Prepared inputs go on to each component's lifecycle study, bound to the input
-                # they were prepared on, as the strategy's controls offer it (V530, V505).
+                # they were prepared on, as the strategy's controls offer it.
                 **(
                     {
                         f"controls:{component}": {

@@ -131,7 +131,7 @@ class AlternativeEvidenceSearchHit(AlternativeEvidenceContract):
 
     Attributes:
         span_handle: Retrievable SPAN handle.
-        document_handle: Containing DOC handle.
+        document_handle: Containing handle.
         entity_id: Research issuer identifier.
         source_name: Source authority name.
         title: Source document title.
@@ -234,7 +234,7 @@ class AlternativeEvidenceResolvedSpan(AlternativeEvidenceContract):
 
     Attributes:
         span_handle: Delivered SPAN handle.
-        document_handle: Containing DOC handle.
+        document_handle: Containing handle.
         entity_id: Research issuer identifier.
         source_name: Source authority name.
         source_right: Declared source access right.

@@ -332,7 +332,7 @@ def refusal_words(code: str, *, workspace: Path | None = None) -> dict[str, Any]
         from alphalattice.control.workspace_runtime.network_access import network_access
 
         access = network_access(workspace)
-        decision = access.body()
+        decision = access.body(for_refusal=True)
         prefix = (
             f"The research update needs {subject}. "
             if base.startswith("research_update.")
@@ -1212,6 +1212,24 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ),
     ),
     (
+        "local_client.review_answers_missing",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "GIVE_A_FOLDER_WITH_WRITTEN_ANSWERS",
+            "No answer.json was found in the folder or in the folders inside it; this command "
+            "sends the answers the specialists wrote into their bundles.",
+        ),
+    ),
+    (
+        "local_client.cro_directory_required",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "GIVE_A_NEW_CRO_FOLDER",
+            "The Analysts' answers are accepted and the CRO's bundle is offered; name a new "
+            "folder for it with --cro-dir and run the command again.",
+        ),
+    ),
+    (
         "local_client.bundle_directory_exists",
         ClientRefusal(
             "INVALID_INPUT",
@@ -1293,8 +1311,26 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "INVALID_INPUT",
             "WAIT_IN_THE_TURN_OR_SET_CODEX_THREAD_ID",
-            "--notify codex-queue needs the codex command and CODEX_THREAD_ID; without them, "
-            "wait inside the turn.",
+            "--notify codex-queue needs CODEX_THREAD_ID, the Codex thread the Host is to wake; "
+            "without it, wait inside the turn.",
+        ),
+    ),
+    (
+        "local_client.each_stage_never_wakes",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "FOLLOW_EACH_STAGE_IN_THE_TURN",
+            "A Codex wake comes once, when the Task ends, needs a decision or is deferred; "
+            "--each-stage never wakes. Follow each stage inside the turn.",
+        ),
+    ),
+    (
+        "local_client.codex_notify_needs_task",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "REGISTER_THE_GOALS_CURRENT_TASK",
+            "A Codex wake follows one Task, never a goal: register the goal's unfinished Task "
+            "this answer offers; a goal wait stays inside the turn.",
         ),
     ),
     (

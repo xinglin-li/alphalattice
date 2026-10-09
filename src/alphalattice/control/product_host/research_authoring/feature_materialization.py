@@ -132,7 +132,7 @@ def _sector_returns(
 
     The history is the Panel's own (its lineage's reclassifications over the store's current
     classification of its revision), each session's members the Universe's for that session,
-    and the closes the listings' adjusted closes on the session axis (V359).
+    and the closes the listings' adjusted closes on the session axis.
 
     Raises:
         ValueError: `feature_research.sector_leaf_revision_moved` when the store's Sector
@@ -266,7 +266,7 @@ def materialize_feature_columns(
         sector_leaf = any(
             FORMULA_SECTOR_FIELD in entry.specification.required_fields for entry in pending
         )
-        # The as-traded fields only when a formula reads a point-in-time leaf (V345).
+        # The as-traded fields only when a formula reads a point-in-time leaf.
         as_traded = any(
             set(FORMULA_POINT_IN_TIME_FIELDS) & set(entry.specification.required_fields)
             for entry in pending

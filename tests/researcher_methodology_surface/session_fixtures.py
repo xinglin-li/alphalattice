@@ -27,7 +27,7 @@ def offline_execution_environment() -> Iterator[None]:
     """The operator's offline switch, as the product's research entry points set it.
 
     The authored-execution policy reads no switch: the workflow holds every run offline
-    (V116), so a case passes whatever the operator's shell carries. The switch stays on here
+    so a case passes whatever the operator's shell carries. The switch stays on here
     because the data readers these cases reach outside a run keep a process offline by it.
     """
 

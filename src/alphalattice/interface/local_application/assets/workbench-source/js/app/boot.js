@@ -18,7 +18,7 @@
   Events.bind();
   LiveViews.bind(); LiveTasks.bind(); LiveWorkspace.bind();
 
-  if (!initial.has('page')) app.page = ROUTES[entry.page] ? entry.page : 'overview';
+  if (!initial.has('page')) app.page = Data.entryPage(initial) || (ROUTES[entry.page] ? entry.page : 'overview');
   readRoute();
   // A zh reader's first paint waits for the dictionary the prelude asked for (round 96); an
   // English reader's does not wait for anything.

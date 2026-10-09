@@ -178,7 +178,7 @@ def test_scene_shows_the_same_context_refusals_correction_and_owner_readback(
     service.drain()
     source_id = UUID(prepared["task_id"])
     assert service.registry.task(source_id).lifecycle is TaskLifecycle.SUCCEEDED
-    # Every book is a run (C2): the packet request is the one the reply hands
+    # Every book is a run: the packet request is the one the reply hands
     # out, selected by its operation as a client selects it.
     (packet_request,) = [
         value

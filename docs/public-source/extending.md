@@ -1,97 +1,44 @@
 # Change and extend the workspace
-Date: 2026-10-07
+Date: 2026-10-08
 
-Extensions begin as declared research proposals. Inspect each plan, contract, run and review before requesting the person's activation. Activation and qualification are different decisions. [Formula factors](formula-factors.md) owns the complete language, parameters, supported recipes and trial evidence; this page summarizes the extension paths.
+Ask your agent to fix a runtime defect or propose a strategy, Alpha model or Feature. The editable checkout is your workspace to change. Explain the intended behavior and inspect the resulting contract, research evidence and eligibility before deciding on activation. The [research-agent guide](../../AGENTS.md#change-the-checkout) owns code recovery and the [person's decisions](../../AGENTS.md#what-only-a-person-decides).
 
-## Change the code
+## Source owners and expected changes
 
-The checkout is the person's workspace to change. Your agent is encouraged to
-fix runtime bugs and add strategies, models and features in source. Use the
-editable checkout and locked environment from [setup](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch).
-Before changing code, follow the [failure and recovery procedure](../../.agents/skills/alphalattice-research/references/operating.md).
-Keep the original Goal, Task and error; a lawful refusal is not a defect to remove.
-The lead agent's model is whatever its host runs; retain the inexpensive specialist
-defaults in the shipped cards.
+Extend the existing declaration and execution path. A new file alone does not register a capability.
 
-Extend the existing declarations and their execution path:
+- **Strategies:** [installed_strategies.py](../../src/alphalattice/investment/portfolio_strategy_lab/policies/installed_strategies.py) declares packages and score sources through `install_frozen_strategies`. [strategy_package.py](../../src/alphalattice/investment/portfolio_strategy_lab/application/strategy_package.py) owns the package, score-source and installed-binding contracts. Every declared capability needs its matching evidence identity. Installation produces a package; its reviewed whole-support book and forward positions follow the [strategy research path](research-flows.md#read-an-installed-strategys-book-and-positions).
+- **Alpha models:** [model_scaffold.py](../../src/alphalattice/capabilities/alpha_modeling/model_scaffold.py) creates an adapter and `.model.yaml` under `capabilities/alpha_modeling/extensions/`, plus its contract test under `tests/alpha_research/`. The author implements `fit` and `predict`; the model's contract and sandbox determine its eligibility.
+- **Features:** [factors/registry.py](../../src/alphalattice/foundation/feature_engine/producers/factors/registry.py) owns `RegisteredFeatureKernel`; [factors/catalog.py](../../src/alphalattice/foundation/feature_engine/producers/factors/catalog.py) registers kernels and recipes. [arithmetic_identity.py](../../src/alphalattice/foundation/feature_engine/producers/arithmetic_identity.py) declares method-family owners, and [factors/specifications.py](../../src/alphalattice/foundation/feature_engine/producers/factors/specifications.py) declares formula, boundaries, clock and admission. Registration adds no columns to a sealed Panel.
 
-- **Strategies:** [installed_strategies.py](../../src/alphalattice/investment/portfolio_strategy_lab/policies/installed_strategies.py)
-  declares installed packages and their score sources through `install_frozen_strategies`.
-  [strategy_package.py](../../src/alphalattice/investment/portfolio_strategy_lab/application/strategy_package.py)
-  owns `FrozenStrategyPackage`, `StrategyScoreSource` and `InstalledPackageBinding`.
-  A package must install every declared capability with its matching evidence
-  identity; adding a file alone does not register a strategy.
-- **Alpha models:** [`model_scaffold.py`](../../src/alphalattice/capabilities/alpha_modeling/model_scaffold.py)
-  writes an adapter and its `.model.yaml` under `capabilities/alpha_modeling/extensions/`,
-  plus a contract test in the extension directory it creates under
-  `tests/alpha_research/`. Implement its `fit` and `predict`, then follow the
-  check and sandbox procedure below.
-- **Features:** [factors/registry.py](../../src/alphalattice/foundation/feature_engine/producers/factors/registry.py)
-  owns `RegisteredFeatureKernel`; [factors/catalog.py](../../src/alphalattice/foundation/feature_engine/producers/factors/catalog.py)
-  explicitly registers kernels and recipes. Declare the method-family owners in
-  [arithmetic_identity.py](../../src/alphalattice/foundation/feature_engine/producers/arithmetic_identity.py)
-  and the method's formula, boundaries, clock and admission in
-  [factors/specifications.py](../../src/alphalattice/foundation/feature_engine/producers/factors/specifications.py).
-  A new registration does not add columns to an already sealed Panel.
+Your agent checks the changed owner and its consumers in the checkout's locked environment. Keep the original Goal, Task and error for recovery; a lawful refusal remains a limit to respect. A changed computation produces new method and Program identities and result evidence. Earlier sealed results retain their method, inputs and artifacts when their integrity bindings remain valid; current reuse or replay can be refused if the recorded method is no longer admitted. Equal meaning across an identity change requires an explicit successor record.
 
-Run the tests that answer for the owner and its consumers, using the checkout's
-locked environment. For example, choose the affected nodes or files under
-`tests/portfolio_strategy_lab/test_public_portfolio_finalization.py`,
-`tests/alpha_research/test_model_contract.py`, your scaffolded model test,
-`tests/feature_engine/test_factor_arithmetic_identity.py` or
-`tests/researcher_methodology_surface/test_factor_formula_specification.py`:
-
-```powershell
-$env:ALPHALATTICE_NETWORK_DISABLED = '1'
-.venv/Scripts/python.exe -m pytest tests/feature_engine/test_factor_arithmetic_identity.py
-```
-
-In the editable install, source edits are live; restart only an idle Host you own
-in the same workspace, open its new launch link and recheck the session binding.
-Read the original Task before taking its current owner-offered resume or replan.
-Keep the earlier sealed result to compare
-with the new run. Computation identities bind the method's numerical source,
-declaration and parameters; execution evidence records the Program, method and
-input bindings and artifact references. Changing the computation produces a new
-method/Program identity and new result evidence. Earlier results keep their
-original method, inputs and artifacts and can be read as historical records
-when the required artifacts and integrity bindings remain valid. Current reuse
-or replay may be refused when the recorded method is no longer admitted.
-When an identity changes without changing meaning, compatibility requires an
-explicitly recorded successor; it is never inferred from a successful command.
-
-Fix an integrity refusal, including an identity or evidence-binding mismatch,
-at its source or input cause. Never bypass the verifier, weaken a binding check,
-or edit stored results, receipts, hashes or bindings to make it pass. Run a new
-computation when its method or inputs have changed. Source changes grant no
-activation or external-publication authority; the person's decisions below
-still apply.
+An identity or evidence-binding refusal is resolved at its source or input cause. Stored results, receipts, hashes and bindings are never edited to force a pass. A new computation supplies evidence for changed methods or inputs.
 
 ## Formula extension
 
-The bounded expression language does not run Python imports or arbitrary callables. Each time-series window counts a listing's own rows and cannot read a later row. The author selects preprocessing; cross-sectional rank, scaling and Sector adjustment belong there, not in the formula.
+[Formula factors](formula-factors.md) describes the bounded numerical language and preprocessing recipes. Ask for a plan on the chosen input and a trial against compatible Factor-handoff Alpha evidence, or a Portfolio built on it. Inspect the review's contract, coverage, comparisons and search counts. Completion does not activate the factor; `NOT_COMPARED` claims no metric change.
 
-A Feature plan canonicalizes the declaration and states the trial's baseline requirements. Build on that input, choose an exact compatible completed Alpha study handed off from Factor evidence (or a Portfolio built on it) for the trial, then inspect the review packet's standing, contract, coverage, trials and search counts. The trial's `COMPLETED` state does not activate the factor; `NOT_COMPARED` claims no metric change. A person alone activates an eligible definition through Local Web. The next data update binds it in the daily catalog; older Panels retain their recorded catalog. Point-in-time formulas can be admitted with an eligible recipe; Sector-return formulas remain research-only until the daily build carries their Sector input.
+An eligible factor's activation on **Features** adds a daily catalog entry. The next data update rebuilds the Panel; older Panels retain their recorded catalog. Point-in-time formulas can be eligible with an admitted recipe. Sector-return formulas remain research-only until the daily build carries their Sector input.
 
 ## Alpha model extension
 
-Use the checkout's model scaffold to create the declared adapter, model declaration and contract test. For this model path, implement the adapter's `fit` and `predict`; `model check` checks its protocol, axes, routing and deterministic behavior, including a row predicted alone. The locked environment is required. A new dependency needs its own project dependency decision.
+Create an editable model declaration with the scaffold command:
 
 ```powershell
 alphalattice model scaffold --save-declaration "<out>/model.yaml"
 ```
 
-Edit that declaration for your model, then scaffold its source and contract test:
+Edit the declaration for your model, then create its adapter and contract test:
 
 ```powershell
 alphalattice model scaffold --file "<out>/model.yaml"
-alphalattice model check <declared-model-id>
 ```
 
-Stop the workspace Host before `model sandbox`: its workspace must be at rest. The sandbox uses a copy, runs the supplied Alpha study with the model and recipe, checks that earlier stored results retain their verdicts and records the trial. Without a supplied study file it uses the latest published Alpha development study that declares a model, substituting the model and recipe being checked. `--keep` retains the copy for inspection. A sandbox is not access to a protected qualification population.
+Read the model's contract and sandbox through `model list`. `model check <model-id>` checks protocol, axes, routing and deterministic behavior, including a row predicted alone. A dependency outside the lock needs the project dependency decision described in the guide.
 
-Read the contract and sandbox through `model list`. A person can activate only after a passed contract and sandbox for the same declaration and numerical binding. Changing the model does not transfer an old pass to its new identity. Deactivation removes catalog admission; saved studies keep their exact readback.
+`model sandbox <model-id>` copies the workspace before running its trial, so the source workspace must be at rest with its Host stopped. It runs the Alpha study supplied with `--file` using the model and recipe, checks earlier stored verdicts and records the trial. Without a supplied study, it uses the latest completed Alpha development study that names a model. Add `--keep` to retain the copy for inspection.
 
-An activated agent model is qualified with its question's family. Its current refit seals the state projected by its adapter, bound to that adapter, its numerical binding and projection; it does not reuse an installed family's state. For kinds other than `LINEAR` or `TREE`, current-stability uses model-agnostic training error and current-score mean, spread and coverage against development folds. An agent-projected tree is refused as `ALPHA_CURRENT_REFIT_AGENT_TREE_UNSUPPORTED` because tree diagnostics read the installed family.
+Only a person may activate a model on **Models**. Activation requires a passed contract and sandbox for the same declaration and numerical binding. A changed model inherits no old pass. Deactivation removes catalog admission; saved studies keep their exact readback. Model activation and family qualification are distinct: neither a check, sandbox nor favorable research result establishes future performance.
 
-Activation authority belongs to the person. Neither a model check, sandbox, trial, review packet nor successful research command performs it.
+An activated agent model can be qualified with its question's family. Its current refit seals the state projected by its adapter, bound to that adapter, its numerical binding and projection; it does not reuse an installed family's state. For kinds other than `LINEAR` and `TREE`, stability uses training error and the current scores' mean, spread and coverage against development folds. An agent-projected tree is refused as `ALPHA_CURRENT_REFIT_AGENT_TREE_UNSUPPORTED` because the tree diagnostics read the installed family.

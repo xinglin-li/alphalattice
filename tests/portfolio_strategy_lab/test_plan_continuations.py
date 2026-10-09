@@ -1,4 +1,4 @@
-"""Verified expired plans offer their exact next declaration, never a default (V523)."""
+"""Verified expired plans offer their exact next declaration, never a default."""
 
 import json
 from datetime import UTC, date, datetime, timedelta
@@ -41,7 +41,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 def test_an_expired_capture_plan_replans_its_input_or_names_an_unavailable_source(
     tmp_path, monkeypatch
 ):
-    """regression (V523/S3): expiry forbids the old run, while a verified plan's input
+    """regression (S3): expiry forbids the old run, while a verified plan's input
     still binds its re-plan. A missing or tampered record never becomes an anchor input."""
     plan = input_capture.ResearchInputCapturePlan.create(
         workspace_id="s1-workspace",
@@ -160,7 +160,7 @@ def _assert_request(request, expected):
 
 
 def test_an_expired_training_plan_keeps_its_component_input_and_revision(tmp_path, monkeypatch):
-    """regression (V523/S3): re-planning names the same training component and exact input;
+    """regression (S3): re-planning names the same training component and exact input;
     expiry still forbids running, and unavailable plans offer no guessed source."""
     plan = model_training.ModelTrainingInputPlan.create(
         workspace_id="s1-workspace",
@@ -184,6 +184,8 @@ def test_an_expired_training_plan_keeps_its_component_input_and_revision(tmp_pat
                 "component_id": "G2_R0_TREND",
                 "research_input_id": plan.input_id,
                 "input_binding_hash": plan.input_binding_hash,
+                # A plan made before the light default names its full lifecycle.
+                "model_lifecycle": "FULL",
             }
         },
         "s1-input",
@@ -192,7 +194,7 @@ def test_an_expired_training_plan_keeps_its_component_input_and_revision(tmp_pat
 
 
 def test_an_expired_strategy_plan_keeps_its_parents_and_policy(tmp_path, monkeypatch):
-    """regression (V523/S3): a re-plan retains the authored Alpha/Risk parents and policy;
+    """regression (S3): a re-plan retains the authored Alpha/Risk parents and policy;
     unavailable or tampered declarations do not silently select other studies."""
     declaration = FrozenPortfolioPreparationRequest(
         input_binding_hash="b" * 64,
@@ -231,7 +233,7 @@ def test_an_expired_strategy_plan_keeps_its_parents_and_policy(tmp_path, monkeyp
 def test_an_expired_score_plan_keeps_its_package_component_and_session(
     tmp_path, monkeypatch, component
 ):
-    """regression (V523/S3): a re-plan keeps the exact package, declared component and
+    """regression (S3): a re-plan keeps the exact package, declared component and
     formation; it does not substitute a default package or the latest session."""
     binding = ResearchWorkspaceScoreInput(
         strategy_package_id="s1-package",
@@ -262,7 +264,7 @@ def test_an_expired_score_plan_keeps_its_package_component_and_session(
         strategy_scoring,
         plan,
         lambda session, clock: strategy_scoring.StrategyScoringApplication(
-            session=session, manifest=manifest, packages={}, clock=clock
+            session=session, manifest=manifest, packages=dict, clock=clock
         ),
         {
             "replan": {
@@ -278,7 +280,7 @@ def test_an_expired_score_plan_keeps_its_package_component_and_session(
 
 
 def test_an_expired_calibration_plan_keeps_its_package_and_score(tmp_path, monkeypatch):
-    """regression (V523/S3): a re-plan keeps the same package and exact published score;
+    """regression (S3): a re-plan keeps the same package and exact published score;
     an unavailable retained source cannot choose a newer score or a default package."""
     binding = ResearchWorkspaceCalibrationInput(
         strategy_package_id="s1-package",
@@ -318,7 +320,7 @@ def test_an_expired_calibration_plan_keeps_its_package_and_score(tmp_path, monke
 def test_a_stopped_portfolio_update_retains_the_requested_input_not_its_resolved_input(
     tmp_path, requested_input
 ):
-    """regression (V615/TE12): a stop re-plans the person's input choice and observation end;
+    """regression (TE12): a stop re-plans the person's input choice and observation end;
     a resolved input or newer workspace default cannot silently replace it."""
     session = SimpleNamespace(workspace=tmp_path)
     calibration = SimpleNamespace(scoring=SimpleNamespace(session=session))
@@ -361,7 +363,7 @@ def test_a_stopped_portfolio_update_retains_the_requested_input_not_its_resolved
 
 
 def test_a_stopped_research_update_retains_the_selected_package_and_target(tmp_path):
-    """regression (V615/TE12): the durable update target survives a stop without any current
+    """regression (TE12): the durable update target survives a stop without any current
     scoring, calibration, data or checkpoint admission being required for its next plan."""
     from alphalattice.control.data_platform.maintenance.contracts import (
         MaintenanceTrigger,
@@ -453,7 +455,7 @@ def test_a_stopped_research_update_retains_the_selected_package_and_target(tmp_p
 
 @pytest.mark.parametrize("preprocess", [False, True])
 def test_a_stopped_feature_build_retains_its_authored_definition(tmp_path, preprocess):
-    """regression (V615/TE12): raw and prepared builds re-plan their exact authored edit,
+    """regression (TE12): raw and prepared builds re-plan their exact authored edit,
     reason and input revision, without rechecking the current numerical implementation."""
     from alphalattice.control.product_host.research_authoring.feature_research import (
         CATEGORY,
@@ -538,7 +540,7 @@ def test_a_stopped_feature_build_retains_its_authored_definition(tmp_path, prepr
 def test_a_stopped_book_retains_its_controls_window_and_admitted_package(
     tmp_path, default_selection
 ):
-    """regression (V615/TE12): a durable book's complete public declaration round-trips,
+    """regression (TE12): a durable book's complete public declaration round-trips,
     freezing the admitted package when the original request used a workspace default."""
     from alphalattice.interface.local_application.portfolio_research import spec_from_document
     from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
@@ -592,7 +594,7 @@ def test_a_stopped_book_retains_its_controls_window_and_admitted_package(
 
 
 def test_a_training_task_never_silently_drops_a_component_from_its_replan(tmp_path):
-    """regression (V615/TE12): the singleton planning entry refuses a multi-component retained
+    """regression (TE12): the singleton planning entry refuses a multi-component retained
     Task by name, instead of inventing a new request by dropping one of its selections."""
     plan = model_training.ModelTrainingInputPlan.create(
         workspace_id="s1-workspace",
@@ -611,3 +613,29 @@ def test_a_training_task_never_silently_drops_a_component_from_its_replan(tmp_pa
     )
     with pytest.raises(ValueError, match=r"model_training\.component_selection_invalid"):
         app.replan_request(task)
+
+
+def test_a_full_training_plan_keeps_its_hash_and_a_light_one_names_its_lifecycle() -> None:
+    """A FULL training plan keeps its existing hash, while a LIGHT plan names its lifecycle."""
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+    fields = dict(
+        workspace_id="s1-workspace",
+        workspace_manifest_hash="a" * 64,
+        input_id="s1-input",
+        input_binding_hash="b" * 64,
+        component_ids=("G6_R0_FAST_REBOUND",),
+        listing_count=50,
+        source_session_count=252,
+        implementation_hash="c" * 64,
+    )
+    before = model_training.ModelTrainingInputPlan.create(**fields)
+    named = model_training.ModelTrainingInputPlan.create(**fields, model_lifecycle="FULL")
+    light = model_training.ModelTrainingInputPlan.create(**fields, model_lifecycle="LIGHT")
+    assert named == before and before.plan_hash == canonical_hash(fields)
+    assert "model_lifecycle" not in before.model_dump(mode="json")
+    assert light.plan_hash != before.plan_hash
+    assert light.model_dump(mode="json")["model_lifecycle"] == "LIGHT"
+    assert (
+        model_training.ModelTrainingInputPlan.model_validate(light.model_dump(mode="json")) == light
+    )

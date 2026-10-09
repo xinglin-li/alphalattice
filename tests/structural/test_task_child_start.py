@@ -1,4 +1,4 @@
-"""V610: enumerate every process-pool owner so a new Task start cannot bypass the class."""
+"""enumerate every process-pool owner so a new Task start cannot bypass the class."""
 
 from __future__ import annotations
 

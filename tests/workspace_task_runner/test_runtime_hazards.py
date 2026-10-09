@@ -1,6 +1,6 @@
-"""The runtime hazards RH's inventory ranked, each checked the way it would bite (RH2).
+"""The runtime hazards inventory ranked, each checked the way it would bite (RH2).
 
-The private RH inventory names five two-path suspects. Each is checked here with a second party
+The private inventory names five two-path suspects. Each is checked here with a second party
 arriving while the first holds what it holds. A check passes where the owner prevents the
 hazard. Where it does not yet, the check is marked with the phase-4 fix that owns it, and it
 fails once that fix lands, so the mark is removed with the fix. The recorder (`lock_order.py`)
@@ -121,9 +121,7 @@ def test_a_status_read_beside_a_starting_task_takes_no_pair_in_both_orders(
 def test_a_session_read_defers_while_a_writer_holds_the_gate(
     tmp_path: Path, lock_order: LockOrder
 ) -> None:
-    """Suspect 3: the quality step holds the gate over its whole list (about 38 s for 473 names,
-    V109). A session's read of the context asks for the gate with a timeout and defers, so a
-    page is not held for the hold; the hold itself is RH's phase-4 fix."""
+    """A session's context read defers while a writer holds the gate instead of holding the page."""
 
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         held, release = Event(), Event()
@@ -147,7 +145,7 @@ def test_a_session_read_defers_while_a_writer_holds_the_gate(
 def test_the_workbench_build_replaces_an_asset_a_reader_holds(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Suspect 4 (RH, V170): the build replaces the assets a starting Host reads; Windows
+    """Suspect 4: the build replaces the assets a starting Host reads; Windows
     refuses to replace a file a reader holds open, so the build retries the replace while the
     reader finishes."""
 

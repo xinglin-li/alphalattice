@@ -308,3 +308,49 @@ def test_a_later_start_refusal_cancels_an_already_running_child(monkeypatch, tmp
         calls.make({"value": 21})
         calls.make({"value": 22})
         assert [calls.answer()["value"] for _ in range(2)] == [42, 44]
+
+
+class _Counted:
+    """A payload that counts, in the parent, each time it is pickled for a worker."""
+
+    pickled = 0
+
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+
+    def __reduce__(self) -> tuple[type[_Counted], tuple[bytes]]:
+        type(self).pickled += 1
+        return (_Counted, (self.data,))
+
+
+def shared_length(value: int, payload: _Counted, cancelled) -> dict[str, int]:
+    return {"value": value, "length": len(payload.data)}
+
+
+def test_a_shared_argument_ships_once_to_each_worker_of_a_call_set() -> None:
+    """requirement: a shared argument goes to each worker once per call set, by its
+    content key after that; another set ships its own, even interleaved on one worker, so
+    nothing one set shipped answers another."""
+    payload = _Counted(b"x" * 1_000_000)
+    _Counted.pickled = 0
+    with child_calls(f"{HERE}:shared_length", workers=2) as calls:
+        for value in range(6):
+            calls.make({"value": value}, shared={"payload": ("payload-key", payload)})
+        answers = [calls.answer() for _ in range(6)]
+    assert [answer["value"] for answer in answers] == list(range(6))
+    assert {answer["length"] for answer in answers} == {1_000_000}
+    assert _Counted.pickled == 2
+    with child_calls(f"{HERE}:shared_length", workers=2) as calls:
+        calls.make({"value": 6}, shared={"payload": ("payload-key", payload)})
+        assert calls.answer() == {"value": 6, "length": 1_000_000}
+    assert _Counted.pickled == 3
+    small = _Counted(b"y" * 10)
+    with (
+        child_calls(f"{HERE}:shared_length", workers=1) as first,
+        child_calls(f"{HERE}:shared_length", workers=1) as second,
+    ):
+        for value in range(2):
+            first.make({"value": value}, shared={"payload": ("payload-key", payload)})
+            assert first.answer()["length"] == 1_000_000
+            second.make({"value": value}, shared={"payload": ("payload-key", small)})
+            assert second.answer()["length"] == 10

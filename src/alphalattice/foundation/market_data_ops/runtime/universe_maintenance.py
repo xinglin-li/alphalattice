@@ -14,8 +14,9 @@ from contextlib import AbstractContextManager, ExitStack, contextmanager, nullco
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
+from functools import partial
 from hashlib import sha256
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from alphalattice.foundation.market_data_ops.publication.projection import action_set_hash
 from alphalattice.foundation.market_data_ops.runtime.diagnostics import (
@@ -57,6 +58,9 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
 from alphalattice.kernel.shared_kernel.spans import span
+
+if TYPE_CHECKING:
+    from duckdb import DuckDBPyConnection
 
 
 class CurrentUniverseMaintenanceStatus(StrEnum):
@@ -337,13 +341,10 @@ class CurrentUniverseMaintenance:
                                 self._record_failure(
                                     item, code=exc.code, observed_at=now, exception=exc
                                 )
-                            self._publish_progress(
-                                self._outcome(CurrentUniverseMaintenanceStatus.RUNNING),
-                                current_item=listing.symbol,
-                            )
+                            self._publish_running(current_item=listing.symbol)
                         else:
                             with span("write", "listing_maintenance"):
-                                result = self._apply_hydration(
+                                result = self._apply_listing(
                                     item,
                                     listing=listing,
                                     existing=existing,
@@ -353,10 +354,7 @@ class CurrentUniverseMaintenance:
                                 )
                             if result.startswith("DEFERRED:"):
                                 systemic_failure = systemic_failure or result.partition(":")[2]
-                            self._publish_progress(
-                                self._outcome(CurrentUniverseMaintenanceStatus.RUNNING),
-                                current_item=listing.symbol,
-                            )
+                            self._publish_running(current_item=listing.symbol)
                         if pending and not any(f.done() for f in pending):
                             retained.close()
                             held = False
@@ -381,7 +379,7 @@ class CurrentUniverseMaintenance:
                             failure_code=systemic_failure,
                         )
                         return outcome
-                    self._publish_progress(self._outcome(CurrentUniverseMaintenanceStatus.RUNNING))
+                    self._publish_running()
                     if last_chunk:
                         return self._close_run(now)
         with self._retained():
@@ -463,12 +461,16 @@ class CurrentUniverseMaintenance:
         return chunks, first_jobs
 
     def _prepare_chunk(self, chunk: _Chunk, *, observed_at: datetime) -> list[_Job]:
+        """Count the chunk's attempts in one commit before its fetch, reading each history there."""
         jobs: list[_Job] = []
-        for item in chunk:
-            prepared = self._prepare_listing(item, observed_at=observed_at)
-            if prepared is not None:
-                listing, existing, audit_start = prepared
-                jobs.append((item, listing, existing, audit_start))
+        with self.store.database.transaction() as connection:
+            for item in chunk:
+                prepared = self._prepare_listing(
+                    item, observed_at=observed_at, connection=connection
+                )
+                if prepared is not None:
+                    listing, existing, audit_start = prepared
+                    jobs.append((item, listing, existing, audit_start))
         return jobs
 
     def _close_run(self, now: datetime) -> CurrentUniverseMaintenanceOutcome:
@@ -526,22 +528,30 @@ class CurrentUniverseMaintenance:
             )
 
     def _prepare_listing(
-        self, item: CurrentUniverseMaintenanceListing, *, observed_at: datetime
+        self,
+        item: CurrentUniverseMaintenanceListing,
+        *,
+        observed_at: datetime,
+        connection: DuckDBPyConnection | None = None,
     ) -> tuple[ManifestListing, tuple[object, ...], date] | None:
         self._mutate(
             self.store.begin_current_universe_maintenance_listing_attempt,
             maintenance_id=self.maintenance_id,
             listing_id=item.listing_id,
             observed_at=observed_at,
+            _connection=connection,
         )
         listing = self._listing(item.listing_id)
         with span("read", "listing_raw_history"):
-            existing = self.store.raw_bars(item.listing_id, through=self.as_of_session)
+            existing = self.store.raw_bars(
+                item.listing_id, through=self.as_of_session, _connection=connection
+            )
         if not existing:
             self._record_failure(
                 item,
                 code="data.maintenance_missing_raw_history",
                 observed_at=observed_at,
+                connection=connection,
             )
             return None
         refresh_plan = normal_refresh_plan(existing[-1].session_date, self.as_of_session)
@@ -552,6 +562,7 @@ class CurrentUniverseMaintenance:
                 item,
                 code="data.incremental_gap_approval_required",
                 observed_at=observed_at,
+                connection=connection,
             )
             return None
         refresh_start = refresh_plan.fetch_start
@@ -624,6 +635,39 @@ class CurrentUniverseMaintenance:
                 raise
         raise AssertionError("bounded maintenance fetch did not return")
 
+    def _apply_listing(
+        self,
+        item: CurrentUniverseMaintenanceListing,
+        *,
+        listing: ManifestListing,
+        existing: tuple[object, ...],
+        audit_start: date,
+        hydration: HydrationEvidence,
+        observed_at: datetime,
+    ) -> str:
+        """Apply one fetched listing in one transaction, then report what it became.
+
+        The batch, its audit, the reads after them and the listing's state commit together. An
+        exception inside rolls the listing back whole, and it is applied again on separate
+        commits, where every failure is handled as before. Its attempt was counted before the
+        fetch and is not counted again. A full-history audit's fetch never runs inside the
+        transaction.
+        """
+        apply = partial(
+            self._apply_hydration,
+            item,
+            listing=listing,
+            existing=existing,
+            audit_start=audit_start,
+            hydration=hydration,
+            observed_at=observed_at,
+        )
+        try:
+            with self.store.database.transaction() as connection:
+                return apply(connection=connection)
+        except Exception:
+            return apply()
+
     def _apply_hydration(
         self,
         item: CurrentUniverseMaintenanceListing,
@@ -633,6 +677,7 @@ class CurrentUniverseMaintenance:
         audit_start: date,
         hydration: HydrationEvidence,
         observed_at: datetime,
+        connection: DuckDBPyConnection | None = None,
     ) -> str:
         try:
             batch = sanitize_payload(
@@ -649,6 +694,7 @@ class CurrentUniverseMaintenance:
                 observed_at=observed_at,
                 exception=exc,
                 row_count=len(hydration.daily_rows),
+                connection=connection,
             )
             return "FAILED"
         # Bounded deterministic sentinels over the sanitized batch, before any
@@ -662,13 +708,17 @@ class CurrentUniverseMaintenance:
                 item,
                 code="data.price_action_sentinel_quarantine",
                 observed_at=observed_at,
+                connection=connection,
             )
             return "FAILED"
         before_bars = {bar.session_date: bar for bar in existing}
-        before_actions = self.store.actions(item.listing_id)
+        before_actions = self.store.actions(item.listing_id, _connection=connection)
+        # Only the latest adjusted session is wanted: the window from the audit start holds it
+        # whenever the series reaches that far; a series that ends before is read whole.
         before_adjusted = self.store.provider_adjusted_closes(
-            item.listing_id,
-            through=self.as_of_session,
+            item.listing_id, through=self.as_of_session, start=audit_start, _connection=connection
+        ) or self.store.provider_adjusted_closes(
+            item.listing_id, through=self.as_of_session, _connection=connection
         )
         before_adjusted_through = (
             max(point.session_date for point in before_adjusted) if before_adjusted else None
@@ -707,6 +757,7 @@ class CurrentUniverseMaintenance:
                 item,
                 code="data.full_history_audit_approval_required",
                 observed_at=observed_at,
+                connection=connection,
             )
             return "FAILED"
         write_counts = self._mutate(
@@ -715,12 +766,14 @@ class CurrentUniverseMaintenance:
             batch,
             ingestion_id=f"{self.maintenance_id}:refresh:{listing.listing_id}",
             observed_at=observed_at,
+            _connection=connection,
         )
         if raw_through < self.as_of_session:
             self._record_failure(
                 item,
                 code="data.maintenance_stale_payload",
                 observed_at=observed_at,
+                connection=connection,
             )
             return "FAILED"
         with span("verify", "listing_action_audit"):
@@ -737,6 +790,7 @@ class CurrentUniverseMaintenance:
                 write_counts=write_counts,
                 sentinel_report=sentinel_report,
                 restatement_observation=restatement_observation,
+                connection=connection,
             )
 
     def _price_action_sentinel(self, batch: SanitizedBatch) -> PriceActionIntegritySentinelReport:
@@ -771,8 +825,11 @@ class CurrentUniverseMaintenance:
         write_counts: dict[str, int],
         sentinel_report: PriceActionIntegritySentinelReport,
         restatement_observation: RestatementObservationReceipt,
+        connection: DuckDBPyConnection | None = None,
     ) -> str:
-        bars = self.store.raw_bars(item.listing_id, through=self.as_of_session)
+        bars = self.store.raw_bars(
+            item.listing_id, through=self.as_of_session, _connection=connection
+        )
         force_full_audit = False
         adjusted_return_change_sessions: set[date] = set()
         try:
@@ -787,11 +844,16 @@ class CurrentUniverseMaintenance:
                 history_end=self.as_of_session,
                 requested_as_of=self.as_of_session,
                 observed_at=observed_at,
+                _connection=connection,
             )
-            adjusted_revision = self.store.provider_adjusted_revision(receipt.receipt_hash)
+            adjusted_revision = self.store.provider_adjusted_revision(
+                receipt.receipt_hash, _connection=connection
+            )
             if adjusted_revision is not None:
                 adjusted_return_change_sessions.update(adjusted_revision.changed_return_sessions)
         except ProviderFetchError as exc:
+            if connection is not None:
+                raise
             if exc.code in {"data.rate_limited", "data.provider_session_unstable"}:
                 self._mutate(
                     self.store.record_failures,
@@ -810,6 +872,8 @@ class CurrentUniverseMaintenance:
             self._record_failure(item, code=exc.code, observed_at=observed_at)
             return "FAILED"
         except ActionAuditScopeInsufficient:
+            if connection is not None:
+                raise
             # A rolling payload can be internally valid yet insufficient to
             # reconcile a session-set or same-day action ambiguity.  Escalate
             # exactly once to the already-required full-history hydration;
@@ -821,6 +885,8 @@ class CurrentUniverseMaintenance:
                 return "FAILED"
             force_full_audit = True
         except ValueError:
+            if connection is not None:
+                raise
             # Programmer errors, unsupported actions, and invalid diagnostics
             # are not authority to spend a full-history Provider budget.
             self._record_failure(item, code="data.action_audit_invalid", observed_at=observed_at)
@@ -843,8 +909,12 @@ class CurrentUniverseMaintenance:
                 item,
                 code="data.full_history_audit_approval_required",
                 observed_at=observed_at,
+                connection=connection,
             )
             return "FAILED"
+        if needs_full and connection is not None:
+            # Its full-history audit fetches: the listing applies again on separate commits.
+            raise RuntimeError(item.listing_id)
         if needs_full:
             try:
                 with ThreadPoolExecutor(max_workers=1) as pool:
@@ -916,13 +986,17 @@ class CurrentUniverseMaintenance:
                 )
                 return "FAILED"
         adjusted = self.store.provider_adjusted_closes(
-            item.listing_id, through=self.as_of_session, start=bars[0].session_date
+            item.listing_id,
+            through=self.as_of_session,
+            start=bars[0].session_date,
+            _connection=connection,
         )
         if {point.session_date for point in adjusted} != {bar.session_date for bar in bars}:
             self._record_failure(
                 item,
                 code="data.provider_adjusted_series_incomplete",
                 observed_at=observed_at,
+                connection=connection,
             )
             return "FAILED"
         self._mutate(
@@ -936,7 +1010,7 @@ class CurrentUniverseMaintenance:
                 before_bars=before_bars,
                 after_bars={bar.session_date: bar for bar in bars},
                 before_actions=before_actions,
-                after_actions=self.store.actions(item.listing_id),
+                after_actions=self.store.actions(item.listing_id, _connection=connection),
                 audit_start=audit_start,
                 provider_receipt_hash=receipt.receipt_hash,
                 action_set_hash_value=receipt.action_set_hash,
@@ -951,6 +1025,7 @@ class CurrentUniverseMaintenance:
                 observed_at=observed_at,
             ),
             observed_at=observed_at,
+            _connection=connection,
         )
         return "UPDATED"
 
@@ -1106,6 +1181,7 @@ class CurrentUniverseMaintenance:
         observed_at: datetime,
         exception: Exception | None = None,
         row_count: int | None = None,
+        connection: DuckDBPyConnection | None = None,
     ) -> None:
         self._mutate(
             self.store.record_failures,
@@ -1119,6 +1195,7 @@ class CurrentUniverseMaintenance:
                     observed_at,
                 ),
             ),
+            _connection=connection,
         )
         self._mutate(
             self.store.update_current_universe_maintenance_listing,
@@ -1143,6 +1220,7 @@ class CurrentUniverseMaintenance:
                 }
             },
             observed_at=observed_at,
+            _connection=connection,
         )
 
     def _record_deferred_failure(
@@ -1193,6 +1271,28 @@ class CurrentUniverseMaintenance:
                 for item in listings
                 if item.state == "UPDATED" and item.change_document is not None
             ),
+        )
+
+    def _publish_running(self, *, current_item: str | None = None) -> None:
+        """Progress while the run works: its counts alone, read only when a sink listens.
+
+        Each listing's progress once built the whole outcome, every unit's change document
+        parsed, 473 times a day; progress reads three counts.
+        """
+        if self.progress_sink is None:
+            return
+        listings, updated, failed = self.store.current_universe_maintenance_counts(
+            self.maintenance_id
+        )
+        self._publish_progress(
+            CurrentUniverseMaintenanceOutcome(
+                maintenance_id=self.maintenance_id,
+                status=CurrentUniverseMaintenanceStatus.RUNNING,
+                listings=listings,
+                updated=updated,
+                failed=failed,
+            ),
+            current_item=current_item,
         )
 
     def _publish_progress(

@@ -34,7 +34,7 @@ SECTORS = {"L1": "Energy", "L2": "Energy", "L3": "Tech", "L4": "Tech"}
 
 
 def _history(sectors: dict[str, str]) -> SectorHistory:
-    """A map every session reads, as the Feature build hands it (V346)."""
+    """A map every session reads, as the Feature build hands it."""
     return SectorHistory(current_revision="2" * 64, current=sectors)
 
 

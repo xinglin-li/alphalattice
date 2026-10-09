@@ -125,6 +125,13 @@ def _display_bytes(value: int) -> str:
 EVIDENCE_PIN_PREFIX = "evidence-index:"
 
 
+def _missing_input_binding(binding_hash: str, detail: str) -> StorageRetentionError:
+    """Name a missing retained binding distinctly from a present but invalid record."""
+    return StorageRetentionError(
+        f"storage.input_binding_missing:research-inputs/{binding_hash}", detail
+    )
+
+
 class ResearchInputStorage:
     """An application projection; policy and deletion remain with retention.
 
@@ -219,19 +226,32 @@ class ResearchInputStorage:
         roots: dict[str, set[str]] = {h: set() for h in bundles}
         for item in manifest.experiment_inputs or ():
             if item.binding_hash not in roots:
-                raise StorageRetentionError(
-                    "storage.retention_root_mismatch", "An installed input manifest is missing."
+                raise _missing_input_binding(
+                    item.binding_hash, "An installed input manifest is missing."
                 )
             roots[item.binding_hash].add("CURRENT_ACTIVE")
         for item in manifest.model_training_inputs or ():
             if item.input_binding_hash not in roots:
-                raise StorageRetentionError(
-                    "storage.retention_root_mismatch", "A retained model training input is missing."
+                raise _missing_input_binding(
+                    item.input_binding_hash, "A retained model training input is missing."
                 )
             roots[item.input_binding_hash].add("MODEL_TRAINING_SOURCE")
         revisions = ResearchInputRevisions(self.session)
         try:
             verified_publications = revisions.publications()
+        except FileNotFoundError as error:
+            missing = Path(error.filename) if error.filename is not None else None
+            if (
+                missing is not None
+                and missing.name == "manifest.json"
+                and missing.parent.parent == self.workspace / "research-inputs"
+                and len(missing.parent.name) == 64
+                and all(value in "0123456789abcdef" for value in missing.parent.name)
+            ):
+                raise _missing_input_binding(
+                    missing.parent.name, "A published input manifest is missing."
+                ) from error
+            raise
         except ValueError as error:
             raise StorageRetentionError(
                 "storage.retention_root_mismatch", "Input publication is invalid."
@@ -273,8 +293,8 @@ class ResearchInputStorage:
                     portfolio_source
                 )
                 if source.input_binding_hash not in roots:
-                    raise StorageRetentionError(
-                        "storage.retention_root_mismatch", "Portfolio research input is missing."
+                    raise _missing_input_binding(
+                        source.input_binding_hash, "Portfolio research input is missing."
                     )
                 roots[source.input_binding_hash].add("PORTFOLIO_RESEARCH")
             if task.lifecycle not in {TaskLifecycle.SUCCEEDED, TaskLifecycle.CANCELLED}:
@@ -298,15 +318,11 @@ class ResearchInputStorage:
             foundations.append(admission.admission_hash)
             for h in (admission.input_binding_hash, admission.factor_input_binding_hash):
                 if h not in roots:
-                    raise StorageRetentionError(
-                        "storage.retention_root_mismatch", "Foundation input is missing."
-                    )
+                    raise _missing_input_binding(h, "Foundation input is missing.")
                 roots[h].add("RESEARCH_FOUNDATION")
         for h in pins:
             if h not in roots:
-                raise StorageRetentionError(
-                    "storage.retention_root_mismatch", "Pinned input manifest is missing."
-                )
+                raise _missing_input_binding(h, "Pinned input manifest is missing.")
             roots[h].add("USER_PINNED")
         evidence: dict[str, Any] = {
             "manifest": manifest.manifest_hash,

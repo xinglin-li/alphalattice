@@ -1,4 +1,4 @@
-"""A strategy's Tasks, by the package their sealed plans name (V595).
+"""A strategy's Tasks, by the package their sealed plans name.
 
 Work planned for one strategy -- its scores, its calibration, its Portfolio and research
 updates -- is read back by its Task, or by "the latest". With two strategies in a workspace the

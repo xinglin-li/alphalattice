@@ -1,4 +1,4 @@
-"""The spellings NM2 retired are the ones nothing tracked still uses (V451, V481).
+"""The spellings NM2 retired are the ones nothing tracked still uses.
 
 `RETIRED_SPELLINGS` is the class a workspace prepared before the 2026-10-02 renames is refused
 by. It names a spelling only when no product source, test, script or registry uses it any more,
@@ -41,13 +41,13 @@ def _pattern(spelling: str) -> re.Pattern[str]:
     if spelling.endswith(":"):
         return re.compile(re.escape(spelling))
     if spelling == "IW184":
-        # The family's bare name, as a value; the ids that keep it inside them are V469's.
+        # The family's bare name, as a value; the ids that keep it inside them are.
         return re.compile(r"[\"']IW184[\"']")
     return re.compile(r"(?<![A-Za-z0-9_])" + re.escape(spelling) + r"(?![A-Za-z0-9_])")
 
 
 def test_no_tracked_source_uses_a_retired_spelling_and_each_successor_is_used() -> None:
-    """requirement (V481): the class the reader refuses by is exact: every spelling it names is
+    """Requirement: the class the reader refuses by is exact: every spelling it names is
     gone from the source, tests, scripts and the shipped registries, and its successor is the
     one the source uses."""
 

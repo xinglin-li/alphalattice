@@ -1,9 +1,3 @@
-/* The workshop (#page=kit, law 106):
- * every component the pages compose, in its kinds, sizes and states, each beside the geometry
- * it measures -- and every parameter of design/parameters.json with the value it resolves to in
- * the current appearance and language. No navigation entry and no Quick Open row: a scene or a
- * developer opens it by its address. Its stills are the baseline a round compares. Nothing here
- * acts: every control's action is `kit-noop`, which no handler answers. */
 const Kit = (() => {
   const NOOP = 'kit-noop';
   const SAMPLE = 'Evidence review 2026 · 0123456789';
@@ -14,7 +8,7 @@ const Kit = (() => {
   const LINES = ['line', 'edge-hair', 'edge-card', 'edge-strong'];
 
   const specimen = (name, body, o = {}) => html`<figure class="kit-specimen${o.wide ? ' kit-wide' : ''}" data-kit="${name}"${o.stackCaption ? ' data-stack-caption' : ''}><div class="kit-stage">${body}</div><figcaption><strong>${name}</strong>${o.note ? html`<span>${o.note}</span>` : ''}<span class="kit-measure" data-kit-measure="${o.measure || ''}"></span></figcaption></figure>`;
-  const boxed = (x) => html`<section class="panel" data-box="table">${x}</section>`; // law 148 amended: a table stands in its box
+  const boxed = (x) => html`<section class="panel" data-box="table">${x}</section>`;
   const section = (id, title, items) => html`<section class="kit-section" id="kit-${id}" aria-labelledby="kit-${id}-title"><h2 id="kit-${id}-title">${title}</h2><div class="kit-grid">${items}</div></section>`;
   const swatch = (name, prop = 'background') => html`<span class="kit-swatch"><i data-ui-style="${prop}: var(--${name})"></i><span class="mono">--${name}</span></span>`;
 
@@ -94,7 +88,6 @@ const Kit = (() => {
       specimen('meter', html`${meter({kind: 'share', segments: [{n: 2, label: t('Checked'), tone: 'good'}, {n: 3, label: t('Not checked'), tone: 'neutral'}], mark: 0.6})}${meter({kind: 'progress', now: 3, max: 5, label: t('Progress')})}`),
     ]);
   }
-  /* The Evidence library (C1): each shape the evidence views compose, fed sample data. */
   function evidenceSection() {
     const runs = [
       {id: 'kit-run-1', name: 'Alternative evidence document intelligence', state: 'SUCCEEDED', kind: 'alternative_evidence', started: '2026-08-13T04:08:00Z', finished: '2026-08-13T04:09:00Z'},

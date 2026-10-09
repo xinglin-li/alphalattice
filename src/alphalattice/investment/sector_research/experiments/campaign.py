@@ -116,7 +116,7 @@ class SectorCampaignRequest(BaseModel):  # type: ignore[misc]
         leave a committed value that reads authoritative and is not.
         """
 
-        # The one declaration loader, in its dialect (V276): a key written twice is refused.
+        # The one declaration loader, in its dialect: a key written twice is refused.
         payload = load_safe_yaml_document(document)
         if not isinstance(payload, dict):
             raise SectorResearchError("sector_research.campaign_request_document_invalid")

@@ -339,7 +339,7 @@ def build_estimator_stability_checks(
         raise ValueError("ALPHA_STABILITY_REFERENCE_STATE_MISMATCH")
     if not 0.0 < family_alpha < 1.0:
         raise ValueError("ALPHA_STABILITY_FAMILY_ALPHA_INVALID")
-    # A kind the installed families do not seal (an agent's model, V342) has no structural
+    # A kind the installed families do not seal (an agent's model) has no structural
     # diagnostics to compare; the policy's model-agnostic statistics below judge it alone.
     structural, family = (
         _tree_statistics(current, development)

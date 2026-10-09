@@ -158,7 +158,7 @@ class AlternativeEvidenceAnalysisPublicationService:
         Nothing when no admitted contract verifies its bindings, `SUPERSEDED` under a
         historical contract, `EXPIRED` past its expiry, `CURRENT` otherwise. `replay`
         reports it after verifying the lineage; a reader choosing which publications to
-        replay applies it to the records alone (X1), so the rule has one owner (V96).
+        replay applies it to the records alone (X1), so the rule has one owner.
         """
         contract = self.binding_contract(publication)
         if contract is None:

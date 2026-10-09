@@ -166,8 +166,8 @@ def test_sector_map_publication_failure_prevents_store_activation(tmp_path, monk
     ("sector.missing_current_sector", "sector.identity_mismatch", "data.rate_limited"),
 )
 def test_sector_staging_is_resumable_and_commits_only_at_fan_in(tmp_path, refresh_failure) -> None:
-    """requirement: the staging resumes by cursor and commits only at fan-in; regression
-    (V257, V268): it is JSON and binds no transport, so a staging deferred under two workers
+    """Requirement: the staging resumes by cursor and commits only at fan-in; regression
+    it is JSON and binds no transport, so a staging deferred under two workers
     resumes under a one-worker policy, each chunk recording the workers that fetched it."""
     profile = MarketProfile(
         market_profile_id="yaml-sector-staging-fixture",

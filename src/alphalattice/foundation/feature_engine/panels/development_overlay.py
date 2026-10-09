@@ -138,7 +138,7 @@ def _materialize_by_run(
     source_exclusions_by_session: Mapping[date, Sequence[str]] | None = None,
     **arguments: Any,
 ) -> tuple[pd.DataFrame, str]:
-    """Preprocess the rows one run of sessions at a time, each with the map it reads (V346).
+    """Preprocess the rows one run of sessions at a time, each with the map it reads.
 
     Preprocessing is cross-sectional, one session at a time, so a run is computed as the whole
     axis was. One run is one call over every row, as before; several are one call each, their

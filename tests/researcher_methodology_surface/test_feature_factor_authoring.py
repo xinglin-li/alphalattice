@@ -150,7 +150,7 @@ def test_the_factor_axis_is_dynamic_and_moves_catalog_identity(
 def test_a_policy_no_program_chose_moves_no_program_and_refuses_none(
     real_risk_workspace: RealRiskWorkspace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (LAWS.md ID3, V91): a Factor Program binds the policies it chose, not
+    """requirement (LAWS.md ID3): a Factor Program binds the policies it chose, not
     the installed menu, so installing another screening or redundancy policy leaves every
     Program's identity and keeps every sealed method installed."""
 
@@ -217,15 +217,7 @@ def test_the_candidate_budget_is_enforced_against_the_requested_axis(
 
 
 def test_the_development_axis_ceiling_is_not_the_frozen_catalog_breadth() -> None:
-    """requirement: a development budget, not a historical fact standing in for one.
-
-    ``55`` is how many Factors one frozen screening report happens to contain,
-    and this compiler used to refuse any inventory longer than that. Under that
-    rule the first method-family batch large enough to matter would have been
-    refused by a *development* compiler quoting a published artifact. The frozen
-    screening contracts that carried 55 retired with V312 (RT); the development
-    path never borrows their breadth.
-    """
+    """The development axis ceiling is independent of the frozen catalog's historical breadth."""
 
     frozen_catalog_breadth = 55
     assert frozen_catalog_breadth < DEVELOPMENT_CONTEXT_AXIS_CEILING

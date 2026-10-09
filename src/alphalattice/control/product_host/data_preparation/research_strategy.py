@@ -937,7 +937,6 @@ class ResearchStrategyPreparation:
                 admit_research_workspace(self.session.workspace)
                 return {
                     "status": "REUSED_EXACT",
-                    "restart_required": True,
                     "authority_hash": authority.authority_hash,
                 }
             if (
@@ -979,19 +978,15 @@ class ResearchStrategyPreparation:
             )
             return {
                 "status": "INSTALLED_NON_DEFAULT_RESEARCH",
-                "restart_required": True,
                 "authority_hash": authority.authority_hash,
                 "workspace_manifest_hash": updated.manifest_hash,
                 "strategy_package_ids": [v.package.strategy_id for v in packages],
                 "default_strategy_package_id": None,
                 "current_scoring_installed": False,
                 "previous_non_default_authority_hash": previous_non_default,
-                "next_action": (
-                    "Restart the owned Local Web service, then explicitly "
-                    "select a package for PLAN/RUN."
-                ),
-                # After the restart, each package's whole-support book: the book whose review
-                # its activation reads, so the first use reviews one book (FLOW-3).
+                "next_action": "READ_THE_PACKAGE_CONTROLS",
+                # The running Host serves the package at once: each package's whole-support
+                # book, the book whose review its activation reads.
                 "next_requests": {
                     f"books:{v.package.strategy_id}": {
                         "operation": "CONTROLS",

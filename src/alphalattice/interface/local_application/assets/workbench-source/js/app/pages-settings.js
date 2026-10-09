@@ -1,18 +1,9 @@
-/* Settings (phase 9, round 62): the one page for what a person sets once -- the appearance, the
- * language, the reading comfort, the keyboard sheet, the workspace, the governance that used to
- * be the Advanced page. Every section is a kv or a choice of the existing shapes; each choice
- * calls the same owner it always did (setTheme, setLocale, the comfort handlers), so the sun /
- * moon (round 68) and the ? sheet are entries to the same functions, not copies. */
+/* Settings and the frame use the same preference owners so their controls cannot become separate implementations. */
 const Settings = (() => {
-  /* Round 83: the page is four groups on the form shape (a label, a box of rows: a title, one
-   * line, one control) — General (the appearance as a pop-up, the navigation as a segment, the
-   * text size as a stepper, the language as a pop-up, the reading comfort as switches, the
-   * motion as a detail), Keyboard (the ? sheet's own rows), Workspace, Advanced. */
   const THEME_WORDS = {follow: 'Follow the host', light: 'Light', dark: 'Dark'}, THEME_GLYPHS = {follow: 'auto', light: 'sun', dark: 'moon'};
   const NAV_METAS = {follow: 'The sidebar at 1180 and wider, the rail below', sidebar: 'Words; its edge drags to set the width', rail: 'Glyphs; the drawer peeks out under the pointer', top: 'The top row switches sidebar and rail'};
   function general() {
     const z = Window.zoomLevel();
-    // round 94: the list is the pill's width, so the modes are four words; the chosen mode explains itself on the row's line
     const navigation = picker('navPick', NAV_MODES.map(([mode, word]) => ({value: mode, title: t(word)})), {action: 'nav-set', selected: Window.navMode(), label: t('Navigation')});
     const side = html`<div class="ui-segments" role="group" aria-label="${t('Dock side')}">${DOCK_SIDES.map(([key, word]) => segBtn(t(word), 'dock-set', key, Window.dockSide() === key))}</div>`;
     return formGroup(t('General'), html`${formRow({title: t('Appearance'), line: t('Light or dark; following the host takes its choice.'), control: picker('themePick', THEMES.map((theme) => ({value: theme, title: t(THEME_WORDS[theme]), word: t(THEME_WORDS[theme]), glyph: THEME_GLYPHS[theme]})), {action: 'theme-select', selected: app.theme, label: t('Appearance')})})}${formRow({title: t('Dock side'), line: t('Right stands at the window\'s edge beside a Codex or Claude conversation.'), control: side})}${formRow({title: t('Navigation'), line: t(NAV_METAS[Window.navMode()]), control: navigation})}${formRow({title: t('Text size'), line: t('The product scales itself; the host\'s pane may not.'), control: stepper(html`<span class="zoom-note">${z} %</span>`, 'zoom-step', {label: t('Text size'), reset: z === 100 ? '' : t('Reset'), resetAction: 'zoom-set', resetValue: '100'})})}${formRow({title: t('Language'), line: t('The interface language; machine identifiers, YAML and JSON stay as they are.'), control: picker('localePick', [['en', 'English'], ['zh-CN', '中文']], {action: 'locale-set', selected: I18N.locale, label: t('Language')})})}${switchRow('opaqueControls', document.body.classList.contains('opaque-controls'), t('Opaque controls'), t('Floating panels and warnings are solid, not frosted glass.'))}${switchRow('wideScrollbars', document.body.classList.contains('wide-scrollbars'), t('Wider scrollbars'), t('Easier to reach with a pointer.'))}${switchRow('reduceFocusEffects', document.body.classList.contains('reduced-focus'), t('Reduce focus effects'), t('No dimming or fog on the page behind a dialog.'))}${noticeRow()}${formRow({title: t('Reduced motion'), line: t("Your system's reduced-motion preference is respected."), detail: t('follows your system')})}`);
@@ -28,11 +19,6 @@ const Settings = (() => {
     // the keys are the page's longest list and its least changed: last, closed until asked (the user's phase 6 reading)
     return formGroup(t('Keyboard'), html`<details class="reveal-details settings-keys"><summary>${t('Every key the product answers')}</summary>${Inspect.shortcutsBody()}</details>`, {note: t('The same sheet as ?.')});
   }
-  /* The CPU budget (the Evidence line's F1; R12): how much of the machine a book's preparation, a Task's
-   * reads and an Alpha study's fits use, never what they compute. Read from its owner when the page opens;
-   * a choice writes it through the operation the CLI's `cpu-budget --set` sends, and the row says what the
-   * owner answered: a refusal beside the budget last read, which stays. The Task queue (U36) is the same
-   * owner's second setting, one a request: how many Tasks may wait behind the running one. */
   let budget = {value: null, refused: ''}, budgetRead = false;
   const repaint = () => (typeof patchMain === 'function' ? patchMain : render)();
   async function readBudget() {
@@ -73,7 +59,6 @@ const Settings = (() => {
     catch (e) { storageCap = {...storageCap, refused: String(e?.message || e)}; }
     finally { storageCapBusy = false; repaint(); }
   }
-  // V680: the same activity cadence reads changes made through another operator surface.
   const observeStorageCap = () => app.page === 'settings' ? readStorageCap(true) : undefined;
   function storageCapRow() {
     if (!storageCapRead && typeof queueMicrotask === 'function') queueMicrotask(() => void readStorageCap());
@@ -101,8 +86,6 @@ const Settings = (() => {
     const now = v.a_task_now?.cores ? ` ${t('A Task starting now gets {n}.', {n: countText(v.a_task_now.cores, '{n} core', '{n} cores')})}` : '';
     return formRow({title, line: cause ? html`${t('Not set')} · ${cause}` : html`${now ? now.trim() : about}${infoMark([now ? about : '', v.guidance ? t(v.guidance) : ''].filter(Boolean).join(' '))}`, /* the machine's figure in the line, what the budget is in its (i) (WD4: the first screen of Settings, the phase 6 reading) */ detail: load, control: picker('cpuBudgetPick', choices, {action: 'cpu-budget-set', selected: String(v.cpu_budget), label: t('CPU budget')})});
   }
-  /* U36: the Task queue beside the budget -- its places (auto or a number, the owner's reason on the title), how
-   * many wait now, and the choice; a run refused because every place is taken names this setting in its words. */
   const WAITING = [1, 2, 4, 8, 16, 32, 64]; // the choices offered; the owner holds the bound (MAXIMUM_TASKS_WAITING)
   function queueRow() {
     const q = budget.value?.task_queue, cause = budget.refused && budget.field === 'tasks_waiting' ? codeWords(budget.refused.split(':')[0]) : '';
@@ -112,9 +95,6 @@ const Settings = (() => {
     const choices = [{value: 'auto', title: t('Auto')}, ...sizes.map((c) => ({value: String(c), title: countText(c, '{n} Task', '{n} Tasks')}))];
     return formRow({title: hint(t('Tasks that may wait'), [line, q.reason ? t(q.reason) : ''].filter(Boolean).join(' ')), line: cause ? html`${t('Not set')} · ${cause}` : '', detail: t('{n} waiting of {places}', {n: count(q.waiting_now), places: count(q.places)}), control: picker('tasksWaitingPick', choices, {action: 'tasks-waiting-set', selected: String(q.tasks_waiting), label: t('Tasks that may wait')})});
   }
-  /* U37: a whole verification of the saved studies, asked by a person (EXPERIMENT_VERIFY_ALL): one Task reads
-   * every saved study's sealed evidence in full; what it finds is said where each study is read and on the
-   * upgrade overview. The answer is said in place, with its Task. */
   let sweep = null;
   async function verifyAll() {
     if (sweep?.sending) return;
@@ -150,7 +130,6 @@ const Settings = (() => {
     if (!v) return formRow({title: t('Network access'), line: cause ? html`${t('Not read')} · ${cause}` : t('Whether this workspace may reach its data sources.')}); // reading: no switch until the owner answers (ST7)
     return switchRow('networkAccess', v.network_allowed === true, t('Network access'), cause ? html`${t('Not set')} · ${cause}` : LiveWorkspace.networkWords(v), {disabled: v.decided_by === 'OPERATOR_OFFLINE_SWITCH'});
   }
-  // FLOW-1: this person's workspace preference comes from its owner, never an assumed default.
   let usage = {value: null, error: null, read: false}, usageReading = null, usageTicket = 0, usageBusy = false;
   const repaintUsage = () => { if (app.page === 'settings') repaint(); };
   function readUsage(again = false) {
@@ -185,9 +164,6 @@ const Settings = (() => {
     if (!['READ', 'OFF'].includes(v?.usage_reading)) return html`${failed}${formRow({title, line: t('Not read')})}`;
     return html`${failed}${switchRow('usageReading', v.usage_reading === 'READ', title, t(v.detail), {disabled: usageBusy || !Data.offers(v.next_requests?.set?.operation)})}`;
   }
-  /* U73 (LS1, V459): the daily research update, for the strategies that run forward -- the Host lists them
-   * (`runs_forward`) and offers turning it on for those alone (`next_requests.enable`) or off (`disable`); a person's
-   * switch sends the request it named, and the row says what the owner answered. */
   const UPDATE_STATES = {DISABLED: 'Off', ENABLED_SERVICE_LIFETIME: 'On while this service runs', SETTINGS_REAPPROVAL_REQUIRED: 'Set for an earlier workspace configuration: turn it on again', AUTOMATION_CHECK_FAILED: 'Its last check failed'};
   let update = {value: null, refused: '', read: false};
   let updateReading = null, updateTicket = 0, updateBusy = false;
@@ -214,11 +190,8 @@ const Settings = (() => {
     catch (e) { update = {...update, refused: String(e?.body?.failure_code || e?.message || e), error: e}; }
     finally { updateBusy = false; repaint(); }
   }
-  // V613/V621: read again after an answer that changes it (an activation, a stop) and whenever a Task moves -- the
-  // last value stays shown until the new one arrives
   const rereadUpdate = () => updateReading ? updateReading.then(() => readUpdate(true)) : readUpdate(true);
-  // V676: synchronous external activation/schedule changes do not move a Task. Home and
-  // Settings share this owner read on the ordinary activity cadence, with no new timer.
+  // Activation and schedule changes can happen without a Task transition, so the existing activity cadence reads them too.
   const observeUpdate = () => ['overview', 'settings'].includes(app.page) && !updateReading && !updateBusy ? readUpdate(true) : undefined;
   if (typeof Data !== 'undefined' && Data.followTasks) Data.followTasks(rereadUpdate);
   // the daily update's answer, read once for every page that shows it (Settings' switch, Home's Running forward)
@@ -258,11 +231,6 @@ const Settings = (() => {
     const {facts, governed} = LiveViews.governanceBody();
     return html`${formGroup(t('Advanced'), facts, {note: t('Governance and validation: what governs this workspace, apart from everyday research; read, never inferred.')})}${formGroup(t('Governed actions'), governed)}`;
   }
-  /* The upgrade overview (U49, R1): each saved study, published review and waiting Task as it stands
-   * under the installed code -- the Host's one answer (UPGRADE_OVERVIEW) -- and a person's
-   * acknowledgement of what they saw (UPGRADE_ACKNOWLEDGE, refused when the installed set moved since
-   * the read). A bare start opens it while the Host says `show`; Home's decision and the workspace
-   * popover reach it after. What changed is listed; what stands as it ran is not. */
   let upgrade = {value: null, refused: '', read: false, sending: false};
   async function readUpgrade(again = false) {
     if (upgrade.read && !again) return; upgrade.read = true;
@@ -289,7 +257,7 @@ const Settings = (() => {
     return html`${t('Its kind\'s implementation changed since it ran: it reads back as recorded, a replay refuses, and a continuation runs its declared work again.')}${calls == null ? '' : html` · ${countText(calls, '{n} numerical call declared', '{n} numerical calls declared')}`}`;
   }
   const REVIEW_WHY = {CHANGED: 'Sealed under an earlier Evidence binding or review policy; it reads back as recorded, and its book can be reviewed again.', UNREADABLE: 'Its analyses do not verify under any Evidence binding this build reads, so it does not read back here.'};
-  const upgradeGroup = (title, rows) => rows.length ? html`${groupHead(title, rows.length)}<div class="card-list lines slotted">${rows}</div>` : ''; // what stands as it ran is not listed; an empty group is not drawn (law 81)
+  const upgradeGroup = (title, rows) => rows.length ? html`${groupHead(title, rows.length)}<div class="card-list lines slotted">${rows}</div>` : '';
   function upgradePage() {
     if (!upgrade.read && typeof queueMicrotask === 'function') queueMicrotask(() => void readUpgrade());
     const v = upgrade.value, lede = t('Each saved study, published review and waiting Task as it stands under the installed code. Reading this runs nothing.');

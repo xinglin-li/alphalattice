@@ -42,6 +42,7 @@ from pydantic import ValidationError
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
+from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -406,7 +407,11 @@ PACKAGE_RULE = (
 
 
 def source_ways(
-    workspace: Path, *, entities: tuple[str, ...] | None, book: BookSelector | None
+    workspace: Path,
+    *,
+    entities: tuple[str, ...] | None,
+    book: BookSelector | None,
+    for_refusal: bool = False,
 ) -> dict[str, object]:
     """The lawful ways on when the recorded package holds too few sources (V541, V546).
 
@@ -420,6 +425,7 @@ def source_ways(
         workspace: The workspace's folder.
         entities: Every issuer of the book, when one package covers them all; else None.
         book: The book, whose research input the package names when a study authored it.
+        for_refusal: Whether official acquisition has actually been refused for network access.
 
     Returns:
         The ``official`` serve command with what it needs first, the package rule, and the
@@ -430,7 +436,7 @@ def source_ways(
         "official": {
             "serve": f'{" ".join(command_prefix())} --workspace "{workspace}" serve '
             "--sec-network-consent",
-            "before": str(network_access(workspace).body()["detail"]) + " "
+            "before": str(network_access(workspace).body(for_refusal=for_refusal)["detail"]) + " "
             "The person's decision: their consent to acquire SEC filings from the "
             "official endpoints, their contact in SEC_USER_AGENT and the workspace's network "
             "open. Restart only an idle Host you started; then preview and prepare again, which "
@@ -1384,15 +1390,15 @@ class EvidenceReviewApplication:
         from alphalattice.control.product_host.composition.plain_refusals import refused
 
         words = refused("evidence_review.workspace_network_not_allowed")
-        ways = source_ways(self.workspace, entities=None, book=None)
+        ways = source_ways(self.workspace, entities=None, book=None, for_refusal=True)
         official = cast(dict[str, object], ways["official"])
         return ReviewOutcome(
             disposition="REFUSED_NETWORK_ACCESS",
             detail=str(official["before"]),
             failure_code=words["failure_code"],
             evidence_as_of=evidence_as_of,
-            network_access=current.body(),
-            source_network_access=self.network_access.body(),
+            network_access=current.body(for_refusal=True),
+            source_network_access=self.network_access.body(for_refusal=True),
             source_ways=ways,
             next_requests={"network": {"operation": "NETWORK_ACCESS"}},
         )
@@ -4680,6 +4686,7 @@ class EvidenceReviewApplication:
             adapters={adapter.task_kind: adapter},  # type: ignore[attr-defined]
             runtime_path=str(self.runner_runtime_path()),
             clock=self.clock,
+            stage_scope=storage_capacity_scope,
         )
         try:
             if task_id is None:

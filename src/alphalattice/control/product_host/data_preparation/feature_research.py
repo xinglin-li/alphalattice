@@ -191,8 +191,7 @@ class ResearchFeatureBuildApplication:
             task_kind=TASK_KIND, preview="FEATURE_CATALOG_PLAN", admitting="FEATURE_CATALOG_BUILD"
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
 
     def __init__(self, session: WorkspaceApplicationSession, *, clock: Callable[[], datetime]):
         """Wire feature build ownership to the retained workspace task session.
@@ -346,7 +345,7 @@ class ResearchFeatureBuildApplication:
                     allow_blocked=True,
                 )
             if task.lifecycle in {TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED}:
-                # This build's Task only, never another of its kind (V529).
+                # This build's Task only, never another of its kind.
                 dispatcher.resume(
                     {TASK_KIND: ResearchFeatureBuildCommand(self)}, only_task_id=task.task_id
                 )

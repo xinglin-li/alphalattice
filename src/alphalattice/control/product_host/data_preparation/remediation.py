@@ -362,12 +362,16 @@ class WorkspaceDataIssueApplication:
             )
         return {"standing": notes} if notes else None
 
-    def readback(self, *, limit: int = 25, cursor: str | None = None) -> dict[str, object]:
+    def readback(
+        self, *, limit: int = 25, cursor: str | None = None, delegated_by: str | None = None
+    ) -> dict[str, object]:
         """Read bounded current issue choices, recorded decisions and exact continuation grants.
 
         Args:
             limit: Explicit page size from 1 through 50.
             cursor: Optional exact case-token cursor.
+            delegated_by: The first-use delegation under which the reader confirms these cases
+                itself; the person's grant is then not offered.
 
         Returns:
             Cases, current choices, historical effects, active grants and permitted next requests;
@@ -538,7 +542,7 @@ class WorkspaceDataIssueApplication:
                         next_requests[f"preview:{case.case_token}:{option.option_id}"] = (
                             _choice_request("DATA_ISSUE_PREVIEW", case, option)
                         )
-                        for task in tasks:
+                        for task in () if delegated_by is not None else tasks:
                             if (
                                 task.task_kind == "workspace_preparation"
                                 and task.lifecycle.value == "BLOCKED"
@@ -677,6 +681,7 @@ class WorkspaceDataIssueApplication:
                 self._continued_dispositions(active_manifest) if active_manifest is not None else []
             ),
             "next_requests": next_requests,
+            **({"delegated_by": delegated_by} if delegated_by is not None else {}),
             "claim_limit": "NO_DATA_TRUTH_OR_CURRENT_READINESS_CLAIM",
         }
         if batch.refused_task_ids:
@@ -776,7 +781,13 @@ class WorkspaceDataIssueApplication:
         return case, option
 
     def preview(
-        self, *, case_token: str, evidence_hash: str, option_id: str, option_hash: str
+        self,
+        *,
+        case_token: str,
+        evidence_hash: str,
+        option_id: str,
+        option_hash: str,
+        delegated_by: str | None = None,
     ) -> dict[str, object]:
         """Preview consequences of an exact stored issue choice without applying its effect.
 
@@ -785,6 +796,7 @@ class WorkspaceDataIssueApplication:
             evidence_hash: Exact case evidence identity.
             option_id: Explicit installed choice identifier.
             option_hash: Exact selected option identity.
+            delegated_by: The first-use delegation under which the reader confirms it itself.
 
         Returns:
             Human confirmation preview or case-no-longer-pending refusal; execution revalidates the
@@ -809,7 +821,7 @@ class WorkspaceDataIssueApplication:
             }
         return {
             "status": "CONFIRMATION_REQUIRED",
-            "confirmation": "HUMAN",
+            "confirmation": "HUMAN" if delegated_by is None else "FIRST_USE_DELEGATION",
             "case_token": case.case_token,
             "option": option.model_dump(mode="json"),
             "consequences": {
@@ -822,7 +834,9 @@ class WorkspaceDataIssueApplication:
             },
             "executors": {
                 "direct_confirmation": "HUMAN",
-                "delegated_confirmation": "EXTERNAL_AUTOMATION_WITH_EXACT_HUMAN_GRANT",
+                "delegated_confirmation": "EXTERNAL_AUTOMATION_WITH_EXACT_HUMAN_GRANT"
+                if delegated_by is None
+                else delegated_by,
             },
             "next_action": "DATA_ISSUE_CONFIRM",
             "next_requests": {"confirm": _choice_request("DATA_ISSUE_CONFIRM", case, option)},

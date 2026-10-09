@@ -56,15 +56,11 @@ from tests.alternative_evidence_desk.review_dossiers import _NOW, _dossier, _fin
 HEX64 = re.compile(r"\b[0-9a-f]{64}\b")
 CODEX_TOOL_OUTPUT_BYTES = 40_000
 """What Codex hands the model of one tool call's output: 10,000 tokens at four bytes a token,
-the middle of the rest cut (measured, AX1, 2026-09-27)."""
+the middle of the rest cut (measured 2026-09-27)."""
 
 
 def test_every_specialist_bundle_slice_has_a_named_disposition() -> None:
-    """BEHAVIOUR (TE12/V609): enumerate every slice in the two renderers and packer.
-
-    A new cut needs a complete-read location and a boundary regression. The
-    other slices partition text, compute grouping, or illustrate answer syntax.
-    """
+    """Every slice in the two renderers and packer has a named reading disposition."""
     sources = {
         "cro": "oversight/chief_risk_officer/decision/views.py",
         "analyst": "evidence/alternative_evidence/analysis/views.py",
@@ -123,7 +119,7 @@ def test_every_specialist_bundle_slice_has_a_named_disposition() -> None:
 def test_every_cro_coverage_preview_retains_its_complete_list(
     kind: str, bound: int, location_words: str, extra: int
 ) -> None:
-    """BEHAVIOUR (TE12/V609): each bounded list retains every entry and its read location."""
+    """Each bounded list retains every entry and its read location."""
     count = bound + extra
     if kind == "unreported":
         values = tuple(f"QAUN{index:04d}" for index in range(count))
@@ -284,7 +280,7 @@ def test_files_are_packed_by_size_and_a_subject_splits_only_when_it_alone_exceed
 
 
 def test_an_answer_names_the_files_it_read_as_its_own_word() -> None:
-    """requirement (AX1, V260, OP11): an external answer names under `read` the files of its
+    """requirement (OP11): an external answer names under `read` the files of its
     bundle it read whole; the names, each once in the order given, are kept as provenance and
     never reach the answer's own fields, and no list names none. Nothing is refused by them."""
 

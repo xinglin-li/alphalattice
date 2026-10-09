@@ -479,7 +479,7 @@ def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path
     files = sorted(path for path in Path(workspace.artifact_root).rglob("*") if path.is_file())
     me = psutil.Process()
     # The Host's kept workers (W10) are this process's for its life, so one an earlier test
-    # started is not the publication's: only the children it starts must be gone (V358).
+    # started is not the publication's: only the children it starts must be gone.
     children_before = {child.pid for child in me.children(recursive=True)}
     threads_before = {thread.name for thread in threading.enumerate()}
     with (

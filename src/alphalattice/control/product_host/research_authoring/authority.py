@@ -72,7 +72,7 @@ def universe_profile(handle: str) -> str:
 
 
 def universe_control(handle: str, listing_count: int) -> dict[str, object]:
-    """A draft's universe: the whole profile, or a sample of its names (V339, R4).
+    """A draft's universe: the whole profile, or a sample of its names (R4).
 
     The sizes are the ones the authority admits: at least the metric policy's minimum
     cross-section, and fewer than the Panel's names.
@@ -161,7 +161,7 @@ def panel_sector_labels(
         if set(labels) == set(sector.sector_by_listing_id)
         else str(canonical_hash({"source_sector_revision": expected, "sector_labels": labels}))
     )
-    # The reclassifications the Panel's sessions read, from its lineage (V346).
+    # The reclassifications the Panel's sessions read, from its lineage.
     return (
         SectorHistory.of_panel(
             panel_manifest["safe_summary"]["lineage"],

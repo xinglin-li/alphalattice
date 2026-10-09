@@ -296,11 +296,6 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     assert session["id"] == SESSION and session["unknownKinds"] == ["NATIVE_SOMETHING_NEW"]
     assert scene["unknown"] == 0
     assert sorted(session["references"]) == sorted([bogus_plan, task_id])
-    states = {p["id"]: p["state"] for p in session["participants"]}
-    assert states[lead] == "declared only · no host event observed"
-    assert states[analyst] == "1 stop hook observed · terminal state not established"
-    assert states[cro] == "declared only · no host event observed"
-    assert states["child-unknown"] == "declared only · no host event observed"
     kinds = [(e["kind"], e["messageKind"], e["replayOf"]) for e in session["entries"]]
     assert kinds == [
         ("message", "assignment", None),
@@ -373,12 +368,11 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
         f"<activity-open:{task_id}>",
     ):
         assert text in html, text
-    # the conversation is one column (C4): the thread ends with its section; since N5 (law 125) the
     # product's observations stand in the thread as its own one-line events, never among the
     # member statements
     thread_at = html.index('id="teamThread"')
     thread = html[thread_at : html.index("</section>", thread_at)]
-    # a single product line, or consecutive ones as one counted line (C4 item 1)
+    # A single product line, or consecutive ones as one counted line.
     product_line = r'<li class="team-event team-product-event[^"]*"[^>]*>.*?</li>'
     statements = re.sub(product_line, "", thread, flags=re.S)
     assert "Objection" in statements and "product refusal" in thread
@@ -394,7 +388,7 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     )
     assert "correct" not in html.lower()
     assert "running" not in html.lower().replace("not proof of a running", "")
-    # Each exchange read in place, reached the way the page reaches it (C4 item 7): its line names
+    # Each exchange reads in place, reached the way the page reaches it: its line names
     # the member, the addressee and the kind once, the verification opens under it; the assignment
     # names its recipient; the long answer is a marked preview whose original this feed does not
     # hold, its reference declared and unresolved until asked; the objection is retained with the

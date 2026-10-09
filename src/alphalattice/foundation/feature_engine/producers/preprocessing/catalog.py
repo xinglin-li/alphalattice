@@ -88,7 +88,7 @@ def build_robust_sector_neutral_z_recipe() -> PanelPreprocessingRecipe:
 
 
 def build_robust_universe_z_recipe() -> PanelPreprocessingRecipe:
-    """The universe-centred robust Z: the Panel kernel with the universe as its one group (V346).
+    """The universe-centred robust Z: the Panel kernel with the universe as its one group.
 
     For a return, a price move or a move size, which has no Sector level to remove: the same
     winsor and global robust Z as the sector-neutral method, the demean the universe's, so no

@@ -1,11 +1,4 @@
-/* 00-faces — the faces and the few element rules the appearances and the languages need.
-   Every design value lives in design/parameters.json: the build writes it as the first stylesheet
-   and scripts/check_ui_parameters.py refuses a value declared anywhere else (law 105). Files are
-   concatenated in name order after it; that order is the cascade order. */
-/* Round 10: the one designed face, served by the product from assets/fonts (SIL OFL, see
-   fonts/OFL.txt). Latin subset; CJK text falls through to the system faces after it. Round 96:
-   the host page preloads both files and the face swaps in rather than hiding the text; after the
-   first load they come from the cache under their hashed paths (the build rewrites these URLs). */
+/* Files are concatenated in name order after the generated parameters; that order is the cascade order. */
 @font-face {
   font-family: "Geist";
   font-style: normal;
@@ -37,7 +30,7 @@ html[data-theme=dark] body {
 }
 html[lang=zh-CN] strong,
 html[lang=zh-CN] b,
-html[lang=zh-CN] body :is(h1, h2, .list-row-main > strong, .form-title, .team-exchange-line > strong, .main-cell) { /* round 90: a title is Bold in zh (YaHei has no Medium; a 500 drew Regular, the body's face) */
+html[lang=zh-CN] body :is(h1, h2, .list-row-main > strong, .form-title, .team-exchange-line > strong, .main-cell) { /* YaHei has no Medium weight, so a Chinese title needs Bold; 500 draws the body's Regular face. */
   font-weight: var(--weight-strong);
 }
 html[lang=zh-CN] .editor-workbench-header strong,
@@ -46,7 +39,7 @@ html[lang=zh-CN] .field label {
 }
 /* Surface assurance. Original palettes / brand optics are not overwritten. */
 html {
-  color-scheme: light; /* the body inherits it; the body's rules are 01-base's (C1) */
+  color-scheme: light;
 }
 html[data-theme=dark],
 html[data-theme=dark] :is(input,select,textarea) {

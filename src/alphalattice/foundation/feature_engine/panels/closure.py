@@ -621,7 +621,7 @@ class PanelClosurePublisher:
                         sector_revision=(
                             str(entry["sector_revision"]) if cross_section_rule else None
                         ),
-                        # A catalog this one only adds columns to (V92).
+                        # A catalog this one only adds columns to.
                         catalog_hash=(
                             str(entry["catalog_hash"])
                             if entry.get("catalog_hash") is not None

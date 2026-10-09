@@ -131,7 +131,7 @@ def build_current_research_foundation_binding(
         "target_semantics": "LOG_EXECUTION_RETURN",
         "sector_revision": sector_revision,
         "sector_point_in_time_qualified": False,
-        # The Sector treatment the Panel's sessions read (V346).
+        # The Sector treatment the Panel's sessions read.
         "limitations": tuple(
             sector_treatment(reclassified=bool(lineage.get("sector_reclassifications")))
             if value == SECTOR_HISTORY_BACKFILLED

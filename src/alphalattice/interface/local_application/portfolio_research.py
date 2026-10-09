@@ -247,6 +247,7 @@ type PortfolioResearchOperation = Literal[
     "ACTIVITY_LIST",
     "ACTIVITY_RECENT",
     "EVENT_DECLARE",
+    "WAKE_REGISTER",
     "SESSION_USAGE_READ",
     "USAGE_READING",
     "USAGE_READING_SET",
@@ -351,6 +352,8 @@ class PortfolioResearchOperationRequest:
     spec: dict[str, object] | None = None
     strategy_package_id: str | None = None
     component_id: str | None = None
+    model_lifecycle: Literal["LIGHT", "FULL"] | None = None
+    """A component's lifecycle: the light default, or the component's FULL lifecycle by name."""
     model_id: str | None = None
     task_id: UUID | None = None
     expected_task_hash: str | None = None
@@ -469,6 +472,8 @@ class PortfolioResearchOperationRequest:
     limit: int | None = None
     watch: tuple[UUID, ...] | None = None
     event: dict[str, Any] | None = None
+    wake_thread: str | None = None
+    wake_read: str | None = None
     storage_cap_bytes: str | None = None
     """Automatic workspace capacity or a positive whole byte count, never a sealed input."""
     cpu_budget: str | None = None
@@ -859,6 +864,7 @@ class PortfolioResearchOperationRequest:
                         "experiment_kind",
                         "component_id",
                         "feature_preparation_hash",
+                        "model_lifecycle",
                     }
                 ),
             ),
@@ -904,7 +910,9 @@ class PortfolioResearchOperationRequest:
             ),
             "MODEL_TRAINING_INPUT_PLAN": (
                 frozenset({"research_input_id", "component_id"}),
-                frozenset({"research_input_id", "input_binding_hash", "component_id"}),
+                frozenset(
+                    {"research_input_id", "input_binding_hash", "component_id", "model_lifecycle"}
+                ),
             ),
             "RESEARCH_STRATEGY_PLAN": (
                 frozenset({"experiment_document"}),
@@ -1016,6 +1024,10 @@ class PortfolioResearchOperationRequest:
             "ACTIVITY_LIST": (frozenset(), frozenset({"after", "limit", "watch"})),
             "ACTIVITY_RECENT": (frozenset(), frozenset({"limit"})),
             "EVENT_DECLARE": (frozenset({"event"}), frozenset({"event"})),
+            "WAKE_REGISTER": (
+                frozenset({"task_id", "wake_thread", "wake_read"}),
+                frozenset({"task_id", "wake_thread", "wake_read"}),
+            ),
             "SESSION_USAGE_READ": (frozenset(), frozenset()),
             "USAGE_READING": (frozenset(), frozenset()),
             "USAGE_READING_SET": (
@@ -1451,6 +1463,8 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """The installed strategy package, by its id."""
     component_id: str | None = Field(default=None, min_length=1)
     """The strategy component, by its id."""
+    model_lifecycle: Literal["LIGHT", "FULL"] | None = None
+    """A component's model lifecycle: `LIGHT`, the default, or `FULL` by name."""
     model_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$")
     """An Alpha model, by the id its declaration names (`model list` lists them)."""
     task_id: UUID | None = None
@@ -1616,6 +1630,13 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     display gave reads as its whole id."""
     event: dict[str, Any] | None = None
     """The event this client declares about its own work (`ExternalActivityEventDocument`)."""
+    wake_thread: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{8,128}$")
+    """The Codex thread the Host queues a Task's wake to, by its id (`CODEX_THREAD_ID`)."""
+    wake_read: str | None = Field(
+        default=None, min_length=1, max_length=4096, pattern=r"^[^\x00-\x1f\x7f]+$"
+    )
+    """The exact command the wake names for the lead to read or re-run: the Task's `task show`,
+    or the agent verb that registered it, its `--output` moved to the next free path."""
     storage_cap_bytes: str | None = Field(default=None, min_length=1, max_length=32)
     """`auto`, or a positive whole byte cap for managed writes; changes no result identity."""
     cpu_budget: str | None = Field(default=None, min_length=1, max_length=16)

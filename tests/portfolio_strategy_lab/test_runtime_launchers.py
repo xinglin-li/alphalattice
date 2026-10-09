@@ -1,4 +1,4 @@
-"""The installed entry composes product owners without checkout script imports (V429)."""
+"""The installed entry composes product owners without checkout script imports."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 
 
 def test_runtime_launchers_do_not_import_checkout_scripts_or_test_harnesses() -> None:
-    """requirement (V429): runtime launch and saved-object readback need no checkout harness."""
+    """Requirement: runtime launch and saved-object readback need no checkout harness."""
     folder = Path(saved_object_readback.__file__).parent
     for name in (
         "entry",
@@ -35,7 +35,7 @@ def test_runtime_launchers_do_not_import_checkout_scripts_or_test_harnesses() ->
 
 
 def test_product_probe_reopens_a_workspace_and_reads_saved_object_indexes(tmp_path: Path) -> None:
-    """requirement (V429): sandbox readback starts actual product sessions with no U0 harness."""
+    """Requirement: sandbox readback starts actual product sessions with no harness."""
     harvest = tmp_path / "harvest"
     workspace = harvest / "workspace"
     publish_research_workspace_manifest(workspace, ResearchWorkspaceManifest.research_only("probe"))

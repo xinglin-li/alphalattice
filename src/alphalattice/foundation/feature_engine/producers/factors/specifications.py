@@ -706,7 +706,7 @@ def build_research_formula_specification(
 def _formula_research_specification(
     recipe: FactorSpec, *, source_session_count: int, preprocessing_recipe: str | None
 ) -> FactorFormulaSpecification:
-    """A formula factor's complete specification (EX, V88).
+    """A formula factor's complete specification (EX).
 
     The formula decides it: the kept spec is the one the plan derived, and the goldens state the
     language's reference evaluation, never the kernel's, on deterministic source rows.

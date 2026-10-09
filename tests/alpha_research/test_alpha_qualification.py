@@ -913,7 +913,7 @@ def test_terminal_publication_reuses_projection_after_pre_marker_crash(
     assert store.load_active_marker() == recovered.marker
 
 
-# ------------------------------------------------ the qualification Task (GR3, V77)
+# the qualification Task (GR3)
 
 OPENED = datetime(2026, 9, 28, 9, tzinfo=UTC)
 TASK = "00000000-0000-0000-0000-00000000000{}"
@@ -941,7 +941,7 @@ def _study(
 
 
 def test_the_family_is_every_study_on_the_question_from_the_goals_opening() -> None:
-    """requirement (GR3, V77): every study on the question admitted from the goal's opening on
+    """requirement (GR3): every study on the question admitted from the goal's opening on
     is a member, attributed or not; a cancelled one is named without evidence, a repeated
     recipe counts once, an unsettled one refuses, and an empty family refuses."""
 
@@ -974,8 +974,8 @@ def test_the_family_is_every_study_on_the_question_from_the_goals_opening() -> N
 
 
 def test_the_question_sets_the_model_aside() -> None:
-    """regression (V293): a ridge and a LightGBM study of one target on one Foundation ask one
-    question. Their Programs differ in the mandate and, since V118 narrowed each to its model,
+    """Regression: a ridge and a LightGBM study of one target on one Foundation ask one
+    question. Their Programs differ in the mandate and, since narrowed each to its model,
     in the catalog binding too; both enter the Holm family."""
 
     ridge = AlphaDevelopmentProgram.model_construct(
@@ -1059,7 +1059,7 @@ def test_the_family_registry_keeps_each_study_standing() -> None:
 
 
 def test_a_qualification_binds_only_the_models_its_family_ran() -> None:
-    """requirement (V299, V118): a model installed beside the family's moves no qualification,
+    """Requirement: a model installed beside the family's moves no qualification,
     and a family whose model the mandate no longer holds is refused before any work."""
     first, second = _research_recipes((1.0, 3.0))
     family = alpha_family(
@@ -1095,7 +1095,7 @@ def test_a_qualification_binds_only_the_models_its_family_ran() -> None:
 
 
 def test_a_nomination_outside_the_family_names_what_may_be_nominated() -> None:
-    """requirement (V292, OP12): the refusal names the field's rule, and `expected` gives the
+    """requirement (OP12): the refusal names the field's rule, and `expected` gives the
     family's candidates, so an agent corrects the declaration without guessing."""
     first, second = _research_recipes((1.0, 3.0))
     family = alpha_family(
@@ -1129,7 +1129,7 @@ def test_a_nomination_outside_the_family_names_what_may_be_nominated() -> None:
 
 
 def test_a_declaration_with_a_study_s_fields_is_refused_by_the_section_it_breaks() -> None:
-    """regression (V302, OP12): AX5's agent copied a development study's fields into a
+    """regression (OP12): agent copied a development study's fields into a
     qualification's `alpha` section and met a bare code; the refusal names the section and
     `expected` lists its four fields, and a declaration of another method names the method."""
     first, second = _research_recipes((1.0, 3.0))

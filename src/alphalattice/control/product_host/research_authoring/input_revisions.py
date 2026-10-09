@@ -58,11 +58,11 @@ _PUBLICATION_FAILURES = frozenset(
 
 
 MATERIALIZER_ROLE = "product_host.research_input_materializer"
-"""The role whose recorded moves the capture's materializer identity follows (V324)."""
+"""The role whose recorded moves the capture's materializer identity follows."""
 
 
 def materializer_identity() -> str:
-    """The capture's materializer identity, held at its recorded origin (V324).
+    """The capture's materializer identity, held at its recorded origin.
 
     A move recorded as keeping the capture leaves a plan sealed before it current.
 

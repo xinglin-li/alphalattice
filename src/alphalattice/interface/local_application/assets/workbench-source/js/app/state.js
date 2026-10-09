@@ -9,13 +9,12 @@ const ACTIONS = {};
 const ON_INPUT = {};
 const ON_CHANGE = {};
 
-/* Round 68: two appearances and the host's choice. Old stored names map (silver → light, the rest → dark). */
 const THEMES = ['follow', 'light', 'dark'];
 const THEME_ALIASES = {silver: 'light', titanium: 'light', emerald: 'light', ruby: 'light', obsidian: 'dark'};
 
 /* page id → [primary section label, page title, primary navigation group] */
 const ROUTES = {
-  overview: ['Home', 'Home', 'overview'], // law 134: the dock's word is the page's word everywhere (the title, the inspector)
+  overview: ['Home', 'Home', 'overview'],
   data: ['Data & Workspace', 'Data maintenance', 'data'],
   issues: ['Data & Workspace', 'Data issues', 'data'],
   inputs: ['Data & Workspace', 'Research inputs', 'data'],
@@ -26,33 +25,33 @@ const ROUTES = {
   alpha: ['Research Lab', 'Alpha modeling', 'lab'],
   risk: ['Research Lab', 'Risk modeling', 'lab'], // the user, 2026-09-24: 应该叫risk modeling (as Alpha modeling)
   portfolio: ['Portfolio', 'Portfolio study', 'portfolio'],
-  compare: ['Portfolio', 'Compare', 'portfolio'], // N2 (law 132): Portfolio study's second tab; the path is `Portfolio study / Compare`
-  'alpha-compare': ['Research Lab', 'Compare', 'lab'], // N2 (law 132): Alpha modeling's second tab
-  models: ['Research Lab', 'Models', 'lab'], // U50: every Alpha model the workspace may fit; Alpha modeling's third tab
-  'feature-research': ['Research Lab', 'Features', 'lab'], // U56: the formula factors agents declared, a person activates; Factor screening's second tab
+  compare: ['Portfolio', 'Compare', 'portfolio'],
+  'alpha-compare': ['Research Lab', 'Compare', 'lab'],
+  models: ['Research Lab', 'Models', 'lab'],
+  'feature-research': ['Research Lab', 'Features', 'lab'],
   features: ['Research Lab', 'Research-local formulas', 'lab'], // the product's Local Feature (2026-09-25): reached from the Lab, a Task or its address
-  goals: ['Goals', 'Goals', 'goals'], // U23: a section of its own (the user, 2026-09-28: 这个东西可以在UI里单独立一个section)
+  goals: ['Goals', 'Goals', 'goals'],
   goal: ['Goals', 'Timeline', 'goals'], // a goal's three folders, its tabs while it is chosen
   'goal-conversation': ['Goals', 'Conversation', 'goals'],
   'goal-results': ['Goals', 'Results', 'goals'],
   cases: ['Goals', 'Goals', 'goals'], // the research case page's old addresses open their goal
-  books: ['Evidence & CRO', 'Books', 'evidence'], // N2 (law 123): the Evidence Home, where a book is chosen
-  evidence: ['Evidence & CRO', 'Overview', 'evidence'], // round G2: the object's overview (law 87: the page's one word, Overview; the head names the book)
+  books: ['Evidence & CRO', 'Books', 'evidence'],
+  evidence: ['Evidence & CRO', 'Overview', 'evidence'],
   'evidence-stream': ['Evidence & CRO', 'Sources', 'evidence'],
   'evidence-reading': ['Evidence & CRO', 'Reading', 'evidence'], // round E3: the reading workbench
   report: ['Evidence & CRO', 'Report & delivery', 'evidence'],
   handoff: ['Evidence & CRO', 'Review', 'evidence'], // round E4: the page's one word
   history: ['History', 'History', 'history'],
-  team: ['Team', 'Conversation', 'team'], // N2: the session's object page (law 125)
-  'team-participants': ['Team', 'Participants', 'team'], // U51: who took part, their models and tokens (the user, 2026-09-30)
-  'team-outputs': ['Team', 'Outputs', 'team'], // U54: what the session produced (the user, 2026-09-30: 产出)
-  'team-evidence': ['Team', 'Product record', 'team'], // U53: named for what it holds (the user, 2026-09-30) // N4 (the third review; law 134): the dock's Evidence names the books -- this is what the product observed
+  team: ['Team', 'Conversation', 'team'],
+  'team-participants': ['Team', 'Participants', 'team'],
+  'team-outputs': ['Team', 'Outputs', 'team'],
+  'team-evidence': ['Team', 'Product record', 'team'],
   'team-sessions': ['Team', 'Sessions', 'team'],
   tasks: ['Tasks', 'Tasks', 'history'],
-  advanced: ['Advanced', 'Governance & validation', 'advanced'], // an alias of settings (round 62): old links open the Settings page
+  advanced: ['Advanced', 'Governance & validation', 'advanced'],
   settings: ['Settings', 'Settings', 'settings'],
   upgrade: ['Settings', 'Upgrade', 'settings'], // R1: what the installed code changed; reached from Home's decision and the workspace popover
-  kit: ['Settings', 'Component workshop', 'kit'], // the workshop (law 106): opened by its address, never listed
+  kit: ['Settings', 'Component workshop', 'kit'],
 };
 /* Routes a reader never meets in the navigation or Quick Open. */
 const HIDDEN_ROUTES = new Set(['kit', 'features', 'upgrade', 'cases']); // features: a composer needs its input, so it opens from the Lab, a Task or an address
@@ -112,7 +111,7 @@ const app = {
   labTask: null,
   labTaskYaml: null,
   holdingFocus: null,
-  listContext: null, // round 53: the list a record was opened from ({list, keys, index}) for stepping
+  listContext: null,
   holdingsSort: 'listing-asc',
   reviewTab: 'scope',
   reviewItem: 'mapping',

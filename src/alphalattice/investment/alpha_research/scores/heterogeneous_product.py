@@ -574,7 +574,7 @@ _COMPONENT_ROLE_KEYS: Final[dict[ComponentId, str]] = {
     "G7_R1_CONTEXTUAL_MOMENTUM": "contextual_momentum",
 }
 """Each component's readout role, named by what it scores: the ids workspaces store keep their
-spelling until the release's corpora are prepared fresh (NM2, V451)."""
+spelling until the release's corpora are prepared fresh (NM2)."""
 
 
 def component_recipe_role(component_id: str) -> str:
@@ -617,7 +617,7 @@ def strategy_recipe_is_current(recorded: str, installed: str) -> bool:
     """Whether two recorded strategy hashes name one strategy, as `component_recipe_is_current`.
 
     A sealed closure keeps the strategy hash it was sealed with; one sealed before a recorded
-    move of the strategy's role still names the installed strategy (NM1's move, V451).
+    move of the strategy's role still names the installed strategy (NM1's move).
     """
     return is_current(STRATEGY_ROLE, recorded, installed) or is_current(
         STRATEGY_ROLE, installed, recorded

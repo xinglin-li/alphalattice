@@ -72,7 +72,7 @@ INDEX_ROOT = "runtime/evidence-knowledge/.system/knowledge-indexes"
 
 
 ONE_UNIT = "u01"
-"""The book's only unit: every book is prepared as a coverage run (C2)."""
+"""The book's only unit: every book is prepared as a coverage run."""
 
 
 def _authority(workspace: Path, report: Any) -> EvidenceReviewAuthority:
@@ -334,7 +334,7 @@ def test_evidence_indexes_are_accounted_protected_evicted_and_rebuilt(
         assert orphan.with_name(orphan.name + ".evicted.json").is_file()
         assert service.get("/api/workspace/storage")["status"] == "RECOVERY_REQUIRED"
         # While the approved cleanup waits to be recovered the owner takes no action
-        # on an index, so none is offered (V199).
+        # on an index, so none is offered.
         assert all(value["available_actions"] == [] for value in _index_rows(service))
         assert (
             service.post("/api/workspace/storage/plan").items()
@@ -597,7 +597,7 @@ def test_evidence_writes_are_admitted_by_the_workspace_budget(
         assert row["availability"] == "EVICTED_BY_RETENTION" and row["payload_available"] is True
         records = sorted((runtime.artifacts.root / "retrieval-generations").glob("*.json"))
         # The request's own small artifacts include its run's record (every
-        # book is a coverage run, C2).
+        # book is a coverage run).
         run_record_bytes = max(
             path.stat().st_size
             for path in (runtime.artifacts.root / "evidence-coverage-runs").glob("*.json")

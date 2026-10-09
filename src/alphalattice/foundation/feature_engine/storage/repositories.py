@@ -51,6 +51,7 @@ from alphalattice.foundation.feature_engine.publication.current_storage import (
     canonical_cutoff_set,
     ensure_feature_current_schema,
     feature_storage_layout,
+    runtime_view_hash,
 )
 from alphalattice.foundation.feature_engine.publication.persistence import admitted_writes
 from alphalattice.foundation.feature_engine.storage.contracts import (
@@ -89,6 +90,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     FeaturePersistenceTimingSink,
     MarketDataRepository,
     _canonical_hash,
+    _selected_providers,
     _source_prefix_arrow_hash,
     _utc_aware,
     _utc_naive,
@@ -752,6 +754,7 @@ class FeatureStateRepository(WorkspaceRepository):
                     f"DELETE FROM {table} WHERE NOT list_contains(?::VARCHAR[], catalog_hash)",
                     [admitted],
                 )
+            self._clear_feature_year_seals(_connection)
         return retired
 
     def discard_part_rows(
@@ -775,6 +778,7 @@ class FeatureStateRepository(WorkspaceRepository):
             ).fetchone()
             for table in ("feature_daily_current", "feature_ineligibility_run"):
                 _connection.execute(f"DELETE FROM {table} WHERE catalog_hash = ?", [catalog_hash])
+            self._clear_feature_year_seals(_connection)
             _connection.execute("COMMIT")
         except BaseException:
             _connection.execute("ROLLBACK")
@@ -923,6 +927,104 @@ class FeatureStateRepository(WorkspaceRepository):
             raw_hash=raw_hash,
             action_hash=action_set_hash(actions),
         )
+
+    def feature_source_inputs_by_listing(
+        self,
+        starts: Mapping[str, tuple[UniverseManifest, date]],
+        *,
+        through: date,
+        allow_missing_adjusted: bool = False,
+        as_traded: bool = False,
+        _connection: duckdb.DuckDBPyConnection | None = None,
+    ) -> dict[str, FeatureSourceInputs]:
+        """``feature_source_inputs`` of many listings, one read per table, each from its start.
+
+        ``starts`` maps a listing to its manifest and first session. A listing with no bars from
+        its start, or no provider mapping, is left out: its own read refuses it by name.
+        """
+        market = self._market_data
+        for listing_id, (manifest, _start) in starts.items():
+            market._assert_manifest_scope(manifest, (listing_id,))
+        connection = _connection or self._connect(read_only=True)
+        owns_connection = _connection is None
+        try:
+            tables = market._raw_bar_tables(
+                connection,
+                {listing: start for listing, (_m, start) in starts.items()},
+                through=through,
+            )
+            providers = _selected_providers(
+                connection, [listing for listing, table in tables.items() if table.num_rows]
+            )
+            held = sorted(
+                listing for listing, provider in providers.items() if provider is not None
+            )
+            if not held:
+                return {}
+            firsts = {
+                listing: cast(date, tables[listing].column("session_date")[0].as_py())
+                for listing in held
+            }
+            actions = market.actions_by_listing(held, _connection=connection)
+            raw_hashes = market._raw_evidence_hashes(
+                connection,
+                {
+                    listing: (cast(str, providers[listing]), firsts[listing], through)
+                    for listing in held
+                },
+            )
+            adjusted = cast(
+                pa.Table,
+                connection.execute(
+                    """
+                    SELECT listing_id, provider, session_date, adjusted_close
+                    FROM provider_adjusted_close_current
+                    WHERE listing_id IN (SELECT unnest(?::VARCHAR[]))
+                      AND session_date BETWEEN ? AND ?
+                    ORDER BY listing_id, session_date
+                    """,
+                    [held, min(firsts.values()), through],
+                ).to_arrow_table(),
+            )
+        finally:
+            if owns_connection:
+                connection.close()
+        listings = adjusted.column("listing_id").to_pylist()
+        selected = [
+            index
+            for index, (listing, provider, session) in enumerate(
+                zip(
+                    listings,
+                    adjusted.column("provider").to_pylist(),
+                    adjusted.column("session_date").to_pylist(),
+                    strict=True,
+                )
+            )
+            if provider == providers[listing] and session >= firsts[listing]
+        ]
+        kept = adjusted.take(pa.array(selected, type=pa.int64()))
+        kept_listings = [listings[index] for index in selected]
+        bounds: dict[str, tuple[int, int]] = {}
+        for index, listing in enumerate(kept_listings):
+            bounds[listing] = (bounds.get(listing, (index, index))[0], index + 1)
+        out: dict[str, FeatureSourceInputs] = {}
+        for listing in held:
+            first, last = bounds.get(listing, (0, 0))
+            manifest = starts[listing][0]
+            out[listing] = FeatureSourceInputs(
+                listing_id=listing,
+                bars=tables[listing],
+                actions=actions[listing],
+                adjusted_close=kept.slice(first, last - first).select(
+                    ["session_date", "adjusted_close"]
+                ),
+                daily_price_basis=manifest.profile.daily_price_basis,
+                allow_missing_adjusted=allow_missing_adjusted,
+                as_traded=as_traded,
+                raw_hash=raw_hashes[listing],
+                action_hash=action_set_hash(actions[listing]),
+            )
+        return out
 
     def upsert_feature_materialization(
         self,
@@ -1475,6 +1577,7 @@ class FeatureStateRepository(WorkspaceRepository):
                         f"{insert_mode} INTO feature_daily_current ({inserted_columns}) "
                         f"SELECT {inserted_columns} FROM {stage_name}"
                     )
+                    self._clear_feature_year_seals(connection, row_sessions)
                 connection.unregister(stage_name)
                 record("current_write", started)
             if revisions:
@@ -1668,6 +1771,7 @@ class FeatureStateRepository(WorkspaceRepository):
                              AND session_date IN (SELECT unnest(?))""",
                         [verified_receipt, listing_id, catalog_hash, unstamped],
                     )
+                    self._clear_feature_year_seals(connection, unstamped)
             if _manage_transaction:
                 started = time.perf_counter()
                 with profile(connection, "commit"):
@@ -1976,19 +2080,14 @@ class FeatureStateRepository(WorkspaceRepository):
         factor_ids: Sequence[str],
         _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> tuple[str, ...]:
-        """Prove selected Feature prefixes from one consistent source read.
+        """Prove selected Feature prefixes from their year seals and one read of the open year.
 
-        The largest prefix uses the original SQL projection. Earlier prefixes
-        are exported through the same connection to preserve the original Arrow
-        bytes, including null flags and negative zero; slicing or taking Arrow
-        rows alone does not preserve that encoding. Each result retains the
-        existing ``FeatureSourcePrefixProofV1`` payload and its own end date.
-        A prefix that still spans multiple original chunks uses their original
-        buffers before normalization. A single-chunk prefix of a multi-chunk
-        export retains per-cutoff SQL, including its original Boolean padding.
-        Prefixes are hashed and released in turn, retaining only the full table
-        and one earlier prefix. Arrow and IPC buffers are not automatically
-        bounded by DuckDB's memory limit.
+        Each proof (``FeatureSourcePrefixProofV2``) binds its scope and selection, the seal of
+        every calendar year before its cutoff's (`_feature_year_seals`), and the open year's
+        selected rows from its first session (or ``start``) to the cutoff, hashed as canonical
+        Arrow from one read (`_prefix_arrow_hashes`). A seal covers every listing and factor of
+        its year, and every write to a year's rows removes it, so a change anywhere in the prefix
+        moves the proof; only the open year is read each time.
 
         Args:
             listing_ids: Nonempty unique listing scope, normalized to sorted order.
@@ -2018,82 +2117,248 @@ class FeatureStateRepository(WorkspaceRepository):
         scope, factors = tuple(sorted(scope)), tuple(sorted(factors))
         if not set(factors) <= set(self._feature_factor_ids(catalog_hash)):
             raise ValueError("feature row projection contains an unknown factor")
-        projection = ", ".join(
-            f'COALESCE("{factor}", 0::DOUBLE) AS value_{index}, "{factor}" IS NULL AS null_{index}'
-            for index, factor in enumerate(factors)
-        )
-        latest = max(cutoffs)
         boundary = (
             self.database.read_transaction() if _connection is None else nullcontext(_connection)
         )
         with boundary as connection:
-            columns = {
-                row[1]
-                for row in connection.execute(
-                    "PRAGMA table_info('feature_daily_runtime')"
-                ).fetchall()
-            }
-            verification = (
-                "source_verification_receipt_hash"
-                if "source_verification_receipt_hash" in columns
-                else "NULL::VARCHAR"
-            )
-            statement = f"""
-                SELECT listing_id, session_date, catalog_hash,
-                       COALESCE(raw_input_hash, '') AS raw_input_hash,
-                       raw_input_hash IS NULL AS raw_input_is_null,
-                       COALESCE(action_set_hash, '') AS action_set_hash,
-                       action_set_hash IS NULL AS action_set_is_null,
-                       COALESCE(market_reference_revision, '') AS market_reference_revision,
-                       market_reference_revision IS NULL AS market_reference_is_null,
-                       COALESCE(input_cutoffs_json, '') AS input_cutoffs_json,
-                       input_cutoffs_json IS NULL AS cutoffs_is_null,
-                       COALESCE({verification}, '') AS source_verification_receipt_hash,
-                       {verification} IS NULL AS verification_is_null,
-                       {projection}
-                FROM feature_daily_runtime
-                WHERE listing_id IN (SELECT unnest(?)) AND catalog_hash = ?
-                  AND session_date BETWEEN ? AND ?
-                ORDER BY session_date, listing_id
-                """
-            rows = connection.execute(
-                statement, [scope, catalog_hash, start, latest]
-            ).to_arrow_table()
-            multiple_chunks = any(column.num_chunks > 1 for column in rows.columns)
-            session_axis = rows.column("session_date").to_numpy(zero_copy_only=False)
-            proofs: dict[date, str] = {}
+            statement = self._feature_prefix_statement(connection, factors, scoped=True)
+            # The open year of each cutoff is read whole from its first session (or `start`);
+            # every earlier year answers by its seal.
+            opens: dict[date, list[date]] = {}
             for end in dict.fromkeys(cutoffs):
-                if end == latest:
-                    prefix = rows
-                elif multiple_chunks:
-                    stop = int(np.searchsorted(session_axis, np.datetime64(end), side="right"))
-                    bounded = rows.slice(0, stop)
-                    if all(column.num_chunks > 1 for column in bounded.columns):
-                        prefix = bounded
-                    else:
-                        prefix = connection.execute(
-                            statement, [scope, catalog_hash, start, end]
-                        ).to_arrow_table()
-                else:
-                    prefix = (
-                        connection.from_arrow(rows)
-                        .filter(f"session_date <= DATE '{end.isoformat()}'")
-                        .order("session_date, listing_id")
-                        .to_arrow_table()
+                opens.setdefault(max(start, date(end.year, 1, 1)), []).append(end)
+            open_values: dict[date, str] = {}
+            for open_start, open_ends in opens.items():
+                open_values.update(
+                    self._prefix_arrow_hashes(
+                        connection, statement, [scope, catalog_hash], open_start, open_ends
                     )
-                proofs[end] = _canonical_hash(
-                    {
-                        "kind": "FeatureSourcePrefixProofV1",
-                        "listing_ids": scope,
-                        "catalog_hash": catalog_hash,
-                        "start": start,
-                        "end": end,
-                        "factor_ids": factors,
-                        "values": _source_prefix_arrow_hash(prefix),
-                    }
                 )
-                del prefix
-        return tuple(proofs[end] for end in cutoffs)
+            seals = self._feature_year_seals(
+                connection, catalog_hash, range(start.year, max(cutoffs).year)
+            )
+        return tuple(
+            _canonical_hash(
+                {
+                    "kind": "FeatureSourcePrefixProofV2",
+                    "listing_ids": scope,
+                    "catalog_hash": catalog_hash,
+                    "start": start,
+                    "end": end,
+                    "factor_ids": factors,
+                    "closed_years": [[year, seals[year]] for year in range(start.year, end.year)],
+                    "open_values": open_values[end],
+                }
+            )
+            for end in cutoffs
+        )
+
+    def _feature_prefix_statement(
+        self,
+        connection: duckdb.DuckDBPyConnection,
+        factors: Sequence[str],
+        *,
+        scoped: bool,
+    ) -> str:
+        """The proved projection of the runtime rows, its listing scope first when ``scoped``.
+
+        Parameters: the scope (when ``scoped``), the catalog, the first and the last session.
+        """
+        projection = ", ".join(
+            f'COALESCE("{factor}", 0::DOUBLE) AS value_{index}, "{factor}" IS NULL AS null_{index}'
+            for index, factor in enumerate(factors)
+        )
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info('feature_daily_runtime')").fetchall()
+        }
+        verification = (
+            "source_verification_receipt_hash"
+            if "source_verification_receipt_hash" in columns
+            else "NULL::VARCHAR"
+        )
+        listing_filter = "listing_id IN (SELECT unnest(?)) AND " if scoped else ""
+        return f"""
+            SELECT listing_id, session_date, catalog_hash,
+                   COALESCE(raw_input_hash, '') AS raw_input_hash,
+                   raw_input_hash IS NULL AS raw_input_is_null,
+                   COALESCE(action_set_hash, '') AS action_set_hash,
+                   action_set_hash IS NULL AS action_set_is_null,
+                   COALESCE(market_reference_revision, '') AS market_reference_revision,
+                   market_reference_revision IS NULL AS market_reference_is_null,
+                   COALESCE(input_cutoffs_json, '') AS input_cutoffs_json,
+                   input_cutoffs_json IS NULL AS cutoffs_is_null,
+                   COALESCE({verification}, '') AS source_verification_receipt_hash,
+                   {verification} IS NULL AS verification_is_null,
+                   {projection}
+            FROM feature_daily_runtime
+            WHERE {listing_filter}catalog_hash = ?
+              AND session_date BETWEEN ? AND ?
+            ORDER BY session_date, listing_id
+            """
+
+    @staticmethod
+    def _prefix_arrow_hashes(
+        connection: duckdb.DuckDBPyConnection,
+        statement: str,
+        leading: list[object],
+        start: date,
+        ends: Sequence[date],
+    ) -> dict[date, str]:
+        """Each cutoff's rows from ``start``, hashed as canonical Arrow from one read.
+
+        The largest prefix uses the original SQL projection. Earlier prefixes are exported
+        through the same connection to preserve the original Arrow bytes, including null flags
+        and negative zero; slicing or taking Arrow rows alone does not preserve that encoding. A
+        prefix that still spans multiple original chunks uses their original buffers before
+        normalization. A single-chunk prefix of a multi-chunk export retains per-cutoff SQL,
+        including its original Boolean padding. Prefixes are hashed and released in turn,
+        retaining only the full table and one earlier prefix. Arrow and IPC buffers are not
+        automatically bounded by DuckDB's memory limit.
+        """
+        latest = max(ends)
+        rows = connection.execute(statement, [*leading, start, latest]).to_arrow_table()
+        multiple_chunks = any(column.num_chunks > 1 for column in rows.columns)
+        session_axis = rows.column("session_date").to_numpy(zero_copy_only=False)
+        hashes: dict[date, str] = {}
+        for end in dict.fromkeys(ends):
+            if end == latest:
+                prefix = rows
+            elif multiple_chunks:
+                stop = int(np.searchsorted(session_axis, np.datetime64(end), side="right"))
+                bounded = rows.slice(0, stop)
+                if all(column.num_chunks > 1 for column in bounded.columns):
+                    prefix = bounded
+                else:
+                    prefix = connection.execute(statement, [*leading, start, end]).to_arrow_table()
+            else:
+                prefix = (
+                    connection.from_arrow(rows)
+                    .filter(f"session_date <= DATE '{end.isoformat()}'")
+                    .order("session_date, listing_id")
+                    .to_arrow_table()
+                )
+            hashes[end] = _source_prefix_arrow_hash(prefix)
+            del prefix
+        return hashes
+
+    def _feature_year_seals(
+        self, connection: duckdb.DuckDBPyConnection, catalog_hash: str, years: Iterable[int]
+    ) -> dict[int, str]:
+        """Each year's seal digest: a stored seal that still vouches, else computed now.
+
+        A seal vouches under the runtime view it was made under and in the store's current
+        seal epoch (`WorkspaceDatabase.seal_epoch`); a write to a year's rows removed it in the
+        write's own transaction. One computed here is not stored: it is only slower.
+        """
+        wanted = tuple(years)
+        if not wanted:
+            return {}
+        stored = {
+            int(year): str(digest)
+            for year, digest in connection.execute(
+                """
+                SELECT year, digest FROM feature_year_seal
+                WHERE catalog_hash = ? AND view_hash = ? AND epoch = ?
+                  AND list_contains(?::INTEGER[], year)
+                """,
+                [
+                    catalog_hash,
+                    runtime_view_hash(connection),
+                    self.database.seal_epoch(),
+                    list(wanted),
+                ],
+            ).fetchall()
+        }
+        return {
+            year: stored[year]
+            if year in stored
+            else self._feature_year_digest(connection, catalog_hash, year)
+            for year in wanted
+        }
+
+    def _feature_year_digest(
+        self, connection: duckdb.DuckDBPyConnection, catalog_hash: str, year: int
+    ) -> str:
+        """One calendar year of the catalog's rows: every listing and stored factor, hashed.
+
+        A superset of any proof's scope and selection, so a change outside them can only cost
+        a rebuild, never pass unseen.
+        """
+        factors = tuple(sorted(self._feature_factor_ids(catalog_hash)))
+        rows = connection.execute(
+            self._feature_prefix_statement(connection, factors, scoped=False),
+            [catalog_hash, date(year, 1, 1), date(year + 1, 1, 1) - timedelta(days=1)],
+        ).to_arrow_table()
+        return _source_prefix_arrow_hash(rows)
+
+    def seal_closed_feature_years(
+        self, catalog_hash: str, *, _connection: duckdb.DuckDBPyConnection
+    ) -> tuple[int, ...]:
+        """Seal each closed year of the catalog's rows that no seal of this epoch vouches for.
+
+        A year is closed once a later year holds a row: a daily write no longer reaches it, so
+        its seal holds until a correction's write removes it. Runs in its own transaction on
+        the build's connection.
+
+        Returns:
+            The years sealed now.
+        """
+        connection = _connection
+        connection.execute("BEGIN TRANSACTION")
+        try:
+            bounds = connection.execute(
+                "SELECT min(session_date), max(session_date) FROM feature_daily_runtime "
+                "WHERE catalog_hash = ?",
+                [catalog_hash],
+            ).fetchone()
+            sealed: list[int] = []
+            if bounds is not None and bounds[0] is not None:
+                view_hash, epoch = runtime_view_hash(connection), self.database.seal_epoch()
+                held = {
+                    int(row[0])
+                    for row in connection.execute(
+                        "SELECT year FROM feature_year_seal "
+                        "WHERE catalog_hash = ? AND view_hash = ? AND epoch = ?",
+                        [catalog_hash, view_hash, epoch],
+                    ).fetchall()
+                }
+                for year in range(bounds[0].year, bounds[1].year):
+                    if year in held:
+                        continue
+                    connection.execute(
+                        "INSERT OR REPLACE INTO feature_year_seal VALUES (?, ?, ?, ?, ?)",
+                        [
+                            catalog_hash,
+                            year,
+                            view_hash,
+                            epoch,
+                            self._feature_year_digest(connection, catalog_hash, year),
+                        ],
+                    )
+                    sealed.append(year)
+            connection.execute("COMMIT")
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
+        return tuple(sealed)
+
+    @staticmethod
+    def _clear_feature_year_seals(
+        connection: duckdb.DuckDBPyConnection, sessions: Iterable[date] | None = None
+    ) -> None:
+        """A write to Feature rows ends the seals of their years, in its own transaction.
+
+        Every catalog's: a layered catalog's rows compose from its parts' rows. None clears all.
+        """
+        if sessions is None:
+            connection.execute("DELETE FROM feature_year_seal")
+            return
+        years = sorted({session.year for session in sessions})
+        if years:
+            connection.execute(
+                "DELETE FROM feature_year_seal WHERE list_contains(?::INTEGER[], year)", [years]
+            )
 
     def materialization_source_windows(
         self,

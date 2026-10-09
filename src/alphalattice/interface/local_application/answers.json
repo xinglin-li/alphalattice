@@ -1384,6 +1384,18 @@
     "meaning": "What the plan claims: `INPUT_PREPARATION_ONLY; complete model support is resolved before any fit`."
    },
    {
+    "name": "model_lifecycle",
+    "kind": "object",
+    "required": false,
+    "meaning": "The lifecycle the component's models follow: `configuration` (`LIGHT`, the default: one seed of each vintage, fewer models than the component's full lifecycle; or `FULL` when named), its `seeds`, `refit_months`, `vintages`, `live_models`, `lifecycle_hash` and `claim`. Plan the full one with `model_lifecycle` `FULL`."
+   },
+   {
+    "name": "resource_estimate",
+    "kind": "object",
+    "required": false,
+    "meaning": "What the run is estimated to take on this machine, labelled `ESTIMATE` with its basis: `wall_seconds` and `peak_memory_bytes` at `cpu_cores`, the memory available now, and `at_one_core` where a lower CPU budget lowers the peak. It sits outside the plan's identity; a run whose peak exceeds the memory available is refused before admission with `execution.memory_insufficient`."
+   },
+   {
     "name": "next_requests",
     "kind": "object",
     "required": true,
@@ -2726,12 +2738,6 @@
     "meaning": "`INSTALLED_NON_DEFAULT_RESEARCH` for a new installation; `REUSED_EXACT` when this authority is already installed."
    },
    {
-    "name": "restart_required",
-    "kind": "boolean",
-    "required": true,
-    "meaning": "Always true: the service must restart before a package can be selected."
-   },
-   {
     "name": "authority_hash",
     "kind": "string",
     "required": true,
@@ -2771,13 +2777,13 @@
     "name": "next_action",
     "kind": "string",
     "required": false,
-    "meaning": "What to do next, in words: restart the Local Web service, then select a package for PLAN or RUN. Only after a new installation."
+    "meaning": "`READ_THE_PACKAGE_CONTROLS`: the running Host already serves the installed packages; read a package's controls, then plan and run its book. Only after a new installation."
    },
    {
     "name": "next_requests",
     "kind": "object",
     "required": false,
-    "meaning": "After the restart, `books:<package>`: each installed package's book controls, whose whole-support book is the one its review and activation read."
+    "meaning": "`books:<package>`: each installed package's book controls, whose whole-support book is the one its review and activation read."
    },
    {
     "name": "attributed_goal_id",
@@ -2869,19 +2875,19 @@
     "name": "status",
     "kind": "string",
     "required": true,
-    "meaning": "`ALREADY_PROMOTION` (the study already runs on the whole universe), `UPSTREAM_PROMOTION_ADMITTED` (its Alpha study runs first), or the run's status: `ADMITTED`, `REUSED_EXACT`, `REUSED_IN_FLIGHT` or a Task lifecycle."
+    "meaning": "`ALREADY_PROMOTION` (the study already runs on the whole universe), `UPSTREAM_PROMOTION_ADMITTED` (its Alpha promotion is admitted or in flight), or the promotion owner's actual run, refusal or stopped Task status."
    },
    {
     "name": "task_id",
     "kind": "string|null",
     "required": true,
-    "meaning": "The Task it names: the study already promoted, the Portfolio study waiting on its Alpha promotion, or the Task admitted; none when an identical study is reused."
+    "meaning": "The Task this answer follows: the already promoted study, the upstream Alpha promotion while the Portfolio waits or stops, or the admitted Portfolio promotion; none when an identical study is reused or refusal names no Task."
    },
    {
     "name": "research_lane",
     "kind": "string",
     "required": false,
-    "meaning": "`PROMOTION`: the study runs on its input's whole universe; absent while its Alpha promotion is still running."
+    "meaning": "`PROMOTION`: the study runs on its input's whole universe; absent while the answer follows its upstream Alpha promotion."
    },
    {
     "name": "numerical_call_count",
@@ -2893,13 +2899,13 @@
     "name": "follow_task_id",
     "kind": "string",
     "required": false,
-    "meaning": "The Task this answer started, which a wait follows: the Alpha study's promotion; only on `UPSTREAM_PROMOTION_ADMITTED`."
+    "meaning": "The admitted or joined Alpha promotion Task to follow; only on `UPSTREAM_PROMOTION_ADMITTED`."
    },
    {
     "name": "alpha_promotion",
     "kind": "object",
     "required": false,
-    "meaning": "The Alpha study's own promotion answer; only on `UPSTREAM_PROMOTION_ADMITTED`."
+    "meaning": "The upstream Alpha owner's promotion answer while it is admitted, in flight, stopped or refused. A stopped or refused answer preserves that owner's status and exact recovery or refusal requests at the top level too."
    },
    {
     "name": "detail",
@@ -2917,7 +2923,7 @@
     "name": "lifecycle",
     "kind": "string",
     "required": false,
-    "meaning": "Where the Task stands, as its Task lifecycle; present only when a Task was admitted or already runs."
+    "meaning": "Where the named Task stands, as its owner's Task lifecycle, including a stopped upstream Alpha Task."
    },
    {
     "name": "failure_code",
@@ -3208,6 +3214,12 @@
     "meaning": "The step to take next: `WORKSPACE_PREPARE_CONFIRM`, `ADMIT_SOURCE_ACCESS_THEN_PREVIEW_AGAIN`, `RESEARCH_STRATEGY_CONTROLS` once inputs are prepared and no research strategy is installed (`CONTROLS` once one is), or a readback's; none when no step is open."
    },
    {
+    "name": "resource_estimate",
+    "kind": "object",
+    "required": false,
+    "meaning": "What the run is estimated to take on this machine, labelled `ESTIMATE` with its basis: `wall_seconds` and `peak_memory_bytes` at `cpu_cores`, the memory available now, and `at_one_core` where a lower CPU budget lowers the peak. It sits outside the plan's identity; a run whose peak exceeds the memory available is refused before admission with `execution.memory_insufficient`."
+   },
+   {
     "name": "next_requests",
     "kind": "object",
     "required": true,
@@ -3241,7 +3253,7 @@
     "name": "source_access",
     "kind": "object",
     "required": false,
-    "meaning": "Whether sources may be reached and what decided it, with what a person must do when they may not."
+    "meaning": "Whether sources may be reached; only when they may not, what decided it and what a person must do."
    },
    {
     "name": "resume_from_cancelled_task",
@@ -3872,6 +3884,12 @@
     "meaning": "The prepared training source the draft reads; only on `DRAFT_READY`."
    },
    {
+    "name": "model_lifecycle",
+    "kind": "object",
+    "required": false,
+    "meaning": "The lifecycle the component's models follow: `configuration` (`LIGHT`, the default: one seed of each vintage, fewer models than the component's full lifecycle; or `FULL` when named), its `seeds`, `refit_months`, `vintages`, `live_models`, `lifecycle_hash` and `claim`. Plan the full one with `model_lifecycle` `FULL`."
+   },
+   {
     "name": "plan_request",
     "kind": "object",
     "required": false,
@@ -4107,6 +4125,12 @@
     "kind": "string",
     "required": true,
     "meaning": "What to ask next: `EXPERIMENT_RUN`."
+   },
+   {
+    "name": "resource_estimate",
+    "kind": "object",
+    "required": false,
+    "meaning": "What the run is estimated to take on this machine, labelled `ESTIMATE` with its basis: `wall_seconds` and `peak_memory_bytes` at `cpu_cores`, the memory available now, and `at_one_core` where a lower CPU budget lowers the peak. It sits outside the plan's identity; a run whose peak exceeds the memory available is refused before admission with `execution.memory_insufficient`."
    },
    {
     "name": "next_requests",
@@ -6132,7 +6156,7 @@
     "name": "next_action",
     "kind": "string",
     "required": true,
-    "meaning": "The effective decision's way on: restart without the operator offline switch, wait for the offline run to finish, retry when allowed, or ask a person to allow workspace access."
+    "meaning": "The effective decision's way on: follow the plan's next action under the operator offline switch, wait for the offline run to finish, retry when allowed, or ask a person to allow workspace access."
    },
    {
     "name": "next_requests",
@@ -6178,7 +6202,7 @@
     "name": "next_action",
     "kind": "string",
     "required": true,
-    "meaning": "The effective decision's way on after the setting: restart without the operator offline switch, wait for the offline run to finish, retry when allowed, or ask a person to allow workspace access."
+    "meaning": "The effective decision's way on after the setting: follow the plan's next action under the operator offline switch, wait for the offline run to finish, retry when allowed, or ask a person to allow workspace access."
    },
    {
     "name": "next_requests",
@@ -8699,6 +8723,12 @@
     "meaning": "The requests the page offers: preview or delegate an option, continue a Task, read the next page or what waits, confirm under a grant."
    },
    {
+    "name": "delegated_by",
+    "kind": "string",
+    "required": false,
+    "meaning": "The first-use goal's delegation under which this agent previews and confirms these cases itself, no grant offered; absent outside it."
+   },
+   {
     "name": "claim_limit",
     "kind": "string",
     "required": true,
@@ -8724,7 +8754,7 @@
     "name": "confirmation",
     "kind": "string",
     "required": true,
-    "meaning": "Who confirms the option: `HUMAN`."
+    "meaning": "Who confirms the option: `HUMAN`, or `FIRST_USE_DELEGATION` when the first use's goal lets this agent confirm it itself."
    },
    {
     "name": "case_token",
@@ -8748,7 +8778,7 @@
     "name": "executors",
     "kind": "object",
     "required": true,
-    "meaning": "Who may confirm it: a person directly, or automation under an exact grant from a person."
+    "meaning": "Who may confirm it: a person directly, and automation under an exact grant from a person or, under the first use's goal, this agent by its delegation."
    },
    {
     "name": "next_action",
@@ -9553,6 +9583,12 @@
     "meaning": "What goes on: `WAIT_FOR_NEXT_COMPLETED_SESSION`. Only with `OBSERVATIONS_PENDING`."
    },
    {
+    "name": "resource_estimate",
+    "kind": "object",
+    "required": false,
+    "meaning": "What the run is estimated to take on this machine, labelled `ESTIMATE` with its basis: `wall_seconds` and `peak_memory_bytes` at `cpu_cores`, the memory available now, and `at_one_core` where a lower CPU budget lowers the peak. It sits outside the plan's identity; a run whose peak exceeds the memory available is refused before admission with `execution.memory_insufficient`."
+   },
+   {
     "name": "next_requests",
     "kind": "object",
     "required": false,
@@ -10121,6 +10157,28 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the event was recorded under, by its id. Only when the sending session holds a goal."
+   }
+  ]
+ },
+ "WAKE_REGISTER": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "`WAKE_REGISTERED`: the Task's journal holds the wake, and the Host sends it when the Task ends, needs a decision or is deferred, even after a restart."
+   },
+   {
+    "name": "task_id",
+    "kind": "string",
+    "required": true,
+    "meaning": "The Task whose event the wake waits on."
+   },
+   {
+    "name": "wake",
+    "kind": "object",
+    "required": true,
+    "meaning": "The wake: its `registration_id`, `thread_id` and `read_command`, the Task's `lifecycle`, its `state` (`PENDING`, `ATTEMPTED`, `DELIVERED` or `UNDELIVERED`) and, once sent, its `event` and `result` (`delivered`, or the named `failure`). The same thread's pending wake is the one held; a settled one is answered again while the Task has not moved."
    }
   ]
  },

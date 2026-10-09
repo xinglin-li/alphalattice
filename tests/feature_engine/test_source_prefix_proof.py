@@ -7,12 +7,16 @@ import struct
 from contextlib import nullcontext
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
+from pathlib import Path
 
 import duckdb
 import pyarrow as pa
 import pytest
 
-from alphalattice.control.workspace_runtime.database import WorkspaceDatabase
+from alphalattice.control.workspace_runtime.database import (
+    WorkspaceDatabase,
+    live_workspace_connections,
+)
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
 from alphalattice.foundation.market_data_ops.sources.manifest import (
@@ -123,12 +127,14 @@ def _batch_proofs(
 
 
 def _original_v1_proof(connection, *, listing_ids, catalog_hash, start, end, factor_ids):
-    """Frozen pre-batch V1: query each bound directly, then normalize its Arrow IPC.
+    """Frozen pre-batch values hash, in the year-sealed envelope of a prefix in one year.
 
-    This oracle does not call the new batch/scalar implementation or a private
-    production hash helper. It retains the original SQL column order, null bits,
-    IEEE values and UTF-8 request envelope, including empty results.
+    This oracle queries each bound directly and normalizes its Arrow IPC; it does not call the
+    batch/scalar implementation or a private production hash helper. It retains the original SQL
+    column order, null bits, IEEE values and UTF-8 request envelope, including empty results. A
+    prefix within its cutoff's year holds no closed year, so the envelope binds just these values.
     """
+    assert start.year == end.year
     scope, factors = tuple(sorted(listing_ids)), tuple(sorted(factor_ids))
     columns = {
         row[1]
@@ -170,13 +176,14 @@ def _original_v1_proof(connection, *, listing_ids, catalog_hash, start, end, fac
         writer.write_table(normalized)
     values_hash = sha256(sink.getvalue()).hexdigest()
     payload = {
-        "kind": "FeatureSourcePrefixProofV1",
+        "kind": "FeatureSourcePrefixProofV2",
         "listing_ids": scope,
         "catalog_hash": catalog_hash,
         "start": start,
         "end": end,
         "factor_ids": factors,
-        "values": values_hash,
+        "closed_years": [],
+        "open_values": values_hash,
     }
     return sha256(
         json.dumps(
@@ -676,18 +683,23 @@ def test_feature_prefix_batch_uses_the_supplied_snapshot_without_write_authority
 def test_feature_prefix_batch_matches_original_v1_across_the_arrow_chunk_boundary(
     tmp_path, counts, cutoffs_text
 ):
-    """Keep original small boundaries and independently prove multi-chunk earlier prefixes."""
+    """Keep original small boundaries and independently prove multi-chunk earlier prefixes; as
+    a proof reads only its cutoff's year, the rows past the chunk boundary are listings of three
+    sessions, the first holding the smallest count, each later one the rows up to the next."""
     catalog = FeatureCatalog.load()
     first, second = catalog.factor_ids[:2]
     database = WorkspaceDatabase(tmp_path / "chunk-boundary")
     feature = FeatureStateRepository(database, installed_catalog=catalog)
     start = date(2024, 1, 1)
+    small, middle, _large = counts
     with database.connect(read_only=False) as connection:
         connection.execute(
             f"""
             CREATE VIEW feature_daily_runtime AS
-            SELECT '{SCOPE[0]}'::VARCHAR AS listing_id,
-                   DATE '{start.isoformat()}' + CAST(i AS INTEGER) AS session_date,
+            SELECT 'L' || lpad(CAST(i AS VARCHAR), 7, '0') AS listing_id,
+                   DATE '{start.isoformat()}'
+                       + CASE WHEN i < {small} THEN 0 WHEN i < {middle} THEN 1 ELSE 2 END
+                       AS session_date,
                    '{catalog.binding.catalog_hash}'::VARCHAR AS catalog_hash,
                    CASE WHEN i % 3 = 0 THEN NULL ELSE 'raw' END::VARCHAR AS raw_input_hash,
                    CASE WHEN i % 5 = 0 THEN NULL ELSE 'action' END::VARCHAR AS action_set_hash,
@@ -704,11 +716,11 @@ def test_feature_prefix_batch_matches_original_v1_across_the_arrow_chunk_boundar
             FROM range({max(counts)}) AS generated(i)
             """
         )
-    ends = tuple(start + timedelta(days=count - 1) for count in counts)
+    ends = tuple(start + timedelta(days=day) for day in range(3))
     result = _assert_batch_matches_original(
         feature,
         catalog,
-        listing_ids=(SCOPE[0],),
+        listing_ids=tuple(f"L{i:07d}" for i in range(max(counts))),
         factors=(first, second),
         start=start,
         ends=ends,
@@ -724,3 +736,109 @@ def test_feature_prefix_batch_matches_original_v1_across_the_arrow_chunk_boundar
             )
             == counts
         )
+
+
+OLDER_DAYS = (date(2025, 12, 30), date(2025, 12, 31))
+"""A closed year beside the fixture's 2026 sessions."""
+
+
+def _write_older_year(feature, catalog, *, offset=1.0, listings=SCOPE):
+    for listing in listings:
+        feature.upsert_feature_materialization(
+            listing_id=listing,
+            catalog_hash=catalog.binding.catalog_hash,
+            rows=tuple(
+                {
+                    "listing_id": listing,
+                    "session_date": day,
+                    "input_cutoffs_json": {factor: None for factor in catalog.factor_ids},
+                    **{factor: index + offset for index, factor in enumerate(catalog.factor_ids)},
+                }
+                for day in OLDER_DAYS
+            ),
+            ineligibility=(),
+            raw_input_hash="2" * 64,
+            action_set_hash_value="3" * 64,
+            market_reference_revision="4" * 64,
+            idempotency_key=f"older-{listing}-{offset}",
+            revision_reason="fixture",
+            observed_at=NOW,
+        )
+
+
+def _seal(feature, catalog):
+    with feature.database.connect(read_only=False) as connection:
+        return feature.seal_closed_feature_years(
+            catalog.binding.catalog_hash, _connection=connection
+        )
+
+
+def _sealed_years(feature):
+    with feature.database.read_transaction() as connection:
+        return [
+            row[0] for row in connection.execute("SELECT year FROM feature_year_seal").fetchall()
+        ]
+
+
+def _across_years(feature, catalog):
+    return _proof(feature, catalog, start=OLDER_DAYS[0], end=DAYS[1])
+
+
+def _without_seals(feature, catalog):
+    with feature.database.connect(read_only=False) as connection:
+        connection.execute("DELETE FROM feature_year_seal")
+    return _across_years(feature, catalog)
+
+
+def test_a_closed_year_answers_by_its_seal_as_its_values_would(feature_source):
+    """requirement: a proof reads only its cutoff's year; each earlier
+    year answers by its seal, which equals a digest of that year's values, written once."""
+    feature, catalog = feature_source
+    _write_older_year(feature, catalog)
+    unsealed = _across_years(feature, catalog)
+    assert _seal(feature, catalog) == (2025,)
+    assert _seal(feature, catalog) == ()
+    assert _sealed_years(feature) == [2025]
+    assert _across_years(feature, catalog) == unsealed
+
+
+def test_a_write_to_a_closed_year_removes_its_seal_and_moves_the_proof(feature_source):
+    """requirement: every Feature writer ends its years' seals in its own
+    transaction, so a correction to a closed year moves the proof the next day."""
+    feature, catalog = feature_source
+    _write_older_year(feature, catalog)
+    assert _seal(feature, catalog) == (2025,)
+    before = _across_years(feature, catalog)
+    _write_older_year(feature, catalog, offset=2.0, listings=SCOPE[:1])
+    assert _sealed_years(feature) == []
+    after = _across_years(feature, catalog)
+    assert after != before
+    assert _seal(feature, catalog) == (2025,)
+    assert _across_years(feature, catalog) == after == _without_seals(feature, catalog)
+
+
+@pytest.mark.parametrize("record", ["kept", "deleted"])
+def test_an_edit_while_the_store_is_closed_ends_every_seal(feature_source, record):
+    """tamper: another program's edit while the file was closed ends every
+    seal at the next open, read only or writable, with its seal record kept or deleted (a
+    counted epoch restarted from a deleted record and revived old seals)."""
+    feature, catalog = feature_source
+    _write_older_year(feature, catalog)
+    assert _seal(feature, catalog) == (2025,)
+    before = _across_years(feature, catalog)
+    assert live_workspace_connections(feature.database.path) is None
+    factor = catalog.factor_ids[0]
+    outside = duckdb.connect(str(feature.database.path))
+    try:
+        outside.execute(
+            f'UPDATE feature_daily_current SET "{factor}" = "{factor}" + 1 WHERE session_date = ?',
+            [OLDER_DAYS[0]],
+        )
+    finally:
+        outside.close()
+    if record == "deleted":
+        Path(f"{feature.database.path}.seal.json").unlink()
+    after = _across_years(feature, catalog)
+    assert after != before
+    assert _seal(feature, catalog) == (2025,)
+    assert _across_years(feature, catalog) == after == _without_seals(feature, catalog)

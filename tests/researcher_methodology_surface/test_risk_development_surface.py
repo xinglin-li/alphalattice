@@ -266,7 +266,7 @@ def test_experiments_never_import_publication() -> None:
 
 
 def test_the_compiler_names_no_recipe_contract_adapter_or_family() -> None:
-    """requirement (P1-1): adding a method is a registration, not a compiler edit.
+    """requirement (-1): adding a method is a registration, not a compiler edit.
 
     The compiler imported ``CovarianceRecipe`` to seal, reached the central
     ``installed_parameter_domain`` table through the catalog, and routed on
@@ -358,7 +358,7 @@ def test_an_uninstalled_capability_handle_is_refused() -> None:
 
 
 def test_the_evidence_verifier_cannot_reach_anything_that_computes() -> None:
-    """requirement (P1-5): replay resolves a verifier and must stay unable to run.
+    """requirement (-5): replay resolves a verifier and must stay unable to run.
 
     The verifier now lives in the Risk Desk beside the executor, which is the
     right owner -- the relationships between a surface, its diagnostics, its
@@ -425,7 +425,7 @@ def test_the_generic_program_layer_knows_no_desk() -> None:
 
 
 def test_changing_development_code_moves_the_program_identity() -> None:
-    """P1-3: the development path's own bytes are part of Program identity.
+    """3: the development path's own bytes are part of Program identity.
 
     The numerical closure covers the installed covariance adapter; it never
     covered the compiler, executor, bounded window, or policy code -- all of
@@ -446,12 +446,7 @@ def test_changing_development_code_moves_the_program_identity() -> None:
 
 
 def test_the_default_covariance_recipe_seal_does_not_move() -> None:
-    """The one value every repin of the retired Risk frozen pin preserved (RT M01).
-
-    The eight legacy covariance surfaces in the original workspace are identified
-    by recipe field values, not source bytes, and the default recipe sealed to this
-    value throughout; a change to it is a change to what the default estimate is.
-    """
+    """The default covariance recipe keeps its recorded field-based seal."""
 
     assert default_covariance_recipe().recipe_hash == (
         "9e095c7c46c7df9ca09e56f7c8cb2f5b08fccb3c803d0f7d6883f2bab001a21c"

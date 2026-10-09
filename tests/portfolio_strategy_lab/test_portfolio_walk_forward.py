@@ -51,12 +51,7 @@ def _mandate(sessions: tuple[date, ...]) -> PortfolioStrategyLabMandate:
 
 @dataclass(frozen=True, slots=True)
 class _DevelopmentWorkspace:
-    """The engine's walk-forward workspace, shaped as the retired lab's loader built it.
-
-    ``PortfolioSharedDevelopmentWorkspace`` retired with that loader (RT R30); the
-    policy decision provider and the segment loop read any object with these fields
-    (``PortfolioWalkForwardWorkspace``), so the engine tests keep their fixture here.
-    """
+    """The fixture supplies the fields of ``PortfolioWalkForwardWorkspace``."""
 
     mandate: PortfolioStrategyLabMandate
     formation_sessions: tuple[date, ...]
@@ -686,7 +681,7 @@ def test_the_holdings_transition_follows_the_installed_clock_not_a_hardcoded_ste
 
 
 def test_buffered_equal_weight_keeps_a_full_book_without_covariance_or_nonrebalance_trade() -> None:
-    """C1's 50-name book is direct selection/allocation, never a QP candidate axis."""
+    """50-name book is direct selection/allocation, never a QP candidate axis."""
 
     from alphalattice.capabilities.portfolio_backtesting.clocks import (
         WholeBookEveryNFormationsClock,
@@ -763,7 +758,7 @@ def test_buffered_equal_weight_keeps_a_full_book_without_covariance_or_nonrebala
     assert target.sum() == pytest.approx(1.0)
 
     # The shared workspace owner requires its durable 494-session axis.  The
-    # segment below still exercises only six C1 formations, so it cannot turn
+    # segment below still exercises only six formations, so it cannot turn
     # this policy proof into a Campaign or a numerical study.
     sessions = tuple(date(2024, 1, 2) + timedelta(days=index) for index in range(494))
     engine_asset_count = 50
@@ -827,7 +822,7 @@ def test_buffered_equal_weight_keeps_a_full_book_without_covariance_or_nonrebala
 
 
 def test_buffered_inverse_volatility_weighs_the_full_book_or_falls_back_unsupported() -> None:
-    """C2 consumes only selected diagonal vols; one bad vol restores whole-book equal weight."""
+    """consumes only selected diagonal vols; one bad vol restores whole-book equal weight."""
 
     from alphalattice.investment.portfolio_strategy_lab.policies import (
         buffered_inverse_volatility as inverse_volatility,
@@ -968,7 +963,7 @@ def test_buffered_inverse_volatility_weighs_the_full_book_or_falls_back_unsuppor
 
 
 def test_buffered_rank_return_uses_only_matured_outcomes_and_never_an_optimizer() -> None:
-    """C6's curve is exact, causal, per-session averaged, and closed form."""
+    """curve is exact, causal, per-session averaged, and closed form."""
 
     from alphalattice.capabilities.portfolio_backtesting.clocks import (
         WholeBookEveryNFormationsClock,

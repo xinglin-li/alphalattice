@@ -11,7 +11,7 @@ pytestmark = pytest.mark.usefixtures("workbench_build")
 
 @pytest.mark.parametrize("case", ["history-names", "evidence-book-choices"])
 def test_installed_book_consumers_keep_names_and_exact_references(case):
-    """BEHAVIOUR F30/U173: labelled owner answers, real readers and former-source controls."""
+    """BEHAVIOUR F30/: labelled owner answers, real readers and former-source controls."""
     root = Path(__file__).resolve().parents[2]
     node = shutil.which("node")
     assert node, "Node.js development runtime required"

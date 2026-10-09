@@ -156,7 +156,7 @@ def risk_history_shortfall(
     """The first formation with fewer Risk return sessions before it than `RISK_HISTORY_SESSIONS`.
 
     The one judgment of a strategy's Risk history, which its plan reads before any Task and
-    its materialization reads again (V596): a plan admits only what its materialization runs.
+    its materialization reads again: a plan admits only what its materialization runs.
 
     Args:
         risk_sessions: The Risk return surface's available sessions, in order.
@@ -394,7 +394,7 @@ def prepare_frozen_portfolio_authority(
         category="sector-maps", content_hash=sector.map_hash, payload=sector.model_dump(mode="json")
     )
     # The history its sessions read, with the receipts that record it, so the book's Portfolio
-    # reads what its Panel read (V346); refused when the two disagree.
+    # reads what its Panel read; refused when the two disagree.
     history = copy_sector_history(
         PanelClosureArtifactStore(ArtifactResolver(sector_root)),
         target_store,

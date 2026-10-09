@@ -12,7 +12,7 @@ import os
 import sqlite3
 from collections.abc import Callable, Mapping
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from contextlib import suppress
+from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -135,10 +135,18 @@ class TaskDomainAdapter(Protocol):
         ...
 
 
-def _bounded_raise(attempt: int, call: Callable[[], StageExecutionResult]) -> StageExecutionResult:
-    """Run one stage; on its last allowed attempt, an unnamed raise blocks it with its type."""
+def _bounded_raise(
+    attempt: int,
+    call: Callable[[], StageExecutionResult],
+    scope: Callable[[], AbstractContextManager[object]] | None = None,
+) -> StageExecutionResult:
+    """Run one stage, inside `scope` when one is given; on its last allowed attempt, an
+    unnamed raise blocks it with its type."""
     try:
-        return call()
+        if scope is None:
+            return call()
+        with scope():
+            return call()
     except Exception as error:
         if isinstance(error, ChildStartFailed):
             raise
@@ -385,6 +393,8 @@ class TaskControlRunner:
         projection_sink: Callable[[TaskSafeProjection], None] | None = None,
         heartbeat_sink: Callable[[TaskHeartbeatSignal], None] | None = None,
         width: int | None = None,
+        stage_gate: Callable[[TaskRecord], str | None] | None = None,
+        stage_scope: Callable[[], AbstractContextManager[object]] | None = None,
     ) -> None:
         """Bind the installed adapters, business authority and operational heartbeat owner.
 
@@ -398,6 +408,12 @@ class TaskControlRunner:
             heartbeat_sink: Optional callback receiving operational heartbeat signals.
             width: The cores a Task may use at once, its workspace's CPU budget as found when
                 it starts (an execution parameter, PA2); the host's processors when None.
+            stage_gate: Asked before each stage starts; a refusal code it returns blocks the
+                stage, recoverably, before any of its work (an execution check, never a
+                result: the Host's memory check).
+            stage_scope: Entered around each stage's work when the stage runs alone on the
+                runner's thread (the Host's storage measurement); concurrent work items
+                run without it, each exactly as before.
 
         Raises:
             ValueError: The heartbeat interval is not positive.
@@ -411,6 +427,8 @@ class TaskControlRunner:
         self.projection_sink = projection_sink
         self.heartbeat_sink = heartbeat_sink
         self.width = width
+        self.stage_gate = stage_gate
+        self.stage_scope = stage_scope
         self.worker_instance_id = uuid4()
         # The runtime file's name names the heartbeat sidecar beside it; its folder keeps the
         # stages' spans.
@@ -706,6 +724,7 @@ class TaskControlRunner:
             self._publish_projection(task_id)
             # This attempt, after the stage's interrupted ones in a row (V475).
             attempt = registry.consecutive_interruptions(task_id, definition.stage_id) + 1
+            refused = None if self.stage_gate is None else self.stage_gate(task)
             pool.start(
                 definition,
                 partial(
@@ -723,7 +742,14 @@ class TaskControlRunner:
                             task=task,
                             execution=registry.execution(execution_id),
                             work_item=definition,
+                        )
+                        if refused is None
+                        else partial(
+                            StageExecutionResult,
+                            StageDisposition.BLOCKED,
+                            failure_code=refused,
                         ),
+                        None if context.pool.width > 1 else self.stage_scope,
                     ),
                 ),
             )

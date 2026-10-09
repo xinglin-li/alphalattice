@@ -57,7 +57,7 @@ INTEGRATED = MatterSelectionPolicy(
 
 
 ONE_UNIT = "u01"
-"""The book's only unit: every book is prepared as a coverage run (C2)."""
+"""The book's only unit: every book is prepared as a coverage run."""
 
 
 def _book(entities: tuple[str, ...]) -> tuple[RecordedEvidenceDocument, ...]:
@@ -417,10 +417,10 @@ def test_the_first_release_reads_are_projections_of_the_sealed_evidence(tmp_path
         coverage = _operation(service, {**packet_request, "evidence_detail": "topic_coverage"})
         cells = coverage["evidence_view"]["coverage"]["cells"]
         assert group["rules_id"] == ROUTING_RULES_ID
-        # Each group carries its packet's cells whole (U6/R20).
+        # Each group carries its packet's cells whole (R20).
         assert group["cells"] == cells
         assert sum(group["cells_by_state"].values()) == len(cells)
-        # And its continuation scope whole (U6/R20), these among its fields.
+        # And its continuation scope whole (R20), these among its fields.
         assert {"state", "pending_windows", "pending_candidates", "remainders"} <= set(
             group["continuation"]
         )
@@ -520,7 +520,7 @@ def test_the_first_release_reads_are_projections_of_the_sealed_evidence(tmp_path
             status, refused = cro_page(**fields)
             assert status != 200 and code in json.dumps(refused), (fields, refused)
         assert (len(service.registry.tasks()), service.review.artifacts.write_count) == unchanged
-        # regression (V87): one operation verifies each Evidence record once; the
+        # regression: one operation verifies each Evidence record once; the
         # section read replayed each analysis from several places (68 records 388 times).
         store = service.review.artifacts
         asked: set[tuple[str, ...]] = set()
@@ -546,7 +546,7 @@ def test_the_first_release_reads_are_projections_of_the_sealed_evidence(tmp_path
         export_request = section["next_requests"]["export"]
         whole = _operation(service, export_request)
         spans = whole["evidence"]["verified_spans"]
-        # regression (V94): a page slices the export the whole export sealed, reading nothing.
+        # regression: a page slices the export the whole export sealed, reading nothing.
         reads = service.review.artifacts.read_count
         spans_page = _operation(service, {**export_request, "citation_entity_id": issuer})
         assert service.review.artifacts.read_count == reads
@@ -593,7 +593,7 @@ def test_the_first_release_reads_are_projections_of_the_sealed_evidence(tmp_path
 def test_a_published_reading_filters_the_exact_review_lineage_without_rewriting_export(
     tmp_path: Path,
 ) -> None:
-    """regression (V632): the Reading route filters a published review's exact passages.
+    """Regression: the Reading route filters a published review's exact passages.
 
     A later preparation must not supply an older review's topic membership or cutoff.
     The unfiltered immutable export stays byte-for-byte equal across every filtered read.

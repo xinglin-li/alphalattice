@@ -184,7 +184,7 @@ class RiskExperimentCompiler:
             )
         )
         # The declared budget and threads, checked where every command's seal compiles, so a
-        # PLAN that passes is never refused the same rule at RUN (V120).
+        # PLAN that passes is never refused the same rule at RUN.
         enforce_execution_policy(
             envelope=envelope,
             planned_numerical_calls=len(authority.sessions),

@@ -1,6 +1,6 @@
 """The covariance and reference-mark lanes the paired Portfolio route still consumes.
 
-What is left of the Stage-6 campaign's input authority (the campaign itself retired with RT
+What is left of the Stage-6 campaign's input authority (the campaign itself retired with
 R01, 2026-09-29). The paired panel-methodology route reads a rematerialized Risk covariance
 surface a published graph already names, projects it to its decision axis as a sealed lane the
 optimizer can recognise, and values its reference book against one Market-owned close-mark
@@ -152,7 +152,7 @@ class ResolvedStageSixCovariance:
     def covariance_lane(
         self, *, sessions: tuple[date, ...], listing_ids: tuple[str, ...]
     ) -> CampaignValidatedCovarianceLane:
-        """The covariance on ``listing_ids`` at each named session, for a policy's solver (V310).
+        """The covariance on ``listing_ids`` at each named session, for a policy's solver.
 
         The ordered principal submatrix of `project`, the listing axis named by listing rather
         than by position; a listing the surface does not carry is a refusal.
@@ -170,7 +170,7 @@ class ResolvedStageSixCovariance:
     def allocation_projections(
         self, *, sessions: tuple[date, ...], listing_ids: tuple[str, ...]
     ) -> tuple[RiskAllocationProjection, ...]:
-        """Each named session's per-name volatility on ``listing_ids``, a sealed Risk lane (V310).
+        """Each named session's per-name volatility on ``listing_ids``, a sealed Risk lane.
 
         Read from each session's covariance diagonal, never a whole matrix held; the lane is the
         Risk owner's projection, whose own check (`verify_content`) proves its identity and

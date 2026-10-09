@@ -1,11 +1,25 @@
-"""RR4 scope rules, immutable hashes and disclosure redaction hold the RR2 contract."""
+"""Public scope rules, immutable hashes and disclosure redaction hold the snapshot contract."""
 
 import hashlib
 import json
+import subprocess
+from collections import Counter
+from unittest.mock import Mock
 
 import pytest
 
-from release.public_manifest import RULES, classify, generate, scan_public, validate_path
+from release.public_manifest import (
+    INTERNAL_ID_BASELINE,
+    RULES,
+    classify,
+    generate,
+    internal_id_label,
+    internal_id_pattern,
+    internal_id_ratchet,
+    scan_public,
+    validate_internal_id_history,
+    validate_path,
+)
 
 
 @pytest.mark.parametrize(
@@ -126,6 +140,23 @@ def test_public_manifest_hashes_supplied_git_bytes_and_covers_every_file():
     )
 
 
+def test_generate_walks_development_labels_once_and_merges_its_findings(monkeypatch):
+    """Generation runs the development-label walk once and keeps its findings."""
+    walk = Mock(wraps=internal_id_ratchet)
+    monkeypatch.setattr("release.public_manifest.internal_id_ratchet", walk)
+    blobs = {
+        "census/entry_reach.json": b'{"modules": []}',
+        INTERNAL_ID_BASELINE: b'{"cards": [], "lines": [], "occurrences": {}}',
+        "README.md": b"V" + b"900\n",
+        "scripts/probe_panel_identity.py": b"print('demo')\n",
+    }
+    manifest, audit = generate("a" * 40, blobs, dict.fromkeys(blobs, "100644"))
+    assert walk.call_count == 1
+    assert audit["findings"] == audit["internal_id_ratchet"]["violations"]
+    assert len(audit["findings"]) == 1 and audit["internal_id_ratchet"]["policy_present"]
+    assert INTERNAL_ID_BASELINE not in {row["path"] for row in manifest["public"]}
+
+
 def test_public_manifest_records_locations_without_copying_disclosures():
     secret = "sk-" + "X" * 40
     session = "12345678-1234-4123-8123-123456789abc"
@@ -155,6 +186,174 @@ def test_public_manifest_records_locations_without_copying_disclosures():
     serialized = json.dumps(findings)
     assert secret not in serialized and session not in serialized and "person@" not in serialized
     assert all(r["path"] == "src/public.py" and r["line"] > 0 for r in findings)
+
+
+def test_development_label_ratchet_pins_each_public_files_count_and_spelling():
+    owner = "src/public.py"
+    private = "experience/private.md"
+    labels = [
+        "V" + "509",
+        "U" + "112",
+        "Round" + " 12",
+        "Law" + " 42",
+        "SYNTHETIC-CARD",
+        "SYNTHETIC-LINE",
+    ]
+    policy = {"cards": [labels[4]], "lines": [labels[5]]}
+    text = "\n".join(labels) + "\nfixture_V509_name u1 alpha-SYNTHETIC-CARD-beta\n"
+    blobs = {owner: text.encode(), private: text.encode()}
+    rows = [{"path": owner, "kind": "PUBLIC"}, {"path": private, "kind": "PRIVATE"}]
+    occurrences = Counter(internal_id_label(label) for label in labels)
+    policy["occurrences"] = {owner: dict(occurrences)}
+    measured = internal_id_ratchet(blobs, rows, policy)
+    assert measured["current"] == {owner: len(labels)}
+    assert measured["allowed"] == len(labels) and not measured["violations"]
+
+    removed = {**blobs, owner: "\n".join(labels[1:]).encode()}
+    after_removal = internal_id_ratchet(removed, rows, policy)
+    assert after_removal["count"] == len(labels) - 1 and not after_removal["violations"]
+    lowered = {**policy, "occurrences": after_removal["current_occurrences"]}
+    assert not internal_id_ratchet(removed, rows, lowered)["violations"]
+    resurrected = {**removed, owner: "\n".join([labels[0], *labels[2:]]).encode()}
+    returned = internal_id_ratchet(resurrected, rows, lowered)["violations"]
+    assert [(row["path"], row["line"], row["column"]) for row in returned] == [(owner, 1, 1)]
+    changed = {**blobs, owner: text.replace(labels[0], "V" + "510", 1).encode()}
+    findings = internal_id_ratchet(changed, rows, policy)["violations"]
+    assert [(row["path"], row["line"], row["column"]) for row in findings] == [(owner, 1, 1)]
+    assert all(row["rule"] == "NO_DEVELOPMENT_ID" for row in findings)
+    assert "510" not in json.dumps(findings)
+    new = "src/new.py"
+    more = {**blobs, new: ("prefix " + labels[0]).encode()}
+    new_rows = [*rows, {"path": new, "kind": "PUBLIC"}]
+    new_findings = internal_id_ratchet(more, new_rows, policy)["violations"]
+    assert [(row["path"], row["line"], row["column"]) for row in new_findings] == [(new, 1, 8)]
+    assert len(internal_id_ratchet(blobs, rows)["violations"]) == 4
+
+
+def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary_words():
+    """Ordinary words stay prose while qualified line and card forms remain labels."""
+    cards = ["UI", "LEAD", "IS", "ACCEPT", "BADGE", "JOURNEY", "LAUNCH", "LAWS", "SEAL"]
+    ux, perf, fix = "U" + "X", "PERF" + "2", "FIX" + "1"
+    policy = {"cards": cards, "lines": ["UI", "LEAD", ux, perf, fix]}
+    text = " ".join(cards) + f" UX\nCodex {ux} Claude {perf} {fix}\ncard {cards[6]} {cards[4]}:"
+    assert [
+        internal_id_label(match.group()) for match in internal_id_pattern(policy).finditer(text)
+    ] == [ux, perf, fix, cards[6], cards[4]]
+
+
+@pytest.fixture
+def synthetic_history(tmp_path):
+    def git(*args):
+        return subprocess.check_output(
+            [
+                "git",
+                "-c",
+                "user.name=Synthetic Author",
+                "-c",
+                "user.email=synthetic@example.test",
+                "-c",
+                "core.hooksPath=",
+                "-c",
+                "core.autocrlf=false",
+                "-C",
+                str(tmp_path),
+                *args,
+            ],
+            text=True,
+        ).strip()
+
+    def commit(message, *, advance=True):
+        git("add", "--all")
+        if not advance:
+            return git("commit-tree", git("write-tree"), "-p", "HEAD", "-m", message)
+        git("commit", "-q", "-m", message)
+
+    git("init", "-q")
+    (tmp_path / "README.md").write_text("Synthetic tree\n", encoding="utf-8", newline="\n")
+    commit("Start synthetic history")
+    return git, commit
+
+
+def test_committed_development_label_allowance_cannot_grow_or_reset(tmp_path, synthetic_history):
+    _git, commit = synthetic_history
+    with pytest.raises(ValueError, match="no frozen internal-label policy"):
+        validate_internal_id_history(tmp_path, "HEAD")
+    label = "V" + "901"
+    owner = "src/demo.py"
+    policy = {
+        "cards": ["UI", "IS", "LEAD", "SYNTHETIC-CARD"],
+        "lines": [],
+        "occurrences": {owner: {label: 1}},
+    }
+    baseline = tmp_path / INTERNAL_ID_BASELINE
+    baseline.parent.mkdir()
+    baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
+    commit("Establish synthetic allowance")
+    validate_internal_id_history(tmp_path, "HEAD")
+    baseline.write_text(json.dumps({**policy, "cards": []}), encoding="utf-8", newline="\n")
+    candidate = commit("Remove vocabulary", advance=False)
+    with pytest.raises(ValueError, match="vocabulary changed"):
+        validate_internal_id_history(tmp_path, candidate)
+    policy.update(cards=["SYNTHETIC-CARD"], occurrences={})
+    baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
+    commit("Lower synthetic allowance")
+    validate_internal_id_history(tmp_path, "HEAD")
+    policy["occurrences"] = {owner: {label: 1}}
+    baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
+    commit("Increase synthetic allowance")
+    with pytest.raises(ValueError, match="allowance increased"):
+        validate_internal_id_history(tmp_path, "HEAD")
+    (tmp_path / "README.md").write_text("Unrelated change\n", encoding="utf-8", newline="\n")
+    commit("Change an unrelated file")
+    with pytest.raises(ValueError, match="allowance increased"):
+        validate_internal_id_history(tmp_path, "HEAD")
+    baseline.unlink()
+    commit("Remove synthetic policy")
+    with pytest.raises(ValueError, match="no frozen internal-label policy"):
+        validate_internal_id_history(tmp_path, "HEAD")
+    baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
+    commit("Reintroduce synthetic policy")
+    with pytest.raises(ValueError, match="policy was removed"):
+        validate_internal_id_history(tmp_path, "HEAD")
+
+
+def test_first_landing_freezes_only_its_prepolicy_anchors_labels(tmp_path, synthetic_history):
+    """First landing admits anchor labels, then keeps its allowance, source and format fixed."""
+    git, commit = synthetic_history
+    earlier = git("rev-parse", "HEAD")
+    owner = "src/demo.py"
+    label, later = "V" + "901", "V" + "902"
+    artifact = tmp_path / owner
+    artifact.parent.mkdir()
+    artifact.write_text(label + "\n", encoding="utf-8", newline="\n")
+    commit("Record prepolicy labels")
+    anchor = git("rev-parse", "HEAD")
+    baseline = tmp_path / INTERNAL_ID_BASELINE
+    baseline.parent.mkdir()
+    policy = {"schema_version": 1, "source_sha": anchor, "cards": [], "lines": []}
+    policy["occurrences"] = {}
+    baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
+    commit("Record a draft allowance")
+    artifact.write_text(label + "\n" + later, encoding="utf-8", newline="\n")
+    policy.update(schema_version=2, occurrences={owner: {label: 1, later: 1}})
+    baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
+    with pytest.raises(ValueError, match="allowance increased"):
+        validate_internal_id_history(tmp_path, commit("Admit a post-anchor label", advance=False))
+    artifact.write_text(label + "\n", encoding="utf-8", newline="\n")
+    policy["occurrences"] = {owner: {label: 1}}
+    baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
+    commit("Land the anchored allowance")
+    validate_internal_id_history(tmp_path, "HEAD")
+    for update, refusal in (
+        ({"occurrences": {owner: {label: 2}}}, "allowance increased"),
+        ({"source_sha": earlier}, "anchor or format changed"),
+        ({"schema_version": 1}, "anchor or format changed"),
+    ):
+        baseline.write_text(json.dumps({**policy, **update}), encoding="utf-8", newline="\n")
+        with pytest.raises(ValueError, match=refusal):
+            validate_internal_id_history(
+                tmp_path, commit("Change the frozen policy", advance=False)
+            )
 
 
 def test_candidate_script_needs_a_consumer_outside_release_policy():

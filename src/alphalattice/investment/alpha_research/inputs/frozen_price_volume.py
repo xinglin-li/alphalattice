@@ -486,15 +486,30 @@ def _sector_recovery(source: FrozenPriceVolumeInputs, returns: FloatArray) -> Fl
     ).values
 
 
+_FORMATION_WINDOW = 128
+"""Sessions a formation's bounded kernels read: their longest lookback is 64 (a 63-session window
+over returns), doubled. Every kernel but the recursions takes its windows with
+`sliding_window_view` or works session by session, so its formation row is the same from these
+rows as from the whole history."""
+
+
 def prepare_frozen_price_volume_features(
     source: FrozenPriceVolumeInputs,
     *,
     ordered_feature_ids: tuple[str, ...],
     formation_session: date,
 ) -> FloatArray:
-    """Calculate one formation's shared columns before vintage-specific scaling."""
-    return prepare_frozen_price_volume_history(
-        source, ordered_feature_ids=ordered_feature_ids, through=formation_session
+    """Calculate one formation's shared columns before vintage-specific scaling.
+
+    The bounded kernels read the formation's trailing window and the recursions (the EMAs and the
+    Sector wealth) their whole history, so the row equals the full pass's last row bit for bit.
+    """
+    end = _formation_end(source, formation_session)
+    return _prepared_rows(
+        source,
+        ordered_feature_ids=ordered_feature_ids,
+        start=max(0, end - _FORMATION_WINDOW),
+        end=end,
     )[-1]
 
 
@@ -505,17 +520,29 @@ def prepare_frozen_price_volume_history(
     through: date,
 ) -> FloatArray:
     """One causal pass for training and inference, preserving every source row."""
+    return _prepared_rows(
+        source,
+        ordered_feature_ids=ordered_feature_ids,
+        start=0,
+        end=_formation_end(source, through),
+    )
+
+
+def _formation_end(source: FrozenPriceVolumeInputs, through: date) -> int:
     try:
-        end = source.formation_sessions.index(through) + 1
+        return source.formation_sessions.index(through) + 1
     except ValueError as error:
         raise PanelFeatureBoundaryError("alpha_research.frozen_formation_unavailable") from error
-    # Bound every calculation by formation, even if the source carries later rows.
-    source = FrozenPriceVolumeInputs(
-        formation_sessions=source.formation_sessions[:end],
+
+
+def _rows(source: FrozenPriceVolumeInputs, start: int, end: int) -> FrozenPriceVolumeInputs:
+    """The source's sessions `start` to `end`, every array cut alike."""
+    return FrozenPriceVolumeInputs(
+        formation_sessions=source.formation_sessions[start:end],
         ordered_listing_ids=source.ordered_listing_ids,
         sector_by_listing_id=source.sector_by_listing_id,
         **{
-            name: getattr(source, name)[:end]
+            name: getattr(source, name)[start:end]
             for name in (
                 "open",
                 "high",
@@ -527,23 +554,39 @@ def prepare_frozen_price_volume_history(
             )
         },
         source_binding_hash=source.source_binding_hash,
-        formula_values={name: values[:end] for name, values in source.formula_values.items()},
+        formula_values={name: values[start:end] for name, values in source.formula_values.items()},
         reference_eligible=(
-            source.reference_eligible[:end] if source.reference_eligible is not None else None
+            source.reference_eligible[start:end] if source.reference_eligible is not None else None
         ),
         nominal_member_count=(
-            source.nominal_member_count[:end] if source.nominal_member_count is not None else None
+            source.nominal_member_count[start:end]
+            if source.nominal_member_count is not None
+            else None
         ),
     )
+
+
+def _prepared_rows(
+    source: FrozenPriceVolumeInputs,
+    *,
+    ordered_feature_ids: tuple[str, ...],
+    start: int,
+    end: int,
+) -> FloatArray:
+    """Rows `start` to `end` of the causal pass: the recursions over the whole history to `end`,
+    every other kernel over these rows alone."""
+    # Bound every calculation by formation, even if the source carries later rows.
+    history = _rows(source, 0, end)
+    source = history if start == 0 else _rows(source, start, end)
     raw = dict(_fast_micro_raw_features(ohlcv=source))
     returns = _observation_log_returns(source.close)
     raw["mean_return_acceleration_5_21"] = _rolling_stat(returns, 5, "mean") - _rolling_stat(
         returns, 21, "mean"
     )
     raw["recovery_from_21d_low"] = _recovery(source.close, 21)
-    ppo = _ratio(_ema(source.close, 12), _ema(source.close, 26)) - 1.0
-    raw["ppo_12_26"] = ppo
-    raw["ppo_signal_gap_9"] = ppo - _ema(ppo, 9)
+    ppo = _ratio(_ema(history.close, 12), _ema(history.close, 26)) - 1.0
+    raw["ppo_12_26"] = ppo[start:]
+    raw["ppo_signal_gap_9"] = (ppo - _ema(ppo, 9))[start:]
     requested = {value.rsplit("::", 1)[-1] for value in ordered_feature_ids}
     for window in (21, 63):
         if f"stock_sharpe_{window}" in requested:
@@ -597,7 +640,9 @@ def prepare_frozen_price_volume_history(
             "MARKET_CONTEXT::observed_new_high_low_share::current",
         )
     ):
-        columns[name] = np.broadcast_to(market[:, i, None], (end, len(source.ordered_listing_ids)))
+        columns[name] = np.broadcast_to(
+            market[:, i, None], (len(source.formation_sessions), len(source.ordered_listing_ids))
+        )
     # Each session's Sector of each listing (V346).
     trend_codes = sector_codes(
         source.sector_by_listing_id,
@@ -613,8 +658,8 @@ def prepare_frozen_price_volume_history(
         ).values[:, :, 0]
     )
     columns["ALPHA_DEVELOPMENT_CANDIDATE::C::sector_recovery_from_low_21"] = _sector_recovery(
-        source, returns
-    )[:, :, 0]
+        history, returns if start == 0 else _observation_log_returns(history.close)
+    )[start:, :, 0]
     try:
         values = np.ascontiguousarray(
             np.stack([columns[name] for name in ordered_feature_ids], axis=-1), dtype=np.float64

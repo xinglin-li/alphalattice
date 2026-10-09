@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date
 from typing import Final
@@ -458,7 +459,7 @@ def _feature_series(
     # Amihud (2002) illiquidity: the mean |return| per dollar traded over the window's sessions
     # with positive volume, given that at least 80% of the window has one (Amihud admits a
     # stock with 200 of a year's sessions). A zero-volume bar is a session without the ratio,
-    # never an infinite one that blanks the name for its whole window (V517).
+    # never an infinite one that blanks the name for its whole window.
     ratio = (returns.abs() / dollar_volume).where(dollar_volume > 0.0)
     for factor_id, window in (("amihud_21", 21), ("amihud_252", 252)):
         values[factor_id] = _rolling_observed_mean(
@@ -708,6 +709,7 @@ class BaseFeatureMaterializer:
         listing_id: str,
         projected_bars: pd.DataFrame,
         market_bars: pd.DataFrame | None,
+        sessions: Collection[date] | None = None,
     ) -> MaterializedFeatureBlock:
         """Compute catalog features and source cutoffs over one listing's ordered history.
 
@@ -716,6 +718,9 @@ class BaseFeatureMaterializer:
             projected_bars: Required projected source columns with unique session dates.
                 Rows are sorted stably by session before calculation.
             market_bars: Market-reference history for market-dependent formulas, if available.
+            sessions: The sessions whose rows and ineligibility are wanted, or None for every
+                row. The series are computed over the whole history either way, so each
+                wanted row is the one the whole block holds.
 
         Returns:
             Feature rows with per-formula source cutoffs and separate ineligibility rows.
@@ -730,7 +735,7 @@ class BaseFeatureMaterializer:
         missing = set(_REQUIRED_COLUMNS) - set(projected_bars.columns)
         if missing:
             raise ValueError(f"projected bars are missing required columns: {sorted(missing)}")
-        # A field only an extension's formula requires (the as-traded ones, V395) rides along
+        # A field only an extension's formula requires (the as-traded ones) rides along
         # when the source carries it; the core series read the required columns alone.
         carried = sorted(
             {field for spec in self.catalog.factors for field in spec.required_fields}.difference(
@@ -754,11 +759,13 @@ class BaseFeatureMaterializer:
             for spec in extensions:
                 series[spec.factor_id] = _safe(self.kernel_registry.compute(kernel_source, spec))
 
-        output = pd.DataFrame(
-            {
-                "listing_id": listing_id,
-                "session_date": frame["session_date"].dt.date,
-            }
+        session_dates = frame["session_date"].dt.date.to_numpy()
+        # The wanted rows' positions; each column is assembled once from them, not inserted
+        # factor by factor into a frame holding a string column.
+        positions = (
+            np.arange(len(frame))
+            if sessions is None
+            else np.flatnonzero(np.isin(session_dates, list(set(sessions))))
         )
         session_labels = frame["session_date"].dt.strftime("%Y-%m-%d").to_numpy()
         # The latest source session each Formula's value on this row consumed.
@@ -799,7 +806,7 @@ class BaseFeatureMaterializer:
             + "}"
         )
         cutoffs: list[str] = []
-        for position in range(len(frame)):
+        for position in positions:
             rendered = cutoff_template
             for skip, token in skip_tokens.items():
                 consumed = position - skip
@@ -816,40 +823,52 @@ class BaseFeatureMaterializer:
                     else f'"{session_labels[int(value)]}"',
                 )
             cutoffs.append(rendered)
-        output["input_cutoffs_json"] = cutoffs
-        ineligibility_frames: list[pd.DataFrame] = []
-        session_dates = frame["session_date"].dt.date.to_numpy()
+        output = pd.DataFrame(
+            {
+                "listing_id": pd.Series(listing_id, index=positions, dtype="str"),
+                "session_date": pd.Series(session_dates[positions], index=positions),
+                "input_cutoffs_json": pd.Series(cutoffs, index=positions, dtype="str"),
+                **{
+                    spec.factor_id: series[spec.factor_id].iloc[positions]
+                    for spec in self.catalog.factors
+                },
+            }
+        )
+        missing_at: list[np.ndarray] = []
+        missing_factor: list[np.ndarray] = []
+        missing_reason: list[np.ndarray] = []
+        missing_count: list[np.ndarray] = []
         for spec in self.catalog.factors:
             factor = spec.factor_id
-            current = series[factor]
-            output[factor] = current
             observations = min(len(frame), spec.minimum_observations)
             market_missing = factor in MARKET_DEPENDENT_FACTOR_IDS and market_bars is None
-            positions = np.flatnonzero(current.isna().to_numpy())
-            if not len(positions):
+            at = positions[series[factor].isna().to_numpy()[positions]]
+            if not len(at):
                 continue
             if market_missing:
-                reasons = np.full(len(positions), REASON_MARKET_ALIGNMENT, dtype=object)
+                reasons = np.full(len(at), REASON_MARKET_ALIGNMENT, dtype=object)
             else:
                 reasons = np.where(
-                    positions + 1 < spec.minimum_observations,
+                    at + 1 < spec.minimum_observations,
                     REASON_INSUFFICIENT_HISTORY,
                     REASON_ZERO_DENOMINATOR,
-                )
-            ineligibility_frames.append(
-                pd.DataFrame(
-                    {
-                        "listing_id": listing_id,
-                        "session_date": session_dates[positions],
-                        "factor_id": factor,
-                        "reason": reasons,
-                        "observation_count": np.minimum(positions + 1, observations),
-                    }
-                )
-            )
+                ).astype(object)
+            missing_at.append(at)
+            missing_factor.append(np.full(len(at), factor, dtype=object))
+            missing_reason.append(reasons)
+            missing_count.append(np.minimum(at + 1, observations))
+        at_all = np.concatenate(missing_at) if missing_at else np.empty(0, dtype=np.intp)
         ineligibility = (
-            pd.concat(ineligibility_frames, ignore_index=True)
-            if ineligibility_frames
+            pd.DataFrame(
+                {
+                    "listing_id": pd.Series(listing_id, index=range(len(at_all)), dtype="str"),
+                    "session_date": session_dates[at_all],
+                    "factor_id": pd.Series(np.concatenate(missing_factor), dtype="str"),
+                    "reason": pd.Series(np.concatenate(missing_reason), dtype="str"),
+                    "observation_count": np.concatenate(missing_count),
+                }
+            )
+            if missing_at
             else pd.DataFrame(
                 columns=("listing_id", "session_date", "factor_id", "reason", "observation_count")
             )

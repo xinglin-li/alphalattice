@@ -508,13 +508,16 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
 
 
 def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
-    book: Any, tmp_path: Path
+    book: Any, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """requirement: an independent unit failure does not block healthy issuers;
     the failed unit stays in every denominator with its owner's failure code,
     and preparing again keeps the units that completed. The unit short of its
     sources names the coverage it reached and needed and the issuer without one,
-    the preview predicted it, and the readback words it with its ways on (V541)."""
+    the preview predicted it, and the readback words it with its ways on (V541).
+    Once its source is restored, the readback uses the verified retry and keeps
+    the original failed unit as history. A completed Task names its failed
+    units, without equating verified failure receipts with prepared units."""
 
     workspace, report = book
     missing = COVERAGE_ENTITIES[16]
@@ -566,8 +569,58 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         )
         assert len(failures) == 1 and failures[0].unit_id == failed[0]["unit_id"]
         assert failures[0].uncovered_entity_ids == (missing,)
+        assert failures[0].exception_type == "UnitSourcesShort"
+        assert failures[0].exception_message == code
 
-        section = service.evidence_cro()
+        completed = _run_one(service, {"operation": "STATUS", "task_id": task_id})
+        assert completed["lifecycle"] == "SUCCEEDED"
+        assert completed["verified_stage_count"] == completed["total_stage_count"]
+        assert completed["units_failed"] == 1
+        assert completed["detail"].startswith(
+            f"Evidence preparation completed with 1 failed unit(s): "
+            f"{failed[0]['unit_id']} ({issuers} issuers)."
+        )
+        assert completed["failed_units"] == [
+            {
+                "unit_id": failed[0]["unit_id"],
+                "issuer_count": issuers,
+                "failure_code": code,
+                **refusal_words(code),
+            }
+        ]
+        assert completed["next_requests"]["coverage"] == {"operation": "EVIDENCE_CRO"}
+        assert completed["next_requests"]["network"] == {"operation": "NETWORK_ACCESS"}
+        assert "preview" not in completed["next_requests"]
+        assert completed["source_ways"] == ways
+        listed = _run_one(service, {"operation": "TASKS"})
+        assert (
+            next(row for row in listed["tasks"] if row["task_id"] == str(task_id))["detail"]
+            == completed["detail"]
+        )
+        capsys.readouterr()
+        assert (
+            cli_main(
+                [
+                    "--workspace",
+                    str(workspace),
+                    "--view",
+                    "full",
+                    "--lang",
+                    "zh",
+                    "task",
+                    "show",
+                    str(task_id),
+                ],
+                serve=lambda _arguments: 99,
+            )
+            == 0
+        )
+        said = json.loads(capsys.readouterr().out)
+        assert said["data"]["failed_units"] == completed["failed_units"]
+        assert said["detail"].startswith("证据准备已完成\uff0c其中 1 个单元失败\uff1a")
+        assert f"{failed[0]['unit_id']}\uff08{issuers} 家发行人\uff09" in said["detail"]
+
+        section = _run_one(service, completed["next_requests"]["coverage"])
         assert section["state"] == "ANALYST_PACKET_PREPARED"
         progress = section["coverage_progress"]
         assert progress["units_failed"] == 1 and progress["complete"] is False
@@ -610,6 +663,8 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         service.drain()
         second = service.registry.task(UUID(again["task_id"]))
         assert second.lifecycle is TaskLifecycle.SUCCEEDED
+        retried = _run_one(service, {"operation": "STATUS", "task_id": second.task_id})
+        assert retried["failed_units"] == completed["failed_units"]
         assert _embedding_passes(service) == UNIT_COUNT - 1
         first_receipts = {
             r.stage_id: r.evidence[0].content_hash for r in service.registry.stage_receipts(task_id)
@@ -645,6 +700,42 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
             for reason in dossier.coverage.unavailable_reasons
         )
         assert missing not in {issuer.entity_id for issuer in dossier.issuers}
+    finally:
+        service.session.stop()
+
+    service = start_coverage_service(
+        workspace,
+        coverage_authority(
+            workspace, report, documents=coverage_documents(), minimum_entity_coverage=1.0
+        ),
+        tmp_path,
+        clock=lambda: _NOW + timedelta(minutes=1),
+    )
+    try:
+        preview = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        restored = _run_one(service, preview["next_requests"]["prepare"])
+        service.drain()
+        adapter = service.review.evidence_task_adapter
+        newest = service.registry.task(UUID(restored["task_id"]))
+        assert newest.lifecycle is TaskLifecycle.SUCCEEDED
+        finished = _run_one(service, {"operation": "STATUS", "task_id": newest.task_id})
+        assert "failed_units" not in finished and "units_failed" not in finished
+        assert {value["state"] for value in adapter.unit_states(newest).values()} == {"PREPARED"}
+        assert adapter.unit_states(service.registry.task(task_id)) == states
+        assert failures[0] in service.review.artifacts.values(
+            UNIT_FAILURE_CATEGORY, AlternativeEvidenceUnitFailure
+        )
+        section = _run_one(service, {"operation": "EVIDENCE_CRO"})
+        progress = section["coverage_progress"]
+        assert progress["units_failed"] == 0 and progress["units_prepared"] == UNIT_COUNT
+        row = next(unit for unit in progress["units"] if unit["unit_id"] == failed[0]["unit_id"])
+        assert row["state"] == "PREPARED" and row["packet_task_id"] == restored["task_id"]
+        request = section["next_requests"][f"packet_{row['unit_id']}"]
+        assert request["task_id"] == restored["task_id"]
+        packet = _run_one(service, request)
+        assert packet["status"] == "EVIDENCE_ANALYST_PACKET_READY"
+        assert packet["prepared_task_id"] == restored["task_id"]
+        assert packet["submission_template"]["evidence_unit_id"] == row["unit_id"]
     finally:
         service.session.stop()
 
@@ -1313,7 +1404,7 @@ def test_the_book_ledger_reads_every_group_of_a_wide_book(book: Any, tmp_path: P
                 "evidence_detail": "topic_coverage",
             },
         )
-        # U6, R20: the ledger whole, as the packet read's coverage shows it -- the cells and
+        # R20: the ledger whole, as the packet read's coverage shows it -- the cells and
         # the topics -- with the continuation scope whole and what else the map read per packet.
         assert last["cells"] == detail["evidence_view"]["coverage"]["cells"]
         assert last["topics"] == detail["evidence_view"]["coverage"]["topics"]

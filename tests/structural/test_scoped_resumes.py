@@ -1,4 +1,4 @@
-"""A request that resumes a Task resumes that Task only (V529)."""
+"""A request that resumes a Task resumes that Task only."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "alphalattice"
 
 
 def test_every_owner_resume_names_the_task_its_request_chose() -> None:
-    """regression (V529, the user's review at 4bde3cb9): `strategy run --plan <B>` marked B for
+    """regression (the user's review at 4bde3cb9): `strategy run --plan <B>` marked B for
     recovery, then resumed every recovery-required Task of its kind, A included, while its
     answer named only B. The input capture, the training inputs and the feature build did the
     same. An owner's resume of its kind names the Task its request chose (`only_task_id`); only

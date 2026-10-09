@@ -1,4 +1,4 @@
-"""Guanyin's Supervisor rules and incident records (GY2, V83).
+"""Guanyin's Supervisor rules and incident records (GY2).
 
 The Supervisor tells a running Task from one whose liveness went stale, whose work stalled,
 whose runner the Host cannot see, that waits for its recovery or that no command drives, by
@@ -31,7 +31,7 @@ INCIDENTS_DIRECTORY = Path("runtime") / "guanyin" / "incidents"
 
 STAGE_STALLED_AFTER = timedelta(hours=6)
 """A stage running this long while its heartbeat is fresh is stalled work: a code-owned policy
-until incidents recorded in use or by AX measure the stages (the design's thresholds rule)."""
+until recorded incidents or stage measurements support another threshold."""
 
 IncidentCode = Literal[
     "task_runtime.liveness_stale",
@@ -93,7 +93,7 @@ def classify(facts: TaskFacts, now: datetime) -> Finding | None:
     """The one finding the rules make of a Task's facts, or none for a running or valid stop."""
     if facts.lifecycle == "RECOVERY_REQUIRED":
         # A recovery the Host's dispatcher holds waits its turn, as a queued Task does, and is
-        # owed no one's decision: an incident on it woke a follower while it was starting (V607).
+        # owed no one's decision: an incident on it woke a follower while it was starting.
         if facts.operation_running:
             return None
         return Finding("task_runtime.recovery_required", facts.current_stage)

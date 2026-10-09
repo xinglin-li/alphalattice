@@ -1162,16 +1162,7 @@ def test_the_runtime_commits_the_blocks_a_session_scored_and_the_receipt_names_i
 
 
 def test_a_priming_proof_binds_the_chunks_the_reader_consumes(tmp_path: Path) -> None:
-    """requirement (review finding R5): the build's derivation proof names
-    the manifest and the snapshot, while the primed open consumed
-    `priming.chunks` -- so a priming carrying the genuine manifest, vectors
-    and proof beside altered or reordered chunks would hand the inventory
-    and the scorer altered bodies as authoritative. The proof now stands
-    only for the chunks that reproduce the manifest's source commitments
-    (chunk ids, citations, embedding inputs, the projection), checked at
-    the open without deriving the corpus; a changed body, a swapped body
-    and a reordered chunk each refuse `retrieval.source_integrity` before
-    any inventory or hit."""
+    """Primed chunks preserve source commitments before retrieval returns an inventory or hit."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(

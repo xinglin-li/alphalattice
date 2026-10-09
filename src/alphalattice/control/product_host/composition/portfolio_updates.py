@@ -74,7 +74,7 @@ from alphalattice.kernel.shared_kernel.source_identity import source_rule_closur
 PLAN_FIELDS = ("decision_updates", "score_inputs")
 """The manifest fields a plan reads: the decision checkpoints installed and the score inputs the
 checkpoint's models bind. A plan binds them, never the whole manifest, so a publication of fields it
-does not read leaves it applicable (V223, OW10)."""
+does not read leaves it applicable (OW10)."""
 
 TASK_KIND = "portfolio_decision_update"
 STAGES = ("verify_update", "seal_market_observations", "publish_decision_settlement")
@@ -207,12 +207,11 @@ class PortfolioUpdateApplication:
             task_kind=TASK_KIND, preview="PORTFOLIO_UPDATE_PLAN", admitting="PORTFOLIO_UPDATE_RUN"
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
 
     @property
     def manifest(self) -> ResearchWorkspaceManifest:
-        """The workspace manifest, read from the one holder the Host refreshes (V182)."""
+        """The workspace manifest, read from the one holder the Host refreshes."""
         return self._manifests.current
 
     def __init__(

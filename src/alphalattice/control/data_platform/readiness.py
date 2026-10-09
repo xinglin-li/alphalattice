@@ -1056,5 +1056,5 @@ class WorkspaceReadinessGate:
         return record
 
     def _market_profile_id(self) -> str:
-        # The profile's owner reads it, by its contract and the one loader (V275, V276).
+        # The profile's owner reads it, by its contract and the one loader.
         return str(current_index_profile_id(self.profile_path))

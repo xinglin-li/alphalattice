@@ -1,8 +1,8 @@
-"""Whether a recorded Risk Program names the method the installed code seals (V314).
+"""Whether a recorded Risk Program names the method the installed code seals.
 
 A Risk Program binds the selected estimator's numerical binding and the installed catalog's hash,
 and both move with the estimator's code, so an edit that moved no number refused every sealed Risk
-study's replay (`risk_research.execution_plan_changed`, two in U0 at `40235563`). Such an edit is
+study's replay (`risk_research.execution_plan_changed`). Such an edit is
 recorded as a successor of each (`risk_research.estimator.<adapter>`,
 `risk_research.estimator_catalog`), which the executor already follows; a replay follows them as
 well, as the Alpha and Portfolio plans follow theirs (LAWS.md ID1).

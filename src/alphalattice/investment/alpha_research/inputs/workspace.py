@@ -1,4 +1,4 @@
-"""The Sector history an Alpha study reads, from the Panel closure store (V346)."""
+"""The Sector history an Alpha study reads, from the Panel closure store."""
 
 from __future__ import annotations
 

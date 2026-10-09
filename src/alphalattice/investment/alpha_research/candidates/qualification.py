@@ -167,7 +167,7 @@ def _current_evaluator_available(
     spec: StoredModelSpec, catalog: AlphaModelCatalog | None = None
 ) -> bool:
     """Current stability is admitted for regularized linear and, through its adapter's
-    projection, for an activated agent's model (V342); an installed tree's is not."""
+    projection, for an activated agent's model; an installed tree's is not."""
 
     return (
         not isinstance(spec, AlphaResearchModelRecipe)
@@ -798,7 +798,7 @@ def qualify_alpha_model_candidates(
     if (
         program.model_mandate_hash != model_mandate.mandate_hash
         or program.model_catalog_hash != model_mandate.catalog_binding.catalog_hash
-        # The admitted models as installed; a model beside them refuses nothing (V118, V299).
+        # The admitted models as installed; a model beside them refuses nothing.
         or not admitted_capabilities_installed(model_mandate, model_catalog)
     ):
         raise ValueError("alpha_research.qualification_model_authority_mismatch")

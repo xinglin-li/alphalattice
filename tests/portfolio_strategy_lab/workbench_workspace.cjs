@@ -36,8 +36,59 @@ const c={console,URLSearchParams,app:{page:'data'},ROUTES:{data:['','Data'],issu
 const renders=[],patches=[],toasts=[],prefs={},discovered=[],discovery={current:null};c.readPreference=k=>prefs[k];c.savePreference=(k,v)=>{prefs[k]=JSON.parse(JSON.stringify(v));};
 c.Data.readShared = (...args) => c.Data.read(...args);
 vm.createContext(library.into(c,root));vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);vm.runInContext(percentRule(root),c);vm.runInContext(runShapes(root),c);vm.runInContext(fs.readFileSync(path.join(root,'live-workarea.js'),'utf8')+fs.readFileSync(path.join(root,'live-workspace.js'),'utf8')+';globalThis.w=LiveWorkspace;globalThis.W=LiveWorkArea;',c);
+const builderContext={...c,window:{},document:{documentElement:{}}};
+library.into(builderContext,root);
+vm.runInContext(fs.readFileSync(path.join(root,'components.js'),'utf8'),builderContext);
+const publicBuilders=vm.runInContext('({measureStrip,objectRow,stackSlot,fillStackSlot})',builderContext);
+c.objectRow=publicBuilders.objectRow;
 (async()=>{
   const w=c.w;
+  if(process.argv[3]==='--blocked-preparation') {
+    const fixture=JSON.parse(fs.readFileSync(0,'utf8'));
+    let owner=fixture,decisions=owner.decisions.decisions,decisionReads=0;
+    let featureStatus=null;const words=c.t;c.t=(key,vars)=>{if(key==='The Feature owner reports its status only: {status}.')featureStatus=vars.status;return words(key,vars);};
+    const banners=[],banner=c.banner;c.banner=(...args)=>{banners.push(args);return banner(...args);};
+    c.Data.decisions=()=>decisions;
+    c.Data.refreshDecisions=async()=>{decisionReads++;decisions=owner.decisions.decisions;};
+    c.LiveActivity={state:()=>owner.activity,retained:()=>[{items:owner.activity.items}]};
+    c.Data.read=async p=>{
+      reads.push(p);
+      const key=p.split('?')[0];
+      if(key==='/api/data-update') {const error=Error(owner.dataUpdate.failure_code);error.body=owner.dataUpdate;throw error;}
+      return ({'/api/workspace/preparation':owner.preparation,'/api/workspace/data-issues':owner.issues,'/api/tasks/recovery':owner.recovery})[key];
+    };
+    c.app.page='data'; await w.refresh();
+    await Promise.all([w.refresh('welcome','',true),w.refresh('issues','',true)]);
+    let page=String(w.page());
+    assert.equal(owner.preparation.status,'BLOCKED');
+    assert.ok(!['No maintained data yet','Prepare workspace'].some(key=>page.includes(c.t(key))),'the real blocked preparation replaces the empty preparation offer');
+    assert.ok(page.includes(c.t('Agent is deciding data issues')),'the exact Pending decision says the agent decides');
+    assert.equal(featureStatus,c.codeWords(owner.preparation.progress.status),'the visible Feature status field uses its declared word; exact codes stay in Facts');
+    for(const issue of owner.issues.issues) for(const symbol of Object.values(issue.subjects)) assert.ok(page.includes(symbol),'each owner issue remains readable');
+    assert.ok(page.includes(c.link(c.t('Data issues'),'issues'))&&!['Your decision is asked','Retry this Task','Continue this preparation Task','Resume this Task'].some(key=>page.includes(c.t(key))),'the owner issues route remains, without asking a person or inventing a retry');
+    const before=reads.length; banners.length=0;owner=fixture.decided; w.observe(); await new Promise(r=>setImmediate(r));
+    assert.deepEqual(reads.slice(before),['/api/workspace/data-issues'],'the exact accepted case event refreshes its issue once');
+    assert.equal(decisionReads,1,'the paused page refreshes canonical pending decisions from the accepted event');
+    page=String(w.page());assert.ok(page.includes(c.t('Decided · applied when the update continues')),'the applied owner decision replaces the pending state without Reload');
+    assert.ok(!page.includes(c.t('Agent is deciding data issues')),'a resolved case is no longer shown as being decided');
+    assert.ok(banners.some(([title])=>title===c.t('Decision recorded'))&&!banners.some(([title])=>title===c.t('A data decision is needed')),'a current banner records the choice instead of requesting it; the exact prior refusal remains in Facts');
+    const reason=owner.issues.continuations.find(x=>x.task_id===owner.preparation.task_id).failure_reason.explanation;assert.ok(banners.every(([,body])=>!String(body).includes(reason)),'a current banner never asks for the recorded decision again; the original stop remains in Facts');
+    const settled=reads.length;w.observe();await new Promise(r=>setImmediate(r));assert.equal(reads.length,settled,'no settled issue polling');assert.equal(decisionReads,1,'the event is consumed once');
+    await w.refresh('welcome','',true);assert.ok(!String(w.page()).includes(c.t('Retry this Task')),'a cold read keeps the exact continuation offer after the decision');
+    assert.equal(posts.length,0,'rendering never admits work');
+    const vocabulary=library.words(root),head=c.objectHead,submission=owner.issues.issues[0].resolution.receipt.actor_submission,actorId=submission.actor_id;let facts=[];c.objectHead=(...args)=>{facts=args[5]?.facts || [];return head(...args);};
+    c.hashParams=()=>new URLSearchParams({issue:owner.issues.issues[0].case.case_token});c.app.page='issues';
+    vocabulary.I18N.set('en');const authority='Decided under first-use delegation',english=vocabulary.t(authority);c.actorWords=vocabulary.actorWords;
+    for(const lang of ['en','zh']) {
+      vocabulary.I18N.set(lang);c.t=vocabulary.t;w.page();
+      assert.deepEqual(Array.from(facts.find(([key])=>key===c.t('Decision')) || []),[c.t('Decision'),c.t(authority)],'the real recorded case names its exact delegation authority in '+lang);
+      if(lang==='zh')assert.notEqual(c.t(authority),english,'the delegation authority has a Chinese key');
+      assert.ok(!facts.some(([key])=>key===c.t('Decided by')),'the receipt authority never claims an actor');
+      submission.actor_id='ordinary-session';w.page();assert.deepEqual(Array.from(facts.find(([key])=>key===c.t('Decided by')) || []),[c.t('Decided by'),c.actorWords(submission.actor_kind)],'an ordinary actor keeps its recorded actor word');submission.actor_id=actorId;
+    }
+    finish();return;
+  }
+  c.Data.decisions=()=>null;
   // V661 recovery: the first Storage read has no retained inventory. Backups are an
   // independent owner, so its exact restore command stays reachable after this refusal.
   {
@@ -80,13 +131,8 @@ vm.createContext(library.into(c,root));vm.runInContext(fs.readFileSync(path.join
   // The Data figures carry their own inert Facts resource, without a separate page-stack child.
   {
     const update=bodies['/api/data-update'],issues=bodies['/api/workspace/data-issues'],
-      storage=bodies['/api/workspace/storage'],figureTile=c.figureTile,measureStrip=c.measureStrip,
-      objectRow=c.objectRow;
-    const builderContext={...c,window:{},document:{documentElement:{}}};
-    library.into(builderContext,root);
-    vm.runInContext(fs.readFileSync(path.join(root,'components.js'),'utf8'),builderContext);
-    const publicBuilders=vm.runInContext('({measureStrip,objectRow,stackSlot,fillStackSlot})',builderContext),
-      ownerStrip=publicBuilders.measureStrip,tiles=[],strips=[];
+      storage=bodies['/api/workspace/storage'],figureTile=c.figureTile,measureStrip=c.measureStrip;
+    const ownerStrip=publicBuilders.measureStrip,tiles=[],strips=[];
     // A public readback carrier keeps its body and identity without another painted surface.
     const body='<section class="panel">Recorded section</section>';
     for(const kind of ['box','section','field']) {
@@ -117,7 +163,6 @@ vm.createContext(library.into(c,root));vm.runInContext(fs.readFileSync(path.join
     }))};
     bodies['/api/workspace/storage']={...storage,budget:{...storage.budget,
       active_listing_count:3,research_session_count:252}};
-    c.objectRow=publicBuilders.objectRow;
     c.figureTile=(label,value,to,note)=>{tiles.push({label,to});return figureTile(label,value,to,note);};
     c.measureStrip=(items,label,cls)=>{
       const markup=String(ownerStrip(items,label,cls));strips.push({items:String(items),markup,label,cls});return markup;
@@ -153,7 +198,6 @@ vm.createContext(library.into(c,root));vm.runInContext(fs.readFileSync(path.join
     } finally {
       bodies['/api/data-update']=update;bodies['/api/workspace/data-issues']=issues;
       bodies['/api/workspace/storage']=storage;c.figureTile=figureTile;c.measureStrip=measureStrip;
-      if(objectRow===undefined)delete c.objectRow;else c.objectRow=objectRow;
       await w.refresh('data');
     }
   }
@@ -226,6 +270,31 @@ vm.createContext(library.into(c,root));vm.runInContext(fs.readFileSync(path.join
   assert.ok(markup.includes('Before preparation') && markup.includes('No data API key is requested or stored.') && markup.includes('https://example.test/sp500'),'the unprepared scene is the Home\'s first-use section: the facts, the sources and the missing key');
   assert.ok(markup.includes('run-steps') && !markup.includes('data-state='),'the plain stage roster (the one step list) before a Task exists');
   assert.equal(posts.length,unpreparedPosts);assert.deepEqual(reads.slice(unpreparedReads),['/api/workspace/preparation'],'one readback, no recovery view without a Task');
+  // An externally completed preparation is discovered from its projection, without reload.
+  {
+    const originalTasks=c.Data.tasks,originalHash=c.location.hash,empty=bodies['/api/workspace/preparation'],coldReads=reads.length,coldPosts=posts.length;
+    c.app.page='overview';c.location.hash='#page=overview&task='+TASK;w.observe();await new Promise(r=>setImmediate(r));
+    c.Data.tasks=()=>[{task_id:'research',task_kind:'research_experiment',lifecycle:'SUCCEEDED'}];
+    w.observe();await new Promise(r=>setImmediate(r));
+    assert.equal(reads.length,coldReads,'no preparation read without a preparation projection');
+    const completed=view('SUCCEEDED','verify_inputs',{verified_stage_count:5});
+    c.Data.tasks=()=>[completed];
+    bodies['/api/workspace/preparation']=readback('SUCCEEDED',{task_id:TASK,inputs:[{input_id:'family',binding_hash:'binding'}]});
+    bodies['/api/tasks/recovery']=completed;
+    c.app.page='history';w.observe();await new Promise(r=>setImmediate(r));
+    assert.equal(reads.length,coldReads,'the initial Home is not read from another page');
+    c.app.page='overview';w.observe();w.observe();await new Promise(r=>setImmediate(r));
+    assert.deepEqual(reads.slice(coldReads),['/api/workspace/preparation','/api/tasks/recovery?task_id='+TASK],'one current owner read discovers the external Task and reads its exact recovery view');
+    assert.equal(discovery.current.task_id,TASK);assert.equal(discovery.current.inputs.length,1);
+    const address=new URLSearchParams(c.location.hash.slice(1));
+    assert.equal(address.get('page'),'overview');assert.equal(address.get('task'),TASK);assert.equal(address.get('preparation'),TASK,'the owner-discovered Task is pinned without changing Home or its inspector');
+    assert.equal(String(w.firstUse()),'','the verified input removes the initial preparation scene from Home');
+    w.observe();await new Promise(r=>setImmediate(r));
+    assert.equal(reads.length,coldReads+2,'a verified completion is not polled again');
+    assert.equal(posts.length,coldPosts,'discovery posts no PLAN, confirmation or other mutation');
+    c.Data.tasks=originalTasks;c.location.hash=originalHash;c.app.page='welcome';bodies['/api/workspace/preparation']=empty;
+    await w.refresh('welcome');
+  }
   // preview: the owner's plan is offered with its scope; a dismissed preview stays and is re-offered without a second PLAN
   bodies['/api/workspace/preparation/plan']={status:'CONFIRMATION_REQUIRED',confirmation_available:true,plan_hash:'plan-1',target_session:'2026-07-31',initial_history_years:10,source_mode:'ACQUIRE_APPROVED_SOURCES',candidate_count:null,candidate_count_basis:'KNOWN_AFTER_SOURCE_CAPTURE',universe:'current S&P 500 union NASDAQ-100 union DJIA',quality:{maximum_missing_ratio:0.02,maximum_consecutive_missing_sessions:20},sources:['yfinance'],next_action:'WORKSPACE_PREPARE_CONFIRM',limits:[]};
   modal=null;await w.preview('prepare');
@@ -351,6 +420,17 @@ vm.createContext(library.into(c,root));vm.runInContext(fs.readFileSync(path.join
   const unit=(symbol,state,at,extra={})=>({listing_id:symbol.toLowerCase()+'-0000-listing',symbol,state,observed_at:at,origin:state==='RAW_READY'?'ACQUIRED':state==='RAW_FAILED'?null:'LOCAL',raw_through:state==='RAW_READY'?'2026-09-15':null,failure_code:state==='RAW_FAILED'?'data.provider_fetch_failed':null,reasons:[],tail_acquired:false,...extra});
   const activity=(rows,extra={})=>({availability:'BOUND',stage:'prepare_data',execution_id:'e1',sequence:1,observed:rows.length,retained:rows.length,dropped:0,written_at:'2026-09-15T21:07:30+00:00',age_seconds:0.4,rows,...extra});
   const firstRows=[unit('AAA','RAW_READY','2026-09-15T21:07:29+00:00'),unit('AAA','QUALITY_ELIGIBLE','2026-09-15T21:07:29+00:00'),unit('AAA','FEATURE_READY','2026-09-15T21:07:29+00:00'),unit('BBB','RAW_FAILED','2026-09-15T21:07:30+00:00')];
+  {
+    const words=library.words(root),prior={t:c.t,I18N:c.I18N};Object.assign(c,{t:words.t,I18N:words.I18N});
+    bodies['/api/workspace/preparation']=readback('DEFERRED',{task_id:TASK,plan_hash:'plan-1',progress:{phase:'prepare_data'},listing_activity:activity([unit('AAA','PENDING','2026-09-15T21:07:30+00:00',{raw_through:'2026-09-10'})],{execution_id:'lagging-provider'})});
+    bodies['/api/tasks/recovery']=view('DEFERRED','prepare_data');await w.refresh('welcome');
+    for(const lang of ['en','zh']) {
+      words.I18N.set(lang);const rendered=String(w.page()),step=words.t('history retained through {d}; waiting to retry the provider',{d:'2026-09-10'}),standing=words.t('waiting for provider data');
+      assert.ok(rendered.includes(step)&&rendered.includes(standing),'pending retained-history row and latest-unit rail have their own words in '+lang);
+      if(lang==='zh')assert.ok(/[\u3400-\u9fff]/.test(step)&&/[\u3400-\u9fff]/.test(standing),'both pending meanings are Chinese');
+    }
+    Object.assign(c,prior);
+  }
   bodies['/api/workspace/preparation']=readback('RUNNING',{task_id:TASK,plan_hash:'plan-1',progress:{phase:'prepare_data',candidates:4,raw_ready:0,quality_eligible:0,failed:0,retry_after_at:null},listing_activity:activity(firstRows)});
   bodies['/api/tasks/recovery']=view('RUNNING','prepare_data');
   const lifecyclePosts=()=>posts.filter(([p])=>p==='/api/cancel'||p==='/api/recover'||p.endsWith('/confirm')||p.endsWith('/plan')).length;
@@ -512,18 +592,15 @@ vm.createContext(library.into(c,root));vm.runInContext(fs.readFileSync(path.join
   await w.refresh('welcome');
   // Pending truth review follows the preparation owner's read request before any mutation.
   const pendingTruth=(extra={})=>readback('BLOCKED',{task_id:TASK,plan_hash:'plan-1',failure_code:'data.truth_review_required',execution_binding_changed:false,next_action:'DATA_ISSUES',confirmation_available:false,next_requests:{issues:{operation:'DATA_ISSUES'}},...extra});
-  bodies['/api/workspace/preparation']=pendingTruth();
+  bodies['/api/workspace/preparation']=pendingTruth({execution_binding_changed:true});
   bodies['/api/tasks/recovery']=view('BLOCKED','prepare_features',{stop:{code:'data.truth_review_required',stage_id:'prepare_features',detail:'Listings need a data decision.',recoverable:false}});
   await w.refresh('welcome');markup=w.page();
-  assert.ok(markup.includes('A data decision is needed') && markup.includes('LINK:Data issues@issues') && !markup.includes('Retry this Task') && !markup.includes('Continue this preparation') && !markup.includes('Resume this Task:task-recovery'),'pending truth review offers the owner\'s issue read, with no retry');
+  assert.ok(markup.includes('LINK:Data issues@issues') && !markup.includes('Retry this Task') && !markup.includes('Preview preparation:workspace-preview:prepare'),'pending choices precede re-planning even when the execution binding changed');
   let beforeContinuation=posts.length;
   modal=null;await w.preview('continue-preparation');
   assert.equal(modal,null,'a stale continue press opens no confirmation when the owner withholds it');
   assert.equal(posts.length,beforeContinuation,'a stale continue press mutates nothing');
   assert.ok(w.page().includes('Preview the preparation first.'),'the withheld continuation answers in the existing words');
-  bodies['/api/workspace/preparation']=pendingTruth({execution_binding_changed:true});
-  await w.refresh('welcome');markup=w.page();
-  assert.ok(markup.includes('LINK:Data issues@issues') && !markup.includes('Retry this Task') && !markup.includes('Preview preparation:workspace-preview:prepare'),'pending choices precede re-planning even when the execution binding changed');
   bodies['/api/workspace/preparation']=pendingTruth({superseded_by_task_id:OTHER,next_action:'WORKSPACE_PREPARE_READBACK',next_requests:{successor:{operation:'WORKSPACE_PREPARE_READBACK',task_id:OTHER}}});
   await w.refresh('welcome');markup=w.page();
   assert.ok(markup.includes('Inspect successor Task:workspace-task:'+OTHER) && !markup.includes('Retry this Task'),'the owner\'s successor remains the way on for a historical stopped Task');

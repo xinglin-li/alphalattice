@@ -469,7 +469,7 @@ def test_a_workspace_from_before_this_stage_reads_its_manifest_without_a_writer(
 
 
 def test_a_manifest_read_proves_the_members_it_assembled(tmp_path: Path) -> None:
-    """regression (V269, EV2): a manifest whose membership row was removed read back, by its
+    """regression (EV2): a manifest whose membership row was removed read back, by its
     old revision, with fewer members. The read proves its members against the digest sealed at
     registration, and a manifest written before the digest against the member count it stored."""
 

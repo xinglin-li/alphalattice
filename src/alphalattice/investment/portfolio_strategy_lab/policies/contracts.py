@@ -166,7 +166,7 @@ class PortfolioSelectionAllocationSemantics(BaseModel):  # type: ignore[misc]
 
     @classmethod
     def closed_form_hysteresis_equal_weight(cls) -> Self:
-        """The C1 direct-selection/direct-allocation statement."""
+        """The direct-selection/direct-allocation statement."""
         values = {
             "kind": "PortfolioSelectionAllocationSemantics",
             "score_preselection_method": "STABLE_FINITE_SCORE_TOP_K_WITH_PREVIOUS_TARGET_EXIT_RANK",
@@ -180,7 +180,7 @@ class PortfolioSelectionAllocationSemantics(BaseModel):  # type: ignore[misc]
 
     @classmethod
     def closed_form_hysteresis_inverse_volatility(cls) -> Self:
-        """The C2 direct-selection/inverse-volatility-allocation statement."""
+        """The direct-selection/inverse-volatility-allocation statement."""
         values = {
             "kind": "PortfolioSelectionAllocationSemantics",
             "score_preselection_method": "STABLE_FINITE_SCORE_TOP_K_WITH_PREVIOUS_TARGET_EXIT_RANK",
@@ -215,7 +215,7 @@ class PortfolioSelectionAllocationSemantics(BaseModel):  # type: ignore[misc]
 
     @classmethod
     def closed_form_hysteresis_diagonal_rank_mu_tilt(cls) -> Self:
-        """The C6 direct-selection/causal-rank-mu allocation statement."""
+        """The direct-selection/causal-rank-mu allocation statement."""
         values = {
             "kind": "PortfolioSelectionAllocationSemantics",
             "score_preselection_method": "STABLE_FINITE_SCORE_TOP_K_WITH_PREVIOUS_TARGET_EXIT_RANK",
@@ -423,7 +423,7 @@ class PortfolioPolicyRecipe(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class CausalRankReturnCurveSlice:
-    """One formation's C6 curve input, supplied only by its causal owner."""
+    """One formation's curve input, supplied only by its causal owner."""
 
     formation_index: int
     formation_session: date
@@ -557,7 +557,7 @@ class BoundPolicyDecisionInput:
     """Formation session, required by formation-bound Risk and mu inputs."""
 
     causal_rank_return_curve: CausalRankReturnCurveSlice | None = None
-    """The owner-derived C6 rank-return curve slice, never a caller-made mu lane."""
+    """The owner-derived rank-return curve slice, never a caller-made mu lane."""
 
     risk_allocation: PerNameRiskScale | None = None
     """The admitted per-name risk lane, for policies that weight on it.

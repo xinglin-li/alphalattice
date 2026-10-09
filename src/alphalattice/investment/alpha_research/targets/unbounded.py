@@ -295,7 +295,7 @@ def compile_unbounded_sensitivity_target_surface(
     if bool(np.any(np.isinf(source))) or bool(np.any(np.isinf(simple))):
         raise AlphaTargetBoundaryError("alpha_research.unbounded_target_source_nonfinite")
 
-    # Each run of formations reads the Sector map in force at it (V346): one run while no
+    # Each run of formations reads the Sector map in force at it: one run while no
     # reclassification falls inside the window, the one map every formation read before.
     runs = sector_positions(sector_by_listing_id, sessions, listings)
 

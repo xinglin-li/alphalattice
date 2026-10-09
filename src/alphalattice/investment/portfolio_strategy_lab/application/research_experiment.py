@@ -215,7 +215,7 @@ class PortfolioExperimentSpec(_Contract):
     @model_serializer(mode="wrap")  # type: ignore[untyped-decorator]
     def _policy_replaces_the_book(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         # A declared policy runs in place of the tranche book, whose fields then hold
-        # their defaults and decide nothing: the document leaves them out (V323).
+        # their defaults and decide nothing: the document leaves them out.
         values: dict[str, Any] = handler(self)
         if self.policy is not None:
             for name in TRANCHE_FIELDS:
@@ -248,7 +248,7 @@ class PortfolioExperimentSource(_Contract):
     # Numerical result and validation surface, in the receipt's fold order.
     score_refs: tuple[tuple[str, str], ...]
     score_value_hash: str = Field(pattern=_HASH)
-    # The linked Risk study, bound as the Alpha source is (V310); absent for equal weight, and
+    # The linked Risk study, bound as the Alpha source is; absent for equal weight, and
     # then no hash sealed before it moves.
     risk_task_id: str | None = Field(default=None, exclude_if=lambda v: v is None)
     risk_program_hash: str | None = Field(
@@ -334,7 +334,7 @@ def implementation_hash() -> str:
         "investment/portfolio_strategy_lab/policies/buffered_equal_weight.py",
         "investment/portfolio_strategy_lab/publication/artifacts.py",
         "investment/portfolio_strategy_lab/campaign/authority.py",
-        # A catalog policy's decisions (V310).
+        # A catalog policy's decisions.
         "investment/portfolio_strategy_lab/contracts.py",
         "investment/portfolio_strategy_lab/evaluation/walk_forward.py",
         "investment/portfolio_strategy_lab/policies/catalog.py",
@@ -385,7 +385,7 @@ class PortfolioExperimentCompiler:
 
     def method_identity(self, spec: PortfolioExperimentSpec) -> dict[str, Any]:
         # The tranche book resolves in the public catalog; a declared policy in the installed
-        # one, which holds the solver-backed policies (V310).
+        # one, which holds the solver-backed policies.
         """Describe selected policy semantics, source and scored clock without adapter code bytes.
 
         Args:
@@ -459,7 +459,7 @@ class PortfolioExperimentCompiler:
             raise AuthoringError("portfolio_research.exit_rank_exceeds_universe")
         if spec.policy is not None:
             if spec.policy.top_k > len(source.ordered_listing_ids):
-                # The bound is the listings the Alpha study scored (V322).
+                # The bound is the listings the Alpha study scored.
                 raise AuthoringError(
                     "portfolio_research.top_k_exceeds_universe",
                     expected={
@@ -481,7 +481,7 @@ class PortfolioExperimentCompiler:
             ),
             # The policy this Program runs, not the public catalog around it, and the
             # recipe schema it names, not the spec's JSON schema, which a contract
-            # docstring moves: neither the menu nor the schema decides a number (V91).
+            # docstring moves: neither the menu nor the schema decides a number.
             catalog_hash=canonical_hash({"adapter": identity["adapter"]}),
             method_binding_hash=method,
             parameter_domain_hash=canonical_hash(
@@ -570,7 +570,7 @@ def _support_absence(
     empty: npt.NDArray[np.bool_],
     unavailable: npt.NDArray[np.bool_],
 ) -> str:
-    """The support refusal, its subject naming the cause and where it holds (V511, RR5).
+    """The support refusal, its subject naming the cause and where it holds.
 
     A formation session with no eligible name comes first: no unavailable-return policy repairs
     it. Else the eligible names without their realized return, which `require_complete` refuses
@@ -966,7 +966,7 @@ class PortfolioExperimentExecutor:
             raise AuthoringError("portfolio_research.gap_contains_invented_scores")
         # The handoff held each formation its candidate under-scored. One whose tradable, scored
         # names are still fewer than a rebalance selects refuses here, before any segment is
-        # written, by its session, never in the middle of the walk (V500).
+        # written, by its session, never in the middle of the walk.
         selected = spec.top_k if spec.policy is None else spec.policy.top_k
         short = next(
             (
@@ -1003,7 +1003,7 @@ class PortfolioExperimentExecutor:
         state = None
         sleeves = None
         # A catalog policy's book is one sleeve: its last intended target, which the next
-        # segment's decisions start from (V310).
+        # segment's decisions start from.
         sleeve_count = spec.tranches if spec.policy is None else 1
         segments = []
         hashes: list[str] = []
@@ -1044,7 +1044,7 @@ class PortfolioExperimentExecutor:
                         sector_exposure_matrix=inputs.sector_exposure_matrix,
                         equal_weight_sector_exposure=inputs.equal_weight_sector_exposure,
                         initial_sleeve_weights=sleeves,
-                        # A development covariance has no factor block to attribute (V310).
+                        # A development covariance has no factor block to attribute.
                         attribution_required=False,
                     )
                 else:
@@ -1198,7 +1198,7 @@ class PortfolioExperimentExecutor:
         previous: FloatArray | None,
     ) -> PortfolioPolicyDecisionProvider:
         """A catalog policy's decisions over formations ``start`` to ``stop``, on the linked Risk
-        study's covariance projected for those formations alone (V310)."""
+        study's covariance projected for those formations alone."""
         from alphalattice.investment.portfolio_strategy_lab.evaluation.walk_forward import (
             PortfolioPolicyDecisionProvider,
         )
@@ -1243,7 +1243,7 @@ class PortfolioExperimentExecutor:
     def _risk_lanes(
         self, spec: PortfolioExperimentSpec
     ) -> tuple[RiskAllocationProjection | None, ...]:
-        """Each formation's volatility lane for an ``iv`` rule, none for equal weight (V310)."""
+        """Each formation's volatility lane for an ``iv`` rule, none for equal weight."""
 
         source = self.source
         if spec.weight_rule == "ew":
@@ -1263,7 +1263,7 @@ class PortfolioExperimentExecutor:
 @dataclass(frozen=True)
 class _PolicyWorkspace:
     """The experiment's inputs as a catalog policy reads them: its scores by candidate and one
-    segment's covariances from the linked Risk study (V310)."""
+    segment's covariances from the linked Risk study."""
 
     mandate: _ResearchMetrics
     formation_sessions: tuple[date, ...]
@@ -1423,7 +1423,7 @@ class PortfolioExperimentVerifier:
         ):
             raise AuthoringError("portfolio_research.receipt_program_mismatch")
         # A Program sealed before P also bound the implementation, and one sealed before
-        # V118 its adapter's code; either verifies and reads back as recorded, and is
+        # its adapter's code; either verifies and reads back as recorded, and is
         # historical.
         earlier = "implementation" in receipt.method_identity or (
             "adapter_implementation_hash" in receipt.method_identity.get("adapter", {})

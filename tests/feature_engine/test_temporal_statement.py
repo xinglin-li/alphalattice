@@ -1,4 +1,4 @@
-"""A result's time and survivorship, stated from its Panel's marks (V347; the user,
+"""A result's time and survivorship, stated from its Panel's marks (the user,
 2026-09-30)."""
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ def _state(summary: dict[str, Any], window: str, data: str, basis: str = "split_
 def test_a_window_says_where_it_stands_to_t0(
     window: str, data: str, before: bool, history: bool, opening: str
 ) -> None:
-    """requirement (V347): the statement names T0 and the initial cohort's size from the Panel's
+    """Requirement: the statement names T0 and the initial cohort's size from the Panel's
     marks, and says whether the window, or only its inputs, reach before T0."""
 
     statement = _state(_summary(), window, data)
@@ -90,8 +90,8 @@ def test_a_window_says_where_it_stands_to_t0(
 
 
 def test_every_mark_value_generates_its_statement_and_an_unknown_one_is_named() -> None:
-    """requirement (V347): the Sector treatment and the price basis each come from a template
-    keyed by the mark, so before V346 every session uses the current classification, T0 onward
+    """Requirement: the Sector treatment and the price basis each come from a template
+    keyed by the mark, so before every session uses the current classification, T0 onward
     included; a mark with no template is named, never dropped; no survivorship sentence where
     the Panel records none, and no T0 where it records no membership."""
 
@@ -116,7 +116,7 @@ def test_every_mark_value_generates_its_statement_and_an_unknown_one_is_named() 
 
 
 def test_the_host_states_a_panel_with_the_installed_price_basis() -> None:
-    """requirement (V347): the Host's statement reads the installed market profile's price
+    """Requirement: the Host's statement reads the installed market profile's price
     basis, so a readback names it without a carrier writing it."""
 
     scope = temporal_scope(

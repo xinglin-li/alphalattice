@@ -92,7 +92,7 @@ class AlternativeEvidenceDocumentRejection(AlternativeEvidenceContract):
     """Retain a bounded admission failure for one semantic document handle.
 
     Attributes:
-        semantic_handle: Rejected DOC handle.
+        semantic_handle: Rejected handle.
         entity_id: Issuer associated with the source.
         code: Deterministic rejection reason.
         summary: Bounded explanatory admission summary.
@@ -108,7 +108,7 @@ class AlternativeEvidenceDocumentReference(AlternativeEvidenceContract):
     """Carry admitted document provenance and an immutable workspace revision reference.
 
     Attributes:
-        semantic_handle: Admitted DOC handle.
+        semantic_handle: Admitted handle.
         entity_id: Research issuer identifier.
         source_name: SEC or recorded issuer source.
         source_right: Declared source access right.

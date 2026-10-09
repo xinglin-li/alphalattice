@@ -273,7 +273,7 @@ class AlphaEvidenceVerifier:
 
         binding = receipt.target_recipe_binding
         # Either treatment is an installed construction; the Panel decides which a run read,
-        # and the binding's hash says which it used (V346).
+        # and the binding's hash says which it used.
         for treatment in (SECTOR_HISTORY_BACKFILLED, SECTOR_HISTORY_FORWARD):
             try:
                 method = resolve_installed_alpha_target_method(

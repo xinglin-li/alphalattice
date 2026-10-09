@@ -8,9 +8,7 @@
  * data never pass through t().
  */
 const I18N = (() => {
-  // One catalog object for the product's life: the dictionary (`workbench.zh.js`, round 96) is its
-  // own file, loaded only for a zh reader, and fills this object whether it loads before the app
-  // (the prelude asked for it) or after (the reader switched language).
+  // The catalog object stays the same for the product's lifetime so dictionary loads update existing readers.
   const catalog = window.ALPHA_ZH || (window.ALPHA_ZH = {});
   const missing = new Set();
   const seen = new Set(); // every key t() was asked for, in either locale (catalog coverage tooling)
@@ -20,9 +18,12 @@ const I18N = (() => {
 
   /* Structural templates: exact shapes only, never arbitrary substring replacement. */
   const TEMPLATES = [
+    [/^case$/, () => t('Case')],
+    [/^human review required$/, () => t('Human review required')],
+    [/^gap(?:\(s\))?$/, () => t('gaps')],
+    [/^A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran\. (Plan [\s\S]+)$/, (m) => Object.hasOwn(catalog, m[1]) ? t('A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. {subject}', {subject: t(m[1])}) : m[0]],
     [/^([\s\S]+) (No cumulative continuation allowance is declared\.|The declared continuation allowance is exhausted\.|The sealed reading plan has no resumable work\.|The selected analysis's preparation Task is not retained\.)$/, (m) => said(m[1]) + ' ' + t(m[2])],
     [/^([\s\S]+) (Pending source and other unread ranges stay unread; the CRO assessment is bounded to the recorded analysis, not every source\.)$/, (m) => said(m[1]) + ' ' + t(m[2])],
-    // V671: complete Evidence owner grammar; generated components recurse, authored subjects stay exact.
     [/^(\d[\d,]*) of (\d[\d,]*) finding(?:\(s\)|s)? were read by the reviewer and not named as a risk\.$/, (m) => t("{n} of {total} finding(s) were read by the reviewer and not named as a risk.", {n: m[1], total: m[2]})],
     [/^filing index read at the cutoff: (\d[\d,]*) filing(?:\(s\)|s)? in the last (\d[\d,]*) days, every one read earlier; no new filing$/, (m) => t("filing index read at the cutoff: {n} filing(s) in the last {days} days, every one read earlier; no new filing", {n: m[1], days: m[2]})],
     [/^filing index read at the cutoff: (\d[\d,]*) new filing(?:\(s\)|s)? in the last (\d[\d,]*) days$/, (m) => t("filing index read at the cutoff: {n} new filing(s) in the last {days} days", {n: m[1], days: m[2]})],
@@ -46,12 +47,7 @@ const I18N = (() => {
     [/^unit ([^()\n]+) \(([^()\n]+)\) is not reviewed: ([\s\S]+)$/, (m) => t('unit {unit} ({issuers}) is not reviewed: {reason}', {unit: m[1], issuers: m[2], reason: said(m[3])})],
     [/^([^;\n]+) is not reviewed: ([\s\S]+)$/, (m) => t('{issuer} is not reviewed: {reason}', {issuer: m[1], reason: said(m[2])})],
     [/^Not due until (.+)$/, (m) => t('Not due until {time}', {time: m[1]})],
-    // V599, V620: a research update stopped for the network names each provider need it has, joined by "; ", then its
-    // owner's way on (a closed workspace, the operator's switch, a run's hold, allowed now, unlocated) --
-    // each read through its own key (a subject that is no need is carried as written), so the sentence reads whole
-    [/^The research update needs (.+?)\. (.+)$/, (m) => t('The research update needs {subject}. ' + m[2], {subject: m[1].split('; ').map((need) => lookup(need)).join('；')})], // U93 (V620): every network way on
-    // a Task's stop at an owner's code Task Control does not word (task_recovery.stop_detail's last sentence)
-    // U73 (LS1, V459): the activation refusals a component or the book's support fills (plain_refusals.py's {subject})
+    [/^The research update needs (.+?)\. (.+)$/, (m) => t('The research update needs {subject}. ' + m[2], {subject: m[1].split('; ').map((need) => lookup(need)).join('；')})],
     [/^A strategy runs forward from its book's last formation, decided from its first: run the book over its whole support \((.+)\) and activate that run\.$/, (m) => '策略从其账本的最后一个形成日向前运行，由第一个形成日起决定：请在完整区间（' + m[1].replace(' to ', ' 至 ') + '）上运行该账本，并激活那次运行。'],
     [/^The Alpha study behind the strategy's (.+) component does not read back; `study show` verifies it\.$/, (m) => '该策略 ' + m[1] + ' 组件背后的 Alpha 研究无法读回；`study show` 会验证它。'],
     [/^The training input the (.+) component's Alpha study read is no longer in this workspace: prepare and install the strategy again from current studies\.$/, (m) => m[1] + ' 组件的 Alpha 研究读取的训练输入已不在这个工作区：请用当前的研究重新准备并安装该策略。'],
@@ -71,7 +67,6 @@ const I18N = (() => {
     [/^(\d[\d,]*) tables? in routed regions without a retained original$/, (m) => '路由区域中有 ' + m[1] + ' 个表格没有保留的原件'],
     [/^(\d[\d,]*) residual questions? skipped by the pair budget \((\d[\d,]*) of (\d[\d,]*) pairs spent\)$/, (m) => m[1] + ' 个余量问题因配对预算而跳过（已用 ' + m[2] + ' / ' + m[3] + ' 对）'],
     [/^(\d[\d,]*) more cell gap lines? in the routing record$/, (m) => '路由记录中还有 ' + m[1] + ' 行单元格缺口'],
-    // V618: the Task queue's reason for its places (task_control.queue.waiting_places), read on Settings
     [/^auto: one waiting place per (\d+) of the (\d+) processors$/, (m) => t('auto: one waiting place per {k} of the {n} processors', {k: m[1], n: m[2]})],
     [/^set to (\d+)$/, (m) => t('set to {n}', {n: m[1]})],
     [/^Selected immutable input (\d{4}-\d{2}-\d{2}) and all saved studies\.$/, (m) => '已选不可变输入 ' + m[1] + ' 与全部历史研究保持不变。'],
@@ -84,8 +79,6 @@ const I18N = (() => {
     [/^Input · (.+)$/, (m) => '输入 · ' + m[1]],
     [/^Holdings · (.+)$/, (m) => '持仓日期 · ' + m[1]],
     [/^Book · (.+)$/, (m) => 'Book · ' + m[1]],
-    // U61 (V347): a result's time statements, generated by temporal_statement.py -- one template per mark value, its
-    // values filled in; each is matched whole and read through its catalog line with placeholders
     [/^The Panel records no T0: every session holds the cohort of (\d+) listings it was built with\.$/, (m) => t('The Panel records no T0: every session holds the cohort of {n} listings it was built with.', {n: m[1]})],
     [/^The window starts (\d{4}-\d{2}-\d{2}), before T0 \((\d{4}-\d{2}-\d{2})\): until T0 every session holds the initial cohort of (\d+) listings\.$/, (m) => t('The window starts {start}, before T0 ({t0}): until T0 every session holds the initial cohort of {n} listings.', {start: m[1], t0: m[2], n: m[3]})],
     [/^The window starts (\d{4}-\d{2}-\d{2}), before T0 \((\d{4}-\d{2}-\d{2})\): until T0 every session holds the initial cohort\.$/, (m) => t('The window starts {start}, before T0 ({t0}): until T0 every session holds the initial cohort.', {start: m[1], t0: m[2]})],
@@ -96,8 +89,6 @@ const I18N = (() => {
     [/^Each listing uses the Sector classification first recorded for it on every session before its first reclassification, which is not point in time; (\d+) reclassification\(s\) since (\d{4}-\d{2}-\d{2}) each apply from the session whose data update observed it, and no published session moved\.$/, (m) => t('Each listing uses the Sector classification first recorded for it on every session before its first reclassification, which is not point in time; {n} reclassification(s) since {date} each apply from the session whose data update observed it, and no published session moved.', {n: m[1], date: m[2]})],
     [/^Each listing uses the Sector classification first recorded for it on every session before its first reclassification, which is not point in time; (\d+) reclassification\(s\) since the rule's start each apply from the session whose data update observed it, and no published session moved\.$/, (m) => t("Each listing uses the Sector classification first recorded for it on every session before its first reclassification, which is not point in time; {n} reclassification(s) since the rule's start each apply from the session whose data update observed it, and no published session moved.", {n: m[1]})],
     [/^The (Sector treatment|price basis) `([^`]+)` has no installed statement; its mark is recorded above\.$/, (m) => t('The {kind} `{value}` has no installed statement; its mark is recorded above.', {kind: t(m[1]), value: m[2]})],
-    // The Task drawer's permitted actions (round 24): the product's own sentences, interpolated by
-    // task_recovery.py; each is matched whole and read through its catalog line with placeholders.
     [/^The Task has ended \((\w+)\); there is nothing to cancel\.$/, (m) => t('The Task has ended ({state}); there is nothing to cancel.', {state: t(m[1].replaceAll('_', ' '))})],
     [/^This Task only \((\w+)\)\. Verified stages, their artifacts and every published result stay exactly as recorded; nothing is deleted or recomputed\.$/, (m) => t('This Task only ({short}). Verified stages, their artifacts and every published result stay exactly as recorded; nothing is deleted or recomputed.', {short: m[1]})],
     [/^This same queued Task \((\w+)\); no new Task and no new declaration\. Nothing has run; it is handed back to the worker and starts once the workspace's active place is free\.$/, (m) => t("This same queued Task ({short}); no new Task and no new declaration. Nothing has run; it is handed back to the worker and starts once the workspace's active place is free.", {short: m[1]})],
@@ -110,7 +101,6 @@ const I18N = (() => {
     [/^Only (\w+), confirmed with its owner, admits work; it runs an actor and may publish\. No confirmation-free re-plan exists for this kind\.$/, (m) => t('Only {admitting}, confirmed with its owner, admits work; it runs an actor and may publish. No confirmation-free re-plan exists for this kind.', {admitting: m[1]})],
     [/^(\S+) is previewed through (\w+) and admitted through (\w+), each with that owner's own confirmation\.$/, (m) => t("{kind} is previewed through {preview} and admitted through {admitting}, each with that owner's own confirmation.", {kind: m[1], preview: m[2], admitting: m[3]})],
     [/^No confirmation-free preview exists for (\S+); (\w+) admits\.$/, (m) => t('No confirmation-free preview exists for {kind}; {admitting} admits.', {kind: m[1], admitting: m[2]})],
-    // V573: a kind its owner admits directly, without a plan preview -- its re-plan is a new Task through that owner
     [/^A new Task through (\w+)\. This Task stays exactly as recorded: nothing here is changed, cancelled or deleted\.$/, (m) => t('A new Task through {admitting}. This Task stays exactly as recorded: nothing here is changed, cancelled or deleted.', {admitting: m[1]})],
     [/^Starts a new Task through (\w+); it does not resume or change this Task\.$/, (m) => t('Starts a new Task through {admitting}; it does not resume or change this Task.', {admitting: m[1]})],
     [/^The owner admits this Task kind directly through (\w+), without a plan preview\.$/, (m) => t('The owner admits this Task kind directly through {admitting}, without a plan preview.', {admitting: m[1]})],
@@ -136,8 +126,6 @@ const I18N = (() => {
     [/^Response · (.+)$/, (m) => '退回回应 · ' + m[1]],
     [/^(\w+) \/ Northstar Asia-Pacific multi-source (Portfolio evidence comparison|cross-sectional factor development) — observation window and retained input (\d+)$/, (m) => `${m[1]} / Northstar 亚太多源${m[2] === 'Portfolio evidence comparison' ? '组合证据对照' : '截面因子开发'} · 观测区间与保留输入 ${m[3]}`],
   ];
-  /* U76: a catalog key that holds an owner's `{subject}` (the code's suffix a refusal's words carry, as the door
-   * fills it) matches the sentence the owner filled; its subject is carried into the Chinese as written. */
   let subjects = null, subjectsOf = 0;
   function subjectTemplates() {
     const keys = Object.keys(catalog);
@@ -203,10 +191,7 @@ const I18N = (() => {
     document.documentElement.lang = locale;
     return locale;
   }
-  /* The dictionary for a locale, loaded once (round 96). Returns null when nothing has to load
-   * (English, or the dictionary already complete), else a promise that resolves once
-   * `workbench.zh.js` has run -- whether the prelude's tag is already in flight or a tag is
-   * added here. A failed load resolves too: the product paints in English rather than not at all. */
+  /* A failed dictionary load resolves too: the product paints in English rather than not at all. */
   let loading = null;
   function ensure(next) {
     const zh = ['zh', 'cn', 'zh-CN'].includes(next);

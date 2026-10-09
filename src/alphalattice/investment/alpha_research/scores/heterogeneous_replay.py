@@ -784,7 +784,7 @@ def admit_heterogeneous_current_closure(root: Path) -> AdmittedHeterogeneousCurr
     strategy = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY
     if (
         # A closure sealed before a recorded move of the strategy's or a component's recipe
-        # role still names the installed one (NM1, V451): the heterogeneous closure is a
+        # role still names the installed one (NM1): the heterogeneous closure is a
         # sealed root the tree keeps reading.
         not strategy_recipe_is_current(manifest.strategy_hash, strategy.strategy_hash)
         or manifest.gate_m_receipt_hash != LIVE_SCORE_CLOSURE_RECEIPT_HASH

@@ -21,7 +21,7 @@ POSITION_UNITS: Final[Mapping[str, str]] = {
     "net_simple_return": "fraction",
 }
 """Each Portfolio position metric's unit: what a comparison states, and what a book's readback
-names beside its position (`metric_units`, V343)."""
+names beside its position (`metric_units`)."""
 
 
 def _units(*keys: str) -> tuple[tuple[str, str], ...]:

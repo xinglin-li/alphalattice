@@ -52,7 +52,7 @@ _VERIFIED_RECORDS: ContextVar[dict[tuple[str, ...], BaseModel] | None] = Context
 
 @contextmanager
 def verified_evidence_records() -> Iterator[None]:
-    """Verify each stored record once per operation, then release (V87).
+    """Verify each stored record once per operation, then release.
 
     One Evidence/CRO read replays each analysis publication from several places,
     and every replay reopened the publication and its nine lineage records, so a

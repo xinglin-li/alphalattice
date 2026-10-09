@@ -1,22 +1,45 @@
 # Getting started on Windows
+Date: 2026-10-08
 
-Use the [setup and launch procedure](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch) for locked Windows/Python 3.12 dependencies, the editable checkout or installed wheel, persistent PATH, native configuration and workspace launch. That reference ships with the Skill in configured projects. macOS/Linux remain unverified.
+Give your agent the repository link and one research intent. It installs
+AlphaLattice and continues in the same session. The
+[setup procedure](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch)
+covers locked Python 3.12 and uv dependencies, the editable checkout or installed
+wheel, and Local Web. Windows is verified; macOS and Linux are unverified.
 
 ## First preparation
 
-Give your agent the research intent in one sentence. Before a workspace's first preparation, its agent opens the one `FIRST_USE` goal with that sentence copied word for word as `objective`. This goal opens once per workspace, and its declaration is never revised; evidence attachments, notes and an accepted submission may add record revisions, none of which restarts its 24-hour delegation. Follow the exact declaration and command sequence in [the agent guide](../../AGENTS.md#run-the-first-use-from-the-persons-sentence).
+Your sentence becomes the first-use goal's unchanged objective. Its delegation
+lasts 24 hours from opening: the agent handles the admitted preparation and
+activates the book once reviewed, telling you each act. Submission, abandonment
+or expiry ends it. The [agent guide](../../AGENTS.md) owns the flow and sole
+list of [person decisions](../../AGENTS.md#what-only-a-person-decides).
 
-For 24 hours after opening, the goal delegates only opening preparation network access, confirming the preparation and its resumes, deciding its data issues, confirming its membership changes, and activating the book it reviewed; the agent tells you each, and you deactivate the book in one click on **Portfolio**. `goal show` records `record.delegated_steps` and the delegation's end/active state in `record.delegation`. Submission, abandonment or expiry ends that authority and closes a network setting still held by the delegation; a later setting made by you remains. You can stop the goal in Local Web or ask the agent to abandon it. Task cancellation is separate. Deactivation, model and feature activation, storage, automation, revocation and paid choices remain yours.
+Follow Tasks, results and review in the Workbench. Deactivate the book on
+**Portfolio**. To stop the goal, use **Stop** in Local Web or ask the agent to
+abandon it; cancel a running Task separately.
 
-Workspace network access starts closed. Outside this first-use delegation, you open it and confirm the initial preparation preview on Home in Local Web. `ALPHALATTICE_NETWORK_DISABLED=1` keeps workspace acquisition offline even if the control allows it; research calculations are held offline. If that override holds the Host, its operator must remove it from the launch environment and restart the idle service. Setup downloads use their own explicit consent; live Evidence source admission is separate. Planning preparation does not acquire sources. Preview again after source access is admitted, then read the source mode, sources, limits and next action. It distinguishes approved acquisition, qualified local reuse and source revalidation. The candidate count can remain unknown until capture.
+Each answer names its next step. A refusal can identify a data shortfall, missing
+permission or required decision; read its explanation and permitted continuation.
+A provider deferral retains fetched listings and names when the existing
+preparation can resume. After a disconnect, the agent reads the existing Task.
+[Data and care](data-and-care.md) explains recovery.
 
-Past first use, only the person admits network access in Settings and confirms the initial preparation preview on Home; an automation resume must match its recorded delegation. A new preview alone grants no source access. If a data issue interrupts preparation, inspect its evidence and permitted decisions. After a disconnect, follow the existing Task instead of submitting another preparation. **Stop** or `goal abandon` stops the first-use goal; closing network in Settings is another control. Task cancellation is separate.
-
-If a provider defers preparation, its read gives `failure_code` and `progress.retry_after_at`. Keep fetched listings and resume the same plan through its permitted confirmation path after that time; an early retry is refused as `workspace_preparation.retry_not_due`. A timeout or unreadable response can leave failed listings and a data issue instead. Read its evidence and permitted decision. Published inputs remain unchanged. See [Data and care](data-and-care.md) for maintenance retry and backup details.
+Workspace network access starts closed, and `ALPHALATTICE_NETWORK_DISABLED=1`
+keeps the process offline even when its workspace setting allows access.
+Research calculations are held offline. An admitted preparation answer's offered
+confirmation is sent; network access becomes a step only when a refusal names it.
+The agent takes that step under the first-use delegation; outside it, you decide
+in **Settings**.
 
 ## Measured preparation and CPU budget
 
-The 2026-09-30 reference run at checkout `c109a7bc` took 407.1 seconds and peaked at 3.99 GB on Windows 11 Pro with an Intel Core i9-13900K (24 cores, 32 logical processors) and 128 GB memory. It used a fixed budget of eight logical processors on four P-cores, from an empty workspace through the data decision to completion; a comparison ran concurrently on disjoint cores. This measurement is context, not a hardware minimum or runtime guarantee.
+The 2026-09-30 reference preparation run took 407.1 seconds and peaked
+at 3.99 GB on Windows 11 Pro, Intel Core i9-13900K (24 cores, 32 logical
+processors), with 128 GB memory. From an empty workspace through its data decision
+to completion, it used eight logical processors on four P-cores; a comparison
+ran concurrently on disjoint cores. This observation is neither a hardware
+minimum nor a runtime guarantee.
 
 ```powershell
 alphalattice cpu-budget show
@@ -24,6 +47,11 @@ alphalattice cpu-budget set --cores 8
 alphalattice cpu-budget set --cores auto
 ```
 
-`show` reports budget, processors, memory, load and recent work. `auto` uses processors not already busy when work starts. A fixed positive count bounds preparation CPU use; the calculation is unchanged. Queue capacity is a separate `--queue` setting; change one setting per request.
+`show` reports capacity, load and work. `auto` uses processors not already
+busy when work starts; a positive count bounds preparation CPU use without
+changing the calculation. Queue capacity is a separate `--queue` setting.
 
-Once preparation publishes an input, follow [Research flows](research-flows.md). [CLI](cli.md) explains saved answers and continuations; [Third-party data](third-party-and-data.md) owns model packs, sources and their terms.
+After preparation publishes an input, [Research flows](research-flows.md)
+explains the research choices. [CLI](cli.md) explains answers and continuations,
+and [Third-party data](third-party-and-data.md) describes sources, model packs
+and their terms.

@@ -108,7 +108,7 @@ def test_{model_id}_passes_its_contract() -> None:
 
 
 def declaration_template() -> str:
-    """A model's declaration to edit, which `model scaffold --save-declaration` writes (V413).
+    """A model's declaration to edit, which `model scaffold --save-declaration` writes.
 
     The contract's fields, each with what it means and whether it is required, around the
     installed regularized linear model's own declaration as the worked example, its id renamed:

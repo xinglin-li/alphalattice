@@ -20,7 +20,7 @@ and "what this is allowed to cost" cannot be two numbers that disagree. That is
 the whole reason the estimate is a typed value rather than a console line.
 
 The offline rule is held rather than checked: the workflow runs every Desk's call held
-offline, whatever the workspace allows, so no environment decides a run's outcome (V116).
+offline, whatever the workspace allows, so no environment decides a run's outcome.
 """
 
 from __future__ import annotations

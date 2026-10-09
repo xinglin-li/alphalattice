@@ -45,7 +45,7 @@ CROSS_SECTION_IDENTITY_COLUMN = "cross_section_identity"
 _HASH_BATCH_ROWS = 8192
 """Rows in each record batch a row-hash query scans. DuckDB scans a registered Arrow table one
 batch per thread, and a partition read from its file or composed in memory is one batch, which
-hashed every row on one thread (V92); a row's hash and the rows' order are each batch's alone."""
+hashed every row on one thread; a row's hash and the rows' order are each batch's alone."""
 
 
 def _panel_row_hash_select_sql(
@@ -116,7 +116,7 @@ def _row_hash_sql(*, identity_basis: str, factors: tuple[str, ...], stamped: boo
 def panel_rows_match_their_hashes(
     table: pa.Table, *, row_hash_factor_ids: Sequence[str] | None
 ) -> bool:
-    """Whether every row's hash is the one its values give (LAWS.md EV2, V270).
+    """Whether every row's hash is the one its values give (LAWS.md EV2).
 
     The factor axis is the recorded one: the snapshot's catalog factors in the partition's
     physical order, as its row hashes packed them when it was written; without a catalog, every

@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import time
 from collections import deque
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime
-from typing import cast
+from typing import Any, NamedTuple, cast
 
 import pandas as pd
 
@@ -219,9 +219,12 @@ def materialize_listing_rows(
             _WORKER_KERNELS[kernel_capability] = registry
     with span("features", "listing_rows"):
         block = BaseFeatureMaterializer(catalog, kernel_registry=registry).materialize_listing(
-            listing_id=listing_id, projected_bars=projected_bars, market_bars=market_bars
+            listing_id=listing_id,
+            projected_bars=projected_bars,
+            market_bars=market_bars,
+            sessions=sessions,
         )
-    rows = block.values.loc[block.values["session_date"].isin(sessions)].copy()
+    rows = block.values
     if identity_axis is None:
         return rows, block.ineligibility, None, stock_input_hash
     catalog_hash, factor_ids = identity_axis
@@ -321,6 +324,26 @@ class _ListingWork:
     computed: int = 0
     calendar: tuple[date, ...] = ()
     parts: list[_PartWork] = field(default_factory=list)
+
+
+class _ListingPlan(NamedTuple):
+    """A listing's calendar, its parts' plans with their targets, and its window's input start."""
+
+    calendar: tuple[date, ...]
+    planned: tuple[tuple[Any, Any, dict[date, tuple[str, ...]]], ...]
+    input_start: date
+
+
+class _HeldInputs(NamedTuple):
+    """A listing's stored inputs and each held part's rows at its targets, from its chunk's read."""
+
+    inputs: FeatureSourceInputs | None
+    rows: dict[str, list[dict[str, object]]]
+
+
+_SET_READ_LISTINGS = 25
+"""How many listings' inputs one set read holds: a chunk is read when the read-ahead reaches it,
+so a cold or entrant day holds 25 listings' history, not the universe's. Speed only."""
 
 
 @dataclass
@@ -674,18 +697,21 @@ class FeatureFoundationService:
                     connection=base_connection,
                 )
 
-                @spanned("read", "listing_inputs")
-                def read_listing(listing_index: int, listing: ManifestListing) -> _ListingWork:
-                    """Read one listing's inputs and hand each part's computation to a worker."""
+                with span("read", "listing_inputs"):
+                    raw_calendars = self.market_data.raw_bar_sessions_by_listing(
+                        [listing.listing_id for listing in target_listings],
+                        through=request.as_of_session,
+                        _connection=base_connection,
+                    )
+
+                def plan_listing(
+                    listing_index: int, listing: ManifestListing
+                ) -> tuple[_ListingWork, _ListingPlan | None]:
+                    """One listing's calendar, its parts' targets and its input start."""
                     work = _ListingWork(listing_index, listing)
                     try:
-                        calendar = self.market_data.raw_bar_sessions(
-                            listing.listing_id,
-                            through=request.as_of_session,
-                            _connection=base_connection,
-                        )
                         calendar = self._base_session_calendar(
-                            observed_sessions=calendar,
+                            observed_sessions=raw_calendars[listing.listing_id],
                             calendar_id=scope_manifests[listing.listing_id].profile.calendar_id,
                             history_start=request.history_start,
                             as_of_session=request.as_of_session,
@@ -725,7 +751,7 @@ class FeatureFoundationService:
                                 planned.append((part, listing_plan, target_factors))
                         if not planned:
                             work.reports_progress = True
-                            return work
+                            return work, None
                         work.target_sessions = tuple(
                             sorted({day for _part, _plan, targets in planned for day in targets})
                         )
@@ -738,11 +764,61 @@ class FeatureFoundationService:
                             first_target=work.target_sessions[0],
                             warmup_sessions=self._bounded_warmup_sessions,
                         )
+                        return work, _ListingPlan(calendar, tuple(planned), input_start)
+                    except Exception as error:
+                        work.failure = error
+                        return work, None
+
+                planned_listings = [
+                    plan_listing(index, listing)
+                    for index, listing in enumerate(target_listings, start=1)
+                ]
+
+                def planned_in_chunks() -> Iterator[
+                    tuple[_ListingWork, _ListingPlan | None, _HeldInputs]
+                ]:
+                    """Each planned listing with its stored inputs and held rows, read for a
+                    chunk of listings when the read-ahead reaches it; a chunk's holdings go
+                    with its listings."""
+                    for offset in range(0, len(planned_listings), _SET_READ_LISTINGS):
+                        chunk = planned_listings[offset : offset + _SET_READ_LISTINGS]
+                        with span("read", "listing_inputs"):
+                            inputs, rows = self._planned_inputs(
+                                chunk,
+                                scope_manifests=scope_manifests,
+                                parts_holding_rows=parts_holding_rows,
+                                through=request.as_of_session,
+                                connection=base_connection,
+                            )
+                        for work, plan in chunk:
+                            listing_id = work.listing.listing_id
+                            yield (
+                                work,
+                                plan,
+                                _HeldInputs(
+                                    inputs.get(listing_id),
+                                    {
+                                        part: value
+                                        for (owner, part), value in rows.items()
+                                        if owner == listing_id
+                                    },
+                                ),
+                            )
+
+                @spanned("read", "listing_inputs")
+                def read_listing(
+                    work: _ListingWork, plan: _ListingPlan, held: _HeldInputs
+                ) -> _ListingWork:
+                    """Read one listing's inputs and hand each part's computation to a worker."""
+                    listing = work.listing
+                    calendar, planned, input_start = plan
+                    try:
                         # The writer reads each window's stored inputs; the worker computing
                         # the listing projects them. Only a held part's reuse is verified here,
                         # against the window's frame (V92).
                         sources = {
-                            input_start: self._base_source_inputs(
+                            input_start: held.inputs
+                            or self._base_source_inputs(
                                 scope_manifests[listing.listing_id],
                                 listing_id=listing.listing_id,
                                 through=request.as_of_session,
@@ -753,25 +829,10 @@ class FeatureFoundationService:
                         verified_frame: pd.DataFrame | None = None
                         remaining = []
                         for part, listing_plan, target_factors in planned:
-                            selected_sessions = tuple(sorted(target_factors))
                             if part.binding.catalog_hash not in parts_holding_rows:
                                 remaining.append((part, listing_plan, target_factors))
                                 continue
-                            prepared = self.feature_state.feature_rows(
-                                listing_ids=(listing.listing_id,),
-                                catalog_hash=part.binding.catalog_hash,
-                                start=selected_sessions[0],
-                                end=selected_sessions[-1],
-                                include_values=False,
-                                include_lineage=False,
-                                include_verification=True,
-                                _connection=base_connection,
-                            )
-                            assert isinstance(prepared, list)
-                            selected_set = set(selected_sessions)
-                            prepared = [
-                                row for row in prepared if row["session_date"] in selected_set
-                            ]
+                            prepared = held.rows[part.binding.catalog_hash]
                             reused: set[date] = set()
                             if prepared:
                                 if verified_frame is None:
@@ -832,7 +893,6 @@ class FeatureFoundationService:
                             )
                             calls.make(
                                 {
-                                    "catalog": part,
                                     "kernel_registry": shipped_kernels,
                                     "kernel_capability": kernel_capability,
                                     "listing_id": listing.listing_id,
@@ -840,7 +900,6 @@ class FeatureFoundationService:
                                     "source_sessions": self._source_sessions(
                                         calendar, narrowed_start
                                     ),
-                                    "market_bars": market_frame,
                                     "sessions": selected_sessions,
                                     # The rows are written as computed unless an unaffected
                                     # factor keeps its stored value; only then are their
@@ -850,14 +909,22 @@ class FeatureFoundationService:
                                         if self._preserves_nothing(target_factors, part)
                                         else None
                                     ),
-                                }
+                                },
+                                # The same for every listing: each worker receives them once.
+                                shared={
+                                    "catalog": (f"catalog:{part.binding.catalog_hash}", part),
+                                    "market_bars": (
+                                        f"market:{market_input_hashes[request.as_of_session]}",
+                                        market_frame,
+                                    ),
+                                },
                             )
                             work.computed += 1
                     except Exception as error:
                         work.failure = error
                     return work
 
-                listings = iter(enumerate(target_listings, start=1))
+                listings = planned_in_chunks()
                 queue: deque[_ListingWork] = deque()
                 computing = 0
                 while True:
@@ -868,7 +935,10 @@ class FeatureFoundationService:
                         entry = next(listings, None)
                         if entry is None:
                             break
-                        queue.append(read_listing(*entry))
+                        planned_work, plan, held = entry
+                        queue.append(
+                            planned_work if plan is None else read_listing(planned_work, plan, held)
+                        )
                         computing += queue[-1].computed
                     if not queue:
                         break
@@ -973,6 +1043,11 @@ class FeatureFoundationService:
                     # Every part now holds the axis; rows of a catalog outside the layer (one a
                     # rotation replaced, a deactivated column) answer for nothing (V398, V92).
                     self.feature_state.retire_rows_outside_layer(_connection=base_connection)
+                    # The closed years' seals, once each: a year the build closed, or one a
+                    # correction reopened, so tomorrow's proofs read only the open year.
+                    self.feature_state.seal_closed_feature_years(
+                        self.catalog.binding.catalog_hash, _connection=base_connection
+                    )
                 self._publish_progress(
                     operation_id=request.request_hash,
                     stage_id="base_feature_materialization",
@@ -1729,6 +1804,69 @@ class FeatureFoundationService:
             as_traded=catalog_reads_as_traded(self.catalog),
             _connection=_connection,
         )
+
+    def _planned_inputs(
+        self,
+        planned_listings: Sequence[tuple[_ListingWork, _ListingPlan | None]],
+        *,
+        scope_manifests: Mapping[str, UniverseManifest],
+        parts_holding_rows: frozenset[str],
+        through: date,
+        connection: Any,
+    ) -> tuple[dict[str, FeatureSourceInputs], dict[tuple[str, str], list[dict[str, object]]]]:
+        """The planned listings' stored inputs, and each held part's rows at its targets, read
+        once for these listings, each from its own input start.
+
+        A listing the set read leaves out (no bars, no provider mapping) reads alone in its turn
+        and refuses there as before.
+        """
+        plans = {work.listing.listing_id: plan for work, plan in planned_listings if plan}
+        inputs = self.feature_state.feature_source_inputs_by_listing(
+            {
+                listing: (scope_manifests[listing], plan.input_start)
+                for listing, plan in plans.items()
+            },
+            through=through,
+            allow_missing_adjusted=allows_missing_source_rows(self.panel.policy_hash),
+            as_traded=catalog_reads_as_traded(self.catalog),
+            _connection=connection,
+        )
+        rows: dict[tuple[str, str], list[dict[str, object]]] = {}
+        for part_hash in parts_holding_rows:
+            selected = {
+                listing: tuple(sorted(targets))
+                for listing, plan in plans.items()
+                for part, _plan, targets in plan.planned
+                if part.binding.catalog_hash == part_hash
+            }
+            if not selected:
+                continue
+            held = self._prepared_rows(selected, catalog_hash=part_hash, connection=connection)
+            rows.update({(listing, part_hash): value for listing, value in held.items()})
+        return inputs, rows
+
+    def _prepared_rows(
+        self, selected: Mapping[str, tuple[date, ...]], *, catalog_hash: str, connection: Any
+    ) -> dict[str, list[dict[str, object]]]:
+        """Each listing's stored rows at its selected sessions, as a held part's reuse reads."""
+        prepared = self.feature_state.feature_rows(
+            listing_ids=tuple(selected),
+            catalog_hash=catalog_hash,
+            start=min(sessions[0] for sessions in selected.values()),
+            end=max(sessions[-1] for sessions in selected.values()),
+            include_values=False,
+            include_lineage=False,
+            include_verification=True,
+            _connection=connection,
+        )
+        assert isinstance(prepared, list)
+        wanted = {listing: set(sessions) for listing, sessions in selected.items()}
+        out: dict[str, list[dict[str, object]]] = {listing: [] for listing in selected}
+        for row in prepared:
+            listing = str(row["listing_id"])
+            if row["session_date"] in wanted[listing]:
+                out[listing].append(row)
+        return out
 
     def _source_sessions(self, calendar: Sequence[date], start: date) -> tuple[date, ...] | None:
         """The calendar's sessions a window from `start` is aligned to, when the policy admits

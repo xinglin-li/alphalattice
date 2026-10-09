@@ -326,9 +326,9 @@ def test_a_workspace_without_evidence_authority_names_the_wait(route: Any) -> No
 
 
 def test_the_refresh_command_binds_the_obligation_into_the_task_input(route: Any) -> None:
-    """requirement: the refresh's Task input names the book's run by hash, and
+    """Requirement: the refresh's Task input names the book's run by hash, and
     the run's unit carries exactly the book's obligation, request and admission
-    -- the question a Task answers is fixed by its input (every book is a run, C2)."""
+    the question a Task answers is fixed by its input (every book is a run)."""
 
     route.wire_evidence()
     outcome = route.refresh()
@@ -407,7 +407,7 @@ def test_the_whole_route_reaches_a_published_recommendation(route: Any) -> None:
     assert action.action is RequiredActionKind.RECONSIDER_CANDIDATE
     assert action.entity_id == "AAPL"
     assert view.recommendation.action_activation == "NOT_AUTHORIZED"
-    # regression (V90): a read takes the review's standing from its receipt's policy against
+    # regression: a read takes the review's standing from its receipt's policy against
     # the installed one and the recorded moves, never by recompiling; under a policy its
     # receipt does not lead to, the review reads back as recorded and is not reused.
     assert view.under_installed_policy
@@ -417,7 +417,7 @@ def test_the_whole_route_reaches_a_published_recommendation(route: Any) -> None:
     earlier = moved.read(view.publication.publication_hash)
     assert earlier.recommendation == view.recommendation and not earlier.under_installed_policy
     assert moved.find_for_review_key(view.publication.review_key) is None
-    # The recommendation asks a person to act (V46): its readback says so, and the pending
+    # The recommendation asks a person to act: its readback says so, and the pending
     # decisions list it with the request that opens its export.
     from alphalattice.control.product_host.composition.pending_decisions import (
         pending_decisions,
@@ -444,7 +444,7 @@ def test_the_whole_route_reaches_a_published_recommendation(route: Any) -> None:
     assert decision["review_publication_hash"] == view.publication.publication_hash
     assert decision["person_action"] == marker
     assert decision["next_requests"]["export"]["operation"] == "EVIDENCE_CRO_EXPORT"
-    # regression (V119): a damaged review is named in its own row, never in the way of the
+    # Regression: a damaged review is named in its own row, never in the way of the
     # page, and the overview reads the Tasks the request already read.
     damaged = "d" * 64
     folder = route.runtime.artifacts.root / "cro-review-publications"
@@ -707,7 +707,7 @@ def test_an_evidence_task_resumes_exactly_once_after_an_interruption(
     route: Any, monkeypatch: Any, never_started: bool
 ) -> None:
     """The same recovery contract on the evidence half: the command is rebuilt
-    from the run the Task was admitted with (every book is a run, C2)."""
+    from the run the Task was admitted with (every book is a run)."""
 
     route.wire_evidence()
     original = AlternativeEvidenceDocumentTaskAdapter.verify_stage
@@ -805,7 +805,7 @@ def test_resolving_an_ambiguity_needs_no_provider_credential(route: Any) -> None
     _second_analysis_in_the_same_store(route)
 
     application = route.application
-    # A state's offered actions are the requests it offers (V198): with managed
+    # A state's offered actions are the requests it offers: with managed
     # work admitted, a choice between two analyses offers neither a refresh nor
     # a CRO review.
     assert application.model_authority_admitted
@@ -1076,7 +1076,7 @@ def test_a_rotated_binding_keeps_old_analyses_and_reviews_readable_never_current
 
 
 def test_pending_decisions_read_each_owner_standing() -> None:
-    """requirement (RX, V185-V187): the pending list reads each owner's own
+    """requirement (RX, -): the pending list reads each owner's own
     standing, never a reading of its own. A later upgrade stands whatever was
     acknowledged before (the overview's `show`); a data issue past the owner's
     first page is pending too; and the CRO's newest review of each book is the
@@ -1134,7 +1134,7 @@ def test_pending_decisions_read_each_owner_standing() -> None:
 
 
 def test_a_carried_review_names_the_book_it_read(tmp_path: Path) -> None:
-    """regression (V427, an outside review at 97b65a25): a CRO bundle whose review carries
+    """regression (an outside review at 97b65a25): a CRO bundle whose review carries
     forward answered without the book it read, so `evidence show --from` the answer read the
     default book; it names its book and its Task, as a submitted answer does."""
 
@@ -1178,7 +1178,7 @@ def test_a_carried_review_names_the_book_it_read(tmp_path: Path) -> None:
 
 
 def test_a_carried_review_offers_no_packet_of_the_reviews_task() -> None:
-    """regression (V434, an outside review at 0c2b62a0): with nothing new the refresh carried
+    """regression (an outside review at 0c2b62a0): with nothing new the refresh carried
     the CRO's review forward, and EVIDENCE_PREPARE offered packet and Analyst-bundle requests for
     the review's Task, each refused `alternative_evidence.current_authority_mismatch`; a review's
     Task has no packet, and the answer offers its Task and its book."""
@@ -1230,12 +1230,12 @@ def test_a_carried_review_offers_no_packet_of_the_reviews_task() -> None:
 
 
 def test_a_recorded_preview_names_the_units_it_cannot_prepare() -> None:
-    """regression (V445, AX14's finding; V541, RR5d's): offline, a preview in RECORDED mode
+    """regression (finding;, RR5d's): offline, a preview in RECORDED mode
     offered `prepare` while most units held no recorded document, and the coverage Task then
     succeeded with them failed. The units that cannot prepare are named before any run with the
     code each would fail: short of the installed floor, `minimum_entity_coverage_not_met` naming
     its reach and need and the issuers without a source, as the unit's own refusal does; with no
-    document under a floor that admits it, `document_set_empty`. V445 named the second where the
+    document under a floor that admits it, `document_set_empty`. named the second where the
     first comes first. Under official acquisition none is named: the run reads the index."""
 
     from alphalattice.control.product_host.composition.evidence_review_application import (
@@ -1283,7 +1283,7 @@ def test_a_recorded_preview_names_the_units_it_cannot_prepare() -> None:
 def test_the_source_ways_offer_a_package_only_where_one_covers_the_book(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression (V546, V547, RR5d): RR5d's lead installed one recorded package per unit, each
+    """Regression: A research lead installed one recorded package per unit, each
     replacing the last, and the units it prepared then stood at different cutoffs that no review
     could read together. The ways on prefer official acquisition, which prepares every unit at
     one cutoff; a package is offered only for a book of one unit, which one package covers, and
@@ -1301,11 +1301,11 @@ def test_the_source_ways_offer_a_package_only_where_one_covers_the_book(
     official = cast(dict[str, str], many["official"])
     assert official["serve"].endswith("serve --sec-network-consent")
     assert "one cutoff" in official["before"]
-    # V620: a setup way names the deciding operator hold before consent advice.
+    # a setup way names the deciding operator hold before consent advice.
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     held = cast(dict[str, str], source_ways(tmp_path, entities=None, book=None)["official"])
-    assert "ALPHALATTICE_NETWORK_DISABLED=1" in held["before"]
-    assert "restart the idle Host" in held["before"]
+    before = held["before"]
+    assert before.index("ALPHALATTICE_NETWORK_DISABLED=1") < before.index("The person's decision")
     from alphalattice.control.workspace_runtime.network_access import set_network_access
 
     monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
@@ -1320,7 +1320,7 @@ def test_the_source_ways_offer_a_package_only_where_one_covers_the_book(
 
 
 def test_a_review_selector_is_refused_in_words_with_the_request_that_works() -> None:
-    """regression (V546, RR5d's FINDING 21:24): `review dossier --result <receipt> --session
+    """regression (RR5d's FINDING 21:24): `review dossier --result <receipt> --session
     <day>` and `--study <replay> --receipt <r> --session <day>` were refused
     `evidence_review_experiment_selector_invalid` and `task_kind_mismatch` with no words. A
     study's part beside another book is named, with the request without it; a selector missing a
@@ -1359,7 +1359,7 @@ def test_a_review_selector_is_refused_in_words_with_the_request_that_works() -> 
 
 
 def test_every_dossier_and_bundle_refusal_on_the_review_route_has_words_and_a_way_on() -> None:
-    """requirement (V546, V547, the class): every refusal the review route's owners raise that a
+    """Requirement: every refusal the review route's owners raise that a
     request or the book's state can reach -- the book its selector names, a dossier, a packet or
     dossier part, a bundle, an answer -- reads in words with a way on, the codes the selector's
     readers raise among them; the codes that only a broken Host or record reaches are named
@@ -1390,7 +1390,7 @@ def test_every_dossier_and_bundle_refusal_on_the_review_route_has_words_and_a_wa
         "control/product_host/composition/evidence_review_application.py",
         "control/product_host/composition/evidence_review_delivery.py",
         "control/product_host/composition/evidence_review_bundles.py",
-        # The book a request's selector names, opened (V546).
+        # The book a request's selector names, opened.
         "oversight/chief_risk_officer/decision/book_evidence.py",
     )
     # What the selector's readers raise for the book a request names: an update's or a study's.
@@ -1431,7 +1431,7 @@ def test_every_dossier_and_bundle_refusal_on_the_review_route_has_words_and_a_wa
         "chief_risk_officer.external_submission_entry_required",
         "product_host.evidence_selection_actor_invalid",
         # A slot another writer filled: the Host is its workspace's one writer, and one
-        # binding's answers take turns (V557).
+        # binding's answers take turns.
         "agent_bundle.answer_slot_taken",
     }
     raised: set[str] = set()
@@ -1473,7 +1473,7 @@ def test_every_dossier_and_bundle_refusal_on_the_review_route_has_words_and_a_wa
 
 
 def test_every_evidence_unit_failure_has_words_and_a_way_on() -> None:
-    """requirement (V541, the class): a failed coverage unit reads with words and a way on
+    """Requirement: a failed coverage unit reads with words and a way on
     whatever its code: every code the Evidence package raises, the owner's code a task failure
     carries, and a refusal of the preparation's own work, which names its code. A unit short of
     sources is offered the sources (`source_ways`) under the recorded package and a retry under

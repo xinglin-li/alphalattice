@@ -818,7 +818,7 @@ class EvidenceCroProjector:
         )
 
     def _source_ways(
-        self, chosen: BookSelector, failed: list[_FailedUnit], *, total: int
+        self, chosen: BookSelector | None, failed: list[_FailedUnit], *, total: int
     ) -> dict[str, object] | None:
         """The ways on for the units that failed for their sources under the recorded package:
         the person's official acquisition, and a package only for a book of one unit, which one
@@ -827,7 +827,7 @@ class EvidenceCroProjector:
         short = [unit for unit in failed if unit.sources_short]
         if not short:
             return None
-        whole = short[0].entity_ids if total == 1 else None
+        whole = short[0].entity_ids if chosen is not None and total == 1 else None
         return source_ways(self.app.workspace, entities=whole, book=chosen)
 
     def _failed_units(
@@ -852,8 +852,15 @@ class EvidenceCroProjector:
         latest = next(self.app._run_tasks(resolved.scope), None)
         if adapter is None or latest is None or adapter.run_of(latest) is None:
             return []
+        return self._task_failed_units(latest)
+
+    def _task_failed_units(self, task: TaskRecord) -> list[_FailedUnit]:
+        """Read the failed units sealed by this exact attempt, without selecting a book."""
+        adapter = self.app.evidence_task_adapter
+        if adapter is None:
+            return []
         failed = []
-        for unit_id, value in sorted(adapter.unit_states(latest).items()):
+        for unit_id, value in sorted(adapter.unit_states(task).items()):
             if value["state"] != "FAILED":
                 continue
             entities = tuple(cast(tuple[str, ...], value["ordered_entity_ids"]))
@@ -1160,6 +1167,58 @@ class EvidenceCroProjector:
             preparation=preparation,
         )
 
+    def completed_preparation(self, task: TaskRecord) -> dict[str, object]:
+        """A completed preparation's failed units, from this attempt's verified receipts.
+
+        Verification can seal a unit failure. It does not mean that unit prepared.
+        The Evidence-only Task retains no book selector or weights: coverage reads those
+        for the book selected there, and preparation must be previewed for that book.
+        """
+        adapter = self.app.evidence_task_adapter
+        if task.lifecycle is not TaskLifecycle.SUCCEEDED or adapter is None:
+            return {}
+        run = adapter.run_of(task)
+        if run is None:
+            return {}
+        recorded = self.app.evidence_policy.mode is AlternativeEvidenceMode.RECORDED
+        units_failed = self._task_failed_units(task)
+        sources_short = recorded and any(unit.sources_short for unit in units_failed)
+        retry = any(not unit.sources_short or not recorded for unit in units_failed)
+        failed = [
+            {
+                "unit_id": unit.unit_id,
+                "issuer_count": len(unit.entity_ids),
+                "failure_code": unit.failure_code,
+                "detail": unit.detail,
+                "next_action": unit_failure_words(unit.failure_code, recorded=recorded)[
+                    "next_action"
+                ],
+            }
+            for unit in units_failed
+        ]
+        if not failed:
+            return {}
+        units = "; ".join(f"{row['unit_id']} ({row['issuer_count']} issuers)" for row in failed)
+        requests = {"coverage": {"operation": "EVIDENCE_CRO"}}
+        if retry:
+            requests["preview"] = {"operation": "EVIDENCE_PREVIEW"}
+        if sources_short:
+            requests["network"] = {"operation": "NETWORK_ACCESS"}
+        return {
+            "units_failed": len(failed),
+            "failed_units": failed,
+            "detail": f"Evidence preparation completed with {len(failed)} failed unit(s): {units}. "
+            "Verified stages include recorded unit failures; those units are not prepared. "
+            "Open the selected book's coverage readback for weights and next steps; "
+            "select that book before previewing preparation again.",
+            "next_requests": requests,
+            **(
+                {"source_ways": self._source_ways(None, units_failed, total=len(run.units))}
+                if sources_short
+                else {}
+            ),
+        }
+
 
 def _sources_cannot_cover(failed: list[_FailedUnit], *, total: int, recorded: bool) -> bool:
     """Whether every unit of the book failed for too few sources under the recorded package, so
@@ -1170,7 +1229,7 @@ def _sources_cannot_cover(failed: list[_FailedUnit], *, total: int, recorded: bo
 def _failed_words(
     failed: list[_FailedUnit], *, total: int, recorded: bool, standing: bool, one_unit: bool
 ) -> str:
-    """What the book's failed units say together, and the book's standing (V541).
+    """What the book's failed units say together, and the book's standing.
 
     A book the installed sources cannot cover (`standing`) cannot be reviewed until they change,
     and that is said with its ways on; a source shortfall is never offered a retry under the

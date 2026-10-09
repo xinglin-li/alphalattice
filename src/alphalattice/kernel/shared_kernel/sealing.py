@@ -2,8 +2,8 @@
 
 Every sealer here hashes the record's canonical JSON without its hash field; they differ only in
 what the sealed record is validated from (W2): the given values, that JSON, or the draft's Python
-dump. The compatible check reads a sealed record back across an optional field added since
-(V251). Callers pass pydantic contract models.
+dump. The compatible check reads a sealed record back across an optional field added later.
+Callers pass pydantic contract models.
 """
 
 from __future__ import annotations
@@ -82,7 +82,7 @@ def validate_hash_compatible(
 
     A contract changes compatibly by a field added as optional, `None` by default (LAWS.md
     DA6): a record sealed before the field existed hashed its JSON without it, which is the
-    JSON without its unset fields, so either hash is accepted (V251).
+    JSON without its unset fields, so either hash is accepted.
 
     Args:
         record: The pydantic contract record.

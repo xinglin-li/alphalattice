@@ -1,4 +1,4 @@
-"""Guanyin's Supervisor and Recovery Center on a live Host (GY2, V83)."""
+"""Guanyin's Supervisor and Recovery Center on a live Host (GY2)."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def test_the_supervisor_opens_an_incident_the_task_read_names_and_the_recovery_c
     assert (attempt["action"], attempt["selected_by"]) == ("CANCEL", "USER_COMMAND")
     # A stopped Task's cancellation is requested at once and acknowledged by the Host.
     assert attempt["lifecycle_after"] in {"CANCEL_REQUESTED", "CANCELLED"}
-    # The receipt names the Task and where it stands, its outcome the Task's (V508).
+    # The receipt names the Task and where it stands, its outcome the Task's.
     assert attempted["task_id"] == str(task.task_id)
     assert attempted["lifecycle"] == attempt["lifecycle_after"]
     supervisor.supervise_once()
@@ -193,7 +193,7 @@ def test_a_succeeded_linked_successor_does_not_reopen_the_stopped_source_inciden
 
 
 def test_a_remedys_receipt_answers_for_the_task_it_acted_on(tmp_path) -> None:
-    """regression (V508, the user's review at 244900d8): the receipt nested the Task a recovery
+    """regression (the user's review at 244900d8): the receipt nested the Task a recovery
     resumed in `answer`, so its outcome read OK and `--wait` ended at once. A recovery or a
     cancellation lifts the Task and its lifecycle, a refused one its code, so the receipt's
     outcome is the Task's and its owner's; a re-plan leaves the Task as it was."""

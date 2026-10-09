@@ -112,7 +112,8 @@ def load_alpha_package_identity() -> AlphaPackageIdentity:
     """The packages Alpha's contracts were validated with, as declared: never a gate.
 
     The installed versions are the environment, recorded beside each fit, and no identity
-    compares them (LAWS.md ID6); whether an upgrade moves a number is answered by U0.
+    compares them (LAWS.md ID6); whether an upgrade moves a number is answered
+    by the saved-object replay check.
     """
     return seal_contract(AlphaPackageIdentity, {}, "package_hash")
 

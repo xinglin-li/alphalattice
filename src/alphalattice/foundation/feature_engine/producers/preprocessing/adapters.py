@@ -62,7 +62,7 @@ def _robust_sector_neutral_z_content_hash() -> str:
     """The identity of the code that computes the robust sector-neutral transformation.
 
     Its rule closure from the Panel kernel, the shared mathematics it runs and this adapter,
-    kept at its byte value while its rule is the one the switch recorded (V70).
+    kept at its byte value while its rule is the one the switch recorded.
     """
     return feature_component_identity(
         "PANEL_PREPROCESSING:robust_sector_neutral_z",
@@ -79,7 +79,7 @@ def _robust_sector_neutral_z_content_hash() -> str:
 
 @lru_cache(maxsize=1)
 def _development_preprocessing_content_hash() -> str:
-    """The identity of the development preprocessing, with the Panel kernel it runs (V232)."""
+    """The identity of the development preprocessing, with the Panel kernel it runs."""
     return feature_component_identity(
         "DEVELOPMENT_PANEL_PREPROCESSING:development",
         owners=(

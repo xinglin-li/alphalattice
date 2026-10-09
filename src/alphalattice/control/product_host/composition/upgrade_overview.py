@@ -100,7 +100,7 @@ def upgrade_overview(
 ) -> dict[str, object]:
     """Every saved study, published review and waiting Task, with its standing now.
 
-    `tasks` is the request's one reading of the registry when the caller took it (V119), and
+    `tasks` is the request's one reading of the registry when the caller took it, and
     `study_identities` what `installed_study_identities` answered for this Host.
     """
     identities = dict(
@@ -215,14 +215,14 @@ def _study(
     plan = ExperimentPlan.model_validate(task.input.payload["plan"])
     kind = plan.program.kind
     installed = identities.get(f"study:{kind}") or _implementation_hash(kind)
-    # The same comparison a replay makes first (binding plan, V28): the plan's role, the
+    # The same comparison a replay makes first (binding plan): the plan's role, the
     # recorded moves consulted.
     current = is_current(plan_implementation_role(plan), plan.implementation_hash, installed)
     calls = plan.execution_preview.get("expected_numerical_calls")
     ids = {"task_id": str(task.task_id)}
     code = failed.get(str(task.task_id))
     if code is not None:
-        # The sweep could not verify its sealed evidence (V89): named here, refused when read.
+        # The sweep could not verify its sealed evidence: named here, refused when read.
         return {
             **ids,
             "kind": kind,
@@ -257,7 +257,7 @@ def _study(
 
 
 def _reviews(review: EvidenceReviewApplication, analyses: Any) -> list[dict[str, object]]:
-    """Each published review, read once (V119); one that does not read back is named in its
+    """Each published review, read once; one that does not read back is named in its
     row, never in the way of the others."""
 
     service = review.review_publications

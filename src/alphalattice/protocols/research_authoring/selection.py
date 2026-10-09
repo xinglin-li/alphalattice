@@ -73,13 +73,13 @@ MAXIMUM_DEPTH = 12
 
 class _DeclarationLoader(yaml.SafeLoader):  # type: ignore[misc]
     """Safe YAML in the declaration dialect: YAML 1.2's core booleans, numbers and null, and
-    YAML 1.1's dates (V278).
+    YAML 1.1's dates.
 
     `true` and `false` are the booleans, where YAML 1.1 also read `yes`, `on` and their kin;
     a number with a leading zero is decimal, where 1.1 read it as octal; `0o` and `0x` name
     octal and hexadecimal; an exponent needs no point (`1e-10`). Dates stay dates: authored
     sessions are written as them. A key written twice in one mapping is refused, at its line
-    and column, where PyYAML keeps the last value silently (V126).
+    and column, where PyYAML keeps the last value silently.
     """
 
     def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
@@ -122,7 +122,7 @@ _CORE_SCALARS: tuple[tuple[str, re.Pattern[str], list[str]], ...] = (
     ),
     ("tag:yaml.org,2002:null", re.compile(r"^(?:~|null|Null|NULL|)$"), ["~", "n", "N", ""]),
 )
-"""YAML 1.2's core scalars, in place of YAML 1.1's (V278). Measured before the dialect was named:
+"""YAML 1.2's core scalars, in place of YAML 1.1's. Measured before the dialect was named:
 of the 1,222 YAML documents in the QA store and the tree, none read differently but by its
 unquoted dates, which the dialect keeps, so no sealed declaration's normalized form moves."""
 
@@ -136,7 +136,7 @@ def _core_int(loader: yaml.SafeLoader, node: yaml.ScalarNode) -> int:
 
 # Keep SafeLoader's and SafeDumper's global resolvers unchanged: other YAML documents keep their
 # own dialect. Quoted scalars remain strings. The dumper resolves as the loader does, so what
-# the Host writes reads back as it was (V146).
+# the Host writes reads back as it was.
 for _dialect, _base in (
     (_DeclarationLoader, yaml.SafeLoader),
     (_DeclarationDumper, yaml.SafeDumper),
@@ -170,7 +170,7 @@ def rewrite_in_declaration_dialect(text: str) -> str:
 
     The default dumper leaves a string such as ``"1e-10"`` unquoted, which the
     declaration loader reads as a number, so an exported declaration could not be
-    submitted again (V146). The default loader reads its own dumper's output
+    submitted again. The default loader reads its own dumper's output
     exactly, and the declaration dumper writes those values back.
 
     Args:
@@ -188,7 +188,7 @@ def load_safe_yaml_document(text: str) -> Any:
 
 
 class UnparsableDocument(AuthoringError):
-    """A declaration that does not parse, located where YAML stopped reading it (V145).
+    """A declaration that does not parse, located where YAML stopped reading it.
 
     The code stays ``research_authoring.document_unparsable``; the line and column are
     ``document_location``, as the client locates a file it reads itself, so a declaration sent

@@ -7,6 +7,7 @@ from datetime import date
 import numpy as np
 import pytest
 
+from alphalattice.control.product_host.composition import strategy_score_inputs
 from alphalattice.control.product_host.composition.strategy_score_inputs import (
     build_workspace_score_inputs,
     prepare_workspace_component_inputs,
@@ -248,6 +249,36 @@ def test_prepared_history_refuses_changed_source_without_a_revision_journal(inpu
             expected_source_hash=source_hash,
             prepared=prepared,
         )
+
+
+def test_repeat_source_proofs_in_a_process_hash_no_unchanged_store_file(
+    input_workspace, monkeypatch
+):
+    """regression: a process hashes a store file whole at its first proof and
+    again only once its size or mtime moves (an edit is then refused, as the test above holds)."""
+    source_hash = workspace_score_source_identity(input_workspace)
+    prepared = prepare_workspace_component_inputs(
+        input_workspace,
+        through=DAYS[-1],
+        observed_at=OBSERVED_AT,
+        expected_source_hash=source_hash,
+    )
+    hashed: list[str] = []
+    whole = strategy_score_inputs.file_digest
+
+    def counted(handle, name):  # type: ignore[no-untyped-def]
+        hashed.append(handle.name)
+        return whole(handle, name)
+
+    monkeypatch.setattr(strategy_score_inputs, "file_digest", counted)
+    build_workspace_score_inputs(
+        input_workspace,
+        formation=DAYS[0],
+        observed_at=OBSERVED_AT,
+        expected_source_hash=source_hash,
+        prepared=prepared,
+    )
+    assert hashed == []
 
 
 def test_invalid_future_action_does_not_advance_an_earlier_formation_refusal(input_workspace):

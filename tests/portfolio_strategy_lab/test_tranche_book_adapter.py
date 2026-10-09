@@ -214,7 +214,7 @@ def test_a_mu_rule_refuses_a_missing_curve_rather_than_trading_inverse_volatilit
 def test_a_partial_mu_curve_fails_closed(disposition: str) -> None:
     """The frozen plan: a missing *or partial* mu surface fails closed.
 
-    The predecessor C6 convention maps unsupported buckets to zero and trades on.
+    The predecessor convention maps unsupported buckets to zero and trades on.
     Carrying that here would let a mu.iv1 book trade an inverse-volatility tilt
     over the buckets its curve could not support while still calling itself
     mu.iv1, which is the substitution the plan names.

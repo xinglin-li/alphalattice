@@ -781,8 +781,7 @@ class PreFactorWorkspaceHost:
         )
         summary: dict[str, object] = {
             # The stored value as recorded, with its time: this report is written as the run
-            # ends and keeps no live assessment, which the data update's input readback gives
-            # (V107).
+            # ends and keeps no live assessment, which the data update's input readback gives.
             "stored_readiness": readiness.status if readiness is not None else None,
             "stored_readiness_recorded_at": (
                 readiness.updated_at.isoformat() if readiness is not None else None

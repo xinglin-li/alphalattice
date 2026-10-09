@@ -573,6 +573,55 @@ def test_an_owner_stop_remains_a_stop_and_admits_no_resume(
         live.stop()
 
 
+def test_a_stage_the_memory_check_blocked_is_offered_and_takes_its_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """requirement (PERF-1): the runner's memory block, read through the recovery view, offers
+    RECOVER bound to its version; once memory is free the same Task resumes and completes."""
+
+    from alphalattice.control.product_host.composition import resource_estimates
+    from alphalattice.interface.local_application.cli_contract import refusal_words
+
+    short = [True]
+    monkeypatch.setattr(
+        resource_estimates.ResourceGate,
+        "stage_refusal",
+        lambda self, task: resource_estimates.MEMORY_INSUFFICIENT if short[0] else None,
+    )
+    live = _service(tmp_path, _Resolver(_resolved()), "qa-memory")
+    live.start()
+    try:
+        # A Host Task the session's runner executes (the sweep; heavy Tasks run the same way).
+        sweep = _json(live, "/api/experiments/verify-all", method="POST", payload={})
+        task_id = sweep["task_id"]
+        live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
+        status = _json(live, f"/api/status?task_id={task_id}")
+        assert status["failure_code"] == resource_estimates.MEMORY_INSUFFICIENT, status
+        assert status["detail"] == refusal_words(resource_estimates.MEMORY_INSUFFICIENT)["detail"]
+        assert status["next_requests"]["recovery"] == {
+            "operation": "TASK_RECOVERY",
+            "task_id": task_id,
+        }
+        view = _view(live, task_id)
+        assert view["lifecycle"] == "BLOCKED" and view["verified_stage_count"] == 0
+        recover = _actions(view)["RECOVER"]
+        assert recover["available"] and "memory check runs again" in recover["reason"]
+        assert view["next_requests"]["recover"] == {
+            "operation": "RECOVER",
+            "task_id": task_id,
+            "expected_task_hash": view["task_record_hash"],
+        }
+        short[0] = False
+        resumed = _json(
+            live, "/api/recover", method="POST", payload=view["next_requests"]["recover"]
+        )
+        assert resumed["resumed_task_ids"] == [task_id]
+        live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
+        assert _view(live, task_id)["lifecycle"] == "SUCCEEDED"
+    finally:
+        live.stop()
+
+
 def test_a_strategy_book_too_short_for_a_rebalance_stops_before_its_walk_in_words(
     tmp_path: Path,
 ) -> None:

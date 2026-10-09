@@ -48,7 +48,7 @@ INTEGRATED = MatterSelectionPolicy(
 
 
 ONE_UNIT = "u01"
-"""The book's only unit: every book is prepared as a coverage run (C2)."""
+"""The book's only unit: every book is prepared as a coverage run."""
 
 
 def _authority(tmp_path: Path, report: Any, policy: MatterSelectionPolicy | None) -> Any:

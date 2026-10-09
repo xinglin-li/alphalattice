@@ -445,33 +445,13 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
 
     from alphalattice.interface.local_application.cli import main as client_main
     from alphalattice.interface.local_application.client import LocalResearchClient
-    from alphalattice.kernel.data.calendar import materialize_calendar_schedule
     from alphalattice.kernel.shared_kernel import persistence
-    from tests.researcher_methodology_surface.real_workspace import (
-        AS_OF,
-        HISTORY_START,
-        SeededWalkProvider,
-    )
+    from tests.workspace_readiness.unexplained_move import unexplained_move
 
-    symbols = tuple(f"F{i:03d}" for i in range(120))
-    schedule = materialize_calendar_schedule(
-        ("XNAS",), start=HISTORY_START, end=AS_OF, as_of_timestamp=OBSERVED_AT
-    )
-    sessions = tuple(value["session_date"] for value in schedule.to_pylist())
-    moved = sessions[len(sessions) // 2]
-
-    class UnexplainedMove(SeededWalkProvider):
-        """One listing's close doubles for one session, with no event that explains it."""
-
-        def _closes(self, symbol: str, end: Any) -> dict[Any, float]:
-            closes = super()._closes(symbol, end)
-            if symbol == symbols[0] and moved in closes:
-                closes[moved] *= 2.0
-            return closes
-
+    provider, symbols = unexplained_move()
     root = tmp_path / "delegated"
     live = LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT)
-    live.data_provider = UnexplainedMove(symbols, sessions)
+    live.data_provider = provider
     live.data_source_loader = _source_loader_for(symbols)
     with live:
         registry, app = live.session.task_control_registry, live.operations.preparation
@@ -1232,6 +1212,65 @@ def test_listing_delivery_stays_cheap_under_persistent_refusal(
         assert app.readback()["listing_activity"]["counts"]["failed"] == 4
 
 
+def test_admitted_recorded_sources_offer_only_the_confirm_under_the_offline_switch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: network show and the plan told a lead to restart
+    despite admitted recorded sources. State reads retain the switch, and the real plan's
+    offered confirmation admits a queued Task without a network request or numerical run."""
+    from alphalattice.interface.local_application.cli_contract import offered_requests
+    from tests.workspace_maintenance.local_data_provider import recording_provider
+
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
+    publish_research_workspace_manifest(
+        tmp_path, ResearchWorkspaceManifest.research_only("recorded-sources")
+    )
+    start = LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT)
+    start.data_provider = recording_provider()
+    start.data_source_loader = _source_loader_for(("AAA", "BBB"))
+    with start as live:
+        reads = [
+            _json(live, "/api/workspace/network"),
+            _json(
+                live,
+                "/api/workspace/network",
+                method="POST",
+                payload={"network_enabled": True},
+            ),
+        ]
+        for state in reads:
+            assert state["network_allowed"] is False, state
+            assert state["decided_by"] == "OPERATOR_OFFLINE_SWITCH", state
+            assert state["detail"] == (
+                "ALPHALATTICE_NETWORK_DISABLED=1 keeps this process offline. "
+                "Network-dependent steps refuse; steps with already admitted recorded or "
+                "captured sources may proceed. Follow the plan's next action; workspace "
+                "settings cannot lift the switch."
+            )
+            assert state["next_action"] == "FOLLOW_THE_PLAN_NEXT_ACTION", state
+            assert state["next_requests"] == {}, state
+        plan = _json(live, "/api/workspace/preparation/plan", method="POST", payload={})
+        offered = offered_requests(plan)["confirm"]
+        assert offered["operation"] == "WORKSPACE_PREPARE_CONFIRM", offered
+        admitted = live.operations.preparation.confirm(
+            offered["preparation_plan_hash"], caller="HUMAN"
+        )
+        task = live.session.task_control_registry.task(admitted.task_id)
+        assert task.lifecycle is TaskLifecycle.QUEUED
+        assert not (tmp_path / "market-data.duckdb").exists()
+    assert plan["confirmation_available"] is True, plan
+    assert plan["next_action"] == "WORKSPACE_PREPARE_CONFIRM", plan
+    assert {q["operation"] for q in offered_requests(plan).values()} == {
+        "WORKSPACE_PREPARE_CONFIRM"
+    }
+    assert plan["source_access"] == {
+        "status": "ADMITTED",
+        "authorization_required": False,
+        "verified_source_checkpoint_retained": False,
+        "network_requests": "UNKNOWN_UNTIL_EXECUTION",
+    }
+
+
 def test_missing_source_authority_refuses_before_task_or_market_database(tmp_path: Path):
     publish_research_workspace_manifest(
         tmp_path, ResearchWorkspaceManifest.research_only("offline")
@@ -1241,6 +1280,9 @@ def test_missing_source_authority_refuses_before_task_or_market_database(tmp_pat
         plan = app.plan()
         assert plan["confirmation_available"] is False
         assert plan["source_access_failure"] == "workspace_preparation.source_access_not_admitted"
+        # Only a refusal carries the network's own way on, with the workspace to restart.
+        assert plan["source_access"]["network_access"]["network_allowed"] is False
+        assert plan["source_access"]["workspace_path"] == str(tmp_path)
         assert "existing_inputs" not in app.last_plan.model_dump(mode="json")
         with pytest.raises(ValueError, match="source_access_not_admitted"):
             app.confirm(plan["plan_hash"], caller="HUMAN")
@@ -1341,7 +1383,7 @@ def test_empty_start_and_actor_boundary_without_strategy_or_data_authority(tmp_p
     with LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT) as live:
         projection = _json(live, "/api/session")
         assert projection["strategy"] is None and projection["installed_strategies"] == []
-        assert live.application is None and live.service is None
+        assert not live.operations.installed()
         assert live.review is not None and not live.review.has_evidence_authority
         readback = _json(live, "/api/workspace/preparation")
         assert readback["status"] == "INITIALIZATION_REQUIRED"
@@ -1933,3 +1975,83 @@ def test_a_deferred_preparation_confirmed_again_goes_to_its_owner(tmp_path, monk
     assert answer is not None and answer["status"] == "REFUSED_INVALID_COMMAND", answer
     assert answer["failure_code"] == "workspace_preparation.retry_not_due"
     assert "`retry_after_at`" in str(answer["detail"])
+
+
+def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_short(
+    tmp_path, monkeypatch
+) -> None:
+    """Requirement: a heavy plan's estimate drives the early memory refusal.
+
+    The real preparation plan answer carries its resource estimate; its confirm is refused
+    before any Task when available memory is below the estimated peak, admitted when it fits,
+    and an admitted Task's next stage blocks when memory falls again.
+    """
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from alphalattice.control.product_host.composition import resource_estimates
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
+    from tests.workspace_maintenance.local_data_provider import recording_provider
+
+    publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("memory"))
+    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        app = WorkspacePreparationApplication(
+            session,
+            clock=lambda: OBSERVED_AT,
+            provider=recording_provider(),
+            source_loader=_source_loader_for(("AAA", "BBB")),
+        )
+        reached: list[str] = []
+
+        class Owners(PortfolioResearchOperations):
+            """The operations entry over a real plan answer and an admission that records."""
+
+            def _execute(self, request, *, caller, agent_execution):
+                reached.append(request.operation)
+                if request.operation == "WORKSPACE_PREPARE_PLAN":
+                    return app.plan()
+                return {"status": "ADMITTED", "task_id": str(uuid4())}
+
+        operations = Owners.__new__(Owners)
+        operations.workspace_session = session  # type: ignore[assignment]
+        plan = operations._execute_within_memory(
+            PortfolioResearchOperationRequest(operation="WORKSPACE_PREPARE_PLAN"),
+            caller="EXTERNAL_AUTOMATION",
+            agent_execution=None,
+        )
+        estimate = plan["resource_estimate"]
+        assert estimate["label"] == "ESTIMATE" and estimate["peak_memory_bytes"] > 0
+        assert estimate["wall_seconds"] > 0 and estimate["cpu_cores"] >= 1
+        confirm = PortfolioResearchOperationRequest(
+            operation="WORKSPACE_PREPARE_CONFIRM", preparation_plan_hash=plan["plan_hash"]
+        )
+
+        peak = estimate["peak_memory_bytes"]
+        monkeypatch.setattr(resource_estimates, "available_work_memory_bytes", lambda: peak - 1)
+        refused = operations._execute_within_memory(
+            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None
+        )
+        assert refused["status"] == "REFUSED"
+        assert refused["failure_code"] == resource_estimates.MEMORY_INSUFFICIENT
+        assert refused["next_action"] == "ASK_THE_PERSON_TO_FREE_MEMORY_THEN_RUN_AGAIN"
+        assert refused["next_requests"]["again"] == {
+            "operation": "WORKSPACE_PREPARE_CONFIRM",
+            "preparation_plan_hash": plan["plan_hash"],
+        }
+        assert reached == ["WORKSPACE_PREPARE_PLAN"]  # no admission was attempted
+
+        monkeypatch.setattr(resource_estimates, "available_work_memory_bytes", lambda: peak)
+        admitted = operations._execute_within_memory(
+            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None
+        )
+        assert admitted["status"] == "ADMITTED" and reached[-1] == "WORKSPACE_PREPARE_CONFIRM"
+
+        gate = resource_estimates.gate_for(tmp_path)
+        task = SimpleNamespace(task_id=__import__("uuid").UUID(admitted["task_id"]))
+        assert gate.stage_refusal(task) is None
+        monkeypatch.setattr(resource_estimates, "available_work_memory_bytes", lambda: peak - 1)
+        assert gate.stage_refusal(task) == resource_estimates.MEMORY_INSUFFICIENT
+        monkeypatch.setattr(resource_estimates, "available_work_memory_bytes", lambda: None)
+        assert gate.stage_refusal(task) is None  # an unknown amount skips the check

@@ -225,7 +225,7 @@ class WorkspaceMaintenanceRequest:
         )
 
     def with_changes(self, **changes: Any) -> WorkspaceMaintenanceRequest:
-        """This request with the named fields changed, sealed again (V466).
+        """This request with the named fields changed, sealed again.
 
         Its other fields are passed as the values they are: the candidate scopes stay the
         scopes the seal reads, which a rebuild through `asdict` turned into plain dicts.
@@ -358,7 +358,7 @@ class ActionAuditChainReceipt:
     """One listing's corporate-action audit, chained to the audit before it.
 
     It checks its hash whenever it is built or read, as the remediation failure receipt does
-    (SC4, EV2, V258): a receipt changed in place (its coverage moved, its old hash kept) is
+    (SC4, EV2): a receipt changed in place (its coverage moved, its old hash kept) is
     refused before any reuse by its date. The hash is the one ``create`` always sealed.
     """
 
@@ -712,7 +712,7 @@ class WorkspaceMaintenanceOutcome:
         child_task_refs: Recorded child task references.
         retry_after_at: Optional next retry clock.
         failure_code: Optional stable failure cause.
-        failure_cause: What the failed step saw beside that code, when it said (V444): its
+        failure_cause: The failed step's recorded cause: its
             `exception_type`, `detail`, `step`, `unit`, `first_session` and `last_session`.
     """
 

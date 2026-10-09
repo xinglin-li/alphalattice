@@ -28,6 +28,7 @@ from alphalattice.capabilities.portfolio_backtesting.contracts import PortfolioW
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
+from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import TaskControlRunner
@@ -903,6 +904,7 @@ class PortfolioFinalizationApplication:
             adapters={adapter.task_kind: adapter},
             runtime_path=str(self.session.runtime_path),
             clock=self.clock,
+            stage_scope=storage_capacity_scope,
         )
         try:
             record = self.session.task_control_registry.task(task_id)

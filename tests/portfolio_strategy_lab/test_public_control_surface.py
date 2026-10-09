@@ -150,7 +150,7 @@ def test_the_refusal_catalog_names_evidence_and_never_overlaps_the_admitted_set(
     assert len(CATALOG.refusals) == 23
     assert not REFUSED_CONTROL_IDS & {value.control_id for value in CATALOG.controls}
     for refusal in CATALOG.refusals:
-        # Why, in the product's words, and what the product serves or a law; never a plan (V287).
+        # Why, in the product's words, and what the product serves or a law; never a plan.
         assert refusal.reason and "implemented-plans" not in refusal.evidence_reference
         assert not refusal.evidence_reference.endswith(".md")
         assert refusal.refusal_code.endswith("_REFUSED")

@@ -101,10 +101,10 @@ def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path):
         manifest = read_research_workspace_manifest(tmp_path)
         bundle = read_factor_bundle(tmp_path, manifest.experiment_inputs[0].binding_hash)
         assert bundle.panel_snapshot_hash == str(snapshot["snapshot_hash"])
-        # One Panel is composed for U0: the first pass stops on the recoverable sector
+        # One Panel is composed for the counterexample: the first pass
+        # stops on the recoverable sector
         # exclusion over the parent, the baseline qualification applies from the rows it
         # left, and one pass completes over the membership every qualification derived and
-        # publishes the one Panel. Since W10 (V102) the build is its maintenance cycle's
         # step, so the passes are the cycle's records.
         connection = market.database.connect(read_only=True)
         try:

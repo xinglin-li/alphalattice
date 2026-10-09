@@ -614,8 +614,8 @@ class SecFilingSelectionPlan(AlternativeEvidenceContract):
     def nothing_filed(self) -> bool:
         """Nothing accepted in the window: the issuer's own plan selected and deferred no filing.
 
-        The quiet holding V541 names NOTHING_FILED, which never counts against a coverage
-        floor (V587). A plan scoped to named accessions reads those, not the window, so it
+        The quiet holding names NOTHING_FILED, which never counts against a coverage
+        floor. A plan scoped to named accessions reads those, not the window, so it
         never says so.
         """
         return not self.accession_scope and not self.selected and not self.deferred

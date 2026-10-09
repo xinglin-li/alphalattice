@@ -9,8 +9,8 @@ the workspace's typed configuration (`runtime/execution/cpu-budget.json`), by th
 in use when a preparation starts, never fewer than one session's safe threads
 (`safe_intra_op_threads`). A preparation splits its cores between units at once and each
 session's threads: the book's first unit runs alone on up to `MAXIMUM_SESSION_THREADS`
-(S2 measured 1.6-1.8x at 8-16), then the later units share the cores at the safe width each
-(S1). What each preparation used, and why, is appended to
+(S2 measured 1.6-1.8x at 8-16), then the later units share the cores at each safe width.
+What each preparation used, and why, is appended to
 `runtime/execution/preparations.jsonl`: a receipt, never identity. An Alpha study fits
 one model at a time on the budget's cores, behind LightGBM's sealed canary
 (`alpha_modeling.runtime.lightgbm_threads`); what its fits used is appended to
@@ -161,8 +161,8 @@ class ModelFitExecution(_Record):
     planned_at: datetime
     numerical_threads: tuple[tuple[str, int], ...] = ()
     """Each numerical library's thread count (BLAS, OpenMP) as the child inherits it: the fold
-    metrics' sums split by it, so a result claims no equality with a run under another (PA3,
-    V68). Empty on records written before it was kept."""
+    metrics' sums split by it, so a result claims no equality with a run under another (PA3).
+    Empty on records written before it was kept."""
 
 
 _Logged = TypeVar("_Logged", PreparationExecution, ModelFitExecution, TaskReaderExecution)
@@ -184,7 +184,7 @@ def machine_load(*, preparations_running: int = 0) -> MachineLoad:
     capacity = runtime_machine_capacity()
     return MachineLoad(
         processors=len(capacity.allowed_logical_processor_ids),
-        # The work on this process's own processors, not the machine's (V357).
+        # The work on this process's own processors, not the machine's.
         busy_processors=busy_logical_processors(
             processor_ids=capacity.allowed_logical_processor_ids
         ),

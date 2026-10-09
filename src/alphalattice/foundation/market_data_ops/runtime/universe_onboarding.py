@@ -60,6 +60,27 @@ class CurrentUniverseOnboardingStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class DataTargetSessionLag(ValueError):
+    """The admitted baseline's minimum population has not reached its target."""
+
+    failure_code = "data.target_session_not_covered"
+
+    def __init__(
+        self, *, target: date, reaching: int, total: int, minimum: int, latest: date
+    ) -> None:
+        """Record observed session coverage against the admitted baseline minimum."""
+        detail = (
+            f"At {target}, {reaching} of {total} listings have a market bar; "
+            f"the baseline needs at least {minimum}. Latest common bar: {latest}."
+        )
+        self.cause = {
+            "exception_type": type(self).__name__,
+            "detail": detail,
+            "step": "prepare_data",
+        }
+        super().__init__(self.failure_code)
+
+
 @dataclass(frozen=True)
 class CurrentUniverseOnboardingOutcome:
     """Progress counts, deferred retry, and admitted research manifest."""
@@ -402,6 +423,7 @@ class CurrentUniverseOnboarding:
         *,
         observed_at: datetime | None = None,
         work_budget: int | None = None,
+        minimum_target_listings: int | None = None,
     ) -> CurrentUniverseOnboardingOutcome:
         """Advance at most ``work_budget`` complete listing units, then return safely."""
         now = observed_at or datetime.now(UTC)
@@ -411,6 +433,8 @@ class CurrentUniverseOnboarding:
             raise ValueError("onboarding as_of session cannot be in the future")
         if work_budget is not None and work_budget < 1:
             raise ValueError("onboarding work_budget must be positive")
+        if minimum_target_listings is not None and minimum_target_listings < 1:
+            raise ValueError("onboarding minimum_target_listings must be positive")
         with self._retained():
             opened = self._open_run(now, work_budget=work_budget)
         if not isinstance(opened, tuple):
@@ -436,7 +460,7 @@ class CurrentUniverseOnboarding:
                         deferred=deferred,
                     )
         with self._retained():
-            return self._close_run(now)
+            return self._close_run(now, minimum_target_listings=minimum_target_listings)
 
     @contextmanager
     def _retained(self) -> Iterator[None]:
@@ -517,7 +541,9 @@ class CurrentUniverseOnboarding:
             candidates = candidates[:work_budget]
         return candidates, effective_workers
 
-    def _close_run(self, now: datetime) -> CurrentUniverseOnboardingOutcome:
+    def _close_run(
+        self, now: datetime, *, minimum_target_listings: int | None = None
+    ) -> CurrentUniverseOnboardingOutcome:
         """Report progress, or complete the onboarding once no unit is left."""
         listings = self.store.current_universe_onboarding_listings(self.onboarding_id)
         if any(item.state in {"PENDING", "RAW_READY", "QUALITY_ELIGIBLE"} for item in listings):
@@ -529,6 +555,37 @@ class CurrentUniverseOnboarding:
         eligible_listing_ids = tuple(
             item.listing_id for item in listings if item.state == "FEATURE_READY"
         )
+        if eligible_listing_ids and minimum_target_listings is not None:
+            ranges = self.store.listing_raw_ranges(eligible_listing_ids, through=self.as_of_session)
+            reaching = {
+                listing_id
+                for listing_id, (_, latest) in ranges.items()
+                if latest == self.as_of_session
+            }
+            if len(reaching) < minimum_target_listings and len(reaching) < len(
+                eligible_listing_ids
+            ):
+                # Keep verified target units. Lagging units re-enter this same
+                # onboarding's provider path on resume, before any manifest is published.
+                for item in listings:
+                    if item.state == "FEATURE_READY" and item.listing_id not in reaching:
+                        self._mark_listing(
+                            item,
+                            state="PENDING",
+                            observed_at=now,
+                            origin=None,
+                            raw_through=ranges[item.listing_id][1],
+                        )
+                self.store.set_current_universe_onboarding_lifecycle(
+                    self.onboarding_id, lifecycle="DEFERRED", observed_at=now
+                )
+                raise DataTargetSessionLag(
+                    target=self.as_of_session,
+                    reaching=len(reaching),
+                    total=len(eligible_listing_ids),
+                    minimum=minimum_target_listings,
+                    latest=min(latest for _, latest in ranges.values()),
+                )
         if not eligible_listing_ids:
             if self.requested_listing_ids:
                 self.store.set_current_universe_onboarding_lifecycle(

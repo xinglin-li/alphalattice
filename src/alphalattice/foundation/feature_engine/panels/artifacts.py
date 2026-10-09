@@ -107,7 +107,7 @@ class PanelPartitionOriginRecord:
     manifest_revision: str | None = None
     sector_revision: str | None = None
     # The catalog the build computed under, when it is not the composition's: cells of a
-    # catalog that the composition's only adds columns to, carried with their batches (V92).
+    # catalog that the composition's only adds columns to, carried with their batches.
     catalog_hash: str | None = None
 
     def to_payload(self) -> dict[str, object]:
@@ -124,7 +124,7 @@ class PanelPartitionOriginRecord:
 
 @dataclass(frozen=True)
 class PanelColumnExtension:
-    """The catalog a composition's catalog only adds columns to (V92).
+    """The catalog a composition's catalog only adds columns to.
 
     A base Panel built under it holds every column but the added ones, each
     value the one the composition's catalog computes: its partitions are
@@ -175,7 +175,7 @@ class _YearAxis:
 
     A row's key is its session's place in the year times the listing axis's length plus its
     listing's place on that axis, so the year's keys ascend and a table's rows are located by
-    one vector search rather than a lookup per row (V92).
+    one vector search rather than a lookup per row.
     """
 
     sessions: pa.Array
@@ -622,7 +622,7 @@ class PanelCompositionSession:
                 )
             elif binding_hash in base_origins:
                 recorded = base_origins[binding_hash]
-                # An origin the base recorded without a catalog shares the base's (V92).
+                # An origin the base recorded without a catalog shares the base's.
                 catalog = cast(str | None, recorded.get("catalog_hash")) or base_catalog
                 origins[binding_hash] = PanelPartitionOriginRecord(
                     spy_revision=cast(str | None, recorded["spy_revision"]),
@@ -701,7 +701,7 @@ class PanelCompositionSession:
         whose cross-sections it recorded as the ones this build computes.
         A base built under the catalog this composition's only adds columns
         to serves the same way, as the base of every year's merge
-        (``base_extended``, V92).
+        (``base_extended``).
         """
         if self.base_manifest is None:
             return False
@@ -715,7 +715,7 @@ class PanelCompositionSession:
 
     @property
     def base_extended(self) -> bool:
-        """Whether the base serves only through the composition's column extension (V92).
+        """Whether the base serves only through the composition's column extension.
 
         Its partitions then lack the added columns: no year is reused whole,
         and each is merged with the added columns' values.
@@ -974,7 +974,6 @@ class PanelCompositionSession:
             if base_axis != tuple(sessions)[: len(base_axis)]:
                 raise ValueError(f"Panel composition base chunk for {year} is not a prefix")
             # A base under the catalog this one only adds columns to holds every
-            # column but the added ones, which every row takes from a patch (V92).
             missing = set(columns) - set(base_table.column_names)
             if not missing <= added:
                 raise ValueError(f"Panel composition base chunk for {year} lacks its columns")
@@ -1218,7 +1217,7 @@ def prepared_chunk(item: Mapping[str, object], *, default_origin: str) -> Prepar
 def _cross_sections(
     membership: PanelMembership, sessions: Sequence[date], history: SectorHistory
 ) -> tuple[PanelCrossSectionRange, ...]:
-    """Each session's cross-section under the Sector map in force at it (V346), as ranges.
+    """Each session's cross-section under the Sector map in force at it, as ranges.
 
     A run of sessions that reads one map is identified as before; ranges that meet across a
     run's edge with one identity are one range, as one map would have made them.
@@ -1363,7 +1362,7 @@ def manifest_partition_origins(manifest: Mapping[str, object]) -> dict[str, dict
                 ),
                 "sector_revision": str(entry.get("sector_revision") or lineage["sector_revision"]),
             }
-            # Cells a catalog this one only adds columns to computed (V92); an
+            # Cells a catalog this one only adds columns to computed; an
             # origin recorded without one shares the manifest's catalog.
             if entry.get("catalog_hash") is not None:
                 origins[str(binding_hash)]["catalog_hash"] = str(entry["catalog_hash"])

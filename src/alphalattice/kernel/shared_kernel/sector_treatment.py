@@ -1,4 +1,4 @@
-"""What a study's sessions read of the Sector classification, as its records state it (V346).
+"""What a study's sessions read of the Sector classification, as its records state it.
 
 Under the forward rule (`market_data_ops/sources/sector_forward.py`) a listing reads the
 classification first recorded for it until its first reclassification, then each later one from

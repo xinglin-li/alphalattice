@@ -236,6 +236,7 @@ from alphalattice.investment.alpha_research.experiments.lifecycle_authoring impo
 from alphalattice.investment.alpha_research.experiments.mandate import AlphaResearchModelRecipe
 from alphalattice.investment.alpha_research.experiments.verification import AlphaEvidenceVerifier
 from alphalattice.investment.alpha_research.scores.product_lifecycle import (
+    ModelLifecycle,
     lifecycle_implementation_hash,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.availability import (
@@ -1103,6 +1104,7 @@ class ResearchExperimentApplication:
         kind: str = FACTOR_EXPERIMENT_KIND,
         component_id: str | None = None,
         feature_preparation_hash: str | None = None,
+        model_lifecycle: ModelLifecycle | None = None,
     ) -> dict[str, object]:
         """Project controls from one exact admitted input and installed experiment kind.
 
@@ -1112,6 +1114,7 @@ class ResearchExperimentApplication:
             kind: Installed experiment kind.
             component_id: Optional declared model component.
             feature_preparation_hash: Optional exact prepared factor features.
+            model_lifecycle: Optional lifecycle of an Alpha study's prepared source.
 
         Returns:
             Input-selection refusal or installed controls/template and declared research limits.
@@ -1164,7 +1167,9 @@ class ResearchExperimentApplication:
         # What the flow needs on this input, what the workspace holds of it, what next (V367).
         needed = {"prerequisites": self._prerequisites(FLOW_OF_KIND[kind], binding)}
         if kind == ALPHA_EXPERIMENT_KIND:
-            answer = lifecycle_controls(self.session.workspace, binding, component_id)
+            answer = lifecycle_controls(
+                self.session.workspace, binding, component_id, model_lifecycle
+            )
             if (
                 answer["status"] == "MODEL_TRAINING_SOURCE_SELECTION_REQUIRED"
                 and not answer["sources"]
@@ -2758,25 +2763,37 @@ class ResearchExperimentApplication:
         elif plan.portfolio_source is not None:
             alpha_task_id = UUID(plan.portfolio_source.alpha_task_id)
             alpha = self.promote(alpha_task_id, caller=caller, agent_execution=agent_execution)
+            if alpha["status"] not in {
+                "ALREADY_PROMOTION",
+                "REUSED_EXACT",
+                "ADMITTED",
+                "REUSED_IN_FLIGHT",
+            }:
+                return {
+                    **alpha,
+                    "task_id": alpha.get("task_id"),
+                    "alpha_promotion": alpha,
+                    "promoted_from_task_id": str(task_id),
+                }
             promoted_alpha = (
                 alpha_task_id
                 if alpha["status"] == "ALREADY_PROMOTION"
                 else UUID(str(alpha.get("task_id") or alpha.get("publication_task_id")))
             )
-            if alpha["status"] not in {"ALREADY_PROMOTION", "REUSED_EXACT"}:
+            if alpha["status"] in {"ADMITTED", "REUSED_IN_FLIGHT"}:
                 return {
                     "status": "UPSTREAM_PROMOTION_ADMITTED",
-                    "task_id": str(task_id),
-                    # The Task this answer started, which a wait follows (V137).
+                    "task_id": str(promoted_alpha),
+                    # The admitted or joined upstream Task a wait follows (V137).
                     "follow_task_id": str(promoted_alpha),
                     "alpha_promotion": alpha,
                     "detail": (
-                        "The Alpha study this Portfolio study builds on is running on the whole "
-                        "universe first. Ask again once it has succeeded; the Portfolio study "
-                        "then runs on it."
+                        "The Alpha study this Portfolio study builds on has been admitted for "
+                        "promotion on the whole universe. Read its current Task, then ask again "
+                        "once it has succeeded; the Portfolio study then runs on it."
                     ),
                     "next_requests": {
-                        # The Task this answer started, which a saved answer's wait follows
+                        # The upstream Task a saved answer's wait follows
                         # as `--wait` does (V137, V446).
                         "task": {"operation": "STATUS", "task_id": str(promoted_alpha)},
                         "alpha": {
@@ -2785,6 +2802,7 @@ class ResearchExperimentApplication:
                         },
                         "promote": {"operation": "EXPERIMENT_PROMOTE", "task_id": str(task_id)},
                     },
+                    "promoted_from_task_id": str(task_id),
                     "numerical_call_count": alpha.get("numerical_call_count", 0),
                 }
             document, binding = self.portfolio_document(promoted_alpha, plan.document["portfolio"])
@@ -2986,8 +3004,9 @@ class ResearchExperimentApplication:
                 else {"recovery": {"operation": "TASK_RECOVERY", "task_id": str(task.task_id)}}
             )
             answer["detail"] = reason or (
-                "This declaration is the BLOCKED Task above; its refusal is not a repaired "
-                "artifact, so it is not retried. A changed declaration is a new PLAN."
+                "This declaration names the stopped Task above. Read its recorded cause and "
+                "the exact recovery offer for what can continue. A changed declaration is a "
+                "new plan."
             )
         return answer
 
@@ -4162,6 +4181,7 @@ class ResearchExperimentApplication:
                 request.experiment_kind or FACTOR_EXPERIMENT_KIND,
                 request.component_id,
                 request.feature_preparation_hash,
+                request.model_lifecycle,
             )
         if op == "EXPERIMENT_DRAFT":
             assert request.task_id is not None

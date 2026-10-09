@@ -657,7 +657,7 @@ class PanelResearchMethodologyRequest(_Contract):
             raise AuthoringError("alpha_research.panel_methodology_upstream_alpha_handle_invalid")
         if self.upstream_score_filter_handle is not None and not stage_uses_portfolio:
             raise AuthoringError("alpha_research.panel_methodology_upstream_filter_handle_invalid")
-        # The Portfolio lab runs these grids; one definition both read (OW10, V150).
+        # The Portfolio lab runs these grids; one definition both read (OW10).
         stage = PairedPanelPortfolioGrid(
             **{name: getattr(self, name) for name in PAIRED_PANEL_GRID_FIELDS}
         )

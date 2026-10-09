@@ -438,7 +438,7 @@ def test_mutable_companyfacts_requires_prior_as_of_snapshot() -> None:
 
 
 def test_the_writer_passes_only_from_its_holder_and_a_routing_commits_its_own() -> None:
-    """requirement (S1, first-day speed): one stage at a time holds the runtime's
+    """requirement (first-day speed): one stage at a time holds the runtime's
     writer -- held again by its holder it is a no-op, given up only by its
     holder, taken back after -- and units routed at once each commit their own
     staged comparisons, under the writer."""
@@ -562,7 +562,7 @@ def test_the_cpu_budget_splits_between_units_at_once_and_threads(tmp_path: Path)
 
 
 def test_auto_reads_the_load_on_the_processors_it_may_use(monkeypatch: pytest.MonkeyPatch) -> None:
-    """regression (V357): a process confined to some processors of a busy machine counts the
+    """Regression: a process confined to some processors of a busy machine counts the
     busy work on those alone, so `auto` gives it the idle ones there, not one core."""
 
     from alphalattice.control.observation_runtime.telemetry import process_metrics
@@ -678,7 +678,7 @@ def test_a_preparation_counts_its_stages_for_the_book_and_the_publisher() -> Non
 
 
 def test_the_writer_lets_a_returning_step_through_first_and_the_heaviest_unit_next() -> None:
-    """requirement (S1): who takes the writer is decided, not raced -- a thread
+    """Requirement: who takes the writer is decided, not raced -- a thread
     coming back to its stage goes before a stage that has not begun, the unit
     that runs first in the book before a later one, and a long stage's safe
     point lets the returning step through and goes on before any new stage."""

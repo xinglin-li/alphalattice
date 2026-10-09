@@ -1,4 +1,4 @@
-"""Bind a family of development studies to the installed Alpha qualification (GR3, V77).
+"""Bind a family of development studies to the installed Alpha qualification (GR3).
 
 The family is the Host's: every Alpha development study on the question admitted from the
 goal's opening on, read from Task Control whether a goal's session ran it or not. The document
@@ -83,7 +83,7 @@ def qualification_workflow(
     """The workflow, the sealed submission and the preview of one qualification.
 
     A family holding an agent's model a person activated is qualified with the rest: its current
-    refit seals the state its adapter projects (V342).
+    refit seals the state its adapter projects.
     """
     catalog = build_installed_alpha_model_catalog(activated_models(workspace))
     method = AlphaFamilyQualification(

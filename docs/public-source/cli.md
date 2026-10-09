@@ -1,40 +1,54 @@
 # Use the CLI
-Date: 2026-10-03
+Date: 2026-10-08
 
-Define the checkout launcher and bind its workspace as described in [Getting started](getting-started.md). The grammar is `alphalattice <noun> <verb>`; global options such as `--workspace`, `--view`, `--goal` and `--lang` can appear before the noun or after the action. `serve` starts the Host and `request` submits a complete request. Most operations need that workspace's Host. Once bound, use the short form:
+Use `alphalattice <noun> <verb>`. Global `--workspace`, `--view`,
+`--goal` and `--lang` options work before the noun or after the action. Most
+operations need the workspace's Host; an agent session binds itself by working
+on that workspace. [Getting started](getting-started.md) covers installation;
+the [agent guide](../../AGENTS.md) owns procedures and person decisions.
 
 ```powershell
 alphalattice workspace show
-alphalattice study controls --input '<input-id>' --output controls.json --save-declaration study.yaml
-alphalattice study plan --from controls.json --file study.yaml --output plan.json
 ```
 
-Start with `workspace show` and its `intents`: each input's flows name `needs`, `present` results and `missing` prerequisites. Follow `next_commands`; fill the `choose` fields in `next_templates`. Use help or a schema only for fields the returned choices do not resolve. `operation list` names installed operations and person-only actions. Help grants no permission. An open, unexpired `FIRST_USE` goal delegates only the three first-preparation steps; activation and other person-only decisions remain with the person. `--lang zh` changes available detail wording, with English fallback; codes, field names and authority are unchanged.
+`workspace show` offers `intents`. Each answer's top-level `next_action` and
+`next_requests` decide the continuation; a nested hint describes only its part.
+Returned commands are complete requests; templates still need their `choose`
+fields. Help and `operation list` describe installed operations and grant no
+permission. `--lang zh` changes detail wording with English fallback; codes,
+fields and authority stay unchanged.
 
-Declarations are requests to installed owners, not executable Python or a way around refusal. `@path` reads a field from a file; text fields read text and structured fields read YAML or JSON. `@@` starts a literal `@`. Boolean flags accept `true` or `false`; repeated YAML keys and invalid Boolean values are refused. Inspect the returned plan before requesting its exact run. Use unused output paths: an existing path is refused. HTML output is a report, not a continuation file.
+## Answers and refusals
 
-For `feature_research.input_binding_unresolved`, `fields` names the binding field and `expected.input_binding_hash` lists held workspace bindings; follow the offered controls request for the input you mean. When `EXPERIMENT_PLAN` separates Desk declarations, `declaration_sections` names them.
-
-## Answer and refusal
-
-The stable envelope has `operation`, `outcome`, `status`, `data`, optional `failure_code`, `detail`, `next_requests`, `next_commands`, `next_templates`, `timing.elapsed_seconds`, `session_launches` and `context`. `data` is the owner answer or the selected display projection. Read a refusal's exact code, explanation and `next_action` or offered requests; keep the returned references and do not edit the store or replace refused hashes. `next_templates.choose` lists the required choices still missing.
+The envelope carries `operation`, `outcome`, `status`, `data`, `failure_code`,
+`detail`, `next_requests`, `next_commands`, `next_templates`, timing and context.
+When observed, `session_launches` counts this session's CLI launches, including
+help and schema reads. `data` contains the owner answer or its display projection.
+A refusal names the code, explanation and permitted continuation. Keep its
+references and follow that continuation.
 
 | Outcome | Exit | Meaning |
 | --- | ---: | --- |
-| `OK` | 0 | Read the returned status and result |
-| `INVALID_INPUT` | 1 | Correct the named request or declaration |
-| `REFUSED` | 2 | Read the allowed continuation or person decision |
-| `PENDING` | 3 | Follow admitted work or its decision |
-| `NO_HOST` | 4 | Start or reconnect to the workspace Host |
+| `OK` | 0 | Read the returned status and result. |
+| `INVALID_INPUT` | 1 | Correct the named request or declaration. |
+| `REFUSED` | 2 | Read the allowed continuation or person decision. |
+| `PENDING` | 3 | Follow admitted work or its decision. |
+| `NO_HOST` | 4 | Follow the named connection route; start a Host only if absent. |
 
-`--wait` follows the named Task state even when it appears as `lifecycle` or `task_lifecycle` beside another status. Pending work exits `PENDING`; blocked/cancelled work exits `REFUSED`; a completed non-refused answer exits `OK`. Waiting ends when work ends, needs a decision, is deferred, reports an incident or reaches `--max-wait`. The cap leaves work running. Follow a deferred Task's offered `resume` after its named `retry_after_at`. With `--wait --output`, admission is saved before following and the file is replaced by the final answer; save failure does not undo admission. After disconnect or timeout, reopen the Task before deciding whether to submit another request.
+Declarations request installed owners. `@path` reads text, YAML or JSON according
+to the field's type; `@@` starts a literal `@`. Boolean values are `true` or
+`false`; repeated YAML keys and invalid Boolean values are refused. Existing
+output paths are refused. HTML is a report, not a continuation file.
 
-## Saved answers and display
+## Saved answers and live continuations
 
-### Read a saved answer locally
+`--output` saves the full owner answer as JSON or YAML in either view. Its fields
+are at the file's root: read `position`, not `data.position`.
+`--save-declaration` writes an editable declaration. Compact view names omitted
+paths in `omitted_sections`; `--section <dotted-path>` selects one for display,
+while `--output` still saves the full answer. `--view full` displays everything.
 
-`answer show` reads a full JSON or YAML owner answer saved by `--output`, without
-a workspace, agent session or Host:
+Read a saved full answer locally, without a workspace, session or Host:
 
 ```powershell
 alphalattice answer show --file answer.json --list-sections
@@ -42,34 +56,50 @@ alphalattice answer show --file answer.json --section position
 alphalattice answer show --file answer.yaml --section result.items.3:6
 ```
 
-This is a historical snapshot, marked `HISTORICAL_SAVED_ANSWER_NOT_REVERIFIED`
-with its source file. The command performs no fresh verification or live request.
-It prints the selected part whole in either view, including exact references and
-declared metric units; other fields remain in the unchanged file and can be read
-by their own paths. With neither section option it prints the whole original
-answer under `answer`, retaining its verification times, limits and context.
-The local read exits `OK` even if that saved answer recorded a refusal or pending
-work. Saved `next_requests` remain data and are never executed.
+The snapshot is marked `HISTORICAL_SAVED_ANSWER_NOT_REVERIFIED` with its source
+file. It performs no fresh verification and never executes saved requests.
+Without a section option it returns the original under `answer`; either view
+prints the selected reading whole with references and declared units. A valid
+local read exits `OK`, including when the saved answer records refused or
+pending work.
 
-`--output reading.json` saves the full snapshot reading, including the original
-answer, in JSON or with `--format yaml`, without overwriting a file. Printed CLI
-envelopes, compact displays and HTML reports are not full owner answer inputs.
-Input must be the JSON-compatible tree the full exporter writes, without YAML
-aliases, cycles or non-finite numbers. The saved-file limit is 4 MiB.
-Invalid inputs and unknown paths return
-`INVALID_INPUT`; path refusals name the available sections. Use `--from` below
-when you intend a live continuation instead.
+Its `--output` saves the full snapshot reading; `--format yaml` selects YAML.
+Input is the exporter's JSON-compatible tree, up to 4 MiB. Printed envelopes,
+compact displays, HTML, YAML aliases, cycles and non-finite numbers are invalid.
+Unknown section paths return `INVALID_INPUT` and available sections.
 
-### Save and continue a live answer
+For live continuation, `--from answer.json` repeats a saved read with its whole
+selection, including a day or page. An explicit non-target selection flag wins;
+a different Task or goal is refused. For a next operation, it takes the offered
+request, draft's plan or named Task. Explicit values fill open choices while
+bound fields stay fixed. `--list-next` lists actions; `--choices choices.yaml`
+supplies missing values. Partly filled objects remain templates.
 
-`--output` saves the full owner answer as JSON or YAML in either view. In a saved answer the owner's fields are at the root, not under the printed envelope's `data` (for example, read `position`, not `data.position`). `--save-declaration` saves an editable declaration. `--view full` displays all content; compact view names omitted paths in `omitted_sections`, which can be read with `--section <dotted-path>`. A selected section affects display only; `--output` still saves the full answer. A cut compact answer cannot stand in for its full saved request.
+Compact view shortens issued references to twelve characters, resolved by the
+workspace; ambiguity or an unknown reference is refused with candidates.
+Authored identifiers, paths and commands stay whole. `--view full`, `--output`
+and `--from` retain whole references. Run returned PowerShell commands as printed,
+including quoting and the call operator; requests with double quotes use JSON
+through stdin to `request --file -`.
 
-For a repeated read, `--from answer.json` carries the whole saved selection, including input revision, session or page. An explicit non-target selection flag wins; a flag naming a different Task or goal is refused. For a next operation, `--from` selects the offered request, a draft's plan or a Task reference. Explicit values fill open choices; fields bound by the offer cannot be replaced. `--list-next` shows multiple actions for explicit selection; `--choices choices.yaml` supplies the selected action's missing values. A partly filled object remains a template until its inner required `choose` fields are set. A study plan can read controls and keep their input; a study draft can take an explicit declaration.
+## Waits, document limits and units
 
-Compact view shortens issued references and answer identifiers to twelve characters, including list items; authored request identifiers stay whole. The CLI resolves a shortened issued reference against this workspace's returned references. Ambiguity is `local_client.short_reference_ambiguous`; an unknown short reference is `local_client.short_reference_unknown`. The refusal names the field, value and candidates. `--view full`, `--output` or `--from` keeps/carries whole references. Paths, links, commands and other text are never shortened.
+`--wait` follows the named Task until completion, decision, deferral, incident or
+`--max-wait`, which leaves work running. Pending work exits `PENDING`;
+blocked or cancelled work exits `REFUSED`; completed non-refused work exits `OK`.
+A deferred Task offers its retry time and resume. After disconnect or timeout,
+read the existing Task before resubmitting.
 
-Complete PowerShell commands returned by the product preserve quoting, caller view, language and goal; run them as printed, including the call operator. A complete request with double quotes is sent as JSON through stdin to `request --file -`. Templates still need their named choices.
+On Codex, `strategy-book review` and `review continue` accept
+`--notify codex-queue` to return at the first running Task while the Host keeps
+its notification; a notice names the continuation when the Task ends, needs a
+decision or is deferred, and delivery failures appear in Task activity.
 
-A missing or unreadable document is refused with `document_location`; request documents are limited to 128 KiB, while `--from` reads saved answers up to 4 MiB. `local_client.document_too_large` reports `document_size.bytes` and the applicable `document_size.limit_bytes` (stdin byte size is null). Correct the named document before resubmitting.
+With `--wait --output`, admission is saved first and replaced by the final
+answer; save failure does not undo admission. Request documents are limited to
+128 KiB; `--from` reads up to 4 MiB. Document refusals name `document_location`
+and applicable size limits.
 
-Portfolio position metrics carry units only when `metric_units` names that exact path; units come from `POSITION_UNITS`. Read rates, fractions, sessions and dollar quantities with their unit. Unknown sections list available paths. For experiment claim marks and installed strategy continuations, see [Research flows](research-flows.md). The optional launch count is described in [Privacy](privacy.md).
+Read Portfolio metrics with the unit declared for their `metric_units`
+path. Unknown sections list available paths. [Research flows](research-flows.md)
+explains result claims, and [Privacy](privacy.md) explains observed usage.

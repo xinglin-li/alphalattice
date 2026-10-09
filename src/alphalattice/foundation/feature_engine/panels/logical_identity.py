@@ -473,7 +473,7 @@ class PanelLogicalIdentityPublisher:
                 "temporal_identity_hash": str(manifest["temporal_identity_hash"]),
                 # The closure ledger's head is decided by how many listings each transition
                 # writes, an execution parameter, so it stays out of the Panel's identity; the
-                # ledger keeps it by snapshot (V330). A binding published before keeps its own.
+                # ledger keeps it by snapshot. A legacy binding keeps its own.
                 "closure_head_hash": None,
                 "recovery_recipe_hash": recipe.recipe_hash if recipe is not None else None,
                 "recovery_disposition": (
@@ -711,7 +711,7 @@ def logical_session_digest(
     digest.update(struct.pack(">I", len(listing_ids)))
     # Each row's hash is the same bytes in the same order as one update per field: its
     # session's prefix hashed once and copied, and its validity and bits sliced from the
-    # session's matrices, row by row as they lie (V92).
+    # session's matrices, row by row as they lie.
     prefix = hashlib.sha256(b"FeaturePanelLogicalRow\0" + session_text)
     valid_cells = np.ascontiguousarray(valid)
     bits_cells = np.ascontiguousarray(bits)

@@ -73,7 +73,7 @@ def rank_bucket_observations(
 ) -> FloatArray:
     """The shared per-formation arithmetic; the recipe supplies the tie order.
 
-    C6 uses listing identifiers. The frozen complete-observation policy uses
+     uses listing identifiers. The frozen complete-observation policy uses
     positions on its declared axis. Those orders must not be conflated merely
     because the installed historical axis happens to be lexicographically sorted.
     """
@@ -135,7 +135,7 @@ def complete_matured_rank_curve(
 
     Holding ends come from the execution owner on the complete exchange axis.
     Unknown maturities never qualify. This is the frozen Gate-Q window, distinct
-    from C6's last-matured-formations/partial-bucket-support rule below.
+    from last-matured-formations/partial-bucket-support rule below.
     """
     if (
         observations.ndim != 2
@@ -168,7 +168,7 @@ def complete_matured_rank_curve(
 
 
 class WholeBookHysteresisCausalRankMuRecipe(BaseModel):  # type: ignore[misc]
-    """The one fixed C6 recipe supplied by the immutable baseline package."""
+    """The one fixed recipe supplied by the immutable baseline package."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -370,7 +370,7 @@ def build_causal_rank_return_curve(
     bucket_count: int = _BUCKETS,
     lookback: int = _LOOKBACK,
 ) -> CausalRankReturnCurve:
-    """Build C6's holding-end-ready, per-session-average rank-return curve.
+    """Build holding-end-ready, per-session-average rank-return curve.
 
     This owner deliberately accepts outcomes only by the installed execution
     schedule: an earlier positional index is not evidence that its holding-end
@@ -509,7 +509,7 @@ def whole_book_diagonal_rank_mu_target(
     kappa: float,
     maximum_weight: float,
 ) -> DiagonalRankMuAllocation:
-    """Apply C6's diagonal mean-variance tilt to one complete selected book."""
+    """Apply diagonal mean-variance tilt to one complete selected book."""
     if (
         covariance.ndim != 2
         or covariance.shape != (reference_weights.size, reference_weights.size)
@@ -592,7 +592,7 @@ def whole_book_diagonal_rank_mu_target(
 
 
 class WholeBookHysteresisCausalRankMuAdapter:
-    """Direct C6 allocation: causal rank-return input plus Risk diagonal only."""
+    """Direct allocation: causal rank-return input plus Risk diagonal only."""
 
     policy_id = CAUSAL_RANK_MU_POLICY_ID
     solver_backed = False

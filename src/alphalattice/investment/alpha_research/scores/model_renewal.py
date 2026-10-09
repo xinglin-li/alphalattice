@@ -901,6 +901,8 @@ def fit_alpha_refit_child(
             selection_metric_id="fixed_iteration",
             maximum_iterations=500,
             early_stopping_rounds=50,
+            # The child's evidence stores no training error: none is measured.
+            training_error=None,
         )
         budget.charge()
         with span("fit", "lifecycle_child"):

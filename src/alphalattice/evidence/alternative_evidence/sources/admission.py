@@ -240,7 +240,7 @@ def admit_official_source(
             **declared,
         )
     values = dict(os.environ if environment is None else environment)
-    # The workspace's typed network control decides, the operator's offline switch first (V53).
+    # The workspace's typed network control decides, the operator's offline switch first.
     access = network_access(workspace_root, values)
     if not access.allowed:
         return OfficialSourceAdmission(

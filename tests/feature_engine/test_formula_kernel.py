@@ -1,6 +1,6 @@
 """The factor formula kernel: the user's scale-invariant rule, the kernel against the independent
-reference, a formula factor kept, specified and computed by the research path (EX, V88; the
-user, 2026-09-30), and the point-in-time leaves (V345, V348)."""
+reference, a formula factor kept, specified and computed by the research path,
+and the point-in-time leaves."""
 
 from __future__ import annotations
 
@@ -185,7 +185,7 @@ def test_the_kernel_computes_what_the_independent_reference_states(skip: int) ->
                     {
                         leaf: prefix[field].to_numpy(dtype=float).tolist()
                         for leaf, field in FORMULA_LEAVES.items()
-                        if field in prefix  # the price leaves; the Sector leaf's own test is V359's
+                        if field in prefix
                     },
                     skip=skip,
                 )
@@ -363,7 +363,7 @@ def test_a_formula_factor_names_its_preprocessing_recipe_and_no_other_factor_doe
 
 
 def test_the_sector_leaf_is_a_field_only_a_formula_reading_it_names() -> None:
-    """requirement (V359): `sector_return` reads `sector_return_log`; a formula that reads no
+    """Requirement: `sector_return` reads `sector_return_log`; a formula that reads no
     Sector leaf is kept under the price kernel with the fields every formula had, one that reads
     it under the Sector kernel, whose fields add it; its goldens hold against the reference, and
     the registry refuses a field its kernel does not offer and a Sector formula under the price
@@ -467,14 +467,14 @@ def _as_of_download(bars: list[RawDailyBar], ratios: list[tuple[date, float]]) -
 
 @pytest.mark.parametrize("skip", [0, 2])
 def test_a_point_in_time_leaf_reads_each_session_as_it_stood_and_admits_a_level(skip: int) -> None:
-    """requirement (V345, V348): a point-in-time leaf reads each session's values as they traded,
+    """Requirement: a point-in-time leaf reads each session's values as they traded,
     re-based to the session a value is for: a price by every recorded ratio between, a share volume
     by the share splits alone, a fractional ratio being a spin-off's price adjustment. So a level
     form is admitted, a later split re-basing the stored bars moves no value, a split-basis leaf at
     a level stays refused, and the formula is kept under the point-in-time kernel, whose goldens
     hold against the reference."""
 
-    for ratio in (1.589, 1.281, 1.253, 1.128, 1.196):  # RTX, GE twice, DHR, MMM (V348)
+    for ratio in (1.589, 1.281, 1.253, 1.128, 1.196):  # RTX, GE twice, DHR, MMM
         assert not is_share_split(ratio), ratio
     for ratio in (2.0, 3.0, 4.0, 10.0, 20.0, 50.0, 1.5, 1.05, 0.125, 0.333333, 0.05):
         assert is_share_split(ratio), ratio
@@ -540,7 +540,7 @@ def test_a_point_in_time_leaf_reads_each_session_as_it_stood_and_admits_a_level(
 def test_every_source_field_carries_its_point_in_time_mark_and_a_rescaled_leaf_has_no_level() -> (
     None
 ):
-    """requirement (V345): the availability catalog marks every field it maps; a formula leaf is
+    """Requirement: the availability catalog marks every field it maps; a formula leaf is
     read at a level exactly where no later event rescales its field, and a catalog recorded before
     the marks validates as it was recorded."""
 
@@ -562,11 +562,11 @@ def test_every_source_field_carries_its_point_in_time_mark_and_a_rescaled_leaf_h
 
 
 def test_the_daily_build_carries_the_as_traded_fields_its_catalog_reads() -> None:
-    """requirement (V395): a catalog holding an activated point-in-time formula has a listing's
+    """Requirement: a catalog holding an activated point-in-time formula has a listing's
     frame carry the as-traded fields, and the daily materializer hands them to the formula's
     kernel, which computes there what it computes alone; a catalog that reads none asks for
     none and computes what it did; a point-in-time formula is admitted to the active Panel, a
-    Sector one stays a research factor (V359)."""
+    Sector one stays a research factor."""
 
     from alphalattice.foundation.feature_engine.producers.base_materializer import (
         BaseFeatureMaterializer,
@@ -637,7 +637,7 @@ def test_the_daily_build_carries_the_as_traded_fields_its_catalog_reads() -> Non
 
 
 def test_a_one_session_formula_reviews_its_empty_boundary_golden() -> None:
-    """regression (V449, AX15's finding): a formula needing one session has a boundary golden one
+    """Regression: a formula needing one session has a boundary golden one
     row short, which is no row at all; the review computed it and raised IndexError, so a
     completed trial's factor could not be reviewed. Its result is the missing value it expects."""
 
@@ -702,7 +702,7 @@ _SMALLEST = {
 
 
 def test_every_operators_smallest_formula_runs_its_goldens() -> None:
-    """regression (V449, AX15's finding, enumerated): a review computes a formula's goldens,
+    """Regression: a review computes a formula's goldens,
     and a one-session formula's boundary golden has no row; tests held only a 20-session
     formula. Every operator the language declares, in its smallest legal formula, plans, states
     its specification and computes every golden within tolerance, the boundary ones included."""

@@ -53,7 +53,7 @@ SECTIONS = (
 
 
 ONE_UNIT = "u01"
-"""The book's only unit: every book is prepared as a coverage run (C2)."""
+"""The book's only unit: every book is prepared as a coverage run."""
 
 
 def _operation(service: _Service, document: dict[str, Any]) -> dict[str, Any]:

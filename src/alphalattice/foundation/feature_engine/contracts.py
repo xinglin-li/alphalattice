@@ -1074,7 +1074,7 @@ class PanelTemporalRisk:
 
         Args:
             sector_observed_at: When the current classification was observed.
-            sector_history_treatment: What its sessions read (`sector_treatment`, V346);
+            sector_history_treatment: What its sessions read (`sector_treatment`);
                 the backfill when omitted.
 
         Returns:

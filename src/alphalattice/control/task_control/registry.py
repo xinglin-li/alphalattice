@@ -74,6 +74,17 @@ _NORMAL_ENDS = frozenset(
 """The events that end a stage's attempt normally: ready, verified, or blocked and deferred
 alike (`block_work_item`), so a deferral ends a run of interrupted attempts (V475)."""
 
+_WAKE_STATES = {
+    "task.wake_registered": "PENDING",
+    "task.wake_attempted": "ATTEMPTED",
+    "task.wake_delivered": "DELIVERED",
+    "task.wake_undelivered": "UNDELIVERED",
+}
+"""A Codex wake's journal events and the state each leaves it in (WAKE). They sit beside the
+Task's record and change none of it."""
+WAKE_UNCERTAIN = "CODEX_WAKE_DELIVERY_UNCERTAIN"
+"""The failure of a send the Host began and did not finish: it may or may not have arrived."""
+
 _ACTIVE_TASKS = frozenset(
     {
         TaskLifecycle.RUNNING,
@@ -1831,6 +1842,161 @@ class DuckDbTaskControlRegistry:
         return self._answered(
             ("task", task_id), lambda: self._read(lambda c: self._task_row(c, task_id))
         )
+
+    @staticmethod
+    def _wakes_from(connection, task_id: UUID | None = None) -> tuple[dict[str, Any], ...]:  # type: ignore[no-untyped-def]
+        """Fold each Codex wake's journal events into its current receipt (WAKE)."""
+        rows = connection.execute(
+            "SELECT task_id, kind, details_json, recorded_at FROM workspace_task_event "
+            f"WHERE kind IN ({', '.join('?' * len(_WAKE_STATES))})"
+            + (" AND task_id = ?" if task_id is not None else "")
+            + " ORDER BY task_id, sequence",
+            [*_WAKE_STATES, *([str(task_id)] if task_id is not None else [])],
+        ).fetchall()
+        wakes: dict[str, dict[str, Any]] = {}
+        for stored_task, kind, details_json, recorded_at in rows:
+            details = json.loads(details_json)
+            held = wakes.get(details["registration_id"])
+            if held is None and kind == "task.wake_registered":
+                held = wakes[details["registration_id"]] = {"task_id": stored_task}
+            if held is None or held["task_id"] != stored_task:
+                raise TaskControlDatabaseAuthorityError("task_control.wake_registration_invalid")
+            held.update(
+                details,
+                state=_WAKE_STATES[kind],
+                recorded_at=recorded_at.replace(tzinfo=UTC).isoformat(),
+            )
+        return tuple(wakes.values())
+
+    def register_wake(
+        self, task_id: UUID, thread_id: str, read_command: str, *, observed_at: datetime
+    ) -> dict[str, Any]:
+        """Hold one Codex wake in the Task's journal, beside its sealed record (WAKE).
+
+        The thread's pending wake is the one held, its read replaced when it changed; a settled
+        wake whose Task has not moved since is answered again, so one state is sent once.
+
+        Raises:
+            TaskNotFoundError: No such Task.
+        """
+        self._db_time(observed_at)
+
+        def operation(connection):  # type: ignore[no-untyped-def]
+            task = self._task_row(connection, task_id)
+            registration_id = str(uuid4())
+            held = [w for w in self._wakes_from(connection, task_id) if w["thread_id"] == thread_id]
+            if held:
+                last = held[-1]
+                if last["state"] == "PENDING" and last["read_command"] != read_command:
+                    registration_id = last["registration_id"]
+                elif last["state"] == "PENDING" or last["lifecycle"] == task.lifecycle.value:
+                    return last
+            self._event(
+                connection,
+                task_id=task_id,
+                execution_id=None,
+                kind="task.wake_registered",
+                details={
+                    "registration_id": registration_id,
+                    "thread_id": thread_id,
+                    "read_command": read_command,
+                    "lifecycle": task.lifecycle.value,
+                },
+                observed_at=observed_at,
+            )
+            return next(
+                w
+                for w in self._wakes_from(connection, task_id)
+                if w["registration_id"] == registration_id
+            )
+
+        return self._write(operation, control_only=True)
+
+    def wake_registrations(self, task_id: UUID | None = None) -> tuple[dict[str, Any], ...]:
+        """Every Codex wake's current receipt, or one Task's."""
+        return self._read(lambda connection: self._wakes_from(connection, task_id))
+
+    def claim_wake(
+        self,
+        registration_id: str,
+        task_id: UUID,
+        *,
+        event: str,
+        lifecycle: str,
+        observed_at: datetime,
+    ) -> dict[str, Any] | None:
+        """Commit one send attempt before the queue call, while the Task is still in `lifecycle`.
+
+        A wake is attempted once: a send the Host does not finish reads as uncertain at its next
+        start (`interrupt_wakes`), never as pending again.
+        """
+        self._db_time(observed_at)
+
+        def operation(connection):  # type: ignore[no-untyped-def]
+            held = next(
+                (
+                    w
+                    for w in self._wakes_from(connection, task_id)
+                    if w["registration_id"] == registration_id
+                ),
+                None,
+            )
+            if (
+                held is None
+                or held["state"] != "PENDING"
+                or self._task_row(connection, task_id).lifecycle.value != lifecycle
+            ):
+                return None
+            attempt = {"registration_id": registration_id, "event": event, "lifecycle": lifecycle}
+            self._event(
+                connection,
+                task_id=task_id,
+                execution_id=None,
+                kind="task.wake_attempted",
+                details=attempt,
+                observed_at=observed_at,
+            )
+            return {**held, **attempt, "state": "ATTEMPTED"}
+
+        return self._write(operation, control_only=True)
+
+    def finish_wake(
+        self, registration_id: str, task_id: UUID, result: dict[str, Any], *, observed_at: datetime
+    ) -> None:
+        """Record an attempted wake's one outcome: delivered, or its named failure."""
+        self._db_time(observed_at)
+
+        def operation(connection):  # type: ignore[no-untyped-def]
+            held = next(
+                (
+                    w
+                    for w in self._wakes_from(connection, task_id)
+                    if w["registration_id"] == registration_id
+                ),
+                None,
+            )
+            if held is None or held["state"] != "ATTEMPTED":
+                return
+            self._event(
+                connection,
+                task_id=task_id,
+                execution_id=None,
+                kind="task.wake_delivered" if result["delivered"] else "task.wake_undelivered",
+                details={"registration_id": registration_id, "result": result},
+                observed_at=observed_at,
+            )
+
+        self._write(operation, control_only=True)
+
+    def interrupt_wakes(self, *, observed_at: datetime) -> tuple[dict[str, Any], ...]:
+        """Close each send a stopped Host left attempted as uncertain, without sending again."""
+        result = {"channel": "codex-queue", "delivered": False, "failure": WAKE_UNCERTAIN}
+        interrupted = [w for w in self.wake_registrations() if w["state"] == "ATTEMPTED"]
+        for held in interrupted:
+            self.finish_wake(
+                held["registration_id"], UUID(held["task_id"]), result, observed_at=observed_at
+            )
+        return tuple({**held, "state": "UNDELIVERED", "result": result} for held in interrupted)
 
     @staticmethod
     def _recovery_links_from(

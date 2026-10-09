@@ -322,7 +322,7 @@ class AlphaDevelopmentPreparation:
     development_program: AlphaDevelopmentProgram
     batch: AlphaExperimentBatch
     admitted_mandate: AlphaModelCapabilityAuthority
-    """The mandate narrowed to the model this run admits, which the Program seals (V118)."""
+    """The mandate narrowed to the model this run admits, which the Program seals."""
     maturity_lag_sessions: int
     fit_protocol: str
     numerical_policy: dict[str, Any]
@@ -436,7 +436,7 @@ class AlphaExperimentExecutor:
         self._feature_panel_manifest_ref = feature_panel_manifest_ref
         self._causal_outcome_manifest_ref = causal_outcome_manifest_ref
         self._ordered_listing_ids = ordered_listing_ids
-        # A history is immutable and read per session (V346); a plain map is copied.
+        # A history is immutable and read per session; a plain map is copied.
         self._sector_by_listing_id: Mapping[str, str] = (
             sector_by_listing_id
             if isinstance(sector_by_listing_id, SectorHistory)
@@ -604,7 +604,7 @@ class AlphaExperimentExecutor:
             target_recipe_binding_hash=recipe_binding.binding_hash,
             outcome_method_binding_hash=outcome_seal.method_bound.binding_hash,
         )
-        # The Program seals the model it runs, never the other installed ones (V118).
+        # The Program seals the model it runs, never the other installed ones.
         admitted_mandate = self._model_mandate.admitting(admitted_recipe.search_domain_hash)
         development_program = build_alpha_development_program(
             fold_plan=fold_plan,

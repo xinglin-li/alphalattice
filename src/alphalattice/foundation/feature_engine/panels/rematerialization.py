@@ -514,8 +514,8 @@ class ArtifactOnlyPanelRematerializer:
         and every availability row carries that binding. A snapshot that
         reuses partitions holds batches of several builds, so the binding is
         read from the group's own rows and rebuilt from the recipe's recorded
-        origins, under the catalog the origin records when it is another
-        (V92); a group whose rows disagree, or whose binding no origin
+        origins, under the catalog the origin records when it is another;
+        a group whose rows disagree, or whose binding no origin
         explains, cannot be replayed.
         """
         binding_hashes = {str(item["panel_binding_hash"]) for item in receipt_rows}
@@ -652,7 +652,7 @@ class ArtifactOnlyPanelRematerializer:
         receipt_sessions = tuple(
             sorted({date.fromisoformat(str(item["session_date"])) for item in receipt_rows})
         )
-        # A build materializes one run of one Sector map at a time (V346), so each receipt's
+        # A build materializes one run of one Sector map at a time, so each receipt's
         # sessions read one map; a receipt across a reclassification is not one this build made.
         runs = sector_history.runs(receipt_sessions)
         if len(runs) != 1:
@@ -1040,7 +1040,7 @@ def _file_sha256(path: Path) -> str:
 def recipe_sector_history(
     recipe: PanelDerivationRecipe, sector_map: SectorRevisionMap
 ) -> SectorHistory:
-    """The Sector each session of a recipe read (V346): its map, then its reclassifications.
+    """The Sector each session of a recipe read: its map, then its reclassifications.
 
     Args:
         recipe: The Panel's derivation recipe; its reclassifications are its record.

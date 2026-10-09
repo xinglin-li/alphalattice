@@ -4,7 +4,7 @@ An adapter's implementation identity covers the code that decides its weights, s
 rewrite under a stable id moves its binding; the capability here is one the installed
 catalog does not carry, so what is proven is extension rather than configuration. A
 declared axis admits values exactly as given. (The lab's Optuna search and its walk-forward
-driver retired with the lab, RT R08.)
+driver retired with the lab, R08.)
 """
 
 from __future__ import annotations
@@ -198,19 +198,7 @@ def test_an_adapter_rewritten_under_a_stable_id_moves_its_binding() -> None:
 
 
 def test_the_equal_weight_adapter_binds_the_module_that_picks_its_holdings() -> None:
-    """requirement: an adapter's closure must cover what actually decides.
-
-    ``TopKEqualWeightAdapter`` runs no solver, and its binding once hashed only its own
-    module on the strength of that. But ``stable_top_k`` lives in the optimizer
-    module and chooses which names are held, so rewriting it changes the holdings
-    and the weights while the adapter's identity stood still -- the same
-    "same id, changed code" defect the binding exists to catch, one import away.
-
-    On the rule (LAWS.md ID3) the adapter's own module walks the optimizer module it
-    imports, so the closure covers ``stable_top_k`` whether or not the optimizer is
-    listed. The listed pair differed from the adapter alone only while the switch
-    table kept the pair's byte value, which ended when the closure moved (RT R19).
-    """
+    """An adapter's implementation closure includes the imported owner that selects its holdings."""
 
     from alphalattice.investment.portfolio_strategy_lab.policies import top_k_equal_weight
     from alphalattice.investment.portfolio_strategy_lab.policies.top_k_equal_weight import (

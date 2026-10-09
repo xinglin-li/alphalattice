@@ -131,7 +131,7 @@ def test_review_export_keeps_partial_coverage_unadjudicated_findings_and_exact_c
 
 
 def test_a_qualification_study_reports_its_conclusion_not_a_development_result():
-    """regression (V494, the fork's U0 baseline): a family qualification's export answered
+    """regression (the fork's baseline): a family qualification's export answered
     `research_experiment.refused:KeyError:<n>`, since every Alpha study went to the development
     section, which reads a result a qualification does not hold; it reports its own conclusion."""
     body = {

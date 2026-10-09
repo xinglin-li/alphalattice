@@ -1,4 +1,4 @@
-"""The Sector each session reads, as data a consumer applies (V346).
+"""The Sector each session reads, as data a consumer applies.
 
 A workspace's Sector classification is the provider's current one, observed at each refresh;
 under the forward rule (`market_data_ops/sources/sector_forward.py` says from which session a

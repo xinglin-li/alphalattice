@@ -64,7 +64,7 @@ _TASK_STEPS: tuple[Step, ...] = ("FEATURE_BUILD", "FACTOR_STUDY", "ALPHA_STUDY",
 _ALPHA_METRICS = ("mean_rank_ic", "pooled_oos_r2", "mean_gross_decile_spread", "fold_coverage_mean")
 _TERMINAL = {TaskLifecycle.SUCCEEDED, TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED}
 _WAY_ON = 5
-"""The most studies a refused baseline's way on offers of each kind, newest first (V354)."""
+"""The most studies a refused baseline's way on offers of each kind, newest first."""
 
 
 class FeatureTrialError(ValueError):
@@ -126,7 +126,7 @@ def trial_id_for(feature_plan_hash: str, baseline_task_id: UUID) -> str:
 
 
 def trial_requests(trial: FeatureTrial) -> dict[str, dict[str, str]]:
-    """The trial's own read, and on completion each factor's review, filled (V391).
+    """The trial's own read, and on completion each factor's review, filled.
 
     The trial id, plan hash and factor id travel by `--from`, so an agent never copies them.
 
@@ -155,7 +155,7 @@ def waiting_step(steps: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None
     """The trial's step whose Task waits on a request (its recovery, a review), if one does.
 
     A Task in such a state waits on the trial's caller, never on time (`ACTION_STATES`), so the
-    trial names it and a wait on the trial ends there (V449: every state has its exit).
+    trial names it and a wait on the trial ends there (every state has its exit).
 
     Args:
         steps: The trial's steps as its readback lists them.
@@ -207,7 +207,7 @@ class FeatureTrials:
         try:
             return cast(FeatureTrial, FeatureTrial.model_validate_json(path.read_bytes()))
         except ValueError as error:
-            # A record changed or cut short in place is named, never read as a trial (V272).
+            # A record changed or cut short in place is named, never read as a trial.
             raise FeatureTrialError("feature_trial.record_damaged") from error
 
     def _existing(self, trial_id: str) -> FeatureTrial | None:
@@ -228,7 +228,7 @@ class FeatureTrials:
         path = self._path(trial.trial_id)
         staged = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.partial")
         staged.write_text(trial.model_dump_json(indent=1), encoding="utf-8")
-        replace_shared_file(staged, path)  # concurrent reads of the trial hold it (V477)
+        replace_shared_file(staged, path)  # concurrent reads of the trial hold it
 
     def records(self) -> tuple[FeatureTrial, ...]:
         """Every trial on the ledger that reads, oldest name first."""
@@ -327,7 +327,7 @@ class FeatureTrials:
                 for trial in trials
             ],
             # A record that no longer reads is named, never skipped. Its own route reads the
-            # kept trials, and Storage lets the reader inspect the retained record (V272).
+            # kept trials, and Storage lets the reader inspect the retained record.
             "damaged": [
                 {
                     "status": "REFUSED",
@@ -345,7 +345,7 @@ class FeatureTrials:
         """The trial as it stands; a completed trial's comparison. Changes nothing.
 
         Inside `trial_reads_once`, a completed trial, which nothing changes, is read once per
-        request and its later reads answer from it (V461).
+        request and its later reads answer from it.
         """
         reads = _TRIAL_READS.get()
         if reads is not None and trial_id in reads:
@@ -381,7 +381,7 @@ class FeatureTrials:
             "steps": steps,
             "stopped": trial.stopped,
             "outcome": trial.outcome,
-            # What the trial's input can claim about time, from its Panel (V347).
+            # What the trial's input can claim about time, from its Panel.
             "temporal_scope": binding_temporal_scope(
                 self.workspace,
                 self.feature_builds.definitions()
@@ -395,7 +395,7 @@ class FeatureTrials:
         body["next_requests"] = trial_requests(trial)
         # A step whose Task waits on a request (its recovery, a review) is the trial's to
         # answer: the trial names that Task and its lifecycle and offers its recovery, so a
-        # wait on the trial ends there (V449: every state has its exit).
+        # wait on the trial ends there (every state has its exit).
         waiting = waiting_step(steps)
         if trial.state == "RUNNING" and waiting is not None:
             body.update(lifecycle=waiting["state"], task_id=waiting["task_id"])
@@ -410,7 +410,7 @@ class FeatureTrials:
                 "The trial runs its chain one step after another; each step reuses what did not "
                 "change. Read it again to follow it."
             )
-        # What the trial can claim, one standing from its marks (V368).
+        # What the trial can claim, one standing from its marks.
         body["standing"] = trial_standing(
             state=trial.state,
             outcome=trial.outcome,
@@ -420,7 +420,7 @@ class FeatureTrials:
         return body
 
     def way_on(self, feature_plan_hash: str) -> dict[str, Any] | None:
-        """What a trial of this plan can run against, for a refused baseline (V354).
+        """What a trial of this plan can run against, for a refused baseline.
 
         The completed Alpha studies handed off from a Factor study on the feature's input, and
         the Portfolio studies built on one; when there is none, the completed Factor studies on
@@ -667,9 +667,9 @@ class FeatureTrials:
                 binding.input_id,
                 {
                     "experiment": {
-                        # The installed envelope schema, as every declaration names it (V128);
+                        # The installed envelope schema, as every declaration names it
                         # without it the Alpha step was refused whenever screening admitted the
-                        # feature (V351).
+                        # feature.
                         "schema_id": ENVELOPE_SCHEMA_ID,
                         "kind": "alpha.model-development",
                         "universe_handle": alpha_plan.document["experiment"]["universe_handle"],
@@ -814,7 +814,7 @@ class FeatureTrials:
             }
         owner = alpha["owner_comparison"]
         if owner.get("status") == "REFUSED":
-            # Not compared (V363): each study's saved metrics stand on what it scored, and
+            # Not compared: each study's saved metrics stand on what it scored, and
             # their difference is no increment the feature made; the owner says why.
             alpha["standing"] = "NOT_COMPARED"
             owner.update(explain(str(owner.get("failure_code") or "")))
@@ -846,7 +846,7 @@ _TRIAL_READS: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar(
 
 @contextmanager
 def trial_reads_once() -> Iterator[None]:
-    """One request reads each completed trial once (V461).
+    """One request reads each completed trial once.
 
     A goal's submission and its read resolve the trial a reference names and the review packet
     another names, and the packet reads the same trial again, its comparison included. Inside

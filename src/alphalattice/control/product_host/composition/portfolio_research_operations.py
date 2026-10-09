@@ -106,8 +106,13 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceError,
     ResearchWorkspaceManifest,
     ResearchWorkspaceManifestHolder,
+    admit_research_workspace,
     read_research_workspace_manifest,
     update_research_workspace_manifest,
+)
+from alphalattice.control.product_host.composition.resource_estimates import (
+    MEMORY_INSUFFICIENT,
+    gate_for,
 )
 from alphalattice.control.product_host.composition.strategy_activation import (
     StrategyActivation,
@@ -317,6 +322,9 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     PortfolioUpdatePublication,
     portfolio_update_positions,
 )
+from alphalattice.investment.portfolio_strategy_lab.application.resolution import (
+    StrategyPortfolioResolver,
+)
 from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
     FrozenStrategyPackage,
 )
@@ -461,7 +469,7 @@ RUN_FORWARD_WORDS: Final = (
 """The first use's shortest way, ahead of the inputs' Lab flows (FLOW-3)."""
 INSTALLED_BOOK_WORDS: Final = (
     "The installed strategy runs its whole-support historical book from its controls; review "
-    "that book, then a person activates it."
+    "that book, then read its exact activation offer."
 )
 
 
@@ -619,7 +627,7 @@ class PortfolioResearchOperations:
         self.scoring = StrategyScoringApplication(
             session=self.workspace_session,
             manifest=self.manifests,
-            packages=self._packages,
+            packages=lambda: self._packages,
             clock=self.dispatcher.clock,
         )
         self.calibration = StrategyCalibrationApplication(
@@ -703,6 +711,18 @@ class PortfolioResearchOperations:
             "saved_studies": studies,
             "next_requests": {"status": {"operation": "STATUS", "task_id": str(sent.task_id)}},
         }
+
+    def _data_decisions(self, caller: str) -> str | None:
+        """The first-use delegation the reader's goal gives it over its preparation's data issues.
+
+        A read is attributed to no goal, so the goal is the one the request names or its
+        session holds, as the confirm it leads to will be attributed.
+        """
+        try:
+            goal = self.goals.attributed_goal(REQUEST_PROVENANCE.get())
+        except ValueError:
+            goal = None
+        return self.goals.data_decisions(goal, caller)
 
     def _task_facts(self, task_id: UUID) -> tuple[str, str, datetime | None] | None:
         """A Task's kind, lifecycle and canonical update clock; nothing when absent."""
@@ -1049,7 +1069,7 @@ class PortfolioResearchOperations:
                     trial_reads_once(),
                 ):
                     body = typed_failures(
-                        self._execute(
+                        self._execute_within_memory(
                             execution_request, caller=caller, agent_execution=agent_execution
                         )
                     )
@@ -1135,6 +1155,34 @@ class PortfolioResearchOperations:
             self.observer_failures += 1
             self.last_observer_failure = type(error).__name__
             return None
+
+    def _execute_within_memory(
+        self,
+        request: PortfolioResearchOperationRequest,
+        *,
+        caller: OperationCaller,
+        agent_execution: AgentExecutionBinding | None,
+    ) -> dict[str, object]:
+        """A heavy plan's answer with its resource estimate; a heavy run refused before
+        admission when its estimated peak exceeds the machine's available memory."""
+
+        gate = gate_for(self.workspace_session.workspace)
+        plan_hash = (
+            request.experiment_plan_hash
+            or request.update_plan_hash
+            or request.preparation_plan_hash
+        )
+        refusal = gate.run_refusal(
+            request.operation, plan_hash, self.workspace_session.task_control_registry
+        )
+        if refusal is not None:
+            return refusal
+        body = self._execute(request, caller=caller, agent_execution=agent_execution)
+        gate.plan_answered(request.operation, body)
+        task_id = body.get("task_id")
+        if isinstance(task_id, str):
+            gate.task_admitted(request.operation, plan_hash, task_id)
+        return body
 
     def _execute(
         self,
@@ -1401,7 +1449,7 @@ class PortfolioResearchOperations:
             return refused(code, book=None if selector is None else selector.request_fields())
         if review_result is not None:
             return review_result
-        if self.application is None:
+        if not self.installed():
             return refused("research_workspace.strategy_not_installed")
         assert self.service is not None and self.review is not None
         assert self.scoring is not None and self.calibration is not None
@@ -2403,6 +2451,46 @@ class PortfolioResearchOperations:
         if self.automation is not None:
             self.automation.manifest_hash = current.manifest_hash
 
+    def installed(self) -> bool:
+        """Read whether a strategy is installed, from the packages this Host holds.
+
+        Returns:
+            Whether any package is installed; every "nothing installed" answer reads this.
+        """
+        return bool(self._packages)
+
+    def _install(self, task_id: UUID) -> dict[str, object]:
+        """Install a prepared research strategy and load it into this running Host.
+
+        The resolver takes the installed catalog and the package mapping is swapped once, so the
+        package's PLAN and RUN are served at once: no restart, no person. A book, score,
+        calibration or update Task in progress reads the installed packages, so installing
+        waits for it, refused by name.
+        """
+        running = next(
+            (
+                task
+                for task in self.workspace_session.task_control_registry.tasks()
+                if task.task_kind in _PORTFOLIO_TASK_KINDS and task.lifecycle in _LIVE_LIFECYCLES
+            ),
+            None,
+        )
+        if running is not None:
+            return refused(
+                f"research_strategy.installation_waits_for_portfolio_tasks:{running.task_id}",
+                task_id=str(running.task_id),
+            )
+        answer = self.research_strategies.install(task_id)
+        resolver = None if self.application is None else self.application.resolver
+        if isinstance(resolver, StrategyPortfolioResolver):
+            admitted = admit_research_workspace(self.workspace_session.workspace)
+            resolver.catalog = admitted.catalog
+            self._packages = {
+                package.strategy_id: package for package in resolver.installed_packages().values()
+            }
+            self._hold_activation(admitted.manifest)
+        return answer
+
     def _hold_activation(self, current: ResearchWorkspaceManifest) -> None:
         """Hold the manifest a person's activation or deactivation published (LS1).
 
@@ -2627,7 +2715,7 @@ class PortfolioResearchOperations:
                         )
                     assert request.task_id is not None
                     if request.operation == "RESEARCH_STRATEGY_INSTALL":
-                        return self.research_strategies.install(request.task_id)
+                        return self._install(request.task_id)
                     return self.research_strategies.readback(request.task_id)
                 except ValidationError as error:
                     return {
@@ -2668,7 +2756,14 @@ class PortfolioResearchOperations:
             case "MODEL_TRAINING_INPUT_PLAN":
                 assert request.research_input_id is not None and request.component_id is not None
                 return self.model_training_inputs.plan(
-                    request.research_input_id, request.input_binding_hash, request.component_id
+                    request.research_input_id,
+                    request.input_binding_hash,
+                    request.component_id,
+                    **(
+                        {"model_lifecycle": request.model_lifecycle}
+                        if request.model_lifecycle
+                        else {}
+                    ),
                 )
             case "MODEL_TRAINING_INPUT_PREPARE":
                 assert request.experiment_plan_hash is not None
@@ -2692,7 +2787,9 @@ class PortfolioResearchOperations:
                 return cast(
                     dict[str, object],
                     self.data_issues.readback(
-                        limit=request.history_limit or 25, cursor=request.history_cursor
+                        limit=request.history_limit or 25,
+                        cursor=request.history_cursor,
+                        delegated_by=self._data_decisions(caller),
                     ),
                 )
             case "DATA_ISSUE_REVOKE":
@@ -2718,7 +2815,7 @@ class PortfolioResearchOperations:
                 )
                 return cast(
                     dict[str, object],
-                    self.data_issues.preview(**choice)
+                    self.data_issues.preview(**choice, delegated_by=self._data_decisions(caller))
                     if request.operation == "DATA_ISSUE_PREVIEW"
                     else self.data_issues.delegate(**choice, task_id=request.task_id, caller=caller)
                     if request.operation == "DATA_ISSUE_DELEGATE"
@@ -2951,7 +3048,7 @@ class PortfolioResearchOperations:
                     # against the version the person confirmed, and only when
                     # the refusal was an artifact that can have been repaired.
                     record = self.workspace_session.task_control_registry.task(request.task_id)
-                    raised = _raised_retry_reason(record) is not None
+                    raised = _runner_retry_reason(record) is not None
                     if record.task_kind != RESEARCH_EXPERIMENT_TASK_KIND and not raised:
                         return {**before, "disposition": "NOT_RECOVERY_REQUIRED"}
                     if confirmed is None:
@@ -2972,7 +3069,7 @@ class PortfolioResearchOperations:
                     # a Task that moved while its plan was re-checked is refused
                     # there, as stale, with nothing applied.
                     retry = (
-                        self._reopen_raised(record, confirmed)
+                        self._reopen_runner_block(record, confirmed)
                         if raised
                         else self.experiments.retry_blocked(
                             request.task_id,
@@ -3188,7 +3285,7 @@ class PortfolioResearchOperations:
         else:
             self._refresh_prepared_inputs()
             context = {}
-        if self.application is None:
+        if not self.installed():
             return {
                 **context,
                 "workspace_id": self.workspace_manifest.workspace_id,
@@ -3403,7 +3500,7 @@ class PortfolioResearchOperations:
         activation, a person's, with the book it would activate or the book it holds. A default
         installation's packages have no activation and are not listed.
         """
-        if not self._packages:
+        if not self.installed():
             # No strategy is installed: the way forward begins at the research strategy's
             # controls, which name each missing component's first step (V505, RR5). It is the
             # first intent, the shortest way to positions, ahead of the inputs' Lab flows.
@@ -3457,12 +3554,13 @@ class PortfolioResearchOperations:
             )
         return intents
 
-    def _reopen_raised(self, record: TaskRecord, confirmed: str) -> dict[str, object]:
-        """Reopen a Task the runner blocked on a repeated raise, as its RECOVER confirms (V475).
+    def _reopen_runner_block(self, record: TaskRecord, confirmed: str) -> dict[str, object]:
+        """Reopen a Task the runner itself blocked, as its RECOVER confirms (V475, PERF-1).
 
-        The block is Task Control's own (`TASK_STAGE_RAISED`), so any Task kind reopens: the
-        person says the cause is fixed, the confirmed version reopens it as interrupted, and
-        the resume runs the stage again with its budget of raises whole.
+        The block is Task Control's own (`TASK_STAGE_RAISED`, or the memory check before a
+        stage), so any Task kind reopens: the cause is fixed or memory is free, the confirmed
+        version reopens it as interrupted, and the resume runs the stage again (with its
+        budget of raises whole, and the memory check first).
         """
         registry = self.workspace_session.task_control_registry
         try:
@@ -3654,6 +3752,7 @@ class PortfolioResearchOperations:
         if wait_seconds is not None:
             projection = self._moved_on(task_id, projection, wait_seconds)
         body = task_status_body(projection)
+        body.update(self._evidence_completion(projection))
         body["worker_failure"] = self.dispatcher.failure(task_id)
         body["task_record_hash"] = projection.task_record_hash
         body["resume_refusal"] = self._resume_refusal(projection)
@@ -4095,7 +4194,7 @@ class PortfolioResearchOperations:
             ),
             observed_at=self.dispatcher.clock(),
             blocked_retry_reason=self.experiments.blocked_retry_reason(snapshot.task)
-            or _raised_retry_reason(snapshot.task),
+            or _runner_retry_reason(snapshot.task),
             resume_refusal=resume_refusal,
             replan_refusal=str(replan["detail"]) if replan and "failure_code" in replan else None,
             attention=attention,
@@ -4719,6 +4818,7 @@ class PortfolioResearchOperations:
     ) -> dict[str, object]:
         return {
             **task_status_body(value),
+            **self._evidence_completion(value),
             "task_record_hash": value.task_record_hash,
             **({"attention": attention.model_dump(mode="json")} if attention is not None else {}),
             **(
@@ -4748,6 +4848,19 @@ class PortfolioResearchOperations:
                 3,
             ),
         }
+
+    def _evidence_completion(self, projection: TaskSafeProjection) -> dict[str, object]:
+        """Evidence's completion words, shared by STATUS/--wait and Task listings."""
+        adapter = None if self.review is None else self.review.evidence_task_adapter
+        if (
+            adapter is None
+            or projection.task_kind != adapter.task_kind
+            or projection.lifecycle is not TaskLifecycle.SUCCEEDED
+        ):
+            return {}
+        task = self.workspace_session.task_control_registry.task(projection.task_id)
+        assert self.review is not None
+        return EvidenceCroProjector(self.review).completed_preparation(task)
 
     def _read_back(self, projection: TaskSafeProjection) -> dict[str, object] | None:
         """The artifact a succeeded Task's owner opens now; unavailable when it cannot (U54)."""
@@ -5644,6 +5757,21 @@ class PortfolioResearchOperations:
             if request.tasks_waiting is not None:
                 return self.set_tasks_waiting(request.tasks_waiting, chosen_by=chosen_by)
             return self.set_cpu_budget(request.cpu_budget, chosen_by=chosen_by)
+        if operation == "WAKE_REGISTER":
+            # A Codex turn ends its shell's children, so the Host holds the lead's wake in the
+            # Task's journal and the activity sends it (R1, WAKE).
+            assert request.task_id is not None
+            assert request.wake_thread is not None and request.wake_read is not None
+            try:
+                wake = self.workspace_session.task_control_registry.register_wake(
+                    request.task_id,
+                    request.wake_thread,
+                    request.wake_read,
+                    observed_at=self.dispatcher.clock(),
+                )
+            except TaskNotFoundError:
+                return refused("task_control.task_not_found")
+            return {"status": "WAKE_REGISTERED", "task_id": str(request.task_id), "wake": wake}
         if operation not in {"ACTIVITY_LIST", "ACTIVITY_RECENT", "EVENT_DECLARE"}:
             return None
         observer = self.observer
@@ -5841,7 +5969,7 @@ class PortfolioResearchOperations:
         if strategy_package_id is None:
             raise LocalApplicationError(
                 "strategy_book.strategy_package_required"
-                if self._packages
+                if self.installed()
                 else "research_workspace.strategy_not_installed"
             )
         package = self._packages.get(strategy_package_id)
@@ -6133,11 +6261,18 @@ def _text(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _raised_retry_reason(task: TaskRecord) -> str | None:
-    """Why a Task the runner blocked on a repeated raise may be reopened, or nothing (V475)."""
-    if task.lifecycle is not TaskLifecycle.BLOCKED or not str(task.failure_code or "").startswith(
-        "TASK_STAGE_RAISED:"
-    ):
+def _runner_retry_reason(task: TaskRecord) -> str | None:
+    """Why a Task the runner itself blocked may be reopened, or nothing (V475, PERF-1)."""
+    if task.lifecycle is not TaskLifecycle.BLOCKED:
+        return None
+    if task.failure_code == MEMORY_INSUFFICIENT:
+        return (
+            "The stage did not start: its estimated peak memory exceeded what the machine "
+            "had available. Once running Tasks have ended or memory is free, RECOVER with "
+            "this version reopens the same Task: its verified stages are kept and the memory "
+            "check runs again before the stage."
+        )
+    if not str(task.failure_code or "").startswith("TASK_STAGE_RAISED:"):
         return None
     return (
         "The stage raised the same unnamed error on three attempts in a row; its type and "
@@ -6373,9 +6508,18 @@ _PREPARATION_IN_FLIGHT = frozenset(
 """A preparation Task still on its way: its plan confirmed again answers it, never another
 (V430: the check named `IN_PROGRESS`, which no Task holds, and missed every running one). A
 deferred one is not on its way: its plan confirmed again goes to its owner, which refuses it
-before the retry time and resumes the same Task after (V375; V506: answered here as in flight,
+before the retry time and resumes the same Task after (V375; answered here as in flight,
 the offered `resume` never reached the owner)."""
 _FINISHED_LIFECYCLES = frozenset({TaskLifecycle.SUCCEEDED, TaskLifecycle.CANCELLED})
+_PORTFOLIO_TASK_KINDS = frozenset(
+    {
+        PORTFOLIO_RUN_COMMAND,
+        STRATEGY_SCORE_TASK_KIND,
+        STRATEGY_CALIBRATION_TASK_KIND,
+        PORTFOLIO_UPDATE_TASK_KIND,
+    }
+)
+"""The Task kinds that read the installed packages while they run."""
 """A Task done with: its readback answers for it, not the Guardian read (GY)."""
 
 

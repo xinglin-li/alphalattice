@@ -72,7 +72,7 @@ def installed_source_binding(workspace: Path, manifest: ResearchWorkspaceManifes
 def installed_temporal_statements(
     workspace: Path, manifest: ResearchWorkspaceManifest, start: date, end: date
 ) -> tuple[str, ...]:
-    """What an installed book can claim about time, from its strategy's research input (V347).
+    """What an installed book can claim about time, from its strategy's research input.
 
     Args:
         workspace: The Host's workspace.

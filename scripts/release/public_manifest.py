@@ -19,6 +19,7 @@ from collections import Counter
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
+INTERNAL_ID_BASELINE = "census/public-internal-id-baseline.json"
 RULES = [
     {
         "rule": "PRIVATE_CREDENTIAL",
@@ -490,6 +491,9 @@ SCAN_RULES = {
     "NO_PRIVATE_REFERENCE": (
         "A PUBLIC file must not require or link an excluded internal file or QA tree."
     ),
+    "NO_DEVELOPMENT_ID": (
+        "A PUBLIC file's internal development labels must not exceed its frozen count."
+    ),
 }
 SCANS = {
     "NO_SECRET": re.compile(
@@ -510,6 +514,190 @@ SCANS = {
         "|contact)\\s*[:=]\\s*[\\\"']?\\+?\\d[\\d ()-]{8,}\\d"
     ),
 }
+
+
+def internal_id_pattern(policy: dict | None = None) -> re.Pattern:
+    """Match numbered labels and internal card or line forms, never ordinary prose."""
+    policy_values = policy or {}
+    lines = set(policy_values.get("lines", ()))
+    cards = set(policy_values.get("cards", ())) - lines - {"UI", "LEAD", "IS"}
+
+    def vocabulary(tokens):
+        return "|".join(re.escape(token) for token in sorted(tokens, key=lambda t: (-len(t), t)))
+
+    alternatives = [r"[VU][0-9]+", r"(?i:(?:round|law)\s+[0-9]+)"]
+    if lines:
+        alternatives.append(r"(?:Codex|Claude)\s+(?:" + vocabulary(lines) + ")")
+    distinct = {token for token in cards | lines if re.search(r"[0-9-]", token)}
+    if distinct:
+        alternatives.append(vocabulary(distinct))
+    words = cards - distinct
+    if words:
+        alternatives.extend(
+            [r"(?i:card)\s+(?:" + vocabulary(words) + ")", "(?:" + vocabulary(words) + r")(?=\s*:)"]
+        )
+    return re.compile(r"(?<![A-Za-z0-9_-])(?:" + "|".join(alternatives) + r")(?![A-Za-z0-9_-])")
+
+
+def internal_id_label(value: str) -> str:
+    """Normalize a numeric prose label; exact card and line spellings stay distinct."""
+    if re.fullmatch(r"(?i:(?:round|law)\s+[0-9]+)", value):
+        return " ".join(value.casefold().split())
+    return re.sub(r"^(?:Codex|Claude|(?i:card))\s+", "", value)
+
+
+def internal_id_ratchet(
+    blobs: dict[str, bytes], decisions: list[dict], policy: dict | None = None
+) -> dict:
+    """Refuse public development labels beyond their per-file, per-label frozen allowance."""
+    policy_values = policy or {}
+    pattern = internal_id_pattern(policy)
+    occurrences = policy_values.get("occurrences", {})
+    limits = [n for row in occurrences.values() for n in row.values()]
+    if any(type(count) is not int or count < 0 for count in limits):
+        raise ValueError("internal development label counts must be nonnegative integers")
+    current = {}
+    current_occurrences = {}
+    allowed = 0
+    violations = []
+    for row in decisions:
+        if row["kind"] != "PUBLIC":
+            continue
+        path = row["path"]
+        try:
+            source = blobs[path].decode("utf-8-sig")
+        except UnicodeError:
+            continue
+        matches = [
+            (number, match.start() + 1, internal_id_label(match.group()))
+            for number, line in enumerate(source.splitlines(), 1)
+            for match in pattern.finditer(line)
+        ]
+        if matches:
+            current[path] = len(matches)
+        seen = Counter()
+        for line, column, label in matches:
+            seen[label] += 1
+            if seen[label] <= occurrences.get(path, {}).get(label, 0):
+                allowed += 1
+                continue
+            violations.append(
+                {
+                    "kind": "FINDING",
+                    "path": path,
+                    "line": line,
+                    "column": column,
+                    "rule": "NO_DEVELOPMENT_ID",
+                    "assessment": "FROZEN_COUNT_EXCEEDED",
+                }
+            )
+        if seen:
+            current_occurrences[path] = dict(sorted(seen.items()))
+    return {
+        "policy_present": policy is not None,
+        "count": sum(current.values()),
+        "allowed": allowed,
+        "current": dict(sorted(current.items())),
+        "current_occurrences": dict(sorted(current_occurrences.items())),
+        "violations": sorted(violations, key=lambda row: (row["path"], row["line"], row["column"])),
+    }
+
+
+def validate_internal_id_history(repo: Path, source: str) -> None:
+    """Validate the first landing against its source, then keep the policy lower-only."""
+    if source.startswith("-"):
+        raise ValueError("a revision cannot be an option")
+    source = subprocess.check_output(
+        ["git", "rev-parse", "--verify", f"{source}^{{commit}}"], cwd=repo, text=True
+    ).strip()
+    cache = {}
+    anchor_counts = {}
+
+    def policy_at(commit: str) -> dict | None:
+        if commit not in cache:
+            result = subprocess.run(
+                ["git", "-c", "core.longpaths=true", "show", f"{commit}:{INTERNAL_ID_BASELINE}"],
+                cwd=repo,
+                capture_output=True,
+                check=False,
+            )
+            cache[commit] = json.loads(result.stdout) if result.returncode == 0 else None
+        return cache[commit]
+
+    if policy_at(source) is None:
+        raise ValueError("the source has no frozen internal-label policy")
+    commits = subprocess.check_output(
+        ["git", "log", "--full-history", "--format=%H", source, "--", INTERNAL_ID_BASELINE],
+        cwd=repo,
+        text=True,
+    ).splitlines()
+    for commit in commits:
+        policy = policy_at(commit)
+        if policy is None:
+            raise ValueError(f"the frozen internal-label policy was removed at {commit}")
+        if {"cards", "lines", "occurrences"} - policy.keys():
+            raise ValueError(f"the frozen internal-label policy is incomplete at {commit}")
+        version = policy.get("schema_version", 1)
+        if version not in (1, 2):
+            raise ValueError(f"the frozen internal-label format is unknown at {commit}")
+        anchor = policy.get("source_sha", "")
+        if version == 2 and (
+            not re.fullmatch(r"[0-9a-f]{40}", anchor)
+            or subprocess.run(
+                ["git", "merge-base", "--is-ancestor", anchor, commit],
+                cwd=repo,
+                capture_output=True,
+                check=False,
+            ).returncode
+            or policy_at(anchor) is not None
+        ):
+            raise ValueError(f"the first-landing anchor must precede the policy at {commit}")
+        parents = subprocess.check_output(
+            ["git", "rev-list", "-1", "--parents", commit], cwd=repo, text=True
+        ).split()[1:]
+        for parent in parents:
+            previous = policy_at(parent)
+            if previous is None:
+                if version == 1:
+                    continue  # The legacy policy established its draft allowance.
+                previous = {**policy, "schema_version": 1, "occurrences": {}}
+            if previous.get("schema_version", 1) == 2 and (
+                version != 2 or anchor != previous["source_sha"]
+            ):
+                raise ValueError(f"the frozen internal-label anchor or format changed at {commit}")
+            if (
+                set(policy["cards"]) - set(previous["cards"])
+                or set(previous["cards"]) - set(policy["cards"]) - {"UI", "IS", "LEAD"}
+                or policy["lines"] != previous["lines"]
+            ):
+                raise ValueError(f"the frozen internal-label vocabulary changed at {commit}")
+            for owner, labels in policy["occurrences"].items():
+                for label, count in labels.items():
+                    if count <= previous["occurrences"].get(owner, {}).get(label, 0):
+                        continue
+                    if version == 2 and previous.get("schema_version", 1) == 1:
+                        key = (anchor, owner)
+                        if key not in anchor_counts:
+                            validate_path(owner)
+                            raw = subprocess.run(
+                                ["git", "-c", "core.longpaths=true", "show", f"{anchor}:{owner}"],
+                                cwd=repo,
+                                capture_output=True,
+                                check=False,
+                            )
+                            try:
+                                text = raw.stdout.decode("utf-8-sig") if raw.returncode == 0 else ""
+                            except UnicodeError:
+                                text = ""
+                            pattern = internal_id_pattern(policy)
+                            anchor_counts[key] = Counter(
+                                internal_id_label(match.group())
+                                for line in text.splitlines()
+                                for match in pattern.finditer(line)
+                            )
+                        if count <= anchor_counts[key][label]:
+                            continue
+                    raise ValueError(f"the frozen internal-label allowance increased at {commit}")
 
 
 def validate_path(path: str) -> None:
@@ -906,7 +1094,14 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
         "private_count": sum(r["kind"] == "PRIVATE" for r in decisions),
         "unsettled": unsettled,
     }
+    policy_raw = blobs.get(INTERNAL_ID_BASELINE)
+    policy = json.loads(policy_raw) if policy_raw is not None else None
     findings, binary = scan_public(blobs, decisions)
+    ratchet = internal_id_ratchet(blobs, decisions, policy)
+    findings = sorted(
+        [*findings, *ratchet["violations"]],
+        key=lambda row: (row["path"], row["line"], row["rule"], row.get("column", 0)),
+    )
     audit = {
         "source_sha": sha,
         "er3_source_sha": er3.get("base"),
@@ -918,6 +1113,7 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
         "scan_rules": SCAN_RULES,
         "findings": findings,
         "finding_counts": dict(sorted(Counter(r["rule"] for r in findings).items())),
+        "internal_id_ratchet": ratchet,
         "binary_public_files": binary,
         "limits": [
             (
@@ -1076,6 +1272,8 @@ def main() -> int:
     )
     args = parser.parse_args()
     sha, blobs, modes = read_tree(args.repo, args.source)
+    if INTERNAL_ID_BASELINE in blobs:
+        validate_internal_id_history(args.repo, sha)
     manifest, audit = generate(sha, blobs, modes)
     if args.verification_json:
         audit["standalone"] = json.loads(args.verification_json.read_text(encoding="utf-8"))[

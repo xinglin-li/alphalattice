@@ -1,4 +1,4 @@
-"""Each admitted Task's frozen request, kept beside the Task Control store (V181, LAWS DA2).
+"""Each admitted Task's frozen request, kept beside the Task Control store (LAWS DA2).
 
 The store's rows are the Task's lifecycle; what the Task was admitted to do -- its input, goal,
 plan, queue place and who submitted it -- is also written here, content-addressed, before its

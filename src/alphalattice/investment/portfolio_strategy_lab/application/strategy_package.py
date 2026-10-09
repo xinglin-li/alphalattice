@@ -539,7 +539,7 @@ class SharedPortfolioInputs:
     reference_mark: ReferenceMarkLane | None = None
     """Exact research close-to-entry marks; absent preserves legacy open-proxy behavior."""
     sector_history_hash: str | None = None
-    """The Sector history's identity while a reclassification is in force (V346)."""
+    """The Sector history's identity while a reclassification is in force."""
 
     def require_lanes(self, lanes: tuple[str, ...]) -> None:
         """Refuse a package whose declared lanes this resolution does not carry."""
@@ -563,7 +563,7 @@ class SharedPortfolioAuthorities:
     tradability_decision_hash: str
     execution_outcome_manifest_hash: str
     sector_history_hash: str | None = None
-    """The Sector history's identity while a reclassification is in force (V346)."""
+    """The Sector history's identity while a reclassification is in force."""
 
 
 @dataclass(frozen=True, slots=True)

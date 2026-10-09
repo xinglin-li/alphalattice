@@ -302,7 +302,7 @@ class FactorEvidenceVerifier:
         installed enumerations for the pair that yields both. The search is exhaustive
         rather than clever because the enumerations are closed and tiny, and finding no
         pair means the Program was compiled against policies this build does not offer.
-        A policy installed beside the chosen pair is not compared (V91).
+        A policy installed beside the chosen pair is not compared.
         """
 
         installed = any(

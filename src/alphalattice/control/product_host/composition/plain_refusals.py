@@ -465,13 +465,13 @@ def explain(
             else {},
         }
     if base in _NOT_RUNNING_FORWARD:
-        # The score, calibration or Portfolio update of a strategy no person activated, or
+        # The score, calibration or Portfolio update of a strategy not activated, or
         # one stopped since; the daily update's plan meets them first (OP4, U73).
         return {
             "detail": (
                 "This strategy is not active. Read this package's controls, then open "
-                "the exact book on Portfolio, read its recorded review standing and ask the "
-                "person to activate it. Only the person can activate the book. Once active, "
+                "the exact book on Portfolio and read its recorded review standing. "
+                "Follow the exact activation offer for who may activate it. Once active, "
                 "continue with this package's Forward update. Installation, activation and "
                 "the automatic schedule are separate facts; activation does not enable the "
                 "automatic schedule."
@@ -531,8 +531,8 @@ def explain(
         # The daily update accepts only the strategies that run forward (U73).
         return {
             "detail": (
-                "Only a strategy that runs forward updates daily: a person activates one of its "
-                "reviewed books first. `automation show` lists the strategies that run forward."
+                "Only a strategy that runs forward updates daily, after one of its reviewed "
+                "books is activated. `automation show` lists the strategies that run forward."
             ),
             "next_requests": {"automation": {"operation": "RESEARCH_UPDATE_AUTOMATION_READBACK"}},
         }

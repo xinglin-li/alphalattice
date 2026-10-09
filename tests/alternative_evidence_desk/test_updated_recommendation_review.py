@@ -223,12 +223,12 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated):
     c = updated
     service = c.service
     # The update's positions offer their own review, bound to the update, so an agent's
-    # `evidence preview --from <update answer>` reads them, never the default book (V483).
+    # `evidence preview --from <update answer>` reads them, never the default book.
     from alphalattice.interface.local_application.client import continued
 
     readback = service.get(f"/api/portfolio-update?task_id={c.selector['update_task_id']}")
     # An exact reuse names the Task that ran the plan it reused, which its read follows, so
-    # `portfolio-update show --from <the reuse>` reads that update, never another (V491).
+    # `portfolio-update show --from <the reuse>` reads that update, never another.
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         reused_read,
     )
@@ -241,7 +241,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated):
     }
     assert reused_read(service.registry, "0" * 64, "READ") == {}
     # A study's read of a Task that is not a study names its kind and the read that takes it,
-    # not a bare code (V490, AX17's daily scene).
+    # not a bare code (daily scene).
     refused = service.agent(
         PortfolioResearchAgentRequest(
             operation="EXPERIMENT_READBACK", task_id=UUID(c.selector["update_task_id"])
@@ -275,11 +275,11 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated):
         code, body = service.request(
             "/api/evidence-cro?" + urlencode({**c.selector, **replacement})
         )
-        # Refused by name and worded with the way on (V546).
+        # Refused by name and worded with the way on.
         assert (code, body["failure_code"]) == (400, refused), body
         assert body["detail"] and body["next_action"], body
     # A second book beside the update's is refused in words, with the history to choose one
-    # from (V546).
+    # from.
     code, body = service.request(
         "/api/evidence-cro?" + urlencode({**c.selector, "result_hash": service.result_hash()})
     )
@@ -402,7 +402,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated):
         observed.content_hash,
     }
     # Each publication is dated by its own publication time, not its Task's
-    # admission (V190), so a newer result never sorts after an older one.
+    # admission, so a newer result never sorts after an older one.
     dated = {value.content_hash: value.published_at.isoformat() for value in (c.value, observed)}
     assert {r["book"]["update_publication_hash"]: r["recorded_at"] for r in updates} == dated
     assert all(

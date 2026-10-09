@@ -1625,7 +1625,7 @@ def test_baseline_qualification_is_sealed_at_the_assessment_instant(
     coordinator.clock = lambda: NOW + timedelta(minutes=2)
     request = _baseline_request(manifest, knowledge_cutoff_at=None)
     outcome = coordinator._qualify_features_for_membership(request=request, observed_at=NOW)
-    assert outcome == (MaintenanceStatus.RUNNING, "feature.baseline_qualification_applied")
+    assert outcome == (MaintenanceStatus.RUNNING, "feature.baseline_qualification_applied", None)
     boundary = seen["boundary"]
     assert boundary.knowledge_cutoff_at == NOW + timedelta(minutes=2)
     assert boundary.materialized_at == NOW + timedelta(minutes=2)
@@ -1659,7 +1659,7 @@ def test_baseline_qualification_keeps_an_explicit_cutoff_and_refuses_future_sour
     # An explicit cutoff after the observation binds exactly, at the assessment instant.
     later = _baseline_request(manifest, knowledge_cutoff_at=NOW + timedelta(minutes=1))
     outcome = coordinator._qualify_features_for_membership(request=later, observed_at=NOW)
-    assert outcome == (MaintenanceStatus.RUNNING, "feature.baseline_qualification_applied")
+    assert outcome == (MaintenanceStatus.RUNNING, "feature.baseline_qualification_applied", None)
     assert seen["boundary"].knowledge_cutoff_at == NOW + timedelta(minutes=1)
     assert seen["boundary"].materialized_at == NOW + timedelta(minutes=2)
     # A source observed after the assessment instant is refused.
@@ -3059,16 +3059,15 @@ def test_rolling_action_ambiguity_uses_one_full_history_hydration(
             )
 
     original_audit = market_data.complete_action_audit
-    audit_calls = 0
+    audits: list[date] = []
 
-    def ambiguous_once(*args, **kwargs):
-        nonlocal audit_calls
-        audit_calls += 1
-        if audit_calls == 1:
+    def ambiguous_when_rolling(*args, **kwargs):
+        audits.append(kwargs["history_start"])
+        if kwargs["history_start"] != sessions[0]:
             raise ActionAuditScopeInsufficient("rolling session-set ambiguity")
         return original_audit(*args, **kwargs)
 
-    monkeypatch.setattr(market_data, "complete_action_audit", ambiguous_once)
+    monkeypatch.setattr(market_data, "complete_action_audit", ambiguous_when_rolling)
     provider = RecordingProvider()
     outcome = CurrentUniverseMaintenance(
         store=market_data,
@@ -3084,7 +3083,10 @@ def test_rolling_action_ambiguity_uses_one_full_history_hydration(
     assert len(provider.starts) == 2
     assert provider.starts[0] > sessions[0]
     assert provider.starts[1] == sessions[0]
-    assert audit_calls == 2
+    # The rolling audit is ambiguous in the listing's transaction, which rolls back, and again on
+    # separate commits; only then does the one full-history audit run.
+    assert audits[-1] == sessions[0]
+    assert len(audits) == 3 and all(start > sessions[0] for start in audits[:-1])
 
 
 def test_rolling_ambiguity_never_expands_to_full_history_without_authorization(
@@ -3645,3 +3647,185 @@ def test_maintenance_observes_restatement_before_explicit_qualification(
     assert prior_hash != next_hash
     assert reason == "provider_fact_correction"
     assert current_close is not None and float(current_close[0]) == 100.5
+
+
+def _two_listings_one_session_due(
+    tmp_path: Path, *, dividend: bool = False
+) -> tuple[UniverseManifest, MarketDataRepository, object, date]:
+    """Two listings holding two sessions, and a provider answering the third.
+
+    With ``dividend``, the provider also observes a cash dividend on the third session.
+    """
+    listing_ids = ("listing-aapl", "listing-msft")
+    manifest, market_data, _, _ = _maintenance_workspace(tmp_path, eligible_listing_ids=listing_ids)
+    sessions = (date(2026, 7, 29), date(2026, 7, 30), date(2026, 7, 31))
+
+    def rows(through: date, start: date = sessions[0]) -> tuple[dict[str, object], ...]:
+        return tuple(
+            {
+                "session_date": session.isoformat(),
+                "open": 100.0 + index,
+                "high": 101.0 + index,
+                "low": 99.0 + index,
+                "close": 100.0 + index,
+                "volume": 1_000_000,
+            }
+            for index, session in enumerate(sessions)
+            if start <= session <= through
+        )
+
+    symbols = ("AAPL", "MSFT")
+    market_data.apply_validated_batch(
+        manifest,
+        sanitize_payload(manifest, "fixture", dict.fromkeys(symbols, rows(sessions[1])), symbols),
+        ingestion_id="initial",
+        observed_at=NOW,
+    )
+
+    class Provider:
+        name = "fixture"
+
+        def fetch_hydration(self, *, listing_id, provider_symbol, start, end):
+            fetched = rows(end, start)
+            return HydrationEvidence(
+                daily_rows=fetched,
+                actions=(
+                    CorporateActionEvent(
+                        listing_id=listing_id,
+                        provider=self.name,
+                        effective_date=sessions[2],
+                        action_kind="CASH_DIVIDEND",
+                        cash_amount=0.25,
+                    ),
+                )
+                if dividend and start <= sessions[2] <= end
+                else (),
+                adjusted_closes=tuple(
+                    ProviderAdjustedClosePoint(
+                        listing_id=listing_id,
+                        provider=self.name,
+                        session_date=date.fromisoformat(str(row["session_date"])),
+                        adjusted_close=float(str(row["close"])),
+                    )
+                    for row in fetched
+                ),
+            )
+
+    return manifest, market_data, Provider(), sessions[2]
+
+
+def test_progress_counts_listings_without_reading_every_change_document(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """regression: each listing's progress read every unit's change document.
+
+    After every listing, the runner built the whole outcome to report three counts: all 473 rows
+    read and every change document parsed, 473 times a day. Progress now counts in the engine,
+    with the same numbers, and the units are read whole only where the outcome is returned.
+    """
+    manifest, market_data, provider, as_of = _two_listings_one_session_due(tmp_path)
+    read_whole = market_data.current_universe_maintenance_listings
+    reads: list[str] = []
+
+    def counted(maintenance_id: str):  # type: ignore[no-untyped-def]
+        reads.append(maintenance_id)
+        return read_whole(maintenance_id)
+
+    monkeypatch.setattr(market_data, "current_universe_maintenance_listings", counted)
+    progress = []
+    outcome = CurrentUniverseMaintenance(
+        store=market_data,
+        manifest=manifest,
+        provider=provider,
+        as_of_session=as_of,
+        max_workers=1,
+        mutation_gate=WorkspaceMutationGate(),
+        progress_sink=progress.append,
+    ).run(observed_at=NOW)
+    assert (outcome.status, outcome.updated, outcome.failed) == (
+        CurrentUniverseMaintenanceStatus.COMPLETED,
+        2,
+        0,
+    )
+    per_listing = [
+        (u.completed_units, u.total_units, u.counters)
+        for u in progress
+        if u.status == "RUNNING" and u.current_item is not None
+    ]
+    assert per_listing == [
+        (1, 2, {"updated": 1, "failed": 0, "pending": 1}),
+        (2, 2, {"updated": 2, "failed": 0, "pending": 0}),
+    ]
+    # Whole reads only where an outcome is built (the run's opening report, its last chunk and
+    # its close), not one more per listing.
+    assert len(reads) == 3
+
+
+_MAINTENANCE_TABLES = (
+    "raw_daily_bar_current",
+    "bar_revision",
+    "corporate_action_current",
+    "provider_attempt",
+    "action_audit_receipt",
+    "provider_adjusted_close_current",
+    "provider_adjusted_series_revision",
+    "data_quality",
+    "current_universe_maintenance_listing",
+)
+
+
+def _maintenance_rows(market_data: MarketDataRepository) -> dict[str, list[tuple[object, ...]]]:
+    connection = market_data.database.connect(read_only=True)
+    try:
+        return {
+            table: sorted(connection.execute(f"SELECT * FROM {table}").fetchall(), key=repr)
+            for table in _MAINTENANCE_TABLES
+        }
+    finally:
+        connection.close()
+
+
+def test_a_listing_that_fails_inside_its_transaction_is_rolled_back_and_applied_again(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """recovery: a failure inside a listing's one transaction rolls its batch and
+    audit back whole; it then applies on separate commits, its attempt not counted again, and
+    the store holds what an unfaulted run writes (a dividend left behind would read as held).
+    """
+
+    def run(root: Path, *, fault: bool) -> dict[str, list[tuple[object, ...]]]:
+        manifest, market_data, provider, as_of = _two_listings_one_session_due(root, dividend=True)
+        update = market_data.update_current_universe_maintenance_listing
+        faults: list[str] = []
+
+        def failing(**kwargs):  # type: ignore[no-untyped-def]
+            if (
+                fault
+                and not faults
+                and kwargs.get("_connection") is not None
+                and kwargs["state"] == "UPDATED"
+            ):
+                faults.append(kwargs["listing_id"])
+                raise RuntimeError("fault after the listing's batch and audit")
+            return update(**kwargs)
+
+        monkeypatch.setattr(market_data, "update_current_universe_maintenance_listing", failing)
+        outcome = CurrentUniverseMaintenance(
+            store=market_data,
+            manifest=manifest,
+            provider=provider,
+            as_of_session=as_of,
+            max_workers=1,
+            mutation_gate=WorkspaceMutationGate(),
+        ).run(observed_at=NOW)
+        assert (outcome.status, outcome.updated, outcome.failed) == (
+            CurrentUniverseMaintenanceStatus.COMPLETED,
+            2,
+            0,
+        )
+        assert faults == (["listing-aapl"] if fault else [])
+        units = market_data.current_universe_maintenance_listings(outcome.maintenance_id)
+        assert [(u.state, u.attempt_count) for u in units] == [("UPDATED", 1)] * 2
+        return _maintenance_rows(market_data)
+
+    assert run(tmp_path / "faulted", fault=True) == run(tmp_path / "clean", fault=False)

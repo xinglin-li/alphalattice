@@ -118,6 +118,7 @@ src/alphalattice/investment/risk_research/experiments/development_artifacts.py
 src/alphalattice/investment/risk_research/experiments/development.py
 src/alphalattice/investment/risk_research/surfaces/producer.py
 src/alphalattice/control/product_host/composition/application_session.py
+src/alphalattice/control/product_host/composition/resource_estimates.py
 src/alphalattice/control/product_host/composition/portfolio_application.py
 src/alphalattice/control/product_host/composition/research_workspace.py
 src/alphalattice/control/product_host/publication/portfolio_research.py

@@ -365,6 +365,19 @@ def _check_docstrings() -> bool:
     return result.returncode == 0
 
 
+def _check_test_shape(*, staged: bool) -> bool:
+    """Refuse a staged test change that breaks the writing rules in tests/README.md."""
+
+    if not staged:
+        return True
+    started = perf_counter()
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_test_shape.py")], cwd=ROOT, check=False
+    )
+    print(f"PLAYPEN_GATE_TIMING test-shape {perf_counter() - started:.3f}s", flush=True)
+    return result.returncode == 0
+
+
 def _check_evidence_bindings() -> bool:
     """Refuse a tree whose Evidence binding tuple moved without its predecessor listed."""
 
@@ -530,6 +543,8 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     if not _check_registries(staged=args.staged):
         return 1
     if not _check_docstrings():
+        return 1
+    if not _check_test_shape(staged=args.staged):
         return 1
     if args.fast:
         # What actually cost minutes per commit: the whole-repo structural guard

@@ -1,4 +1,4 @@
-"""The Sector's forward rule (V346): each session reads the classification in force on it."""
+"""The Sector's forward rule: each session reads the classification in force on it."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def _history() -> SectorHistory:
 
 
 def test_a_history_reads_each_session_the_map_in_force() -> None:
-    """requirement (V346): a listing reads its first recorded Sector until its reclassification
+    """Requirement: a listing reads its first recorded Sector until its reclassification
     and the new one from its effective session; a plain map is one run and binds as it did."""
 
     history = _history()
@@ -103,7 +103,7 @@ def test_a_history_reads_each_session_the_map_in_force() -> None:
 
 
 def test_a_history_exposes_one_matrix_per_session_only_where_a_reclassification_falls() -> None:
-    """requirement (V346): the Portfolio's exposure is one matrix over a plain map and one per
+    """Requirement: the Portfolio's exposure is one matrix over a plain map and one per
     session, over every Sector a session reads, where a reclassification falls inside the axis."""
 
     listings = ("a", "b", "c")
@@ -126,7 +126,7 @@ def test_a_history_exposes_one_matrix_per_session_only_where_a_reclassification_
 
 
 def test_a_reclassification_takes_effect_from_the_first_unpublished_session() -> None:
-    """requirement (V346): the trading day its update observed it, the next session when that
+    """Requirement: the trading day its update observed it, the next session when that
     day has none, and never a session a Panel already published."""
 
     friday_evening = datetime(2026, 8, 7, 22, tzinfo=UTC)  # 18:00 in New York, a Friday
@@ -185,7 +185,7 @@ def _publish_through(feature_state: FeatureStateRepository, manifest, session: d
 def test_a_planted_reclassification_is_read_forward_and_never_moves_a_published_session(
     tmp_path: Path,
 ) -> None:
-    """requirement (V346): a refresh that reclassifies a listing after a Panel published through
+    """Requirement: a refresh that reclassifies a listing after a Panel published through
     Wednesday records it from Thursday on; every session through Wednesday reads what it read."""
 
     manifest = acquisition_manifest()
@@ -226,7 +226,7 @@ def test_a_planted_reclassification_is_read_forward_and_never_moves_a_published_
 def test_a_store_sealed_before_the_forward_rule_reads_no_reclassification(
     tmp_path: Path,
 ) -> None:
-    """regression (V346, LS1's acceptance): a research input's market-store copy sealed before
+    """regression (LS1's acceptance): a research input's market-store copy sealed before
     the forward rule lacks the columns the rule's writer adds when it opens a store, and the copy
     is only read; its history reads every session in the current map, as a row written before
     the rule does, instead of failing the work that reads it."""
@@ -299,7 +299,7 @@ def _receipt(
 def test_the_ledger_rebuilds_a_history_and_folds_what_came_before_the_rule(
     tmp_path: Path,
 ) -> None:
-    """requirement (V346): the history as of a revision is its map, then the changes its
+    """Requirement: the history as of a revision is its map, then the changes its
     activation receipts recorded with an effective session; a receipt written before the rule
     folds into the backfill; a copy of what it reads answers the same history elsewhere."""
 
@@ -335,7 +335,7 @@ def test_the_ledger_rebuilds_a_history_and_folds_what_came_before_the_rule(
 
 
 def test_the_forward_treatment_is_stated_only_where_a_reclassification_is_in_force() -> None:
-    """requirement (V346): the Alpha lane policy, the Sector context policy and the Sector
+    """Requirement: the Alpha lane policy, the Sector context policy and the Sector
     target recipe keep the identity they had while the backfill is what their sessions read."""
 
     from alphalattice.investment.alpha_research.targets.execution_outcome import (
@@ -375,7 +375,7 @@ def test_the_forward_treatment_is_stated_only_where_a_reclassification_is_in_for
 
 
 def test_a_published_session_keeps_its_panel_cross_section(tmp_path: Path) -> None:
-    """requirement (V346): a Panel's cross-section identity for each session before the
+    """Requirement: a Panel's cross-section identity for each session before the
     reclassification's effective session is the one its published map gave it."""
 
     from alphalattice.foundation.feature_engine.contracts import (
@@ -443,7 +443,7 @@ def test_a_published_session_keeps_its_panel_cross_section(tmp_path: Path) -> No
 
 
 def test_each_member_reads_its_days_sector_return() -> None:
-    """requirement (V346): `sector_return_log` is the equal-weight one-session log return of
+    """Requirement: `sector_return_log` is the equal-weight one-session log return of
     the day's members of the Sector each reads that day; a non-member and the first session
     have none."""
 
@@ -487,7 +487,7 @@ def test_each_member_reads_its_days_sector_return() -> None:
 
 
 def test_the_universe_centred_recipe_reads_no_sector() -> None:
-    """requirement (V346): `ROBUST_UNIVERSE_Z` is installed for development overlays and a
+    """Requirement: `ROBUST_UNIVERSE_Z` is installed for development overlays and a
     formula's choice, and its values are the same under any classification."""
 
     from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding
@@ -540,7 +540,7 @@ def test_the_universe_centred_recipe_reads_no_sector() -> None:
 
 
 def test_a_risk_surface_designs_a_formation_by_the_sectors_in_force() -> None:
-    """requirement (V346): a formation where a listing reads an earlier Sector designs its
+    """Requirement: a formation where a listing reads an earlier Sector designs its
     factor exposure by that Sector and binds it; one reading only current Sectors is as it was."""
 
     from alphalattice.investment.risk_research.surfaces.producer import (

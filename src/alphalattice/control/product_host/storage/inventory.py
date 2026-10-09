@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Lock
 
 from alphalattice.control.workspace_runtime.storage.capacity import StorageCapacity, StorageCapStore
 
@@ -50,6 +55,35 @@ _measured_data: dict[Path, int] = {}
 """Last complete physical sample; observation retention reuses it between managed admissions."""
 
 
+@dataclass
+class _StageMeasure:
+    """One stage's walked managed trees per workspace, plus the bytes it admitted since."""
+
+    lock: Lock = field(default_factory=Lock)
+    trees: dict[Path, int] = field(default_factory=dict)
+    files: dict[Path, tuple[Path, ...]] = field(default_factory=dict)
+
+
+_STAGE_MEASURE: ContextVar[_StageMeasure | None] = ContextVar("storage_stage", default=None)
+
+
+@contextmanager
+def storage_capacity_scope() -> Iterator[None]:
+    """One managed-inventory walk per workspace for a Task stage.
+
+    The first admission in the scope walks the managed trees; each later one adds the bytes
+    the stage already admitted, so the write that crosses the cap still refuses at that write.
+    A root that is one file (the market database, which grows under the stage's own
+    unadmitted writes) and free disk are read at every admission. Deletions, and another
+    process's writes, count from the next stage's walk on. Outside a scope nothing changes.
+    """
+    token = _STAGE_MEASURE.set(_StageMeasure())
+    try:
+        yield
+    finally:
+        _STAGE_MEASURE.reset(token)
+
+
 def managed_file_inventory(workspace: Path) -> tuple[tuple[str, int, str], ...]:
     """Count owned current/input/cache bytes; hard-linked objects count once.
 
@@ -69,7 +103,7 @@ def managed_file_inventory(workspace: Path) -> tuple[tuple[str, int, str], ...]:
     files = []
     for relative, role in MANAGED_ROOTS:
         path = root / relative
-        # The retained retrieval layout links the machine's model store (V208): those
+        # The retained retrieval layout links the machine's model store: those
         # bytes are not the workspace's, so a link there is passed over; elsewhere it is refused.
         store_links = role == "RETRIEVAL_MODEL"
         if not path.exists():
@@ -124,7 +158,31 @@ def workspace_storage_capacity(workspace: Path, *, last_sample: bool = False) ->
 
 def require_storage_capacity(workspace: Path, *, additional_bytes: int) -> None:
     """Admit bytes against the current operator cap and physical recovery reserve."""
-    capacity = workspace_storage_capacity(workspace)
+    stage = _STAGE_MEASURE.get()
+    if stage is None:
+        _admit(workspace_storage_capacity(workspace), additional_bytes)
+        return
+    root = workspace.resolve()
+    with stage.lock:
+        if root not in stage.trees:
+            rows = managed_file_inventory(root)
+            _measured_data[root] = unique_managed_bytes(rows)
+            roots = {relative for relative, _role in MANAGED_ROOTS}
+            stage.files[root] = tuple(root / row[0] for row in rows if row[0] in roots)
+            stage.trees[root] = unique_managed_bytes(
+                tuple(row for row in rows if row[0] not in roots)
+            )
+        single: dict[str, int] = {}
+        for path in stage.files[root]:
+            with suppress(FileNotFoundError):
+                stat = path.stat()
+                single[f"{stat.st_dev}:{stat.st_ino}" if stat.st_ino else str(path)] = stat.st_size
+        measured = stage.trees[root] + sum(single.values())
+        _admit(StorageCapStore(root).capacity(measured_data_bytes=measured), additional_bytes)
+        stage.trees[root] += additional_bytes
+
+
+def _admit(capacity: StorageCapacity, additional_bytes: int) -> None:
     if capacity.measured_data_bytes + additional_bytes > capacity.cap_bytes:
         raise StorageInventoryError(
             "storage.managed_capacity_exceeded",

@@ -604,7 +604,7 @@ def test_risk_report_link_listing_refuses_bad_siblings_and_keeps_valid_link(tmp_
 def test_an_installed_book_names_the_admitted_risk_report_subject_before_the_action(
     tmp_path, capsys, task_kind
 ):
-    """regression (V616): installed books offer the study boundary before confirmation;
+    """Regression: installed books offer the study boundary before confirmation;
     every association door refuses that selector by name and its saved way continues."""
     import gc
     import json
@@ -732,7 +732,7 @@ def test_an_installed_book_names_the_admitted_risk_report_subject_before_the_act
     ],
 )
 def test_a_key_the_compiler_does_not_read_is_refused_where_it_was_written(risk, named):
-    """regression (V134, V249): a parameter written beside `parameters` entered the plan's
+    """Regression: a parameter written beside `parameters` entered the plan's
     identity and moved it while no number moved; it is refused at its place with the one code,
     and the refusal's words say where a parameter is written."""
 

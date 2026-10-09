@@ -8,6 +8,7 @@ real execution ledger.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -50,6 +51,7 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
     qualification_obligation,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.interface.local_application.cli import main
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
 )
@@ -101,6 +103,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAttributionProjection,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests.portfolio_strategy_lab.local_web_support import _json
 
 PACKAGE = REBOUND_RETURN_BOOK_RECIPE.strategy_id
 _HASH = str(canonical_hash("activation review synthetic QA support"))
@@ -108,6 +111,82 @@ _NOW = datetime(2026, 8, 12, 16, tzinfo=UTC)
 _HISTORY = 522
 _COMPONENT = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component("G6_R0_FAST_REBOUND")
 _LIFECYCLE = AlphaModelLifecycleRecipe.from_component(_COMPONENT)
+
+
+def activation_cli(live, capsys, *arguments, view="full"):
+    assert (
+        main(
+            ["--workspace", str(live.workspace), "--view", view, *arguments],
+            serve=lambda _: 99,
+        )
+        == 0
+    )
+    answer = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert answer["outcome"] == "OK", answer
+    return answer["data"]
+
+
+def publish_activation_review(live, result_hash):
+    """Seal recorded synthetic Evidence and submitted CRO answers through public routes."""
+    from tests.alternative_evidence_desk.review_dossiers import controlled_answer
+
+    selected = "?result_hash=" + result_hash
+    preview = _json(live, "/api/evidence/preview" + selected)
+    prepared = _json(
+        live,
+        "/api/evidence/prepare",
+        method="POST",
+        payload={k: v for k, v in preview["next_requests"]["prepare"].items() if k != "operation"},
+    )
+    live.dispatcher.drain_for_tests()
+    adapter = live.review.evidence_task_adapter
+    task = live.session.task_control_registry.task(UUID(prepared["task_id"]))
+    assert task.lifecycle.value == "SUCCEEDED", task
+    for unit in adapter.run_of(task).units:
+        packet = adapter.prepared_packet(
+            task.task_id, now=live.review.clock(), unit_id=unit.unit_id
+        )
+        exported = _json(
+            live,
+            "/api/evidence/packet"
+            + selected
+            + f"&task_id={task.task_id}&evidence_unit_id={unit.unit_id}",
+        )
+        brief = live.review_authority.evidence_resources.analysis_actor(packet=packet).answer
+        document = {
+            **exported["submission_template"],
+            "analysis_answer": brief.model_dump(mode="json"),
+        }
+        submitted = _json(
+            live,
+            "/api/evidence/analysis",
+            method="POST",
+            payload={k: v for k, v in document.items() if k != "operation"},
+        )
+        live.dispatcher.drain_for_tests()
+        assert live.session.task_control_registry.task(
+            UUID(submitted["task_id"])
+        ).lifecycle.value == ("SUCCEEDED")
+    dossier = _json(live, "/api/cro/dossier" + selected)
+    document = {
+        **dossier["submission_template"],
+        "review_answer": controlled_answer(
+            dossier["dossier"], *live.review_authority.review_actor.risks
+        ).model_dump(mode="json"),
+    }
+    submitted = _json(
+        live,
+        "/api/cro/assessment",
+        method="POST",
+        payload={k: v for k, v in document.items() if k != "operation"},
+    )
+    live.dispatcher.drain_for_tests()
+    assert live.session.task_control_registry.task(UUID(submitted["task_id"])).lifecycle.value == (
+        "SUCCEEDED"
+    )
+    published = _json(live, "/api/evidence-cro" + selected)
+    assert published["state"] == "REVIEW_PUBLISHED", published
+    return live.review.review_publications.read(published["review_publication_hash"])
 
 
 @dataclass(frozen=True, slots=True)

@@ -532,7 +532,7 @@ _BOOK_ROLE_KEYS: Final[dict[str, str]] = {
     TREND_REBOUND_STRATEGY_ID: "trend_rebound",
 }
 """Each frozen book's readout roles, named by what the book holds: the strategy ids workspaces
-store keep their spelling until the release's corpora are prepared fresh (NM2, V451)."""
+store keep their spelling until the release's corpora are prepared fresh (NM2)."""
 
 BOOK_PARTS: Final = ("book_recipe", "policy_binding", "policy_catalog", "book_alpha_recipe")
 """What each frozen book's roles read: its recipe, its policy adapter binding and catalog, and
@@ -630,8 +630,13 @@ def frozen_book_package(
         "post-observed authority"
     ),
     extra_claim_limits: tuple[str, ...] = (),
+    model_lifecycle_hashes: Mapping[str, str] | None = None,
 ) -> FrozenStrategyPackage:
-    """One frozen policy/control declaration; provenance belongs to the score source."""
+    """One frozen policy/control declaration; provenance belongs to the score source.
+
+    `model_lifecycle_hashes` names the lifecycle of each component trained other than its full
+    one (the light default); a component it leaves out is bound to its full lifecycle.
+    """
     component_plan = tuple(
         ComponentPlanEntry(
             component_id=value.component_id,
@@ -648,6 +653,7 @@ def frozen_book_package(
                 if value.component_id == TREND_CANDIDATE_COMPONENT_ID
                 else "FULL_UNIVERSE_FAST_REBOUND_SCORE"
             ),
+            model_lifecycle_hash=(model_lifecycle_hashes or {}).get(value.component_id),
         )
         for value in recipe.components
     )
@@ -1715,6 +1721,7 @@ def install_frozen_strategies(
                             "LOCAL_FROZEN_RECIPE_RECONSTRUCTION_NOT_ORIGINAL_RESEARCH_RESULTS",
                             "POST_OBSERVED_LOCAL_QA_OUTCOMES_NOT_HOLDOUT_RELEASE",
                         ),
+                        model_lifecycle_hashes=source.model_lifecycle_hashes,
                     ),
                     sources={"HISTORICAL_ARRAY_REPLAY": source},
                     source_identity_hash=INSTALLED_STRATEGY_SOURCE_HASH,

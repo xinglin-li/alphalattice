@@ -925,14 +925,14 @@ def _prune_goldens(*, keep: Path) -> None:
 
 
 GOLDEN_KEEP_KEYS = 3
-"""Golden workspaces the cache keeps by last use (V235): every identity move made a key, and 78
+"""Golden workspaces the cache keeps by last use: every identity move made a key, and 78
 of them held 35 GB before the rule was kept by hand."""
 
 
 def retain_golden_workspaces(
     *, keep: int = GOLDEN_KEEP_KEYS, apply: bool = False, root: Path | None = None
 ) -> list[dict[str, object]]:
-    """The golden workspaces by last use, newest first, each kept or dropped (V235).
+    """The golden workspaces by last use, newest first, each kept or dropped.
 
     The newest ``keep`` stay. With ``apply`` every other one is deleted under its own lease, and
     one a builder holds is left ``BUSY``; without it nothing is deleted (``TO_DROP``).

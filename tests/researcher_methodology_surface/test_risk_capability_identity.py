@@ -105,7 +105,7 @@ def test_changed_implementation_under_an_unchanged_id_changes_the_program() -> N
         selected_numerical_binding_hash=changed.ordered_capabilities[0].numerical_binding_hash,
     )
     assert moved.development_binding_hash != baseline.development_binding_hash
-    # P1-3: this one is a *selected method* change, not merely governance -- the
+    # 3: this one is a *selected method* change, not merely governance -- the
     # adapter that will compute is the one that changed.
     assert moved.selected_method_binding_hash != baseline.selected_method_binding_hash
 
@@ -269,13 +269,13 @@ class _InertAdapter:
 
 
 def test_installing_an_unselected_adapter_moves_governance_but_not_the_method() -> None:
-    """requirement (P1-3): the two identities separate, asserted both ways.
+    """requirement (-3): the two identities separate, asserted both ways.
 
     The Program used to fold every installed capability's numerical binding, so
     installing an unrelated adapter moved the identity of a computation that had
     not changed by one bit. That makes "the Host installed something else"
     indistinguishable from "these numbers would come out differently", and it
-    would have made P1-2's second adapter invalidate the first method's evidence
+    would have made -2's second adapter invalidate the first method's evidence
     merely by existing.
     """
 
@@ -308,7 +308,7 @@ def test_installing_an_unselected_adapter_moves_governance_but_not_the_method() 
 
 
 def test_changed_executable_content_moves_the_selected_numerical_binding() -> None:
-    """requirement (P1-3): identity follows bytes, not module names.
+    """requirement (-3): identity follows bytes, not module names.
 
     ``implementation_owners`` is a tuple of module *names*, and a name denotes
     whatever that module currently contains. Hashing only names let an adapter

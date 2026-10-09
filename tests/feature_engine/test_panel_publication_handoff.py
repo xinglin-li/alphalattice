@@ -545,3 +545,73 @@ def test_the_maintenance_path_completes_the_handoff_without_republishing(tmp_pat
     assert body.index("complete_semantic_index_handoff") > body.index(
         "_publish_snapshot_with_bounded_retry"
     )
+
+
+def test_the_semantic_index_orders_each_sessions_row_hashes_by_listing_as_before() -> None:
+    """regression: the index grouped 1.1M rows in Python, a tuple per row, for ~4 s a day.
+
+    One sort now orders each session's row hashes by listing, ties by row hash. The digests
+    must be the ones the per-row grouping gave, whatever the rows' physical order and however
+    the listing ids sort, so the index of every published Panel keeps its identity.
+    """
+
+    import pyarrow as pa
+
+    rows = [
+        (date(2026, 1, 6), "Ünion", "c" * 64),
+        (date(2026, 1, 5), "zeta", "d" * 64),
+        (date(2026, 1, 6), "Alpha", "e" * 64),
+        (date(2026, 1, 5), "Ünion", "a" * 64),
+        (date(2026, 1, 5), "zeta", "b" * 64),
+        (date(2026, 1, 6), "zeta", "f" * 64),
+    ]
+    batches = [
+        pa.RecordBatch.from_pylist(
+            [{"session_date": s, "listing_id": n, "row_hash": h} for s, n, h in part],
+            schema=pa.schema(
+                [
+                    ("session_date", pa.date32()),
+                    ("listing_id", pa.string()),
+                    ("row_hash", pa.string()),
+                ]
+            ),
+        )
+        for part in (rows[:4], rows[4:])
+    ]
+    manifest = {
+        "snapshot_hash": _hash("snapshot"),
+        "panel_content_hash": _hash("content"),
+        "listing_set_hash": _hash("listings"),
+        "active_listing_count": 3,
+        "safe_summary": {"lineage": {"catalog_hash": _hash("catalog")}},
+    }
+    published: dict[str, object] = {}
+
+    class _Resolver:
+        def load_feature_panel_manifest(self, _ref: str) -> dict[str, object]:
+            return manifest
+
+        def find_feature_panel_semantic_index(self, **_: object) -> None:
+            return None
+
+        def publish_feature_panel_semantic_index(self, *, payload: object, index_hash: str):
+            published[index_hash] = payload
+            return type("Descriptor", (), {"uri": index_hash})()
+
+    class _Reader:
+        def identity_batches(self, _ref: str):
+            return iter(batches)
+
+    service = FeaturePanelSemanticIndexService(cast(ArtifactResolver, _Resolver()))
+    service.reader = cast(Any, _Reader())
+    index, _uri, built = service.obtain("manifest")
+    expected: dict[date, list[tuple[str, str]]] = {}
+    for session, listing, row_hash in rows:
+        expected.setdefault(session, []).append((listing, row_hash))
+    assert built and published
+    assert [
+        (item.session_date, item.row_count, item.ordered_row_hash_digest) for item in index.sessions
+    ] == [
+        (session, len(values), canonical_hash([h for _n, h in sorted(values)]))
+        for session, values in sorted(expected.items())
+    ]

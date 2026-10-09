@@ -37,7 +37,7 @@ def test_readback_route_keeps_current_replay_and_foundation_admission_strict(mon
             caller="EXTERNAL_AUTOMATION",
         )
         assert response == {"status": "CAPTURED", "current_policy": expected}
-    # A replay is held current through its estimators' recorded moves (V314).
+    # A replay is held current through its estimators' recorded moves.
     assert calls == [("plan", {"replay": True})]
     with pytest.raises(TypeError):
         PortfolioResearchOperationRequest(
@@ -313,11 +313,11 @@ def test_each_explained_refusal_keeps_its_code_and_asks_only_operations_the_host
         LightGBMThreadCanaryMismatch.code,
         "task_not_succeeded",
         "product_host.evidence_review_evidence_not_current",
-        # V292: a plan refusal names its field and the rule it broke.
+        # a plan refusal names its field and the rule it broke.
         "factor_research.handoff_authority_field_mismatch:experiment.universe_handle",
         "alpha_research.qualification_nomination_invalid:not_in_family",
         "alpha_research.qualification_unexpected_parent:factor_task_id",
-        # V318, V320: AX6's refusals name their field and the way on.
+        # refusals name their field and the way on.
         "research_experiment.standalone_kind_not_installed",
         "goal.continuation_requires_parent_goal",
         "workspace_data_update.panel_binding_mismatch",

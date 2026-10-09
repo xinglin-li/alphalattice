@@ -47,8 +47,8 @@ def admitted_writes(factor_count: int) -> int:
     Every transition re-seals the closure digest over every row persisted so far (rows of a
     new listing sit at every session, so the sealed prefix cannot be extended), and commits
     once; over a 466-name first build eight per transition halves both against four, for one
-    more listing block of rows held while it is sealed. A column catalog's row holds one value
-    (V92), so its transitions take eight times as many listings: an activation's column seals
+    more listing block of rows held while it is sealed. A column catalog's row holds one value,
+    so its transitions take eight times as many listings: an activation's column seals
     its closure eight times rather than fifty-nine.
 
     Args:
@@ -90,7 +90,7 @@ class FeatureMaterializationPersistence(Protocol):
         observed_at: datetime,
         connection: duckdb.DuckDBPyConnection,
     ) -> tuple[str, ...]:
-        """Begin the first load of each part that holds no row under its genesis head (V92)."""
+        """Begin the first load of each part that holds no row under its genesis head."""
         ...
 
     def complete_first_loads(

@@ -267,6 +267,10 @@
   "detail": "The requested artifact {subject} is not kept in this workspace. Read workspace show to find a kept input or result. If a completed record names this missing file, restore a backup that holds it into a new folder and work there.",
   "next_action": "READ_WORKSPACE_SHOW_OR_RESTORE_A_BACKUP"
  },
+ "data.truth_review_required": {
+  "detail": "A data decision is needed before this Task can continue: the data owner found an unexplained move and asks for a permitted response on the Data issues page.",
+  "next_action": "DATA_ISSUES"
+ },
  "evidence_review.explicit_sec_network_consent_required": {
   "detail": "SEC acquisition was not explicitly consented to by this command. Run preflight, then add --network-consent only with the person's permission; the workspace network control must also allow acquisition.",
   "next_action": "PREFLIGHT_AND_GIVE_EXPLICIT_SEC_CONSENT"
@@ -843,6 +847,10 @@
   "detail": "A target of the cleanup is not eligible under the current roots (something still uses it, or only its owner may release it); plan the cleanup again (`storage plan`).",
   "next_action": "PLAN_THE_CLEANUP_AGAIN"
  },
+ "storage.input_binding_missing": {
+  "detail": "The retained input manifest at {subject}/manifest.json is missing, so storage cannot verify its retained references. Restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
  "storage.managed_capacity_exceeded": {
   "detail": "Managed storage exceeds the workspace cap. Raise the cap in Settings (`storage set --cap-bytes <bytes>`) or plan a cleanup (`storage plan`) for a person to confirm.",
   "next_action": "RAISE_THE_CAP_OR_PLAN_A_CLEANUP"
@@ -944,7 +952,7 @@
   "next_action": "DATA_UPDATE_PLAN"
  },
  "workspace_data_update.transition_not_verified": {
-  "detail": "The saved approved membership transition could not be verified against the current Manifest, prior Panel and approved candidate document. Read the stopped update's current record and resolve the mismatch through their original owners before retrying the same approved update. Never edit a stored approval.",
+  "detail": "The approved stock-list change could not be verified against the current membership, prior Panel and approved candidate document. If it stopped part-way, with its new membership active while the Panel is still on the earlier one, this version can neither resume nor re-plan it: the research and history already recorded stay readable, and this workspace's daily updates resume with a later AlphaLattice release. Never edit a stored approval.",
   "next_action": "DATA_UPDATE_READBACK"
  },
  "workspace_preparation.preview_required": {
@@ -1346,5 +1354,49 @@
  "native_bridge.local_environment_missing": {
   "detail": "The folder named for configure has no .venv of its own, so it is not a source checkout. Configure the checkout you work from, or a separate agent folder with the installed product; never a workspace or data folder. A configured project binds a workspace kept anywhere.",
   "next_action": "CONFIGURE_A_CHECKOUT_OR_AN_INSTALLED_AGENT_FOLDER"
+ },
+ "execution.memory_insufficient": {
+  "detail": "This work is estimated to need more memory than the machine has available now, so it would fail partway and was not started. When other Tasks are running, wait for them to end; where a lower CPU budget lowers the need, the answer offers it. Then send the same run again, or resume a stopped Task from its recovery view. Freeing memory is the person's step only when neither applies.",
+  "next_action": "WAIT_FOR_MEMORY_THEN_TRY_AGAIN"
+ },
+ "feature_input.human_delegation_required": {
+  "detail": "A standing data-decision grant is the person's to give or revoke, on the Workbench's data issues. Under the workspace's open first-use goal you need none: preview the case and send its offered confirm.",
+  "next_action": "DATA_ISSUES"
+ },
+ "feature_input.human_confirmation_required": {
+  "detail": "This data decision is the person's: on the Workbench's data issues, under a grant the person issued for it, or by you under the workspace's open first-use goal while its own preparation waits on the decision.",
+  "next_action": "ASK_A_PERSON_TO_DECIDE_THE_DATA_ISSUE"
+ },
+ "data.target_session_not_covered": {
+  "detail": "The data does not reach this preparation's target session for enough listings to support its baseline. The failure cause gives the target session, latest common bar, and coverage count. Wait until the provider has data for the target, then send the Task's offered resume request. Verified work is retained; only lagging listing histories are fetched and checked again.",
+  "next_action": "WAIT_FOR_PROVIDER_THEN_RESUME_PREPARATION"
+ },
+ "feature.baseline_qualified_population_insufficient": {
+  "detail": "Too few listings qualify for the research baseline at the preparation's session: it needs at least one, and five in each sector present. The Task's failure cause counts them and groups why the rest did not qualify. With no market observation at that session, the data source does not reach it yet: plan the preparation again once it does, with network access; a source that ends earlier cannot support a baseline there, so ask the person for one that reaches it.",
+  "next_action": "READ_THE_SHORTFALL_THEN_REPLAN_OR_ASK_FOR_A_SOURCE"
+ },
+ "CODEX_COMMAND_MISSING": {
+  "detail": "The Host could not send the Codex wake: the codex command is not on its path. Read the same Task; its work is unchanged.",
+  "next_action": "READ_THE_SAME_TASK"
+ },
+ "CODEX_QUEUE_FAILED": {
+  "detail": "The codex queue command failed, so the Codex wake was not delivered. Read the same Task; its work is unchanged.",
+  "next_action": "READ_THE_SAME_TASK"
+ },
+ "CODEX_QUEUE_TIMED_OUT": {
+  "detail": "The codex queue command timed out, so the Codex wake may or may not have arrived. Read the same Task; its work is unchanged.",
+  "next_action": "READ_THE_SAME_TASK"
+ },
+ "CODEX_QUEUE_START_FAILED": {
+  "detail": "The Host could not start the codex queue command, so the Codex wake was not delivered. Read the same Task; its work is unchanged.",
+  "next_action": "READ_THE_SAME_TASK"
+ },
+ "CODEX_WAKE_DELIVERY_UNCERTAIN": {
+  "detail": "The Host stopped while sending the Codex wake, so it may or may not have arrived; it is not sent again. Read the same Task; its work is unchanged.",
+  "next_action": "READ_THE_SAME_TASK"
+ },
+ "research_strategy.installation_waits_for_portfolio_tasks": {
+  "detail": "A book, score, calibration or update Task on the installed strategies is in progress, so nothing was installed. Wait for that Task ({subject}) to end, then install again.",
+  "next_action": "WAIT_FOR_THE_TASK_THEN_INSTALL"
  }
 }

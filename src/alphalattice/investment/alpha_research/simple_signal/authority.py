@@ -1,7 +1,7 @@
 """Resolve a published simple score by re-deriving it, never by reading it back.
 
 The discipline here is the one the Stage-6 campaign enforced on the Alpha
-calibration (the campaign retired with RT R01), for the same reason: a
+calibration (the campaign retired with R01), for the same reason: a
 stored-values readback establishes only that the writer agreed with itself. So
 this re-reads the Panel, recomputes the standardization from the binding's own
 declared axis, and reports ``rederived=True`` only when the bytes match the

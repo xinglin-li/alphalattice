@@ -443,13 +443,13 @@ def test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged(
         roots = {v["binding_hash"]: v["roots"] for v in storage["inputs"]}
         assert "CURRENT_ACTIVE" in roots[anchor.binding_hash]
         assert "CURRENT_RESEARCH_VERSION" in roots[publication.binding_hash]
-        # Only chunks no generation published are offered (V207, V311); both inputs' stay.
+        # Only chunks no generation published are offered; both inputs' stay.
         targets = _json(live, "/api/workspace/storage/plan", method="POST", payload={})["targets"]
         assert not set(targets) & published_panel_chunks(root)
 
 
 def test_a_saved_capture_continues_on_its_published_revision(revision_journey, capsys):
-    """contract (V523/V515): capture readback offers controls on its newly published input,
+    """Contract: capture readback offers controls on its newly published input,
     and a saved JSON or YAML answer carries that exact binding rather than the old anchor."""
     from alphalattice.interface.local_application.cli_contract import command_table
     from alphalattice.interface.local_application.client import continuation

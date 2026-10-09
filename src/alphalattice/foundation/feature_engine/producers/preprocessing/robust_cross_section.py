@@ -279,8 +279,8 @@ class PanelCrossSectionKernel:
             .reshape(len(sessions), universe, len(factor_ids))
         )
         # A non-finite raw value is missing, as NaN is, in every session statistic -- the
-        # median, MAD, winsor and coverage alike -- so it never moves another name's value
-        # (V517). The producers screen their own; the kernel does not rely on them.
+        # median, MAD, winsor and coverage alike -- so it never moves another name's value.
+        # The producers screen their own; the kernel does not rely on them.
         factor_cube = np.where(np.isfinite(factor_cube), factor_cube, np.nan)
         universe_size = member_mask.sum(axis=1)
         member_sessions, member_positions = np.nonzero(member_mask)

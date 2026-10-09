@@ -11355,6 +11355,489 @@
    "successor": "8506b67e54c06d2dde8e6f7b259afddf748cccf59a2e83597d915b596a6cc3bd",
    "change": "Model-fit sidecars are verified once per lifecycle formation (2026-10-08)",
    "reason": "A formation's later loads of a model-fit sidecar reuse its first fully checked load and receive a fresh estimator copy; study files are byte-identical and no published number changes."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "9e98328f44a8e6844f19e822b3dd8785a68f50aa8d26b112e21546024bf16333",
+   "successor": "2e2a06180032dde6d81ab6179f5bfc9857070ac150e808084e163417547961f4",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "f26cdecac0839fc8b63620a7c12bcecd230f7132c10d07a44cf4c57dcd60a5a5",
+   "successor": "08e31d6209aa4f8868cfd21a6e49f363077e147e9ab97eae53951fbb4d46f44e",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "95da212b6dcded7e290205fc793900fe260d6f423b02c2d76fb9c97cc1c599fd",
+   "successor": "40c553f345d1a680852dd54d28183dacbe615094f0195df1315658828430d5c3",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "23d1ebbc2b7e58ebab9b626ca71d64bc5abb3a09a0b7f0f08a3c6217f992360d",
+   "successor": "87a72c5b9e5f76c0b1a02bb35cfe23afbbf6408577b816692e6b87c6e9e77e1b",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "8bedd7a46b343ae78781169d0b91118529263f46785973ce903b09b693c12465",
+   "successor": "2d21361f596dc1c3738884982dd8c7c4fbc9de7f114d3b86f807d7c8bca48020",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "9e89a469e307a1704d4e393a1f31cef1a7ae882085ee44084d4221739f106330",
+   "successor": "18903531d2ffe9c98d406033c8e0a06a659219863aa28620f874d4651c9962ce",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "9b730a31cce542daaafb1e911fac1e5032aa5faca303448101f18969868168b0",
+   "successor": "50ca80ee22ac80526b2a38e8d8016ad152d09e3dbc01bf88e53ed635c9a2d4b3",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "ec99ed130618a22167f8415ffd881ef84d453c402e2c609874ef4ca11bbd5096",
+   "successor": "22673892a219ee77eae3a3a68f19fa782ddefadaf8301baa2d931bf5c82d660d",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "3e6067bb71d418399b515351477d633467de218c13e7773cf90f830e0ee279e3",
+   "successor": "1328bb6adbb15cc23910a6aa980f689279d00f10354f1f4653db73578e1f7e1f",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "ee10b8e002ef378cb26ebf5f32fa6c8eb13a3a8b326b6e9a37963a8ff5b8e0fb",
+   "successor": "0839834c8664e05cd34398d193e0e3c087584a2b5b0fd08e687cc8ccc694f359",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "af8ee14808d95938bfd1b726962643038ea4aed510ba14dd268d47de7478eeb9",
+   "successor": "537b29c64187a814836bad87550a205fd883e75cdc87a5416f7c787d17642b2e",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "f7ad6150571501d17ee80b96bb899fcbdd1633ef5f172148b41b550555814eca",
+   "successor": "3b895c5e8aecdc746306046fd42ea6bd6bdbb0b063eb8929bd046702eaa69c0f",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "c11cf8fd8fe2d08139a713320919de79e59701823aaf799b88012029ead2b4a4",
+   "successor": "f7afd9abf4d0c571f824630cc0b05ef115ad1fa96264c5d5aa260d82c0c241a5",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "c11cf8fd8fe2d08139a713320919de79e59701823aaf799b88012029ead2b4a4",
+   "successor": "f7afd9abf4d0c571f824630cc0b05ef115ad1fa96264c5d5aa260d82c0c241a5",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "70f1a2ef8668562ca0aac277f3d8d5390600f65711339aaac41e59ac857876cd",
+   "successor": "f4809fd9fa96cec95e8d5ef3556491ca027fc7828db33e4f05a9a48b94dd034c",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "8506b67e54c06d2dde8e6f7b259afddf748cccf59a2e83597d915b596a6cc3bd",
+   "successor": "a02bdc1f2862c51a11222ada1740c970528691c1ec5b971ab0122cfbc4b28609",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "b49d9d5b07f6cf675d8fd2825d7b61ca64c2c94cd26a3d755780577ed87231aa",
+   "successor": "b0f6304077bb620fcc1ff8c098fc4003ef701c172e7f46d397dbedf27cf8dd54",
+   "change": "Daily update and training speedups; the preparation answer's single way on (2026-10-08)",
+   "reason": "The backup takes held arrays by name, a formation's features come from its window, the warm audit reads its tail, the plan verifies once per request, the read lease's identity comes from one handle, and an admitted preparation plan offers only its confirm; numbers, scores and positions are equal on the journey days, and only implementation-bound hashes move."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "40c553f345d1a680852dd54d28183dacbe615094f0195df1315658828430d5c3",
+   "successor": "7031f1dd1b766084cca7572e39c0349550bc761df38aa8d720e7132b05b9c56c",
+   "change": "The lease identity check opens outside the lease lock (2026-10-08)",
+   "reason": "Every path open of a lease identity check moves outside the lease lock so an ancestor rename never waits behind it; the checks and their order are unchanged and no value moves."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "87a72c5b9e5f76c0b1a02bb35cfe23afbbf6408577b816692e6b87c6e9e77e1b",
+   "successor": "7a8467d087464bd5294c54a2ee247ac3228c054aab23ca299cdc1e174e5c32b0",
+   "change": "The lease identity check opens outside the lease lock (2026-10-08)",
+   "reason": "Every path open of a lease identity check moves outside the lease lock so an ancestor rename never waits behind it; the checks and their order are unchanged and no value moves."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "0839834c8664e05cd34398d193e0e3c087584a2b5b0fd08e687cc8ccc694f359",
+   "successor": "8715542fa338b3147952bb3d9efa8590ddfb76c809fbdcdda91efdafe6ff09e4",
+   "change": "The lease identity check opens outside the lease lock (2026-10-08)",
+   "reason": "Every path open of a lease identity check moves outside the lease lock so an ancestor rename never waits behind it; the checks and their order are unchanged and no value moves."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "3b895c5e8aecdc746306046fd42ea6bd6bdbb0b063eb8929bd046702eaa69c0f",
+   "successor": "c53e1d216e21c951956430e5174f9bfc6fcfecc4de41aabd3b112272adf8e18b",
+   "change": "A baseline short of qualified names says how many and why (2026-10-08)",
+   "reason": "The preparation's baseline stop now records its required and available counts and the reasons names failed in its failure cause; the gate's rule and every value are unchanged."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "7c0264fc5600315047d029689013d368f9b03267a81b58ad6bd73d21b103872b",
+   "successor": "8edd3a678857947ec1510d8b70affa3a72646270be9e3b266b4bd679b4e120f3",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "2e2a06180032dde6d81ab6179f5bfc9857070ac150e808084e163417547961f4",
+   "successor": "2c987eebfefa6e317fc803a0051d7263d511dced9677d229fc8b51a6381aa2fb",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "1b8add97ae7a5211ef72b32ce041358967f96bb6e7f93e74f3d4302462264977",
+   "successor": "cd5adb629708c8169cdf13939fb6e3c5d2fa9a62a0ce8409c506967c09b54d47",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "08e31d6209aa4f8868cfd21a6e49f363077e147e9ab97eae53951fbb4d46f44e",
+   "successor": "f0f3b8cce22bdae76b3e28b00b793d5bc3e6585a2434ceb41275ba9aaf3fa954",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "7031f1dd1b766084cca7572e39c0349550bc761df38aa8d720e7132b05b9c56c",
+   "successor": "c36c3d44da5d460095f7381c32817c1259bd8b4331d603f6d564a1ebf93ed4ff",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "7a8467d087464bd5294c54a2ee247ac3228c054aab23ca299cdc1e174e5c32b0",
+   "successor": "42d3396ce8256a9dfcf2e76f493bbffab6997feea5e08058a4aa731ee277ec47",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "2d21361f596dc1c3738884982dd8c7c4fbc9de7f114d3b86f807d7c8bca48020",
+   "successor": "3cb77febafa626edc8e826d40280f505b559f566fa41ef45ae8b8c3872461245",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "18903531d2ffe9c98d406033c8e0a06a659219863aa28620f874d4651c9962ce",
+   "successor": "29ecbb4bfe5913b43cca021c318b2b7a187a3d0da4e92d69670fb0c748f47e27",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "1328bb6adbb15cc23910a6aa980f689279d00f10354f1f4653db73578e1f7e1f",
+   "successor": "7d4febb00a96d39baf6e4bf222f13de098741c3fff3dfd6d057bfffea6848e1a",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "8715542fa338b3147952bb3d9efa8590ddfb76c809fbdcdda91efdafe6ff09e4",
+   "successor": "87592722b3692429530aaf6ce1c7375958ba12bff9ef73107d259dc6bdb9988d",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "537b29c64187a814836bad87550a205fd883e75cdc87a5416f7c787d17642b2e",
+   "successor": "64e4bff97bf90fbf3306a83c48dcfe32d68c4930286adcc7750af6b69b315f9c",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "f7afd9abf4d0c571f824630cc0b05ef115ad1fa96264c5d5aa260d82c0c241a5",
+   "successor": "548a90591ab275c33accc629ff215b61d862da7175b233c7e5d72002c3fda23c",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "f7afd9abf4d0c571f824630cc0b05ef115ad1fa96264c5d5aa260d82c0c241a5",
+   "successor": "548a90591ab275c33accc629ff215b61d862da7175b233c7e5d72002c3fda23c",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "f4809fd9fa96cec95e8d5ef3556491ca027fc7828db33e4f05a9a48b94dd034c",
+   "successor": "71697671e20278bbc987c030885319339788538d27217e60cfbe8bb82fe6f93e",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "a02bdc1f2862c51a11222ada1740c970528691c1ec5b971ab0122cfbc4b28609",
+   "successor": "8b310f8bab5d462b844955432d92de7a3469ebb5433331f8249db2ea2ceee161",
+   "change": "A lifecycle child's fit skips its in-sample prediction; the first use trains one seed per vintage (2026-10-08)",
+   "reason": "A lifecycle child's fit skips its unused in-sample prediction, which leaves every score bit-equal; the default first-use training fits one seed per vintage, and the full ensemble stays available by name."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "c36c3d44da5d460095f7381c32817c1259bd8b4331d603f6d564a1ebf93ed4ff",
+   "successor": "b2db90664387edbff8f174790d0cbfa7c1ac940036cd5817675209c3917a560c",
+   "change": "A preparation whose data lags its target session stops at the data stage (2026-10-08)",
+   "reason": "A preparation whose data reaches its target session for too few listings now stops at the data stage with the counts and the latest common bar, and resumes the same Task for the lagging listings only; admission rules and every value are unchanged."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "64e4bff97bf90fbf3306a83c48dcfe32d68c4930286adcc7750af6b69b315f9c",
+   "successor": "56f631d0e0dc45caaacbd7f2643e4820b167d23067307ab870587d6044c1de7f",
+   "change": "A preparation whose data lags its target session stops at the data stage (2026-10-08)",
+   "reason": "A preparation whose data reaches its target session for too few listings now stops at the data stage with the counts and the latest common bar, and resumes the same Task for the lagging listings only; admission rules and every value are unchanged."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "c53e1d216e21c951956430e5174f9bfc6fcfecc4de41aabd3b112272adf8e18b",
+   "successor": "76a00c7d9108d732315ccd1c23934b35265ba7bacfcfb68fa74c800974657697",
+   "change": "A preparation whose data lags its target session stops at the data stage (2026-10-08)",
+   "reason": "A preparation whose data reaches its target session for too few listings now stops at the data stage with the counts and the latest common bar, and resumes the same Task for the lagging listings only; admission rules and every value are unchanged."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "76a00c7d9108d732315ccd1c23934b35265ba7bacfcfb68fa74c800974657697",
+   "successor": "0dfe268fd0e57052f4b2cd35481906b831f5de272c627feb2d962a9456665009",
+   "change": "A network refusal names the person's decision for its own step (2026-10-08)",
+   "reason": "A preparation refused for network access describes the workspace's network setting as a refusal's way on rather than as a standing state; every value is unchanged."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "2c987eebfefa6e317fc803a0051d7263d511dced9677d229fc8b51a6381aa2fb",
+   "successor": "6cff0dbcc5d89ed7552df5cf4c84131c7891082ca1c51c9aeff07fc04c1fc757",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.ABSOLUTE_STATE",
+   "predecessor": "5230edd83971d4a8a7134fac8bb4c1ae0d3cb7eb485001cdcaeaf223ffcefe89",
+   "successor": "aba11a22fd051dff8a5b16da74aa8ea4764356cd3c469eaf37f635b1cc0de1a5",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.DOWNSIDE_TAIL",
+   "predecessor": "efef98e681f44b7b204c266e85ead8269205e28880c5950cad6a47d0c835fdc8",
+   "successor": "a3d87622472a4de3d7ac60c810d9ebe74d13a6156066c6cc02d7ff43291dd745",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.FACTOR_FORMULA",
+   "predecessor": "f9545754592ae9f020685736c359dd8e29cb5ef707a2167b9c83c90ffb53c433",
+   "successor": "66f0c8b46758128d1d7d24acc627c2580e98f80a734f799f9a5e0b75e585236c",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.OPEN_INTRADAY",
+   "predecessor": "d062e7feb67c7ab9295b8768ab1dc1e6539ef64aba8e5bbbbb4a7bb05f13f092",
+   "successor": "5eadfed029e68ce88f97787cfb113aaa945a4b23b84791ea991c94a9630e33a5",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.RESIDUAL_REVERSAL",
+   "predecessor": "9903a4854e80995967ba0fdef0c476f133c067c58314f444a26822333bb8b785",
+   "successor": "55ebe8d30a3f1e2cfaa3241219c572c2be013e7147a03f83a0d2fd529a529d36",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.SECTOR_LEADER_LAG",
+   "predecessor": "985352125b9b764d8555354105e3e6641ca0b0046cd9f82360b0e7038a81b58f",
+   "successor": "a8d47a91c8ddb8d6be47f378b8fc58722d74f1d68b3b17c49927aabd15aba25b",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_LIQUIDITY",
+   "predecessor": "f069f4ea8fff94479e3004965de0761c387b420b5085ba46b71bee9aafbbdbdf",
+   "successor": "ecdd5cfd55e269768efe4e0390f94b53dd9a0b6865c9bd6e619c5e97f78275b2",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_OBSERVATION",
+   "predecessor": "8ef5b792c0cdbe2caca007477eb7f3ad4c29f47247f8005dd663abd275b04f9c",
+   "successor": "0aeb741f7db3833baed2fec9baf0724562db6a66a0caf1442c5335211dd4e57d",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.STATE_INTERACTION",
+   "predecessor": "1f78f92f02fe14b8a6a3152273bd6630de8fe517ffe8ef2ff5b7bac659a5c197",
+   "successor": "4b21731a7c6a4f9d07331ae82424f27f9a4003a71aa49e3b332d30ccf3797369",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.controls",
+   "predecessor": "14c298f188eeb3873a768610161848e93a02a0bc2b5081520e195f5c87afd88c",
+   "successor": "07568c5b649cbd05b6d8fc0f00c16cee99708428e1dc7fb83568065613846255",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "b2db90664387edbff8f174790d0cbfa7c1ac940036cd5817675209c3917a560c",
+   "successor": "c60047668dd207b67e9d05b485eaa24f1341f7d5f9d3d26880fb2d11d83a1368",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "42d3396ce8256a9dfcf2e76f493bbffab6997feea5e08058a4aa731ee277ec47",
+   "successor": "845aa8defb5c1fd2f167c331be2a96d2213864b2c46c764fba01699583d6545e",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "3cb77febafa626edc8e826d40280f505b559f566fa41ef45ae8b8c3872461245",
+   "successor": "d4e2d8b117cd5203e1f1889d8b6d63f5c6e735e5953591c2b8a66e0c5c9072e4",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "8ef29d3d684f42f8cac384571d18fab62f97ead1462b163051d177b186ca6ea9",
+   "successor": "ef9d5e16471c381cc4a630308b0d7decd1dd9e810c4701534510e4c5c431b17a",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "29ecbb4bfe5913b43cca021c318b2b7a187a3d0da4e92d69670fb0c748f47e27",
+   "successor": "c5cfdfb20de97cc72dfb4dc7f9976e9451eef47192671f14ba922d19b2663eea",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "50ca80ee22ac80526b2a38e8d8016ad152d09e3dbc01bf88e53ed635c9a2d4b3",
+   "successor": "6307cfe2266d259e9cd8fde94be5cc7b044e4dab8d8e5b3c3f556b515ea3b871",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "7d4febb00a96d39baf6e4bf222f13de098741c3fff3dfd6d057bfffea6848e1a",
+   "successor": "58511cd1ece50830ef80a8e1459eb911a01a0d3d1b1c822394b7ed00d32fc9bf",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "87592722b3692429530aaf6ce1c7375958ba12bff9ef73107d259dc6bdb9988d",
+   "successor": "d7f8b4d7e7424c30659b57a933e9f127f70bb5b06c520855ee9f48888b643c52",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "56f631d0e0dc45caaacbd7f2643e4820b167d23067307ab870587d6044c1de7f",
+   "successor": "11a899375d9fff9da7cd48d8b380516226bb0f7143de86f866621ce97e5fd9bc",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "0dfe268fd0e57052f4b2cd35481906b831f5de272c627feb2d962a9456665009",
+   "successor": "44cf7c12c6f4e00d6dbae8f49b0d87615ecd0c755aa2aa9e7e970d01235c8279",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "548a90591ab275c33accc629ff215b61d862da7175b233c7e5d72002c3fda23c",
+   "successor": "c389b7946de40214ad64829dbb541c2cd718243e0afa43f1ac6dda74875e88a2",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "548a90591ab275c33accc629ff215b61d862da7175b233c7e5d72002c3fda23c",
+   "successor": "c389b7946de40214ad64829dbb541c2cd718243e0afa43f1ac6dda74875e88a2",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "71697671e20278bbc987c030885319339788538d27217e60cfbe8bb82fe6f93e",
+   "successor": "1cf9bfeb228d55b197976b944c49d53b6dfcb0141706d4267a8de5f4d0bf64d3",
+   "change": "The warm daily update reads its stores once per set and seals closed Feature years (2026-10-08)",
+   "reason": "The daily update reads listing inputs, bars and actions as one set per chunk, proves source prefixes in one chain, and seals closed Feature years; every score, input and Feature value is unchanged."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "f0f3b8cce22bdae76b3e28b00b793d5bc3e6585a2434ceb41275ba9aaf3fa954",
+   "successor": "e53470d618761f72748810947ccf0fbaeb867660deb0d3892f891d989fae598c",
+   "change": "An installed strategy is served without a Host restart (2026-10-08)",
+   "reason": "The Host always composes its portfolio half and an installation swaps the strategy catalog in, so the running Host serves the new package at once; no computation changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "c60047668dd207b67e9d05b485eaa24f1341f7d5f9d3d26880fb2d11d83a1368",
+   "successor": "61ded754c2143feaf4e19fa429d9d8149162652cb44f5dd9f7feccc6e1c6a2d1",
+   "change": "An installed strategy is served without a Host restart (2026-10-08)",
+   "reason": "The Host always composes its portfolio half and an installation swaps the strategy catalog in, so the running Host serves the new package at once; no computation changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "58511cd1ece50830ef80a8e1459eb911a01a0d3d1b1c822394b7ed00d32fc9bf",
+   "successor": "22747ff5933499f161f92dd88d47a74a27a396159de21087f5a97ca284b4b9a7",
+   "change": "An installed strategy is served without a Host restart (2026-10-08)",
+   "reason": "The Host always composes its portfolio half and an installation swaps the strategy catalog in, so the running Host serves the new package at once; no computation changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "d7f8b4d7e7424c30659b57a933e9f127f70bb5b06c520855ee9f48888b643c52",
+   "successor": "15121677b086d3c6837996087d5cf52d4417748ece6969d3f8c803212c598dc0",
+   "change": "An installed strategy is served without a Host restart (2026-10-08)",
+   "reason": "The Host always composes its portfolio half and an installation swaps the strategy catalog in, so the running Host serves the new package at once; no computation changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "11a899375d9fff9da7cd48d8b380516226bb0f7143de86f866621ce97e5fd9bc",
+   "successor": "dc9fdcb9aa6168c9c5e2da95dd667b3a03a3fb82acc6b158e59ed7d96653fdb9",
+   "change": "An installed strategy is served without a Host restart (2026-10-08)",
+   "reason": "The Host always composes its portfolio half and an installation swaps the strategy catalog in, so the running Host serves the new package at once; no computation changes."
   }
  ]
 }

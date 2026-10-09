@@ -20,7 +20,6 @@ const Inspect = (() => {
    * window on it: two handles, a pannable middle, presets by calendar. The chart above draws the
    * rows in the window; the observation cursor is one row, moved on the chart or by keyboard.
    * Neither changes the holdings date, the book or a value. */
-  // round 95 (Apple Stocks' row): the ranges the series is long enough to need, else none
   const PRESETS = [['3m', '3M', 3], ['1y', '1Y', 12], ['3y', '3Y', 36]];
   const MIN_SPAN = 2;
   function presetsFor(rows = Data.series()) {
@@ -93,9 +92,6 @@ const Inspect = (() => {
     }
     return d;
   }
-  /* The navigator (round 95: the observation row above it retired -- the chart's hero is the
-   * readout under the pointer, and a figure's facts live in Facts; the range presets moved to the
-   * chart's toolbar, so the foot is the window's two dates). */
   function observationDock() {
     const rows = Data.series();
     if (!rows.length) return '';
@@ -135,14 +131,8 @@ const Inspect = (() => {
     S.observation = Math.max(0, Math.min(Data.series().length - 1, i));
     syncObservation();
   }
-  /* ---- the proof lens: the read-only inspection beside the page (round 62); its bodies are
-   * LiveViews.proofBody's; the research context left it for the workspace popover and the
-   * Facts panel's first section (round 81) ---- */
   const PROOF_NAMES = {knowledge: 'Knowledge boundary', declaration: 'Declaration changes', observation: 'Observation source', coverage: 'Review coverage', annual: 'Return, with its scope', vol: 'Volatility, with its scope', drawdown: 'Drawdown, with its scope', sharpe: 'Sharpe, with its scope', sortino: 'Sortino, with its scope'};
   const proofBody = (key) => LiveViews.proofBody(key, S.observation);
-  /* Round 92: the lens is gone -- a proof is the facts of one figure, so the proofs are sections of
-   * the Facts tab on the pages that have them (the book's metrics, its knowledge boundary, the
-   * observation under the pointer), and a tile's ⓘ opens Facts at that section. */
   const PROOF_KEYS = ['knowledge', 'declaration', 'observation', 'coverage', 'annual', 'vol', 'drawdown', 'sharpe', 'sortino'];
   const proofSections = () => app.page === 'portfolio' && Data.subject() ? PROOF_KEYS.filter((k) => k === 'knowledge' || k === 'observation' || k in (Data.metrics() || {}) || LiveViews.metricAbsence(k)).map((k) => ({key: k, title: t(PROOF_NAMES[k]), body: proofBody(k)})) : [];
   function openLens(key) {
@@ -153,7 +143,7 @@ const Inspect = (() => {
     if (section) { section.scrollIntoView({block: 'start', behavior: 'instant'}); section.classList.add('ui-arrived'); }
     return opened;
   }
-  const closeLens = () => false; // kept for its callers; nothing to close (round 92)
+  const closeLens = () => false;
   function refreshLens() {
     // the observation section follows the pointer without repainting the whole tab
     const host = $('#inspector [data-facts="observation"]');
@@ -183,10 +173,6 @@ const Inspect = (() => {
   }
 
   /* ---- Quick Open: local navigation, never an AI prompt ---- */
-  /* The page's own actions (round 15): every labelled, enabled, non-mutating action button the
-   * page or its chrome shows right now — the same admission the button has, read from the button.
-   * A row's opener and the dialog's controls are not commands; a mutating action needs its own
-   * confirmation and stays a button. */
   function pageActions() {
     const seen = new Set(), out = [];
     // the page's own actions first, then the dock's, then the chrome's
@@ -194,8 +180,7 @@ const Inspect = (() => {
       const action = b.dataset.action, value = b.dataset.value || '';
       if (!action || ['close', 'quick-open', 'quick-pick', 'tools-menu', 'copy-block', 'workspace-switch', 'workspace'].includes(action)) continue;
       if (b.disabled || b.getAttribute('aria-disabled') === 'true' || b.dataset.mutating === 'true' || b.closest('.list-row, .row-actions, .card-note, dialog')) continue;
-      if (!b.offsetParent && !b.closest('.rail-tools')) continue; // the folded tools stay reachable here
-      // a menu item is a word and a reason (<strong> + <small>) or a word and its note (`.menu-word` + `.menu-note`, the note a chord): the word is the label, the chord its key (round 95: `Keyboard shortcuts?` and `Copy linkL` were the note glued on)
+      if (!b.offsetParent && !b.closest('.rail-tools')) continue; // The menu label excludes its chord so the key hint is not glued onto the command word.
       const label = (b.getAttribute('aria-label') || b.querySelector('strong')?.textContent || b.querySelector('.menu-word')?.textContent || [...b.childNodes].filter((n) => !(n.getAttribute?.('aria-hidden') === 'true')).map((n) => n.textContent).join('') || '').replace(/\s+/g, ' ').trim();
       if (!label || label.length > 48) continue;
       const key = action + ':' + value;
@@ -205,20 +190,13 @@ const Inspect = (() => {
     }
     return out;
   }
-  /* ---- the command menu (round 54, Linear's Ctrl K): where you are, then what you can do ----
-   * Sections: Recent (the last five choices, kept in the viewer's preferences), Actions (the
-   * open object's first, then the page's, with their keys where round 51 bound one), Pages (the
-   * routes with their chords) and Records (the saved records and the Tasks the browser already
-   * holds). A query matches words in any order and id prefixes; Tab moves to the next section.
-   * Nothing here runs a mutation directly: an action runs as its button would, confirmation and
-   * all. */
   const KEY_OF_ACTION = {shortcuts: '?', 'focus-toggle': '', 'step-prev': '[', 'step-next': ']'};
   const RECORD_ICONS = {'portfolio.policy-development': 'portfolio', 'alpha.model-development': 'branch', 'factor.screening-development': 'lab', 'risk.covariance-development': 'evidence', CRO_REVIEW: 'review'};
   const recentIds = () => { const v = readPreference('commands.recent'); return Array.isArray(v) ? v : []; };
   function commands() {
     const out = [];
     const object = SAVED_VIEWS.has(app.page);
-    const scoped = Boolean(S.commandScope) || !SAVED_VIEWS.has(app.page); // round 93: the chip gone, the object's own verbs leave the list and the search is the whole workspace
+    const scoped = Boolean(S.commandScope) || !SAVED_VIEWS.has(app.page);
     for (const a of pageActions()) {
       const [id, label, , , action] = a;
       // the object's own verbs first, the page tools after them, the rest of the page last
@@ -310,10 +288,7 @@ const Inspect = (() => {
     return true;
   }
 
-  /* ---- the peek (round 53, Linear's Space): a card beside the held row, from what the row
-   * already renders — its id, its title, its properties, its note, its time; no second read.
-   * At the row's right edge on a wide page, under the row on a narrow one; Space or Esc closes,
-   * J / K move it with the held row, Enter opens the record. ---- */
+  /* The peek reads the row's rendered facts rather than issuing a second read. */
   const peekEl = () => $('#objectPeek');
   const peekOpen = () => Boolean(peekEl() && !peekEl().hidden);
   let peekRow = null;
@@ -333,7 +308,6 @@ const Inspect = (() => {
     }
     const why = clean(row.querySelector('.list-row-why, .sub-cell')?.textContent);
     const time = clean(row.querySelector('.list-row-time')?.textContent);
-    // round 63: a Task row's card reads the Task itself, so the truth line (its goal words) is on the card, not in the row
     const task = row.classList.contains('tp-task') ? Data.tasks().find((v) => v.task_id === row.dataset.key) : null;
     const keys = html`<p class="peek-keys">${btnAttrs(html`${keycap('Enter')} <span>${t('Open')}</span>`, 'peek-open', '', 'text-btn compact')}${btnAttrs(html`${keycap('Esc')} <span>${t('Close')}</span>`, 'peek-close', '', 'text-btn compact')}</p>`;
     if (task) return html`${recordCard('task', task)}${keys}`;
@@ -347,13 +321,10 @@ const Inspect = (() => {
     const h = el.offsetHeight;
     el.style.top = (wide ? Math.min(Math.max(near, r.top), Math.max(near, vh - h - near)) : (r.bottom + gap + h > vh - near ? Math.max(near, r.top - h - gap) : r.bottom + gap)) + 'px';
   }
-  /* Round 92: the peek is the hover card and nothing more -- Space on a held row shows the card
-   * beside it, with `Open` as its one way (Enter on the row opens the object); it never becomes
-   * the side column. */
   function peek(row) {
     if (!row) return false;
     if (peekMode === 'hover') closeHover();
-    if (row.classList.contains('tp-task') && row.dataset.key) { LiveTasks.open(row.dataset.key); return true; } // round 66: a Task's peek is the Task
+    if (row.classList.contains('tp-task') && row.dataset.key) { LiveTasks.open(row.dataset.key); return true; }
     const card = peekEl();
     if (!card) return false;
     peekRow = row; peekMode = 'peek'; hoverEl = null;
@@ -380,17 +351,13 @@ const Inspect = (() => {
   function openPeeked() { const main = peekRow?.querySelector('.list-row-main, a[href], button[data-action]'); closePeek(); main?.click(); }
   function peekFollow(row) { if (peekOpen() && peekMode === 'peek') peek(row); }
 
-  /* ---- hover cards (round 58, Linear's): a link to a record the browser already holds shows
-   * the record's card under the pointer after 500 ms, and it leaves with the pointer; a focused
-   * link shows it on Space. The card reads what the page holds (no second fetch): a saved
-   * record from the history, a Task from the Task list; a link whose object is not in the
-   * browser has no card. A list row's own opener is not a link here (the row peeks). ---- */
-  const HOVER_LINKS = '#main [data-action="history-open"]:not(.list-row-main), #main [data-action="task"]:not(.list-row-main), #main a[href*="study="]:not(.list-row-main), #main a[href*="book="]:not(.list-row-main), #main [data-cite], #inspector [data-cite]'; // round 80: a reading's cite pills carry the card too; round 93: a term's words are the tooltip's
+  /* A hover card reads an object the browser already holds; an uncached object has no card and triggers no second fetch. */
+  const HOVER_LINKS = '#main [data-action="history-open"]:not(.list-row-main), #main [data-action="task"]:not(.list-row-main), #main a[href*="study="]:not(.list-row-main), #main a[href*="book="]:not(.list-row-main), #main [data-cite], #inspector [data-cite]';
   const NOT_A_LINK = '.view-rail, .object-actions, .tabs, nav'; // navigation carries the open object in its routes: not a link to it
   let peekMode = 'peek', hoverEl = null, hoverTimer = 0;
   function linkRecord(el) {
     const v = el.dataset.value || '';
-    if (el.dataset.cite) return ['cite', LiveReview.spanOf(el.dataset.cite)]; // round 76: the span or finding a handle names
+    if (el.dataset.cite) return ['cite', LiveReview.spanOf(el.dataset.cite)];
     if (el.dataset.action === 'history-open') return ['record', Data.history().find((r) => r.id === v)];
     if (el.dataset.action === 'task') return ['task', Data.tasks().find((r) => r.task_id === v)];
     // a study link names its object in `study`; a book link in `book` (the route carries the open
@@ -438,10 +405,7 @@ const Inspect = (() => {
     });
   }
 
-  /* ---- stepping (round 53): a record opened from a list steps to its neighbours in that list's
-   * shown order ([ and ], the ↑ ↓ pair beside the id); the list's context is `app.listContext`,
-   * set by the list that opened the record and cleared by a navigation elsewhere. A step writes
-   * the record's route in place, so Back still returns to the list. ---- */
+  /* Stepping replaces the record's route so browser Back still returns to the list. */
   function stepping() {
     const c = app.listContext;
     // a list shows no stepper: the pair steps between objects, and the list is the whole
@@ -450,7 +414,7 @@ const Inspect = (() => {
     return {index: c.index, total: c.keys.length, prev: c.index > 0, next: c.index < c.keys.length - 1};
   }
   function step(delta) {
-    if (Window.inspectorMode() === 'task') { // round 66: the inspector's Task steps through the page's Task rows
+    if (Window.inspectorMode() === 'task') {
       const keys = [...document.querySelectorAll('#main .tp-task-list [data-key]')].map((r) => r.dataset.key), i = keys.indexOf(hashParams().get('task') || ''), to = i + delta;
       if (i < 0 || to < 0 || to >= keys.length) return false;
       if (typeof LiveActivity !== 'undefined') LiveActivity.pauseFollowing?.();
@@ -467,26 +431,20 @@ const Inspect = (() => {
     return true;
   }
 
-  /* ---- the Facts mode (round 64): the object's facts — sources, limitations, the declaration —
-   * read in the inspector as sections a page declares (`FACTS[page]`), from the `Facts` chip and
-   * `···` → Facts; one fold's body (`factsRef`) opens the same way from its text link. ---- */
   const study = {has: () => LiveStudy.hasFacts(), sections: () => LiveStudy.factsSections()};
   const glossary = {has: () => true, sections: () => [glossarySection()]};
   const FACTS = {factor: study, alpha: study, risk: study, portfolio: {has: () => Boolean(Data.raw()?.declaration), sections: () => LiveViews.bookFactsSections()},
-    evidence: {has: () => true, sections: () => [...LiveReview.overviewFacts(), glossarySection()]}, 'evidence-stream': {has: () => true, sections: () => [...LiveReview.sourcesFacts(), glossarySection()]}, 'evidence-reading': {has: () => true, sections: () => [...LiveReview.readingFacts(), glossarySection()]}, report: {has: () => true, sections: () => [...LiveReview.reportFacts(), glossarySection()]}, handoff: {has: () => true, sections: () => [...LiveReview.handoffFacts(), glossarySection()]}, 'team-evidence': glossary, ...Object.fromEntries(['goal', 'goal-conversation', 'goal-results'].map((page) => [page, {has: () => LiveGoals.hasFacts(), sections: () => [...LiveGoals.factsSections(), glossarySection()]}]))}; // U23: a goal's exact revision
+    evidence: {has: () => true, sections: () => [...LiveReview.overviewFacts(), glossarySection()]}, 'evidence-stream': {has: () => true, sections: () => [...LiveReview.sourcesFacts(), glossarySection()]}, 'evidence-reading': {has: () => true, sections: () => [...LiveReview.readingFacts(), glossarySection()]}, report: {has: () => true, sections: () => [...LiveReview.reportFacts(), glossarySection()]}, handoff: {has: () => true, sections: () => [...LiveReview.handoffFacts(), glossarySection()]}, 'team-evidence': glossary, ...Object.fromEntries(['goal', 'goal-conversation', 'goal-results'].map((page) => [page, {has: () => LiveGoals.hasFacts(), sections: () => [...LiveGoals.factsSections(), glossarySection()]}]))};
   const hasFacts = () => Boolean(FACTS[app.page]?.has());
-  /* The Record mode (round 67): what the owners recorded about the object — a Task's or a study's
-   * observations in recorded order, a session's exchanges as a run log. */
   const studyTask = () => hashParams().get('study') || '';
   const RECORD = {
     tasks: {has: () => Boolean(hashParams().get('task')), body: () => LiveActivity.recordOf(hashParams().get('task'))},
-    handoff: {has: () => LiveReview.boundTasks().length > 0, body: () => LiveReview.handoffRecord()}, // round 79: a case's and a handoff's record
+    handoff: {has: () => LiveReview.boundTasks().length > 0, body: () => LiveReview.handoffRecord()},
     factor: {has: () => Boolean(studyTask()), body: () => LiveActivity.recordOf(studyTask())}, alpha: {has: () => Boolean(studyTask()), body: () => LiveActivity.recordOf(studyTask())}, risk: {has: () => Boolean(studyTask()), body: () => LiveActivity.recordOf(studyTask())},
     portfolio: {has: () => Boolean(Data.subject()?.task_id), body: () => LiveActivity.recordOf(Data.subject().task_id)},
     team: {has: () => Boolean(LiveTeam.summary?.().session), body: () => LiveTeam.recordOf(LiveTeam.summary().session)}, 'team-evidence': {has: () => Boolean(LiveTeam.summary?.().session), body: () => LiveTeam.recordOf(LiveTeam.summary().session)},
   };
   const hasRecord = () => Boolean(RECORD[app.page]?.has());
-  /* The panel's head (round 92): the page's kind as the kind line, the object's name as the title. */
   const panelHead = () => { const route = ROUTES[app.page] || [], object = clean($('#main .object-header h1')?.textContent), name = t(route[1] || ''); return {kind: name, title: object || name, sameKind: !object || object === name}; };
   // one tab alone is not a row of tabs: its word joins the kind line instead
   const panelKind = (h, tabs) => { const group = typeof SIDEBAR_GROUPS !== 'undefined' && SIDEBAR_GROUPS[app.page] ? t(SIDEBAR_GROUPS[app.page].word) : t(ROUTES[app.page]?.[0] || ''); const kind = h.sameKind ? group : h.kind; return tabs.length > 1 ? kind : [kind, tabs[0]?.word].filter(Boolean).join(' · '); };
@@ -513,8 +471,7 @@ const Inspect = (() => {
   function refreshRecord() {
     if (Window.inspectorMode() === 'record' && hasRecord()) Window.setInspectorBody(html`<section class="inspector-section">${RECORD[app.page].body()}</section>`);
   }
-  /* V667 / PG2: the addressed reader owns restoration, including after connection.
-   * Facts and Record wait for their object; neither falls through to a Task reader. */
+  /* Facts and Record wait for their addressed object rather than falling through to a Task reader. */
   const addressModes = [
     {mode: 'facts', key: 'facts', value: '1', pages: Object.keys(FACTS), has: hasFacts, open: () => openFacts()},
     {mode: 'record', key: 'record', value: '1', pages: Object.keys(RECORD), has: hasRecord, open: () => openRecord()},
@@ -541,7 +498,6 @@ const Inspect = (() => {
     if (x?.has()) return x.open();
   }
   const sections = (list) => html`${list.map((s) => html`<section class="inspector-section"${s.key ? html` data-facts="${s.key}"` : ''}><h3>${s.title}</h3>${s.body}</section>`)}`;
-  /* `by` is the press that opened it (law 149: the same press closes it); a tab or a repaint keeps the one before. */
   function openFacts(id = '', by = null) {
     closeDialog();
     const h = panelHead(), tabs = panelTabs('facts'), kind = panelKind(h, tabs), tabRow = tabs.length > 1 ? tabs : null;
@@ -558,15 +514,11 @@ const Inspect = (() => {
     selectAddressMode('facts');
     return Window.openInspector({mode: 'facts', readHeader: () => panelHeader('facts'), title: h.title, kind, tabs: tabRow, body: sections(list), onClose: () => { S.factsId = ''; replaceHash({facts: ''}); }, by: by || (Window.inspectorOpen() ? null : ['facts', ''])});
   }
-  // the research context first (round 81: the page's workspace reading is a Facts section), then the page's own, then the proofs (round 92)
   const factsList = () => hasFacts() ? [{title: t('Research context'), body: LiveViews.proofBody('context', S.observation)}, ...FACTS[app.page].sections(), ...proofSections()] : [];
   function refreshFacts() {
     if (Window.inspectorMode() === 'facts' && !S.factsId && hasFacts()) Window.setInspectorBody(sections(factsList()));
   }
 
-  /* ---- the shortcuts sheet (round 51): generated from the key map, searchable ---- */
-  /* The keyboard sheet's body (round 62): one renderer for the ? sheet (with its search) and the
-   * Settings page's Keyboard section (without). */
   function shortcutsBody(search = false) {
     const rows = Controls.keymap(), groups = [...new Set(rows.map((r) => r.group))];
     // a place's chord is named by the dock's word for it (PG4: one word per page)

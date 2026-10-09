@@ -197,7 +197,7 @@ class WorkspaceRuntime:
             panel_artifacts = PanelArtifactCompositionOwner(artifact_resolver)
             closure_ledger = FeatureClosureLedger(PanelClosureArtifactStore(artifact_resolver))
             # One closure per part of the catalog's layer: the shipped base and a column per
-            # activated factor (V92).
+            # activated factor.
             feature_persistence = FeatureLayerClosures(
                 store=feature_state,
                 source=FeatureClosureSourceRepository(database.path),
@@ -356,7 +356,7 @@ class WorkspaceRuntime:
     def prepare_feature_closure(self) -> None:
         """Open the existing genesis owner only on an uninitialized publication plane.
 
-        Each part of the catalog's layer opens its own closure (V92): a person's
+        Each part of the catalog's layer opens its own closure: a person's
         activation opens its column's beside the held base's.
         """
         from alphalattice.foundation.feature_engine.runtime.closure_genesis import (

@@ -271,7 +271,7 @@ def assess_alpha_model_viability(
             values["failure_codes"] = (*prior_failures, "DM_HOLM_NOT_SIGNIFICANT")
         if not passed and not values["failure_codes"]:
             # A refused candidate names what refused it, so its record carries the evidence
-            # and the qualification seals its end instead of stopping (V291).
+            # and the qualification seals its end instead of stopping.
             values["failure_codes"] = tuple(
                 code for key, code in _ADMISSION_CHECKS if not values[key]
             )

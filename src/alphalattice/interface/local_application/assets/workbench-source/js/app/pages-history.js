@@ -22,18 +22,13 @@ const History = (() => {
   }
   function filtered() {
     const q = app.historyQuery.toLowerCase().trim();
-    const kinds = app.historyKind === 'all' ? null : String(app.historyKind).split(','); // round 91: a filter holds several values
+    const kinds = app.historyKind === 'all' ? null : String(app.historyKind).split(',');
     const rows = Data.groupTaskSuccessors(historyItems()).filter((x) => (!kinds || [x, ...(x.earlierStops || [])].some(row => kinds.includes(row.kind))) && (!q || [x, ...(x.earlierStops || [])].some(row => [row.kind, row.name, row.summary, row.words, row.reference, row.id, row.task_id, row.input, row.inputCutoff, row.recordedAt, row.holdingsSession, row.note].join(' ').toLowerCase().includes(q))));
     return sorted(rows, app.historySort);
   }
   const declaredNote = () => Data.experiments() === null ? t('Declared parameters not loaded yet.') : Data.experimentsError ? t('Declared parameters unavailable: {error}', {error: Data.experimentsError}) : t('Labels summarize declared parameters, never results or a winner.');
-  /* The route carries the search and the filter (replaced, never pushed): a copied link, a reload
-   * and a return by Back show this same list; the order is the viewer's display (round 57). */
+  /* Search and filters replace the route so a copied link, Reload and browser Back restore the same list. */
   const routeFilters = () => { replaceHash({q: app.historyQuery, kind: app.historyKind === 'all' ? '' : app.historyKind}); };
-  /* History as a lobby (F2, law 136): grouped by time -- the reader's day, this week, earlier this
-   * month open, each month before folded -- by kind, or by input version (the newest open); one
-   * line a row: the kind's mark, the reference, the name, the facts, the day. The owner's older
-   * pages are read from the foot. */
   function lobby() {
     const items = Data.groupTaskSuccessors(historyItems()), kinds = [...new Set(items.flatMap(x => [x, ...(x.earlierStops || [])].map(row => row.kind)))];
     const versions = [...new Set(items.map((x) => x.raw?.input_binding_hash).filter(Boolean))].sort((a, b) => String(items.find((x) => x.raw?.input_binding_hash === b)?.inputCutoff || '').localeCompare(String(items.find((x) => x.raw?.input_binding_hash === a)?.inputCutoff || '')));

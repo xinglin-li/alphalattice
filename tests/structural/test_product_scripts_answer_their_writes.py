@@ -1,4 +1,4 @@
-"""Every product script that writes a location it chooses answers its failure in words (V539).
+"""Every product script that writes a location it chooses answers its failure in words.
 
 A product script is one the product names to a person or an agent: in its guide (AGENTS.md,
 README.md, docs/public-source), its Skill, or its own answers (a setup command or an error that
@@ -141,7 +141,7 @@ def _product_scripts() -> set[str]:
 
 
 def test_every_product_script_that_writes_a_location_it_chooses_answers_in_words() -> None:
-    """requirement (V539, the class): the product scripts are exactly those classified, and
+    """Requirement: the product scripts are exactly those classified, and
     each writer names a behaviour test of its worded refusal that exists."""
 
     references = _script_references()
@@ -164,7 +164,7 @@ def test_every_product_script_that_writes_a_location_it_chooses_answers_in_words
     assert not SETUPS & set(LAUNCHERS)
     assert all(LAUNCHERS.values()) and all(ADVISORY.values())
     # Each setup entry answers an unexpected failure, and every setup refusal claims only what
-    # it carries with a way on fitting its mode (V590): both behaviour tests run every entry.
+    # it carries with a way on fitting its mode: both behaviour tests run every entry.
     for name in (
         "test_every_product_setup_script_words_an_unexpected_failure",
         "test_every_setup_refusal_claims_only_what_it_carries_and_its_way_on_fits_its_mode",

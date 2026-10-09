@@ -112,6 +112,16 @@ LISTED: Final[tuple[str, ...]] = (
 """Listed by digest only: the research inputs and the installed authority packages, the
 retained retrieval model's copy among them (the storage inventory's AUTHORITY and
 RETRIEVAL_MODEL roots)."""
+BYTE_ADDRESSED: Final[frozenset[tuple[str, ...]]] = frozenset(
+    {
+        ("alpha-research", "current", "frozen-observation-arrays"),
+        ("alpha-research", "current", "lifecycle-arrays"),
+    }
+)
+"""The Alpha development store's packed arrays among the copied records: it names each by the
+SHA-256 of its bytes (`AlphaDevelopmentArtifactStore._publish_packed_bytes`) and its loaders
+re-hash it on every read. A backup that already holds that object records the file by its name
+without reading it again; one it does not hold yet is read and stored as any other file."""
 GENERATIONS_KEPT: Final = 7
 """How many generations a backup keeps unless a request keeps another count."""
 _HEX: Final = frozenset("0123456789abcdef")
@@ -221,6 +231,22 @@ class _Objects:
 
     def path(self, digest: str) -> Path:
         return self.root / digest[:2] / digest
+
+    def held(self, source: Path) -> tuple[str, int] | None:
+        """A byte-addressed file's object this store already holds, found by its name alone."""
+        name = source.stem
+        if (
+            source.suffix != ".bin"
+            or source.parent.parts[-3:] not in BYTE_ADDRESSED
+            or len(name) != 64
+            or not set(name) <= _HEX
+        ):
+            return None
+        target = self.path(name)
+        size = source.stat().st_size
+        if not target.is_file() or target.stat().st_size != size:
+            return None
+        return name, size
 
     def put_file(self, source: Path) -> tuple[str, int]:
         """Store a file's bytes under their digest, once."""
@@ -348,7 +374,7 @@ class WorkspaceBackups:
                 absent.append(relative)
                 continue
             for path in _files(source):
-                digest, size = self.objects.put_file(path)
+                digest, size = self.objects.held(path) or self.objects.put_file(path)
                 entries.append(
                     BackupEntry(
                         kind="FILE",

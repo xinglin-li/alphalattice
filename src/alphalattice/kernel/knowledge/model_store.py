@@ -176,7 +176,7 @@ class ModelStoreError(ValueError):
 
 
 def writable_store(store: Path) -> Path:
-    """The model store, made and shown to take a file before anything is staged in it (V539).
+    """The model store, made and shown to take a file before anything is staged in it.
 
     A store this process cannot create or write -- an application-data directory a sandbox
     denies -- is refused by name before any download, never met as an error halfway through.
@@ -590,7 +590,7 @@ def bind_retained_recipe(
     *,
     packs: tuple[PackDefinition, PackDefinition] | None = None,
 ) -> Path:
-    """Compose the retained recipe's layout from the store's verified packs (V208).
+    """Compose the retained recipe's layout from the store's verified packs.
 
     The retained `hybrid-v2-minilm` reads its encoder at the root and its reranker under
     `reranker/`: each of the encoder's directories and the reranker are links to the store's
@@ -639,7 +639,7 @@ def relink_retained_copy(
     *,
     packs: tuple[PackDefinition, PackDefinition] | None = None,
 ) -> int:
-    """Replace a retained recipe's own copy with its linked layout, the bytes released (V208).
+    """Replace a retained recipe's own copy with its linked layout, the bytes released.
 
     Refused unless the store's packs are installed and verified and the copy holds, file by
     file, the bytes they hold, so the capability hash sealed indexes bind does not move. The

@@ -1,7 +1,6 @@
-"""The hashes and ids the Host has answered a client with, kept for short references (V393).
+"""The hashes and ids the Host has answered a client with, kept for short references.
 
-Agents copied a 64-character hash or a UUID about once a CLI call (V391's count), at a cost in
-tokens and in mistakes. The client's compact display now shows each by its first twelve
+The client's compact display shows each hash or UUID by its first twelve
 characters and reads such a beginning back as the whole value before a request leaves it
 (`client.whole_references`), from this ledger: the Host keeps every whole hash and id it has
 answered a client with, the newest `LIMIT`, in the workspace's runtime, so a restart keeps

@@ -14,8 +14,6 @@ function notify(message, vars = null, act = null) {
   toastAct = act;
   const failure=refusalParts(message), full=failure.detail ? `${failure.code}: ${said(failure.detail)}` : t(message,vars), source=String(message || '').toLowerCase();
   const brief=source==='link copied' ? t('Link copied') : source.includes('copied') ? t('Copied') : source.includes('filter')&&source.includes('clear') ? t('Filters cleared') : source.includes('verified') ? t('Result verified') : source.includes('cancel') ? t('Task cancelled') : source.includes('export') ? t('Exported') : source.includes('refus') ? t('Action refused') : full.trim().split(/\s+/).length<=4 ? full : t('Action needs attention');
-  // round 56: the toast quotes the id it is about and shows a mark for what happened; a Task that
-  // ended is said by its name (2026-09-25), cut at its measure and whole on hover
   const ref = vars?.ref ? String(vars.ref) : '', name = vars?.name ? String(vars.name) : '';
   $('#toastText').innerHTML = ref ? html`<code class="line-cut">${ref}</code> ${brief.toLowerCase()}` : name ? html`<b class="line-cut toast-name">${name}</b> ${brief.toLowerCase()}` : html`${brief}`;
   $('#toastIcon').innerHTML = icon(/copied|verified|exported|completed/.test(source) ? 'check' : 'info');
@@ -41,18 +39,14 @@ function closeDialog(returnToParent = false) {
   const wasOpen = d.open;
   document.body.classList.remove('modal-open');
   if (!wasOpen) { d.removeAttribute('aria-label'); return; }
-  // round 94: the dialog leaves the way it came (its entrance reversed over --dur-1), then closes
-  // and the focus returns to the opener
   leave(d, () => {
     d.close();
     d.removeAttribute('aria-label'); // a palette's name; the chassis is named by its title
     if (!returnFocus) return;
-    const again = returnFocus.isConnected ? returnFocus : returnFocus.dataset?.action ? document.querySelector(`[data-action="${returnFocus.dataset.action}"]`) : null; // round 93: a repaint replaced the opener; its action names it
+    const again = returnFocus.isConnected ? returnFocus : returnFocus.dataset?.action ? document.querySelector(`[data-action="${returnFocus.dataset.action}"]`) : null; // A repaint can replace the opener, so its action identifies the control whose focus is restored.
     if (again) again.focus({preventScroll: true});
   });
 }
-/* The palette (round 93): the dialog element with no head, no close glyph and no foot -- the input row is
- * the first row, the results the rest; it is named for assistive technology, not by a title. */
 function openPalette(body, again = null) {
   const d = $('#dialog');
   Dialog.remember(again);
@@ -80,9 +74,6 @@ function openDialog(eyebrow, heading, body, footer = '', sheet = false, again = 
   Controls.sync(d);
   if (detail) d.querySelector('[data-action="close"]')?.focus({preventScroll: true});
 }
-/* The code dialog (round 92): a document read whole -- the object's name as the eyebrow, the
- * document's title, a copy glyph beside the close, the text in a block that never wraps and
- * scrolls both ways, `Close` in the foot. Nothing else in the product shows raw JSON or YAML. */
 function codeDialog(title, kind, text, {lang = 'json', detail = false} = {}) {
   const body = html`<pre class="code-block code-document" tabindex="0" aria-label="${title}">${raw(codeMarkup(text, lang))}</pre>`;
   openDialog(kind || t('Document'), title, body, '', 'code-dialog', null, detail);
@@ -140,4 +131,4 @@ function download(text, name, type = 'application/json') {
   setTimeout(() => URL.revokeObjectURL(url), 3000);
   notify('Exported');
 }
-function experienceSettings() { navigate('settings'); } // round 62: the comfort settings are the Settings page's Reading section
+function experienceSettings() { navigate('settings'); }

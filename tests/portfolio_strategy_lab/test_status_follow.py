@@ -11,7 +11,7 @@ import json
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 from uuid import uuid4
 
 import pytest
@@ -148,16 +148,22 @@ def test_a_wait_follows_the_task_the_answer_started_and_stops_for_a_decision() -
             return next(answers)
 
     promote = {"operation": "EXPERIMENT_PROMOTE", "task_id": old}
+    requests = {
+        "task": {"operation": "STATUS", "task_id": new},
+        "alpha": {"operation": "EXPERIMENT_READBACK", "task_id": new},
+        "promote": promote,
+    }
     admitted = {
         "status": "UPSTREAM_PROMOTION_ADMITTED",
-        "task_id": old,
+        "task_id": new,
         "follow_task_id": new,
-        "next_requests": {"promote": promote},
+        "promoted_from_task_id": old,
+        "next_requests": requests,
     }
     final = client_module._follow(_Client(), admitted, 60)  # type: ignore[arg-type]
     assert [d["task_id"] for d in sent] == [new, new]
     assert final["lifecycle"] == "REVIEW_PENDING" and final["admission"] == admitted
-    assert final["next_requests"] == {"promote": promote}
+    assert final["next_requests"] == requests
     assert outcome_of(final) == "PENDING"
 
 
@@ -477,8 +483,10 @@ def test_a_deferred_tasks_status_names_its_retry_time_and_resume() -> None:
     host = PortfolioResearchOperations.__new__(PortfolioResearchOperations)
     host.dispatcher = SimpleNamespace(status=lambda _t: projection, failure=lambda _t: None)  # type: ignore[assignment]
     host.resume_refusal = None
+    host.review = None
     host.workspace_session = SimpleNamespace(task_control_registry=Registry())  # type: ignore[assignment]
     host.preparation = Preparation()  # type: ignore[assignment]
+    host.review = None  # no Evidence owner: a preparation Task's status reads none (EVRB)
     body = host.status(task_id)
     assert body["lifecycle"] == "DEFERRED"
     assert body["retry_after_at"] == "2026-10-02T17:00:00+00:00"
@@ -533,70 +541,6 @@ def test_a_remedy_that_resumed_its_task_is_followed_to_the_tasks_end(monkeypatch
     stub = _Stub([{"lifecycle": "SUCCEEDED", "task_id": task_id}])
     final = client_module._follow(stub, receipt, None)  # type: ignore[arg-type]
     assert final["wait_event"]["event"] == "ENDED" and stub.sent[0]["task_id"] == task_id
-
-
-def test_a_codex_wake_is_best_effort_and_an_undelivered_one_is_recorded(monkeypatch) -> None:
-    """requirement (WK; the user, 2026-09-28: codex queue is 锦上添花): the queue is checked
-    before the agent ends its turn, carries only the event and its read, is retried, and a
-    wake it could not deliver is left beside the event in the Host's record."""
-
-    import shutil
-    import subprocess
-
-    monkeypatch.setattr(shutil, "which", lambda _name: None)
-    monkeypatch.setenv("CODEX_THREAD_ID", "00000000-0000-7000-8000-000000000001")
-    with pytest.raises(client_module.LocalResearchClientError, match="codex_queue_unavailable"):
-        client_module._codex_queue_ready()
-    monkeypatch.setattr(shutil, "which", lambda _name: "codex")
-    thread = client_module._codex_queue_ready()
-    monkeypatch.setattr(client_module.time, "sleep", lambda _s: None)
-    event = {"event": "ENDED", "task_id": str(uuid4()), "read": "alphalattice task show"}
-    calls: list[list[str]] = []
-
-    def failing(args: list[str], **_kwargs: Any) -> None:
-        calls.append(args)
-        raise subprocess.CalledProcessError(1, args)
-
-    monkeypatch.setattr(subprocess, "run", failing)
-    stub = _Stub([])
-    wake = client_module._queue_wake(stub, thread, event)  # type: ignore[arg-type]
-    assert wake == {
-        "channel": "codex-queue",
-        "delivered": False,
-        "failure": "CODEX_QUEUE_FAILED",
-        "attempts": 3,
-    }
-    assert len(calls) == 3 and calls[0][:4] == ["codex", "queue", "--thread", thread]
-    assert calls[0][5] == "Host event ENDED: read and verify it with alphalattice task show"
-    (published,) = stub.published
-    assert published["event_kind"] == "WAKE_UNDELIVERED"
-    assert published["subject"] == {"task_id": event["task_id"]}
-    monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: None)
-    assert client_module._queue_wake(stub, thread, event)["delivered"] is True  # type: ignore[arg-type]
-
-
-def test_a_wait_capped_before_its_first_read_still_queues_its_wake(monkeypatch) -> None:
-    """regression (V496, the user's review): `activity wait --task --max-wait --notify
-    codex-queue` whose first read met a stopped Host returned at its cap before the tail that
-    queues the wake, so the agent that ended its turn was never woken; every end of the wait,
-    the cap before a first read included, queues it."""
-
-    import shutil
-    import subprocess
-
-    monkeypatch.setattr(shutil, "which", lambda _name: "codex")
-    monkeypatch.setenv("CODEX_THREAD_ID", "00000000-0000-7000-8000-000000000001")
-    monkeypatch.setattr(client_module.time, "sleep", lambda _s: None)
-    queued: list[list[str]] = []
-    monkeypatch.setattr(subprocess, "run", lambda args, **_kwargs: queued.append(args))
-    gone = client_module.LocalResearchClientError("local_client.service_not_running")
-    stub = _Stub(itertools.repeat(gone))  # type: ignore[arg-type]
-    args = SimpleNamespace(
-        task_id=str(uuid4()), goal_id=None, max_wait=0.05, notify="codex-queue", each_stage=False
-    )
-    final = client_module._wait(stub, args)  # type: ignore[arg-type]
-    assert final["wait_event"]["event"] == "MAX_WAIT_REACHED"
-    assert final["wake"]["delivered"] is True and len(queued) == 1
 
 
 def test_the_compact_view_leaves_out_the_timing_no_decision_reads() -> None:
@@ -1005,7 +949,7 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     answers offer, in their order, following each Task to its end, and returns every Analyst
     bundle written with its answer path and submit command; each step stays a command."""
     host = _ScriptedHost(tmp_path / "workspace")
-    answer = client_module._book_review(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
+    answer = client_module._review_steps(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
 
     assert answer["status"] == "BOOK_REVIEW_READY" and answer["next_action"] == "DISPATCH_ANALYSTS"
     assert [step["step"] for step in answer["steps"]] == [
@@ -1047,9 +991,157 @@ def test_a_book_review_stops_at_the_first_answer_that_needs_another_step(tmp_pat
     """requirement (AGENT-TIME verb 2): a missing prerequisite ends the call with that answer,
     its way on kept and the steps taken named; no bundle is written."""
     host = _ScriptedHost(tmp_path / "workspace", prerequisites=False)
-    answer = client_module._book_review(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
+    answer = client_module._review_steps(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
 
     assert answer["status"] == "EVIDENCE_PREREQUISITES_MISSING"
     assert answer["next_requests"] == {"setup": {"operation": "EVIDENCE_SETUP"}}
     assert answer["book_review"]["stopped_at"] == "evidence_preview"
     assert not (tmp_path / "analysts").exists()
+
+
+class _ReviewHost:
+    """A Host answering a review's submissions, Evidence, dossier and offer as their owners do."""
+
+    BOOK: ClassVar[dict[str, str]] = {"result_hash": "b" * 64}
+
+    def __init__(self, workspace: Path, *, correct: str | None = None) -> None:
+        self.workspace = workspace
+        self.goal = None
+        self.sent: list[dict[str, Any]] = []
+        self.correct = correct
+
+    def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
+        self.sent.append(document)
+        match document["operation"]:
+            case "AGENT_ANSWER_SUBMIT":
+                folder = Path(document["bundle_directory"])
+                role = "CRO" if folder.name == "cro" else "ANALYST"
+                if folder.name == self.correct:
+                    return {
+                        "status": "CORRECT",
+                        "agent_role": role,
+                        "problems": [{"item": 1, "text": "S9 is not an excerpt of this bundle."}],
+                        "rounds_left": 2,
+                    }
+                task = f"t-{folder.name}"
+                return {
+                    "status": "ACCEPTED",
+                    "agent_role": role,
+                    "task_id": task,
+                    "task_lifecycle": "QUEUED",
+                    "receipt": {"agent_role": role, "verdict": "ACCEPTED", "task_id": task},
+                    "next_requests": {
+                        "task": {"operation": "STATUS", "task_id": task},
+                        "book": {"operation": "EVIDENCE_CRO", **self.BOOK},
+                    },
+                }
+            case "STATUS":
+                return {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", **document}
+            case "EVIDENCE_CRO":
+                return {
+                    "state": "ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW",
+                    "next_requests": {"dossier": {"operation": "CRO_REVIEW_DOSSIER", **self.BOOK}},
+                }
+            case "CRO_REVIEW_DOSSIER":
+                return {
+                    "status": "CRO_DOSSIER_READY",
+                    "coverage_words": "Every holding was read.",
+                    "next_requests": {
+                        "cro_bundle": {
+                            "operation": "AGENT_BUNDLE_PREPARE",
+                            "agent_role": "CRO",
+                            "bundle_directory": None,
+                            **self.BOOK,
+                        }
+                    },
+                }
+            case "AGENT_BUNDLE_PREPARE":
+                return {
+                    "status": "AGENT_BUNDLE_READY",
+                    "agent_role": "CRO",
+                    "bundle_directory": document["bundle_directory"],
+                    "index": "README.md",
+                    "files": [{"name": "README.md", "text": "Read the dossier.\n"}],
+                }
+            case "CONTROLS":
+                return {
+                    "activation": {
+                        "status": "INACTIVE",
+                        "review_holdings": {"positions": []},
+                        "next_requests": {"activate": {"operation": "STRATEGY_ACTIVATE"}},
+                    }
+                }
+        raise AssertionError(document)
+
+
+def _answers(root: Path, *names: str) -> Path:
+    for name in names:
+        (root / name).mkdir(parents=True)
+        (root / name / "answer.json").write_text('{"findings": []}', encoding="utf-8")
+    return root
+
+
+def _continue_args(root: Path, **fields: Any) -> SimpleNamespace:
+    return SimpleNamespace(
+        bundle_root=root,
+        cro_root=fields.get("cro_root"),
+        strategy_package_id=fields.get("package"),
+        max_wait=None,
+    )
+
+
+def test_review_continue_submits_the_analysts_and_writes_the_cros_bundle(tmp_path: Path) -> None:
+    """requirement (AGENT-TIME verb 3, approved 2026-10-08): one call submits every Analyst
+    answer, follows each publication, reads the book's Evidence, its dossier and the CRO's
+    offered bundle, and writes that bundle with its answer path and submit command."""
+    host = _ReviewHost(tmp_path / "workspace")
+    root = _answers(tmp_path / "analysts", "analyst-u1", "analyst-u2")
+    answer = client_module._continue_steps(  # type: ignore[arg-type]
+        host, _continue_args(root, cro_root=tmp_path / "cro")
+    )
+
+    assert answer["status"] == "CRO_BUNDLE_READY" and answer["next_action"] == "DISPATCH_CRO"
+    assert [receipt["task_id"] for receipt in answer["receipts"]] == [
+        "t-analyst-u1",
+        "t-analyst-u2",
+    ]
+    assert {d["task_id"] for d in host.sent if d["operation"] == "STATUS"} == {
+        "t-analyst-u1",
+        "t-analyst-u2",
+    }
+    bundle = answer["cro_bundle"]
+    assert Path(bundle["bundle_directory"]) == (tmp_path / "cro").resolve()
+    assert (tmp_path / "cro" / "README.md").read_text(encoding="utf-8") == "Read the dossier.\n"
+    assert bundle["answer_file"] == str((tmp_path / "cro").resolve() / "answer.json")
+    assert answer["dossier"] == {"coverage_words": "Every holding was read."}
+
+
+def test_review_continue_names_each_correction_and_goes_no_further(tmp_path: Path) -> None:
+    """requirement (AGENT-TIME verb 3): an answer the Host asks to correct is named with its
+    problems; the accepted ones stand, and nothing past the submissions runs."""
+    host = _ReviewHost(tmp_path / "workspace", correct="analyst-u2")
+    root = _answers(tmp_path / "analysts", "analyst-u1", "analyst-u2")
+    answer = client_module._continue_steps(host, _continue_args(root))  # type: ignore[arg-type]
+
+    assert answer["status"] == "REVIEW_ANSWERS_NEED_CORRECTION"
+    assert [c["bundle_directory"] for c in answer["corrections"]] == [str(root / "analyst-u2")]
+    assert answer["corrections"][0]["problems"][0]["item"] == 1
+    assert [r["task_id"] for r in answer["receipts"]] == ["t-analyst-u1"]
+    assert not any(d["operation"] in {"STATUS", "EVIDENCE_CRO"} for d in host.sent)
+
+
+def test_review_continue_publishes_the_cros_review_and_reads_the_activation_offer(
+    tmp_path: Path,
+) -> None:
+    """requirement (AGENT-TIME verb 3): after the CRO's answer its publication is followed and
+    the answer is Evidence's state with the strategy's activation offer and reviewed holdings."""
+    host = _ReviewHost(tmp_path / "workspace")
+    root = _answers(tmp_path, "cro") / "cro"
+    answer = client_module._continue_steps(  # type: ignore[arg-type]
+        host, _continue_args(root, package="pkg")
+    )
+
+    assert answer["status"] == "REVIEW_PUBLISHED" and answer["next_action"] == "OFFER_ACTIVATION"
+    assert answer["evidence"]["state"] == "ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW"
+    assert answer["activation"]["review_holdings"] == {"positions": []}
+    assert answer["next_requests"] == {"activate": {"operation": "STRATEGY_ACTIVATE"}}

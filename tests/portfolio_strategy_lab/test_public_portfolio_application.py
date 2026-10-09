@@ -328,7 +328,13 @@ def test_a_cost_change_reuses_the_execution_ledger_and_rebuilds_only_economics(
 
     with _harness(tmp_path) as harness:
         base = _run(harness, PortfolioResearchSpec.default())
+        after_base = harness.resolver.numerical_calls
+        assert after_base >= 1
         changed = _run(harness, PortfolioResearchSpec.create(cost_bps_per_side="10"))
+
+        assert harness.resolver.numerical_calls == after_base, (
+            "a descendant control re-walked a path that was already materialized"
+        )
 
         assert changed.program_hash == base.program_hash
         left = harness.application.report(base.result_hash)
@@ -906,10 +912,12 @@ def test_exact_reuse_performs_no_numerical_resolution(tmp_path: Path) -> None:
     """
 
     with _harness(tmp_path) as harness:
+        registry = harness.session.task_control_registry
         spec = PortfolioResearchSpec.default()
         first = harness.application.run(spec=spec)
         after_first = harness.resolver.numerical_calls
         assert after_first >= 1
+        admitted = [task.task_id for task in registry.tasks()]
 
         second = harness.application.run(spec=spec)
         assert second.result.action == "REUSED_EXACT"
@@ -918,22 +926,7 @@ def test_exact_reuse_performs_no_numerical_resolution(tmp_path: Path) -> None:
             "an exact reuse resolved numerical inputs it then threw away"
         )
 
-
-def test_an_exact_reuse_takes_no_task_on_the_synchronous_route(tmp_path: Path) -> None:
-    """V195: the standalone script's route keeps `book run`'s one reuse rule.
-
-    A second run of the same request answers the stored result under the Task that produced
-    it: no Task is admitted and no second publication is written. A result the by-result index
-    does not name (published before it) is admitted once, and its publication names it.
-    """
-
-    with _harness(tmp_path) as harness:
-        registry = harness.session.task_control_registry
-        spec = PortfolioResearchSpec.default()
-        first = harness.application.run(spec=spec)
-        admitted = [task.task_id for task in registry.tasks()]
-
-        again = harness.application.run(spec=spec)
+        again = second
         assert again.result.action == "REUSED_EXACT"
         assert again.result.result_hash == first.result.result_hash
         assert again.pipeline_manifest == first.pipeline_manifest
@@ -958,7 +951,6 @@ def test_an_exact_reuse_takes_no_task_on_the_synchronous_route(tmp_path: Path) -
 @pytest.mark.parametrize(
     "changed",
     [
-        {"cost_bps_per_side": "10"},
         {"report_unit": "CALENDAR_YEAR_TABLE"},
         {"study_start": date(2024, 1, 3)},
     ],

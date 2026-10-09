@@ -1,7 +1,7 @@
 # Research dependencies and results
-Date: 2026-10-07
+Date: 2026-10-08
 
-Start with a published input. Factor research leads through curation and handoff to Alpha. Risk runs on the same input in parallel. Portfolio consumes Alpha scores and, when its declared sizing method reads risk, a compatible Risk study. Evidence and the CRO review the resulting book.
+State the question you want answered. A prepared workspace or installed strategy starts from its strategy controls; new Factor, Alpha, Risk or Portfolio exploration follows the dependencies below. The [research-agent guide](../../AGENTS.md#choose-the-path-by-intent) owns the steps your agent takes from `workspace show` and each answer's offered requests.
 
 ```mermaid
 flowchart LR
@@ -10,51 +10,41 @@ flowchart LR
   C --> A[Alpha]
   I --> R[Risk]
   A --> P[Portfolio]
-  R --> P
+  R -->|when allocation reads Risk| P
   P --> E[Evidence and CRO]
 ```
 
-## Select input and prerequisites
+## Choose the research question
 
-Data preparation and updates publish immutable inputs; an earlier study stays bound to its input. Declare the input, evaluated sessions, decision cutoff in `sessions.as_of`, method and execution bounds. Start from the selected input's installed controls and prerequisite answers. `workspace show` and `intents` summarize flows; a control/refusal names completed prerequisites, gaps and offered requests. A `null` choice is still yours to select. Follow returned commands or fill their templates; use the [CLI reference](cli.md) for answer semantics.
+Preparation and updates can publish immutable inputs. Each study retains its input, evaluated sessions, decision cutoff, method and execution bounds; newer data does not revise an earlier result. Controls show completed prerequisites, gaps and offered choices. An available study is not automatically the selected one.
 
-The `prerequisites` object names `flow`, `needs`, `present`, `missing`, `detail` and `next_requests`. `present` groups completed studies on the input revision by result, newest first, showing at most five per kind. Use the offered controls, curation or handoff request for the missing stage; do not read an available prerequisite as a selected choice.
-
-| Stage | Required research |
+| Question | Required evidence and expected answer |
 | --- | --- |
-| Factor | Research input |
-| Risk | Research input; can run beside Factor and Alpha |
-| Alpha | Curated Factor evidence and its handoff |
-| Portfolio book | Completed Factor-handoff Alpha plus an explicit candidate; add Risk when its allocation rule reads Risk |
-| Book review | Completed book |
-| Formula trial | Completed Factor-handoff Alpha; the feature plan offers a compatible baseline, which may be a Portfolio built on that Alpha |
+| Does this Factor warrant further study? | Research input; coverage, screening and factor evidence |
+| Does its Alpha candidate predict? | Curated Factor evidence and its handoff; scores, folds, support, comparisons and limits |
+| What Risk does the input support? | The same research input, alongside Factor and Alpha; diagnostics and support |
+| What book does this candidate produce? | Completed Factor-handoff Alpha and an explicit candidate; compatible Risk when the allocation rule reads it |
+| What challenges that book? | Completed book; cited Evidence findings followed by a CRO assessment |
+| Does a formula change the research result? | Compatible completed Factor-handoff Alpha, or a Portfolio built on it; a [formula trial](formula-factors.md#trial-and-review) |
 
-A book's `needs` always includes Alpha. Missing Risk may offer its controls, but a `missing: []` result does not validate a selected risk-sizing declaration; Portfolio validates that declaration. A formula trial with its Alpha prerequisite already present may have no prerequisite `next_requests`; use the feature plan's trial offer and choose the baseline.
+Read Factor coverage before curation and Alpha's support before drafting a book. The curation receipt and exact Factor Task remain in the handoff lineage; this research does not activate the daily factor catalog. Family qualification covers the declared development family and nominated candidates, preserving other attempts. A favorable study alone does not qualify an installed strategy.
 
-## Factor, Alpha and Risk
+An activated agent model can be qualified with its declared family. Its current refit binds the state projected by its adapter and its numerical binding. For kinds other than `LINEAR` and `TREE`, stability compares training error and the current scores' mean, spread and coverage with the development folds. An agent-projected tree is refused as `ALPHA_CURRENT_REFIT_AGENT_TREE_UNSUPPORTED` because tree diagnostics read the installed family. The [model extension path](extending.md#alpha-model-extension) describes its contract, sandbox and activation requirements.
 
-Read Factor coverage and evidence before curation. The curation receipt and exact Factor Task stay in the handoff lineage; a research Foundation does not activate the daily factor catalog. Plan Alpha from the returned handoff. Read candidate scores, folds, support, comparisons and limits; development evidence alone does not qualify a candidate for an installed strategy.
+Risk can run in parallel on the same input. An allocation that reads Risk requires a compatible completed study in `portfolio.risk_task_id`; the equal-weight tranche rule refuses that field. A report-only Risk link can describe an equal-weight book without recalculating its weights or claiming covariance-based sizing. Compare books on compatible support and read metric units with values.
 
-Run Risk on the same input and inspect its diagnostics, support and cutoffs. For inverse-volatility and catalog policies that read risk, put the compatible completed Task in `portfolio.risk_task_id`. The equal-weight tranche rule reads no risk and refuses that field. It may carry compatible Risk through `risk-link add`, a report-only association that does not recalculate weights or claim covariance-based sizing. Compare books only on compatible support and read metric units with values. A comparison is evidence about those declared books, not an activation decision.
+## Read an installed strategy's book and positions
 
-## Qualification and installed strategies
+Ask for a reviewed book when you want the installed strategy's historical evidence. Its whole-support book replays the complete supported interval. Review that completed book, its contrary evidence and `review_standing` before activation on **Portfolio**. The [guide's review path](../../AGENTS.md#review-the-book) uses `strategy-book review` and `review continue` to carry the book through Analysts and the CRO.
 
-Family qualification covers its declared development family and nominated candidates; an attractive single study does not erase other attempts. An activated agent model can be qualified with its family. Current refit binds the state projected by its adapter and numerical binding. For kinds other than `LINEAR` and `TREE`, stability uses model-agnostic training error and current-score mean, spread and coverage against folds. Agent-projected trees are refused as `ALPHA_CURRENT_REFIT_AGENT_TREE_UNSUPPORTED`.
+An open first-use goal delegates activation only within 24 hours of opening and only when the book's review standing is `REVIEWED`; the [guide](../../AGENTS.md#run-the-first-use-from-the-persons-sentence) explains the delegation and the person's decisions. The person can deactivate on **Portfolio** in one click. Activation binds the component models, required calibration and sealed last book state; it performs no fit and publishes no future result. A changed package needs a new whole book and activation.
 
-An installed strategy book starts by replaying history. Review its complete supported interval before the person activates that exact completed Task in the Workbench's Portfolio page; on a first use, the agent activates it once its review is published, and the person deactivates it there in one click. Activation binds component models, required calibration and the sealed last book state; it makes no fit call. It is not a fit or a future result. Later updates may fit only admitted model vintages from workspace data under bound training authority. Changing the package requires a new whole book and person activation; inspect its published review standing before activation. The activation offer also shows the reviewed book's last sealed holdings and the sessions they were decided and entered; they are the review's last holdings, not the next positions. Activation is reversible, and the first update after it publishes the first-day positions. The person also enables daily research automation for named packages; `automation show` reads that decision. Scheduling runs only while Local Web service runs; closing the browser tab alone does not stop it. Updates advance from the last book state and publish research positions, never orders. Deactivation stops forward operation while saved books remain readable.
+Before activation, inspect `strategy_dates.information_cutoff` and the conditional `first_actionable_session`. The cutoff combines required component information; an unknown cutoff stays `null`, with sources, detail and a known lower bound. The first forward decision can precede actionability. The first actionable session is the planned entry strictly after activation, or after the current clock in a conditional offer. Earlier forward sessions through the cutoff are causal replay inside the research window, never out-of-sample evidence.
 
-Strategy authoring starts with `strategy controls`, then plan, run and inspect the offered continuation before installation. An installed package feeds its own book controls, preview and run. Installation publishes no order or investment result. A stopped update names the missing source/session and offers `next_requests.network` plus a plan-bound `next_requests.resume`; a run while access remains closed is refused without changing the Task. After the person admits access, the offered resume continues that same Task from its stopped stage, and `--wait` follows it. A provider-deferred update exposes `retry_after_at`; an early run is refused with that time, and after it passes the same plan resumes the same update. Reads are package-keyed: `research-update show --package` returns only that strategy's latest update; when update Tasks name multiple packages, an unqualified read is refused and offers each package's own selection. Score, calibration and Portfolio update reads follow the same rule.
+The activation offer's `review_holdings` are the reviewed book's last sealed holdings with their decision and entry sessions. The first forward update publishes the next positions. Hold positions only from the first actionable session; read each publication's basis, dates and `claim`, with its Risk and CRO status. These are research positions, never orders or advice. Read the [guide's forward path](../../AGENTS.md#run-an-installed-strategy-forward) for updates and the returned horizon, about eleven months after the latest completed session at activation. A newer book is needed beyond it. Only a person enables daily research automation for named packages in **Settings**. The automation runs while Local Web serves the workspace.
 
-While a strategy update is unfinished, `research-update plan` returns that update's own plan. Its run follows the update or resumes a due deferral; plan the later session after it ends.
+## Read review standing and claim limits
 
-Daily research automation wakes at `retry_after_at`, resumes its deferred update and plans the next session after publication. Work admitted while a deferral holds the workspace's running place waits its turn and starts when free.
+Evidence preparation reports admitted source scope and gaps. Analysts provide cited issuer findings; the CRO separately challenges the exact book against them. Both give judgment without computing weights. Approved bundles preserve source restrictions. Read review standing, contrary evidence, citations and coverage together: a published review may be incomplete.
 
-A data-not-ready plan refusal names the state and offers `next_requests` for the Task holding the running place or a data update that settles it.
-
-Read the book's `strategy_dates` together. `information_cutoff` is the latest date across required component records; when unavailable it is `null`, with `information_cutoff_detail`, per-source `information_sources` and the known lower bound in `latest_dated_information`. `forward_book_first_decided_session` names the active book's first forward decision or a conditional continuation of its sealed book. `first_actionable_session` is the first planned entry whose `entry_at` is strictly after activation (or the current clock when conditional); it is distinct from the first forward decision, and `first_actionable_source` identifies the entry time and activation/clock basis. `replayed_in_sample_forward_sessions` gives the count and range of forward sessions before actionability and through the cutoff: this is causal replay, never out-of-sample evidence. `book_sessions_after_cutoff` preserves the readback comparison. `model_renewals` gives each active component's `remaining_fit_vintages`, `next_fit_vintage` and grant-bounded `renewal_through` with grant file/hash; inactive components have none. Read each field's basis/source and words, especially where a value is unknown. The returned horizon is about eleven months past the latest completed session at activation; activate a newer book before continuing past that date.
-
-## Evidence, CRO and claim limits
-
-Evidence preparation shows admitted source scope and gaps; it is not an Analyst's completed finding. Analysts submit cited issuer findings using the packet's exact references. CRO separately challenges the book against those findings. Both are judgment-only: neither computes weights nor activates a strategy. Bundles expose only approved material; protected D5 remains counts-only and does not expose issuer-level rows or outcomes. A book report's `next_requests.review` is bound to the report's exact book; follow that offer rather than reviewing a default book. Read the book's `review_standing` with contrary evidence, source citations and coverage status; a published review can still be incomplete.
-
-Experiment standing separates comparison, execution, contract, evidence and activation. A completed study is not activation. Read the Panel's [temporal statement](temporal-statements.md): evaluated window, earlier input history, T0 membership backfill, survivorship, Sector treatment and price basis are distinct. Pre-T0 history is not complete point-in-time membership or Sector history. Fixed-cost assumptions are not a capacity model. No development comparison, qualification receipt or publication establishes future returns or a trading service.
+Result standing separates comparison, execution, contract, evidence and activation. A completed study is not activation. Its [temporal statement](temporal-statements.md) distinguishes evaluation, earlier input history, membership backfill, survivorship, Sector treatment and price basis. Pre-T0 history is not complete point-in-time membership or Sector history; fixed costs are not a capacity model. Development comparisons, qualification and publication establish no future returns or trading service.

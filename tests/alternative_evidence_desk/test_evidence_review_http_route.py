@@ -72,7 +72,6 @@ from tests.alternative_evidence_desk.review_http_support import (
     _raise_interruption,
     _Service,
     build_authority,
-    build_workspace,
     start_service,
 )
 from tests.alternative_evidence_desk.review_package import _package
@@ -136,12 +135,13 @@ def _packet(body: dict[str, Any]) -> dict[str, str]:
 
 def _service(
     tmp_path: Path,
+    workspace: Path,
+    report,
     *,
     with_runtime: bool,
     with_actor: bool,
     model_authority_admitted: bool = True,
 ) -> Iterator[_Service]:
-    workspace, report = build_workspace(tmp_path)
     authority = build_authority(
         tmp_path=tmp_path,
         report=report,
@@ -157,8 +157,8 @@ def _service(
 
 
 @pytest.fixture
-def service(tmp_path: Path) -> Iterator[_Service]:
-    yield from _service(tmp_path, with_runtime=True, with_actor=True)
+def service(tmp_path: Path, http_book) -> Iterator[_Service]:
+    yield from _service(tmp_path, *http_book, with_runtime=True, with_actor=True)
 
 
 @pytest.mark.parametrize("via_http", (False, True))
@@ -363,7 +363,7 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
     assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
 
 
-def test_a_captured_preparation_is_reused_after_time_moves_on(tmp_path: Path) -> None:
+def test_a_captured_preparation_is_reused_after_time_moves_on(tmp_path: Path, http_book) -> None:
     """requirement: the preview hands out a captured intent (cutoff and binding);
     submitting it later is the same preparation, a bare request is a new one as
     of now, and an expired or moved binding is refused by name with the preview
@@ -371,7 +371,7 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(tmp_path: Path) ->
 
     from alphalattice.interface.local_application.client import LocalResearchClient
 
-    workspace, report = build_workspace(tmp_path)
+    workspace, report = http_book
     authority = build_authority(tmp_path=tmp_path, report=report, model_authority_admitted=False)
     now = [_NOW]
     service = start_service(workspace, authority, tmp_path, clock=lambda: now[0])
@@ -1087,8 +1087,8 @@ def test_external_review_expiry_before_publication_keeps_the_assessment_but_not_
 
 
 @pytest.fixture
-def credential_free_service(tmp_path: Path) -> Iterator[_Service]:
-    """A valid workspace whose process holds no Provider credential.
+def credential_free_service(tmp_path: Path, http_book) -> Iterator[_Service]:
+    """Valid workspace; no Provider credential.
 
     Everything a deterministic product needs is admitted: the evidence runtime,
     the recorded documents, the registry and the listing authority. Only the
@@ -1097,15 +1097,15 @@ def credential_free_service(tmp_path: Path) -> Iterator[_Service]:
     """
 
     yield from _service(
-        tmp_path, with_runtime=True, with_actor=True, model_authority_admitted=False
+        tmp_path, *http_book, with_runtime=True, with_actor=True, model_authority_admitted=False
     )
 
 
 @pytest.fixture
-def bare_service(tmp_path: Path) -> Iterator[_Service]:
+def bare_service(tmp_path: Path, http_book) -> Iterator[_Service]:
     """Authority admitted, but neither an evidence runtime nor a review actor."""
 
-    yield from _service(tmp_path, with_runtime=False, with_actor=False)
+    yield from _service(tmp_path, *http_book, with_runtime=False, with_actor=False)
 
 
 def _no_identities(body: dict[str, Any], *, allowed: set[str]) -> bool:
@@ -1227,8 +1227,8 @@ def test_an_exact_reuse_over_http_admits_no_task_and_calls_no_actor(service: _Se
     assert len(service.review.review_actor.observed_deadlines) == calls
 
 
-def test_expiry_is_a_typed_zero_work_state_over_http(tmp_path: Path) -> None:
-    workspace, report = build_workspace(tmp_path)
+def test_expiry_is_a_typed_zero_work_state_over_http(tmp_path: Path, http_book) -> None:
+    workspace, report = http_book
     now = [_NOW]
     service = start_service(
         workspace, build_authority(tmp_path=tmp_path, report=report), tmp_path, clock=lambda: now[0]
@@ -1369,7 +1369,7 @@ def _forbid_outbound_network(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
 
 
 def test_the_real_composition_starts_and_refuses_without_a_provider_credential(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, http_book
 ) -> None:
     """requirement: the launcher's own path, with no DeepSeek authority.
 
@@ -1381,7 +1381,7 @@ def test_the_real_composition_starts_and_refuses_without_a_provider_credential(
     injected here.
     """
 
-    workspace, _report = build_workspace(tmp_path)
+    workspace = http_book[0]
     authority_root = workspace / "authority" / "semantic-model"
     authority_root.mkdir(parents=True, exist_ok=True)
     _install_semantic_pack(monkeypatch, authority_root)
@@ -1553,7 +1553,7 @@ def test_evidence_cro_refuses_with_zero_work_when_no_credential_is_admitted(
     assert len(service.registry.tasks()) == tasks
 
 
-def test_a_published_review_reopens_with_no_provider_credential(tmp_path: Path) -> None:
+def test_a_published_review_reopens_with_no_provider_credential(tmp_path: Path, http_book) -> None:
     """requirement: reading an admitted review is not model work.
 
     A workspace that published a review keeps it readable when the process that
@@ -1566,7 +1566,7 @@ def test_a_published_review_reopens_with_no_provider_credential(tmp_path: Path) 
     access, so a single actor call fails this test rather than passing quietly.
     """
 
-    workspace, report = build_workspace(tmp_path)
+    workspace, report = http_book
     online = build_authority(tmp_path=tmp_path, report=report)
     service = start_service(workspace, online, tmp_path)
     try:
@@ -1797,7 +1797,7 @@ class _patched:
         setattr(self.owner, self.name, self.original)
 
 
-def test_a_real_restart_resumes_both_task_kinds_exactly_once(tmp_path: Path) -> None:
+def test_a_real_restart_resumes_both_task_kinds_exactly_once(tmp_path: Path, http_book) -> None:
     """A new process, over the same workspace and the same authorities.
 
     The first service is stopped completely -- worker joined, socket closed,
@@ -1808,7 +1808,7 @@ def test_a_real_restart_resumes_both_task_kinds_exactly_once(tmp_path: Path) -> 
     original task id and publishes exactly once.
     """
 
-    workspace, report = build_workspace(tmp_path)
+    workspace, report = http_book
     authority = build_authority(tmp_path=tmp_path, report=report)
 
     first = start_service(workspace, authority, tmp_path)
@@ -1986,6 +1986,7 @@ def test_an_unprepared_units_packet_says_why_and_offers_the_coverage_read():
 
 def test_a_review_request_naming_a_book_the_workspace_does_not_hold_is_refused_in_words(
     tmp_path: Path,
+    http_book,
 ) -> None:
     """regression (V546, the class): a review request whose selector named a result or a handoff
     the workspace does not hold answered `content_store.artifact_tampered`, telling a person
@@ -1996,7 +1997,7 @@ def test_a_review_request_naming_a_book_the_workspace_does_not_hold_is_refused_i
 
     from alphalattice.interface.local_application.cli_contract import refusal_words
 
-    workspace, report = build_workspace(tmp_path)
+    workspace, report = http_book
     service = start_service(workspace, build_authority(tmp_path=tmp_path, report=report), tmp_path)
     try:
         session = "2026-09-29"
@@ -2030,9 +2031,11 @@ def test_a_review_request_naming_a_book_the_workspace_does_not_hold_is_refused_i
         service.session.stop()
 
 
-def test_the_report_door_distinguishes_unknown_missing_child_and_corrupt_content(tmp_path: Path):
+def test_the_report_door_distinguishes_unknown_missing_child_and_corrupt_content(
+    tmp_path: Path, http_book
+):
     """CONTRACT: an unknown request offers kept results; lost sealed work keeps recovery."""
-    workspace, report = build_workspace(tmp_path)
+    workspace, report = http_book
     service = start_service(workspace, build_authority(tmp_path=tmp_path, report=report), tmp_path)
     try:
         status, body = service.request("/api/report?result_hash=" + "f" * 64)
@@ -2273,3 +2276,92 @@ def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> N
             },
         )
         assert "task_lifecycle" not in reused and outcome_of(reused) == "OK"
+
+
+def test_review_continue_carries_a_real_book_from_its_analyst_to_its_published_review(
+    service, tmp_path, capsys
+):
+    """requirement (AGENT-TIME verb 3): over the real Host, `review continue` submits the
+    Analyst's written answer and follows its publication, reads the book's Evidence, dossier and
+    the CRO's offered bundle and writes it; on the CRO's answer it follows the review's
+    publication. Each call is one command; the Tasks run as the Host runs them."""
+    import threading
+    import time
+    from dataclasses import replace
+
+    from alphalattice.interface.local_application.cli import main
+    from alphalattice.interface.local_application.client import LocalResearchClient
+    from tests.alternative_evidence_desk.planted_corpus import _CitingActor
+
+    adapter = service.review.evidence_task_adapter
+    topics = adapter.resources.analysis_actor.topics
+    adapter.resources = replace(adapter.resources, analysis_actor=None)
+    service.review.model_authority_admitted = False
+    service.review.review_actor = None
+    client = LocalResearchClient(service.session.workspace)
+    selected = {"result_hash": service.result_hash()}
+    workspace = ("--workspace", str(service.session.workspace))
+    prepared = client.request(
+        client.request({"operation": "EVIDENCE_PREVIEW", **selected})["next_requests"]["prepare"]
+    )
+    service.drain()
+    source_id = prepared["task_id"]
+
+    def run(*arguments: str) -> tuple[int, dict[str, Any]]:
+        code = main(["--view", "full", *arguments], serve=lambda _: 99)
+        return code, json.loads(capsys.readouterr().out)["data"]
+
+    def run_draining(*arguments: str) -> tuple[int, dict[str, Any]]:
+        result: list[tuple[int, dict[str, Any]]] = []
+        worker = threading.Thread(target=lambda: result.append(run(*arguments)))
+        worker.start()
+        deadline = time.monotonic() + 240
+        while worker.is_alive() and time.monotonic() < deadline:
+            service.drain()
+            worker.join(0.2)
+        assert not worker.is_alive(), "review continue did not end"
+        return result[0]
+
+    analysts = tmp_path / "analysts"
+    code, analyst = run(
+        *workspace,
+        *("bundle", "prepare", "--role", "ANALYST"),
+        *("--task", source_id, "--unit", ONE_UNIT, "--result", selected["result_hash"]),
+        *("--dir", str(analysts / "analyst-u01")),
+    )
+    assert code == 0, analyst
+    packet = adapter.prepared_packet(UUID(source_id), now=service.review.clock(), unit_id=ONE_UNIT)
+    full = _CitingActor(topics=topics)(packet=packet).answer.model_dump(mode="json")
+    Path(analyst["answer_file"]).write_text(
+        json.dumps({**full, "read": [item["name"] for item in analyst["files"]]}),
+        encoding="utf-8",
+    )
+    code, carried = run_draining(
+        *workspace, "review", "continue", "--dir", str(analysts), "--cro-dir", str(tmp_path / "cro")
+    )
+    assert code == 0 and carried["status"] == "CRO_BUNDLE_READY", carried
+    assert [receipt["agent_role"] for receipt in carried["receipts"]] == ["ANALYST"]
+    cro = carried["cro_bundle"]
+    assert Path(cro["bundle_directory"]) == (tmp_path / "cro").resolve()
+    assert (tmp_path / "cro" / "README.md").is_file()
+    risk = {
+        "findings": ["F1"],
+        "why": "The cited finding is adverse for a held issuer.",
+        "severity": "HIGH",
+        "confidence": "SUPPORTED",
+        "recommendation": "Size the position down.",
+    }
+    Path(cro["answer_file"]).write_text(
+        json.dumps(
+            {
+                "risks": [risk],
+                "summary": "One major negative in the evidence read.",
+                "read": [item["name"] for item in cro["files"]],
+            }
+        ),
+        encoding="utf-8",
+    )
+    code, published = run_draining(*workspace, "review", "continue", "--dir", str(tmp_path / "cro"))
+    assert code == 0 and published["status"] == "REVIEW_PUBLISHED", published
+    assert [receipt["agent_role"] for receipt in published["receipts"]] == ["CRO"]
+    assert published["evidence"]["state"]

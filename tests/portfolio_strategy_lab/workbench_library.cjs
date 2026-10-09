@@ -62,10 +62,15 @@ function hostRoutes() {
 library.hostRoutes = hostRoutes;
 // the context gains what it does not define itself (a harness may keep its own stub)
 library.into = (c, appDir) => {
+  if (!c.refusalParts) {
+    const source = fs.readFileSync(path.join(appDir, 'components.js'), 'utf8');
+    c.refusalParts = vm.runInNewContext(source.slice(source.indexOf('function refusalParts('), source.indexOf('function notRead(')) + ';refusalParts;');
+  }
   // Presentation-only harnesses supply their own Data port. These defaults keep
   // their unrelated flows usable; lifetime tests load the actual Data module.
   if (c.Data && typeof c.Data === 'object') {
     if (!c.Data.navigationIntent) c.Data.navigationIntent = () => null;
+    if (!c.Data.decisions) c.Data.decisions = () => [];
     if (!c.Data.navigationCurrent) c.Data.navigationCurrent = () => true;
     if (!c.Data.beginNavigation) c.Data.beginNavigation = () => null;
     if (!c.Data.uniqueRows) c.Data.uniqueRows = (rows, key) => {
@@ -162,7 +167,7 @@ library.words = (appDir, routeUrl = null) => {
   vm.createContext(c);
   for (const name of ['html.js', '../data/zh.js', 'i18n.js', 'status.js', 'icons.js', 'components.js'])
     vm.runInContext(fs.readFileSync(path.join(appDir, name), 'utf8'), c);
-  return vm.runInContext('({I18N, t, said, html, coded, badge, countText, actorWords, ACTORS, codeWords, declaredCodeWord, stageOf, stageWord, stateLine, stateOf, typedBtn, refCell, hashCell, locatorCell, codeCell, notRead, refusalParts, evidenceRow, goalReferenceIntegrity, hint, objectRow, stat, figureTile, glyphWord, measureStrip, TONE, EVIDENCE, CODE_WORDS, STATES, STAGES})', c);
+  return vm.runInContext('({I18N, t, said, html, coded, badge, countText, actorWords, ACTORS, codeWords, declaredCodeWord, stageOf, stageWord, stateLine, stateOf, typedBtn, refCell, hashCell, locatorCell, codeCell, notRead, refusalParts, causeLine, evidenceRow, goalReferenceIntegrity, hint, objectRow, stat, figureTile, glyphWord, measureStrip, TONE, EVIDENCE, CODE_WORDS, STATES, STAGES})', c);
 };
 // The handover's one-argument Node command also enumerates the public owners. Pytest
 // supplies this JSON directly so its eight harnesses need no extra interpreter process.

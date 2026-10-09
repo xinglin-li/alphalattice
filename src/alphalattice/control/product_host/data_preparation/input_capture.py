@@ -69,7 +69,7 @@ IMPLEMENTATION_ROLE = "product_host.research_input_capture"
 PLAN_FIELDS = ("data_update", "experiment_inputs")
 """The manifest fields a capture plan reads and writes: the data it captures and the
 inputs it adds a version to. A publication of other fields (a model's training inputs,
-a strategy installation) leaves the plan applicable (V180)."""
+a strategy installation) leaves the plan applicable."""
 """The role a move of this implementation is recorded under in `config/identity-successors.json`,
 so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
 
@@ -166,8 +166,7 @@ class ResearchInputCaptureApplication:
             admitting="RESEARCH_INPUT_CONFIRM",
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
 
     def __init__(self, session: WorkspaceApplicationSession, *, clock: Callable[[], datetime]):
         """Wire retained capture tasks and deterministic input revision lineage.
@@ -180,7 +179,7 @@ class ResearchInputCaptureApplication:
         self.revisions = ResearchInputRevisions(session)
         self.last_plan: ResearchInputCapturePlan | None = None
         # Every plan an answer named, by its hash, sealed on disk until it expires: a run
-        # from any of them, after a restart too, reopens it and checks it again (V493, V525).
+        # from any of them, after a restart too, reopens it and checks it again.
         self._plans: PreviewRegistry[ResearchInputCapturePlan] = PreviewRegistry(
             model=ResearchInputCapturePlan,
             clock=self.clock,
@@ -256,8 +255,7 @@ class ResearchInputCaptureApplication:
                 "binding_hash": prior,
                 "next_action": "SELECT_INPUT_VERSION",
             }
-        # The answer names this plan, never the owner's last one, which a concurrent plan
-        # may have replaced in between (V534).
+        # The answer names this plan, never the owner's last one, which another plan can replace.
         planned = ResearchInputCapturePlan.create(
             workspace_id=manifest.workspace_id,
             workspace_manifest_hash=manifest_fields_hash(manifest, PLAN_FIELDS),
@@ -407,7 +405,7 @@ class ResearchInputCaptureApplication:
                 )
             elif existing.lifecycle is not TaskLifecycle.RECOVERY_REQUIRED:
                 return {"status": existing.lifecycle.value, "task_id": str(existing.task_id)}
-            # This plan's Task only, never another of its kind (V529).
+            # This plan's Task only, never another of its kind.
             dispatcher.resume(
                 {CAPTURE_TASK_KIND: ResearchInputCaptureCommand(self)},
                 only_task_id=existing.task_id,

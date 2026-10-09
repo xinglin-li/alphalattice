@@ -170,7 +170,7 @@ def build_alpha_target_policy(
 
     Sector-residual lanes retain compatible historical hashing without the neutralization field.
     Log-return lanes use no neutralization and hash the current declared sequence. The Sector
-    treatment is what its sessions read (V346); the backfill keeps every policy sealed before
+    treatment is what its sessions read; the backfill keeps every policy sealed before
     the forward rule as it was.
 
     Args:
@@ -280,7 +280,7 @@ def compile_alpha_target_surface(
     ).reshape(len(sessions), len(listings))
     if bool(np.any(np.isinf(source))) or bool(np.any(np.isinf(simple))):
         raise AlphaTargetBoundaryError("alpha_research.target_source_nonfinite")
-    # Each run of formations reads the Sector map in force at it (V346): one run while no
+    # Each run of formations reads the Sector map in force at it: one run while no
     # reclassification falls inside the window, the one map every formation read before.
     runs = sector_positions(sector_by_listing_id, sessions, listings)
     finite = np.isfinite(source)

@@ -716,7 +716,7 @@ def test_a_receipt_cannot_pair_one_recipe_with_another_recipes_values() -> None:
 def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     tmp_path: Path,
 ) -> None:
-    """requirement (V461): a chunk whose content hash a process derived once is served for the
+    """Requirement: a chunk whose content hash a process derived once is served for the
     same file bytes, so each read still hashes the file: bytes changed after a read are refused,
     and the original bytes read back again."""
 

@@ -1,9 +1,5 @@
 /* 06-pages — Page compositions: overview, data, research lab, portfolio, history, advanced.
    Files are concatenated in name order by build.py; that order is the cascade order. Edit by hand — the generator in qa/parity/css only did the migration from v3.13. */
-/* Round 43: one drawing grid (24 × 24), four rendered sizes — 12 beside a Footnote or in a chip,
-   14 beside Callout, 16 beside Body and Headline, 20 in a head or the nav — and a stroke by size
-   (--icon-stroke: 2 at 12, 1.75 at 14 and 16, 1.6 at 20) so the visual stroke stays a full pixel
-   and matches the text's weight; monochrome in the text's ink unless it is the status. */
 .icon {
   width: var(--icon-size);
   height: var(--icon-size);
@@ -63,8 +59,6 @@
   stroke-width: 1;
   stroke-dasharray: 3 4;
 }
-/* The skeleton (round 71): the shape before the content — rows, a head or a body in the faint
-   ink — shown after the 400 ms hold; a slow shimmer where motion is allowed, still otherwise. */
 .skeleton {
   display: grid;
   gap: var(--space-2);
@@ -102,7 +96,6 @@
 .skeleton-head .ph-title { height: var(--space-4); width: 38%; }
 .skeleton-body { padding: var(--space-2) 0; }
 .skeleton-body .ph-line { max-width: 72%; }
-/* Nothing here (round 71): one sentence and at most one action in the quiet dashed box. */
 .section-empty { padding:var(--empty-pad) 0; border:0; background:transparent; color:var(--muted); text-align:center; }
 .section-empty:not(.page-empty) { padding:var(--empty-pad-tight) 0; } /* a section's or a box's empty is one quiet line (its way under it); the mark and the air are a page's own */
 .section-empty p { margin:0; font:var(--style-callout-size)/var(--style-callout-leading) var(--font-ui); }
@@ -120,12 +113,8 @@
 .lab-workspace {
   display: block;
 }
-/* The lane split (round 92; law 149, the Evidence reading's, the user's textbook): a list and the detail
-   it opened -- the Lab's PLAN reader, the desk's item reading, the window's detail a list hosts --
-   side by side from the pane step up; only that list gives way (`detail-width`), the page's head and
-   its other sections keep the page's width (the user, 2026-09-24: 不能整页挤压). The detail is pinned
-   under the top row once the page scrolls, its height limit the window under where it stands
-   (`--detail-top`, Geometry's). Below the step it is the pane's layer (02-shell). */
+/* Opening a detail narrows only its hosting list; the page head and other sections keep their width.
+   The detail pins below the top row and fits the remaining height, or overlays the pane below the split width. */
 .lane-split { display: grid; gap: var(--space-5); align-items: start; }
 .lane-split > .lane-main { min-width: 0; }
 @media (width >= 900px) {
@@ -141,9 +130,6 @@
   /* the table's floor is its columns' floors, not the lane's (660, the holdings' 710): the lane's floor made a
      list beside its detail roll past its figures however few its columns (the holdings at 125 %: 710 in 607) */
   .lane-split.has-reading:not([data-detail-over]) .data-table { min-width: 0; }
-  /* a grid's columns too (the factor evidence, the folds: 797 and 909 in 671 at 1470), and a text or a date cell
-     wraps at its words (a window's two dates at its dash) before the list rolls; a short label (Sector-0) and a
-     handle stay whole (law 88) */
   .lane-split.has-reading:not([data-detail-over]) .data-table.grid :is(th, td):is(.col-date, .col-id, .col-text, .col-status) { min-width: var(--col-tight); }
   .lane-split.has-reading:not([data-detail-over]) .data-table td:is(.col-text, .col-date):not(.col-tight) { white-space: normal; }
   .lane-split.has-reading:not([data-detail-over]) .data-table td :is(.mono, .num) { white-space: nowrap; }
@@ -330,7 +316,6 @@ body[data-page] [data-layer="detail"] > .icon-btn.detail-back-tab .icon { width:
   letter-spacing: var(--style-footnote-tracking);
   gap: var(--space-1) var(--space-5);
 }
-/* A legend's key is one phrase: the keys wrap between them, never inside one (law 88; 375 px broke "Predicted / variance"). */
 .chart-legend > span { white-space: nowrap; }
 .chart-wrap {
   min-width: 0;
@@ -363,7 +348,7 @@ body[data-page] [data-layer="detail"] > .icon-btn.detail-back-tab .icon { width:
   .figure > .chart-toolbar { padding: var(--space-4) var(--space-4) 0; }
   .figure > .figure-body { padding: var(--space-3) var(--space-4) 0; }
 }
-.chart-svg text { /* round 90: the ticks are chrome (Apple Stocks' 11 pt): the caption token, not the footnote */
+.chart-svg text {
   fill: var(--muted);
   font-family: var(--font-mono);
   font-size: var(--style-caption-size);
@@ -448,7 +433,7 @@ body[data-page] [data-layer="detail"] > .icon-btn.detail-back-tab .icon { width:
 .navigator-shade.end {
   right: 0;
 }
-.navigator-window { /* round 90: a tint, not a frame; the hairline handles carry the edges */
+.navigator-window {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -573,8 +558,6 @@ body[data-page] [data-layer="detail"] > .icon-btn.detail-back-tab .icon { width:
 .compare-overlay {
   margin-bottom: var(--space-4);
 }
-/* The property block (round 14): a record's facts as label + value pairs in two columns, the
-   value the link; limitations as a list under them; one opener in the foot. */
 .prop {
   display: grid;
   --lead: 132px;
@@ -755,7 +738,7 @@ body[data-page] [data-layer="detail"] > .icon-btn.detail-back-tab .icon { width:
 body[data-page] .holding-name strong {
   font-size: var(--style-callout-size);
   line-height: var(--style-callout-leading);
-  font-weight: var(--weight-label); /* round 89: an identity cell is medium (over the page's `strong`) */
+  font-weight: var(--weight-label);
 }
 .holding-name small {
   color: var(--muted);
@@ -799,7 +782,7 @@ body[data-page] .holding-name strong {
   margin-left: auto;
 }
 .chart-headline.is-reading > small { color: var(--text); } /* under the pointer the line is the reading: the date and the benchmark */
-.chart-controls { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; justify-content: flex-end; } /* round 95: the ranges (Stocks' row) beside Indexed / Daily */
+.chart-controls { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; justify-content: flex-end; }
 .chart-svg .chart-last { fill: var(--series-1); font-weight: var(--weight-label); } /* the study's last value on the axis, in its ink */
 .chart-svg .chart-last-ground { fill: var(--ground); }
 /* A link inside a sentence: it is text, not a control (the quiet-control rule would make it a box). */
@@ -1017,8 +1000,6 @@ body[data-page] .holding-name strong {
   color: var(--muted);
   margin-top: var(--space-2);
 }
-/* The navigator (round 95: the observation row above it retired -- the hero reads under the
-   pointer; the ranges sit beside Indexed / Daily). Neither changes the holdings date. */
 .chart-navigator {
   margin: var(--space-1) var(--space-6) 1px;
   border-top: 1px solid var(--line);
@@ -1181,8 +1162,6 @@ body[data-page] .holding-name strong {
   height: var(--editor-header-height);
   box-shadow: var(--rim-top);
 }
-/* The editor's two faces are tabs on the header's own line: the strip is the header's height and
-   the indicator stands on its hairline (law 110). */
 .editor-workbench-header > .editor-tabs { align-self: stretch; box-shadow: none; }
 /* An answer's editor on a phone: its tools fold onto a second line and the header grows with them, never
    past its box (MA4; box_inset_census, 2026-09-26: the tools ran 46 px in a 44 px header, 3.5 px from its top). */
@@ -1385,9 +1364,8 @@ body[data-page] .holding-name strong {
   padding-top: 0;
   padding-left: 0;
 }
-/* The editor's paint (round 61): the coloured text sits under the textarea in the same box, font
-   and line grid; the textarea keeps the caret, the selection and the input, its own text
-   transparent. The paint follows the textarea's scroll (lab-editor.js). */
+/* The paint shares the textarea's box, font and line grid while the transparent textarea keeps input, caret and selection.
+   Following the textarea's scroll keeps the coloured text beneath the text being edited. */
 .code-editor > .editor-paint {
   position: absolute;
   inset: 0 0 0 calc(var(--space-10) + var(--space-4));
@@ -1459,7 +1437,6 @@ body[data-page] .holding-name strong {
   grid-template-columns: var(--grid-4);
   padding: var(--space-5) 0;
 }
-/* Round 95 (Linear's grammar): clauses joined by `and`; `+ Filter` keeps the suggestion's dashes. */
 .filter-clauses { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .filter-op, .filter-and { color: var(--muted); }
 .filter-add .icon { width: var(--icon-sm); height: var(--icon-sm); color: var(--muted); }
@@ -1477,9 +1454,9 @@ body[data-page] .holding-name strong {
   }
 }
 .chart-svg [data-chart]:focus {
-  outline: none; /* round 95 (the user's stills: the blue rectangle, then the white one after a click): the crosshair, the marker and the hero's reading are the chart's focus, as a region's is its own -- `:focus`, because Chromium rings an SVG shape on any focus, not only the keyboard's */
+  outline: none; /* Chromium rings an SVG shape on any focus, so the chart's own focus rule applies beyond keyboard focus. */
 }
-.chart-tooltip { /* the glass (law 150, 12-material) */
+.chart-tooltip {
   position: absolute;
   padding: var(--space-2) var(--space-3);
   z-index: var(--layer-float);
@@ -1568,10 +1545,8 @@ body[data-page] .holding-name strong {
 .list-row + .list-row {
   box-shadow: inset 0 1px 0 var(--edge-hair);
 }
-/* Round 52: the row's states, one set for a list row and a table row — rest; hover, the hover
-   tint; held (the walk's row, `data-held`), the raised step with a 1 px ring of the link ink;
-   open (`aria-current`, the record shown beside or last opened), the accent at 8 % with the
-   2 px bar; a control's focus inside a row shows its own ring (round 51) and the row is held. */
+/* Rows share hover, held and open states: held rows carry a raised face and ring, and open rows mark the reading.
+   Focus inside a row uses its control's own ring unless the held row already supplies that focus mark. */
 .list-row:hover,
 .list-row:focus-within {
   background: var(--ds-control-hover);
@@ -1600,7 +1575,6 @@ body[data-page] .holding-name strong {
 :is(.list-row, tr)[data-held] :focus-visible {
   outline-color: transparent;
 }
-/* A group's head and a filtered list's foot (round 52). */
 .group-head {
   display: flex;
   flex-wrap: wrap; /* W: a long label or note takes a second line, never an ellipsis (item 6) */
@@ -1621,10 +1595,6 @@ body[data-page] .holding-name strong {
 .group-head-tools {
   margin-left: auto;
 }
-/* The lobby (law 136): the tool line -- the search first and flexible, the Filter chips, Display at
-   its right -- then one panel of groups; a group head folds (its chevron points down while open, right while folded),
-   `Show n more` stands at the titles' indent; compact density tightens a row and drops its line
-   under the title. */
 .lobby-tools {
   display: flex;
   flex-wrap: wrap;
@@ -1707,22 +1677,16 @@ body[data-page] .holding-name strong {
   align-self: flex-start;
   margin-top: var(--space-05);
 }
-/* A facts line that wraps under the title starts where the title starts (round 86, the user's
-   still): the indent is the row's own lead (a glyph, a dot, a mark) plus the row's gap; the row
-   names its lead at render (round 94, `data-lead`), so no :has() is asked on every style pass. */
+/* The row records its lead at render time so every style pass does not need a :has() lookup. */
 .list-row[data-lead] {
   --row-indent: calc(var(--slot-lead) + var(--slot-gap));
 }
-/* The spine (law 107): every lead -- a dot, a glyph, a mark -- takes the one lead column, so the
-   titles of a list start on one line whatever leads them. */
+/* Every lead takes the same column so list titles align whether the lead is a dot, glyph or mark. */
 .list-row > :is(.row-dot, .feature-icon, .mark) {
   flex: none;
   width: var(--slot-lead);
 }
-/* Round 95 (the user's reading of the Team lists: a grey dot on every row): a dot is colour on a
-   state, and colour gives meaning (law 65) -- a neutral state is its word alone. In a list that
-   mixes tones the neutral rows keep the dot's place so the titles align; a list with no toned dot
-   has no dot column, and its facts line starts where the title does. */
+/* Neutral rows retain the dot's slot in a list with toned dots so titles align; a list without toned dots has no dot column. */
 .list-row > .row-dot.neutral { visibility: hidden; }
 .card-list:not(:has(> .list-row > .row-dot:not(.neutral))) > .list-row > .row-dot { display: none; }
 .card-list:not(:has(> .list-row > .row-dot:not(.neutral))) > .list-row[data-lead=dot] { --row-indent: 0px; }
@@ -1787,7 +1751,6 @@ body[data-page] .holding-name strong {
   color: var(--muted);
   white-space: nowrap;
 }
-/* A short reference leads the facts (law 136); one line, never wrapped inside (law 88). */
 .list-row-props > .list-row-ref {
   order: -1;
   white-space: nowrap;
@@ -1811,7 +1774,7 @@ body[data-page] .holding-name strong {
 /* ST2: protect the state slot, not the whole facts group. At split width the group wraps complete
    slots instead of carrying a neighbouring control beyond its row (MA4). */
 .list-row-props > span:has(> .state) { flex-shrink: 0; }
-.list-row-props > [data-empty] { display: none; } /* round 90: an empty slot exists only where the list sizes its slots */
+.list-row-props > [data-empty] { display: none; }
 .slotted .list-row-props > [data-empty] { display: inline-flex; }
 .list-row-props .icon {
   width: var(--icon-xs);
@@ -1912,8 +1875,6 @@ body[data-page] .holding-name strong {
 .list-row:hover > .icon:last-of-type {
   color: var(--text);
 }
-/* The activity log's rows (round 20): the caller in muted words after the operation; the exact
-   observations a disclosure under the row, above the stretched title link so it can be opened. */
 .activity-rows {
   display: block;
   margin: 0;
@@ -1945,9 +1906,6 @@ body[data-page] .holding-name strong {
 .activity-row > .icon:last-of-type {
   order: 8;
 }
-/* The choice list (round 95; GitHub's label picker, Linear's multi-select): a field-shaped well --
-   the chosen as chips, the head (the count, All · None, the filter), one row per option in the
-   picker's shape. */
 .choice-list {
   border: 1px solid var(--edge-hair);
   border-radius: var(--radius-block);
@@ -1972,9 +1930,7 @@ body[data-page] .choice-search > .ui-field { width: 100%; min-width: 0; min-heig
 .card-list {
   container-type: inline-size;
 }
-/* Below its full width, a dense list drops its least important property (marked by the row as
-   `data-drop`) rather than truncating every one mid-value (round 20) -- at a phone's width too
-   (W): the least important fact never earns a line of its own. */
+/* A dense list folds its least important property rather than truncating every value; that property earns no separate line. */
 @container (width < 1080px) {
 .card-list .list-row-props > [data-drop] {
     display: none;
@@ -2112,7 +2068,7 @@ body[data-page] .choice-search > .ui-field { width: 100%; min-width: 0; min-heig
   color: var(--muted);
 }
 .term-list dd {
-  color: var(--text); /* round 89b: a definition is read, not glanced at */
+  color: var(--text);
   font-size: var(--style-callout-size);
   line-height: var(--style-callout-leading);
   margin: var(--space-1) 0 0;
@@ -2213,7 +2169,6 @@ body[data-page] .prep-fold {
   align-items: flex-start;
   gap: var(--space-4);
 }
-/* Round 22: the stage's mark is its icon, not the glass glyph (a functional surface is not decorated). */
 .stage-icon {
   width: var(--stage-mark-size);
   height: var(--stage-mark-size);
@@ -2243,7 +2198,6 @@ body[data-page] .prep-fold {
   font-size: var(--style-callout-size);
   line-height: var(--style-callout-leading);
 }
-/* The stage meter is the one meter (law 89): under its count, left aligned, at the meter's length. */
 .prep-main .tp-caption {
   margin: var(--space-2) 0 0;
 }
@@ -2323,9 +2277,6 @@ body[data-page] .prep-fold {
    reports as current turns, the connector flows into it, a stage that verified pops once, the
    owner's count ticks when it changes, a recorded unit enters once, the clocks tick from their
    recorded instants. Nothing moves for a Task the owner does not report as moving. ---- */
-/* Round 22: a stage in progress is a fact, not a spinner -- a still ring on the working node, the
-   connector to it in the same ink; nothing rotates or flows (law 16). The ink is the text's, as the
-   current step's (2026-09-25, CO3). */
 .fv-step.is-working .fv-step-node::after {
   content: "";
   position: absolute;
@@ -2350,8 +2301,6 @@ body[data-page] .fv-step.is-complete:has(+ .fv-step.is-working)::before {
   animation: live-ring var(--dur-linger) var(--curve-arrive) 1;
 }
 @keyframes prep-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.14); } 100% { transform: scale(1); } }
-/* Round 22: no sheen on a meter and no travelling bar — an unknown extent is said as words, a
-   known one as a still width (law 16); the moving dashed track's fill is the meter's (04-surfaces). */
 .prep-tick .tp-number {
   display: inline-block;
   animation: prep-tick var(--dur-3) var(--curve-arrive);
@@ -2403,7 +2352,7 @@ body[data-page] .fv-step.is-complete:has(+ .fv-step.is-working)::before {
 }
 .prep-liveness {
   margin: 0 0 var(--space-5);
-  flex-wrap: wrap; /* V655: cancellation never takes the explanation's column */
+  flex-wrap: wrap;
 }
 .prep-attention {
   padding: var(--space-1) var(--space-5) var(--space-5);
@@ -2600,11 +2549,9 @@ body[data-page] .fv-step.is-complete:has(+ .fv-step.is-working)::before {
   line-height: var(--style-caption-leading);
   font-weight: var(--weight-strong);
   letter-spacing: var(--style-caption-tracking);
-  color: var(--muted); /* round 89: a section label is grey and a little bold, never uppercase */
+  color: var(--muted);
   margin-bottom: var(--space-2);
 }
-/* Permitted responses (round 22, law 23): rows with a separator, words until chosen; the chosen one
-   on the accent's tint; an unavailable one dimmed. */
 .issue-option {
   display: flex;
   align-items: flex-start;
@@ -2723,9 +2670,6 @@ body[data-page] .fv-step.is-complete:has(+ .fv-step.is-working)::before {
 .lab-control-group .form-grid {
   align-items: start;
 }
-/* The chips took the selects (round 56): a group left with the checklist alone gives it the whole
-   width and its names flow in columns; a group of exactly three fields (the interval and the
-   cutoff) reads as one row. */
 .lab-control-group .field:has(> .choice-list) { grid-column: 1 / -1; }
 .lab-control-group .form-grid:has(> :nth-child(3):last-child) { grid-template-columns: var(--grid-3); }
 .lab-control-group .field {
@@ -2749,7 +2693,7 @@ body[data-page] .fv-step.is-complete:has(+ .fv-step.is-working)::before {
   min-height: 0;
 }
 .lab-work,
-.lab-workspace + [data-prerequisites] { /* U60: what the flow needs stands under the work surface by the same step */
+.lab-workspace + [data-prerequisites] {
   margin-top: var(--space-5);
 }
 .lab-work .lab-standing {
@@ -2795,28 +2739,15 @@ body[data-page] .fv-step.is-complete:has(+ .fv-step.is-working)::before {
 }
 /* A percent's unit is set light beside the figure (Mercury's statement figures). */
 .num-unit {
-  font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); /* round 89: on the ladder (the .72em unit read 8.6 px in a fact) */
+  font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading);
   font-weight: var(--weight-label);
   color: var(--muted);
   margin-left: 1px;
 }
-/* The sector composition is the one meter (law 89): its bar and legend rules live with the meter. */
 /* Sign colour: a gain reads in the good ink; a loss is ink with its sign. */
 .num.gain { color: var(--good-ink); }
 .num.loss { color: var(--text); }
-/* A slotted list is a table without its box (law 73; S1, 2026-09-22, the user's still of the
-   Task Center: "为什么 completed 会对不齐"). The slots were floors sized by hand in em per position
-   (13, 7, 6, 10, 10, 10; 8, 14, 17, 11): a fact longer than its floor widened its slot, and every
-   fact before it moved with it. Now the list is one grid of named columns -- the lead, the title,
-   up to eight facts, the time, the actions, the way -- and each row a subgrid of it, so a fact's
-   column follows its longest value in the list and every row's facts start on the same
-   lines; captions give way to the title's shared floor and wrap within their track. A fact no
-   row carries is a column of no width (an empty slot has no pad). It holds while
-   a row is one line -- a list of 640 at least; below, the facts go under the
-   title as before. Responsive facts fold before a dense row stacks. The runs list: a run's state and its duration, its starter, id, kind, stage
-   and verified count; a record's reference, interval, input and holdings; the date last. A list
-   of evidence rows, of retained sessions or of the Team's roster is one too (their own slots were
-   9 / 5 em, 6 / 15 / 15 em and 18 / 22 / 13.5 em). */
+/* Rows are subgrids of one named-column grid so each fact follows the longest value in its column. A fact absent from every row takes no width or padding. */
 .card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) {
   grid-template-columns: [lead] auto [ref] auto [main] minmax(min(var(--row-title-floor), 100%), 1fr) [f1] minmax(0, auto) [f2] minmax(0, auto) [f3] minmax(0, auto) [f4] minmax(0, auto) [f5] minmax(0, auto) [f6] minmax(0, auto) [f7] minmax(0, auto) [f8] minmax(0, auto) [time] auto [actions] auto [way] auto [end];
 }
@@ -2855,23 +2786,16 @@ body[data-page] .fv-step.is-complete:has(+ .fv-step.is-working)::before {
     padding-block: min(var(--space-2), calc((var(--row-regular) - 2 * var(--style-footnote-leading)) / 2));
   }
 }
-/* The evidence rows (round 76): the state's word in one slot; an issuer's two figures in two
-   slots, right-aligned on their unit, its band after them. */
 .evidence-row[data-kind="issuer"] .list-row-props > span:nth-child(2), .evidence-row[data-kind="issuer"] .list-row-props > span:nth-child(3) { justify-content: flex-end; font-variant-numeric: tabular-nums; }
-/* First use on the Home (round 74): the preparation's section under the groups. */
 .first-use { margin-bottom: var(--space-6); }
-/* The Home's groups (round 65): a breath between one list and the next head. */
 .home-groups .group-head + :is(.card-list, .section-empty) + .group-head {
   margin-top: var(--space-4);
 }
-/* S (law 88): a source's locator rolls on its own line inside the source's row, its words under it. The
-   list's one column is its own width, never the longest locator's (the clip census, 2026-09-24: the rows ran
-   past the column and the section cut them), and a row's words may shrink so the locator can roll. */
+/* The list column keeps its own width rather than the longest locator's width, allowing row words to shrink before the locator rolls. */
 .prep-sources { grid-template-columns: minmax(0, 1fr); }
 .prep-sources li > :not(.icon) { min-width: 0; }
 .prep-sources .run-ref { max-width: 100%; }
 .prep-sources .prep-source-words { display: block; color: var(--muted); }
-/* The Alpha comparison's choice is a workspace (law 148), at a form's measure, not the lane's. */
 .study-compare-form { max-width: var(--width-md); } /* its fields are a form's (320) with the box's inset */
 /* The Lab's header at a narrow lane (the inset census, 2026-09-24): the property chips take the row, the
    `produces` note goes under them -- side by side the chips ran past the box and it cut them. */

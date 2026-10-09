@@ -39,7 +39,7 @@ class _Contract(BaseModel):  # type: ignore[misc]
 
 
 class ModelSandboxRecord(_Contract):
-    """One sandbox trial of a model's identity: its study on a copy, and U0 on the copy."""
+    """One sandbox trial of a model's identity: its study and saved-object readback on a copy."""
 
     model_id: str
     declaration_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -47,8 +47,8 @@ class ModelSandboxRecord(_Contract):
     contract_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     study_task_id: str = Field(min_length=1)
     study_model_id: str | None = None
-    """The model the sandbox study ran, read back from the study; a record without it, written
-    before V414, holds no proof of which model ran and passes no activation."""
+    """The model the sandbox study ran, read back from the study; a record without it
+    holds no proof of which model ran and passes no activation."""
 
     study_seconds: float = Field(ge=0)
     """The sandbox study's run time, its fits included."""
@@ -59,7 +59,7 @@ class ModelSandboxRecord(_Contract):
 
     @property
     def passed(self) -> bool:
-        """Whether its study ran this model (V414) and the copy read as before (U0)."""
+        """Whether its study ran this model and the copy read as before."""
         return self.study_model_id == self.model_id and self.u0_changed == 0 and self.u0_reads > 0
 
 
@@ -168,7 +168,7 @@ class ModelExtensions:
         self.contracts = contracts
 
     def _contract(self, model_id: str) -> dict[str, Any]:
-        # A model's contract fits it (0.2-0.4 s a model, V353): the Host runs it once per
+        # A model's contract fits it (0.2-0.4 s a model): the Host runs it once per
         # identity, not once per read; `model check` runs it each time.
         if self.contracts is None:
             return check_model(model_id)
@@ -342,7 +342,7 @@ class ModelExtensions:
         """A person's deactivation: the model leaves this workspace's catalog.
 
         A kept study that binds it still reads back, and its code stays while a kept record
-        binds it (SR's rule).
+        binds it.
 
         Args:
             model_id: The model.

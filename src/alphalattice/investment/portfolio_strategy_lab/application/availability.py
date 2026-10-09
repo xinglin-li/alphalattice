@@ -1,4 +1,4 @@
-"""What a Portfolio study may not declare yet, and why (V313, deferred with V309).
+"""What a Portfolio study may not declare yet, and why.
 
 The catalog holds these rules, but a Portfolio study cannot run them now: each needs design of
 its own, beyond this wave. The declaration refuses them already; this list says so where an
@@ -40,6 +40,6 @@ NOT_AVAILABLE: Final[tuple[dict[str, object], ...]] = (
     },
 )
 """Each rule a Portfolio study may not declare now: its declaration field, its values and
-why; all three are deferred with V309's parameter search (their row is V313)."""
+why."""
 
 __all__ = ["NOT_AVAILABLE"]

@@ -828,3 +828,33 @@ def test_planned_runs_of_selected_sessions_equal_the_calendar_scan(
         )
         expected = scanned(calendar, chosen & set(calendar))
         assert tuple(item.ranges for item in restricted.items) == ((expected,) if expected else ())
+
+
+def test_a_wanted_sessions_rows_are_the_whole_blocks_rows_on_every_day() -> None:
+    """requirement: a wanted session's row and its ineligibility facts equal the
+    whole block's, bit for bit, on sampled days of a short history and of zero-volume sessions
+    as on ordinary ones."""
+    asset = _frame(periods=300)
+    asset.loc[asset.index[150:153], "volume_raw"] = 0.0
+    market = _frame(periods=300, seed_value=11)
+    materializer = BaseFeatureMaterializer(FeatureCatalog.load())
+    whole = materializer.materialize_listing(
+        listing_id="fixture", projected_bars=asset, market_bars=market
+    )
+    assert len(whole.ineligibility)
+    for day in whole.values["session_date"].iloc[[0, 10, 150, 152, 200, -1]]:
+        wanted = materializer.materialize_listing(
+            listing_id="fixture", projected_bars=asset, market_bars=market, sessions=(day,)
+        )
+        pd.testing.assert_frame_equal(
+            wanted.values, whole.values.loc[whole.values["session_date"] == day]
+        )
+        facts = whole.ineligibility.loc[whole.ineligibility["session_date"] == day]
+        if facts.empty:
+            # An empty frame's column types answer nothing the store reads.
+            assert wanted.ineligibility.empty
+            assert list(wanted.ineligibility.columns) == list(facts.columns)
+        else:
+            pd.testing.assert_frame_equal(
+                wanted.ineligibility.reset_index(drop=True), facts.reset_index(drop=True)
+            )

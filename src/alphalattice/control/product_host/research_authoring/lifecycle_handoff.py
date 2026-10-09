@@ -28,6 +28,9 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
     normalize_input_document,
     read_factor_bundle,
 )
+from alphalattice.control.product_host.research_authoring.model_training import (
+    model_lifecycle_disclosure,
+)
 from alphalattice.control.product_host.storage.inventory import (
     StorageInventoryError,
     require_storage_capacity,
@@ -38,6 +41,14 @@ from alphalattice.investment.alpha_research.experiments.lifecycle_authoring impo
     METHOD,
     AlphaLifecycleExperiment,
 )
+from alphalattice.investment.alpha_research.scores.heterogeneous_product import (
+    INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
+)
+from alphalattice.investment.alpha_research.scores.product_lifecycle import (
+    DEFAULT_MODEL_LIFECYCLE,
+    ModelLifecycle,
+    model_lifecycle_of,
+)
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
@@ -46,14 +57,21 @@ from alphalattice.protocols.research_authoring.contracts import (
 
 
 def lifecycle_controls(
-    workspace: Path, binding: ResearchWorkspaceExperimentInput, component_id: str | None
+    workspace: Path,
+    binding: ResearchWorkspaceExperimentInput,
+    component_id: str | None,
+    model_lifecycle: ModelLifecycle | None = None,
 ) -> dict[str, Any]:
     """Require an explicit prepared component source before building its exact Alpha draft.
+
+    A component prepared under both lifecycles offers the one the request names, else the
+    light default; one prepared under a single lifecycle offers it unless another is named.
 
     Args:
         workspace: Caller-owned admitted workspace.
         binding: Exact admitted research input.
         component_id: Optional explicit component selection.
+        model_lifecycle: Optional lifecycle selection, LIGHT or FULL.
 
     Returns:
         Source-selection request or exact lifecycle document/template and PLAN request; no numerical
@@ -66,6 +84,24 @@ def lifecycle_controls(
         if v.input_binding_hash == binding.binding_hash
         and (component_id is None or v.component_id == component_id)
     )
+    if component_id is not None and (model_lifecycle is not None or len(choices) > 1):
+        wanted = model_lifecycle or DEFAULT_MODEL_LIFECYCLE
+        choices = tuple(v for v in choices if _lifecycle_of(workspace, v) == wanted)
+        if not choices:
+            return {
+                "status": "MODEL_TRAINING_SOURCE_SELECTION_REQUIRED",
+                "sources": [],
+                "claim": f"No source of this component is prepared under the {wanted} lifecycle.",
+                "next_requests": {
+                    "training": {
+                        "operation": "MODEL_TRAINING_INPUT_PLAN",
+                        "component_id": component_id,
+                        "research_input_id": binding.input_id,
+                        "input_binding_hash": binding.binding_hash,
+                        "model_lifecycle": wanted,
+                    }
+                },
+            }
     if component_id is None or len(choices) != 1:
         return {
             "status": "MODEL_TRAINING_SOURCE_SELECTION_REQUIRED",
@@ -122,6 +158,9 @@ def lifecycle_controls(
         "research_input_id": binding.input_id,
         "input_binding_hash": binding.binding_hash,
         "model_training_source": selected.model_dump(mode="json"),
+        "model_lifecycle": model_lifecycle_disclosure(
+            _lifecycle_of(workspace, selected) or "FULL", admission.lifecycle
+        ),
         "plan_request": {
             "operation": "EXPERIMENT_PLAN",
             "research_input_id": binding.input_id,
@@ -133,6 +172,19 @@ def lifecycle_controls(
             "NO_STRATEGY_OR_CURRENT_ACTIVATION",
         ],
     }
+
+
+def _lifecycle_of(
+    workspace: Path, source: ResearchWorkspaceModelTrainingInput
+) -> ModelLifecycle | None:
+    """Which installed lifecycle a prepared training source's admission binds."""
+    _store, admission = resolve_workspace_model_lifecycle(
+        workspace, component_id=source.component_id, training_authority_hash=source.authority_hash
+    )
+    return model_lifecycle_of(
+        INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component(source.component_id),
+        admission.lifecycle.content_hash,
+    )
 
 
 def lifecycle_workflow(

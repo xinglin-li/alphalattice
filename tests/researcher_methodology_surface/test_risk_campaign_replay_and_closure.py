@@ -1,8 +1,6 @@
 """What the Risk estimator campaign left behind: the Host's estimate firewall.
 
-An adapter that misdescribes its own estimate is refused before anything
-terminal is written. The campaign, its replay verifier and the measurement
-mirrors that verifier restated retired with V312 (RT).
+An adapter that misdescribes its own estimate is refused before anything terminal is written.
 """
 
 from __future__ import annotations

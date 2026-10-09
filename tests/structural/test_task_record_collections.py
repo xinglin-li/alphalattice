@@ -17,7 +17,7 @@ PREPARATION = "control/product_host/data_preparation/"
 STRICT_READERS = {
     COMPOSITION + "decision_advancement.py": (
         "DecisionAdvancementApplication",
-        "plan admit in_flight _completed_scores _completed_input "
+        "_plan admit in_flight _completed_scores _completed_input "
         "reusable publication_task readback",
     ),
     COMPOSITION + "evidence_review_application.py": (
@@ -30,7 +30,7 @@ STRICT_READERS = {
     COMPOSITION + "portfolio_research_operations.py": (
         "PortfolioResearchOperations",
         "sweep_if_due _execute _workspace_operation _strategy_task "
-        "_automation_answer upgrade cpu_budget",
+        "_automation_answer upgrade cpu_budget _install",
     ),
     COMPOSITION + "portfolio_updates.py": (
         "PortfolioUpdateApplication",
@@ -111,6 +111,8 @@ PARTIAL_READERS = {
         "recovery_commands",
     ),
     COMPOSITION + "research_history.py": ("ResearchHistory", "listing"),
+    # The memory refusal names the Tasks still executing, read only when it refuses.
+    COMPOSITION + "resource_estimates.py": ("ResourceGate", "run_refusal"),
     COMPOSITION + "research_experiments.py": ("ResearchExperimentApplication", "listing"),
     COMPOSITION + "portfolio_research_operations.py": (
         "PortfolioResearchOperations",

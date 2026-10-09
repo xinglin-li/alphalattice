@@ -265,15 +265,15 @@ def project_research_series(
 
 
 SHARE_SPLIT_DENOMINATOR_LIMIT: Final = 100
-"""The largest denominator a share count change's ratio takes, either way round (V348)."""
+"""The largest denominator a share count change's ratio takes, either way round."""
 
 SHARE_SPLIT_RELATIVE_TOLERANCE: Final = 5e-6
 """How far a recorded ratio may sit from its simple fraction and still be one: the provider's
-rounding of a reverse split (1/3 as 0.333333), never a spin-off's ratio (V348)."""
+rounding of a reverse split (1/3 as 0.333333), never a spin-off's ratio."""
 
 
 def is_share_split(ratio: float) -> bool:
-    """Whether a recorded split ratio changes the listing's share count or only its price (V348).
+    """Whether a recorded split ratio changes the listing's share count or only its price.
 
     The provider has no spin-off event: a spin-off arrives as a fractional split ratio (RTX
     1.589 for Carrier and Otis, GE 1.281 and 1.253, DHR 1.128, MMM 1.196) that re-bases the
@@ -302,11 +302,11 @@ def is_share_split(ratio: float) -> bool:
 class AsTradedBar:
     """One session's prices and share volume as they traded, and the indices that re-base them.
 
-    Point in time (V345): no later event changes a session's values. ``price_adjustment_index``
+    Point in time: no later event changes a session's values. ``price_adjustment_index``
     is the product of every recorded ratio effective on or before the session and
-    ``share_count_index`` the product of the share splits among them (V348), so the price at
+    ``share_count_index`` the product of the share splits among them, so the price at
     session t as it read at a later session T is ``close_as_traded(t) * price_adjustment_index(t)
-    / price_adjustment_index(T)``, and the share volume ``volume_as_traded(t) *
+    price_adjustment_index(T)``, and the share volume ``volume_as_traded(t) *
     share_count_index(T) / share_count_index(t)``.
     """
 
@@ -321,7 +321,7 @@ class AsTradedBar:
 
 
 AS_TRADED_FIELDS: Final = tuple(item.name for item in fields(AsTradedBar))[1:]
-"""The source fields an as-traded row adds to a listing's feature frame (V345, V395)."""
+"""The source fields an as-traded row adds to a listing's feature frame."""
 
 
 def project_as_traded_series(
@@ -337,7 +337,7 @@ def project_as_traded_series(
     its prices and its volume as the provider's split mechanics apply them, so the session's
     values as traded multiply its prices by those ratios and divide its volume by them. The
     provider's share volume before a price adjustment is assumed scaled by it as by a split:
-    that cannot be checked offline (V348). ``actions`` must hold every recorded action of the
+    that cannot be checked offline. ``actions`` must hold every recorded action of the
     listing, later ones included; a cash dividend moves no price here.
 
     Args:

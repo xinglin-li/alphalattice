@@ -173,7 +173,7 @@ def run_portfolio_walk_forward_segment(
         anchor_sector = workspace.equal_weight_sector_exposure
         if anchor_sector.ndim == 2:
             anchor_sector = anchor_sector[index]
-        # A Sector history's per-session exposure reads the formation's (V346).
+        # A Sector history's per-session exposure reads the formation's.
         exposure = workspace.sector_exposure_matrix
         if exposure.ndim == 3:
             exposure = exposure[index]

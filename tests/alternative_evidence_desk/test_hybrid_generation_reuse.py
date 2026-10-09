@@ -621,7 +621,7 @@ def test_a_coherent_rewrite_cannot_be_laundered_through_a_new_cutoff(tmp_path: P
     assert _manifest_of(database).logical_hash == altered_manifest
 
     restarted, later_passes = _counted_runtime(tmp_path)
-    # The original generation's cold read refuses: its record names M1/P1.
+    # The original generation's cold read refuses: its record names M1/.
     with pytest.raises(KnowledgeRetrievalError) as refused:
         _hits(restarted, request, document_set, generation)
     assert refused.value.failure.code == "retrieval.snapshot_mismatch"

@@ -1,4 +1,4 @@
-"""Generated continuation checks for the operation and answer registries (V523).
+"""Generated continuation checks for the operation and answer registries.
 
 Source offers are parsed, not executed. Recorded answers are replayed through the client
 without a Host: only edge names, fields, classifications and counts leave the replay.
@@ -16,7 +16,7 @@ from typing import Any
 
 
 def reference_checks(root: Path) -> list[dict[str, Any]]:
-    """Check the compact display's round trip by the request contract (V523, V561).
+    """Check the compact display's round trip by the request contract.
 
     An issued reference, a field the request contract types or a hash, is shown short and read
     back whole under its own name. An answer's own id that the contract does not take is shown

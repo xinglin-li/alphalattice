@@ -84,7 +84,7 @@ class RiskEstimatorRecipeEnvelope(_Contract):
 
 
 def implementation_content_hash(*sources: Path) -> str:
-    """The identity of the modules that will actually run, by their rule (LAWS.md ID3, V95).
+    """The identity of the modules that will actually run, by their rule (LAWS.md ID3).
 
     ``implementation_owners`` is a tuple of module *names*, and a name is not an
     identity: the same string denotes whatever that module currently contains.
@@ -134,7 +134,8 @@ class RiskEstimatorNumericalBinding(_Contract):
 
     The environment is provenance, recorded beside each estimate and never part of
     this identity (LAWS.md ID6, the user's decision of 2026-09-26): a dependency
-    upgrade moves no Risk method, and whether it moves a number is answered by U0.
+    upgrade moves no Risk method, and whether it moves a number is answered
+    by the saved-object replay check.
     """
 
     deterministic_policy: dict[str, Any]

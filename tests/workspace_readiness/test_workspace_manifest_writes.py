@@ -2,8 +2,8 @@
 
 The manifest is one file its writers replace whole. A model-training publication read it,
 built its change and published outside the workspace's lock, so a strategy installation
-between the two was lost (V193); a preparation's recovery lost one the same way (V194); and a
-plan that held the whole manifest's hash refused after any other owner's publication (V180).
+between the two was lost; a preparation's recovery lost one the same way; and a
+plan that held the whole manifest's hash refused after any other owner's publication.
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ def _adding(value: ResearchWorkspaceExperimentInput):  # type: ignore[no-untyped
 
 
 def test_two_writers_through_the_one_write_keep_both_changes(tmp_path: Path) -> None:
-    """V193, V194: the second writer waits for the first and changes what the first wrote."""
+    """the second writer waits for the first and changes what the first wrote."""
 
     create_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("ws"))
     gate = WorkspaceMutationGate()
@@ -177,7 +177,7 @@ def _recorded_setup_source(root: Path) -> tuple[Path, str, Path]:
 def test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rebind: bool
 ) -> None:
-    """V641: both setup entries change the current manifest under the session's gate."""
+    """both setup entries change the current manifest under the session's gate."""
     from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
         PanelClosureArtifactStore,
     )
@@ -297,7 +297,7 @@ def test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding(
 def test_a_manifest_holding_a_spelling_the_renames_retired_is_refused_by_name(
     tmp_path: Path, spelling: str
 ) -> None:
-    """requirement (V481, OP4): a workspace prepared before the 2026-10-02 renames holds
+    """requirement (OP4): a workspace prepared before the 2026-10-02 renames holds
     spellings they retired (an artifact key, a strategy id, a kind); its manifest is refused
     at the reader by that name, whatever else it holds, with the door's words and its way on,
     a new workspace, and is left as it is."""
@@ -319,7 +319,7 @@ def test_a_manifest_holding_a_spelling_the_renames_retired_is_refused_by_name(
 
 
 def test_a_plan_binds_only_the_fields_it_reads() -> None:
-    """V180: a model-training publication leaves a strategy plan and a capture plan applicable;
+    """a model-training publication leaves a strategy plan and a capture plan applicable;
     a change of what each reads does not."""
 
     before = ResearchWorkspaceManifest.research_only("ws").with_bindings(
@@ -347,7 +347,7 @@ def test_a_plan_binds_only_the_fields_it_reads() -> None:
 
 
 def test_a_portfolio_research_plan_binds_the_strategy_it_serves() -> None:
-    """V284: a capture publication leaves an admitted Portfolio research Task recoverable; a
+    """a capture publication leaves an admitted Portfolio research Task recoverable; a
     change of the strategy installation it reads does not."""
 
     fields = portfolio_application.PLAN_FIELDS
@@ -360,7 +360,7 @@ def test_a_portfolio_research_plan_binds_the_strategy_it_serves() -> None:
 
 
 def test_a_research_installation_holds_a_persons_activation() -> None:
-    """requirement (LS1, V459): an installed research strategy has no default, and a person's
+    """requirement (LS1): an installed research strategy has no default, and a person's
     activation of one of its books binds the daily chain's inputs beside it; a research
     installation with a default is still refused."""
 
@@ -403,7 +403,7 @@ def test_a_research_installation_holds_a_persons_activation() -> None:
 
 
 def test_only_the_owner_writes_the_manifest() -> None:
-    """V219: the product changes the manifest through the one write; the whole-file publisher
+    """the product changes the manifest through the one write; the whole-file publisher
     is called only by its owner (tests' fixtures and lease-held scripts hold the workspace
     alone)."""
 

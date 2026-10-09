@@ -12,12 +12,11 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Final, Literal, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
-from uuid import uuid4
 
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_HEADER,
@@ -2220,6 +2219,35 @@ def _filed(message: dict[str, Any]) -> bool:
     return message.get("input_channel") != "PRODUCT_OPERATION"
 
 
+def _goal_wake_refused(client: LocalResearchClient, goal_id: str) -> dict[str, Any]:
+    """A Codex wake follows one Task, never a goal: refused by name, each of the goal's
+    unfinished Tasks offered for its own wake (WAKE)."""
+    current = client.request({"operation": "GOAL_NARRATIVE", "goal_id": goal_id})
+    if current.get("status") == "REFUSED":
+        return current
+    code = "local_client.codex_notify_needs_task"
+    refusal = client_refusal(code)
+    thread = _codex_thread()
+    prefix = _entry_of(client)
+    offered: dict[str, Any] = {}
+    for task in current.get("record", {}).get("tasks", []):
+        if outcome_of({"lifecycle": task["state"]}) == "PENDING":
+            read: dict[str, object] = {"operation": "STATUS", "task_id": task["task_id"]}
+            offered[f"wake:{task['task_id']}"] = {
+                "operation": "WAKE_REGISTER",
+                "task_id": task["task_id"],
+                "wake_thread": thread,
+                "wake_read": command(read, prefix=prefix),
+            }
+    return {
+        "status": "REFUSED",
+        "failure_code": code,
+        "detail": refusal.detail,
+        "next_action": refusal.next_action,
+        "next_requests": {**offered, "goal": {"operation": "GOAL_SHOW", "goal_id": goal_id}},
+    }
+
+
 def _wait_for_goal(
     client: LocalResearchClient, goal_id: str, max_wait: float | None
 ) -> dict[str, Any]:
@@ -2315,82 +2343,126 @@ def _with_read_commands(body: dict[str, Any], prefix: tuple[str, ...]) -> dict[s
     return body
 
 
-def _codex_queue_ready() -> str:
-    """The Codex thread a wake may be queued to, checked before the agent ends its turn."""
-    import shutil  # only a Codex wake needs it; a call's imports are its cost (W12, V29)
-
+def _codex_thread() -> str:
+    """The Codex thread the Host is to wake, named by the host's own session."""
     thread = os.environ.get("CODEX_THREAD_ID", "").strip()
-    if not thread or shutil.which("codex") is None:
+    if not thread:
         raise LocalResearchClientError("local_client.codex_queue_unavailable")
     return thread
 
 
-def _queue_wake(client: LocalResearchClient, thread: str, event: dict[str, Any]) -> dict[str, Any]:
-    """Queue the event's one line to a Codex thread: best-effort, the Host's record the truth.
-
-    A queued message arrives as a user message, so it carries no event body and no
-    instruction: only what happened and the command that reads it. A failed queue is retried,
-    then left as an undelivered wake beside the event, never a fallback in the user's voice.
-    """
-    import subprocess  # only a Codex wake needs it; a call's imports are its cost (W12, V29)
-
-    message = f"Host event {event['event']}: read and verify it with {event['read']}"
-    failure = None
-    for attempt, pause in enumerate((0.0, 2.0, 4.0), start=1):
-        time.sleep(pause)
-        try:
-            subprocess.run(
-                ["codex", "queue", "--thread", thread, "--message", message],
-                check=True,
-                capture_output=True,
-                timeout=60,
-            )
-        except FileNotFoundError:
-            failure = "CODEX_COMMAND_MISSING"
-        except subprocess.CalledProcessError:
-            failure = "CODEX_QUEUE_FAILED"
-        except subprocess.TimeoutExpired:
-            failure = "CODEX_QUEUE_TIMED_OUT"
-        else:
-            return {"channel": "codex-queue", "delivered": True, "attempts": attempt}
-    subject = {key: str(event[key]) for key in ("task_id", "goal_id") if event.get(key) is not None}
-    with suppress(LocalResearchClientError):
-        client.publish_event(
-            {
-                "event_kind": "WAKE_UNDELIVERED",
-                "producer_id": "alphalattice-waiter",
-                "producer_session": uuid4().hex,
-                "producer_sequence": 0,
-                "occurred_at": datetime.now(UTC).isoformat(),
-                "summary": f"A Codex wake for {event['event']} was not delivered ({failure}).",
-                "subject": subject,
-            }
-        )
-    return {"channel": "codex-queue", "delivered": False, "failure": failure, "attempts": 3}
-
-
-_REVIEW_READY = "BOOK_REVIEW_READY"
 _UNIT_NAME = re.compile(r"[^A-Za-z0-9_-]+")
 
 
-def _book_review(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """`strategy-book review`, its end queued as one line to a Codex lead when asked (R1).
+@dataclass
+class _Chain:
+    """The requests one agent verb sends, in their order, each Task followed under its one
+    deadline (AGENT-TIME). The first answer that stops it is the verb's answer, beside the steps
+    it took under ``name``; nothing runs beyond the call."""
 
-    A Codex lead starts the review as its own process and ends its turn; the queued line, which
-    names the saved answer to read, opens its next turn, so no turn polls the review.
-    """
-    thread = _codex_queue_ready() if getattr(args, "notify", None) == "codex-queue" else None
-    body = _review_steps(client, args)
-    if thread is None:
+    client: LocalResearchClient
+    name: str
+    deadline: float | None
+    steps: list[dict[str, Any]] = field(default_factory=list)
+    wake: tuple[str, str] | None = None
+    """With `--notify codex-queue`: the Codex thread and this verb's own re-run command, which
+    the Host's wake names when the first running Task this verb reaches ends (WAKE)."""
+
+    def send(self, step: str, document: dict[str, Any]) -> dict[str, Any]:
+        body = self.client.request(document)
+        self.steps.append(
+            {"step": step, "sent": document.get("operation"), "outcome": outcome_of(body)}
+        )
         return body
-    output = getattr(args, "output", None)
-    read = (
-        f"answer show --file {Path(output).resolve()}"
-        if output is not None
-        else "the strategy-book review command's printed answer"
-    )
-    event = {"event": str(body.get("status")), "read": read}
-    return {**body, "wake": _queue_wake(client, thread, event)}
+
+    def stop(self, step: str, body: dict[str, Any]) -> dict[str, Any]:
+        return {**body, self.name: {"stopped_at": step, "steps": self.steps}}
+
+    def followed(self, step: str, body: dict[str, Any]) -> dict[str, Any] | None:
+        """The admitted Task followed to its end; None when it ended well."""
+        if outcome_of(body) != "PENDING":
+            return None if outcome_of(body) == "OK" else self.stop(step, body)
+        if self.wake is not None and body.get("task_id") and task_state(body) not in WAIT_EXITS:
+            # A Codex turn ends its children, so the Host holds the wake and this call returns;
+            # the wake re-runs the verb, which reuses each finished step and goes on.
+            thread, read = self.wake
+            registered = self.send(
+                step + "_wake",
+                {
+                    "operation": "WAKE_REGISTER",
+                    "task_id": str(body["task_id"]),
+                    "wake_thread": thread,
+                    "wake_read": read,
+                },
+            )
+            return self.stop(step, registered)
+        deadline = self.deadline
+        remaining = None if deadline is None else max(0.1, deadline - time.monotonic())
+        ended = _follow(self.client, body, remaining, deadline=deadline)
+        self.steps.append({"step": step + "_task", "sent": "STATUS", "outcome": outcome_of(ended)})
+        return None if outcome_of(ended) == "OK" else self.stop(step, ended)
+
+    @staticmethod
+    def offered(body: dict[str, Any], name: str) -> dict[str, Any] | None:
+        request = offered_requests(body).get(name)
+        return None if not isinstance(request, dict) or choices(request) else dict(request)
+
+    def bundle(self, step: str, request: dict[str, Any], directory: Path) -> dict[str, Any]:
+        """Prepare one specialist's bundle into ``directory`` and write it as `bundle prepare`
+        does: its files, its answer path and its one submit command."""
+        document = _chosen(_request_fields(request, {"bundle_directory": str(directory)}))
+        target = _bundle_directory(document)
+        body = self.send(step, document)
+        if outcome_of(body) != "OK" or target is None or not body.get("files"):
+            return body
+        written = _write_bundle(target, body, prefix=_entry_of(self.client))
+        return {
+            "status": written.get("status"),
+            "bundle_directory": written.get("bundle_directory", str(target)),
+            "index": written.get("index"),
+            "files": written.get("files"),
+            "answer_file": written.get("answer_file"),
+            "submit_command": written.get("submit_command"),
+            "submit_arguments": written.get("submit_arguments"),
+        }
+
+
+def _chain(client: LocalResearchClient, args: argparse.Namespace, name: str) -> _Chain:
+    deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
+    wake = None
+    if getattr(args, "notify", None) == "codex-queue":
+        wake = (_codex_thread(), join([*_entry_of(client), *_rerun(args)], shell()))
+    return _Chain(client, name, deadline, wake=wake)
+
+
+def _rerun(args: argparse.Namespace) -> list[str]:
+    """This agent verb's own command line, to send again when its wake comes: the same
+    controls and `--notify`, its `--output` moved to the next free `<name>.wake<n>` path so
+    that no saved answer is overwritten."""
+    book = args.command == "book-review"
+    line = ["strategy-book", "review"] if book else ["review", "continue"]
+    for flag, value in (
+        ("--package", args.strategy_package_id),
+        ("--dir", Path(args.bundle_root).resolve()),
+        ("--cro-dir", None if book or args.cro_root is None else Path(args.cro_root).resolve()),
+        ("--max-wait", args.max_wait),
+        ("--notify", args.notify),
+        ("--output", _next_output(args.output) if args.output else None),
+    ):
+        if value is not None:
+            line += [flag, str(value)]
+    return line
+
+
+def _next_output(output: str | Path) -> Path:
+    """The first free `<name>.wake<n><suffix>` after ``output``, which may be one already."""
+    path = Path(output).resolve()
+    stem, number = path.stem, 1
+    if (found := re.fullmatch(r"(.+)\.wake(\d+)", stem)) is not None:
+        stem, number = found.group(1), int(found.group(2)) + 1
+    while (following := path.with_name(f"{stem}.wake{number}{path.suffix}")).exists():
+        number += 1
+    return following
 
 
 def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
@@ -2399,48 +2471,24 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
 
     It sends the requests the answers offer, in their order, and follows each Task to its end:
     the strategy's controls, its book's run with their defaults, the book's saved result and its
-    report, Evidence's
-    preview and preparation, then each prepared unit's Analyst bundle into ``--dir``. The first
-    answer that stops it (a refusal, a missing prerequisite, a Task waiting on a decision or the
-    wait's cap) is the answer, with the steps it took; nothing runs beyond this call, and every
-    step stays its own command for an agent that would choose otherwise.
+    report, Evidence's preview and preparation, then each prepared unit's Analyst bundle into
+    ``--dir``. The first answer that stops it (a refusal, a missing prerequisite, a Task waiting
+    on a decision or the wait's cap) is the answer, with the steps it took; nothing runs beyond
+    this call, and every step stays its own command for an agent that would choose otherwise.
     """
     package = str(args.strategy_package_id)
     root = Path(args.bundle_root).resolve()
-    deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
-    steps: list[dict[str, Any]] = []
-
-    def send(step: str, document: dict[str, Any]) -> dict[str, Any]:
-        body = client.request(document)
-        steps.append({"step": step, "sent": document.get("operation"), "outcome": outcome_of(body)})
-        return body
-
-    def stop(step: str, body: dict[str, Any]) -> dict[str, Any]:
-        return {**body, "book_review": {"stopped_at": step, "steps": steps}}
-
-    def followed(step: str, body: dict[str, Any]) -> dict[str, Any] | None:
-        """The admitted Task followed to its end; None when it ended well."""
-        if outcome_of(body) != "PENDING":
-            return None if outcome_of(body) == "OK" else stop(step, body)
-        remaining = None if deadline is None else max(0.1, deadline - time.monotonic())
-        ended = _follow(client, body, remaining, deadline=deadline)
-        steps.append({"step": step + "_task", "sent": "STATUS", "outcome": outcome_of(ended)})
-        return None if outcome_of(ended) == "OK" else stop(step, ended)
-
-    def offered(body: dict[str, Any], name: str) -> dict[str, Any] | None:
-        request = offered_requests(body).get(name)
-        return None if not isinstance(request, dict) or choices(request) else dict(request)
-
-    controls = send("controls", {"operation": "CONTROLS", "strategy_package_id": package})
+    chain = _chain(client, args, "book_review")
+    controls = chain.send("controls", {"operation": "CONTROLS", "strategy_package_id": package})
     if outcome_of(controls) != "OK" or not isinstance(controls.get("template"), dict):
-        return stop("controls", controls)
-    run = send("book", {"operation": "RUN", "spec": controls["template"]})
-    if (ended := followed("book", run)) is not None:
+        return chain.stop("controls", controls)
+    run = chain.send("book", {"operation": "RUN", "spec": controls["template"]})
+    if (ended := chain.followed("book", run)) is not None:
         return ended
     # A book's Task names no result when it ends; the saved results do, by their Task.
     result_hash = run.get("result_hash")
     if run.get("task_id"):
-        results = send("book_result", {"operation": "RESULTS"})
+        results = chain.send("book_result", {"operation": "RESULTS"})
         result_hash = next(
             (
                 row.get("result_hash")
@@ -2450,48 +2498,33 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
             None,
         )
         if result_hash is None:
-            return stop("book_result", results)
-    readback = send("book_readback", {"operation": "REPORT", "result_hash": result_hash})
-    preview_request = offered(readback, "evidence_preview")
+            return chain.stop("book_result", results)
+    readback = chain.send("book_readback", {"operation": "REPORT", "result_hash": result_hash})
+    preview_request = chain.offered(readback, "evidence_preview")
     if preview_request is None:
-        return stop("book_readback", readback)
-    preview = send("evidence_preview", preview_request)
-    prepare = offered(preview, "prepare")
+        return chain.stop("book_readback", readback)
+    preview = chain.send("evidence_preview", preview_request)
+    prepare = chain.offered(preview, "prepare")
     if preview.get("status") != "EVIDENCE_PREPARATION_READY" or prepare is None:
-        return stop("evidence_preview", preview)
-    prepared = send("evidence", prepare)
-    if (ended := followed("evidence", prepared)) is not None:
+        return chain.stop("evidence_preview", preview)
+    prepared = chain.send("evidence", prepare)
+    if (ended := chain.followed("evidence", prepared)) is not None:
         return ended
-    current = send("evidence_preview_after", preview_request)
+    current = chain.send("evidence_preview_after", preview_request)
     bundles: list[dict[str, Any]] = []
     for name, request in offered_requests(current).items():
         if not name.startswith("analyst_bundle") or not isinstance(request, dict):
             continue
         unit = name.removeprefix("analyst_bundle").lstrip("_") or "book"
-        document = _chosen(
-            _request_fields(
-                request, {"bundle_directory": str(root / ("analyst-" + _UNIT_NAME.sub("-", unit)))}
-            )
+        written = chain.bundle(
+            "analyst_bundle", request, root / ("analyst-" + _UNIT_NAME.sub("-", unit))
         )
-        directory = _bundle_directory(document)
-        body = send("analyst_bundle", document)
-        if outcome_of(body) != "OK" or directory is None:
-            return stop("analyst_bundle", body)
-        written = _write_bundle(directory, body, prefix=_entry_of(client))
-        bundles.append(
-            {
-                "unit": unit,
-                "bundle_directory": written.get("bundle_directory", str(directory)),
-                "index": written.get("index"),
-                "files": written.get("files"),
-                "answer_file": written.get("answer_file"),
-                "submit_command": written.get("submit_command"),
-                "submit_arguments": written.get("submit_arguments"),
-            }
-        )
-    review = offered(readback, "review")
+        if "answer_file" not in written:
+            return chain.stop("analyst_bundle", written)
+        bundles.append({"unit": unit, **written})
+    review = chain.offered(readback, "review")
     return {
-        "status": _REVIEW_READY,
+        "status": "BOOK_REVIEW_READY",
         "strategy_package_id": package,
         "book": {
             "task_id": run.get("task_id"),
@@ -2506,15 +2539,148 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
             "prepared_task_id": prepared.get("task_id"),
         },
         "analyst_bundles": bundles,
-        "steps": steps,
+        "steps": chain.steps,
         "next_action": "DISPATCH_ANALYSTS" if bundles else "READ_EVIDENCE",
         "detail": (
-            "Give each Analyst its bundle directory, file list and answer path, and submit each "
-            "answer with its submit_command; then read Evidence's review for the CRO's bundle."
+            "Give each Analyst its bundle directory, file list and answer path; when their answers "
+            "are written, `review continue --dir` submits them all and prepares the CRO's bundle."
             if bundles
             else "Evidence offered no Analyst bundle for this book; read its review state."
         ),
         "next_requests": {} if review is None else {"review": review},
+    }
+
+
+def _answer_folders(root: Path) -> list[Path]:
+    """The bundles whose answers a `review continue` sends: the folder itself when it holds
+    one, else each folder inside it that does, in name order."""
+    if (root / "answer.json").is_file():
+        return [root]
+    if not root.is_dir():
+        return []
+    return sorted(path for path in root.iterdir() if (path / "answer.json").is_file())
+
+
+def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
+    """`review continue`: a book's review carried on from its specialists' written answers, in
+    one call (AGENT-TIME verb 3).
+
+    Every answer under ``--dir`` is submitted; one the Host asks to correct is named with its
+    problems and the call ends there, the accepted ones kept (the same answer sent again is the
+    one filed). Each accepted answer's publication is followed to its end. After the Analysts,
+    the book's Evidence offers its dossier and the dossier the CRO's bundle, written into
+    ``--cro-dir``. After the CRO, the answer is Evidence's state and, given ``--package``, that
+    strategy's activation offer with its reviewed holdings.
+    """
+    folders = _answer_folders(Path(args.bundle_root).resolve())
+    if not folders:
+        raise LocalResearchClientError("local_client.review_answers_missing")
+    chain = _chain(client, args, "review_continue")
+    receipts: list[dict[str, Any]] = []
+    corrections: list[dict[str, Any]] = []
+    published: list[dict[str, Any]] = []
+    roles: set[str] = set()
+    book: dict[str, Any] | None = None
+    for folder in folders:
+        answer = _document(folder / "answer.json")
+        body = chain.send(
+            "submit",
+            {
+                "operation": "AGENT_ANSWER_SUBMIT",
+                "bundle_directory": str(folder),
+                "agent_answer": answer,
+            },
+        )
+        if body.get("status") == "CORRECT":
+            corrections.append(
+                {
+                    "bundle_directory": str(folder),
+                    "agent_role": body.get("agent_role"),
+                    "problems": body.get("problems"),
+                    "rounds_left": body.get("rounds_left"),
+                    "message": body.get("message"),
+                }
+            )
+            continue
+        if body.get("status") not in {"ACCEPTED", "DONE"}:
+            return chain.stop("submit", body)
+        roles.add(str(body.get("agent_role")))
+        receipts.append({"bundle_directory": str(folder), **(body.get("receipt") or {})})
+        published.append(body)
+        book = book or chain.offered(body, "book")
+    if corrections:
+        return {
+            "status": "REVIEW_ANSWERS_NEED_CORRECTION",
+            "corrections": corrections,
+            "receipts": receipts,
+            "steps": chain.steps,
+            "next_action": "CORRECT_THE_NAMED_ITEMS",
+            "detail": (
+                "Ask each named specialist to correct the named items in its own answer file, "
+                "then run this command again; the accepted answers stand."
+            ),
+        }
+    for body in published:
+        if (ended := chain.followed("publication", body)) is not None:
+            return ended
+    if book is None:
+        return chain.stop("submit", published[-1])
+    evidence = chain.send("evidence", book)
+    if roles == {"CRO"}:
+        result: dict[str, Any] = {
+            "status": "REVIEW_PUBLISHED",
+            "receipts": receipts,
+            "evidence": {
+                key: evidence.get(key)
+                for key in ("state", "detail", "review", "coverage", "local_web_url")
+                if key in evidence
+            },
+            "steps": chain.steps,
+            "next_action": "REPORT_THE_REVIEW",
+        }
+        package = getattr(args, "strategy_package_id", None)
+        if package:
+            controls = chain.send(
+                "activation", {"operation": "CONTROLS", "strategy_package_id": str(package)}
+            )
+            activation = controls.get("activation")
+            result["activation"] = activation
+            offered = (activation or {}).get("next_requests") or {}
+            result["next_requests"] = {
+                name: value for name, value in offered.items() if isinstance(value, dict)
+            }
+            result["next_action"] = (
+                "OFFER_ACTIVATION" if "activate" in offered else result["next_action"]
+            )
+        return result
+    dossier_request = chain.offered(evidence, "dossier")
+    if dossier_request is None:
+        return chain.stop("evidence", evidence)
+    dossier = chain.send("dossier", dossier_request)
+    cro_request = offered_requests(dossier).get("cro_bundle")
+    if not isinstance(cro_request, dict):
+        return chain.stop("dossier", dossier)
+    if getattr(args, "cro_root", None) is None:
+        raise LocalResearchClientError("local_client.cro_directory_required")
+    written = chain.bundle("cro_bundle", cro_request, Path(args.cro_root).resolve())
+    if "answer_file" not in written:
+        # A carried-forward review has nothing to answer; its own words say so.
+        return chain.stop("cro_bundle", written)
+    return {
+        "status": "CRO_BUNDLE_READY",
+        "receipts": receipts,
+        "dossier": {
+            key: dossier.get(key)
+            for key in ("coverage_words", "review_state_words", "evidence_as_of")
+            if key in dossier
+        },
+        "cro_bundle": written,
+        "steps": chain.steps,
+        "next_action": "DISPATCH_CRO",
+        "detail": (
+            "Give the CRO its bundle directory, file list and answer path; when its answer is "
+            "written, `review continue --dir` on that folder publishes the review."
+        ),
     }
 
 
@@ -2527,7 +2693,21 @@ def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, An
         raise LocalResearchClientError("local_client.each_stage_needs_task")
     if args.max_wait is not None and not args.max_wait > 0:
         raise LocalResearchClientError("local_client.max_wait_invalid")
-    thread = _codex_queue_ready() if args.notify == "codex-queue" else None
+    if args.notify == "codex-queue":
+        # A Codex turn ends its shell's children with it, so the Host holds the wake (R1).
+        if each_stage:
+            raise LocalResearchClientError("local_client.each_stage_never_wakes")
+        if args.goal_id is not None:
+            return _goal_wake_refused(client, str(args.goal_id))
+        task: dict[str, object] = {"operation": "STATUS", "task_id": str(args.task_id)}
+        return client.request(
+            {
+                "operation": "WAKE_REGISTER",
+                "task_id": str(args.task_id),
+                "wake_thread": _codex_thread(),
+                "wake_read": command(task, prefix=_entry_of(client)),
+            }
+        )
     if args.goal_id is not None:
         body = _wait_for_goal(client, str(args.goal_id), args.max_wait)
     else:
@@ -2563,9 +2743,6 @@ def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, An
                         lifecycle=state,
                     ),
                 }
-    # Every end queues its wake: the cap, a decision, an incident or the Task's end.
-    if thread is not None and "wait_event" in body:
-        body = {**body, "wake": _queue_wake(client, thread, body["wait_event"])}
     return body
 
 
@@ -2694,7 +2871,9 @@ def run(
         if args.command == "activity-wait":
             body = _wait(client, args)
         elif args.command == "book-review":
-            body = _book_review(client, args)
+            body = _review_steps(client, args)
+        elif args.command == "review-continue":
+            body = _continue_steps(client, args)
         else:
             if document_override is None:
                 document = _next_request(args)

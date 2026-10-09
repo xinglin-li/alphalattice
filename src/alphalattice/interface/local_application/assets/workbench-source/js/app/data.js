@@ -228,7 +228,8 @@ const Data = (() => {
         outcome.body = value;
         throw outcome;
       }
-      const refusal = new Error([value.failure_code || value.refused || value.disposition || 'Request refused', value.message || value.detail || value.explanation || value.refusal_detail].filter(Boolean).join(': '));
+      const {code, detail} = refusalParts({body:value, message:''});
+      const refusal = new Error([code || 'Request refused', detail].filter(Boolean).join(': '));
       refusal.body = value; // the owner's typed refusal fields, for a caller that reads them
       throw refusal;
     }
@@ -532,6 +533,14 @@ const Data = (() => {
     refresh();
     return paging.promise;
   }
+  function bareEntry(h = hashParams(), q = new URLSearchParams(location.search)) {
+    return !h.get('page') && !q.has('review_experiment') && !q.has('review_update') && !h.get('book') && !q.get('task_id') && !h.get('study') && !h.get('foundation') && !h.get('task') && !q.get('task') && !h.get('plan') && !q.get('plan') && !q.get('history') && q.get('panel') !== 'workspace' && !h.get('feature_plan') && !q.get('feature_plan');
+  }
+  function entryPage(h = hashParams(), q = new URLSearchParams(location.search)) {
+    if (!bareEntry(h, q)) return null;
+    if (h.get('follow') || preparation && !preparation.inputs?.length) return 'overview';
+    return decisions?.some(d => d.kind === 'UPGRADE') ? 'upgrade' : null;
+  }
   async function connect() {
     const ticket = ++connectionGeneration;
     let navigation = navigationIntent();
@@ -568,11 +577,12 @@ const Data = (() => {
       const selected = h.get('book') || q.get('task_id');
       const featurePlan = h.get('feature_plan') || q.get('feature_plan');
       const reviewAddress = q.has('review_experiment') || q.has('review_update');
-      // A bare entry (no page, no object) into a workspace without a verified research input
-      // opens the preparation scene; any explicit page or saved-object link keeps its route.
-      const bare = !h.get('page') && !reviewAddress && !selected && !h.get('study') && !h.get('foundation') && !h.get('task') && !q.get('task') && !h.get('plan') && !q.get('plan') && !h.get('follow') && !featurePlan;
-      if (bare && preparation && !preparation.inputs?.length) { app.page = 'overview'; replaceHash({page: 'overview'}); }
-      else if (bare && decisions?.some((d) => d.kind === 'UPGRADE')) { app.page = 'upgrade'; replaceHash({page: 'upgrade'}); } // R1: a start after an upgrade not yet acknowledged shows what it changed
+      // A bare followed entry starts on Home until its owner has work to show. Without a
+      // verified research input Home opens preparation; explicit destinations keep their route.
+      const bare = bareEntry(h, q);
+      const entrance = entryPage(h, q);
+      if (entrance) { app.page = entrance; replaceHash({page: entrance}); }
+      if (bare) navigation = navigationIntent();
       if (!h.get('page') && reviewAddress) {
         // These issued addresses name the owner's exact book, not a latest Portfolio result.
         // Keep missing/empty/mixed fields for its existing typed selector refusals.
@@ -855,7 +865,7 @@ const Data = (() => {
   }
   return {
     read: pageRead, readShared: read, visitPage, leavePage, post, route, offers, posts, navigationIntent, navigationCurrent, beginNavigation, uniqueRows, readDocument:pageDocument, postDocument:(path,payload)=>request(path,payload),
-    setTasks, mergeTasks, followTasks, setInputs, connect, runsOf, kindName, groupByDay, openEntry, openPortfolio, installedResult, refreshHistory, refreshStanding, compare, exportComparison, exportStudy,
+    setTasks, mergeTasks, followTasks, setInputs, entryPage, connect, runsOf, kindName, groupByDay, openEntry, openPortfolio, installedResult, refreshHistory, refreshStanding, compare, exportComparison, exportStudy,
     riskLinks: (task) => (task && riskLinks.task === task ? riskLinks.links : null), riskLinkRefusals: (task) => (task && riskLinks.task === task ? riskLinks.refusals || [] : []), get riskLinksError() { return riskLinks.error; },
     discoverRiskLinks: async (task) => { if (await discoverRiskLinks(task)) refresh(); },
     refreshRiskLinks: async (task) => { await discoverRiskLinks(task, true); refresh(); },

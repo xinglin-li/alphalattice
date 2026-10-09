@@ -15,8 +15,8 @@ because it was never Risk-specific and having one caller was the reason no other
 Desk enforced a budget at all. What stays here is the projection from Risk's own
 adapter bindings into the shared requirement, and the error strings -- which are
 this Desk's stable boundary and are raised by the shared owner unchanged. The Risk
-compiler calls it, so every command's seal checks it at PLAN and again at RUN (V120);
-the workflow holds every Desk's run offline (V116).
+compiler calls it, so every command's seal checks it at PLAN and again at RUN;
+the workflow holds every Desk's run offline.
 """
 
 from __future__ import annotations

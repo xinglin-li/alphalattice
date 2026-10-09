@@ -32,7 +32,7 @@ class AuthoringError(ValueError):
     """Stable failure raised before any Desk compiler or numerical call runs.
 
     ``expected`` is what the refusing owner knows a declaration field may hold, by the field's
-    path, served beside the code so the caller can correct the declaration (LAWS OP12, V292).
+    path, served beside the code so the caller can correct the declaration (LAWS OP12).
     """
 
     def __init__(self, code: str, *, expected: Mapping[str, object] | None = None) -> None:
@@ -55,7 +55,7 @@ class DeskSection(BaseModel):  # type: ignore[misc]
 
     Frozen and closed (SC2); `schema show EXPERIMENT_PLAN` prints it under
     `declaration_sections` (SC3). The Desk judges the values with its own codes, since most need
-    its installed catalogs; the key set is checked by ``refuse_unknown_section_keys`` (V249).
+    its installed catalogs; the key set is checked by ``refuse_unknown_section_keys``.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True, use_attribute_docstrings=True)
@@ -64,7 +64,7 @@ class DeskSection(BaseModel):  # type: ignore[misc]
 def refuse_unknown_section_keys(
     section: Mapping[str, Any], contract: type[DeskSection], *, place: str
 ) -> None:
-    """Refuse a key a Desk's section contract does not name, with the one code (V249, DA11).
+    """Refuse a key a Desk's section contract does not name, with the one code (DA11).
 
     Args:
         section: The authored section, at ``place`` in the document.

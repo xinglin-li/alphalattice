@@ -12,14 +12,13 @@ AlphaLattice is a local quantitative research workstation for people using Codex
 
 ## What one sentence gets you
 
-Your agent leads seven specialists: Data, Factor, Alpha, Risk, Portfolio,
-Evidence Analyst and CRO. Ask it to research factors, compare models, assess
-risk and build a reviewed Portfolio book. Follow the Tasks, results, source
-passages and review in the Workbench.
+Ask your agent to research factors, compare models, assess risk and build a
+reviewed book. It leads Data, Factor, Alpha, Risk, Portfolio, Evidence Analyst
+and CRO specialists. Follow Tasks, results, source passages and review in the Workbench.
 
-For an installed strategy, your activation of a reviewed historical book lets
-the agent run a forward update and show dated research positions. Historical
-holdings are replay results; forward positions are research, not orders or advice.
+After an installed strategy's reviewed book is activated, the agent can show dated forward
+research positions. Historical holdings are replay results; forward positions
+are research, not orders or advice.
 
 ## Start with one sentence
 
@@ -27,35 +26,30 @@ Give your Codex or Claude Code agent this repository's link and one intent:
 
 > Use https://github.com/xinglin-li/alphalattice to build me a reviewed installed strategy from public data and show its dated research positions; open the Workbench in your browser so I can follow it.
 
-The agent you give the link to installs AlphaLattice and carries on with your sentence in the same session. It starts the seven specialists there from their cards, so their tool limits hold by instruction; for limits your agent's host enforces, open a session in the checkout instead (Claude Code with `cd <checkout>; claude`, Codex with `codex -C <checkout>`). The [agent guide](AGENTS.md) carries the flow. On first use, your exact sentence
-opens a `FIRST_USE` goal before preparation. Its 24-hour delegation covers
-preparation network access, confirmation/resumes, data issues and membership
-changes, and the activation of the book it reviewed, which you deactivate in one
-click on **Portfolio**; other person-only decisions remain yours. You may interrupt with goal abandonment or
-close network access in **Settings**; stopping a Task needs cancellation.
-See [first-use details](AGENTS.md#run-the-first-use-from-the-persons-sentence).
+The agent installs AlphaLattice and continues in the same session. Its specialists'
+tool limits hold by instruction. For limits enforced by the host, open a checkout
+session with `cd <checkout>; claude` in Claude Code or `codex -C <checkout>` in
+Codex. The [agent guide](AGENTS.md) gives the procedure.
+
+Your exact sentence opens the first-use goal. Its 24-hour delegation lets the
+agent handle admitted preparation and activate its reviewed book, reporting
+each act. Deactivate on **Portfolio**; stopping the goal and cancelling a Task
+are separate. [Getting started](docs/public-source/getting-started.md) explains
+first use; the guide names [what only you decide](AGENTS.md#what-only-a-person-decides).
 
 ## Setup and research
 
-Use the [setup procedure](.agents/skills/alphalattice-research/references/operating.md#setup-and-launch) for the locked
-Windows/Python 3.12/uv setup, editable checkout or wheel, PATH and Local Web
-launch. **Windows is verified; macOS and Linux are unverified.** Installation, data acquisition and retrieval
-model downloads have separate permission; a workspace starts with network
-closed. Evidence needs its retrieval environment, local models and admitted
-issuer package. The setup guide's measured time and memory are observations,
-not requirements or guarantees. Adjust execution capacity, not the recipe.
+The [setup procedure](.agents/skills/alphalattice-research/references/operating.md#setup-and-launch)
+covers locked dependencies on Windows with Python 3.12 and uv, an editable
+checkout or installed wheel, and Local Web. **Windows is verified; macOS and
+Linux are unverified.** Downloads need applicable consent. Measured time and
+memory carry no runtime guarantee.
 
-The [factor research flow](docs/public-source/research-flows.md) connects Factor
-curation to Alpha, parallel Risk on the same input, then a Portfolio book,
-Evidence, Analyst findings and CRO review. Risk sizing consumes a completed Risk
-study; a report-only association changes no weights. An empty workspace installs
-no strategy. **Rebound Return Book** and **Trend Rebound Book** are installed
-strategies, distinct from study books.
-
-Read the [installed strategy's forward dates and horizon](AGENTS.md#run-an-installed-strategy-forward)
-before activation or continuation. Activation binds models, required calibration
-and sealed state without fitting; scheduling needs the service running.
-Deactivation keeps history; a changed package needs a new book and activation.
+[Research flows](docs/public-source/research-flows.md) explains studies, installed
+strategies and review. **Rebound Return Book** and **Trend Rebound Book** are
+installed strategies, distinct from research study books. Read each position's
+basis, information cutoff, first actionable session and horizon. Calculation
+alone grants no activation or publication.
 
 ## Read results and decide
 
@@ -63,42 +57,38 @@ Deactivation keeps history; a changed package needs a new book and activation.
 
 *A demonstration Goal Conversation with real Host Tasks and scripted fixture messages: an empty study check finished, and a data update is running. This shows the interface, not native agent authorship or research validation.*
 
-Use **Goals** for the checked ledger's Timeline, Conversation and Results,
-**History** for saved studies/reviews, and the exact page links in your agent's
-report. **Team** shows bound native sessions and permitted usage; observations
-are not proof of research success. [CLI](docs/public-source/cli.md) explains saved
-answers, continued selections, Task waits and Chinese detail (`--lang zh`, with
-English fallback).
-A bound session can read `alphalattice workspace show` for the selected workspace's inputs and intents.
+Use **Goals** for Timeline, Conversation and Results, **History** for saved
+studies and reviews, and **Team** for recorded sessions and usage. Acceptance
+alone establishes no scientific validity or specialist authorship.
 
-Historical research promises no future returns, independent validation or trade
-execution. Read each result's standing, coverage and time limits, including
-survivorship and Sector classification; captured references prove no historical
-availability. Calculation grants no activation or external publication. Network
-and preparation outside first use, factor/model/strategy activation, storage,
-automation, revocation, paid actions and external sharing remain yours; the
-[decision pages](AGENTS.md#delegate-and-ask-for-decisions) identify each.
-Provider deferral preserves inputs: follow its retry-time continuation.
+Local Web includes Chinese; CLI detail uses `--lang zh`, for example
+`alphalattice workspace show --lang zh`, with English fallback.
+
+Read result standing, coverage and time limits, including survivorship, Sector
+backfill and historical source availability. A needed decision names its issue
+and page.
 
 ## Guides and care
 
-| Guide | Reference |
+| Guide | What it explains |
 | --- | --- |
-| [Getting started](docs/public-source/getting-started.md) | Install, launch, preparation and capacity |
-| [CLI](docs/public-source/cli.md) | Answers, YAML and continuations |
-| [Research flows](docs/public-source/research-flows.md) | Studies, books and review |
-| [Agents](docs/public-source/agents.md) | Goals, cards, native sessions and Team |
-| [Extending](docs/public-source/extending.md) | Factor/model trials and person activation |
-| [Data and care](docs/public-source/data-and-care.md) | Updates, data decisions, backup/restore |
-| [Privacy](docs/public-source/privacy.md) | Usage facts and disabling their reader |
-| [Downloads and data terms](docs/public-source/third-party-and-data.md) | Models, sources and conditions |
+| [Getting started](docs/public-source/getting-started.md) | Prepare for installation and first use. |
+| [CLI](docs/public-source/cli.md) | Read answers and continue saved requests. |
+| [Research flows](docs/public-source/research-flows.md) | Follow studies, books and review. |
+| [Agents](docs/public-source/agents.md) | Follow goals, sessions and specialist work. |
+| [Extending](docs/public-source/extending.md) | Develop and inspect factors and models. |
+| [Data and care](docs/public-source/data-and-care.md) | Update, inspect, back up and restore a workspace. |
+| [Privacy](docs/public-source/privacy.md) | Read what usage records contain and disable their reader. |
+| [Downloads and data terms](docs/public-source/third-party-and-data.md) | Read the terms for models and data sources. |
+
+The [guide index](docs/public-source/README.md) links the other reference pages.
 
 This checkout is yours and your agent's to change: fix bugs and add strategies,
-models and features through the [source-change path](docs/public-source/extending.md#change-the-code).
+models and features through the [source-change path](docs/public-source/extending.md#source-owners-and-expected-changes).
 
-Use backup operations and restore into a new directory; do not repair sealed
-records by editing them. The [native usage procedure](.agents/skills/alphalattice-research/references/native-visibility.md)
-keeps usage facts, drops conversation text and lets the person disable usage reading.
+Use [backup and restore](docs/public-source/data-and-care.md) into a new directory
+and keep sealed records intact. [Privacy](docs/public-source/privacy.md) explains
+recorded usage and its switch.
 
 ## About and licence
 
@@ -113,8 +103,8 @@ material. Downloaded models and acquired data keep their own terms. See
 
 After `uv sync --locked --all-extras`, build Local Web with
 `uv run python scripts/build_local_web_ui.py --product` before running the
-[public checks](CONTRIBUTING.md). Tests also check the built output at session
-start and build it once if it is missing or stale; a failed build fails the run.
+[public checks](CONTRIBUTING.md). Tests check that build at session start,
+rebuilding once if it is missing or stale; a failed build fails the run.
 
 ## Development history
 
@@ -122,3 +112,5 @@ AlphaLattice has been developed privately since 2026-08-06, with about 6,000
 commits in private development by 2026-10-08. Each public commit contains one
 shipped change exported from that development; releases publish the resulting
 versions.
+
+The public repository starts at 0.1.x; earlier development happened privately.

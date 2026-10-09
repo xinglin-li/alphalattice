@@ -464,7 +464,9 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
     with monkeypatch.context() as reads:
         reads.setattr(store, "current_universe_maintenance_listings", counted_listings)
         partial_maintenance = maintenance.run(observed_at=OBSERVED_AT, work_budget=1)
-    assert listing_reads == 4
+    # Progress counts its units in the engine: whole reads only where an outcome
+    # is built, the run's opening report and its close.
+    assert listing_reads == 2
     assert [item.completed_units for item in progress] == [0, 1, 1, 1]
     assert partial_maintenance.status is CurrentUniverseMaintenanceStatus.RUNNING
     assert provider.daily_calls["AAPL"] == 2

@@ -21,7 +21,7 @@ from alphalattice.foundation.feature_engine.panels.identity import (
 )
 
 _VALUES_VERIFIED: set[str] = set()
-"""The byte digests of the chunk files whose values this process has checked (V270): a
+"""The byte digests of the chunk files whose values this process has checked: a
 chunk is read many times in one study, and its values need checking once per content."""
 
 
@@ -451,7 +451,7 @@ class FeaturePanelReader:
         if actual != expected_chunk_hash:
             raise ValueError("feature panel chunk logical content hash mismatch")
         # The row hashes are bound; the values must be the ones they were hashed from
-        # (LAWS.md EV2, V270), checked once per file content in this process.
+        # (LAWS.md EV2), checked once per file content in this process.
         digest = hashlib.sha256(Path(str(path)).read_bytes()).hexdigest()
         if digest not in _VALUES_VERIFIED:
             if not panel_rows_match_their_hashes(

@@ -78,7 +78,7 @@ class AlphaModelCatalogBinding(_Contract):
     def restricted_to(self, adapter_ids: Iterable[str]) -> AlphaModelCatalogBinding:
         """The capabilities named, in this binding's order, and nothing installed beside them.
 
-        What a mandate admits of a catalog (V118): the models a study or a goal may run,
+        What a mandate admits of a catalog: the models a study or a goal may run,
         so a model installed beside them moves no identity that binds them. Refuses an
         adapter this binding does not hold.
 
@@ -287,7 +287,7 @@ def build_installed_alpha_model_catalog(extensions: Iterable[str] = ()) -> Alpha
     from .extension import extension_adapter
 
     # A workspace's activated models follow the installed ones, loaded by name (EX): a
-    # Program binds only the models its mandate admits (V118), so they move no result.
+    # Program binds only the models its mandate admits, so they move no result.
     return AlphaModelCatalog(
         (
             RegularizedLinearAdapter(),

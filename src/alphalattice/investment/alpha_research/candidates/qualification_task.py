@@ -1,4 +1,4 @@
-"""The Alpha owner's qualification Task (GR3, V77).
+"""The Alpha owner's qualification Task (GR3).
 
 A family of development studies in, a candidate set or an evidence-complete stop out.
 
@@ -78,7 +78,7 @@ class AlphaFamilyQualification:
         self.prepare_question = prepare_question
         self.workspace = workspace.resolve()
         try:
-            # The models the family ran, never the whole installed menu (V118, V299).
+            # The models the family ran, never the whole installed menu.
             self.model_mandate = model_mandate.admitting_domains(
                 member.recipe.search_domain_hash for member in family.members
             )
@@ -95,7 +95,7 @@ class AlphaFamilyQualification:
     def validate_declaration(self, document: Mapping[str, Any]) -> tuple[str, ...]:
         """The nominated candidates: distinct, and each one the family attempted."""
         section = qualification_section(document)
-        # A refusal names the rule it breaks and what may be written (V302, V292).
+        # A refusal names the rule it breaks and what may be written.
         if section is None:
             raise AuthoringError(
                 "alpha_research.qualification_declaration_invalid:methodology_id",
@@ -119,7 +119,7 @@ class AlphaFamilyQualification:
             else None
         )
         if rule is not None:
-            # The family's candidates are what may be nominated (V292).
+            # The family's candidates are what may be nominated.
             raise AuthoringError(
                 f"alpha_research.qualification_nomination_invalid:{rule}",
                 expected={"qualification.nominated_candidate_ids": self.family.candidate_ids},
@@ -338,7 +338,7 @@ def _qualification_program(
     criteria_hash: str,
 ) -> AlphaResearchProgram:
     """The Program the qualification seals and the Portfolio reads: the question's identities
-    with the mandate narrowed to the models its family ran (V299), the stability rule and the
+    with the mandate narrowed to the models its family ran, the stability rule and the
     family it concludes."""
     return seal_contract(
         AlphaResearchProgram,

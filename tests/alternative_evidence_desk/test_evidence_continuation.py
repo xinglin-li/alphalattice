@@ -64,7 +64,7 @@ the plan -- a chain of three."""
 
 
 ONE_UNIT = "u01"
-"""The book's only unit: every book is prepared as a coverage run (C2)."""
+"""The book's only unit: every book is prepared as a coverage run."""
 
 
 def _ten_k(entities: tuple[str, ...]) -> tuple[RecordedEvidenceDocument, ...]:

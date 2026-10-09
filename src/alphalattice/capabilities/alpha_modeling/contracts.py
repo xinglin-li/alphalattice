@@ -429,6 +429,10 @@ class BoundAlphaModelFitInput:
     selection_metric_id: str | None = None
     maximum_iterations: int | None = None
     early_stopping_rounds: int | None = None
+    training_error: Literal["MSE"] | None = "MSE"
+    """The training error the fit reports: `MSE` over its training values, or None for a
+    caller that reads none (a lifecycle child, whose evidence stores no training error), so
+    an adapter that can skips the prediction it would take."""
 
     def __post_init__(self) -> None:
         """Verify direct or nested fit-plan authority and exact numerical value bindings.
@@ -740,7 +744,8 @@ class AlphaModelFitResult:
     Attributes:
         estimator_content: Immutable learned content, independent of the fit-event receipt.
         state_projection: Adapter-owned model-neutral development evidence.
-        training_mse: Mean squared error on the admitted training values.
+        training_mse: Mean squared error on the admitted training values, or None when the
+            fit plan asked for no training error.
         iteration_count: Solver/boosting iterations, or None for a closed-form fit.
         fit_call_count: Number of numerical fitting calls performed by the adapter.
         predict_call_count: Number of numerical prediction calls performed during the fit.
@@ -749,11 +754,17 @@ class AlphaModelFitResult:
 
     estimator_content: AlphaEstimatorContent
     state_projection: AlphaModelStateProjection
-    training_mse: float
+    training_mse: float | None
     iteration_count: int | None
     fit_call_count: int = 1
     predict_call_count: int = 1
     selection_diagnostic: AlphaModelSelectionDiagnostic | None = None
+
+    def measured_training_mse(self) -> float:
+        """The training error a stability check reads; refuses a fit that measured none."""
+        if self.training_mse is None:
+            raise ValueError("ALPHA_MODEL_TRAINING_ERROR_NOT_MEASURED")
+        return self.training_mse
 
 
 @dataclass(frozen=True, slots=True)

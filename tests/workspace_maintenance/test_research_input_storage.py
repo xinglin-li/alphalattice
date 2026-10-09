@@ -360,7 +360,9 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
         ResearchInputRevision,
         ResearchInputSource,
     )
+    from alphalattice.control.product_host.storage.retention import StorageRetentionError
     from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
+    from alphalattice.interface.local_application.cli_contract import worded_refusal
     from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 
     a, b, c, default = _inputs(tmp_path, count=4)
@@ -504,6 +506,28 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
         assert "PREVIOUS_ROLLBACK" in rows[b.binding_hash]
         assert "CURRENT_RESEARCH_VERSION" in rows[c.binding_hash]
         assert "CURRENT_ACTIVE" in rows[default.binding_hash]
+        # The installed binding and a succeeded historical publication both
+        # name their exact missing manifest, without discarding the references.
+        before = storage.readback()
+        for binding in (default.binding_hash, c.binding_hash):
+            folder = tmp_path / "research-inputs" / binding
+            aside = tmp_path / f"held-{binding}"
+            folder.rename(aside)
+            try:
+                with pytest.raises(StorageRetentionError) as refused:
+                    storage.readback()
+                subject = f"research-inputs/{binding}"
+                code = f"storage.input_binding_missing:{subject}"
+                assert refused.value.failure_code == code
+                answer = worded_refusal({"status": "REFUSED", "failure_code": code})
+                assert f"{subject}/manifest.json" in answer["detail"]
+                assert "backup restore" in answer["detail"]
+                assert answer["next_action"] == "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+            finally:
+                aside.rename(folder)
+            restored = storage.readback()
+            assert restored["inputs"] == before["inputs"]
+            assert restored["references_hash"] == before["references_hash"]
         plan = storage.plan()
         assert plan["bindings"] == [a.binding_hash]
         storage.confirm(plan["plan_hash"], caller="HUMAN")

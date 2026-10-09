@@ -15,15 +15,7 @@
 .muted {
   color: var(--muted);
 }
-/* The stack (round 95, the user's rule: "fixed as a rule, not tuned by hand"): inside a body -- a
-   panel's, a dialog's, a Facts section's, a well's, a reading's -- the gap between two neighbours
-   is set by what they are: text after text a half step (8); a control or a row of controls after
-   anything a step (12); a box (a panel, a list, a table, a well, a note, a field) after anything,
-   and anything after a box, a step and a half (16); a heading a section's step (20), its first
-   line a half step under it; a group head and a panel head sit on what they head. Once here; the
-   markup carries no `mt16`, `mb16` or `mt8` (retired with the rule). The steps are parameters
-   (`stack-*`, TY4); a body that stacks parts joins the list -- the Lab's guide card did not, and its
-   field and action row touched (the user, 2026-09-25) -- and `stack_census` names any that has not. */
+/* Stack gaps depend on neighbouring content rather than markup spacing classes; every stacking body joins this shared rule. */
 :is(.panel-body, .panel.pad, .dialog-body, .es-page, .team-scene, .lane-main, .controls-content, .inspector-section, .subpanel, .reading-pane-body, .detail-section > div, .section-empty, .lab-guide-option, .form-group, .overview-main, .first-use, [data-overview=reading]) > * + * { margin-top: var(--stack-text); }
 :is(.panel-body, .panel.pad, .dialog-body, .es-page, .team-scene, .lane-main, .controls-content, .inspector-section, .subpanel, .reading-pane-body, .detail-section > div, .section-empty, .lab-guide-option, .form-group, .overview-main, .first-use, [data-overview=reading], .banner > .grow, .review-banner-words) > * + :is(.button, .text-btn, .flow, .ui-segments, .actions) { margin-top: var(--stack-control); }
 :is(.panel-body, .panel.pad, .dialog-body, .es-page, .team-scene, .lane-main, .controls-content, .inspector-section, .subpanel, .reading-pane-body, .detail-section > div, .section-empty, .lab-guide-option, .form-group, .overview-main, .first-use, [data-overview=reading]) > :is(* + :is([data-box], [data-stack-box], .panel, .subpanel, .verdict, .review-stage, .card-list, .table-scroll, table, .kv, .term-list, .stat-strip, .banner, .note-line, .refusal, .section-empty, .choice-list, .code-block, pre, details, .field, .form-grid, .feature-row, .list-row, .grid-2, .diff-header, .tp-identity, article, .team-current-states), :is([data-box], [data-stack-box], .panel, .subpanel, .verdict, .review-stage, .card-list, .table-scroll, table, .kv, .term-list, .stat-strip, .banner, .note-line, .refusal, .section-empty, .choice-list, .code-block, pre, details, .field, .form-grid, .feature-row, .list-row, .grid-2, .diff-header, .tp-identity, article, .team-current-states) + *) { margin-top: var(--stack-box); }
@@ -54,16 +46,10 @@ figure[data-stack-caption] { row-gap: var(--stack-box); }
   align-items: center;
   min-width: 0;
 }
-/* Forms as inset grouped lists (round 83: macOS's form list, Codex's settings): a label on the
-   ground, one box of rows; a row is a title and one line at the left and one control at the
-   right; hairlines between rows; 32 px between groups; the box fills the lane to 940 px. A form
-   is a workspace box (`data-box="workspace"`, law 148); foreign content inside it keeps the row inset. */
 .form-group {
   max-width: var(--width-xl);
   margin: 0 0 var(--space-8);
 }
-/* A page of forms is one column centred in the lane (Codex's settings; the user's word, round 85): the
-   lane's measure narrows to the column and the head sits over it. */
 body[data-page=settings],
 body[data-page=advanced] {
   --layout-max: 1004px;
@@ -98,7 +84,7 @@ body[data-page=advanced] {
   width: 100%;
   min-height: var(--form-row-height);
   padding: calc((var(--row-regular) - var(--control-md)) / 2) var(--space-4);
-  font-size: var(--style-callout-size); /* a form row is UI text: its title, value and line (law 75) */
+  font-size: var(--style-callout-size);
   line-height: var(--style-callout-leading);
   color: var(--text);
   text-align: left;
@@ -111,8 +97,7 @@ body[data-page=advanced] {
 .form-row-open:hover {
   background: var(--ds-control-hover);
 }
-/* V618 (UX06): the box clips what stands outside it, so a row the keyboard lands on draws its ring inside --
-   all four sides, as a status row's -- not two lines across the box. */
+/* The box clips what stands outside it, so a focused row draws all four sides of its ring inside the box. */
 .form-box > .form-row-open:focus-visible { outline-offset: var(--focus-ring-inset); }
 .form-words {
   display: grid;
@@ -121,7 +106,7 @@ body[data-page=advanced] {
   flex: 1 1 auto;
 }
 .form-title {
-  font-weight: var(--weight-label); /* round 89: a row's title is medium (Codex's) */
+  font-weight: var(--weight-label);
 }
 .form-line {
   color: var(--muted);
@@ -169,7 +154,7 @@ body[data-page=advanced] {
   border-radius: var(--radius-pill);
 }
 .stepper .num {
-  font-weight: var(--weight-label); /* round 89: a pill's value is medium */
+  font-weight: var(--weight-label);
 }
 .stepper {
   display: inline-flex;
@@ -228,7 +213,6 @@ body[data-page=advanced] {
   color: var(--review-ink);
 }
 .banner > .grow {
-  /* V655: the explanation keeps a reading measure before an action gets a row. */
   flex: 1 0 min(var(--width-xs), calc(100% - var(--icon-size) - var(--space-3)));
   min-width: 0;
 }
@@ -351,7 +335,7 @@ code.literal { font-family: var(--font-mono); overflow-wrap: anywhere; }
 .kv dt {
   color: var(--muted);
   min-width: 0;
-  overflow-wrap: anywhere; /* round 86: a key longer than its column wraps, never runs under the value */
+  overflow-wrap: anywhere;
 }
 .kv :is(dt,dd) > small {
   display: block;
@@ -382,7 +366,7 @@ code.literal { font-family: var(--font-mono); overflow-wrap: anywhere; }
   flex-basis: 100%;
 }
 .dialog-body .facts-properties {
-  --lead: 152px; grid-template-columns: var(--grid-master); /* round 86: a worded key of three words fits on one or two lines */
+  --lead: 152px; grid-template-columns: var(--grid-master);
 }
 .dialog-body .code-block {
   font-size: var(--style-footnote-size);
@@ -434,15 +418,9 @@ code.literal { font-family: var(--font-mono); overflow-wrap: anywhere; }
 .object-header {
   min-height: var(--object-header-height);
 }
-/* P3 (law 106, the frame): the band -- the title with its state, the actions -- is one row of the
-   head's height; the context line under it -- the lede, the id, the facts, the choosers -- is one
-   wrapping row; an object's views are the tab strip under both (law 110); then the content. The
-   three gaps are the head's parameters (component.head). */
 .object-heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
 .object-heading > .title-line { flex: 0 1 auto; min-width: 0; }
 .object-heading > .object-actions { flex: 0 0 auto; margin-left: auto; }
-/* N1 (law 129): the page's chooser (the book's Reading) is the content's first row, the same on
-   every view; its gap to what follows is the head's. */
 .page-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: 0 0 var(--head-content-gap); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
 .object-context { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
 /* The line's controls are its compact size (W): a picker that reads as a word stands as tall as the
@@ -455,9 +433,6 @@ code.literal { font-family: var(--font-mono); overflow-wrap: anywhere; }
 .context-fact > b { color: var(--text); font-weight: var(--weight-body); }
 .context-sep { margin: 0 var(--space-2); color: var(--faint); }
 .title-line .picker-switch { color: var(--muted); }
-/* The status box (E1; GitHub's merge box, measured; law 66: the Overview's one box): the verdict
-   with its mark, the checks on the spine (the mark in the lead slot, the name, its line, its day),
-   the requirement that blocks at the foot. */
 .status-box { margin: 0 0 var(--gap-block); overflow: hidden; } /* a box: its material is the one box's */
 .status-head { display: grid; grid-template-columns: var(--slot-lead) minmax(0, 1fr); column-gap: var(--slot-gap); align-items: start; padding: var(--inset-card); }
 .status-head h2 { margin: 0; font-size: var(--style-title-3-size); line-height: var(--style-title-3-leading); letter-spacing: var(--style-title-3-tracking); font-weight: var(--weight-label); }
@@ -510,8 +485,6 @@ button.status-row:focus-visible { outline-offset: var(--focus-ring-inset); }
    value on the right, one dense row each; the column is narrow, so it measures its rows by the
    lane, not by itself. */
 .facts-properties.side-props { container-type: normal; grid-template-columns: var(--grid-side-props); }
-/* An object's Properties after its content (N2 of the open-issues plan, law 126 amended): the facts flow
-   down the lane's columns -- two from a wide lane, one below -- each row whole, a value wrapping, never cut. */
 .facts-properties.kv-columns { display: block; columns: 2 var(--kv-column); column-gap: var(--space-8); container-type: normal; }
 .kv-columns > .kv { --lead: var(--kv-key); grid-template-columns: var(--grid-master); break-inside: avoid; } /* one key width down a column: the values align */
 .kv-columns > .kv:last-child { border-bottom: 1px solid var(--line); }
@@ -560,8 +533,6 @@ button.status-row:focus-visible { outline-offset: var(--focus-ring-inset); }
 .object-id:hover > .code-copy, .object-id > .code-copy:focus-visible { color: var(--text); }
 .object-id code { max-width: var(--measure-hash); overflow:hidden; text-overflow:ellipsis; font:var(--style-callout-size)/var(--style-callout-leading) var(--font-mono); white-space:nowrap; }
 .object-properties { margin: var(--space-3) 0 var(--space-5); }
-/* Round 64: a note is one line — an icon and a sentence on a hairline, the successor of the
-   informational banner; a refusal or a call for attention keeps the banner. */
 .note-line {
   display: flex;
   flex-wrap: wrap;
@@ -579,7 +550,7 @@ button.status-row:focus-visible { outline-offset: var(--focus-ring-inset); }
   flex: none;
   margin-top: calc((1lh - var(--icon-size)) / 2);
 }
-.note-line > span { flex: 1 0 min(var(--width-xs), calc(100% - var(--icon-size) - var(--space-2))); min-width: 0; } /* V655: an offered action wraps before it squeezes the explanation */
+.note-line > span { flex: 1 0 min(var(--width-xs), calc(100% - var(--icon-size) - var(--space-2))); min-width: 0; }
 .note-line strong {
   color: var(--text);
   font-weight: var(--weight-label);
@@ -609,7 +580,7 @@ button.status-row:focus-visible { outline-offset: var(--focus-ring-inset); }
 .facts-properties.num dd {
   text-align: right;
 }
-.banner { /* a notice with a tone is a decision box (law 148), its tone its mark (law 128); a warning wears the glass (law 150, 12-material), any other the box's material */
+.banner {
   --tone-ink: var(--ink-link);
   display: flex;
   flex-wrap: wrap;
@@ -662,13 +633,6 @@ button.status-row:focus-visible { outline-offset: var(--focus-ring-inset); }
   line-height: var(--style-footnote-leading);
   letter-spacing: var(--style-footnote-tracking);
 }
-/* One meter (law 89, the user's rule, 2026-09-22; parameterized N6, the user's reading 2026-09-23):
-   every bar is this -- a progress, a share or a composition -- one bar of the meter's height on its
-   track, round ends, at most the meter's width (a tile's spans the tile), left under its words; a
-   progress's and a share's fill is the meter's blue, a share's remainder the track; a composition's
-   slices one hue stepped fainter by their order; the same gap between segments and slices; the
-   mark for a required minimum is the ink; an unknown extent is a dashed track that never travels
-   (law 16). Every value is the meter group's in parameters.json. */
 .meter {
   --meter-max: var(--meter-width);
   display: block;
@@ -926,7 +890,7 @@ button.status-row:focus-visible { outline-offset: var(--focus-ring-inset); }
   width: var(--mark-box);
   border-radius: 0;
   background: transparent;
-  color: var(--muted); /* round 82: a row's glyph is grey; a tone on it means something (a role, a state) */
+  color: var(--muted);
   border-color: var(--line);
   box-shadow: var(--rim-top);
 }
@@ -972,8 +936,6 @@ button.status-row:focus-visible { outline-offset: var(--focus-ring-inset); }
   line-clamp: var(--object-title-lines);
   overflow: hidden;
 }
-/* The band keeps its pads; its top rule went (2026-09-22: a second hairline 17 px under the top
-   row's, since round 85b grouped the band with the disclosure). */
 .object-heading {
   padding: var(--space-3) 0;
   font-size: var(--style-callout-size);
@@ -1045,10 +1007,6 @@ body[data-page] :is(code,pre,.mono) {
   letter-spacing: 0;
   font-weight: var(--weight-body);
 }
-/* One box (law 147; the user, 2026-09-24, on the Overview's status box beside its coverage figure: 下面那个
-   box做的对, 有一个很淡的阴影以及边界 ... 以后所有的box都按照这个参数做): the box's fill, a 1 px `edge-card` border,
-   `radius-card` and the rest shadow. Law 148 (the same day): a box is declared with its purpose -- a figure,
-   a decision or blocker, a workspace (`data-box`) -- and nothing else is one; no box holds a box. */
 body[data-page] [data-box] {
   background: var(--surface-box);
   border: 1px solid var(--edge-card);
@@ -1057,9 +1015,6 @@ body[data-page] [data-box] {
   --muted: color-mix(in srgb, var(--text) var(--muted-mix), var(--surface-box));
   --ground: var(--surface-box);
 }
-/* Law 148, canvas by default: a section lies on the page's ground on every page -- its head a label over a
-   hairline, its body unpadded, space between sections -- with no page list and no exception; only a
-   declared box stands up from it. */
 body[data-page] #main .panel:not([data-box]) {
   background: transparent;
   border: 0;
@@ -1071,11 +1026,6 @@ body[data-page] #main .panel:not([data-box]) {
 }
 body[data-page] #main .panel:not([data-box]) > .panel-head { padding: 0 0 var(--space-3); border-bottom: 1px solid var(--edge-hair); margin-bottom: var(--space-4); }
 body[data-page] #main .panel:not([data-box]) > .panel-body { padding: 0; }
-/* Law 148 amended (the user, 2026-09-24: 表格类内容, 可能最好都用上这种box. 就用这里的参数就行 -- the
-   Overview's status and Coverage boxes): a table's section is a box, `data-box="table"`, law 147's
-   material. Its head (the label, the count, the (i), its tools), its notes and its foot stand at the
-   box's inset; the table runs across the box, its header's rule and its rows' hairlines edge to edge,
-   its first and last columns at the inset. */
 body[data-page] #main [data-box="table"] { padding: var(--inset-card) var(--inset-card) var(--space-3); }
 body[data-page] #main [data-box="table"] > :is(.panel-head, .table-toolbar, .holdings-toolbar) { padding: 0 0 var(--space-3); margin: 0; border: 0; }
 body[data-page] #main [data-box="table"] > .panel-body { padding: 0; }
@@ -1089,21 +1039,10 @@ body[data-page] #main [data-box="table"] .data-table :is(th, td):last-child { pa
   max-height: calc(var(--code-lines) * var(--style-footnote-leading) + 2 * var(--space-3));
   overflow: auto;
 }
-/* Code coloured as GitHub colours it (round 61): keys, strings, numbers and constants, comments;
-   the punctuation stays in the text ink. */
 .c-key { color: var(--code-key); }
 .c-str { color: var(--code-string); }
 :is(.c-num, .c-const) { color: var(--code-constant); }
 .c-cmt { color: var(--muted); }
-/* ---- Tables (round 60, read against Stripe's): one owner block. The head is one line of the
-   callout size at the strong weight in the text ink, a hairline under it and no fill (it stays
-   put where the card scrolls); a unit is a sub-line under its label, never a wrap. Rows are one
-   line at the regular row (the dense row for `compact`), figures tabular; the first column is
-   the identity at the label weight, other text and dates in the muted ink; numbers and actions
-   sit right and take only their width, text takes the space. A hairline between rows, a tint
-   on hover, the held and open rows of round 52. A `grid` (a numeric report) adds column rules;
-   a foot row is the total. A card's table grows to a reading height then scrolls; a report is
-   read whole; a region that still overflows fades its overflowing edge. ---- */
 .data-table { width: 100%; min-width: var(--table-min); border-collapse: separate; border-spacing: 0; white-space: nowrap; font: var(--style-body-size)/var(--style-body-leading) var(--font-ui); font-variant-numeric: tabular-nums; background: transparent; }
 /* a table takes the ground it stands on, the lane or a box (the user, 2026-09-23: a table painted the
    lane's colour stood in a white box as a grey block ringed with white) */
@@ -1119,20 +1058,12 @@ body[data-page] #main [data-box="table"] .data-table :is(th, td):last-child { pa
 .data-table tr:last-child td { box-shadow: none; }
 .data-table td:first-child, .data-table .main-cell { font-weight: var(--weight-label); }
 .data-table :is(th, td):is(.col-num, .num) { text-align: right; white-space: nowrap; }
-/* Column geometry (round 60, the reader's law). Every table spans its card; the index and the
-   action are fixed 48 columns at its edges; figures align right, on the decimal. In a list the
-   identity column keeps to its content, a figure column keeps to its content with a breath of 140
-   and a word column is never narrower than 180; the slack goes to the substance column (the last
-   word column, or the one the producer names) -- or, in a list whose words are all short
-   (`spread`), it is shared evenly between the facts, a word column right before a figure column
-   keeping to its content so no seam doubles. A grid shares its width evenly across all its data
-   columns, with a breath of 112 on a figure and 140 on a word. The sharing columns are counted in
-   `data-share` (below). */
+/* The substance column takes the slack; short word columns before figures keep their natural measure so no seam doubles. */
 .data-table:not(.grid) :is(th, td):is(.col-num, .num) { width: 1%; min-width: var(--col-wide); }
 .data-table:not(.grid) :is(th, td):is(.col-num, .num).col-tight { min-width: var(--col-tight); } /* round H1: a short figure (a percentage, bps, a count) */
 .data-table:not(.grid) :is(th, td).col-tight:not(.col-absorb) { width: 1%; } /* a tight column keeps to its content, a word column as much as a figure: the slack is the absorbing column's (the Reading's Cited by took 371 px of it, its topics 172, and left the passage 137) */
 .data-table:not(.grid) :is(th, td):is(.col-text, .col-id, .col-date, .col-status, .col-link):not(.col-absorb, .col-index, .col-identity, .col-tight, .col-link:last-child) { min-width: var(--col-text); }
-.data-table:not(.grid) :is(th, td).col-absorb { width: 100%; min-width: var(--col-absorb); white-space: normal; } /* W (law 90): the substance column wraps before a table over its floor rolls sideways -- down to about two words, never a word per line (N6: Storage at 375) */
+.data-table:not(.grid) :is(th, td).col-absorb { width: 100%; min-width: var(--col-absorb); white-space: normal; }
 .data-table:not(.grid) :is(th, td):is(.col-index) { width: var(--col-index); min-width: var(--col-index); color: var(--muted); }
 .data-table :is(th, td).col-link:last-child { width: var(--col-index); text-align: right; white-space: nowrap; }
 /* the row's action; a leading link column is the identity */
@@ -1156,7 +1087,6 @@ body[data-page] #main [data-box="table"] .data-table :is(th, td):last-child { pa
 .data-table .sub-cell { display: block; margin-top: var(--space-05); color: var(--muted); font: var(--weight-body) var(--style-footnote-size)/var(--style-footnote-leading) var(--font-ui); letter-spacing: var(--style-footnote-tracking); }
 .data-table td > :is(.main-cell, .sub-cell, .text-cell) { white-space: normal; }
 body[data-page][data-reading] .data-table td:not(.col-absorb) :is([data-control], [data-ui-role="status"]) { white-space: nowrap; overflow-wrap: normal; }
-/* over the control system's wrapping; the substance column's words wrap before the table rolls (W, law 90) */
 .data-table td.col-id > .main-cell, .data-table td:first-child > .main-cell { white-space: nowrap; }
 /* an identity is one line; a name may wrap in a text column */
 body[data-page][data-reading] .data-table td [data-control] { min-height: var(--table-control-height); padding-block: var(--control-pad-xs); }
@@ -1176,13 +1106,10 @@ body[data-page] .data-table td > .cell-opener { padding-inline: 0; font-weight: 
 .table-scroll { overflow: auto; width: 100%; scrollbar-width: thin; overscroll-behavior-inline: contain; max-width: 100%; min-width: 0; scrollbar-gutter: stable; scrollbar-color: var(--scroll-thumb) transparent; box-shadow: none; background: transparent; }
 .table-scroll * { scrollbar-color: var(--scroll-thumb) transparent; }
 .table-scroll:focus-visible { outline-offset: var(--focus-ring-inset); }
-.panel > .table-scroll, .portfolio-detail-surface > .table-scroll { border: 0; border-radius: 0; } /* one scroller per region (2026-09-22): a table's page is bounded by its pager, not by a box that scrolls inside the page; it still rolls sideways (law 90) */
+.panel > .table-scroll, .portfolio-detail-surface > .table-scroll { border: 0; border-radius: 0; }
 .report-scroll, .panel > .table-scroll.report-scroll, .portfolio-detail-surface .table-scroll.report-scroll { max-height: none; }
 .report-count { margin: 0; padding: var(--space-3) var(--space-3) var(--space-2); color: var(--muted); }
-/* Law 90 (the user's rule, 2026-09-22): a table wider than its lane rolls sideways on a visible
-   thin scrollbar over a tinted track -- never clipped, never squeezed. The bar is the hint: nothing
-   dims the content (law 112). The tint appears only while there is something to roll
-   (markScrollEdges sets the edge), so a table that fits shows no bar. */
+/* The scrollbar is the hint; its tint appears only while there is overflow, so a table that fits shows no bar. */
 .table-scroll[data-edge] { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) color-mix(in srgb, var(--text) var(--tint-faint), transparent); padding-bottom: var(--space-1); }
 body[data-page] .stat-strip {
   padding: var(--space-4) 0;
@@ -1201,9 +1128,6 @@ body[data-page] .stat-value {
   line-height: var(--style-figure-leading);
   letter-spacing: var(--style-figure-tracking);
 }
-/* Split view first (round 20b, law 21; round 33): a four-up strip is one line down to the strip
-   step (800 px since Q1; the phase-5 rail is a line of facts, not tiles) and two by two under it;
-   a five-up strip has its own steps, and the Evidence measures their own six-or-three switch. */
 @container reading-lane (width < 800px) {
 body[data-page] .stat-strip:not(.five, .es-measures):has(> :nth-child(4)) {
     grid-template-columns: var(--grid-2);
@@ -1289,8 +1213,6 @@ body[data-page] .performance-surface .stat-strip {
    for a compound field. These stack relations add no material. */
 #main > :is(.panel, .subpanel, .field, .choice-list, [data-box], [data-stack-box]) + :not(.section-gap),
 #main > * + :is(.panel, .subpanel, .field, .choice-list, [data-box], [data-stack-box]):not(.section-gap) { margin-top: var(--stack-box); }
-/* Canvas sections and their carriers keep the section step (law 149). A declared box on
-   either side gives the seam TY4's box step, including through its marked carrier. */
 #main > :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]) + :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]):not(.section-gap) {
   margin-top: var(--gap-block);
 }

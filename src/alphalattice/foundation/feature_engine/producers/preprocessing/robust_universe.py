@@ -1,4 +1,4 @@
-"""The universe-centred robust Z: the Panel kernel with the whole universe as its one group (V346).
+"""The universe-centred robust Z: the Panel kernel with the whole universe as its one group.
 
 A quantity whose Sector level is structural (liquidity, turnover) takes the Sector demean
 (`ROBUST_SECTOR_NEUTRAL_Z`); a return, a price move or a move size has no Sector level to remove,

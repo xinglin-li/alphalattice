@@ -301,7 +301,7 @@ def _fit_resolved_regularized_linear(
         arrays=arrays,
         coefficients=coefficients,
         intercept=intercept,
-        training_mse=fit.training_mse,
+        training_mse=fit.measured_training_mse(),
         scores=scores,
     )
     return (
@@ -547,7 +547,7 @@ def _projected_state(
             "best_iteration": None,
             "feature_gain_hex": (),
             "top_feature_gain_share": None,
-            "training_mse": fit.training_mse,
+            "training_mse": fit.measured_training_mse(),
             "validation_score_mean": statistics[0].score_mean,
             "validation_score_std": statistics[0].score_std,
             "validation_score_coverage": statistics[0].score_coverage,
@@ -570,7 +570,7 @@ def fit_and_assess_current_model(
 ) -> CurrentAlphaRefitResult:
     """Refit a model bound to its adapter's projection under the unchanged stability policy.
 
-    The current refit of an agent's model, of a kind the installed families do not seal (V342).
+    The current refit of an agent's model, of a kind the installed families do not seal.
     It fits and predicts in its adapter's numerical scope (an extension at one thread); its state
     is the kind its adapter projects, checked against its development folds' states by the
     policy's statistics for that kind. A tree an agent projects is refused by name, since the

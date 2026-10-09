@@ -50,7 +50,7 @@ def test_the_gate_refuses_a_new_literal_a_stray_parameter_and_an_unknown_propert
 
 
 def test_the_gate_refuses_a_glass_value_without_its_opaque_one(copy_of_the_source):
-    # law 150 (the user, 2026-09-24): the product wears the glass; Opaque controls switches to the
+    # (the user, 2026-09-24): the product wears the glass; Opaque controls switches to the
     # configuration without it, which the source records for every value of the glass
     path = copy_of_the_source / "design/parameters.json"
     source = json.loads(path.read_text(encoding="utf-8"))
@@ -207,7 +207,7 @@ def missing_edge_contrast_modes(design):
 
 
 def test_every_edge_owner_declares_increased_contrast():
-    """V672: the V648 sweep cannot silently omit an undeclared glass mode."""
+    """the sweep cannot silently omit an undeclared glass mode."""
     design = json.loads(gate.PARAMETERS.read_text(encoding="utf-8"))
     assert missing_edge_contrast_modes(design) == []
     broken = deepcopy(design)

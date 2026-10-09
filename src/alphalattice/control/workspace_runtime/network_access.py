@@ -46,8 +46,11 @@ class NetworkAccess:
     set_by: dict[str, str] | None = None
     """The delegation that set the control and its end, when a person's goal set it."""
 
-    def body(self) -> dict[str, object]:
+    def body(self, *, for_refusal: bool = False) -> dict[str, object]:
         """Render effective permission and the available typed workspace-control action.
+
+        Args:
+            for_refusal: Whether a network-dependent step has actually been refused.
 
         Returns:
             Network-access read model; held-offline decisions expose no set request.
@@ -56,8 +59,14 @@ class NetworkAccess:
             "RUN_HELD_OFFLINE": "A research run holds its reads offline while it runs. "
             "Wait for that run to finish; changing the workspace control cannot lift its hold.",
             "OPERATOR_OFFLINE_SWITCH": f"{NETWORK_SWITCH}=1 keeps this process offline. "
-            "Ask the person who starts the Host to remove that switch from its launch "
-            "environment and restart the idle Host; workspace settings cannot lift it.",
+            + (
+                "Ask the person who starts the Host to remove that switch from its launch "
+                "environment and restart the idle Host; workspace settings cannot lift it."
+                if for_refusal
+                else "Network-dependent steps refuse; steps with already admitted recorded "
+                "or captured sources may proceed. Follow the plan's next action; workspace "
+                "settings cannot lift the switch."
+            ),
             "WORKSPACE_CONTROL": "This workspace's network control decides.",
             "DEFAULT": "No workspace control is set, so the network stays off.",
         }
@@ -68,6 +77,8 @@ class NetworkAccess:
             "detail": words[self.decided_by],
             "next_action": (
                 "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
+                if self.decided_by == "OPERATOR_OFFLINE_SWITCH" and for_refusal
+                else "FOLLOW_THE_PLAN_NEXT_ACTION"
                 if self.decided_by == "OPERATOR_OFFLINE_SWITCH"
                 else "WAIT_FOR_THE_OFFLINE_RUN_TO_FINISH"
                 if self.decided_by == "RUN_HELD_OFFLINE"

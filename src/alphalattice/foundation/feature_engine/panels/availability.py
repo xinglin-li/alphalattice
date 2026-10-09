@@ -73,7 +73,7 @@ class PanelAvailabilityRepository:
         factor_ids: Sequence[str],
         observed_at: datetime,
     ) -> int:
-        """Record a catalog's cells under a catalog that only adds columns to it (V92).
+        """Record a catalog's cells under a catalog that only adds columns to it.
 
         Each cell keeps what its batch measured, its binding and its receipt:
         that batch computed it, and the new catalog computes it alike. Under

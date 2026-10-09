@@ -1,8 +1,8 @@
-"""A person's activation runs an installed research strategy forward (LS1, V459; OW12).
+"""Activation runs an installed reviewed strategy forward (LS1, V459; OW12).
 
-On a copy of the QA store's research installation the product built by its own path
-(`ls1-daily`: the G6 and G2 training inputs and lifecycle studies, a Risk study, the
-strategy's preparation and installation, the Rebound Return Book over its whole support).
+On a copy of the registered QA installation built by the product
+(`ls1-daily`: G6/G2 training inputs and lifecycle studies, a Risk study,
+strategy preparation and installation, the Rebound Return Book over its whole support).
 Offline: the research update decides the sessions the workspace's data already covers, and its
 data step needs no source for them, which a provider refusing every fetch proves.
 """
@@ -42,6 +42,10 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
     portfolio_research_task_input,
 )
 from alphalattice.protocols.research_authoring.selection import load_safe_yaml_document
+from tests.portfolio_strategy_lab.activation_review_support import (
+    activation_cli,
+    publish_activation_review,
+)
 from tests.portfolio_strategy_lab.local_web_support import _json, _request
 from tests.workspace_maintenance.local_data_provider import (
     HeldDataProvider,
@@ -50,304 +54,6 @@ from tests.workspace_maintenance.local_data_provider import (
 from u0_probe import _copy
 
 PACKAGE = "RETURN_G6_MU_ONLY"
-
-
-def _activation_cli(live, capsys, *arguments, view="full"):
-    assert (
-        main(
-            ["--workspace", str(live.workspace), "--view", view, *arguments],
-            serve=lambda _: 99,
-        )
-        == 0
-    )
-    answer = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-    assert answer["outcome"] == "OK", answer
-    return answer["data"]
-
-
-def _publish_activation_review(live, result_hash):
-    """Seal recorded synthetic Evidence and submitted CRO answers through public routes."""
-    from tests.alternative_evidence_desk.review_dossiers import controlled_answer
-
-    selected = "?result_hash=" + result_hash
-    preview = _json(live, "/api/evidence/preview" + selected)
-    prepared = _json(
-        live,
-        "/api/evidence/prepare",
-        method="POST",
-        payload={k: v for k, v in preview["next_requests"]["prepare"].items() if k != "operation"},
-    )
-    live.dispatcher.drain_for_tests()
-    adapter = live.review.evidence_task_adapter
-    task = live.session.task_control_registry.task(UUID(prepared["task_id"]))
-    assert task.lifecycle.value == "SUCCEEDED", task
-    for unit in adapter.run_of(task).units:
-        packet = adapter.prepared_packet(
-            task.task_id, now=live.review.clock(), unit_id=unit.unit_id
-        )
-        exported = _json(
-            live,
-            "/api/evidence/packet"
-            + selected
-            + f"&task_id={task.task_id}&evidence_unit_id={unit.unit_id}",
-        )
-        brief = live.review_authority.evidence_resources.analysis_actor(packet=packet).answer
-        document = {
-            **exported["submission_template"],
-            "analysis_answer": brief.model_dump(mode="json"),
-        }
-        submitted = _json(
-            live,
-            "/api/evidence/analysis",
-            method="POST",
-            payload={k: v for k, v in document.items() if k != "operation"},
-        )
-        live.dispatcher.drain_for_tests()
-        assert live.session.task_control_registry.task(
-            UUID(submitted["task_id"])
-        ).lifecycle.value == ("SUCCEEDED")
-    dossier = _json(live, "/api/cro/dossier" + selected)
-    document = {
-        **dossier["submission_template"],
-        "review_answer": controlled_answer(
-            dossier["dossier"], *live.review_authority.review_actor.risks
-        ).model_dump(mode="json"),
-    }
-    submitted = _json(
-        live,
-        "/api/cro/assessment",
-        method="POST",
-        payload={k: v for k, v in document.items() if k != "operation"},
-    )
-    live.dispatcher.drain_for_tests()
-    assert live.session.task_control_registry.task(UUID(submitted["task_id"])).lifecycle.value == (
-        "SUCCEEDED"
-    )
-    published = _json(live, "/api/evidence-cro" + selected)
-    assert published["state"] == "REVIEW_PUBLISHED", published
-    return live.review.review_publications.read(published["review_publication_hash"])
-
-
-@pytest.mark.parametrize("reviewed", [False, True], ids=["unreviewed", "reviewed"])
-def test_every_activation_surface_reads_the_exact_books_published_review(
-    tmp_path, capsys, reviewed, monkeypatch
-):
-    """requirement (P1, V614, TE12): a sealed synthetic installed book travels through the real CLI;
-    every offer, activation answer and readback states the same owner review, including its
-    absence. A fresh client finds its exact activation door, which remains a person's.
-    Reading standing neither fits, publishes a review nor adds a Task.
-    """
-    from urllib.parse import parse_qs, urlsplit
-
-    from alphalattice.interface.local_application.client import LocalResearchClient
-    from tests.alternative_evidence_desk.review_http_support import build_authority
-    from tests.portfolio_strategy_lab.activation_review_support import activation_review_host
-
-    with activation_review_host(
-        tmp_path / "workspace",
-        review_authority_for_report=lambda report: build_authority(
-            tmp_path=tmp_path, report=report
-        ),
-    ) as book:
-        live, task_id, result_hash = book.live, str(book.task_id), book.result_hash
-        view = _publish_activation_review(live, result_hash) if reviewed else None
-        # An unrelated current analysis selection must not hide this book's published review.
-        live.review.selected_analysis_publication_hash = "f" * 64
-        before = (
-            len(live.session.task_control_registry.tasks()),
-            live.review.artifacts.write_count,
-        )
-        raw = _activation_cli(live, capsys, "result", "show", result_hash)
-        standing = raw["review_standing"]
-        assert raw["standing"]["activation"] == "A_PERSON_MAY_ACTIVATE"
-        # V617's saved-window facts remain beside V614's review in the combined answer.
-        assert raw["selected_window_metrics"]["cumulative_return"] == (
-            book.report.window_cumulative_net_wealth - 1.0
-        )
-        assert raw["selected_window_metrics"]["cost_bps"] == float(
-            raw["readouts"]["platform_one_way_cost_bps"]
-        )
-        assert "annualized_return" in raw["selected_window_metrics"]
-        assert raw["selected_window_metric_provenance"]["status"] == (
-            "DERIVED_FROM_SEALED_NET_RETURN_PATH"
-        )
-        assert standing["book_selector"] == {"result_hash": result_hash}
-        if view is None:
-            assert standing["status"] == "NOT_REVIEWED"
-            assert standing["detail"] == "This book has not been reviewed."
-            assert standing["coverage"] is standing["cro"] is standing["published_at"] is None
-        else:
-            assert standing["status"] == "REVIEWED"
-            assert standing["review_publication_hash"] == view.publication.publication_hash
-            assert standing["published_at"] == view.publication.published_at.isoformat()
-            assert standing["evidence_as_of"] == view.dossier.evidence_as_of.isoformat()
-            coverage = standing["coverage"]
-            assert coverage["prepared"]["scope"] == "ANALYSIS_LINKED_PACKETS"
-            assert coverage["prepared"]["with_preparation_receipt"] > 0
-            assert coverage["prepared"]["preparation_unknown"] == 0
-            assert coverage["analyzed"]["scope_issuers"] == len(view.dossier.issuers)
-            assert coverage["reviewed"]["reviewed_ending_weight_coverage"] == (
-                view.dossier.coverage.reviewed_ending_weight_coverage
-            )
-            assert standing["cro"] == {
-                "route": view.recommendation.route.value,
-                "review_state": view.recommendation.review_state.value,
-                "reasons": list(view.recommendation.reasons),
-            }
-        compact = _activation_cli(live, capsys, "result", "show", result_hash, view="compact")
-        concise = compact["review_standing"]
-        # Compact CLI references are executable short names; the standing facts stay whole.
-        for field in standing.keys() - {
-            "book_selector",
-            "review_publication_hash",
-            "next_requests",
-        }:
-            assert concise[field] == standing[field]
-        assert result_hash.startswith(concise["book_selector"]["result_hash"])
-        if reviewed:
-            assert standing["review_publication_hash"].startswith(
-                concise["review_publication_hash"]
-            )
-        positioned = _activation_cli(
-            live, capsys, "result", "show", result_hash, "--session", book.last_session.isoformat()
-        )
-        assert positioned["review_standing"] == standing
-        assert positioned["selected_window_metrics"] == raw["selected_window_metrics"]
-        offered = _activation_cli(live, capsys, "strategy-book", "controls", "--package", PACKAGE)[
-            "activation"
-        ]
-        assert offered["next_requests"]["activate"]["task_id"] == task_id
-        assert offered["review_standing"] == standing
-        shown = _activation_cli(live, capsys, "workspace", "show")
-        (intent,) = [i for i in shown["intents"] if i.get("strategy_package_id") == PACKAGE]
-        assert intent["activation"]["review_standing"] == standing
-        books_request = {"operation": "CONTROLS", "strategy_package_id": PACKAGE}
-        plan_request = {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": PACKAGE}
-        first = LocalResearchClient(live.workspace)
-        discovered = first.request(include_context=True)
-        (forward,) = [
-            row for row in discovered["intents"] if row.get("strategy_package_id") == PACKAGE
-        ]
-        assert forward["flow"] == "RUN_FORWARD"
-        assert forward["activation"] == offered
-        assert forward["activation"]["status"] == "INACTIVE"
-        assert forward["next_requests"] == {"books": books_request}
-        idle = first.request(plan_request)
-        assert idle["status"] == "REFUSED"
-        assert idle["failure_code"] == "portfolio_update.not_installed"
-        assert idle["detail"]
-        assert idle["next_requests"] == {"books": books_request}
-        assert idle["activation"] == offered
-        assert (
-            main(
-                [
-                    "--workspace",
-                    str(live.workspace),
-                    "--view",
-                    "full",
-                    "research-update",
-                    "plan",
-                    "--package",
-                    PACKAGE,
-                ],
-                serve=lambda _: 99,
-            )
-            == 2
-        )
-        refused_cli = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-        assert refused_cli["outcome"] == "REFUSED"
-        assert refused_cli["failure_code"] == "portfolio_update.not_installed"
-        assert refused_cli["data"]["next_requests"] == {"books": books_request}
-        assert refused_cli["data"]["activation"] == offered
-        fresh = LocalResearchClient(live.workspace)
-        book_controls = fresh.request(idle["next_requests"]["books"])
-        assert book_controls["strategy_package_id"] == PACKAGE
-        assert book_controls["activation"] == offered
-        activate_request = book_controls["activation"]["next_requests"]["activate"]
-        assert activate_request == {"operation": "STRATEGY_ACTIVATE", "task_id": task_id}
-        navigation = fresh.navigation(books_request, book_controls)
-        assert navigation["kind"] == "portfolio_book"
-        assert parse_qs(urlsplit(navigation["url"]).fragment) == {
-            "page": ["portfolio"],
-            "book": [task_id],
-            "follow": ["latest"],
-        }
-        denied = fresh.request(activate_request)
-        assert denied["status"] == "REFUSED"
-        assert denied["failure_code"] == "strategy_activation.human_confirmation_required"
-        assert fresh.request(books_request)["activation"] == offered
-        panel = _json(
-            live,
-            f"/api/workbench/portfolio?task_id={task_id}"
-            f"&portfolio_session={book.last_session.isoformat()}",
-        )
-        assert panel["standing"] == raw["standing"]
-        assert panel["review_standing"] == standing
-        assert panel["metricAbsences"] == raw["selected_window_metric_absences"]
-        assert (
-            len(live.session.task_control_registry.tasks()),
-            live.review.artifacts.write_count,
-        ) == (before)
-        activated = _json(
-            live, "/api/strategy/activate", method="POST", payload={"task_id": task_id}
-        )
-        assert activated["status"] == "ACTIVATED", activated
-        assert activated["fit_calls"] == 0
-        assert activated["review_standing"] == standing
-        active = _activation_cli(live, capsys, "strategy-book", "controls", "--package", PACKAGE)[
-            "activation"
-        ]
-        assert active["status"] == "ACTIVE" and active["review_standing"] == standing
-        after = LocalResearchClient(live.workspace)
-        active_controls = after.request(books_request)
-        assert active_controls["activation"] == active
-        assert active_controls["activation"]["book_task_id"] == task_id
-        reopened = after.request(include_context=True)
-        (forward,) = [
-            row for row in reopened["intents"] if row.get("strategy_package_id") == PACKAGE
-        ]
-        assert forward["activation"] == active
-        assert forward["next_requests"] == {"update": plan_request}
-        # The activation names the person's one-click stop beside its update (STOPS-1).
-        assert activated["next_requests"] == {
-            "update": plan_request,
-            "deactivate": {"operation": "STRATEGY_DEACTIVATE", "strategy_package_id": PACKAGE},
-        }
-
-        def no_review_read(*_args, **_kwargs):
-            raise AssertionError("Automation discovery opened full review standing")
-
-        with monkeypatch.context() as metadata:
-            metadata.setattr(live.operations.activations, "read_review", no_review_read)
-            automation = _activation_cli(live, capsys, "automation", "show")
-        (running,) = [r for r in automation["runs_forward"] if r["strategy_package_id"] == PACKAGE]
-        assert "review_standing" not in running
-        for field in (
-            "status",
-            "book_task_id",
-            "first_forward_session",
-            "horizon",
-            "strategy_dates",
-        ):
-            assert running[field] == active[field]
-        assert _activation_cli(live, capsys, "result", "show", result_hash)["standing"][
-            "activation"
-        ] == ("ACTIVE")
-        # Old completed books can retain their Task and ledger without a pipeline manifest.
-        # The same activation admission still names the exact book's review in that case.
-        lineage = live.application.pipeline.content.root.resolve()
-        retained = lineage.with_name("pipeline-not-retained")
-        assert lineage.is_relative_to(live.workspace.resolve())
-        assert retained.is_relative_to(live.workspace.resolve())
-        lineage.rename(retained)
-        assert live.application.pipeline.find_for_task(UUID(task_id)) is None
-        historical = _activation_cli(
-            live, capsys, "strategy-book", "controls", "--package", PACKAGE
-        )["activation"]
-        assert historical["review_standing"] == standing
-        historical_report = _activation_cli(live, capsys, "result", "show", result_hash)
-        assert historical_report["review_standing"] == standing
-        assert historical_report["standing"]["activation"] == "ACTIVE"
 
 
 def test_history_retains_readable_cro_metadata_beside_a_corrupt_peer(tmp_path, monkeypatch):
@@ -369,7 +75,7 @@ def test_history_retains_readable_cro_metadata_beside_a_corrupt_peer(tmp_path, m
         ),
     ) as book:
         live = book.live
-        view = _publish_activation_review(live, book.result_hash)
+        view = publish_activation_review(live, book.result_hash)
         store = live.review.review_publications.store
         bad_identity = "e" * 64
         (store.root / "cro-review-publications" / f"{bad_identity}.json").write_text(
@@ -429,14 +135,14 @@ def _settled(session: LocalPortfolioWebSession, task_id: str, timeout: float = 1
 
 
 @pytest.mark.real_evidence
+@pytest.mark.untyped_failure
 def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
-    tmp_path: Path, evidence_roots, monkeypatch, capsys
+    tmp_path: Path, evidence_roots, monkeypatch, capsys, caplog
 ) -> None:
-    """requirement (LS1, OW12): a person activates the reviewed Rebound Return Book, and the
-    activation binds its models (the studies' fits reused, none fitted), its calibration seed
-    and its sealed last state; a research update then decides the next sessions and publishes
-    the book's next positions; activating it again is refused while it runs, and a person
-    stops it."""
+    """LS1/OW12: activation reuses sealed studies; updates publish positions until stopped."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, current_thread
+
     from alphalattice.interface.local_application.client import LocalResearchClient
 
     root = evidence_roots.require("ls1_daily_flows")
@@ -474,7 +180,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
                 payload={"strategy_package_id": PACKAGE},
             )
             assert stopped["status"] == "DEACTIVATED", stopped
-        # The book's controls offer its newest completed book, which the activation admits (U73).
         offered = operations.execute(
             PortfolioResearchOperationRequest(operation="CONTROLS", strategy_package_id=PACKAGE)
         )["activation"]
@@ -483,13 +188,10 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         }, offered
         recorded = live.application.pipeline.find_for_task(UUID(book))
         assert recorded is not None
-        report = _activation_cli(live, capsys, "result", "show", recorded.result_hash)
+        report = activation_cli(live, capsys, "result", "show", recorded.result_hash)
         review_standing = report["review_standing"]
         assert review_standing["book_selector"] == {"result_hash": recorded.result_hash}
         assert offered["review_standing"] == review_standing
-        # Before activation the offer shows the reviewed book's last sealed holdings, the
-        # review's last book and never the next positions (A2, FLOW-2): the same holdings its
-        # report shows at the book's end, read from the sealed boundary activation opens from.
         holdings = offered["review_holdings"]
         assert holdings["claim"] == "REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS"
         assert holdings["book_task_id"] == book
@@ -501,7 +203,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
             for row in report["book"]["positions"]
             if row["weight"] != "0.000%"
         }
-        # The first read names the strategy's way forward: its activation, a person's (V471).
         shown = operations.execute(PortfolioResearchOperationRequest(operation="WORKSPACE_SHOW"))
         (forward,) = [i for i in shown["intents"] if i.get("strategy_package_id") == PACKAGE]
         assert (forward["flow"], forward["activation"], forward["next_requests"]) == (
@@ -524,8 +225,14 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
             400,
             {"refused": "research_update.automation_package_not_installed"},
         )
-        assert "activates" in explain("research_update.automation_package_not_installed")["detail"]
-        # The activation binds in the request, about twenty seconds on this root.
+        recovery = operations.execute(
+            PortfolioResearchOperationRequest(
+                **explain("research_update.automation_package_not_installed")["next_requests"][
+                    "automation"
+                ]
+            )
+        )
+        assert recovery["runs_forward"] == daily["runs_forward"]
         activated = _json(
             live,
             "/api/strategy/activate",
@@ -624,7 +331,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         )
         assert plan["status"] == "PLANNED", plan
         assert plan["decision_sessions"] == ["2026-09-09", "2026-09-10"]
-        # The plan's way on is its run (V470), and the first read offers the plan (V471).
         assert plan["next_requests"] == {
             "run": {
                 "operation": "RESEARCH_UPDATE_RUN",
@@ -645,24 +351,44 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         )
         assert sent["status"] == "ADMITTED", sent
         assert _settled(live, str(sent["task_id"])) == "SUCCEEDED"
-        result = operations.execute(
-            PortfolioResearchOperationRequest(
-                operation="RESEARCH_UPDATE_READBACK", task_id=UUID(str(sent["task_id"]))
-            ),
-            caller="EXTERNAL_AUTOMATION",
-        )
-        assert result["status"] == "PROPOSAL_PUBLISHED", result
-        # V683: Home discovers the completed update's exact publication metadata.
-        # The selected update above still verified its complete branch.
         assert operations.activations is not None and operations.research_updates is not None
+        read_task = PortfolioResearchOperationRequest(
+            operation="RESEARCH_UPDATE_READBACK", task_id=UUID(str(sent["task_id"]))
+        )
+        door = PortfolioResearchOperationRequest(operation="RESEARCH_UPDATE_AUTOMATION_READBACK")
+        why = "Automation metadata opened full review/update readback"
+        gate, caller = Barrier(2, timeout=30), current_thread()
+        first = True
 
-        def no_full_metadata_read(*_args, **_kwargs):
-            raise AssertionError("Automation metadata opened full review/update readback")
+        def read_metadata():
+            gate.wait()
+            return operations.execute(door)
 
-        with monkeypatch.context() as metadata:
-            metadata.setattr(operations.activations, "read_review", no_full_metadata_read)
-            metadata.setattr(operations.research_updates, "readback", no_full_metadata_read)
-            daily = _json(live, "/api/research-update/automation")
+        def guard(read):
+            def checked(*args, **kwargs):
+                nonlocal first
+                assert current_thread() is not metadata, why
+                if current_thread() is caller and first:
+                    first = False
+                    gate.wait()
+                return read(*args, **kwargs)
+
+            return checked
+
+        with ThreadPoolExecutor(max_workers=1) as reader, monkeypatch.context() as probe:
+            metadata = reader.submit(current_thread).result(timeout=30)
+            for owner, method in (
+                (operations.activations, "read_review"),
+                (operations.research_updates, "readback"),
+            ):
+                probe.setattr(owner, method, guard(getattr(owner, method)))
+            daily = reader.submit(read_metadata)
+            result = operations.execute(read_task, caller="EXTERNAL_AUTOMATION")
+            daily = daily.result(timeout=30)
+            assert result["status"] == "PROPOSAL_PUBLISHED", result
+            probe.setattr(operations.automation, "readback", lambda: operations.execute(read_task))
+            with pytest.raises(AssertionError, match=why) as bad:
+                reader.submit(operations.execute, door).result(timeout=30)
         (running,) = [row for row in daily["runs_forward"] if row["strategy_package_id"] == PACKAGE]
         latest = running["latest_update"]
         assert "review_standing" not in running
@@ -683,10 +409,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
             proposal["schedule"]["formation_close_at"]
         ) < datetime.fromisoformat(proposal["schedule"]["entry_open_at"])
         assert any(weight > 0 for weight in proposal["estimated_weights"])
-        # The day's positions go on to their own review: their readback offers the preview bound
-        # to this update, never the reviewed book it came from (V483). This root admits no
-        # Evidence authority (it is built offline), so the preview answers the setup the update's
-        # review needs; a review reading the update's book is the CU review seam's test.
         from alphalattice.interface.local_application.portfolio_research import (
             PortfolioResearchRequestDocument,
         )
@@ -700,8 +422,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         assert preview["status"] == "EVIDENCE_PREREQUISITES_MISSING", preview
         assert preview["failure_code"] == "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY", preview
 
-        # Two score plans in one Host: a run from the first answer reopens the first plan, never
-        # the second in its place (V493, the user's review).
         def score_plan(session: str, component: str | None) -> dict[str, object]:
             return operations.execute(
                 PortfolioResearchOperationRequest(
@@ -723,8 +443,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         assert first["score_plan_hash"] != second["score_plan_hash"]
         reopened = operations.scoring.prepare(str(first["score_plan_hash"]))
         assert reopened.formation_session.isoformat() == "2026-09-09"
-        # A book is drafted from a development study's candidate: the root's lifecycle replay is
-        # refused by name, its prerequisites naming the way on, never an untyped failure (V486).
         replay = next(
             task.task_id
             for task in live.session.task_control_registry.tasks()
@@ -739,7 +457,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         )
         assert drafted["failure_code"] == "portfolio_research.alpha_development_required", drafted
         assert drafted["prerequisites"]["flow"] == "BOOK", drafted
-        # A person turns the daily update on for the strategies that run forward, and off.
         enable = daily["next_requests"]["enable"]
         on = _json(
             live,
@@ -769,8 +486,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         after = operations.execute(
             PortfolioResearchOperationRequest(operation="CONTROLS", strategy_package_id=PACKAGE)
         )
-        # Stopped, its history kept; its book is offered to a person again (U73), with the
-        # same last holdings it was reviewed on (A2).
         assert after["strategy_dates"]["forward_book_start_basis"] == "IF_ACTIVATED"
         assert after["strategy_dates"]["information_cutoff"] == "2026-09-10"
         assert after["activation"] == {
@@ -782,11 +497,14 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         }
     finally:
         live.stop()
-        operations = None  # Clear the captured cell too; score_plan closes over this reference.
+        operations = None
         del live
         gc.collect()
         assert workspace.resolve().is_relative_to(tmp_path.resolve())
         shutil.rmtree(workspace)
+
+    raised = {r.args[2] for r in caplog.records if r.getMessage().startswith("operation.raised:")}
+    assert raised == {f"AssertionError: {bad.value}"}
 
 
 @pytest.mark.real_evidence
@@ -1750,17 +1468,9 @@ def _until(found: Callable[[], object], what: str, live: LocalPortfolioWebSessio
 def test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session(
     tmp_path: Path, evidence_roots, monkeypatch, capsys
 ) -> None:
-    """regression (V604, BLOCKING): since V601 a provider's deferral leaves the daily research
-    update DEFERRED, holding the workspace's one running place, and nothing but its own plan run
-    again resumed it. The automation armed the next session's ready time, whose plan was refused
-    while the deferral held the workspace's inputs (`workspace_inputs_not_ready`, unworded): the
-    daily chain stopped after one deferral, and the Host's own sweep parked behind it. Through
-    the real Host on a research installation, the daily update turned on by a person and nobody
-    acting after: Friday's update defers with the provider, and nothing queues behind it; the
-    automation wakes at its retry time, not at Monday's, and resumes the same Task from the stage
-    it deferred in, which publishes Friday once the provider's bars are final; Monday's cycle
-    plans Monday from that publication. Offline throughout: the provider serves the copy's own
-    bars and quiet sessions after them."""
+    """V604: the real Host's daily automation resumes Friday's deferral at its retry time,
+    publishes Friday once the provider's bars are final, and plans Monday on that publication.
+    Nothing queues behind the deferral. Offline: the provider serves the copy's own bars."""
 
     clock = [datetime(2026, 9, 11, 22, tzinfo=UTC)]  # Friday's bars are due
     held: list[HeldDataProvider] = []
@@ -1843,6 +1553,7 @@ def test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session(
             method="POST",
             payload={"automation_enabled": False, "automation_package_ids": []},
         )
+        cli("task", "cancel", str(monday.task_id))
 
 
 @pytest.mark.real_evidence
@@ -1898,7 +1609,7 @@ def test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_o
         code, sweep = cli("study", "verify-all")
         verifying = sweep["data"]["task_id"]
         assert registry.task(UUID(verifying)).lifecycle.value == "QUEUED", sweep
-        time.sleep(live.operations.supervisor.interval + 5)
+        live.operations.supervisor.supervise_once()
         code, waiting = cli("task", "show", verifying)
         seen = _seen(waiting, registry, verifying)
         assert waiting["data"]["lifecycle"] == "QUEUED", seen

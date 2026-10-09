@@ -36,7 +36,6 @@
 .tp-callout p {
   margin: 0;
 }
-/* The Task's actions (round 58): one row, the explanation folded under it. */
 .tp-actions { margin: var(--space-4) 0 var(--space-2); }
 .tp-why { display: grid; gap: var(--space-3); margin: 0; }
 .tp-why dt { color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
@@ -188,7 +187,7 @@ body[data-page] :is(.stat-value,.tp-number) {
   padding: 0 var(--space-3);
 }
 .tp-detail {
-  padding: 0; /* the inspector's body is the inset (round 66) */
+  padding: 0;
 }
 :is(.caption,.tp-caption,.object-meta,.stat-label,.table-note) {
   font-size: var(--style-callout-size);
@@ -245,7 +244,7 @@ body[data-page] .fv-step:last-child::before {
   content: none;
 }
 body[data-page] .fv-step.is-complete::before {
-  background: color-mix(in srgb,var(--good-ink) var(--tint-edge),var(--line)); /* round 95 (the user's reading): a verified stage is good, not the accent's blue (law 65) */
+  background: color-mix(in srgb,var(--good-ink) var(--tint-edge),var(--line));
 }
 .fv-step-node {
   display: grid;
@@ -561,15 +560,12 @@ body[data-page] .fv-step {
 .run-log-head h3 { margin: 0; white-space: nowrap; }
 .run-log-head h3 > span { color: var(--muted); font-weight: var(--weight-body); }
 details.run-log { padding-bottom: 0; }
-details.run-log:not([open]) { min-height: 0; } /* a folded log is its one line (law 149: a detail is as tall as what it holds; the log's lines keep their height when it opens) */
-/* The fold's one grey line (round 83, Codex's `Worked for 3 min ›`): the summary and the count, a › that turns when open. */
+details.run-log:not([open]) { min-height: 0; }
 .run-log-fold { justify-content: flex-start; list-style: none; color: var(--muted); font-weight: var(--weight-body); }
 .run-log-fold::-webkit-details-marker { display: none; }
 .run-log-fold::after { content: '›'; margin-left: var(--space-2); display: inline-block; transition: transform var(--dur-1) var(--curve-move); }
 details[open] > .run-log-fold::after { transform: rotate(90deg); }
-/* The run's body (round 72): the summary line, the steps, the receipt, the log's lines. */
 .run-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0; }
-/* The steps (round 92, GitHub Actions' shape): one folded row per step, its body under it. */
 .run-steps { list-style: none; margin: 0; padding: 0; }
 .run-steps > li + li { box-shadow: inset 0 1px 0 var(--edge-hair); }
 .run-step { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
@@ -603,10 +599,6 @@ body:not(.opaque-controls)[data-page] [data-layer="detail"] .run-ref .icon-btn:h
 .run-steps { container-type: inline-size; }
 @container (width < 420px) { .run-step-word { display: none; } }
 .run-receipt .kv { padding: var(--space-2) 0; }
-/* 2026-09-22 (the user's reading of the Task Center): a reference in the receipt is the same row
-   as in a step -- the kind, a gap, the short hash, the glyph -- wrapping as words when the column
-   is narrow (the block override that glued the kind to its hash is gone); an identity in mono is
-   a property and wears the muted ink (law 75); an identity is its reference, never a line that rolls (WD3). */
 .run-receipt .run-ref { flex-wrap: wrap; }
 :is(.run-receipt, .run-step-refs) .mono { color: var(--muted); }
 details.run-log > summary { list-style: none; cursor: pointer; }
@@ -756,17 +748,10 @@ details.run-log > summary::-webkit-details-marker { display: none; }
 .team-scene { padding: 0 0 var(--space-8); }
 .team-head { margin-bottom: var(--space-5); }
 .team-head h1:focus-visible { outline-offset: var(--focus-ring-offset); border-radius: var(--radius-micro); }
-/* The conversation (N5, law 125): a thread of comments on one line of marks, the hooks and the
-   product's observations one-line events between them; beside it the boxes (the contribution, the
-   properties, the members). The page is the one scroller (law 113): no box scrolls on its own. */
 .team-conversation { min-width: 0; }
 /* C3: the head's tools -- mark seen and the Display -- stand together at its end */
 .team-head-tools { display: inline-flex; flex: 0 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--space-2); } /* W: the members' chips wrap inside the head at a phone's width, never past the lane */
-/* C3 (law 142, X's new-posts pill): the arrivals below the reader's place, one pill held at the
-   thread's top while the thread is in view; it takes no room of its own */
 .team-new-bar { position: sticky; top: calc(var(--shell-top-height) + var(--space-2)); z-index: var(--layer-sticky); display: flex; justify-content: center; height: 0; overflow: visible; }
-/* the pill floats over the thread's words: the glass (law 150, 12-material; #main there: above the
-   control contract's face), a pill's radius */
 #main .team-new-bar > .team-new-pill { border-radius: var(--radius-pill); }
 .team-new-bar > .team-new-pill > .icon { transform: rotate(90deg); color: var(--accent); }
 .team-event { display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-4); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
@@ -776,17 +761,11 @@ details.run-log > summary::-webkit-details-marker { display: none; }
 .team-event-line strong { color: var(--text); font-weight: var(--weight-label); }
 .team-mention { color: var(--ink-link); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); white-space: nowrap; }
 .team-topic { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border: 1px solid var(--edge-hair); border-radius: var(--radius-control); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); white-space: nowrap; }
-/* C1 (law 139): the replies flat at the second level, the words' column; their marks smaller (C0's
-   measured ratio), no line of their own -- the comment's axis runs down beside them. */
 .team-replies { margin-top: var(--space-1); }
 .team-replies > .team-reply { padding: var(--space-1) var(--space-3); }
 .team-replies > .team-reply > .team-exchange-icon { flex-basis: var(--reply-mark-size); height: var(--reply-mark-size); }
 .team-replies > .team-reply > .team-exchange-icon .icon { width: var(--icon-xs); height: var(--icon-xs); }
-/* C1 (law 141): the Main PM's recorded response is an inset under what it answers -- neutral, its
-   colour on the mark only, no rail (bilibili's uploader reply, drawn with the product's well). */
 .team-replies > .team-reply.is-pm-response { margin: var(--space-1) 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-block); background: var(--surface-well); }
-/* C2 (law 140): the folded middle of a run of replies -- one line at the replies' column (every
-   reply's mark, the Main PM's inset's too, stands one --space-3 in from the words) */
 .team-replies-more { padding: var(--space-1) var(--space-3); }
 /* a clamped exchange opens where it stands; `Show more` stands only where the clamp hides words
    (the page's measured marks set its `hidden`) */
@@ -801,31 +780,19 @@ details.run-log > summary::-webkit-details-marker { display: none; }
 .team-hook-toggle[aria-expanded="false"] > .icon { transform: rotate(-90deg); }
 /* a reply read in the side opens with the exchange it answers, one quoted line */
 .team-question-card { min-width: 0; margin: 0 0 var(--space-3); }
- /* round 95: a fold's units sit one unit in */
 .team-thread, .team-replies { list-style: none; margin: 0; padding: 0; }
 .team-exchange { position: relative; display: flex; gap: var(--space-3); padding: var(--exchange-pad, var(--space-2)) var(--space-3) var(--exchange-pad, var(--space-2)) var(--space-4); border-radius: var(--radius-block); }
-/* C3 (law 142): the Display's density -- the same thread with less air round each comment, the
-   words to the short clamp; the hairlines and the axis move with the padding */
 .team-thread { --exchange-pad: var(--space-2); }
 .team-thread.density-compact { --exchange-pad: var(--space-1); }
 .team-thread.density-compact .team-exchange-body > .team-words:not([data-clamp="open"]) { -webkit-line-clamp: var(--clamp-short); line-clamp: var(--clamp-short); }
-/* C1: the hairline between two comments starts at the words' column; the marks' column stays one
-   clean spine (bilibili and Douyin, measured). An event's runs over its time as a comment's does (the
-   user's stills, 2026-09-30: it stopped before the time), its time's slot closing the row's gap. */
 .team-thread > .team-exchange + .team-exchange > .team-exchange-body,
 .team-thread > .team-exchange + .team-event > :is(.team-event-line, .team-exchange-end) { margin-top: calc(0px - var(--exchange-pad)); padding-top: var(--exchange-pad); border-top: 1px solid var(--edge-hair); }
 .team-thread > .team-exchange + .team-event > .team-exchange-end { margin-left: calc(0px - var(--space-3)); padding-left: var(--space-3); }
-.team-exchange.is-selected { background: var(--fill-selected); --rail: var(--rail-on); } /* C4: the exchange the inspector shows keeps the fill and takes the rail (LS3: the link blue) */
-/* Round 20e: the node carries the actor's role colour; the kind is in words and an objection's
-   state in its dot -- the kind's rail (blue on a question, a PM response and an assignment, amber on
-   an objection, none on an answer) cut the thread in two where a Task met its answer (the user's
-   reading, 2026-09-25): only the exchange being read wears the rail. The timeline joins the nodes. */
+.team-exchange.is-selected { background: var(--fill-selected); --rail: var(--rail-on); }
+/* The actor's mark carries its role colour; only the exchange being read wears a rail so an objection does not split the thread from its answer. */
 .team-exchange-icon { display: grid; place-items: center; flex: 0 0 var(--exchange-mark-height); height: var(--exchange-mark-height); border: 1px solid color-mix(in srgb, var(--role-ink, var(--muted)) var(--tint-edge), transparent); border-radius: 50%; color: var(--role-ink, var(--muted)); background: color-mix(in srgb, var(--role-ink, var(--muted)) var(--tint-wash), var(--ground)); z-index: var(--layer-raised); }
-/* The row's mark (round 85, Linear's coloured glyph; the user's word: no circle): the glyph alone in its tone's colour. */
 .mark { display: grid; place-items: center; flex: none; width: var(--mark-size); height: var(--mark-size); color: var(--tone); }
 .mark .icon { width: var(--icon-lg); height: var(--icon-lg); }
-/* the axis (C1, law 139): one light line down the comments' marks, past their replies -- no
-   branch, no elbow; a reply draws none of its own */
 .team-thread > .team-exchange:not(:last-child)::after, .team-thread > .team-exchange:last-child:has(.team-replies)::after { content: ''; position: absolute; left: calc(var(--space-4) + var(--exchange-mark-height) / 2 - 1px); top: calc(2 * var(--exchange-pad) + var(--exchange-mark-height)); bottom: calc(0px - var(--exchange-pad)); width: 1px; background: var(--thread-axis); }
 .team-thread > .team-exchange:last-child:has(.team-replies)::after { bottom: var(--exchange-pad); }
 /* an event line (a hook) carries the axis through its whole height, its glyph on the ground the line passes behind */
@@ -838,16 +805,12 @@ details.run-log > summary::-webkit-details-marker { display: none; }
 [data-role="lead"] { --role-ink: var(--ink-link); }
 [data-role="alpha"] { --role-ink: var(--role-alpha); }
 [data-role="portfolio"] { --role-ink: var(--good-ink); }
-[data-role="cro"] { --role-ink: var(--review-ink); } /* round 89: one tone per domain -- the review family is purple, as History's CRO mark */
+[data-role="cro"] { --role-ink: var(--review-ink); }
 [data-role="risk"] { --role-ink: var(--warning-ink); } /* Risk is orange, as History's Risk mark */
 [data-role="factor"] { --role-ink: var(--review-ink); }
 [data-role="data"] { --role-ink: var(--neutral-ink); }
 [data-role="neutral"] { --role-ink: var(--neutral-ink); }
-[data-role="none"] { --role-ink: var(--neutral); } /* the grey mark is a tone (the user's word, round 85) */
-/* the body is a grid (C1): the head line with the time at its end, then the words, the relations and
-   the replies across. The time stays at the head's end at every width, as an event line's does (the user's
-   stills, 2026-09-30: under 640 px it stood under the words while the hooks' stood at the right); the head
-   wraps in its own column. */
+[data-role="none"] { --role-ink: var(--neutral); }
 .team-exchange-body { min-width: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-2); align-items: baseline; }
 .team-exchange-body > * { grid-column: 1 / -1; }
 .team-exchange-body > .team-exchange-line { grid-column: 1; grid-row: 1; }
@@ -864,7 +827,6 @@ details.run-log > summary::-webkit-details-marker { display: none; }
 .team-thread [data-read] { cursor: pointer; }
 .team-thread [data-read]:hover:not(:has([data-read]:hover)):not(.is-selected) { background: var(--ds-control-hover); }
 .team-thread [data-read]:focus-visible { outline: var(--focus-ring-width) solid var(--accent); outline-offset: var(--focus-ring-inset); }
-/* The Record's exchanges (the inspector's column, round 87, the user's still): the head wraps. */
 .team-record .team-exchange-line { flex-wrap: wrap; }
 .team-unread { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--ink-link); font-weight: var(--weight-strong); }
 #teamContributionHeading { scroll-margin-top: 130px; }
@@ -884,8 +846,6 @@ details.run-log > summary::-webkit-details-marker { display: none; }
 [data-feed=unreachable] .live-dot { background: var(--danger-ink); }
 @keyframes live-breathe { 0%, 100% { opacity: .55; transform: scale(.9); } 50% { opacity: 1; transform: scale(1.1); } }
 @keyframes live-ring { 0% { transform: scale(.6); opacity: .7; } 100% { transform: scale(1.6); opacity: 0; } }
-/* A research question is a sentence set for reading at size (Title 2, the one face — round 37
-   retired the display cut), balanced across its lines. */
 .team-question-source { margin: 0; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
 .team-question-ref { margin: var(--space-2) 0 0; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); overflow-wrap: anywhere; }
 .team-question-choice { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-2); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); }
@@ -896,8 +856,8 @@ details.run-log > summary::-webkit-details-marker { display: none; }
 /* Explicit relationships and the objection's standing, said in the thread itself. */
 .team-relation { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); margin: var(--space-1) 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .team-relation .text-btn { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); margin: 0; }
-.team-objection-status { color: var(--muted); } /* round 90: a state is a dot and a regular word; the count is never coloured (law 65) */
-span.team-objection-status { display: inline-flex; align-items: center; gap: var(--space-1); } /* round 95 (the user's stills): the dot leads the slot so the dots stand in a column, centred on the line; a row without one keeps the dot's place */
+.team-objection-status { color: var(--muted); } /* A state's tone belongs to its dot; colouring the count would give it an unrecorded meaning. */
+span.team-objection-status { display: inline-flex; align-items: center; gap: var(--space-1); } /* A row without a dot retains its slot so marks in neighbouring rows stay aligned. */
 .team-objection-status > .row-dot { display: inline-grid; vertical-align: middle; margin-right: var(--space-1); }
 span.team-objection-status > .row-dot { margin-right: 0; }
 span.team-objection-status > .row-dot.neutral { visibility: hidden; }
@@ -907,7 +867,7 @@ span.team-objection-status > .row-dot.neutral { visibility: hidden; }
 .team-product li.just-verified { animation: team-verified var(--dur-linger) var(--curve-arrive) 1; }
 /* An identifier inside an uppercase eyebrow keeps its case; a code read as words shows the code on hover. */
 .coded, .hint { text-decoration: underline dotted color-mix(in srgb, var(--muted) var(--tint-edge), transparent); text-underline-offset: var(--underline-offset); cursor: help; }
-.hint-more { display: inline-flex; vertical-align: middle; flex: none; width: var(--icon-sm); height: var(--icon-sm); margin-inline-start: var(--info-mark-gap); padding: 0; border: 0; background: none; color: var(--muted); cursor: help; } /* round 90: the rest of a folded line; N6: the space before it is its own */
+.hint-more { display: inline-flex; vertical-align: middle; flex: none; width: var(--icon-sm); height: var(--icon-sm); margin-inline-start: var(--info-mark-gap); padding: 0; border: 0; background: none; color: var(--muted); cursor: help; }
 .hint-more:is(:hover, :focus-visible) { color: var(--text); }
 :is(.stat-value,h1,h2,h3,.badge,.state) :is(.coded,.hint) { text-decoration: none; }
 /* The Overview's research-in-context card. */
@@ -917,7 +877,6 @@ span.team-objection-status > .row-dot.neutral { visibility: hidden; }
 .team-product > summary > span { display: block; margin: var(--space-2) 0 0; }
 }
 
-/* C4: the members are the thread head's filter -- one chip a member, its role's mark in its colour */
 .team-members { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
 /* a toggle chip (the members, Observations' kinds): a hairline pill, quiet; pressed, it is filled -- never
    the dashed chip of an unset lobby filter */
@@ -926,13 +885,12 @@ span.team-objection-status > .row-dot.neutral { visibility: hidden; }
 #main .team-chip[aria-pressed=true] { color: var(--text); background: var(--fill-selected); border-color: var(--edge-strong); }
 #main .team-chip > .icon { width: var(--icon-sm); height: var(--icon-sm); }
 #main .team-chip > .num { color: var(--muted); }
-.team-member-chip > .icon, .team-member-mark > .icon { color: var(--role-ink, var(--muted)); } /* a member's glyph in its role's tone, the chip's and the Participants row's (U51) */
+.team-member-chip > .icon, .team-member-mark > .icon { color: var(--role-ink, var(--muted)); }
 /* the exchange the inspector shows takes the accent rail over its kind's (and a reply's none) */
 .team-thread .team-exchange.is-selected, .team-thread .team-replies > .team-exchange.team-reply.is-selected { --rail: var(--rail-on); }
 /* what the product recorded outside the conversation, said once at the thread's top */
 .team-outside { display: flex; align-items: flex-start; gap: var(--space-2); margin: 0 0 var(--space-3); color: var(--muted); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
 .team-outside > .icon { flex: none; width: var(--icon-sm); height: var(--icon-sm); margin-top: calc((1lh - var(--icon-sm)) / 2); }
-/* an exchange's verification in place, under its words (C4 item 7): a hairline, then its lines, muted */
 .team-record-inline { margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--edge-hair); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); }
 .team-record-inline .run-ref { display: inline-flex; vertical-align: baseline; }
 .team-event > .team-record-inline { flex-basis: 100%; }

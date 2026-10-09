@@ -1,9 +1,3 @@
-/* The state table (round 71): every state the workbench shows — a Task's lifecycle, a stage's
- * mark, a saved object's standing, the activity record's phases — as one entry: the word, the
- * tone (the round-40 inks), the one line that says what the state means, and `next`, the one
- * action a person can take when the state is theirs to move. `moving` says the owner is still
- * working; `held` says the Task waits at its owner or for a person. Keys are the owners' codes
- * in lower case; a code the table does not know names its missing word. No DOM, no state. */
 /* What a colour says (the user, 2026-09-25: 受阻用琥珀色，红色严格保留给失败): seven meanings, each a
  * tone from design/parameters.json (`role.meaning`); the table and every caller name the meaning,
  * never the colour. Red is failure alone -- work that ran and failed, a read or a render that could
@@ -16,13 +10,11 @@ const STATES = {
   cancel_requested: {word: 'Cancelling', tone: TONE.attention, line: 'Cancellation requested; the worker stops at its next safe checkpoint.', moving: true},
   in_progress: {word: 'In progress', tone: TONE.active, moving: true},
   reused_in_flight: {word: 'Reused · in flight', tone: TONE.rest, moving: true},
-  // the waits (round 74): a first use, a choice sent and not yet read back, a recheck the owner is due
   preparing: {word: 'Preparing the workspace', tone: TONE.active, line: 'The first preparation runs while the local service runs; closing the page stops nothing.', moving: true},
   settling: {word: 'Settling', tone: TONE.active, line: 'The choice was sent; the owner\'s next readback says where the Task stands.', moving: true},
   recheck_due: {word: 'Recheck due', tone: TONE.attention, line: 'Listings the owner will check again at the next update; nothing is needed from you.'},
   // held: at its owner, or waiting for a person
   review_pending: {word: 'Waiting for a decision', tone: TONE.decision, line: 'Waiting for an authorized decision.', next: 'decide', held: true},
-  // U2: the words follow the recovery view, which may offer RECOVER once the cause is repaired
   blocked: {word: 'Blocked', tone: TONE.attention, line: 'The owner stopped the Task and recorded why.', next: 'read the reason, then take the way its Task offers', held: true},
   recovery_required: {word: 'Needs recovery', tone: TONE.attention, line: 'The Task was interrupted; its owner needs a supported recovery.', next: 'resume or cancel', held: true},
   deferred: {word: 'Deferred', tone: TONE.attention, line: 'Waiting for a condition or a scheduled retry at its owner; nothing is needed from you yet.', held: true},
@@ -46,7 +38,6 @@ const STATES = {
   authority_not_admitted: {word: 'Authority not admitted', tone: TONE.decision, line: 'The requested authority has not been admitted.'},
   historical: {word: 'Historical', tone: TONE.rest, line: 'Read-only readback, not current investment advice.'},
   metadata: {word: 'Metadata discovered', tone: TONE.rest, line: 'Identity found; contents not yet verified.'},
-  // the review's states (round 77): the desk's owner projection, each line the owner's meaning
   no_book_to_review: {word: 'No book to review', tone: TONE.rest, line: 'No sealed book is selected; nothing is inferred.'},
   evidence_authority_not_admitted: {word: 'Evidence authority not admitted', tone: TONE.attention, line: 'No issuer registry and listing authority are admitted for this workspace; coverage cannot be computed and nothing is invented.'},
   model_authority_not_admitted: {word: 'Answered by an agent', tone: TONE.rest, line: 'The product runs no model of its own: an agent answers the Analyst\'s packet and the CRO\'s dossier through its bundle. Sources are prepared locally, and published work stays readable.'},
@@ -95,7 +86,6 @@ const STATES = {
   available: {word: 'Available', tone: TONE.done, line: 'Present and proved; a prepared packet reads it.'},
   evicted_by_retention: {word: 'Evicted', tone: TONE.rest, line: 'Released by an approved cleanup; rebuilds from its committed vectors.'},
   missing_or_tampered: {word: 'Missing or tampered', tone: TONE.failure, line: 'The index file is not the one the record names; nothing reads it.'},
-  // the activity record's phases (round 63)
   admitted: {word: 'Admitted', tone: TONE.rest}, returned: {word: 'Returned', tone: TONE.rest}, requested: {word: 'Requested', tone: TONE.rest},
   recorded: {word: 'Recorded', tone: TONE.rest}, declared: {word: 'Declared', tone: TONE.rest}, payload_not_retained: {word: 'Payload not retained', tone: TONE.rest},
   candidate: {word: 'Candidate', tone: TONE.rest, line: 'A document the recorded package holds; not yet an admitted passage.'},
@@ -103,12 +93,10 @@ const STATES = {
   published: {word: 'Published', tone: TONE.done, line: 'Sealed and published by its owner.'},
   superseded: {word: 'Superseded', tone: TONE.attention, line: 'The policy or the binding moved; a newer preparation is needed.'},
 };
-// U117: an unknown state has no declared word; its exact code remains a fact.
+// An unknown state has no declared word; its exact code remains a fact rather than a guessed translation.
 const stateOf = (code) => { const key = String(code ?? '').toLowerCase(); const s = STATES[key]; return s ? {key, next: '', line: '', ...s} : {key, word: code ? 'Word not declared' : '', tone: TONE.rest, line: '', next: ''}; };
 const stateMoving = (code) => Boolean(stateOf(code).moving);
 const stateHeld = (code) => Boolean(stateOf(code).held);
-/* A stop's way on (N6, law 58): where the owner's code names its own, the same words on the Data
- * page, the Home and Tasks; any other stop keeps its state's next action. */
 const STOP_WAYS = {'data.truth_review_required': 'decide on Data issues', 'data.remediation_wait': 'continue it when the wait is over'};
 const wayOn = (code, state) => STOP_WAYS[code] ? t(STOP_WAYS[code]) : stateOf(state).next ? t(stateOf(state).next) : '';
 /* A duration in the reader's units: seconds under a minute, minutes under an hour, then hours
@@ -134,9 +122,6 @@ function durationOf(x) {
   if (!Number.isFinite(start)) return '';
   return Number.isFinite(end) && end >= start ? durationText(end - start) : '';
 }
-/* The stage table (round 78): every stage a Task reports, by its owner's id -- the word, the
- * line that says what the stage does and, for the preparation's steps, the note the unprepared
- * Home shows; the review's and the workspace's readers read it, none keeps its own (law 50). */
 const STAGES = {
   build_historical_tradability: {word: 'Build historical tradability'}, pre_research_delta_gate: {word: 'Pre research delta gate'},
   // the workspace preparation: the five steps, each with its note for the unprepared Home
@@ -145,7 +130,6 @@ const STAGES = {
   prepare_features: {word: 'Prepare Features', note: 'Prepare current Features and immutable panel outputs.', line: 'Building the current Features and the immutable panel from the prepared bars: the longest step for a full universe.'},
   publish_inputs: {word: 'Publish research inputs', note: 'Publish an immutable research input, distinct from mutable work data.', line: 'Publishing one immutable research input from the panel; working data stays separate.'},
   verify_inputs: {word: 'Verify inputs', note: 'Admit the input for research only after verification.', line: 'Verifying the published input before it can be selected for research.'},
-  // the data update's three stages (N6, law 134: the Home's, the Tasks' and the Data page's rows name a stage alike)
   validate_update_request: {word: 'Validate the request', note: 'Check the plan against the workspace as it stands now.'},
   maintain_data_feature: {word: 'Maintain data and Features', note: 'Fetch the new sessions for every admitted member, govern quality, maintain the Features and verify the Panel.'},
   publish_update_receipt: {word: 'Publish the receipt', note: 'Seal one receipt of what changed; working data stays separate from published inputs.'},
@@ -163,7 +147,6 @@ const STAGES = {
   admit_portfolio_review: {word: 'Admit the dossier', line: 'The dossier, policy and schema bindings of the assessment are checked.'},
   seal_portfolio_review_assessment: {word: 'Seal the assessment', line: 'The assessment is sealed against the dossier with the decision policy.'},
   publish_portfolio_review: {word: 'Publish the review', line: 'The review is published as a Host-routed recommendation without action authority.'},
-  // The remaining Task owners use the same stage word table (U117).
   prepare_component_training_inputs: {word: "Prepare component training inputs"},
   bind_research_training_sources: {word: "Bind research training sources"},
   materialize_local_formula_columns: {word: "Materialize local formula columns"},

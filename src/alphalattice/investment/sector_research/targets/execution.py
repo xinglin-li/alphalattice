@@ -247,7 +247,7 @@ def compile_sector_target_surface(
         if not formation < entry < exit_session:
             raise SectorResearchError("sector_research.target_schedule_clock_invalid")
 
-    # Each run of formations aggregates the Sectors in force there (V346); the Sector axis is
+    # Each run of formations aggregates the Sectors in force there; the Sector axis is
     # every Sector some formation reads, one run's while no reclassification falls inside it.
     runs = sector_runs(sector_by_listing_id, sessions, listings)
     sectors = tuple(

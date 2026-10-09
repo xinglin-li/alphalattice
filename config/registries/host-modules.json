@@ -36,6 +36,7 @@
     "src/alphalattice/control/product_host/composition/research_prerequisites.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/research_update_automation.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/research_workspace.py": "COMPOSITION",
+    "src/alphalattice/control/product_host/composition/resource_estimates.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/result_standing.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/rolling_portfolio_report.py": "COMPOSITION",

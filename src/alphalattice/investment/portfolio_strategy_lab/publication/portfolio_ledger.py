@@ -904,7 +904,7 @@ class PortfolioLedgerStore:
         """Read back a published page from the URI the result carries."""
         tail = uri.rsplit("/", maxsplit=1)[-1]
         content_hash, _, extension = tail.rpartition(".")
-        # A result sealed before V210 names its page `.bin`.
+        # A legacy result names its page `.bin`.
         if extension not in {"html", "bin"} or not content_hash:
             raise PortfolioLedgerStoreError("portfolio_application.html_uri_invalid")
         return self.load_html(content_hash)

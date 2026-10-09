@@ -171,8 +171,8 @@ class PanelDerivationBinding(_Contract):
     spy_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
     temporal_identity_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
     closure_head_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """Only on a binding published before V330: the closure ledger's head, which the write batch
-    decides; the ledger keeps it by snapshot, outside the Panel's identity."""
+    """A legacy binding's closure ledger head, which the write batch decides;
+    the ledger keeps it by snapshot, outside the Panel's identity."""
     recovery_recipe_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     recovery_disposition: Literal["RECOVERY_CLOSURE_VERIFIED", "PHYSICAL_RETENTION_REQUIRED"]
     derivation_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")

@@ -15,7 +15,7 @@ from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved,
 
 @pytest.fixture(autouse=True)
 def reader_zone_utc(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The workbench reads an instant in the reader's zone (law 133); the Node harnesses these
+    """The workbench reads an instant in the reader's zone; the Node harnesses these
     tests spawn read it in UTC, so an expected face never depends on the machine's zone."""
 
     monkeypatch.setenv("TZ", "UTC")

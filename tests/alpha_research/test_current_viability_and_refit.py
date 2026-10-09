@@ -150,7 +150,7 @@ def test_viability_uses_directional_dm_and_dynamic_holm_family() -> None:
 
 
 def test_a_refused_candidate_names_the_checks_it_failed() -> None:
-    """regression (V291): a significant candidate a positivity check refuses carries that
+    """Regression: a significant candidate a positivity check refuses carries that
     check's code, so its qualification record holds the evidence and the qualification seals
     its end instead of stopping on a record without failure evidence."""
     request, prepared, results = _candidate_results()

@@ -1,18 +1,18 @@
 # AlphaLattice architecture
-Date: 2026-10-03
+Date: 2026-10-08
 
-Local Web and the CLI reach the same owners for calculation, permissions, Tasks and publication. Neither a second numerical runtime nor an agent's role card adds authority. Public research uses these maintained interfaces; external Codex or Claude Code agents interpret product evidence and propose choices.
+Local Web and the CLI share owners for calculation, permissions, Tasks and publication. External Codex or Claude Code agents interpret evidence and propose choices; role cards add no authority. The [agent guide](../../AGENTS.md) owns the research steps and [choices that need you](../../AGENTS.md#what-only-a-person-decides).
 
-## Research and extension owners
+## Research owners
 
-Preparation publishes immutable research inputs. Factor evidence and a curation decision can support a non-current Foundation for Alpha; Risk is an upstream peer. Portfolio consumes declared inputs, and Evidence/CRO review a selected book. Reports are research evidence, not orders.
+Preparation publishes immutable inputs. Factor evidence and curation can support a non-current Alpha Foundation; Risk is an upstream peer. Portfolio consumes declared inputs, then Evidence and the CRO review the selected book. Reports are research evidence, never orders.
 
-Feature definitions are catalog data. The installed formula kernel parses the bounded expression, canonicalizes it and checks support and scale rules. Preprocessing owns cross-sectional transforms; the formula computes each listing's series. A person can activate an eligible formula, after which the next data update builds the daily catalog. Older Panels retain their binding. Sector-return formula leaves remain research-only until daily Panels admit those inputs. See [formula factors](formula-factors.md) for the scientific contract.
+Feature definitions are catalog data. The formula kernel parses bounded expressions, canonicalizes them and checks support and scale. Preprocessing owns cross-sectional transforms. Each formula computes a listing's series. After an eligible daily definition is activated, the next data update builds the daily catalog. Older Panels retain their binding. Sector-return leaves remain research-only until daily inputs are admitted. See [formula factors](formula-factors.md).
 
 ## History and records
 
-Panels keep membership and Sector history. A Sector refresh changes only sessions from its effective date and never rewrites published sessions. Temporal statements keep the evaluated window separate from input history, and name unknown treatments. See [temporal statements](temporal-statements.md).
+Panels retain membership and Sector history; refreshes affect only sessions from their effective date. [Temporal statements](temporal-statements.md) distinguish evaluated windows, input history and unknown treatments.
 
-Typed schemas resolve declarations before PLAN and RUN. Installed owners supply methods, budgets, cutoffs and supported options. Task Control owns admission, progress, cancellation and recovery; goal records link attributed Tasks to exact product reads. Text from a model is not publication authority. Agents run in their native hosts, and host-reported activity is not a transcript or proof of completion.
+Typed schemas resolve declarations before planning and running. Installed owners supply methods and supported options. Task Control owns admission, progress, cancellation and recovery. Goals link attributed Tasks to exact product reads. Model text grants no publication authority. Agents run in their native hosts, and host-reported activity proves neither a transcript nor completion.
 
-Raw data and current Features remain in local stores; immutable research arrays use content-addressed artifacts. Retention protects current, pinned and unfinished references. Source presence does not prove that external data, retrieval packs, permits or historical artifacts are installed; a missing capability is a typed refusal, not a simulated engine. The person's first-use goal delegates only its stated preparation steps for 24 hours. Other person-only decisions remain with the person.
+Raw data and Features stay in local stores; immutable arrays use content-addressed artifacts. Retention protects current, pinned and unfinished references. Missing data, packs, permits or artifacts produce a refusal.

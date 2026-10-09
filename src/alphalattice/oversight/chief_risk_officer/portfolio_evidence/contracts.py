@@ -593,7 +593,7 @@ def book_key(
         authority: The authority that sealed the book.
 
     Returns:
-        A digest equal for every review of the same book (V187).
+        A digest equal for every review of the same book.
     """
     return str(
         canonical_hash(

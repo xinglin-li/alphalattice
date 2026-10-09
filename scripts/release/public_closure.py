@@ -300,7 +300,20 @@ def _python(path: str, text: str, files: set[str]) -> set[Reference]:
             }
             and node.args
         ):
-            args.append(node.args[0])
+            command = node.args[0]
+            if (
+                isinstance(command, ast.List | ast.Tuple)
+                and len(command.elts) >= 2
+                and paths.values(command.elts[0]) == {"git"}
+                and paths.values(command.elts[1]) == {"log"}
+            ):
+                end = next(
+                    (i for i, item in enumerate(command.elts) if paths.values(item) == {"--"}),
+                    len(command.elts),
+                )
+                args.extend(command.elts[:end])  # History path filters do not read the checkout.
+            else:
+                args.append(command)
             kind = "PYTHON_EXEC"
         if name in {"importlib.import_module", "__import__"} and node.args:
             for value in paths.values(node.args[0]):

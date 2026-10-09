@@ -229,7 +229,7 @@ class AlphaEstimatorState(_Contract):
     """One fitted estimator's state in a qualification or the current refit.
 
     An installed family's state carries its kind's diagnostics (LINEAR coefficients, TREE
-    gains). An agent's model is bound to its adapter's projection instead (V342): its adapter,
+    gains). An agent's model is bound to its adapter's projection instead: its adapter,
     numerical binding, fit evidence and projected state, its family the model's own, and a kind
     other than LINEAR or TREE carries no diagnostics. The projection fields are absent from an
     installed family's state, so its identity is what it was.

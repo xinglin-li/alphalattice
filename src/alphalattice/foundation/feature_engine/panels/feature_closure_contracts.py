@@ -194,7 +194,7 @@ class FeatureBaseClosureTransitionMarker(_Contract):
 
 
 class PanelColumnClosureHead(_Contract):
-    """The closure head of one column catalog a layered Panel's rows were composed from (V92)."""
+    """The closure head of one column catalog a layered Panel's rows were composed from."""
 
     catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
     closure_head_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
@@ -244,7 +244,7 @@ class SectorRevisionMapActivationReceipt(_Contract):
     changed: bool
     observed_at: datetime
     effective_session: date | None = Field(default=None, exclude_if=lambda value: value is None)
-    """The session its reclassifications take effect from (V346); absent before the rule."""
+    """The session its reclassifications take effect from; absent before the rule."""
     receipt_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
@@ -261,7 +261,7 @@ _ROW_KEY = itemgetter(0, 1)
 
 
 class FeatureClosureFirstLoad(_Contract):
-    """A column part's first build, its rows written without per-key transitions (V92).
+    """A column part's first build, its rows written without per-key transitions.
 
     Prepared while the part's head is its genesis head and the part holds no row: the build
     writes the part's rows as it computes them, and completion advances the head to the digest

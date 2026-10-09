@@ -109,6 +109,48 @@ def test_storage_cap_counts_managed_models_panels_and_artifacts_and_follows_the_
     assert store.read().cap_bytes == "auto"
 
 
+def test_a_stage_scope_walks_once_and_still_refuses_the_crossing_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """requirement: in a stage's scope the managed trees are walked once and
+    each admission adds what the stage already admitted, so the write that crosses the cap
+    refuses at that write; the market database is read at every admission; the next stage
+    walks again, deletions included; outside a scope every admission walks."""
+    from alphalattice.control.product_host.storage import inventory
+
+    (tmp_path / "artifacts").mkdir()
+    (tmp_path / "artifacts/panel.bin").write_bytes(b"p" * 1000)
+    database = tmp_path / "market-data.duckdb"
+    database.write_bytes(b"d" * 500)
+    StorageCapStore(tmp_path).write(1600, chosen_by="HUMAN", chosen_at=datetime.now(UTC))
+    walks: list[Path] = []
+    walk = inventory.managed_file_inventory
+    monkeypatch.setattr(
+        inventory, "managed_file_inventory", lambda root: walks.append(root) or walk(root)
+    )
+
+    def refused(amount: int) -> None:
+        with pytest.raises(StorageInventoryError) as refusal:
+            require_storage_capacity(tmp_path, additional_bytes=amount)
+        assert refusal.value.failure_code == "storage.managed_capacity_exceeded"
+
+    with inventory.storage_capacity_scope():
+        require_storage_capacity(tmp_path, additional_bytes=40)
+        require_storage_capacity(tmp_path, additional_bytes=40)
+        refused(30)  # 1500 + 80 + 30 crosses 1600, refused at this write and not counted
+        require_storage_capacity(tmp_path, additional_bytes=20)  # exactly at the cap
+        database.write_bytes(b"d" * 501)  # the database grows under the stage's own writes
+        refused(0)
+        assert len(walks) == 1
+    (tmp_path / "artifacts/panel.bin").unlink()
+    with inventory.storage_capacity_scope():
+        require_storage_capacity(tmp_path, additional_bytes=1000)  # 501 + 1000: the deletion counts
+        assert len(walks) == 2
+    require_storage_capacity(tmp_path, additional_bytes=0)
+    require_storage_capacity(tmp_path, additional_bytes=0)
+    assert len(walks) == 4
+
+
 @pytest.mark.parametrize("value", [0, -1, True, 1.5, "0", "-1", "1.5", "unknown"])
 def test_storage_cap_rejects_values_that_are_not_positive_whole_bytes(
     tmp_path: Path, value: object

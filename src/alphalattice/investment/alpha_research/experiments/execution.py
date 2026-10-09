@@ -398,7 +398,7 @@ def _execute_fold(
             "family_id": projection.model_family_id,
             "state_kind": projection.state_kind,
             "ordered_factor_ids": fold.ordered_factor_ids,
-            "training_mse": fit.training_mse,
+            "training_mse": fit.measured_training_mse(),
             "validation_score_mean": float(np.mean(finite)) if finite.size else 0.0,
             "validation_score_std": float(np.std(finite, ddof=0)) if finite.size else 0.0,
             "validation_score_coverage": finite.size / scores.size if scores.size else 0.0,

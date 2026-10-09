@@ -1012,7 +1012,7 @@ def test_shared_session_cutoff_sets_stay_one_relation_per_batch(tmp_path) -> Non
     sets are conflicts that do nothing. Submitted per row that cost 3.3 s of the
     3.5 s each listing took; the fix offers each listing's whole set as one
     relation and lets the same conflict clause decide, and a batch offers a set an
-    earlier write of the batch inserted no more (V92). Counted here in
+    earlier write of the batch inserted no more. Counted here in
     *statements*, because the stored row count is identical either way -- which
     is exactly why the defect survived a workspace inspection.
     """
@@ -1193,7 +1193,7 @@ def test_batched_feature_persistence_matches_single_listing_reference(
     (
         # The second listing's rows, the first listing's already in the batch's transaction.
         ("current_write", 2),
-        # The batch's runs, inserted once after every listing's rows and receipts (V92).
+        # The batch's runs, inserted once after every listing's rows and receipts.
         ("rle_write", 1),
     ),
 )

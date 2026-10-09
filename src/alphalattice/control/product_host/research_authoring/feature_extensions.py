@@ -64,7 +64,7 @@ from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _LISTING_PAGE = 50
-"""Formula factors one page of `FEATURE_EXTENSIONS` lists (U56): the Local Web's table page."""
+"""Formula factors one page of `FEATURE_EXTENSIONS` lists: the Local Web's table page."""
 
 
 def _shipped() -> frozenset[str]:
@@ -91,7 +91,7 @@ def formula_goldens(
     """Each golden example of a formula's specification as the kernel computes it.
 
     A golden with no source rows (the one row short of a formula that needs one session) has no
-    value to compute: its result is the missing value it expects (V449, AX15's IndexError).
+    value to compute: its result is the missing value it expects (IndexError).
 
     Args:
         spec: The factor's declared recipe.
@@ -155,7 +155,7 @@ class FeatureExtensions:
     # ------------------------------------------------------------------ the listing
 
     def listing(self, *, page: int | None = None) -> dict[str, Any]:
-        """Every formula factor the workspace's research plans declare, a page at a time (U56).
+        """Every formula factor the workspace's research plans declare, a page at a time.
 
         One row per plan and factor its edits declare: the formula, its kernel and recipe,
         whether the factor is active, the latest trial of its methodology, and the requests
@@ -323,7 +323,7 @@ class FeatureExtensions:
     def _admission(self, spec: FactorSpec, recipe: str | None) -> dict[str, Any]:
         """Whether the active Panel admits the factor: by its recipe, and a research leaf never."""
         if spec.formula_ref in FORMULA_RESEARCH_IDS:
-            # The daily build carries no Sector child yet: a research factor (V359).
+            # The daily build carries no Sector child yet: a research factor.
             return {
                 "admitted": False,
                 "reason": f"feature_extension.sector_leaf_research_only:{spec.factor_id}",
@@ -408,8 +408,7 @@ class FeatureExtensions:
             "activation": None if activation is None else activation.model_dump(mode="json"),
         }
         held = self._held(packet, factor_id)
-        # What the packet can claim, one standing from its marks, in what a person reviews
-        # (V368).
+        # What the packet can claim, one standing from its marks, in what a person reviews.
         packet["standing"] = packet_standing(
             contract=contract,
             trials=packet["trials"],
@@ -499,8 +498,8 @@ class FeatureExtensions:
         alpha = comparison.get("alpha_without_and_with")
         if isinstance(alpha, dict):
             body["alpha_change"] = alpha.get("change")
-            # Whether the owner compared the two Alpha studies, and its words when it did not
-            # (V363): the packet a person activates from says so (U56).
+            # The packet a person activates from says whether the owner compared the two
+            # Alpha studies, and gives its words when it did not.
             body["alpha_standing"] = alpha.get("standing")
             owner = alpha.get("owner_comparison")
             if alpha.get("standing") == "NOT_COMPARED" and isinstance(owner, dict):
@@ -595,7 +594,7 @@ class FeatureExtensions:
 
     @staticmethod
     def _held(packet: dict[str, Any], factor_id: str) -> str | None:
-        """The code a person's activation is refused with now; None when it is not (V368)."""
+        """The code a person's activation is refused with now; None when it is not."""
         if factor_id in _shipped():
             return f"feature_extension.shipped:{factor_id}"
         if packet["contract"]["status"] != "PASSED":

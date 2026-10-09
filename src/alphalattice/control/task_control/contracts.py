@@ -47,7 +47,7 @@ class ContractModel(BaseModel):
 
 
 class StageFailureCause(ContractModel):
-    """What a stage's owner saw when its work failed, kept beside the stable code (V444).
+    """What a stage's owner saw when its work failed, kept beside the stable code.
 
     The code names the refusal; the cause says what was raised, in which step and on which
     unit of work, so a reader can tell an exhausted machine (a `MemoryError`, a paging file
@@ -110,7 +110,7 @@ class StageFailureCause(ContractModel):
 
 
 def _cause_absent(identity: dict[str, Any]) -> dict[str, Any]:
-    """A work item's identity without an absent cause: states sealed before V444 verify."""
+    """Omit an absent failure cause so states sealed without that field still verify."""
     if identity.get("failure_cause") is None:
         return {key: value for key, value in identity.items() if key != "failure_cause"}
     return identity
@@ -568,7 +568,7 @@ class WorkItemState(ContractModel):
         attempt_count: Nonnegative stage execution count.
         evidence: Unique retained evidence references.
         failure_code: Optional stable failure cause.
-        failure_cause: What the owner saw beside that code, when it said (V444).
+        failure_cause: The owner's recorded explanation of that failure.
         started_at: Optional first stage execution clock.
         updated_at: Last stage-state clock.
         version: Positive state version.
@@ -939,7 +939,7 @@ class TaskSafeProjection(ContractModel):
 
 
 class TaskReplan(ContractModel):
-    """How the owner that admits a Task kind plans it again (V188).
+    """How the owner that admits a Task kind plans it again.
 
     A distinct `preview` records a plan and admits nothing; `admitting` admits a Task and
     needs that owner's own confirmation. When both name the same operation, the re-plan

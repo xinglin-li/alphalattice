@@ -600,7 +600,7 @@ def _failed_baseline_portfolio_inputs(
 ) -> tuple[ImmutablePortfolioMarketInputs, ImmutablePortfolioBenchmark, npt.NDArray[np.int64]]:
     """A failed baseline's Portfolio inputs, which it sealed as a dynamic-panel input surface.
 
-    That format's readback retired with SR (2026-09-27): no kept workspace holds one, so a
+    That format's readback is retired: no kept workspace holds one, so a
     baseline that names one is refused by name.
     """
     del baseline
@@ -742,7 +742,7 @@ def _corrected_sector_map(
         )
     except (FileNotFoundError, ValueError) as error:
         raise AuthoringError("alpha_research.panel_sector_map_readback_failed") from error
-    # The Sector each session read: the recipe's map, then its reclassifications (V346).
+    # The Sector each session read: the recipe's map, then its reclassifications.
     history = recipe_sector_history(recipe, value)
     if set(history) != set(recipe.listing_ids):
         raise AuthoringError("alpha_research.panel_sector_map_axis_mismatch")
@@ -821,7 +821,7 @@ def _rebind_portfolio_sector_authority(
     sector_by_listing_id: Mapping[str, str],
     ordered_sector_ids: tuple[str, ...],
 ) -> ImmutablePortfolioMarketInputs:
-    # Each formation's exposure from the Sectors in force at it (V346).
+    # Each formation's exposure from the Sectors in force at it.
     exposure, equal_weight = sector_exposures(
         market.ordered_listing_ids,
         ordered_sector_ids,
@@ -1532,7 +1532,7 @@ def resolve_fixed_portfolio_market(
         raise AuthoringError("alpha_research.portfolio_outcome_axis_incomplete") from error
     realized = _readonly(source.raw_simple_execution_returns[np.ix_(rows, columns)])
     sector_ids = source.ordered_sector_ids
-    # Each formation's exposure from the Sectors in force at it (V346).
+    # Each formation's exposure from the Sectors in force at it.
     sector_exposure, equal_sector = sector_exposures(
         listings, sector_ids, source.sector_by_listing_id, sessions=sessions
     )

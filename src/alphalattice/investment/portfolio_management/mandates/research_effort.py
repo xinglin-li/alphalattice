@@ -1,8 +1,7 @@
 """The research desk's candidate inventory and its cards.
 
 The Alpha model, Risk candidate and Portfolio scenario cards, in the order the inventory seals.
-The PM's effort resolution and the inventories' loaders left with V327; the loaders are the
-tests' fixtures.
+Inventory loaders live in the tests' fixtures.
 """
 
 from __future__ import annotations

@@ -1113,7 +1113,7 @@ def test_preflight_authority_failure_blocks_instead_of_reporting_no_verdict(
 
 
 def test_only_the_foundation_writes_its_rebuild_requirement() -> None:
-    """regression (V159): Market Data's activation inserted the Foundation's rebuild requirement
+    """Regression: Market Data's activation inserted the Foundation's rebuild requirement
     by its own SQL, a state the storage registry gives to Foundation; the owner defines the
     insert and the activation runs it as the caller's step, inside its transaction."""
 
@@ -1136,7 +1136,7 @@ class UnawareZone(tzinfo):
 
 @pytest.mark.parametrize("zone", [None, UnawareZone()])
 def test_daily_source_finality_refuses_an_unaware_close_by_name(zone):
-    """V610: a missing offset cannot be assigned UTC meaning at the finality boundary."""
+    """a missing offset cannot be assigned UTC meaning at the finality boundary."""
     with pytest.raises(
         ValueError, match=r"^workspace_readiness\.session_close_timestamp_not_timezone_aware$"
     ):
@@ -1145,6 +1145,6 @@ def test_daily_source_finality_refuses_an_unaware_close_by_name(zone):
 
 @pytest.mark.parametrize("zone", [UTC, timezone(timedelta(hours=-4))])
 def test_daily_source_finality_keeps_an_aware_close(zone):
-    """V610: aware UTC and exchange-local instants retain the same two-hour finality rule."""
+    """aware UTC and exchange-local instants retain the same two-hour finality rule."""
     close = datetime(2026, 10, 2, 16, tzinfo=zone)
     assert daily_source_ready_at(close) == close + timedelta(hours=2)

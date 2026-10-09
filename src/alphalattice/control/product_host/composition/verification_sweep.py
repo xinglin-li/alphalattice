@@ -1,4 +1,4 @@
-"""Every saved study verified again in full: the sweep and the verify-all request (V89).
+"""Every saved study verified again in full: the sweep and the verify-all request.
 
 A study read may answer from its last full verification while its files keep their path, size,
 modification time and file identity (decision 5). A change that keeps all four is caught by the
@@ -100,7 +100,7 @@ class StudyVerificationSweep:
             admitting="EXPERIMENT_VERIFY_ALL",
         ),
     )
-    """A sweep is asked for again, not planned (V188's recovery view)."""
+    """The recovery view asks for a sweep again without a separate plan."""
 
     def __init__(
         self,

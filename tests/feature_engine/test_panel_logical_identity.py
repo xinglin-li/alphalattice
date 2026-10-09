@@ -289,7 +289,7 @@ def _later() -> datetime:
 
 
 def test_the_write_batch_does_not_enter_a_panels_derivation_binding(tmp_path: Path) -> None:
-    """regression (V330): the Feature closure's head is decided by how many listings each
+    """Regression: the Feature closure's head is decided by how many listings each
     transition writes, an execution parameter, and it entered every Panel's derivation binding;
     two closures of one Panel that differ only in their heads publish one binding, without one."""
 

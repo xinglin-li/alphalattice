@@ -1645,9 +1645,8 @@ class PortfolioResearchResult(_Contract):
     report_uri: str
     html_uri: str
     export_command: str | None = None
-    """The command that reproduced the request, held only by a result published before V403,
-    whose hash covers its words; a later result's is composed from its Task's request when read,
-    so a script's grammar never moves a result's identity."""
+    """A legacy result's command, whose hash covers its words; a current result's command
+    is composed from its Task's request when read, so grammar never moves the result's identity."""
 
     result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
@@ -1664,7 +1663,7 @@ class PortfolioResearchResult(_Contract):
         """
         members = self.model_dump(mode="json", exclude={"action", "result_hash"})
         if members["export_command"] is None:
-            # Its identity binds the request (spec_hash), never the words of a command (V403).
+            # Its identity binds the request (spec_hash), never the words of a command.
             del members["export_command"]
         if self.result_hash != canonical_hash(members):
             raise PortfolioApplicationError("portfolio_application.result_identity_invalid")

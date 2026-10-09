@@ -169,6 +169,51 @@ class AlphaModelLifecycleRecipe(_LifecycleContract):
             score_aggregation=recipe.score_aggregation,
         )
 
+    @classmethod
+    def named(cls, recipe: AlphaProductRecipeView, configuration: ModelLifecycle) -> Self:
+        """The component's lifecycle under an installed configuration.
+
+        FULL is the component recipe's own, exactly `from_component`. LIGHT, the default, trains
+        a third of the models with the same calendar, window, purge, vintages and aggregation
+        (`LIGHT_LIFECYCLE`).
+        """
+        full = cls.from_component(recipe)
+        if configuration == "FULL":
+            return full
+        values = full.model_dump(exclude={"content_hash"})
+        return cls.create(**{**values, "seeds": tuple(recipe.seeds[: LIGHT_LIFECYCLE.seed_count])})
+
+
+ModelLifecycle = Literal["LIGHT", "FULL"]
+"""An installed lifecycle: the product's light default, or the component's full one."""
+
+DEFAULT_MODEL_LIFECYCLE: ModelLifecycle = "LIGHT"
+
+
+class _LightLifecycle(BaseModel):  # type: ignore[misc]
+    """What the light default keeps of the full lifecycle.
+
+    Training cost scales with the models fitted and scored, so the light default fits one seed of
+    each vintage, where the full lifecycle fits three, on the same refit calendar and vintages.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    seed_count: int = Field(ge=1)
+    """How many of the component's seeds it fits, in their order."""
+
+
+LIGHT_LIFECYCLE = _LightLifecycle(seed_count=1)
+
+
+def model_lifecycle_of(
+    recipe: AlphaProductRecipeView, lifecycle_hash: str
+) -> ModelLifecycle | None:
+    """Which installed configuration a lifecycle is for this component, or None for neither."""
+    for configuration in ("LIGHT", "FULL"):
+        if AlphaModelLifecycleRecipe.named(recipe, configuration).content_hash == lifecycle_hash:
+            return configuration
+    return None
+
 
 class ResolvedAlphaRefitPlan(_LifecycleContract):
     """One immutable, cutoff-bound period; inputs must prove these exact axes."""
@@ -232,4 +277,11 @@ def resolve_alpha_refit_plan(
     )
 
 
-__all__ = ["AlphaLifecycleDisposition", "AlphaLifecycleError"]
+__all__ = [
+    "DEFAULT_MODEL_LIFECYCLE",
+    "LIGHT_LIFECYCLE",
+    "AlphaLifecycleDisposition",
+    "AlphaLifecycleError",
+    "ModelLifecycle",
+    "model_lifecycle_of",
+]

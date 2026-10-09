@@ -1660,6 +1660,72 @@ class FeatureInputRemediationExecutor:
         raise ValueError("unsupported Feature Input remediation action")
 
 
+class FeatureBaselinePopulationError(ValueError):
+    """Too few candidates qualify for the baseline: its counts and why, beside the stable code.
+
+    `cause` is in a Task stage's failure-cause fields, so the preparation that stops on it shows
+    how many qualified against what the rule needs and why the others did not.
+    """
+
+    def __init__(self, cause: dict[str, object]) -> None:
+        """Keep the shortfall's cause under the stable refusal code."""
+        super().__init__("feature.baseline_qualified_population_insufficient")
+        self.cause = cause
+
+
+def _population_shortfall(
+    *,
+    session: date,
+    candidates: int,
+    counts: Mapping[str, int],
+    minimum: int,
+    excluded: Mapping[str, tuple[str, ...]],
+    latest_bar: date | None,
+) -> dict[str, object]:
+    """The baseline's shortfall in one sentence, which the Task's failure cause bounds:
+    qualified against the rule, the sectors short of it, and the unqualified grouped by their
+    first reason, the largest group first."""
+    reasons: dict[str, int] = defaultdict(int)
+    for codes in excluded.values():
+        kind, _, rest = codes[0].partition(":")
+        # A feature's reason without its factor, so one cause over many factors counts once.
+        why = rest.partition(":")[2]
+        reasons[f"{kind}:{why}" if why else kind] += 1
+    short = sorted((name, count) for name, count in counts.items() if count < minimum)
+
+    def worded(reason: str) -> str:
+        if reason == "BASE_MARKET_OBSERVATION_UNAVAILABLE":
+            latest = f" (latest bar {latest_bar})" if latest_bar is not None else ""
+            return f"no market observation at the session{latest}"
+        kind, _, why = reason.partition(":")
+        return f"a base feature not computable ({why})" if why else kind
+
+    detail = (
+        f"{sum(counts.values())} of {candidates} candidates qualify at {session}; the baseline "
+        f"needs at least one, and {minimum} in each sector present."
+        + (
+            " Short: " + ", ".join(f"{name} {count}" for name, count in short) + "."
+            if short
+            else ""
+        )
+        + (
+            " Not qualified: "
+            + "; ".join(
+                f"{count} {worded(reason)}"
+                for reason, count in sorted(reasons.items(), key=lambda item: -item[1])
+            )
+            + "."
+            if reasons
+            else ""
+        )
+    )
+    return {
+        "exception_type": FeatureBaselinePopulationError.__name__,
+        "detail": detail,
+        "step": "baseline_qualification",
+    }
+
+
 @dataclass
 class FeatureInputGovernanceService:
     """Composition owner that serializes durable Gateway results through one writer."""
@@ -1680,9 +1746,11 @@ class FeatureInputGovernanceService:
     ) -> FeatureInputGatewayResult:
         """Qualify initial members or new candidates; never requalify history by implication.
 
-        Before U0, the candidate pass rate is not Panel coverage. Panel coverage
+        Before initial-cohort admission, the candidate pass rate is not Panel coverage.
+        Panel coverage
         is subsequently measured on the qualified cohort without changing its
-        floors. After U0 only new candidates are checked; existing members keep
+        floors. After initial-cohort admission only new candidates are checked;
+        existing members keep
         their prior qualification and dated usability. The journal is committed
         separately by the membership caller, not by this Feature admission.
         """
@@ -1719,12 +1787,14 @@ class FeatureInputGovernanceService:
             )
             for listing, reasons in qualification.exclusions
         }
+        latest_bar: date | None = None
         for listing in qualification.pending_listing_ids:
-            if qualification.session in self.market_data.raw_bar_sessions(
-                listing, through=qualification.session
-            ):
+            sessions = self.market_data.raw_bar_sessions(listing, through=qualification.session)
+            if qualification.session in sessions:
                 raise ValueError("feature.baseline_member_row_not_materialized")
             excluded[listing] = ("BASE_MARKET_OBSERVATION_UNAVAILABLE",)
+            if sessions and (latest_bar is None or sessions[-1] > latest_bar):
+                latest_bar = sessions[-1]
         admitted = tuple(sorted(set(qualification.eligible_listing_ids) | (candidates & prior)))
         counts: dict[str, int] = {}
         for listing in admitted:
@@ -1732,7 +1802,16 @@ class FeatureInputGovernanceService:
             counts[name] = counts.get(name, 0) + 1
         policy = self.gateway.policy
         if not admitted or any(count < policy.minimum_sector_size for count in counts.values()):
-            raise ValueError("feature.baseline_qualified_population_insufficient")
+            raise FeatureBaselinePopulationError(
+                _population_shortfall(
+                    session=qualification.session,
+                    candidates=len(candidates - prior),
+                    counts=counts,
+                    minimum=policy.minimum_sector_size,
+                    excluded=excluded,
+                    latest_bar=latest_bar,
+                )
+            )
         for domain in FEATURE_QUALIFICATION_DOMAINS:
             for held in self.panel_state.active_listing_quarantines(
                 parent.revision_sha256,

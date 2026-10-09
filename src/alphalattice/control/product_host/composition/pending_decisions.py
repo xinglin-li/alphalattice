@@ -1,7 +1,7 @@
 """What waits on a person, and what the agent carries, in one read (binding plan, N5).
 
-A Task that stopped and needs a person's choice; a data issue whose options only a person may
-confirm; an upgrade not yet acknowledged; a Factor study nobody has curated; an explored study
+A Task that stopped and needs a person's choice; a data issue awaiting the authorized caller's
+confirmation; an upgrade not yet acknowledged; a Factor study nobody has curated; an explored study
 nobody has promoted; a review sealed under an earlier Evidence binding; the CRO's latest
 review of a book when its recommendation asks a person to act; a workspace with no verified
 research input; data newer than the newest input; a PLAN previewed and not run (V45). Each owner
@@ -78,8 +78,7 @@ def _data_issues(readback: Mapping[str, Any]) -> list[dict[str, Any]]:
         {
             "kind": "DATA_ISSUE",
             "case_token": case,
-            "detail": "A data issue offers options only a person may confirm; preview one to "
-            "see its consequences first.",
+            "detail": "A data issue offers options; preview one to see its consequences first.",
             "next_requests": requests,
         }
         for case, requests in sorted(cases.items())
@@ -317,6 +316,7 @@ def pending_decisions(
     Returns:
         Ordered pending decisions, counts by kind and a plain summary; no decision is executed.
     """
+    delegated = first_use is not None
     items = [
         *_first_use(first_use),
         *_workspace(preparation or {}, inputs or {}, data_update or {}),
@@ -328,7 +328,6 @@ def pending_decisions(
         *_reviews(overview),
         *_recommendations(overview),
     ]
-    delegated = first_use is not None
     counts: dict[str, int] = {}
     for item in items:
         goal_ids = {str(item["goal_id"])} if item["kind"] == "FIRST_USE" else set()

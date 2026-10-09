@@ -1,4 +1,4 @@
-"""How many Tasks may wait behind the running one: the Task queue's places (V100, LAWS PA2).
+"""How many Tasks may wait behind the running one: the Task queue's places (LAWS PA2).
 
 An execution setting, the operator's: it paces work and decides no number, so it enters no
 identity. A person sets it in the Local Web's settings and an agent by the CLI, beside the CPU

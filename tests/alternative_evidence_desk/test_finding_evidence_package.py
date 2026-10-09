@@ -39,7 +39,7 @@ from tests.alternative_evidence_desk.review_http_support import (
 )
 
 ONE_UNIT = "u01"
-"""The book's only unit: every book is prepared as a coverage run (C2)."""
+"""The book's only unit: every book is prepared as a coverage run."""
 
 
 def _operation(service: _Service, document: dict[str, Any]) -> dict[str, Any]:
@@ -65,7 +65,7 @@ def test_a_finding_is_read_as_its_evidence_package_before_and_after_review(
             UUID(task_id), now=service.review.clock(), unit_id=ONE_UNIT
         )
         # The page's packet names which question found each passage and
-        # instructs no one: the agent reads its bundle (C1).
+        # instructs no one: the agent reads its bundle.
         exported = _operation(
             service,
             {

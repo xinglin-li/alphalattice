@@ -440,7 +440,7 @@ def _build_risk_executor(
     if manifest is None:
         raise AuthoringError("research_authoring.universe_handle_unresolved")
     feature_state = FeatureStateRepository(store.database, market_data=store)
-    # The Sector each formation reads, from the store's history (V346).
+    # The Sector each formation reads, from the store's history.
     sector = feature_state.sector_history(manifest)
     if sector is None:
         raise AuthoringError("research_authoring.sector_evidence_unavailable")
@@ -1449,7 +1449,7 @@ def _build_alpha_executor(
     recipes = installed_alpha_target_methods(
         sector_revision=str(dict(lineage)["sector_revision"]),
         execution_outcome_recipe_id=outcome_seal.method_bound.recipe_id,
-        # What the Panel's sessions read (V346).
+        # What the Panel's sessions read.
         sector_history_treatment=sector_treatment(
             reclassified=bool(dict(lineage).get("sector_reclassifications"))
         ),

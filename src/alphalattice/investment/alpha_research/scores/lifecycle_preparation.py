@@ -28,6 +28,7 @@ from alphalattice.investment.alpha_research.scores.model_renewal import (
 )
 from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     AlphaModelLifecycleRecipe,
+    ModelLifecycle,
     resolve_alpha_refit_plan,
 )
 from alphalattice.kernel.shared_kernel.spans import span
@@ -42,6 +43,7 @@ def prepare_component_lifecycle(
     environment_hash: str,
     cancelled: Callable[[], bool],
     progress: Callable[[str], None],
+    lifecycle: ModelLifecycle,
 ) -> tuple[AlphaModelLifecycleAdmission, tuple[tuple[str, str], ...]]:
     """Publish one component's training observations, refit plans and lifecycle admission.
 
@@ -57,6 +59,8 @@ def prepare_component_lifecycle(
         environment_hash: The prediction owner's environment the admission records.
         cancelled: Asked at each vintage's safe checkpoint.
         progress: Told each vintage it preflights.
+        lifecycle: The installed configuration the admission binds: the light default or the
+            component's full lifecycle.
 
     Returns:
         The published admission, and each vintage set aside with its refusal code.
@@ -72,7 +76,7 @@ def prepare_component_lifecycle(
             source=source,
             training=training,
         )
-    rule = AlphaModelLifecycleRecipe.from_component(component)
+    rule = AlphaModelLifecycleRecipe.named(component, lifecycle)
     prepared = []
     rejected: list[tuple[str, str]] = []
     vintages = sorted({v for day in source.formation_sessions for v in rule.vintages(day)})

@@ -3,18 +3,18 @@
 `model check` runs it on a declared model; the tests run it on the installed catalog. Each check
 passes or names what it found, as a code:
 
-- `route`: the declaration, the adapter and the domain name one model, and the adapter declares
+`route`: the declaration, the adapter and the domain name one model, and the adapter declares
   its numerical binding;
-- `search_axes`: every point the axes' probes state is admitted by the adapter's own refusals;
-- `fit_protocol`: the reference recipe fits by the protocol the declaration states;
-- `determinism`: two fits under the recipe's seed, at one thread (the fit's default; the
+`search_axes`: every point the axes' probes state is admitted by the adapter's own refusals;
+`fit_protocol`: the reference recipe fits by the protocol the declaration states;
+`determinism`: two fits under the recipe's seed, at one thread (the fit's default; the
   operator's threads are W10's canary's to prove), give one estimator and one prediction;
-- `prediction_rows`: predictions are finite float64, one per row, read only, and a row's
+`prediction_rows`: predictions are finite float64, one per row, read only, and a row's
   prediction reads that row alone;
-- `state`: the fit's state is one a development study seals: a LINEAR state carries a
+`state`: the fit's state is one a development study seals: a LINEAR state carries a
   coefficient per feature with its diagnostics, a TREE state its trees' hash, iterations and a
-  gain per feature, and a state of the model's own kind its payload (V342);
-- `imports`: every library the adapter's module imports is held by the lock. A library outside
+  gain per feature, and a state of the model's own kind its payload;
+`imports`: every library the adapter's module imports is held by the lock. A library outside
   it is a new dependency, which a person approves first (the user, 2026-09-30).
 
 The environment a fit ran in is recorded beside it (the fit provenance), never compared here.
@@ -70,7 +70,7 @@ STATE_CONTRACT: Mapping[str, Mapping[str, str]] = {
 }
 """The payload a LINEAR or TREE state projection carries: each field and its type and shape,
 the development study's own rule (`AlphaDevelopmentEstimatorState`); a model of another kind
-seals a generic state (V342, V350)."""
+seals a generic state."""
 _TRAINING_ROWS, _PREDICTION_ROWS, _FEATURES = 400, 100, 6
 
 
@@ -279,7 +279,7 @@ def contract_findings(
         payload = projection.payload
         # The development study's own rule (`AlphaDevelopmentEstimatorState`), checked
         # before a study meets it: an incomplete state stops a study as an interruption. The
-        # refusal names each field absent or of the wrong length (V350).
+        # refusal names each field absent or of the wrong length.
         fields = STATE_CONTRACT.get(projection.state_kind)
         if fields is None:
             return None
@@ -311,7 +311,7 @@ def contract_findings(
 
 
 def _expected(code: str | None) -> dict[str, dict[str, str]]:
-    """What an incomplete state lacks: each field with its type and shape (V350)."""
+    """What an incomplete state lacks: each field with its type and shape."""
     if code is None or "_state_incomplete:" not in code:
         return {}
     kind = code.removeprefix("model_contract.").split("_", 1)[0].upper()
@@ -345,7 +345,7 @@ def _subject(
 
 
 def contract_key(model_id: str, *, root: Path | None = None) -> str:
-    """What a model's contract answer depends on, by content: one key per identity (V353).
+    """What a model's contract answer depends on, by content: one key per identity.
 
     The declaration, the numerical binding, the search domain, the source bytes of the adapter's
     module and the lock; reading them costs milliseconds, where the contract fits the model.

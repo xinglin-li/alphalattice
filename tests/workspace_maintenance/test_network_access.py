@@ -1,4 +1,4 @@
-"""The workspace network control reads closed on anything its writer does not write (V271)."""
+"""The workspace network control reads closed on anything its writer does not write."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from alphalattice.control.workspace_runtime.network_access import (
 
 
 def test_the_written_control_opens_and_closes_the_network(tmp_path: Path) -> None:
-    """requirement (C1 rule 7): the written control decides, the operator's switch first."""
+    """The written network control obeys the operator's switch."""
 
     assert network_access(tmp_path, environment={}).decided_by == "DEFAULT"
     set_network_access(tmp_path, enabled=True)
@@ -58,7 +58,7 @@ def test_the_written_control_opens_and_closes_the_network(tmp_path: Path) -> Non
 def test_anything_but_a_version_one_mapping_with_a_boolean_reads_closed(
     tmp_path: Path, document: str
 ) -> None:
-    """regression (V271, OP5): a JSON array raised AttributeError and version 999 with
+    """regression (OP5): a JSON array raised AttributeError and version 999 with
     ``network_enabled: true`` opened the network; each reads as the control, closed."""
 
     path = tmp_path / CONTROL_PATH
@@ -69,7 +69,7 @@ def test_anything_but_a_version_one_mapping_with_a_boolean_reads_closed(
 
 
 def test_a_delegated_setting_holds_until_its_end_with_no_write(tmp_path: Path) -> None:
-    """regression (V452, OP5, OP19; an outside review at 118f6378): a first-use goal's network
+    """regression (OP5, OP19; an outside review at 118f6378): a first-use goal's network
     stayed open after its hours, since only a later write closed it. The delegation's setting
     carries its end, and reads closed after it at every read, idle or not; the page reads who
     set it."""
@@ -80,7 +80,7 @@ def test_a_delegated_setting_holds_until_its_end_with_no_write(tmp_path: Path) -
     after = network_access(tmp_path, environment={}, now=end + timedelta(hours=1))
     assert before.allowed and not after.allowed
     assert before.body()["set_by"] == {"delegation": "first-use-goal:g", "until": end.isoformat()}
-    # The operator's switch decides, and who set the control is still named (U70).
+    # The operator's switch decides, and who set the control is still named.
     held = network_access(tmp_path, environment={"ALPHALATTICE_NETWORK_DISABLED": "1"}, now=end)
     assert held.decided_by == "OPERATOR_OFFLINE_SWITCH" and held.body()["set_by"]
     set_network_access(tmp_path, enabled=True)

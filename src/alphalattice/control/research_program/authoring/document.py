@@ -46,7 +46,7 @@ def require_authoring_document(document: object) -> dict[str, Any]:
     """Check an authoring document given as an object, as a parsed YAML one is checked.
 
     A document sent as an object skipped the YAML entry's guard, so `risk.module`
-    was refused as YAML and accepted as an object (V134); both entries run this one
+    was refused as YAML and accepted as an object; both entries run this one
     check.
 
     Args:

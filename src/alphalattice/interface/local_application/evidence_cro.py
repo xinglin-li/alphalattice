@@ -258,11 +258,11 @@ class EvidenceCroUnitProgress:
     work: EvidenceCroStageWork | None = None
     """While the unit's run continues: its current stage's count (section 10.10)."""
     detail: str | None = None
-    """A failed unit's words: what stopped it and what to do (V541)."""
+    """A failed unit's words: what stopped it and what to do."""
     next_action: str | None = None
     issuers_without_source: tuple[str, ...] | None = None
     """A unit failed for its sources: its issuers without a source document; None where the
-    failure names none, as a failure sealed before V541 does not."""
+    failure names none, including legacy failures that did not record this field."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -372,7 +372,7 @@ class EvidenceCroProjection:
     """Per-unit progress of the book's coverage run, whenever a scope exists."""
     source_ways: dict[str, object] | None = None
     """Where units failed for too few sources under the recorded package: the person's official
-    acquisition, and the package covering the heaviest such unit (V541)."""
+    acquisition, and the package covering the heaviest such unit."""
     available_actions: tuple[str, ...] = field(default=("REFRESH_EVIDENCE", "REVIEW_WITH_CRO"))
     """The managed (Provider-backed) operations this workspace admits now; empty
     without an admitted credential. Native preparation, packet, dossier and

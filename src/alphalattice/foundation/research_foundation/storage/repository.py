@@ -47,7 +47,7 @@ class ResearchFoundationStateRepository(WorkspaceRepository):
         next_manifest_revision: str,
         at: datetime,
     ) -> None:
-        """Record that an activated membership transition needs its Foundation rebuilt (V159).
+        """Record that an activated membership transition needs its Foundation rebuilt.
 
         This owner defines the transition; Market Data's activation runs it inside its own
         transaction, as the data platform composes it, so activation stays atomic.

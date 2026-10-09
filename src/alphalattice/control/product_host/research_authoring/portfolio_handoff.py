@@ -185,7 +185,7 @@ def hold_under_scored_formations(
     A rebalance selects ``selected`` names from those the candidate scored. On a formation the
     candidate scored fewer -- a feature unavailable across the universe, say -- the book holds
     its drifted positions, as on an embargo session, rather than select from a pool too small
-    for it (V500). A book starts and ends on a scored formation, so either end under-scored is
+    for it. A book starts and ends on a scored formation, so either end under-scored is
     refused by its session.
 
     Args:
@@ -303,7 +303,7 @@ def prepare_portfolio_handoff(
     )
     if spec.alpha_task_id != alpha_task_id or spec.candidate_id != candidate_id:
         raise AuthoringError("portfolio_research.alpha_selection_mismatch")
-    # A catalog policy runs in place of the tranche book, whose own fields then stay unset (V310).
+    # A catalog policy runs in place of the tranche book, whose own fields then stay unset.
     if spec.policy is not None and any(
         getattr(spec, name) != PortfolioExperimentSpec.model_fields[name].default
         for name in TRANCHE_FIELDS
@@ -311,7 +311,7 @@ def prepare_portfolio_handoff(
         raise AuthoringError("portfolio_research.policy_book_conflict")
     # An inverse-volatility rule weighs by a Risk study's lane and a catalog policy by its
     # covariance; equal weight reads none, so a linked study it would not read is refused
-    # rather than bound unread (V310).
+    # rather than bound unread.
     reads_risk = spec.weight_rule != "ew" or spec.policy is not None
     if reads_risk and spec.risk_task_id is None:
         raise AuthoringError("portfolio_research.risk_study_required")
@@ -367,7 +367,7 @@ def prepare_portfolio_handoff(
         raise AuthoringError("portfolio_research.alpha_market_axis_mismatch")
     if risk is not None:
         # The Risk study reads the same research input, Panel and universe as the Alpha scores,
-        # and covers every formation and listing the book weighs (V310).
+        # and covers every formation and listing the book weighs.
         if (
             risk.input_binding_hash != input_binding_hash
             or risk.panel_snapshot_hash != bundle.panel_snapshot_hash
@@ -379,7 +379,7 @@ def prepare_portfolio_handoff(
         if not set(scores.listings) <= set(risk.ordered_listing_ids):
             raise AuthoringError("portfolio_research.risk_listing_axis_incomplete")
     # A rebalance selects the book's names from those the candidate scored; a formation it
-    # under-scored is held, as an embargo session is (V500).
+    # under-scored is held, as an embargo session is.
     scores, under_scored = hold_under_scored_formations(
         scores, spec.top_k if spec.policy is None else spec.policy.top_k
     )
@@ -454,7 +454,7 @@ def prepare_portfolio_handoff(
         "listing_count": len(scores.listings),
         "expected_numerical_calls": len(sessions) + 1,
         "fit_calls": 0,
-        # At least one solve at each scored formation, for a solver-backed policy (V310).
+        # At least one solve at each scored formation, for a solver-backed policy.
         "solver_calls": len(scores.sessions)
         if spec.policy is not None and spec.policy.family in _SOLVER_BACKED
         else 0,
@@ -496,7 +496,7 @@ def _policy_controls(
 
     Each field shows while the document's family is one that declares it (`when`), with the
     model's own bounds and words, so the draft offers what PLAN admits and no rule of its
-    own (V338, U42). A name count is bounded by the input's names.
+    own. A name count is bounded by the input's names.
 
     Args:
         policy: The declared policy, or None for the tranche book.
@@ -562,7 +562,7 @@ def portfolio_draft(
     Args:
         prepared: The prepared handoff.
         risk_studies: The completed Risk studies on the draft's research input, which the
-            Risk link offers (V338, U41).
+            Risk link offers.
 
     Returns:
         The draft answer.
@@ -612,7 +612,7 @@ def portfolio_draft(
             "value": spec.cost_bps_per_side,
         }
     )
-    # The weight rule and the Risk study it reads (V338, U41).
+    # The weight rule and the Risk study it reads.
     controls.append(
         {
             "path": ["portfolio", "weight_rule"],
@@ -663,7 +663,7 @@ def portfolio_draft(
         "execution_preview": prepared.preview,
         "numerical_call_count": 0,
         # The draft's own declaration: no longer equal weight only, and without a Risk model
-        # until it links a Risk study (V310).
+        # until it links a Risk study.
         "limitations": [
             "POST_OBSERVED_DEVELOPMENT_NOT_INDEPENDENT_VALIDATION",
             *(["NO_RISK_MODEL"] if spec.risk_task_id is None else []),

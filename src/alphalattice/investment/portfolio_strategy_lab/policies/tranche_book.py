@@ -7,13 +7,9 @@ cost or failed fill -- those belong to the shared Backtesting state machine, and
 a policy that grew its own copy is exactly the second numerical path the
 delivery plan forbids.
 
-Why a new owner rather than a variant of C6. All three installed C-policies
-declare ``"book_semantics": "whole-book-not-tranche-or-phase-composite"``, which
-is an explicit statement that they are not this. A tranche book runs `T`
-independent sleeves on their own clocks and reviews exactly one per session, so
-its schedule, its per-sleeve membership and its aggregation have no counterpart
-there. Reusing the C6 recipe under a new name would have been an alias, not an
-implementation.
+A whole-book policy declares ``"book_semantics": "whole-book-not-tranche-or-phase-composite"``.
+A tranche book runs `T` independent sleeves on their own clocks and reviews exactly one per
+session, so its schedule, per-sleeve membership and aggregation need their own rule owner.
 
 What is reused exactly: ``whole_book_hysteresis_selection`` for one sleeve's membership,
 and the causal rank-bucket curve slice the Host binds into the decision input.
@@ -602,7 +598,7 @@ def decide_tranche_book(
     if recipe.consumes_mu:
         # The frozen plan is explicit: "A missing or partial `mu` surface fails
         # closed for a `mu.*` rule; it does not silently become `iv1`." Partial
-        # is therefore as fatal as absent. The predecessor C6 convention of
+        # is therefore as fatal as absent. The predecessor convention of
         # mapping unsupported buckets to zero and trading on is a *predecessor*
         # convention; carrying it here would have let a `mu.iv1` book quietly
         # trade an inverse-volatility tilt over the buckets its curve could not

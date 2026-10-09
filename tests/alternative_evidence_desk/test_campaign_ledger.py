@@ -318,7 +318,7 @@ def test_the_admission_opens_a_named_campaign_once_and_resumes_it_with_its_remai
             network_consent=True, environment=environment, campaign_id="qa", **bounds
         )
 
-    # The network is the workspace's, as a person sets it in Settings (V13); an incomplete
+    # The network is the workspace's, as a person sets it in Settings; an incomplete
     # declaration is refused above before any network is asked for.
     set_network_access(workspace, enabled=True)
     first = admit_official_source(

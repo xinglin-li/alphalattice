@@ -1,5 +1,5 @@
 """The Alpha owner's qualification of a family of development experiments: its contracts,
-the family's rule and the receipt reader (GR3, V77). The Task that runs it lives beside the
+the family's rule and the receipt reader (GR3). The Task that runs it lives beside the
 committer whose candidate set it seals, outside the reusable experiment packages.
 
 A qualification is a Task over every development experiment on one question admitted from a
@@ -49,10 +49,10 @@ def qualification_section(document: Mapping[str, Any]) -> Mapping[str, Any] | No
 def alpha_question_fields(program: AlphaDevelopmentProgram) -> dict[str, Any]:
     """The question a development experiment answers: its Program without the model it ran.
 
-    A development Program seals only the model it admits (V118): its mandate and its catalog
+    A development Program seals only the model it admits: its mandate and its catalog
     binding both name that model alone, so a ridge and a LightGBM study of one target on one
     foundation differ there alone. They ask one question, and both belong to its Holm family,
-    so the question sets both aside (V293).
+    so the question sets both aside.
 
     Args:
         program: A development study's Program.
@@ -167,7 +167,7 @@ def alpha_family(
     goal_id: str,
     opened_at: datetime,
 ) -> AlphaQualificationFamily:
-    """The family a qualification concludes (GR3, V77): every study on the question admitted
+    """The family a qualification concludes (GR3): every study on the question admitted
     from the goal's opening on, whether a goal's session ran it or not.
 
     A study still moving or waiting on someone leaves the family unsettled; one cancelled

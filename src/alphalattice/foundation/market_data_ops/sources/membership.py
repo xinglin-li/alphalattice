@@ -1,7 +1,7 @@
 """Forward membership history of one workspace Universe: a cohort, then dated events.
 
 The workspace's first successful research admission freezes an initial
-qualified cohort U0 and its session T0. U0 is the fixed research cohort for
+qualified cohort and its session T0. The initial cohort is fixed for
 the historical backfill before T0 -- an explicit initialization assumption,
 not historical point-in-time membership. From T0 onward membership is the
 cohort evolved by recorded entries and exits, each with the session it
@@ -30,7 +30,7 @@ from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 INITIAL_COHORT_BACKFILL = "INITIAL_COHORT_BACKFILL_NOT_POINT_IN_TIME"
-"""The one initialization assumption: U0 stands in for every session before T0."""
+"""The one initialization assumption: the initial cohort stands in for every session before T0."""
 
 FORWARD_AS_OBSERVED = "FORWARD_AS_OBSERVED_GOVERNED_MEMBERSHIP"
 """The forward promise: the membership admitted at each session, as observed then."""
@@ -140,7 +140,7 @@ def membership_identity(listing_ids: Iterable[str]) -> str:
 
 @dataclass(frozen=True)
 class UniverseBootstrapRecord:
-    """T0, U0 and everything that makes the backfill assumption attributable."""
+    """The initial cohort, its first session and the backfill assumption's attribution."""
 
     market_profile_id: str
     t0_session: date
@@ -397,7 +397,7 @@ def resolve_membership_schedule(
     Without a bootstrap record the workspace is still building its initial
     cohort: every session holds ``fallback_listing_ids`` (the manifest being
     built) and the whole calendar is under the initialization assumption.
-    With one, sessions before T0 hold U0 and sessions from T0 on hold U0
+    With one, sessions before T0 hold the initial cohort and sessions from T0 on hold the cohort
     evolved by the events effective at or before them, in journal order.
     """
     calendar = tuple(sorted(set(sessions)))

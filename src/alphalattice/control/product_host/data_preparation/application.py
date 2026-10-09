@@ -99,10 +99,12 @@ from alphalattice.control.task_control.runner import (
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputPolicy
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
     CurrentUniverseOnboardingOutcome,
     CurrentUniverseOnboardingStatus,
+    DataTargetSessionLag,
     ListingUnitObservation,
 )
 from alphalattice.foundation.market_data_ops.sources.providers import (
@@ -127,6 +129,7 @@ TASK_KIND = "workspace_preparation"
 STAGES = ("freeze_sources", "prepare_data", "prepare_features", "publish_inputs", "verify_inputs")
 
 ListingUnitState = Literal[
+    "PENDING",
     "RAW_READY",
     "QUALITY_ELIGIBLE",
     "QUALITY_INELIGIBLE",
@@ -812,18 +815,25 @@ class WorkspacePreparationApplication:
             access_failure = str(error)
         self._previews.remember(plan)
         readback = self.readback()
+        # One answer, one instruction: admitted sources (a Host-supplied provider included) say
+        # nothing about the network, whose own way on (a restart without the offline switch)
+        # would contradict the offered confirmation; only a refusal carries it.
+        refusal = (
+            {}
+            if access_failure is None
+            else {
+                "network_access": network_access(self.session.workspace).body(for_refusal=True),
+                "workspace_path": str(self.session.workspace),
+            }
+        )
         return {
             "status": "CONFIRMATION_REQUIRED",
             "confirmation_available": access_failure is None,
             "source_access_failure": access_failure,
             "source_access": {
                 "status": "ADMITTED" if access_failure is None else "NETWORK_CONTROL_REQUIRED",
-                "network_access": network_access(self.session.workspace).body(),
+                **refusal,
                 "authorization_required": access_failure is not None,
-                "restart_only_when_idle": access_failure is not None,
-                "workspace_path": str(self.session.workspace)
-                if access_failure is not None
-                else None,
                 "verified_source_checkpoint_retained": captured_source is not None,
                 "network_requests": "UNKNOWN_UNTIL_EXECUTION",
             },
@@ -1538,6 +1548,8 @@ class WorkspacePreparationApplication:
                 # units admitted: say "0 of N" (or a continuation's retained counts)
                 # before the first chunk returns, not after it.
                 self._save(task, "progress", self._progress_values(stage, retained), progress=True)
+            minimum_target_listings = FeatureInputPolicy().minimum_sector_size
+            deferred: StageExecutionResult | None = None
             while True:
                 if cancelled():
                     return StageExecutionResult(StageDisposition.CANCELLED)
@@ -1548,12 +1560,23 @@ class WorkspacePreparationApplication:
                 # progress file are paid per chunk, not per listing. A cancel
                 # is honoured at the next chunk boundary; every listing still
                 # commits on its own and a restart resumes from those units.
-                outcome = onboarding.runner.run(
-                    observed_at=self.clock(),
-                    work_budget=onboarding.runner.hydration_chunk_size,
-                )
+                try:
+                    outcome = onboarding.runner.run(
+                        observed_at=self.clock(),
+                        work_budget=onboarding.runner.hydration_chunk_size,
+                        minimum_target_listings=minimum_target_listings,
+                    )
+                except DataTargetSessionLag as error:
+                    outcome = onboarding.runner.retained_progress()
+                    deferred = StageExecutionResult(
+                        StageDisposition.DEFERRED,
+                        failure_code=error.failure_code,
+                        failure_cause=StageFailureCause.from_facts(error.cause),
+                    )
                 activity.flush(outcome)
                 self._save(task, "progress", self._progress_values(stage, outcome), progress=True)
+                if deferred is not None:
+                    return deferred
                 if outcome.status is not CurrentUniverseOnboardingStatus.RUNNING:
                     break
             if outcome.status is not CurrentUniverseOnboardingStatus.COMPLETED:

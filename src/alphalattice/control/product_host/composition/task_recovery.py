@@ -416,7 +416,7 @@ def stop_detail(task_kind: str, code: str, source: str) -> str:
         )
     if task_kind in _DATA_KINDS:
         return (
-            (refusal_words(code).get("detail") if code.startswith("data.") else None)
+            (refusal_words(code).get("detail") if code.startswith(("data.", "feature.")) else None)
             or maintenance_failure_detail(code)
         )[:STOP_WORDS_BOUND]
     # An owner that words its code says what holds and the way on, which a Task stopped on it

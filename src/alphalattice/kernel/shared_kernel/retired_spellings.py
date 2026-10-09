@@ -1,4 +1,4 @@
-"""The stored spellings NM2 renamed, which this release no longer reads (V451, V481).
+"""The stored spellings NM2 renamed, which this release no longer reads.
 
 NM2 (2026-10-02) gave meaningful spellings to the ids, kinds, keys and codes that no sealed root
 this tree must read held. A workspace prepared before then still holds the old spellings in what
@@ -6,7 +6,7 @@ it stored: its manifest's artifact keys, its component recipes' disposition, its
 Read here, such an object fails its contract. Its refusal says why by name: the workspace was
 prepared before the renames, and a new workspace is the way on; the old one is left as it is.
 
-The ids a must-read root holds are not here: they keep their stored spellings (V469). A spelling
+The ids a must-read root holds are not here: they keep their stored spellings. A spelling
 ending in `:` is a prefix its stored keys begin with.
 """
 

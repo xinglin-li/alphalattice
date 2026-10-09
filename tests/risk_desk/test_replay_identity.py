@@ -1,4 +1,4 @@
-"""A sealed Risk study replays through its estimators' recorded moves, and only those (V314)."""
+"""A sealed Risk study replays through its estimators' recorded moves, and only those."""
 
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ def _moves(root: Path, *moves: tuple[str, str, str]) -> Path:
 
 
 def test_a_replay_follows_its_estimators_recorded_moves_and_nothing_else(tmp_path: Path) -> None:
-    """regression (V314): an edit in an estimator's closure that moved no number refused every
+    """Regression: an edit in an estimator's closure that moved no number refused every
     sealed Risk study's replay, since the replay compared its Program by equality; the recorded
     Program is current when its catalog and its estimator's numerical binding follow recorded
     moves to the installed ones, and a recipe or an authority the moves do not explain is still

@@ -457,8 +457,15 @@ class DynamicPanelLightGBMAdapter(ChronologicalLightGBMAdapter):
             dataset_params=self._dataset_params(parameters),
         )
         booster = lightgbm.train(native, dataset, num_boost_round=iterations)
-        predictions = np.asarray(
-            booster.predict(inputs.features, num_threads=lightgbm_fit_threads()), dtype=np.float64
+        # The training error only a caller that reads one asks for (PERF-1): a lifecycle
+        # child's evidence stores none, so its fit takes no prediction over the panel.
+        predictions = (
+            None
+            if fit_plan.training_error is None
+            else np.asarray(
+                booster.predict(inputs.features, num_threads=lightgbm_fit_threads()),
+                dtype=np.float64,
+            )
         )
         gains = np.asarray(booster.feature_importance(importance_type="gain"), dtype=np.float64)
         model_text = model_trees(str(booster.model_to_string(num_iteration=iterations)))
@@ -487,10 +494,12 @@ class DynamicPanelLightGBMAdapter(ChronologicalLightGBMAdapter):
         return AlphaModelFitResult(
             estimator_content=content,
             state_projection=projection,
-            training_mse=float(np.mean(np.square(inputs.targets - predictions))),
+            training_mse=None
+            if predictions is None
+            else float(np.mean(np.square(inputs.targets - predictions))),
             iteration_count=iterations,
             fit_call_count=1,
-            predict_call_count=1,
+            predict_call_count=0 if predictions is None else 1,
             selection_diagnostic=AlphaModelSelectionDiagnostic.create(
                 recipe_hash=recipe.recipe_hash,
                 estimator_content_hash=content.content_hash,

@@ -44,6 +44,11 @@ CLASSIFIED: dict[str, str] = {
     "DecisionAdvancementApplication._ew_input": WORKSPACE,
     "control/product_host/composition/decision_advancement.py::"
     "DecisionAdvancementApplication._execute": SELF,
+    "control/product_host/composition/decision_advancement.py::latest_per_recipe": (
+        "groups one workspace's completed scores by the recipe hashes each holds and compares "
+        "their sessions; under a moved hash each group still names its own latest, so more "
+        "updates are deep-verified, never fewer"
+    ),
     "control/product_host/composition/portfolio_application.py::"
     "PortfolioResearchApplication.recover": SELF,
     "control/product_host/composition/portfolio_finalization.py::"

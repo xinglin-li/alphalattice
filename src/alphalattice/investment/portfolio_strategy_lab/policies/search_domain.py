@@ -2,9 +2,8 @@
 
 The Stage 6 campaign enumerates a small pre-registered grid per policy; each
 domain below says which parameter values that policy admits, and carries its own
-identity so a Program records the domain it was admitted against. The Optuna
-policy search that sampled the searched lanes retired with the Portfolio
-Development lab (RT R08); an axis's fields, not a sampler, are its identity.
+identity so a Program records the domain it was admitted against. An axis's fields,
+not a sampler, are its identity.
 """
 
 from __future__ import annotations
@@ -277,7 +276,7 @@ def stage_six_trial_domains() -> dict[str, PortfolioTrialDomain]:
         ),
         # One external immutable package, not a search surface.  Its four
         # singleton axes make the existing request/Program point owner state
-        # every C1 parameter rather than accept a code default.
+        # every parameter rather than accept a code default.
         "WHOLE_BOOK_HYSTERESIS_EQUAL_WEIGHT": PortfolioTrialDomain(
             ordered_axes=(
                 FrozenChoiceAxis(name="top_k", choices=(50,)),

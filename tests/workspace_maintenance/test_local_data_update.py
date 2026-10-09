@@ -479,7 +479,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
 
     # A listing's Feature computation, as the build hands it to a Host worker (W10), with the
     # sessions of the input frame the worker projects from the stored inputs (V92).
-    def counted(self, arguments):
+    def counted(self, arguments, **shipped):
         if "source" in arguments:
             calls.append(
                 (
@@ -490,7 +490,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
                     else arguments["source"].bars.num_rows,
                 )
             )
-        return made(self, arguments)
+        return made(self, arguments, **shipped)
 
     monkeypatch.setattr(ChildCalls, "make", counted)
     with LocalPortfolioWebSession(
@@ -711,10 +711,10 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
     made = ChildCalls.make
 
     # A listing's Feature computation, as the build hands it to a Host worker (W10).
-    def counted(self, arguments):
+    def counted(self, arguments, **shipped):
         if "source" in arguments:
             built.append(arguments["listing_id"])
-        return made(self, arguments)
+        return made(self, arguments, **shipped)
 
     monkeypatch.setattr(ChildCalls, "make", counted)
     with LocalPortfolioWebSession(
@@ -1490,9 +1490,10 @@ def test_the_data_stage_opens_the_market_store_once(qualified, tmp_path):
 
     Each maintenance cycle released its instance at every network edge and at its end, so the
     engine re-read the file's metadata with a cold cache and checkpointed it at each close: 291
-    opens and 308 closes on a 473-name warm day, 100 in this data stage. The stage now keeps one
-    writable instance from its first read to its last write, and every unit inside, on any
-    thread, attaches to it. The count is the stage's own span readout.
+    opens and 308 closes on a 473-name warm day, 100 in this data stage. The data stage and the
+    receipt's publication with its backup now each keep one writable instance from their first
+    read to their last write, and every unit inside, on any thread, attaches to it. The counts
+    are the stages' own span readouts.
     """
     workspace = tmp_path / "daily"
     shutil.copytree(qualified, workspace)
@@ -1521,11 +1522,15 @@ def test_the_data_stage_opens_the_market_store_once(qualified, tmp_path):
         status = _json(live, "/api/status?task_id=" + run["task_id"])
         assert status["lifecycle"] == "SUCCEEDED", status
         assert _json(live, "/api/data-update")["inputs"]["panel_through"] == NOW.date().isoformat()
-    (stage,) = (s for s in status["timing"]["stages"] if s["stage_id"] == "maintain_data_feature")
-    (execute,) = (phase for phase in stage["phases"] if phase["phase"] == "execute")
     opens = {
-        row["origin"]: row["count"]
-        for row in execute["spans"]
-        if (row["category"], row["detail"]) == ("read", "duckdb_instance_open")
+        stage["stage_id"]: sum(
+            row["count"]
+            for phase in stage["phases"]
+            if phase["phase"] == "execute"
+            for row in phase["spans"]
+            if (row["category"], row["detail"]) == ("read", "duckdb_instance_open")
+        )
+        for stage in status["timing"]["stages"]
     }
-    assert opens == {"host": 1}
+    assert opens["maintain_data_feature"] == 1
+    assert opens["publish_update_receipt"] == 1

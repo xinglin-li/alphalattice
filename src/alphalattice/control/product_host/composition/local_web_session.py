@@ -769,9 +769,9 @@ class LocalPortfolioWebSession:
         value = cls(
             workspace=admitted.root,
             workspace_manifest=admitted.manifest,
-            resolver=None
-            if admitted.catalog is None
-            else StrategyPortfolioResolver(
+            # Composed with or without an installed strategy: an installation sets its
+            # catalog on the running Host, so no restart is needed.
+            resolver=StrategyPortfolioResolver(
                 shared=SharedPortfolioInputResolver(), catalog=admitted.catalog
             ),
             port=port,
@@ -826,7 +826,7 @@ class LocalPortfolioWebSession:
         # refresh it when a publication moves the manifest (V182).
         manifests = ResearchWorkspaceManifestHolder(self.workspace_manifest)
         if self.resolver is not None:
-            packages = self.resolver.installed_packages()
+            resolver = self.resolver
             application = PortfolioResearchApplication(
                 workspace_id=self.workspace_id,
                 workspace=self.workspace,
@@ -837,7 +837,7 @@ class LocalPortfolioWebSession:
                 resolver=self.resolver,
                 report_context=lambda program, day: portfolio_report_context(
                     workspace=self.workspace,
-                    packages=packages,
+                    packages=resolver.installed_packages(),
                     manifest=manifests.current,
                     program=program,
                     session=day,
@@ -939,6 +939,8 @@ class LocalPortfolioWebSession:
         publish_client_connection(connection)
         self.client_connection = connection
         self.resumed_task_ids = self.resume()
+        # A Codex lead's wake whose Task ended, stopped or deferred while no Host ran (WAKE).
+        activity.replay_wakes()
         if self.operations.automation is not None:
             self.operations.automation.start()
         if not self.resumed_task_ids:

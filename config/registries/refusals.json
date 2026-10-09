@@ -4404,6 +4404,9 @@
 "data.symbol_mismatch": {
 "owner": "data"
 },
+"data.target_session_not_covered": {
+"owner": "data"
+},
 "data.universe_spy_axis_misaligned": {
 "owner": "data"
 },
@@ -4738,6 +4741,9 @@
 "owner": "execution"
 },
 "execution.cpu_budget_unreadable": {
+"owner": "execution"
+},
+"execution.memory_insufficient": {
 "owner": "execution"
 },
 "factor_formula.comparison_invalid": {
@@ -6045,6 +6051,9 @@
 "local_client.bundle_write_refused": {
 "owner": "local_client"
 },
+"local_client.codex_notify_needs_task": {
+"owner": "local_client"
+},
 "local_client.codex_queue_unavailable": {
 "owner": "local_client"
 },
@@ -6064,6 +6073,9 @@
 "owner": "local_client"
 },
 "local_client.continuation_bundle_invalid_export_fresh_draft": {
+"owner": "local_client"
+},
+"local_client.cro_directory_required": {
 "owner": "local_client"
 },
 "local_client.dated_position_requires_json": {
@@ -6094,6 +6106,9 @@
 "owner": "local_client"
 },
 "local_client.each_stage_needs_task": {
+"owner": "local_client"
+},
+"local_client.each_stage_never_wakes": {
 "owner": "local_client"
 },
 "local_client.field_given_twice": {
@@ -6145,6 +6160,9 @@
 "owner": "local_client"
 },
 "local_client.retrieval_environment_required": {
+"owner": "local_client"
+},
+"local_client.review_answers_missing": {
 "owner": "local_client"
 },
 "local_client.saved_answer_format_unavailable": {
@@ -10776,6 +10794,9 @@
 "research_strategy.full_local_qa_outcomes_required": {
 "owner": "research_strategy"
 },
+"research_strategy.installation_waits_for_portfolio_tasks": {
+"owner": "research_strategy"
+},
 "research_strategy.matured_economic_support_absent": {
 "owner": "research_strategy"
 },
@@ -12565,6 +12586,9 @@
 "owner": "task_control"
 },
 "task_control.tasks_waiting_invalid": {
+"owner": "task_control"
+},
+"task_control.wake_registration_invalid": {
 "owner": "task_control"
 },
 "task_control.workspace_root_expected": {

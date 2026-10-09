@@ -1,8 +1,8 @@
 """Reopen the Risk input binding a published covariance surface names, through its owner.
 
-What is left of the Stage-6 campaign's upstream authority (the campaign retired with RT R01,
+What is left of the Stage-6 campaign's upstream authority (the campaign retired with R01,
 2026-09-29). A load goes through the owning Desk's reader and its self-validating contract,
-never through a filename check: a file sitting where its name says is not a contract satisfied.
+never through a filename Check: a file sitting where its name says is not a contract satisfied.
 """
 
 from __future__ import annotations

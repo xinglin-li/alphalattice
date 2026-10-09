@@ -868,7 +868,7 @@ class PortfolioReviewAssessmentSubmission(BaseModel):  # type: ignore[misc]
     """The reviewer's own issues, at most sixteen, and every open issue the reviewer
     neither stated again nor resolved, carried as last assessed (`carried_on`, W3). A
     book's register may hold more open issues than one answer can address, so the carried
-    ones are outside the reviewer's bound and none is dropped (CS, V211)."""
+    ones are outside the reviewer's bound and none is dropped (CS)."""
     overall_rationale: str = Field(min_length=1, max_length=2400)
     unresolved_questions: tuple[str, ...] = Field(max_length=8)
     requires_human_review: bool

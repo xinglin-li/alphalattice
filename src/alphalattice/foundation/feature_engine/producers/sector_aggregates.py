@@ -1,12 +1,12 @@
-"""The Sector's daily equal-weight log return each member reads: `sector_return_log` (V346).
+"""The Sector's daily equal-weight log return each member reads: `sector_return_log`.
 
 The Sector child the residual reversal declares ("Host-resolved current-membership daily
 equal-weight log return", `observation_clock.SECTOR_AGGREGATE_AUTHORITY`): at each session, the
 mean of the one-session log returns of that session's members in each Sector, each member in the
 Sector it reads that day (`kernel/quant/sector_history`), and every member given its Sector's mean.
 A Sector none of whose members has a finite return that session gives its members none, and a
-listing outside a session's members has none. Its first reader is `sector_return_log` as a formula
-leaf, which opens after V346 with V347's statement.
+listing outside a session's members has none. A formula reads `sector_return_log`, and its study's
+temporal statement describes the Sector treatment.
 """
 
 from __future__ import annotations

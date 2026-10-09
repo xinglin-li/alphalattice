@@ -34,7 +34,7 @@ from alphalattice.protocols.actor_execution.answers import SPECIALIST_REFERENCE_
 BUNDLE_FILE_BYTES: int = 32 * 1024
 """A file is one whole read on every agent host. Codex hands the model at most 10,000 tokens of
 one tool call's output, counted at four bytes a token, and cuts the middle of the rest: a
-140,285-byte bundle read in one call came back as 35,073 tokens cut to 10,000 (AX1,
+140,285-byte bundle read in one call came back as 35,073 tokens cut to 10,000 (
 2026-09-27). 32 KB leaves the reading command room under 40,000 bytes; Claude Code reads
 2,000 lines a call."""
 BUNDLE_FILE_LINES: int = 1500
@@ -56,7 +56,7 @@ READING_RULE = (
 ANSWER_READ_FIELD = "read"
 """Beside an external answer's own fields: the names of the bundle files its agent read whole,
 this index included. The Host keeps the list with the answer as provenance, reads the answer
-whatever it names (OP11, V260), and keeps it out of what it submits."""
+whatever it names (OP11), and keeps it out of what it submits."""
 
 _SENTENCE_END = re.compile(r"(?<=[.!?;:])\s+")
 
@@ -319,7 +319,7 @@ def answer_read(answer: Mapping[str, object]) -> tuple[dict[str, object], tuple[
 
     `ANSWER_READ_FIELD` lists the file names, each once in the order given; a list that is
     missing or holds no names names none. The list is the agent's own word, kept beside its
-    answer as provenance: the Host reads the answer whatever it names (OP11, V260).
+    answer as provenance: the Host reads the answer whatever it names (OP11).
     """
     named = answer.get(ANSWER_READ_FIELD)
     read = (

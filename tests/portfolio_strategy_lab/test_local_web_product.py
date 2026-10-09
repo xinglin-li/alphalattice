@@ -3536,53 +3536,6 @@ def test_report_html_is_the_sealed_page_read_back(live: LocalPortfolioWebSession
     assert "Selected historical book and path" in page
 
 
-def test_the_report_projection_carries_the_window_end_book(
-    live: LocalPortfolioWebSession,
-) -> None:
-    """The workspace shows which names are held, written the way the page writes them."""
-
-    result_hash = _run_to_completion(live)
-    body = _json(live, f"/api/report?result_hash={result_hash}")
-    book = body["book"]
-    sealed = live.service.report(result_hash)  # type: ignore[union-attr]
-    page = _request(live, f"/report?result_hash={result_hash}")[2].decode("utf-8")
-
-    assert book["formation_session"] == sealed.window_end_book.formation_session.isoformat()
-    assert book["held_count"] == sealed.window_end_book.held_count
-    assert book["held_count"] == body["readouts"]["distinct_names_held"]
-    assert len(book["positions"]) == len(sealed.window_end_book.positions)
-
-    # The boundary is a typed fact, and both surfaces state the same one. A
-    # workspace that said "opened flat" over a page that said otherwise would be
-    # two reports of one book.
-    assert book["change_boundary"] == sealed.window_end_book.change_boundary
-    assert book["change_boundary"] in {
-        "PRECEDING_FORMATION",
-        "SEALED_CONTINUATION_BOUNDARY",
-        "FLAT_PATH_OPENING",
-    }
-    assert book["preceding_formation_session"] == (
-        None
-        if sealed.window_end_book.preceding_formation_session is None
-        else sealed.window_end_book.preceding_formation_session.isoformat()
-    )
-    assert book["change_boundary"] in page
-
-    # Every value the browser will show is a string the report owner produced,
-    # and the sealed page contains the same string for the same name.
-    for projected, position in zip(
-        book["positions"], sealed.window_end_book.positions, strict=True
-    ):
-        assert projected["listing_id"] == position.listing_id
-        assert projected["weight"] == format_book_weight(position.weight)
-        assert projected["weight_change_bp"] == format_book_change(position.weight_change)
-        assert projected["disposition"] == position.disposition
-        assert projected["weight"] in page
-    assert book["absolute_weight_change_total"] == format_book_weight(
-        sealed.window_end_book.absolute_weight_change_total
-    )
-
-
 def test_export_round_trips_from_workspace_id_and_a_spec_path(
     live: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:
@@ -3794,6 +3747,45 @@ def test_every_visible_number_equals_a_typed_fact(live: LocalPortfolioWebSession
     assert body["readouts"]["cost_bps_round_trip"] == readouts.cost_bps_round_trip
     assert body["window"]["selected_session_count"] == report.window_guard.selected_session_count
     assert [tuple(v) for v in body["controls"]] == list(report.control_receipt.selected)
+
+    book = body["book"]
+    sealed = live.service.report(result_hash)  # type: ignore[union-attr]
+    page = _request(live, f"/report?result_hash={result_hash}")[2].decode("utf-8")
+
+    assert book["formation_session"] == sealed.window_end_book.formation_session.isoformat()
+    assert book["held_count"] == sealed.window_end_book.held_count
+    assert book["held_count"] == body["readouts"]["distinct_names_held"]
+    assert len(book["positions"]) == len(sealed.window_end_book.positions)
+
+    # The boundary is a typed fact, and both surfaces state the same one. A
+    # workspace that said "opened flat" over a page that said otherwise would be
+    # two reports of one book.
+    assert book["change_boundary"] == sealed.window_end_book.change_boundary
+    assert book["change_boundary"] in {
+        "PRECEDING_FORMATION",
+        "SEALED_CONTINUATION_BOUNDARY",
+        "FLAT_PATH_OPENING",
+    }
+    assert book["preceding_formation_session"] == (
+        None
+        if sealed.window_end_book.preceding_formation_session is None
+        else sealed.window_end_book.preceding_formation_session.isoformat()
+    )
+    assert book["change_boundary"] in page
+
+    # Every value the browser will show is a string the report owner produced,
+    # and the sealed page contains the same string for the same name.
+    for projected, position in zip(
+        book["positions"], sealed.window_end_book.positions, strict=True
+    ):
+        assert projected["listing_id"] == position.listing_id
+        assert projected["weight"] == format_book_weight(position.weight)
+        assert projected["weight_change_bp"] == format_book_change(position.weight_change)
+        assert projected["disposition"] == position.disposition
+        assert projected["weight"] in page
+    assert book["absolute_weight_change_total"] == format_book_weight(
+        sealed.window_end_book.absolute_weight_change_total
+    )
 
 
 def test_compare_names_differences_without_selecting(live: LocalPortfolioWebSession) -> None:
@@ -4809,11 +4801,9 @@ def test_strategy_controls_offer_each_missing_components_first_step(tmp_path):
 
 
 def test_the_first_intent_is_the_way_forward_and_names_it_in_words() -> None:
-    """regression (FLOW-3, AX's first use of 2026-10-07): the lead followed the inputs' Factor
-    flows, read first, and the Lab book they lead to was never the one a strategy activates.
-    `workspace show` lists `RUN_FORWARD` first: with no strategy installed it names the
-    research strategy's controls and why, and an installed strategy with no book yet offers
-    its book's controls instead of being left out."""
+    """regression (a first use): `workspace show` lists `RUN_FORWARD` first, naming the research
+    strategy's controls while nothing is installed and an installed strategy's book controls
+    before it has a book."""
 
     from types import SimpleNamespace
 
@@ -4824,7 +4814,8 @@ def test_the_first_intent_is_the_way_forward_and_names_it_in_words() -> None:
     )
 
     forward = PortfolioResearchOperations._forward_intents
-    (none,) = forward(SimpleNamespace(_packages={}, activations=None))  # type: ignore[arg-type]
+    empty = SimpleNamespace(_packages={}, activations=None, installed=lambda: False)
+    (none,) = forward(empty)  # type: ignore[arg-type]
     assert none["status"] == "NO_RESEARCH_STRATEGY_INSTALLED"
     assert none["detail"] == RUN_FORWARD_WORDS and "need no Factor study" in RUN_FORWARD_WORDS
     assert none["next_requests"] == {
@@ -4832,6 +4823,7 @@ def test_the_first_intent_is_the_way_forward_and_names_it_in_words() -> None:
     }
     installed = SimpleNamespace(
         _packages={"PKG": object()},
+        installed=lambda: True,
         activations=object(),
         _activation_offer=lambda _package: {"status": "INACTIVE"},
     )
@@ -5432,3 +5424,129 @@ def test_a_port_the_browser_refuses_is_never_the_workbenchs():
     assert {1720, 5060, 6000, 10080} <= BROWSER_REFUSED_PORTS
     asked = bind_browser_safe(lambda: Bound(1720), assigned=False)
     assert asked.server_address[1] == 1720 and not asked.closed
+
+
+def test_a_plan_deep_verifies_the_updates_holding_each_recipes_latest_score() -> None:
+    """regression: every plan re-verified every completed update's score chain.
+
+    The plan acts on each recipe's latest score: its authority and observations. Only the
+    updates holding one, ties included, have their whole chains verified again; an older day's
+    score is read by its own snapshot hash under its Task's sealed evidence.
+    """
+    from types import SimpleNamespace
+
+    from alphalattice.control.product_host.composition.decision_advancement import (
+        latest_per_recipe,
+    )
+
+    def score(package: str, recipe: str, day: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            strategy_package_hash=package,
+            component_recipe_hash=recipe,
+            formation_session=date(2026, 9, day),
+        )
+
+    completed = (
+        (score("p", "g2", 1), score("p", "g6", 1)),
+        (score("p", "g2", 2), score("p", "g6", 2)),
+        (score("p", "g2", 3),),
+        (score("p", "g6", 3), score("q", "g2", 1)),
+        (score("p", "g2", 3),),
+        (),
+    )
+    assert latest_per_recipe(completed) == (2, 3, 4)  # type: ignore[arg-type]
+    assert latest_per_recipe(()) == ()
+
+
+def test_the_completed_scores_seam_refuses_a_changed_latest_chain_and_a_changed_older_score(
+    tmp_path,
+) -> None:
+    """tamper: what a plan no longer re-reads must still refuse what it reads.
+
+    The update holding a recipe's latest score is verified through its whole chain, and a
+    failure there refuses by its own name, never reaching back to an older update. An older
+    day's score loads by its own snapshot hash, so a changed score file refuses there.
+    """
+    from types import SimpleNamespace
+
+    from alphalattice.control.product_host.composition.decision_advancement import (
+        SCHEMA,
+        STAGES,
+        DecisionAdvancementApplication,
+    )
+    from alphalattice.control.task_control.contracts import TaskLifecycle
+    from alphalattice.investment.alpha_research.experiments.development_contracts import (
+        seal_current_contract,
+    )
+    from alphalattice.investment.alpha_research.publication.artifacts import (
+        AlphaCurrentArtifactStore,
+    )
+    from alphalattice.investment.alpha_research.publication.contracts import (
+        FrozenComponentScoreSnapshot,
+    )
+
+    store = AlphaCurrentArtifactStore(tmp_path / "artifacts")
+
+    def published(day: int) -> FrozenComponentScoreSnapshot:
+        score = seal_current_contract(
+            FrozenComponentScoreSnapshot,
+            {
+                "request_hash": "1" * 64,
+                "strategy_package_hash": "2" * 64,
+                "component_recipe_hash": "3" * 64,
+                "inference_authority_hash": "4" * 64,
+                "observation_snapshot_hash": "5" * 64,
+                "formation_session": date(2026, 9, day),
+                "ordered_listing_ids": ("a", "b"),
+                "feature_values_hashes": ("6" * 64,),
+                "model_identity_hashes": ("7" * 64,),
+                "projection_hash": "8" * 64,
+                "scores": (0.5, None),
+                "live": (True, False),
+                "prediction_calls": 1,
+            },
+            "snapshot_hash",
+        )
+        store.publish_frozen_component_score(score)
+        return score
+
+    updates = {"older": (published(1),), "latest": (published(2),)}
+    deep: list[str] = []
+    refused: set[str] = set()
+
+    def verify_products(plan: str, stage: str) -> None:
+        assert stage == STAGES[3]
+        deep.append(plan)
+        if plan in refused:
+            raise ValueError("research_update.features_binding_invalid")
+
+    tasks = [
+        SimpleNamespace(
+            name=name,
+            input=SimpleNamespace(input_schema_id=SCHEMA),
+            lifecycle=TaskLifecycle.SUCCEEDED,
+        )
+        for name in updates
+    ]
+    owner = SimpleNamespace(
+        session=SimpleNamespace(task_control_registry=SimpleNamespace(tasks=lambda: tasks)),
+        scoring=SimpleNamespace(store=store),
+        _plan_of=lambda task, current: task.name,
+        _verify_task_evidence=lambda task, plan: None,
+        _need=lambda plan, stage: SimpleNamespace(
+            products=tuple(score.snapshot_hash for score in updates[plan])
+        ),
+        _verify_products=verify_products,
+    )
+    completed = DecisionAdvancementApplication._completed_scores
+    assert completed(owner) == (*updates["older"], *updates["latest"])
+    assert deep == ["latest"]
+    refused.add("latest")
+    with pytest.raises(ValueError, match=r"^research_update\.features_binding_invalid$"):
+        completed(owner)
+    refused.clear()
+    (older,) = updates["older"]
+    path = next((tmp_path / "artifacts").rglob(f"{older.snapshot_hash}.json"))
+    path.write_bytes(path.read_bytes().replace(b"0.5", b"0.6"))
+    with pytest.raises(ValueError, match=r"^Alpha JSON payload hash is invalid$"):
+        completed(owner)

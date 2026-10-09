@@ -306,12 +306,17 @@ class StrategyScoringApplication:
         """The workspace manifest, read from the one holder the Host refreshes (V182)."""
         return self._manifests.current
 
+    @property
+    def packages(self) -> Mapping[str, FrozenStrategyPackage]:
+        """The installed packages, read from their one holder each time."""
+        return self._packages()
+
     def __init__(
         self,
         *,
         session: WorkspaceApplicationSession,
         manifest: ResearchWorkspaceManifest | ResearchWorkspaceManifestHolder,
-        packages: Mapping[str, FrozenStrategyPackage],
+        packages: Callable[[], Mapping[str, FrozenStrategyPackage]],
         clock: Callable[[], datetime],
     ):
         """Wire declared packages, retained workspace session and exact score storage.
@@ -319,10 +324,11 @@ class StrategyScoringApplication:
         Args:
             session: Retained workspace writer/task session.
             manifest: Held workspace declaration.
-            packages: Explicit installed frozen strategy packages.
+            packages: Reads the installed frozen strategy packages from their one holder, the
+                Host's operations, so an installation reaches this owner too.
             clock: Explicit observed-time source.
         """
-        self.session, self.packages, self.clock = session, packages, clock
+        self.session, self._packages, self.clock = session, packages, clock
         self._manifests = held(manifest)
         self.store = AlphaCurrentArtifactStore(session.workspace / "artifacts")
         self.last_plan: StrategyScorePlan | None = None

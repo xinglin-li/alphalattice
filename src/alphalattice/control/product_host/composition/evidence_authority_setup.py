@@ -1339,7 +1339,7 @@ def main(argv: list[str] | None = None) -> int:
             arguments.acquire_sec
             and payload["failure_code"] == "evidence_review.workspace_network_not_allowed"
         ):
-            permission = network_access(arguments.workspace).body()
+            permission = network_access(arguments.workspace).body(for_refusal=True)
             payload.update(refusal_words(payload["failure_code"], workspace=arguments.workspace))
             payload["network_access"] = permission
             payload["next_requests"] = {

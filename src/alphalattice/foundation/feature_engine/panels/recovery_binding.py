@@ -44,7 +44,7 @@ class PanelRecoveryBindingPublisher:
 
         Resolve each chunk to derive the session axis, then publish the
         binding through the ledger and read it back before returning. A
-        layered catalog's rows are its ``parts``' (V92), the base first: the
+        layered catalog's rows are its ``parts``', the base first: the
         binding names each part's closure head.
         """
         closures = tuple(parts) or (catalog_hash,)

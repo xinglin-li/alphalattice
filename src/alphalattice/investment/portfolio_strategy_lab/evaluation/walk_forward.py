@@ -73,7 +73,7 @@ class PortfolioPolicyDecisionProvider:
         """The formation index of ``workspace.covariances``' first row.
 
         Zero for a workspace that holds every formation's covariance; a caller that projects
-        one segment's at a time names where they start, so no formation reads another's (V310).
+        one segment's at a time names where they start, so no formation reads another's.
         """
         self.policy = policy
         self.policies = policies or build_installed_portfolio_policy_catalog()
@@ -226,7 +226,7 @@ class PortfolioPolicyDecisionProvider:
             anchor_sector = self.workspace.equal_weight_sector_exposure
             if anchor_sector.ndim == 2:
                 anchor_sector = anchor_sector[formation_index]
-            # A Sector history's per-session exposure reads the formation's (V346).
+            # A Sector history's per-session exposure reads the formation's.
             exposure = self.workspace.sector_exposure_matrix
             if exposure.ndim == 3:
                 exposure = exposure[formation_index]

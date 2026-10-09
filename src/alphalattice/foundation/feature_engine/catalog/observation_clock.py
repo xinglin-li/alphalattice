@@ -80,7 +80,7 @@ that cannot say so cannot refuse a source it has never heard of either.
 PROVIDER_DAILY_BARS_AUTHORITY = "source-authority.provider-daily-bars"
 PROVIDER_AS_TRADED_AUTHORITY = "source-authority.provider-daily-bars-as-traded"
 """Each session's prices and share volume as they traded, rebuilt from the provider's bars and
-its recorded splits (V345): the owner of the point-in-time fields."""
+its recorded splits: the owner of the point-in-time fields."""
 MARKET_REFERENCE_AUTHORITY = "source-authority.market-reference-derived"
 SECTOR_AGGREGATE_AUTHORITY = "source-authority.sector-aggregate-derived"
 SECTOR_CLASSIFICATION_AUTHORITY = "source-authority.sector-classification-map"
@@ -125,11 +125,11 @@ class _Contract(BaseModel):  # type: ignore[misc]
 
 
 class PointInTimeMark(StrEnum):
-    """What a later event does to a source field's stored value at a session (V345).
+    """What a later event does to a source field's stored value at a session.
 
     ``POINT_IN_TIME``: nothing; the value is the session's as it was published.
     ``POINT_IN_TIME_FROM_T0``: nothing from T0; before it the cohort's or the classification's
-    first recorded state stands in, as a study's temporal statement says (V346, V347).
+    first recorded state stands in, as a study's temporal statement says.
     ``RESCALED_BY_LATER_EVENTS``: a later split or dividend rescales the history before it by one
     factor, so a ratio of its values at or before a session holds and a level does not; the
     formula language admits it only in forms that hold.
@@ -352,7 +352,7 @@ class SourceAvailabilityCatalog(_Contract):
     point_in_time: Mapping[str, PointInTimeMark] = Field(
         default_factory=dict, exclude_if=lambda value: not value
     )
-    """Each field's point-in-time mark (V345); a catalog recorded before the marks holds none."""
+    """Each field's point-in-time mark; a catalog recorded before the marks holds none."""
     catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @classmethod

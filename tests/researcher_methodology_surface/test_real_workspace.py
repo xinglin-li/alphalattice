@@ -518,7 +518,9 @@ def test_cache_wait_expiry_does_not_steal_an_active_lease(tmp_path, monkeypatch)
 def test_initial_universe_requires_computable_base_features_without_extra_confirmation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Raw qualification alone is not U0: one known-bad sector remains a candidate."""
+    """Raw qualification alone does not finalize the initial cohort:
+    one known-bad sector remains a candidate.
+    """
     from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider
 
     # TTT has the same seeded walk as SPY and hence undefined idiosyncratic

@@ -1,4 +1,4 @@
-"""From which session a Sector reclassification is in force: the forward rule's clock (V346).
+"""From which session a Sector reclassification is in force: the forward rule's clock.
 
 Under DA12, the approximate point-in-time contract holds for the Sector as for the Universe:
 the classification the workspace

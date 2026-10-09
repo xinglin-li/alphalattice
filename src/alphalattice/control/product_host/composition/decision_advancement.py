@@ -8,6 +8,7 @@ the existing advancement store until the Portfolio branch is ready to expose.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal, Self, cast
@@ -153,6 +154,37 @@ STAGES = (
 
 
 _IMPLEMENTATION_ROLE = "product_host.conditional_decision_advancement"
+
+
+def latest_per_recipe(
+    completed: tuple[tuple[FrozenComponentScoreSnapshot, ...], ...],
+) -> tuple[int, ...]:
+    """The completed updates holding a recipe's latest score, by their position.
+
+    A recipe is a package and a component recipe; its latest score has the latest formation
+    session, and every update holding one is named, ties included.
+    """
+    latest: dict[tuple[str, str], date] = {}
+    for scores in completed:
+        for score in scores:
+            key = (score.strategy_package_hash, score.component_recipe_hash)
+            latest[key] = max(latest.get(key, score.formation_session), score.formation_session)
+    return tuple(
+        index
+        for index, scores in enumerate(completed)
+        if any(
+            score.formation_session
+            == latest[(score.strategy_package_hash, score.component_recipe_hash)]
+            for score in scores
+        )
+    )
+
+
+_HELD_COMPLETED_SCORES: ContextVar[list[tuple[FrozenComponentScoreSnapshot, ...]] | None] = (
+    ContextVar("held_completed_scores", default=None)
+)
+"""Within one plan request, the completed updates' scores as verified at its first read: the
+plan asks for them up to three times, and nothing it reads changes while it plans."""
 """The role this advancement's implementation is recorded under in the identity successors."""
 
 
@@ -467,6 +499,13 @@ class DecisionAdvancementApplication:
             ValueError: Target/session/epoch admission fails, required score authority is
                 unavailable or workspace transition is not prepared.
         """
+        held = _HELD_COMPLETED_SCORES.set([])
+        try:
+            return self._plan(package_id, target)
+        finally:
+            _HELD_COMPLETED_SCORES.reset(held)
+
+    def _plan(self, package_id: str, target: date | None) -> dict[str, object]:
         checkpoint = self.updates._checkpoint(package_id)
         now = self.clock()
         latest = _latest_common_us_session(on_or_before=now.date(), observed_at=now)
@@ -1472,17 +1511,41 @@ class DecisionAdvancementApplication:
         return self.calibration.read_input(plan, step.products[1], step.products[2])
 
     def _completed_scores(self) -> tuple[FrozenComponentScoreSnapshot, ...]:
-        values: list[FrozenComponentScoreSnapshot] = []
-        for task in self.session.task_control_registry.tasks():
-            if task.input.input_schema_id == SCHEMA and task.lifecycle is TaskLifecycle.SUCCEEDED:
-                plan = self._plan_of(task, current=False)
-                self._verify_task_evidence(task, plan)
-                self._verify_products(plan, STAGES[3])
-                values.extend(
-                    self.scoring.store.load_frozen_component_score(h)
-                    for h in self._need(plan, STAGES[3]).products
-                )
-        return tuple(values)
+        held = _HELD_COMPLETED_SCORES.get()
+        if held:
+            return held[0]
+        completed: list[
+            tuple[DecisionAdvancementPlan, tuple[FrozenComponentScoreSnapshot, ...]]
+        ] = []
+        with span("verify", "completed_scores"):
+            for task in self.session.task_control_registry.tasks():
+                if (
+                    task.input.input_schema_id == SCHEMA
+                    and task.lifecycle is TaskLifecycle.SUCCEEDED
+                ):
+                    plan = self._plan_of(task, current=False)
+                    # Every completed update stays bound to its sealed Task evidence, and each
+                    # score loads by its own snapshot hash, which covers every number
+                    # calibration reads.
+                    self._verify_task_evidence(task, plan)
+                    completed.append(
+                        (
+                            plan,
+                            tuple(
+                                self.scoring.store.load_frozen_component_score(h)
+                                for h in self._need(plan, STAGES[3]).products
+                            ),
+                        )
+                    )
+            # The latest score of each recipe is the one whose authority and observations a plan
+            # acts on, so its whole chain, preparation and observation arrays included, is
+            # verified again; an older day's chain was verified when its Task completed.
+            for index in latest_per_recipe(tuple(scores for _plan, scores in completed)):
+                self._verify_products(completed[index][0], STAGES[3])
+        values = tuple(score for _plan, scores in completed for score in scores)
+        if held is not None:
+            held.append(values)
+        return values
 
     def _completed_input(
         self, content_hash: str

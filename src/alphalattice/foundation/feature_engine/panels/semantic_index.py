@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import date
 
+import numpy as np
+import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
@@ -81,28 +82,29 @@ class FeaturePanelSemanticIndexService:
         if found is not None:
             payload, uri = found
             return FeaturePanelSemanticIndex.model_validate(payload), uri, False
-        rows: dict[date, list[tuple[str, str]]] = defaultdict(list)
-        for batch in self.reader.identity_batches(panel_manifest_ref):
-            session_column = batch.schema.get_field_index("session_date")
-            listing_column = batch.schema.get_field_index("listing_id")
-            row_hash_column = batch.schema.get_field_index("row_hash")
-            for session, listing, row_hash in zip(
-                batch.column(session_column).to_pylist(),
-                batch.column(listing_column).to_pylist(),
-                batch.column(row_hash_column).to_pylist(),
-                strict=True,
-            ):
-                rows[session].append((str(listing), str(row_hash)))
-        sessions = tuple(
-            FeaturePanelSessionSemantic(
-                session_date=session,
-                row_count=len(values),
-                ordered_row_hash_digest=canonical_hash(
-                    [row_hash for _listing, row_hash in sorted(values)]
-                ),
+        batches = list(self.reader.identity_batches(panel_manifest_ref))
+        sessions: tuple[FeaturePanelSessionSemantic, ...] = ()
+        if batches:
+            # Each session's row hashes in listing order (ties by row hash), as one sort:
+            # Arrow orders strings by their UTF-8 bytes, which is their code-point order.
+            table = pa.Table.from_batches(batches).sort_by(
+                [(name, "ascending") for name in ("session_date", "listing_id", "row_hash")]
             )
-            for session, values in sorted(rows.items())
-        )
+            days = table["session_date"].combine_chunks()
+            hashes = [str(value) for value in table["row_hash"].to_pylist()]
+            ordinals = np.asarray(days.to_numpy(zero_copy_only=False))
+            cuts = (np.flatnonzero(ordinals[1:] != ordinals[:-1]) + 1).tolist()
+            starts, stops = [0, *cuts], [*cuts, len(hashes)]
+            sessions = tuple(
+                FeaturePanelSessionSemantic(
+                    session_date=session,
+                    row_count=stop - start,
+                    ordered_row_hash_digest=canonical_hash(hashes[start:stop]),
+                )
+                for session, start, stop in zip(
+                    days.take(starts).to_pylist(), starts, stops, strict=True
+                )
+            )
         summary = manifest.get("safe_summary")
         lineage = summary.get("lineage") if isinstance(summary, dict) else None
         if not isinstance(lineage, dict):

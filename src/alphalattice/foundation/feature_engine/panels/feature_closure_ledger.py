@@ -589,7 +589,7 @@ def sector_history_as_of(store: PanelClosureArtifactStore, sector_revision: str)
     """The Sector each session reads as of one revision: its map, then the reclassifications.
 
     Rebuilt from the maps the ledger keeps with their activation receipts, in observation order
-    (V346): a receipt with an effective session records each listing whose Sector its map
+    a receipt with an effective session records each listing whose Sector its map
     changed from the one before; a receipt without one, written before the forward rule, folds
     its changes into the backfill, as the Panels built then published them.
 
@@ -662,7 +662,7 @@ def copy_sector_history(
     """Copy what `sector_history_as_of` reads for one revision, so the target answers the same.
 
     The revision's map, and each activation receipt observed up to the revision's own with the
-    map it names (V346); a store whose receipts do not name the revision gives its map alone.
+    map it names; a store whose receipts do not name the revision gives its map alone.
 
     Args:
         source: The store the history is read from.

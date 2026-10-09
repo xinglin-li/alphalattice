@@ -699,8 +699,8 @@ def _provider(
                 ),
             )
         # A session whose tradable, scored names are fewer than a rebalance selects is refused
-        # before the update decides anything, by that session, never inside the decision (V519,
-        # V500's class); the proposal and its settlement both decide through here.
+        # before the update decides anything, by that session, never inside the decision;
+        # the proposal and its settlement both decide through here.
         if first_short_formation((formation,), selected=recipe.top_k, walked=1) is not None:
             raise ValueError(f"portfolio_update.eligible_pool_short:{formation.formation_session}")
         provider = CappedSleeveBookProvider(

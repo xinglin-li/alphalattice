@@ -541,7 +541,7 @@ class SectorResearchDevelopmentService:
         recipe = build_sector_target_recipe(
             execution_outcome_recipe_id=method.recipe_id,
             sector_revision=request.sector_revision,
-            # What its formations read (V346).
+            # What its formations read.
             sector_history_treatment=sector_treatment_of(sector_by_listing_id),
         )
         surface = compile_sector_target_surface(

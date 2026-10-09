@@ -16,6 +16,7 @@ from __future__ import annotations
 import ctypes
 import importlib
 import os
+import sys
 import threading
 import time
 from collections.abc import Sequence
@@ -732,33 +733,69 @@ class ResolvedRuntimeCapacityPlan(_CapacityContract):
         return self
 
 
+def _windows_memory_status() -> Any:
+    """GlobalMemoryStatusEx's answer: physical, commit (page file) and virtual memory."""
+    loader: Any = getattr(ctypes, "WinDLL", None)
+    if loader is None:
+        raise ProcessCapacityError("process_capacity.memory_snapshot_unavailable")
+
+    class _Status(ctypes.Structure):
+        _fields_ = [
+            ("length", ctypes.c_ulong),
+            ("memory_load", ctypes.c_ulong),
+            ("total_physical", ctypes.c_ulonglong),
+            ("available_physical", ctypes.c_ulonglong),
+            ("total_page_file", ctypes.c_ulonglong),
+            ("available_page_file", ctypes.c_ulonglong),
+            ("total_virtual", ctypes.c_ulonglong),
+            ("available_virtual", ctypes.c_ulonglong),
+            ("available_extended_virtual", ctypes.c_ulonglong),
+        ]
+
+    status = _Status()
+    status.length = ctypes.sizeof(status)
+    kernel32 = loader("kernel32", use_last_error=True)
+    call = kernel32.GlobalMemoryStatusEx
+    call.argtypes = [ctypes.POINTER(_Status)]
+    call.restype = ctypes.c_bool
+    if not call(ctypes.byref(status)):
+        raise ProcessCapacityError("process_capacity.memory_snapshot_unavailable")
+    return status
+
+
+def available_work_memory_bytes() -> int | None:
+    """Memory a new heavy Task can still take, or None where this platform does not say.
+
+    Windows answers with the commit it can still give (GlobalMemoryStatusEx's available page
+    file): a process fails there when commit runs out, whatever physical memory is free. Linux
+    answers with MemAvailable plus SwapFree. Elsewhere the amount is unknown, and a check that
+    needs it is skipped rather than guessed.
+    """
+    if os.name == "nt":
+        try:
+            return int(_windows_memory_status().available_page_file)
+        except ProcessCapacityError:
+            return None
+    if not sys.platform.startswith("linux"):
+        return None
+    try:
+        lines = Path("/proc/meminfo").read_text(encoding="ascii").splitlines()
+    except OSError:
+        return None
+    kibibytes: dict[str, int] = {}
+    for line in lines:
+        name, _, rest = line.partition(":")
+        fields = rest.split()
+        if fields and fields[0].isdigit():
+            kibibytes[name] = int(fields[0])
+    if "MemAvailable" not in kibibytes:
+        return None
+    return (kibibytes["MemAvailable"] + kibibytes.get("SwapFree", 0)) * 1024
+
+
 def _memory_capacity() -> tuple[int, int]:
     if os.name == "nt":
-        loader: Any = getattr(ctypes, "WinDLL", None)
-        if loader is None:
-            raise ProcessCapacityError("process_capacity.memory_snapshot_unavailable")
-
-        class _Status(ctypes.Structure):
-            _fields_ = [
-                ("length", ctypes.c_ulong),
-                ("memory_load", ctypes.c_ulong),
-                ("total_physical", ctypes.c_ulonglong),
-                ("available_physical", ctypes.c_ulonglong),
-                ("total_page_file", ctypes.c_ulonglong),
-                ("available_page_file", ctypes.c_ulonglong),
-                ("total_virtual", ctypes.c_ulonglong),
-                ("available_virtual", ctypes.c_ulonglong),
-                ("available_extended_virtual", ctypes.c_ulonglong),
-            ]
-
-        status = _Status()
-        status.length = ctypes.sizeof(status)
-        kernel32 = loader("kernel32", use_last_error=True)
-        call = kernel32.GlobalMemoryStatusEx
-        call.argtypes = [ctypes.POINTER(_Status)]
-        call.restype = ctypes.c_bool
-        if not call(ctypes.byref(status)):
-            raise ProcessCapacityError("process_capacity.memory_snapshot_unavailable")
+        status = _windows_memory_status()
         return int(status.total_physical), int(status.available_physical)
     try:
         sysconf = cast(Any, getattr(os, "".join(("sys", "conf")), None))

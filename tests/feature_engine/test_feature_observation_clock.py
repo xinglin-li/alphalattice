@@ -288,7 +288,7 @@ def test_source_availability_is_owned_per_authority_not_per_factor() -> None:
     catalog = installed_source_availability_catalog()
 
     # Owners are per authority: the five distinct source owners the installed Formulas
-    # read, and the as-traded owner a formula reading a point-in-time leaf reads (V345).
+    # read, and the as-traded owner a formula reading a point-in-time leaf reads.
     assert {item.policy_id for item in catalog.owners} == {
         PROVIDER_AS_TRADED_AUTHORITY,
         PROVIDER_DAILY_BARS_AUTHORITY,
@@ -336,7 +336,6 @@ def test_source_availability_is_owned_per_authority_not_per_factor() -> None:
     # bound per Formula. They are separate hashes because a Provider changing a
     # publication time and a Formula gaining a Sector dependency are different
     # events, and one hash could not tell them apart. The schedules' binding is held at the
-    # catalog's recorded origin, so an owner added for a new source keeps every Panel (ID1, V345).
     assert installed.binding.source_availability_policy_hash == source_availability_binding(
         catalog.catalog_hash
     )

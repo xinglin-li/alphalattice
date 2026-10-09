@@ -169,14 +169,7 @@ def test_a_fifth_policy_runs_through_the_unmodified_decision_provider() -> None:
 
 
 def test_installed_catalog_is_the_frozen_families_plus_explicit_appends() -> None:
-    """The installed composition, in declaration order, with its solver contract.
-
-    The four frozen families retain their positions; later capabilities are
-    explicit appends, never discovery. The turnover successor is appended after
-    the existing Stage 6 entries, and the three closed-form whole-book families
-    (C1 and the whole-book clock at `ea28c8a8`, C6 at `88653bf6`, 2026-08-27)
-    after those, so no published catalog order is rewritten.
-    """
+    """The installed catalog retains frozen family positions and appends capabilities in order."""
 
     catalog = build_installed_portfolio_policy_catalog()
     frozen = (

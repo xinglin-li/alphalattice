@@ -22,10 +22,6 @@ before any matter gets a second window, so that a verbose matter cannot
 spend the budget the others need. What a budget leaves unread is returned
 as pending windows the caller can issue next -- never as read.
 
-Consumer: the S4/S5 litigation experiment drivers (the generic-packet
-versus matter-guided access comparison) and, if S6 adopts the method, the
-packet's typed delivery beside `disclosures.py`. It reads no model and
-issues no span itself; `retrieval/session.py` issues and proves the ranges.
 """
 
 from __future__ import annotations

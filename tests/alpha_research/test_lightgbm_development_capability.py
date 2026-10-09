@@ -1034,3 +1034,78 @@ def test_a_booster_cache_scope_parses_each_model_once_and_predicts_the_same_bits
     assert all(value.tobytes() == fresh.tobytes() for value in reused)
     adapter.predict(estimator=estimator, inputs=inputs)
     assert parsed == 2  # nothing survives the scope
+
+
+def test_a_fixed_fit_measures_its_training_error_unless_the_plan_reads_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fixed-iteration fit measures training error unless its plan explicitly reads none."""
+    import re
+    from pathlib import Path
+
+    import lightgbm
+
+    from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
+        DYNAMIC_PANEL_FIXED_ITERATIONS,
+        DynamicPanelLightGBMAdapter,
+        build_dynamic_panel_lightgbm_recipe,
+        dynamic_panel_lightgbm_parameters,
+    )
+
+    train_x = lightgbm_threads_module._canary_values(2_000, 6, 0)
+    adapter = DynamicPanelLightGBMAdapter()
+    parameters = next(
+        value
+        for value in dynamic_panel_lightgbm_parameters()
+        if value.training_policy == "FIXED_ITERATION"
+        and value.fixed_iterations == min(DYNAMIC_PANEL_FIXED_ITERATIONS)
+    )
+    recipe = build_dynamic_panel_lightgbm_recipe(parameters)
+    feature_ids = tuple(f"feature-{index}" for index in range(train_x.shape[1]))
+    inputs = BoundAlphaTrainingInput(
+        training_binding_hash="a" * 64,
+        ordered_feature_ids=feature_ids,
+        features=_readonly(train_x),
+        targets=_readonly(train_x[:, 0] - train_x[:, 1]),
+    )
+    predictions: list[tuple[int, ...]] = []
+    original_predict = lightgbm.Booster.predict
+
+    def observe(booster: object, data: np.ndarray, **kwargs: object) -> object:
+        predictions.append(data.shape)
+        return original_predict(booster, data, **kwargs)
+
+    monkeypatch.setattr(lightgbm.Booster, "predict", observe)
+
+    def fit(**plan: object) -> AlphaModelFitResult:
+        predictions.clear()
+        with alpha_model_numerical_scope(adapter.describe_numerical_binding()):
+            return adapter.fit(
+                recipe=recipe,
+                inputs=inputs,
+                fit_plan=BoundAlphaModelFitInput(
+                    fit_plan_hash="b" * 64,
+                    protocol_id="DIRECT_FIT",
+                    parent_training_binding_hash=inputs.training_binding_hash,
+                    ordered_feature_ids=feature_ids,
+                    **plan,  # type: ignore[arg-type]
+                ),
+            )
+
+    measured = fit()
+    assert predictions == [inputs.features.shape] and measured.predict_call_count == 1
+    assert isinstance(measured.measured_training_mse(), float)
+    unread = fit(training_error=None)
+    assert predictions == [] and unread.predict_call_count == 0 and unread.training_mse is None
+    assert unread.estimator_content == measured.estimator_content
+    assert unread.state_projection == measured.state_projection
+    assert unread.selection_diagnostic == measured.selection_diagnostic
+    with pytest.raises(ValueError, match="ALPHA_MODEL_TRAINING_ERROR_NOT_MEASURED"):
+        unread.measured_training_mse()
+    src = Path(__file__).resolve().parents[2] / "src"
+    opting_out = sorted(
+        path.relative_to(src).as_posix()
+        for path in src.rglob("*.py")
+        if re.search(r"training_error=None", path.read_text(encoding="utf-8"))
+    )
+    assert opting_out == ["alphalattice/investment/alpha_research/scores/model_renewal.py"]

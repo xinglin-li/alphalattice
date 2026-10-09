@@ -284,7 +284,7 @@ class WorkspaceReadinessRepository(WorkspaceRepository):
     def research_ready_for_snapshot(
         connection: duckdb.DuckDBPyConnection, *, snapshot_hash: str, observed_at: datetime
     ) -> None:
-        """Marks research-ready the profile whose active Panel the snapshot publishes (V155).
+        """Marks research-ready the profile whose active Panel the snapshot publishes.
 
         The Feature repository runs it on the connection that registers the snapshot.
         """
@@ -312,7 +312,7 @@ class WorkspaceReadinessRepository(WorkspaceRepository):
     def blocked_by_inactive_snapshot(
         connection: duckdb.DuckDBPyConnection, *, snapshot_hash: str, observed_at: datetime
     ) -> None:
-        """Blocks the profile whose active Panel's snapshot was retired or quarantined (V155).
+        """Blocks the profile whose active Panel's snapshot was retired or quarantined.
 
         The Feature repository runs it on the connection that changes the snapshot's lifecycle.
         """
@@ -342,7 +342,7 @@ class WorkspaceReadinessRepository(WorkspaceRepository):
     def feature_building(
         connection: duckdb.DuckDBPyConnection, *, market_profile_id: str, observed_at: datetime
     ) -> None:
-        """Marks a profile's Features building (V155).
+        """Marks a profile's Features building.
 
         The Feature repository runs it inside the transaction that activates a Panel.
         """
@@ -366,7 +366,7 @@ class WorkspaceReadinessRepository(WorkspaceRepository):
         checked_at: datetime,
         changed_at: datetime,
     ) -> None:
-        """Records an activated manifest and marks its Features building (V155).
+        """Records an activated manifest and marks its Features building.
 
         The market store runs it inside the transaction that activates the manifest.
         """
@@ -415,7 +415,7 @@ class WorkspaceReadinessRepository(WorkspaceRepository):
         checked_at: datetime,
         changed_at: datetime,
     ) -> None:
-        """Records a source change that left the active set unchanged (V155).
+        """Records a source change that left the active set unchanged.
 
         The market store runs it inside the transaction that records the change; only the
         profile whose active manifest is `manifest_revision` moves.

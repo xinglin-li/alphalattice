@@ -468,7 +468,7 @@ def test_current_policy_uses_unchanged_coverage_for_missing_member_rows(missing_
 
 @pytest.mark.parametrize("value", [np.inf, -np.inf])
 def test_a_non_finite_raw_value_is_missing_in_every_installed_method(value: float) -> None:
-    """requirement (V517): a non-finite raw value counts as missing, as NaN does, in every
+    """Requirement: a non-finite raw value counts as missing, as NaN does, in every
     session statistic of every installed Panel method -- the median, MAD, winsor and coverage
     alike -- so it never moves another name's value and is never published as a clipped one.
     A stock value and a state child each; the session stays published, so the comparison

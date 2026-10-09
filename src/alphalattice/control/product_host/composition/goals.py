@@ -518,7 +518,30 @@ class GoalApplication:
         """
         if caller == "HUMAN" or operation not in FIRST_USE_STEPS or not self._first_use_open(goal):
             return None
+        if operation == "DATA_ISSUE_CONFIRM" and not self._own_preparation_stopped(goal):
+            return None
         return f"first-use-goal:{goal.goal_id}"
+
+    def data_decisions(self, goal: Goal | None, caller: str) -> str | None:
+        """The delegation under which this caller decides its first use's data issues, if any.
+
+        The issue list and the preview name it so that the agent confirms the case itself, under
+        the goal, rather than asking the person for a grant.
+        """
+        return None if goal is None else self.delegation(goal, "DATA_ISSUE_CONFIRM", caller)
+
+    def _own_preparation_stopped(self, goal: Goal) -> bool:
+        """Whether a preparation this first use admitted is stopped, its data decisions owed.
+
+        The delegation decides only its own preparation's data issues: no other preparation's,
+        no standing grant, nothing once the goal ends (OP19).
+        """
+        for entry in self.store.attributed(goal.goal_id):
+            task = entry.get("task_id")
+            facts = self.task_facts(UUID(str(task))) if task else None
+            if facts is not None and facts[:2] == ("workspace_preparation", "BLOCKED"):
+                return True
+        return False
 
     def network_left_open(self, goal: Goal) -> bool:
         """Whether a first-use goal that has ended left open the network its delegation opened.
@@ -582,6 +605,7 @@ class GoalApplication:
                         ),
                         ("review_publication_hash", body.get("review_publication_hash")),
                         ("case_token", request.data_issue_case_token),
+                        ("option_id", request.data_issue_option_id),
                     )
                     if value is not None
                 },
@@ -777,7 +801,17 @@ class GoalApplication:
         delegated = [
             {
                 key: e[key]
-                for key in ("recorded_at", "operation", "status", "network_enabled")
+                # A delegated data decision keeps its choice and who took it.
+                for key in (
+                    "recorded_at",
+                    "operation",
+                    "status",
+                    "network_enabled",
+                    "case_token",
+                    "option_id",
+                    "delegation",
+                    "agent_session",
+                )
                 if key in e
             }
             for e in requests

@@ -4070,7 +4070,7 @@ def _subset_market(
     else:
         raise PanelMethodologyExecutionError("alpha_research.portfolio_fold_index_axis_invalid")
     decision = np.asarray(market.decision_eligible[np.ix_(rows, listing_positions)], dtype=np.bool_)
-    # A Sector history's per-session exposure keeps the subset's sessions (V346).
+    # A Sector history's per-session exposure keeps the subset's sessions.
     sector_matrix = np.asarray(
         market.sector_exposure_matrix[rows][:, :, listing_positions]
         if market.sector_exposure_matrix.ndim == 3

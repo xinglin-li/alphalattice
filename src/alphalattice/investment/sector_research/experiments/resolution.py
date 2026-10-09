@@ -176,7 +176,7 @@ class SectorForecastResolver:
         if uncovered:
             raise SectorResearchError("sector_research.resolution_membership_incomplete")
         sector_columns = {value: index for index, value in enumerate(surface.ordered_sectors)}
-        # Each formation broadcasts its Sector's forecast to the listings in it then (V346).
+        # Each formation broadcasts its Sector's forecast to the listings in it then.
         columns_by_row: list[list[int]] = []
         for rows, mapping in sector_slices(membership, formation_sessions):
             columns: list[int] = []

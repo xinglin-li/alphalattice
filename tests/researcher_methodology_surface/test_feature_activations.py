@@ -74,7 +74,7 @@ def test_a_workspace_catalog_is_the_shipped_one_with_its_activations(tmp_path: P
 def test_a_feature_review_matches_the_executed_input_catalog_and_preprocessing(
     tmp_path: Path,
 ) -> None:
-    """regression (V509, V526): another declaration of identical work shares trial evidence;
+    """Regression: another declaration of identical work shares trial evidence;
     another recipe, input revision or joint feature definition cannot borrow its effect or
     build, and neither the packet nor the listing offers activation from that other trial.
     """

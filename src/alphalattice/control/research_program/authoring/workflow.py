@@ -203,7 +203,7 @@ class ResearchProgramStore:
             conflict="research_authoring.program_identity_conflict",
         )
         # The document's index, written after its Program: a read by the document finds the
-        # Programs it sealed by key, never by opening every record (V108, V104).
+        # Programs it sealed by key, never by opening every record.
         known = self.recorded_for(document_hash)
         if program.program_hash not in known:
             index = self._root / "by-document" / f"{document_hash}.json"
@@ -556,7 +556,7 @@ class ResearchProgramWorkflow:
         """Read the sealed Program and optional evidence without verification or work.
 
         A document whose inputs moved since it was sealed compiles another Program now; the
-        last Program it sealed is read instead, `NOT_CURRENT`, never as not found (V108).
+        last Program it sealed is read instead, `NOT_CURRENT`, never as not found.
         """
         sealed = self._dispatcher.seal(
             document,
@@ -745,7 +745,7 @@ class ResearchProgramWorkflow:
         The one place a numerical owner is called on any path. `run` reaches it
         with the Program it just sealed and `run_sealed` with the stored Program
         it proved identical, which is the only difference the two ever had. Every Desk's
-        call runs held offline, as its envelope declares, whatever the workspace allows (V116).
+        call runs held offline, as its envelope declares, whatever the workspace allows.
         """
         with held_offline():
             result = executor.execute(

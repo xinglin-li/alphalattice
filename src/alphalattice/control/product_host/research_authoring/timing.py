@@ -37,7 +37,7 @@ class ResearchTimingSummary(TypedDict):
     selected_event: dict[str, Any]
     training: dict[str, Any]
     temporal_scope: dict[str, Any]
-    """What the window can claim about time, from its Panel's marks (V347)."""
+    """What the window can claim about time, from its Panel's marks."""
     notices: list[str]
 
 
@@ -51,7 +51,7 @@ def installed_price_basis() -> str:
 def temporal_scope(
     panel: dict[str, Any], *, window_start: object, window_end: object, data_start: object
 ) -> dict[str, Any]:
-    """A window's temporal statement from its Panel manifest (V347).
+    """A window's temporal statement from its Panel manifest.
 
     Args:
         panel: The Panel manifest the result read.

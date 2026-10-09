@@ -5,7 +5,7 @@ predecessor "accepts integer platform bps and must not be treated as if it
 already implements exact per-side fixed-point values such as 2.5". These tests
 cover what that claim depends on: that the ladder is exact and that an ambiguous
 quote is refused rather than rounded. (The baseline package whose frozen hashes
-the extraction was also checked against retired with the Stage-6 campaign, RT R01.)
+the extraction was also checked against retired with the Stage-6 campaign, R01.)
 """
 
 from __future__ import annotations

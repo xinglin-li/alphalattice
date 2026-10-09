@@ -117,11 +117,8 @@ SUPPORTED_HISTORICAL_BINDINGS: tuple[HistoricalEvidenceBindings, ...] = (
             "01a32a4c23e9a24d3a924c1bcec229ddd9332868721f637093ffeca53403f120"
         ),
     ),
-    # The tuples at 2825023c..8f93cd25 (the agent seam's base) and through the first-day
-    # speed plan (0f9659f7..67364ccd) were listed here until SR (2026-09-27): no kept
-    # workspace holds a publication sealed under either, so their readback retired
-    # (SR's verified retirement inventory). One sealed under them reads back as observed
-    # history, never current authority (`ObservedEvidenceBindings`).
+    # No kept workspace holds a publication under the removed bindings. Their readback
+    # is observed history, never current authority (`ObservedEvidenceBindings`).
 )
 
 
@@ -165,7 +162,7 @@ def alternative_acquisition_binding_hash(playpen_root: Path) -> str:
 
     The acquisition service's module is an entry of the closure (its admission, its recorded
     and live builds and its snapshot seal), not the text of four of its methods read at
-    runtime, so a comment moves nothing (V95). Installed library versions are provenance
+    runtime, so a comment moves nothing. Installed library versions are provenance
     (LAWS.md ID6), recorded beside a result and never here.
     """
     return str(

@@ -204,7 +204,7 @@ class _Tampered:
     [
         ("rows", "prediction_rows", "model_contract.prediction_reads_other_rows"),
         ("noise", "determinism", "model_contract.predictions_not_deterministic"),
-        # The state check names each field a LINEAR state lacks (V350).
+        # The state check names each field a LINEAR state lacks.
         (
             "state",
             "state",
@@ -214,7 +214,7 @@ class _Tampered:
     ],
 )
 def test_the_contract_names_what_it_found(change: str, check: str, code: str) -> None:
-    """tamper (EX, V342): a prediction that reads other rows, one that moves between two fits
+    """tamper (EX): a prediction that reads other rows, one that moves between two fits
     under one seed, and a LINEAR state without its coefficients each fail the contract by name."""
 
     ((adapter, domain),) = [v for v in _installed() if v[0].adapter_id == "regularized_linear"]

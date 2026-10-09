@@ -230,7 +230,7 @@ def test_an_issuer_that_filed_nothing_in_the_window_has_an_empty_plan() -> None:
     assert read.nothing_filed
     with pytest.raises(ValueError, match="inventory_read_invalid"):
         SecFilingInventoryRead(plan=plan, read_hash="0" * 64)
-    # The plan says so itself, the one predicate every floor judge reads (V587), and an index
+    # The plan says so itself, the one predicate every floor judge reads, and an index
     # read establishes it at its own cutoff and window only. A plan scoped to named accessions
     # reads those, not the window, so it never says so -- even one the index holds nothing for.
     assert plan.nothing_filed

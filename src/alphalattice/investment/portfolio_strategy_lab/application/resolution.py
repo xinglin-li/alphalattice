@@ -172,7 +172,7 @@ class ResolvedPortfolioAuthorities:
     """
     sector_history_hash: str | None = None
     """The Sector history's identity while a reclassification is in force over the book's
-    listings (V346); None otherwise, so every Program before one is what it was."""
+    listings; None otherwise, so every Program before one is what it was."""
 
     def __post_init__(self) -> None:
         """Require exact common support and nonempty admitted listing/source authority.
@@ -438,7 +438,7 @@ class PortfolioResearchCompiler:
 
 
 PUBLIC_PATH_ROLE: Final = "portfolio_strategy_lab.public_path"
-"""The role whose recorded moves the public path's source identity follows (V324)."""
+"""The role whose recorded moves the public path's source identity follows."""
 
 
 def public_path_rule_value() -> str:
@@ -488,7 +488,7 @@ def public_path_rule_value() -> str:
 def _public_path_source_hash(*, installed_source_hash: str | None = None) -> str:
     """Bind the implementation bytes that can change the public result.
 
-    The generic path's identity is held at the value its recorded moves lead from (V324), so a
+    The generic path's identity is held at the value its recorded moves lead from, so a
     move recorded as keeping the numbers leaves every Program sealed before it current, and the
     installed strategy owner's source identity is composed in when a selection is resolved.
     """
@@ -509,7 +509,7 @@ def _risk_surface(artifact_root: Path):  # type: ignore[no-untyped-def]
     store = RiskReturnArtifactStore(artifact_root)
     manifests = tuple(sorted((store.root / "manifests").glob("*.json")))
     if not manifests:
-        # None where the shared lanes are read is said apart from several (V336).
+        # None where the shared lanes are read is said apart from several.
         raise PortfolioResearchCompositionError("portfolio_application.risk_return_surface_absent")
     if len(manifests) != 1:
         raise PortfolioResearchCompositionError(
@@ -539,7 +539,7 @@ def _sector_map(artifact_root: Path, *, manifest_revision: str) -> SectorRevisio
 def _sector_history(
     artifact_root: Path, classification: SectorRevisionMap, listings: tuple[str, ...]
 ) -> SectorHistory:
-    """The Sector each formation reads over the book's listings, as of its revision (V346)."""
+    """The Sector each formation reads over the book's listings, as of its revision."""
     try:
         history = sector_history_as_of(
             PanelClosureArtifactStore(ArtifactResolver(artifact_root)),
@@ -553,7 +553,7 @@ def _sector_history(
 
 
 def _sector_history_hash(history: SectorHistory) -> str | None:
-    """A history's identity while it holds a reclassification; None otherwise (V346)."""
+    """A history's identity while it holds a reclassification; None otherwise."""
     return history.identity if history.reclassifications else None
 
 
@@ -590,7 +590,7 @@ def _sector_lanes(
     history: SectorHistory,
     sessions: tuple[date, ...],
 ) -> tuple[FloatArray, FloatArray]:
-    # A history with a reclassification is read per formation, by Sector name (V346).
+    # A history with a reclassification is read per formation, by Sector name.
     if history.reclassifications:
         return sector_exposure_lanes(history, listings=listings, sessions=sessions)
     entries = {value.listing_id: value for value in classification.entries}
@@ -779,7 +779,7 @@ class SharedPortfolioInputResolver:
                 )
             if not common_sessions or not listings:
                 # Which side is empty, in counts: the package's frozen axis against the
-                # Risk surface and the sector map (V336).
+                # Risk surface and the sector map.
                 raise PortfolioResearchCompositionError(
                     "portfolio_application.frozen_shared_axis_empty:"
                     f"sessions={len(common_sessions)},listings={len(listings)},"
@@ -1044,7 +1044,7 @@ class SharedPortfolioInputResolver:
                     "portfolio_application.risk_history_insufficient"
                 )
             rows = np.arange(stop - required, stop, dtype=np.int64)
-            # The listings whose Sector at this formation is not their current one (V346).
+            # The listings whose Sector at this formation is not their current one.
             in_force = history.at(session) if history.reclassifications else history.current
             moved = {
                 listing: in_force[listing]
@@ -1180,16 +1180,22 @@ class StrategyPortfolioResolver:
     """
 
     def __init__(
-        self, *, shared: SharedInputOwner, catalog: InstalledFrozenStrategyCatalog
+        self, *, shared: SharedInputOwner, catalog: InstalledFrozenStrategyCatalog | None
     ) -> None:
         """Bind portfolio resolution to shared input ownership and installed strategy declarations.
 
         Args:
             shared: Deterministic shared-input authority and resolution owner.
-            catalog: Finite installed strategy package catalog.
+            catalog: Finite installed strategy package catalog, or None while nothing is
+                installed; an installation sets it on the running Host.
         """
         self.shared = shared
         self.catalog = catalog
+
+    def _installed(self) -> InstalledFrozenStrategyCatalog:
+        if self.catalog is None:
+            raise PortfolioResearchCompositionError("portfolio_application.strategy_catalog_empty")
+        return self.catalog
 
     @property
     def strategy_catalog_hash(self) -> str:
@@ -1198,7 +1204,7 @@ class StrategyPortfolioResolver:
         Returns:
             The retained catalog catalog_hash.
         """
-        return self.catalog.catalog_hash
+        return self._installed().catalog_hash
 
     def resolve_authorities(
         self, *, workspace: Path, spec: PortfolioResearchSpec
@@ -1301,7 +1307,7 @@ class StrategyPortfolioResolver:
         Returns:
             Mapping of installed package declarations supplied by the retained catalog.
         """
-        return self.catalog.packages()
+        return {} if self.catalog is None else self.catalog.packages()
 
     def _selected(self, spec: PortfolioResearchSpec) -> SelectedStrategy:
         strategy_id = (
@@ -1309,8 +1315,9 @@ class StrategyPortfolioResolver:
             if spec.strategy_package_id == WORKSPACE_DEFAULT_STRATEGY_PACKAGE_ID
             else spec.strategy_package_id
         )
+        catalog = self._installed()
         return self._package(
-            lambda: self.catalog.select(
+            lambda: catalog.select(
                 strategy_id=strategy_id, score_source_mode=spec.score_source_mode
             )
         )

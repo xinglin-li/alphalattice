@@ -1,9 +1,8 @@
 """The h1 Dynamic Panel's historical records and the source arrays they were built from.
 
 A historical run sealed a fold dossier and a scale receipt for each block; the paired panel
-route (V1) and the monthly refit research read that failed baseline back, and resolve its
-source arrays. The catalog, its compile and fold materialization retired with V19
-(V19's retained retirement rationale).
+route and the monthly refit research read that failed baseline back, and resolve its
+source arrays.
 """
 
 from __future__ import annotations

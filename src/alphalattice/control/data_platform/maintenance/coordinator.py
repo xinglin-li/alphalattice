@@ -1120,6 +1120,7 @@ class WorkspaceMaintenanceCoordinator:
                     phase=MaintenancePhase.QUALITY,
                     status=qualification[0],
                     failure_code=qualification[1],
+                    failure_cause=qualification[2],
                     observed_at=now,
                     change_set=change_set,
                 )
@@ -1207,6 +1208,7 @@ class WorkspaceMaintenanceCoordinator:
                     phase=MaintenancePhase.QUALITY,
                     status=qualification[0],
                     failure_code=qualification[1],
+                    failure_cause=qualification[2],
                     observed_at=now,
                     change_set=change_set,
                 )
@@ -1239,6 +1241,7 @@ class WorkspaceMaintenanceCoordinator:
                     phase=MaintenancePhase.QUALITY,
                     status=qualification[0],
                     failure_code=qualification[1],
+                    failure_cause=qualification[2],
                     observed_at=now,
                     change_set=change_set,
                 )
@@ -1305,6 +1308,7 @@ class WorkspaceMaintenanceCoordinator:
                     phase=MaintenancePhase.QUALITY,
                     status=qualification[0],
                     failure_code=qualification[1],
+                    failure_cause=qualification[2],
                     observed_at=now,
                     change_set=change_set,
                 )
@@ -1500,7 +1504,7 @@ class WorkspaceMaintenanceCoordinator:
         request: WorkspaceMaintenanceRequest,
         observed_at: datetime,
         only_when_materialized: bool = False,
-    ) -> tuple[MaintenanceStatus, str] | None:
+    ) -> tuple[MaintenanceStatus, str, Mapping[str, object] | None] | None:
         """Qualify U0 or new candidates from already-computed base values before entry.
 
         Raw onboarding is only candidate preparation. The shipped base bundle
@@ -1540,11 +1544,11 @@ class WorkspaceMaintenanceCoordinator:
         if not candidates:
             return None
         if self.feature_input is None:
-            return MaintenanceStatus.BLOCKED, "feature.baseline_gateway_required"
+            return MaintenanceStatus.BLOCKED, "feature.baseline_gateway_required", None
         parent = self.manifest
         bundle = desktop_core_feature_bundle()
         if not set(bundle.factor_ids).issubset(self.feature_foundation.catalog.factor_ids):
-            return MaintenanceStatus.BLOCKED, "feature.baseline_bundle_unavailable"
+            return MaintenanceStatus.BLOCKED, "feature.baseline_bundle_unavailable", None
         obligation = qualification_obligation("baseline_features", bundle.bundle_hash)
         qualification = self.feature_foundation.qualify_features(
             listing_ids=candidates,
@@ -1563,7 +1567,7 @@ class WorkspaceMaintenanceCoordinator:
             return None
         sector = self.feature_state.current_sector_state(parent)
         if sector is None:
-            return MaintenanceStatus.BLOCKED, "feature.baseline_sector_required"
+            return MaintenanceStatus.BLOCKED, "feature.baseline_sector_required", None
         from alphalattice.foundation.feature_engine.contracts import TemporalKnowledgeBoundary
 
         boundary = TemporalKnowledgeBoundary(
@@ -1588,7 +1592,8 @@ class WorkspaceMaintenanceCoordinator:
         except ValueError as exc:
             if not str(exc).startswith("feature."):
                 raise
-            return MaintenanceStatus.BLOCKED, str(exc)
+            # A short population says how short and why, beside its code.
+            return MaintenanceStatus.BLOCKED, str(exc), getattr(exc, "cause", None)
         reduced = result.research_manifest
         assert reduced is not None
         if not self._bind_derived_manifest_evidence(
@@ -1597,7 +1602,7 @@ class WorkspaceMaintenanceCoordinator:
             requested_as_of=request.target_market_session,
             observed_at=observed_at,
         ):
-            return MaintenanceStatus.BLOCKED, "feature.baseline_evidence_binding_failed"
+            return MaintenanceStatus.BLOCKED, "feature.baseline_evidence_binding_failed", None
         self._bind_manifest(
             reduced,
             observed_at=observed_at,
@@ -1607,7 +1612,7 @@ class WorkspaceMaintenanceCoordinator:
             else "qualified_source_membership",
             reference_hash=qualification.evidence_hash,
         )
-        return MaintenanceStatus.RUNNING, "feature.baseline_qualification_applied"
+        return MaintenanceStatus.RUNNING, "feature.baseline_qualification_applied", None
 
     def _candidate_only_sector_recheck(
         self, request: WorkspaceMaintenanceRequest, *, observed_at: datetime

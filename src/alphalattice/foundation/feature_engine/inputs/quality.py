@@ -42,7 +42,7 @@ def qualify_materialized_features(
     selected value needs its matching catalog/date ineligibility evidence; a
     missing reason is an integrity defect, not permission to exclude the name.
     A layered catalog's evidence is recorded by the part that computes each
-    factor (``factor_catalogs``, V92).
+    factor (``factor_catalogs``).
     """
     factors, listings = tuple(sorted(set(factor_ids))), tuple(sorted(set(listing_ids)))
     if not factors or not listings:

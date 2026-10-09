@@ -173,7 +173,7 @@ def test_capability_probe_is_proven_once_and_again_after_a_pack_change(
 
 
 def test_a_host_that_runs_items_at_once_holds_a_session_for_each(tmp_path: Path) -> None:
-    """requirement (S1, first-day speed): one session per pack unless the Host
+    """requirement (first-day speed): one session per pack unless the Host
     raises it; raised, leases held at once each take a session of their own up
     to the bound, then share the least-leased; a released session is taken
     again before another loads; a changed pack retires every one of them."""
@@ -211,7 +211,7 @@ def test_a_host_that_runs_items_at_once_holds_a_session_for_each(tmp_path: Path)
 
 
 def test_a_model_call_gives_up_the_callers_lock_only_where_it_yields() -> None:
-    """requirement (S1): a caller inside `yielding_during_inference` gives its
+    """Requirement: a caller inside `yielding_during_inference` gives its
     lock up while the model runs and holds it again after; outside that scope,
     or once a build withholds it (a committed generation materialized under the
     workspace's lock), the model call keeps the caller's lock."""

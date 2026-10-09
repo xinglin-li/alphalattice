@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import struct
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
@@ -286,3 +288,31 @@ def test_listing_set_reads_answer_each_listings_own_reads(market_source):
         market.actions(SCOPE[1])
     with pytest.raises(ValueError, match="listing has no provider mapping"):
         market.actions_by_listing(SCOPE)
+
+
+@settings(max_examples=300, deadline=None)
+@given(st.data())
+def test_a_rolling_refresh_compares_returns_from_the_session_before_it(data):
+    """regression: every warm refresh took the log return of each listing's whole adjusted series.
+
+    A rolling refresh replaces sessions from its first observed one on and keeps every earlier
+    one, so a return can change only from the kept session before it. Comparing from there must
+    name exactly the sessions the whole-series comparison names, for gap fills and appends too.
+    """
+    calendar = [date(2026, 1, 1) + timedelta(days=i) for i in range(data.draw(st.integers(2, 30)))]
+    closes = st.floats(1.0, 500.0, allow_nan=False)
+    kept = data.draw(st.lists(st.booleans(), min_size=len(calendar), max_size=len(calendar)))
+    prior = {day: data.draw(closes) for day, keep in zip(calendar, kept, strict=True) if keep}
+    first = data.draw(st.integers(0, len(calendar) - 1))
+    observed = {
+        day: prior[day] if day in prior and data.draw(st.booleans()) else data.draw(closes)
+        for day in calendar[first:]
+        if day in prior or data.draw(st.booleans())
+    }
+    for extra in range(data.draw(st.integers(0, 3))):
+        observed[calendar[-1] + timedelta(days=extra + 1)] = data.draw(closes)
+    if not prior or not observed:
+        return
+    current = {**prior, **observed}
+    changes = MarketDataRepository._provider_adjusted_return_changes
+    assert changes(prior, current, refreshed_from=min(observed)) == changes(prior, current)

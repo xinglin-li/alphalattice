@@ -38,7 +38,7 @@ def recipe_identity(model: BaseModel, *, exclude: frozenset[str] = frozenset()) 
 
 
 def recipe_seal_holds(model: BaseModel, seal: str) -> bool:
-    """Whether the model's own seal field holds its identity, ``recipe_identity`` (V451).
+    """Whether the model's own seal field holds its identity, ``recipe_identity``.
 
     A recipe stored under the rule before NM1, its whole content hashed with its names, no longer
     holds: NM2 retired that compatibility path once no root the tree must read needed it.

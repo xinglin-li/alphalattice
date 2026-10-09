@@ -8,10 +8,7 @@ const holdingSortHead = (key, label, type, unit = '') => {
   const indicator = selected ? (direction === 'asc' ? '↑' : '↓') : '↕';
   return {label:btnAttrs(html`${label}<span class="table-sort-indicator" aria-hidden="true">${indicator}</span>`,'holding-sort',key,'table-sort',html`aria-label="${t('Sort by {label}',{label})}"`),unit,type,ariaSort:selected ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'};
 };
-// Round 60: words first, figures last; every word here is short (a code, a sector), so the table
-// spreads its slack evenly between the facts (`spread`) instead of leaving one stretch of blank.
-// The index is its own column, the row's place in the shown order (FT6): the owner's holdings carry no index, and a
-// ticker's digits are none (AES, WDC); the unit is in the cell.
+// Every word in this table is short, so the available width is shared between its fact columns.
 const HOLDINGS_HEADERS = (weightLabel) => [{label:'#',type:'num',index:true}, holdingSortHead('listing',t('Listing'),'link'), {label:t('Sector'),type:'text'}, {label:t('Evidence mapping'),type:'status'}, holdingSortHead('weight',t(weightLabel),'num'), holdingSortHead('change',t('Change (pp)'),'num'), {label:'',type:'link'}];
 const HOLDINGS_ORDERS = () => [['listing-asc',t('Listing ↑')],['weight-desc',t('Weight ↓')],['weight-asc',t('Weight ↑')]];
 /* A holding is selected by its durable listing identity; the ticker is a label that may repeat. */
@@ -35,8 +32,6 @@ const Portfolio = (() => {
   const sectorsAbsent = () => ownerHoldings().length > 0 && ownerHoldings().every((x) => !x.sector);
   const mappingAbsent = () => ownerHoldings().length > 0 && ownerHoldings().every((x) => x.mapped == null);
   const uniformAbsence = () => sectorsAbsent() && mappingAbsent();
-  // round 57: how the table is shown — grouping by sector and the two fact columns are offered
-  // only where the owner supplied the fact for some holding; the ordering is the head glyphs' too
   const DISPLAY = () => ({
     groupings: sectorsAbsent() ? [] : [['none', t('No grouping')], ['sector', t('Sector')]],
     orderings: HOLDINGS_ORDERS(),
@@ -58,9 +53,7 @@ const Portfolio = (() => {
     if (!rows.length) return '';
     const s = (context.forward ? context.projection?.sectors : Data.raw()?.sectors) || {};
     const date = context.forward ? (context.basis === 'OBSERVED_RESEARCH_ENTRY' ? context.projection?.entry_session : context.projection?.formation_session) : Data.subject()?.session || app.session;
-    // N6 (law 89, the book's one exposure figure): every sector a slice of the one meter, its legend the list; the source is the label's (i)
-    // U52: the Sector map's time treatment is the Host's statement (Research timing), never this page's claim -- the
-    // old words said "not the current classification", which the Panel's CURRENT_CLASSIFICATION_BACKFILLED contradicts
+    // The Sector treatment is the Host's recorded statement; this page makes no independent time claim.
     const stated = ((Data.raw()?.timing?.temporal_scope || Data.raw()?.temporalScope)?.statements || []).length; // an authored book's timing, an installed book's reading context
     const source = s.status === 'BOOK_EXECUTION' ? t(stated ? 'Sectors are the classification the book\'s own execution used: the Sector map sealed with its Panel; Research timing states its time treatment.' : 'Sectors are the classification the book\'s own execution used: the Sector map sealed with its Panel.') : t('Sector source not resolved.');
     return figureBox(html`${t('Exposure by sector')} <span class="num">${count(rows.length)}</span>`,meter({kind:'composition',slices:rows,limit:rows.length > LEGEND.fold ? LEGEND.shown : rows.length,label:t('Sector composition')}),{info:infoMark(`${t('book weight at {date} · {n} sectors', {date, n: count(rows.length)})}. ${source}`),cls:'sector-exposure',attrs:html`aria-label="${t('Exposure by sector')}"`});
@@ -90,7 +83,7 @@ const Portfolio = (() => {
     const hidden = [sectorShown() ? null : t('Sector'), mappingShown() ? null : t('Evidence mapping')].filter(Boolean);
     const {weightLabel} = holdingsContext();
     const headers = HOLDINGS_HEADERS(weightLabel).filter((h) => !hidden.includes(h?.label ?? h));
-    const values = holdingValues(), {shown, start, page, pages} = pageOf(values, app.holdingsPage) /* the one table page (law 92) */;
+    const values = holdingValues(), {shown, start, page, pages} = pageOf(values, app.holdingsPage) ;
     app.holdingsPage = page;
     const foot = pages > 1 ? pager({total: values.length, one: '{n} entry', many: '{n} entries', page, pages, prev: ['holding-page-prev', ''], next: ['holding-page-next', '']}) : ''; // N6: one page of holdings needs no foot (the tab says how many)
     const completeWeights = values.length > 0 && values.every((x) => x.current_weight != null && Number.isFinite(Number(x.current_weight)));
@@ -116,7 +109,7 @@ const Portfolio = (() => {
     // Session-level fractions are small: the shared rule keeps a tiny nonzero cost or return in words, not as zero.
     const pct = (v) => num(v, 'percent');
     const mode = {REBALANCE: 'rebalance', HOLD: 'hold'}[p.decisionMode] || (p.decisionMode ? String(p.decisionMode).toLowerCase() : '');
-    // U58 (V343): each fact's unit as the book's readback names it by path, in words; a unit it does not name is not claimed
+    // A metric's unit comes from the book's readback; an absent unit is not inferred.
     const unit = (key) => { const u = p.units?.['position.' + key]; return u ? t(UNIT_WORDS[u] || u) : ''; };
     const daily = (key) => unit(key) ? t('{unit}, this session', {unit: unit(key)}) : t('this session');
     return html`<div class="stat-strip rail session-facts" aria-label="${t('Facts of the selected session')}">${stat(t('Decision at {date}', {date: p.session || app.session}), t(mode), t('what the policy did this session'))}${stat(t('Holdings'), p.holdingCount ?? '', unit('holding_count'))}${stat(t('One-way turnover'), num(p.turnover, 'percent'), daily('one_way_turnover'))}${stat(t('Cost'), num(p.costFraction, 'percent'), daily('cost_fraction'))}${stat(t('Net return'), html`<span class="num ${Number(p.netReturn) > 0 ? 'gain' : Number(p.netReturn) < 0 ? 'loss' : ''}">${signed(p.netReturn, 'percent')}</span>`, html`${daily('net_simple_return')}${p.benchmarkReturn === null || p.benchmarkReturn === undefined ? '' : html` · ${t('benchmark')} ${pct(p.benchmarkReturn)}`}`)}${stat(t('Cash'), num(p.cash, 'percent'), unit('cash'))}</div>`;
@@ -135,7 +128,7 @@ const Portfolio = (() => {
     const context = holdingsContext(), raw = Data.raw() || {};
     const ownerCount = context.forward ? context.projection?.holding_count : raw.position?.holdingCount;
     const shownCount = ownerCount != null && Number.isInteger(Number(ownerCount)) ? count(Number(ownerCount)) : '';
-    const items = [['holdings', 'Holdings', shownCount], ['diagnostics', 'Diagnostics', '']]; // N2: Compare is Portfolio study's tab (law 132); the replay union includes exited rows
+    const items = [['holdings', 'Holdings', shownCount], ['diagnostics', 'Diagnostics', '']];
     return tabStrip(t('Portfolio detail views'), items.map(([key, label, n]) => ({word: t(label), action: 'portfolio-tab', value: key, on: app.tab === key, count: n})), 'portfolio-tabs');
   }
   function holdingsBasisNote() {
@@ -171,8 +164,7 @@ const Portfolio = (() => {
   }
   function details() {
     if (app.tab !== 'holdings') return LiveViews.portfolioDetails(app.tab);
-    app.holdingsSort = display().order; // the viewer's ordering (round 57)
-    // round 95 (the user's still): the search and the display options stand over the table they act on, under the session's facts and the sector exposure
+    app.holdingsSort = display().order;
     const context = holdingsContext(), basisNote = holdingsBasisNote();
     const noForwardRows = context.forward && context.projection && (context.projection.available !== true || !context.rows.length);
     const table = noForwardRows ? emptyState(t('No forward holdings are available.')) : holdingsTable();
@@ -180,9 +172,6 @@ const Portfolio = (() => {
     const note = [basisNote,absence].filter(Boolean).join(' ');
     return html`<section class="holdings-section" aria-label="${t(context.forward ? 'Forward holdings' : 'Historical holdings')}">${sessionFacts()}${sectorSummary()}${detailSplit(html`<div class="holdings-box" data-box="table">${searchBar('holdingsQuery', t('Find listing'), t('Find a listing…'), app.holdingsQuery, displayOptions('holdings', DISPLAY()))}<div class="holdings-table-area"><div id="holdingsTable">${table}</div>${note ? html`<p class="table-note">${note}</p>` : ''}</div></div>`, 'holding', {over: true})}</section>`;
   }
-  /* A holding is a detail of the window (law 149): the window's column from the pane step up, the
-   * pane's layer below it; the same press closes it. It follows the holdings date: a new session
-   * shows the holding's weights there, and a book that does not hold it at that date closes it. */
   const holdingOf = (id) => ownerHoldings().find((x) => holdingKey(x) === id) || null;
   function inspectHolding(id) {
     const h = holdingOf(id);
@@ -265,7 +254,7 @@ const Portfolio = (() => {
     const timing = $('#portfolioTiming');
     if (timing) fillStackSlot(timing, LiveViews.researchTiming(Data.raw()?.timing));
     const standing = $('#portfolioStanding');
-    if (standing) fillStackSlot(standing, standingPanel(Data.raw()?.standing)); // U59: the book's marks, beside its timing
+    if (standing) fillStackSlot(standing, standingPanel(Data.raw()?.standing));
     $$('[data-session-label]').forEach((x) => (x.textContent = app.session));
     const sessionControl = $('#holdingsSession');
     refreshSessionReading();
@@ -295,17 +284,12 @@ const Portfolio = (() => {
     const rolling = Boolean(Data.rollingPerformance());
     return html`<div class="chart-toolbar"><div class="chart-heading"><h2>${app.chart === 'daily' ? t('Daily returns') : t(rolling ? 'Rolling performance' : 'Performance')}</h2><span class="chart-legend"><span><i class="legend-line"></i>${t(rolling ? 'Recorded outcomes' : 'Study')}</span><span><i class="legend-line benchmark"></i>${t('Benchmark')}</span></span></div><div class="chart-controls">${rangeSegments()}<div class="segmented ui-segments" aria-label="${t('Chart measure')}">${segBtn(t('Indexed'), 'chart', 'indexed', app.chart === 'indexed')}${segBtn(t('Daily returns'), 'chart', 'daily', app.chart === 'daily')}</div></div></div>`;
   }
-  /* The ranges (round 95, Stocks' row): beside Indexed / Daily when the series is long enough to
-   * need them; a shorter series has the navigator alone. */
   function rangeSegments() {
     const rows = Data.series(), presets = Inspect.presetsFor(rows);
     if (!presets.length) return '';
     const [a, b] = Inspect.window(rows.length);
     return html`<div class="segmented ui-segments chart-ranges" aria-label="${t('Chart range')}">${presets.map(([key, label]) => segBtn(t(label), 'chart-range', key, Inspect.presetActive(key, rows, a, b)))}</div>`;
   }
-  /* The hero as the readout (round 95, Apple Stocks): at rest the window's figure and its dates;
-   * under the pointer or the keys the study's figure at that observation, the date and the
-   * benchmark's figure on the line. */
   function heroTexts(i = null) {
     const rows = Data.series(), [a, b] = Inspect.window(rows.length), daily = Data.performanceMode() === 'forward' || app.chart === 'daily';
     // the indexed figure is the change from the window's base (the row before it, else 100), as the readings under the navigator read it
@@ -439,7 +423,7 @@ const Portfolio = (() => {
         handle.focus({preventScroll: true});
       });
     }
-    if (!bindNavigator.resizing) { bindNavigator.resizing = true; let raf = 0; addEventListener('resize', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(navigatorLayout); }, {passive: true}); } // round 94: once per frame
+    if (!bindNavigator.resizing) { bindNavigator.resizing = true; let raf = 0; addEventListener('resize', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(navigatorLayout); }, {passive: true}); }
     navigatorLayout();
   }
   /* Pointer, keyboard and click interaction on every chart; the cursor is a reading position. */
@@ -495,7 +479,7 @@ const Portfolio = (() => {
         index = i;
         const r = rows[i];
         crossAt(i);
-        if (own && app.page === 'portfolio') { heroShow(i); return; } // round 95: the hero is the readout; no tooltip over the featured chart
+        if (own && app.page === 'portfolio') { heroShow(i); return; }
         const daily = target.dataset.chart === 'daily';
         tip.innerHTML = html`<span class="tip-date">${r.date}</span>${lines.map((line) => html`<span class="tip-row"><i class="tip-key ${line.cls}"></i><strong>${daily ? num(r[line.daily], 'percent') : valueOf(r[line.key])}</strong><span>${t(line.label)}</span></span>`)}<span class="muted">${spec.note || t(own ? 'Published returns · click to hold observation' : 'The owner\'s rows, indexed for reading')}</span>`;
         tip.hidden = false;
@@ -576,7 +560,6 @@ const Portfolio = (() => {
     return t('Whole report {from} — {to} · net of {c} bps per side', {from: rows[0]?.date || s?.support?.start || '', to: rows[rows.length - 1]?.date || s?.support?.end || '', c: count(s?.cost_per_side)});
   };
   function metricStat([key, label, value, word, liveWord = word]) {
-    // V617 (U94): a value the saved report does not record says so in its place, the owner's reason on the label's hover
     const forward = Data.performanceMode() === 'forward', rolling=Data.rollingPerformance(), fp=Data.forwardPerformance();
     const absent = !Number.isFinite(Data.metrics()[key]) && (LiveViews.metricAbsence(key) || (forward ? {detail:fp?.status || 'No realized forward publication is available for this book and cost lane.'} : null));
     const inspect = html`<button class="metric-open" data-action="proof-open" data-value="${key}" aria-label="${t('Inspect ' + key + ' source and limitations')}"><span>${absent ? t('Not recorded') : value(Data.metrics())}</span>${icon('arrow')}</button>`;
@@ -647,7 +630,7 @@ const Portfolio = (() => {
   }
   function page() {
     const subject=Data.subject(), sessions=Data.sessions(), recorded=Data.history().find((x)=>x.task_id===subject.task_id&&['portfolio.policy-development','INSTALLED_RESULT'].includes(x.raw.kind));
-    if(typeof queueMicrotask==='function') queueMicrotask(()=>void LiveActivation.ensure(subject)); // U73: whether its strategy runs forward, read once a package
+    if(typeof queueMicrotask==='function') queueMicrotask(()=>void LiveActivation.ensure(subject));
     const headFacts=[[t('Declared as-of'),subject.input_date],[t('Report'),dateRange(sessions[0],sessions.at(-1))],[t('trading|Sessions'),count(sessions.length)],[t('Recorded'),recorded?.recordedAt ? when(recorded.recordedAt) : ''],[t('Input'),subject.input_id || Data.raw()?.research_input_id || '']];
     const title=subject.source_kind==='INSTALLED_RESULT' ? LiveViews.studyFacts(null,{kind:'INSTALLED_RESULT',strategy_package_id:subject.title}).words : subject.title ? codeWords(subject.title) : LiveViews.bookWords(subject.policy) || t('Portfolio study');
     return (

@@ -1,4 +1,4 @@
-"""The content store keeps each file in its DA9 type and every digest it names (V210).
+"""The content store keeps each file in its DA9 type and every digest it names.
 
 Numerical lanes are Parquet, named by the SHA-256 of their C-order bytes, so a lane sealed as
 packed `.bin` bytes keeps its name; a store written before the change is still read.
@@ -291,7 +291,7 @@ def test_a_changed_or_missing_lane_is_refused_by_name(tmp_path: Path) -> None:
 
 
 def test_a_shared_file_is_replaced_through_a_reader_holding_it_open(tmp_path: Path) -> None:
-    """regression (V477, AX17's overlapping trial reads): on Windows a replace fails while
+    """regression (overlapping trial reads): on Windows a replace fails while
     another handle reads the file, and a Host's concurrent requests hold one as they read a
     trial record or the verification ledger; the replace waits out the read and lands."""
 

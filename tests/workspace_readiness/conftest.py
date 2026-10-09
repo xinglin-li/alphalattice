@@ -127,7 +127,7 @@ def fresh_prepared(tmp_path_factory):
         assert storage["managed_bytes"] < storage["logical_bytes"]
         assert storage["capacity_status"] == "WITHIN_BUDGET"
         # A first use composes its Panel once, for the membership its qualification binds
-        # (V311), so the plan has nothing to release: no chunk lies outside the published one.
+        # so the plan has nothing to release: no chunk lies outside the published one.
         assert (
             _json(live, "/api/workspace/storage/plan", method="POST", payload={})["targets"] == {}
         )

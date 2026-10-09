@@ -1,4 +1,4 @@
-"""Facts survive retrieval and deduplication into the delivered packet (ER3).
+"""Facts survive retrieval and deduplication into the delivered packet.
 
 Scored on what the packet delivers, not on candidates: a quiet issuer beside a
 verbose one keeps its own places in every query's return; compliance and

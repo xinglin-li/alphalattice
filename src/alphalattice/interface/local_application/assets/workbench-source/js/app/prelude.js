@@ -1,10 +1,4 @@
-/* The prelude (round 96): the first paint is the user's. Built on its own (`workbench-prelude.js`)
- * and loaded synchronously in the head before the stylesheet, so the appearance, the language,
- * the dock's side, the navigation layout and the text size are on `<html>` before anything paints.
- * The app (boot.js, router.js, window.js) reads the same preference and writes the same attributes
- * again once it runs; this file only removes the frame between the stylesheet and the app. No
- * inline script: the host's CSP is `script-src 'self'`. Plain ES5 on purpose -- it runs before
- * everything and must never throw. `{{zh_src}}` is the dictionary's hashed path, written by the build. */
+/* The synchronous prelude applies preferences before the stylesheet paints, avoiding a frame in the wrong appearance or layout. It is plain ES5 because it runs before the app; the host's CSP allows only its external script. */
 (function () {
   var html = document.documentElement;
   var pref = {};

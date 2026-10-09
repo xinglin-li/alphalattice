@@ -151,9 +151,9 @@ def test_the_corrected_amplitude_golden_rotates_only_the_validation_identity() -
         if value.factor_id == "intraday_amplitude"
     )
 
-    # Rotated on 2026-09-02 by the golden correction. C8's docstrings in kernel/quant/
+    # Rotated on 2026-09-02 by the golden correction. docstrings in kernel/quant/
     # factor_formulas.py moved these on 2026-09-27; that file's bytes were restored, since a
-    # byte closure reads it (V231), until W8 puts the factor identities on the rule.
+    # byte closure reads it, until W8 puts the factor identities on the rule.
     assert (
         specification.specification_hash
         == "9f52d8a0f2f769b8cd45715b7cc8c25b7f155cba6744a7b0dac790b00706324f"

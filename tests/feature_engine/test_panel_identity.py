@@ -729,7 +729,7 @@ def test_reader_validates_each_chunk_under_the_binding_that_wrote_it(tmp_path: P
     with pytest.raises(ValueError, match="logical content hash mismatch"):
         paths(binding="6" * 64, origin=None)
 
-    # A value moved under its kept row hash is refused before use (EV2, V270): the row
+    # A value moved under its kept row hash is refused before use (EV2): the row
     # hashes still bind, so only recomputing them from the values finds it.
     (path,) = paths(binding="5" * 64, origin=None)
     moved = pq.read_table(path)

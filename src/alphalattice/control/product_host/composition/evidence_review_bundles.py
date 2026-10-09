@@ -138,7 +138,7 @@ def agent_bundle_refusal(
     elif code == "agent_bundle.answer_settled":
         way = {"next_action": "RETURN_THE_RECEIPT_TO_YOUR_LEAD"}
     elif code.partition(":")[0] in PACKET_SELECTOR_CODES:
-        way = {"next_action": "GIVE_THE_PACKETS_TASK_AND_UNIT"}  # V242
+        way = {"next_action": "GIVE_THE_PACKETS_TASK_AND_UNIT"}
     else:
         way = {"next_action": "TELL_YOUR_LEAD"}
     return {
@@ -160,7 +160,7 @@ def sealed_bounds_exceeded(error: ValidationError) -> tuple[dict[str, object], .
     """Name each bound a record to be sealed exceeds.
 
     Each place gives its path, how many it holds and how many the record allows; an error
-    of any other kind stays the owner's refusal (V212).
+    of any other kind stays the owner's refusal.
 
     Args:
         error: The validation error raised while the record was sealed.
@@ -263,7 +263,7 @@ class EvidenceReviewBundles:
             )
         else:
             # The dossier as read now, and that time sealed with the bundle: its answer
-            # meets this dossier, never one read on a later clock (V255).
+            # meets this dossier, never one read on a later clock.
             read_at = self.app.clock()
             dossier = self.app._resolve_review_dossier(chosen, read_at=read_at)
             if isinstance(dossier, ReviewOutcome):
@@ -275,7 +275,7 @@ class EvidenceReviewBundles:
             )
             if carried is not None:
                 # Nothing the CRO read has changed: its review carries forward, and there is
-                # nothing to answer; the book it read and its Task go with it (V427), as a
+                # nothing to answer; the book it read and its Task go with it, as a
                 # submitted answer's do.
                 return replace(
                     carried,
@@ -412,13 +412,13 @@ class EvidenceReviewBundles:
             "agent_role": role,
             "bundle_directory": directory,
             # What a lead's assignment names, so the answer is credited to whom it assigned:
-            # a key any message carries, where the directory may be too long for one (V574).
+            # a key any message carries, where the directory may be too long for one.
             "bundle_reference": record.record_hash,
             **({"task_id": submission["task_id"]} if "task_id" in submission else {}),
             "index": BUNDLE_INDEX,
             "files": [{"name": name, "text": text} for name, text in bundle.files],
             "packing_rule": PACKING_RULE,
-            # Its submit, the directory bound and the answer the one thing left (V406).
+            # Its submit, the directory bound and the answer the one thing left.
             "next_requests": {
                 "submit": {
                     "operation": "AGENT_ANSWER_SUBMIT",
@@ -429,7 +429,7 @@ class EvidenceReviewBundles:
         }
 
     def _last_review(self, chosen: BookSelector) -> EarlierReview | None:
-        """The book's last review, as it reads back and under which CRO policy (V256, OP10):
+        """The book's last review, as it reads back and under which CRO policy (OP10):
         the reviewer weighs an earlier policy's review as that policy's. Only the newest day
         holding a review of the book is read, so a day's reads do not grow with the days the
         workspace holds (Z2); older reviews stay readable by their exports."""

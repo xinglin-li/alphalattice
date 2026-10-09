@@ -725,7 +725,7 @@ def installed_alpha_target_methods(
     composition over a different span is a different method. The frozen lanes are
     not: their policies predate the seam and their identities must not move.
     """
-    # The frozen lanes state what their sessions read (V346); the successors bind the Panel.
+    # The frozen lanes state what their sessions read; the successors bind the Panel.
     lane_recipes = installed_alpha_development_target_recipes(
         sector_revision=sector_revision, sector_history_treatment=sector_history_treatment
     )

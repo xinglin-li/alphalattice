@@ -3,7 +3,7 @@
 body {
   margin: 0;
   min-height: var(--vh);
-  background: var(--surface-page); /* round 68: the page is one colour */
+  background: var(--surface-page);
   color: var(--text);
   font: var(--style-body-size)/var(--style-body-leading) var(--font-ui);
   -webkit-font-smoothing: antialiased;
@@ -89,23 +89,16 @@ body[data-page] strong {
   font-weight: var(--weight-strong);
 }
 /* Animation primitives referenced by the sections below. */
-/* Round 41: what arrives comes from where it was summoned — a dialog grows from its centre, Quick
-   Open drops from the top, a popover from its button, the drawer and the lens slide in from the
-   edge, a sheet rises from the bottom, a page's content rises 4 px under a head that stays. */
-@keyframes dialog-in {from{transform:scale(.98);box-shadow:none}to{transform:none}} /* a dialog's parts fade, never the dialog (law 150, 05-overlays) */
+@keyframes dialog-in {from{transform:scale(.98);box-shadow:none}to{transform:none}} /* Only the dialog's parts fade; fading the glass host prevents its backdrop from frosting. */
 @keyframes quick-in {from{transform:translateY(-4px);box-shadow:none}to{transform:none}}
 @keyframes pop-in {from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
 @keyframes content-settle {from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @keyframes ui-event-arrival {from{background:var(--fill-selected)}to{background:transparent}}
-/* Round 94: every leave is its entrance reversed (`data-leaving`, one --dur-1; `leave()` in
-   components.js is the one owner); the toast fades both ways. */
 @keyframes dialog-out {to{transform:scale(.98);box-shadow:none}}
 @keyframes quick-out {to{transform:translateY(-4px);box-shadow:none}}
 @keyframes pop-out {to{opacity:0;transform:scale(.96)}}
 @keyframes ui-fade-out {to{opacity:0}}
-/* Monospace references break only where one is longer than its whole line (law 88: a token never
-   breaks inside itself where it fits a line of its own): `break-word`, not `anywhere`, so a column or a
-   flex item never shrinks below the token and a table rolls instead (law 90; W, the census at 375). */
+/* Use break-word rather than anywhere so a column or flex item does not shrink below a token; an over-wide table rolls instead. */
 .mono {
   overflow-wrap: break-word;
 }

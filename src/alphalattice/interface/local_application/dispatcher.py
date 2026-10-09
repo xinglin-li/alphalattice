@@ -219,7 +219,7 @@ class LocalBackgroundDispatcher:
     )
     """Commands that returned before their Task's turn came: another Task held the running
     place (a deferral, which no command drives while it waits, among them) or stood ahead of
-    it in the queue. Each is driven again once the place is free, in admission order (V604)."""
+    it in the queue. Each is driven again once the place is free, in admission order."""
     _owned_tasks: set[UUID] = field(default_factory=set, init=False, repr=False)
     """Submitted here or restored with an installed command under the Host lease."""
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
@@ -319,7 +319,7 @@ class LocalBackgroundDispatcher:
             )
         self.admissions += 1
         # A Task found stopped or cancelled has nothing for its command to run: it is answered as
-        # it stands, never read as running while that command waits its turn (V600).
+        # it stands, never read as running while that command waits its turn.
         stopped = admission.lifecycle in {
             TaskLifecycle.BLOCKED.value,
             TaskLifecycle.CANCELLED.value,
@@ -423,7 +423,7 @@ class LocalBackgroundDispatcher:
         """Apply the operation-not-over rule to a projection read elsewhere.
 
         A recovery this dispatcher holds waits its turn, as a queued Task does: it awaits no
-        one's decision, so a reader waits on it rather than ending there (V600).
+        one's decision, so a reader waits on it rather than ending there.
         """
         if not self.command_running(projection.task_id):
             return projection
@@ -436,7 +436,7 @@ class LocalBackgroundDispatcher:
     def command_running(self, task_id: UUID) -> bool:
         """Whether this dispatcher's command for the Task has not yet returned.
 
-        A command kept until the running place is free counts as not returned (V604).
+        A command kept until the running place is free counts as not returned.
         """
         with self._lock:
             return task_id in self._running or task_id in self._waiting
@@ -519,7 +519,7 @@ class LocalBackgroundDispatcher:
                 self._finalize_idle_cancel(task_id)
                 self._waiting.pop(task_id, None)
         if finalized:
-            # A cancelled deferral frees the running place no command held (V604).
+            # A cancelled deferral frees the running place no command held.
             self._drive_waiting()
         return True
 
@@ -534,7 +534,7 @@ class LocalBackgroundDispatcher:
             )
 
     def _waits_its_turn(self, task_id: UUID) -> bool:
-        """Whether the Task's command returned before its turn came (V604).
+        """Whether the Task's command returned before its turn came.
 
         Its Task is still queued or owed its recovery, and another Task holds the running place
         or, for a queued one, stands ahead of it in the queue. A deferral holds the place while
@@ -564,7 +564,7 @@ class LocalBackgroundDispatcher:
         """Drive again the commands whose turn had not come, once the running place is free.
 
         The recoveries first, then the queue in its admission order, the order Task Control
-        starts them in (V604).
+        starts them in.
         """
         with self._lock:
             if self._closed or not self._waiting:
@@ -629,7 +629,7 @@ class LocalBackgroundDispatcher:
                     with self._lock:
                         self._running.discard(task_id)
                         if waits:
-                            # Not a failure: its turn had not come (V604).
+                            # Not a failure: its turn had not come.
                             self._waiting[task_id] = command
                             self._failures.pop(task_id, None)
                         try:

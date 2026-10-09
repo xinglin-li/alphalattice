@@ -1,7 +1,4 @@
-"""Host resolution of the sources a historical h1 Dynamic Panel run read.
-
-The catalog, its compile and fold materialization and the publication retired with
-V19's retained retirement rationale."""
+"""Host resolution of the sources a historical h1 Dynamic Panel run read."""
 
 from __future__ import annotations
 

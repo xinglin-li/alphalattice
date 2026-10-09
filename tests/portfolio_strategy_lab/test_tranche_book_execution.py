@@ -606,7 +606,7 @@ def test_the_executor_holds_no_covariance_matrix() -> None:
 
 
 def test_a_walk_too_short_for_a_rebalance_is_refused_before_the_book_opens() -> None:
-    """requirement (V519, V500's class): every formation a strategy book or a research update
+    """requirement (class): every formation a strategy book or a research update
     walks selects each component's names from those both tradable and scored, so a formation
     with fewer is refused by its session before the book opens -- the tranche book and the
     capped sleeve book alike, a flat start and a continuation, for names unscored or

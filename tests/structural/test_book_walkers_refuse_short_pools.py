@@ -1,4 +1,4 @@
-"""Every walker of the book selection rules refuses a short pool before its walk (V500, V519).
+"""Every walker of the book selection rules refuses a short pool before its walk.
 
 A rebalance selects its names from those both tradable and scored, so a formation with fewer
 cannot be decided. Each module that drives book decisions -- a research book, a strategy book,
@@ -20,13 +20,13 @@ DRIVES = re.compile(
 )
 WALKERS = {
     # The research book: its plan holds an under-scored formation and its run refuses a
-    # tradability-short one before the first segment (V500).
+    # tradability-short one before the first segment.
     f"{PACKAGE}/application/research_experiment.py": "portfolio_research.eligible_pool_short",
-    # The component owner refuses the strategy book's walk before the book opens (V519).
+    # The component owner refuses the strategy book's walk before the book opens.
     f"{PACKAGE}/application/tranche_book_execution.py": (
         "portfolio_strategy_lab.eligible_pool_short"
     ),
-    # The research update refuses a short session before it proposes (V519).
+    # The research update refuses a short session before it proposes.
     f"{PACKAGE}/application/decision_updates.py": "portfolio_update.eligible_pool_short",
     # The strategy coordinator opens its book through the component owner's check.
     f"{PACKAGE}/application/executor.py": "open_component_book(",
@@ -43,7 +43,7 @@ NOT_WALKERS = {
 
 
 def test_every_walker_of_the_book_selection_refuses_a_short_pool_before_its_walk() -> None:
-    """requirement (V519): the modules driving book decisions are exactly the walkers and the
+    """Requirement: the modules driving book decisions are exactly the walkers and the
     named non-walkers, and each walker carries its refusal of a short pool before the walk."""
 
     found = {

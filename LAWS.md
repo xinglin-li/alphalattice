@@ -596,10 +596,11 @@ token. *Held by:*
 `test: tests/portfolio_strategy_lab/test_local_web_product.py::test_browser_session_cookies_are_port_scoped_and_restart_replaces_only_its_own`.
 
 **OP22. What using the product teaches ships where the person's agent reads it.** The research Skill's
-references carry what an agent should know to use the product: the operating guide (launch, binding,
-safe shutdown) and the field notes (each friction met in real use, its way on and its timings). A
-card that learns such a thing by using the product writes it there, not only in a record the person's
-agent never reads (V699). Installed guidance links to files the install carries, never to an anchor
+references carry what an agent should know to use the product, the operating guide among them (launch,
+the command contract, failure and recovery, waits). A friction met in real use is fixed where the agent
+meets it: in the owning answer's words and its offered way on, and in a reference only when no answer
+can carry it. A card that learns such a thing by using the product writes it there, not only in a
+record the person's agent never reads (V699). Installed guidance links to files the install carries, never to an anchor
 or an outside address, so the offline audit of every installed link holds. *Why:* an evaluation agent used the
 product twice as its first real user (V699, V701), and the whole suite on the final candidate found
 34 field-note links with anchors that no merge's test set had reached. *Held by:*

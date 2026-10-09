@@ -34,6 +34,10 @@ from alphalattice.investment.alpha_research.scores.heterogeneous_replay import (
 from alphalattice.investment.alpha_research.scores.lifecycle_preparation import (
     prepare_component_lifecycle,
 )
+from alphalattice.investment.alpha_research.scores.product_lifecycle import (
+    AlphaModelLifecycleRecipe,
+    ModelLifecycle,
+)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.sealing import seal_model
 from alphalattice.kernel.shared_kernel.spans import span
@@ -98,6 +102,29 @@ class ComponentTrainingPreparationReceipt(BaseModel):  # type: ignore[misc]
         return self
 
 
+def model_lifecycle_disclosure(
+    configuration: ModelLifecycle, rule: AlphaModelLifecycleRecipe
+) -> dict[str, object]:
+    """What a training plan or study's controls say of the lifecycle they prepare.
+
+    The light default is said to be light, with how to ask for the component's full one.
+    """
+    return {
+        "configuration": configuration,
+        "seeds": len(rule.seeds),
+        "refit_months": rule.month_interval,
+        "vintages": rule.vintage_count,
+        "live_models": len(rule.seeds) * rule.vintage_count,
+        "lifecycle_hash": rule.content_hash,
+        "claim": (
+            "LIGHT_DEFAULT_FEWER_MODELS_THAN_THE_COMPONENT_FULL_LIFECYCLE; plan model_lifecycle "
+            "FULL by name when the person asks for the full one"
+            if configuration == "LIGHT"
+            else "FULL_COMPONENT_LIFECYCLE_CHOSEN_BY_NAME"
+        ),
+    }
+
+
 def frozen_training_factor_ids() -> tuple[str, ...]:
     """Resolve the installed ordered training factor set and require its frozen axis binding.
 
@@ -129,6 +156,7 @@ def prepare_component_training_inputs(
     cancelled: Callable[[], bool] = lambda: False,
     progress: Callable[[str], None] = lambda _message: None,
     capacity: Callable[[int], None] = lambda _bytes: None,
+    lifecycle: ModelLifecycle,
 ) -> ComponentTrainingPreparationReceipt:
     """Build real inputs and preflight every supported vintage before model work.
 
@@ -188,6 +216,7 @@ def prepare_component_training_inputs(
                 environment_hash=environment,
                 cancelled=cancelled,
                 progress=progress,
+                lifecycle=lifecycle,
             )
         rejected_vintages.extend(
             (component.component_id, vintage, code) for vintage, code in rejected

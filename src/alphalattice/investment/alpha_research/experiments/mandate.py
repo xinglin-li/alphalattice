@@ -238,7 +238,7 @@ def admitted_capabilities_installed(
     """Whether every model the authority admits is installed as the authority recorded it.
 
     Only the admitted capabilities are compared, never the whole catalog: a model
-    installed beside them moves no mandate and refuses nothing (V118).
+    installed beside them moves no mandate and refuses nothing.
     """
     admitted = {value.adapter_id for value in authority.ordered_search_domains}
     try:
@@ -365,7 +365,7 @@ class AlphaModelCapabilityMandate(_Contract):
     def admitting(self, search_domain_hash: str) -> AlphaModelCapabilityMandate:
         """This mandate narrowed to the one domain a study chose and the model it routes to.
 
-        What a development Program binds (V118): the model it runs, never the other
+        What a development Program binds: the model it runs, never the other
         models the installed catalog or this mandate hold.
         """
         domain = _admitted_domain(self.ordered_search_domains, search_domain_hash)
@@ -451,13 +451,13 @@ class AlphaResearchModelMandate(_Contract):
 
     def admitting(self, search_domain_hash: str) -> AlphaResearchModelMandate:
         """This mandate narrowed to the one domain a study chose and the model it routes to,
-        its budgets kept: what a development Program binds (V118)."""
+        its budgets kept: what a development Program binds."""
         return self.admitting_domains((search_domain_hash,))
 
     def admitting_domains(self, search_domain_hashes: Iterable[str]) -> AlphaResearchModelMandate:
         """This mandate narrowed to the domains a question's studies chose and their models.
 
-        What a qualification binds (V118, V299): the models its family ran, in this mandate's
+        What a qualification binds: the models its family ran, in this mandate's
         order, its budgets kept; a model installed or retired beside them moves nothing.
 
         Args:

@@ -650,7 +650,7 @@ def _trial_evidence(
         state_projection_hash=result.fit.state_projection.projection_hash,
         provenance_hash=result.provenance.provenance_hash,
         numerical_environment_hash=result.numerical_environment.environment_hash,
-        training_mse=result.fit.training_mse,
+        training_mse=result.fit.measured_training_mse(),
         validation_mse=float(np.mean(np.square(projection.transformed_targets - predictions))),
         best_iteration=result.fit.iteration_count,
         early_stopping_metric_id=diagnostic.metric_id if diagnostic is not None else None,

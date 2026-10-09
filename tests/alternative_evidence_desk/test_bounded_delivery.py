@@ -59,7 +59,7 @@ wire, so the response is measured where the bytes actually are."""
 
 
 ONE_UNIT = "u01"
-"""The small book's only unit: every book is prepared as a coverage run (C2)."""
+"""The small book's only unit: every book is prepared as a coverage run."""
 
 
 def _prepared(tmp_path: Path, *, clock: Any = None) -> tuple[_Service, dict[str, str], str]:
@@ -202,7 +202,7 @@ def test_an_oversize_packet_is_delivered_in_complete_parts_through_executable_co
                 ]
             )
             # Each part renders exactly its spans; the envelope's delivery names
-            # the part it is (the packet text instructs no reader, C1).
+            # the part it is (the packet text instructs no reader).
             text = part["packet"]
             assert all(f'"span_handle": "{h}"' in text for h in delivery["delivered_span_handles"])
             assert not any(
@@ -374,7 +374,7 @@ def test_the_dossier_is_delivered_through_the_same_mechanism(
         assert whole["status"] == "CRO_DOSSIER_READY"
         assert whole["delivery"]["delivery_mode"] == "WHOLE_DOSSIER"
         assert whole["delivery"]["response_bytes"] == serialized_response_bytes(whole)
-        # V603 follow-up: an unchanged dossier's template is bound to the same
+        # follow-up: an unchanged dossier's template is bound to the same
         # resolved cutoff, never to this GET's instant; compare the entire answer.
         observed[0] += timedelta(seconds=2, microseconds=137)
         assert _operation(service, {"operation": "CRO_REVIEW_DOSSIER", **selected}) == whole

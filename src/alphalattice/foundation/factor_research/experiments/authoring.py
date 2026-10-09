@@ -41,13 +41,8 @@ INSTALLED_REDUNDANCY_POLICIES = ("ABSOLUTE_CORRELATION_CLUSTER",)
 DEVELOPMENT_CONTEXT_AXIS_CEILING = 256
 """How many Factors one development context axis may carry.
 
-Bounded, and deliberately **not** the shipped catalog's historical breadth. This
-compiler used to refuse an axis longer than the frozen desktop catalog's 55,
-which is how many Factors one frozen screening report happened to contain (its
-contracts retired with V312, RT). Under that rule the first method-family batch that pushed
-the installed axis past 55 would have been refused by a development compiler
-quoting a number from a published artifact -- a historical fact standing in for
-a development budget.
+Bounded independently of the shipped catalog's historical breadth, so a frozen
+screening report's factor count never stands in for the development budget.
 
 The bound that belongs here is statistical rather than historical. The context
 axis is the multiple-testing denominator: every Factor on it is a simultaneous
@@ -218,7 +213,7 @@ def factor_parameter_domain_hash(*, screening_policy: str, redundancy_policy: st
     policy the Program names, each a closed method with no free parameter.
 
     The installed menu is not the domain: a policy no Program chose decides none of its
-    numbers, so installing one moves no Program (LAWS.md ID3, V91). The shape is the menu's
+    numbers, so installing one moves no Program (LAWS.md ID3). The shape is the menu's
     shape, so a Program sealed while each menu held one policy keeps its value.
     """
 

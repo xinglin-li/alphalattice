@@ -1,4 +1,4 @@
-"""Plans kept by their exact hash until they expire, sealed on disk (V105, V525).
+"""Plans kept by their exact hash until they expire, sealed on disk.
 
 An answer that names a plan is saved by its reader and sent again later, possibly after the Host
 restarted or past the memory's bound. Each owner keeps every plan it answered under its hash,
@@ -27,7 +27,7 @@ PREVIEW_TTL = timedelta(minutes=60)
 """How long a plan stays runnable. Afterwards its run or confirm is refused toward a new plan."""
 
 PLAN_PREVIEWS_DIRECTORY = "plan-previews"
-"""Under the workspace's `runtime/`: one folder of sealed plans per owner (V525)."""
+"""Under the workspace's `runtime/`: one folder of sealed plans per owner."""
 
 
 @dataclass(frozen=True, slots=True)

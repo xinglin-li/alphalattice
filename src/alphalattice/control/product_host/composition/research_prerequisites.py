@@ -1,9 +1,6 @@
 """What a research flow needs before it runs, what the workspace holds of it, what to ask next.
 
-An agent's way from a research intent to the right request cost more than the work (V367: AX11
-spent 26 CLI launches before its first goal opened, re-reading help, schemas, controls and
-handoffs to find each entry and its prerequisites; AX10 built a feature before it learned that
-its trial needed an Alpha study). The flows' order is fixed -- a Factor study; an Alpha study
+The flows' order is fixed -- a Factor study; an Alpha study
 from a curated Factor study; a Risk study beside them on the same input; a book from an Alpha
 study, sized by a Risk study when it names one; the book's Evidence and CRO review; a formula
 factor's trial against an Alpha study handed off from a Factor study -- so each flow's
@@ -56,7 +53,7 @@ FLOWS: Final[tuple[Flow, ...]] = (
     "BOOK_REVIEW",
     "FEATURE_TRIAL",
 )
-"""The standard flows, in the research order (V376): Factor, then Alpha, Risk beside them, a
+"""The standard flows, in the research order: Factor, then Alpha, Risk beside them, a
 book from both, its review, and a formula factor's trial."""
 
 _SHOWN: Final = 5
@@ -146,8 +143,7 @@ def holdings(
         `FACTOR_STUDY` (each its curation receipts), `ALPHA_STUDY` (each a development study
         handed off from a Factor study, with that study), `RISK_STUDY` and `BOOK` (each with its
         Alpha study); and `CURATED_FACTOR_STUDY`, the newest curated Factor studies among them
-        all, since a prerequisite is judged over every study and only shown for the newest
-        (V497).
+        all, since a prerequisite is judged over every study and only shown for the newest.
     """
     held: dict[str, list[dict[str, Any]]] = {
         "FACTOR_STUDY": [],
@@ -206,7 +202,7 @@ def prerequisites(
         and `next_requests`, each request ready to send, a choice it leaves named as None.
     """
     factors = held.get("FACTOR_STUDY", [])
-    # Over every study, not the newest shown: an older curation still opens Alpha (V497).
+    # Over every study, not the newest shown: an older curation still opens Alpha.
     curated = held.get("CURATED_FACTOR_STUDY", [])
     alphas = held.get("ALPHA_STUDY", [])
     books = held.get("BOOK", [])
@@ -239,7 +235,7 @@ def prerequisites(
     following: dict[str, dict[str, Any]]
     if flow in {"FACTOR_STUDY", "RISK_STUDY"}:
         # A study is planned from a declaration: its controls write one to edit, and the plan
-        # leaves it to give, a template never printed as runnable (V433).
+        # leaves it to give, a template never printed as runnable.
         following = {
             "controls": {
                 "operation": "EXPERIMENT_CONTROLS",

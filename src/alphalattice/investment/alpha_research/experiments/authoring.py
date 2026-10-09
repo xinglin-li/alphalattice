@@ -350,7 +350,7 @@ class AlphaExperimentCompiler:
         # The installed catalogs as far as this Program reaches them: the target
         # method it names and the one model its mandate admits for it. The other
         # recipes and models installed beside them decide none of its numbers, so
-        # installing one moves no Program (V118, as the panel methodology's
+        # installing one moves no Program (as the panel methodology's
         # per-method catalog already did).
         catalog_hash = str(
             canonical_hash(
@@ -364,7 +364,7 @@ class AlphaExperimentCompiler:
         )
         # The admissible space of the chosen method: the target recipe it names
         # and the domain its model's parameters were admitted from, not the menu
-        # of every installed recipe and mandated model (V91).
+        # of every installed recipe and mandated model.
         parameter_domain_hash = str(
             canonical_hash(
                 {

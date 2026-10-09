@@ -36,6 +36,7 @@ from alphalattice.control.task_control.contracts import (
     PLAN_WORK_ITEM_LIMIT,
     ResearchGoal,
     ResearchPlan,
+    StageFailureCause,
     TaskEvidence,
     TaskExecution,
     TaskExecutionCompatibility,
@@ -975,12 +976,18 @@ class AlternativeEvidenceDocumentTaskAdapter:
             # One unit's refusal is that unit's, sealed by the owner's own code
             # under the stage that refused; the run goes on to the next unit.
             run = self._run(task)
+            cause = StageFailureCause.from_facts(
+                {"exception_type": type(error).__name__, "detail": str(error)}
+            )
+            assert cause is not None
             failure = seal_unit_failure(
                 run_hash=run.run_hash,
                 unit_id=unit_id,
                 ordered_entity_ids=request.ordered_entity_ids,
                 stage_id=stage,
                 failure_code=_failure_code(error),
+                exception_type=cause.exception_type,
+                exception_message=cause.detail,
                 recorded_at=now,
                 uncovered_entity_ids=error.uncovered if isinstance(error, UnitSourcesShort) else (),
             )

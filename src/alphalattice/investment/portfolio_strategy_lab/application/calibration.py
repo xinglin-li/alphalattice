@@ -61,7 +61,7 @@ class FrozenRankCalibrationRule(_Contract):
     and lookback: the book's 521st formation, as the historical book's sizing
     activation is. The session is that formation on the axis the rule serves: the
     G6 research's calendar put it on 2021-09-07, a user's research book has its own
-    (LS1, V459). It is held where the axis is known: a decision checkpoint admits a
+    (LS1). It is held where the axis is known: a decision checkpoint admits a
     prepared input only when its formations name this session at this position.
     Another policy requires its own explicit admission, not a changed seed.
     """
@@ -130,7 +130,7 @@ _ARRAY_NAMES = ("scores", "returns", "eligible")
 
 
 def _legacy_npz_digest(scores: FloatArray, returns: FloatArray, eligible: BoolArray) -> str:
-    # The digest observations sealed before V210 carry: their arrays packed as one npz.
+    # Legacy observations carry the digest of their arrays packed as one npz.
     data = BytesIO()
     np.savez(data, scores=scores, returns=returns, eligible=eligible)
     return sha256(data.getvalue()).hexdigest()
@@ -260,7 +260,7 @@ def load_observations(
             raise ValueError("portfolio_calibration.observation_fields_invalid")
         scores, returns, eligible = (columns[name].reshape(shape) for name in _ARRAY_NAMES)
     else:
-        # Observations sealed before V210 packed their arrays as one npz `.bin`.
+        # Legacy observations packed their arrays as one npz `.bin`.
         data = store.load_packed_bytes(category="calibration-arrays", content_hash=value.array_hash)
         with np.load(BytesIO(data), allow_pickle=False) as arrays:
             if set(arrays.files) != set(_ARRAY_NAMES):

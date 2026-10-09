@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from alphalattice.control.product_host.composition.resource_estimates import gate_for
+from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
 from alphalattice.control.task_control.ledger import SubmittingAgent
 from alphalattice.control.task_control.registry import (
@@ -62,6 +64,8 @@ class WorkspaceApplicationSession:
             runtime_path=str(self.runtime_path),
             clock=clock,
             width=cores,
+            stage_gate=gate_for(self.workspace).stage_refusal,
+            stage_scope=storage_capacity_scope,
         )
         try:
             if task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED:

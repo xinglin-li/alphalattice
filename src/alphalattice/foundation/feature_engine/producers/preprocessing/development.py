@@ -160,7 +160,7 @@ def materialize_absolute_state(
             .to_numpy(float)
             .reshape(len(sessions), len(active_listing_ids))
         )
-        # A non-finite raw value is missing, as NaN is, in the trailing median and MAD too (V517).
+        # A non-finite raw value is missing, as NaN is, in the trailing median and MAD too.
         matrix = np.where(np.isfinite(matrix), matrix, np.nan)
         transformed, clipped, lower, upper = _rolling_absolute_state(matrix)
         finite_input = np.isfinite(matrix)

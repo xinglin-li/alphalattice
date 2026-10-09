@@ -58,7 +58,7 @@ def test_authored_data_quarantine_preserves_source_and_requires_a_usable_remaind
 
 
 def test_a_support_refusal_names_its_cause_and_where_it_holds():
-    """regression (V511, RR5): a first use's book stopped on `benchmark_support_absent`, and
+    """Regression: a first use's book stopped on `benchmark_support_absent`, and
     neither the Task, its recovery view nor the words said which condition held or where, so the
     agent searched the source. The code's subject names the cause, the names and sessions it
     holds on and their span; a session with no eligible name comes first, since no
@@ -383,7 +383,7 @@ def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores
 
 
 def test_a_rebalance_never_selects_from_a_pool_smaller_than_the_book(tmp_path):
-    """requirement (V500, the guide's own path): a book never stops mid-walk for a short pool.
+    """requirement (the guide's own path): a book never stops mid-walk for a short pool.
     A formation its candidate under-scored -- fewer scored names than a rebalance selects, as a
     feature unavailable across the universe leaves it -- is held from the plan on, as an embargo
     session is, and the book completes with no turnover there; a scored formation tradability

@@ -1,4 +1,4 @@
-"""Identify the code that computes Factor values, by its rule (LAWS.md ID3, V70).
+"""Identify the code that computes Factor values, by its rule (LAWS.md ID3).
 
 The Feature capability once had four identities that read like implementation identity and
 contained none: a hand-written description of the engine, the core bundle's declared fields, a
@@ -13,7 +13,7 @@ reach a control, and a shared-owner edit reaches both.
 
 Each closure is a rule closure: the owners and every module they import inside the
 number-deciding packages, hashed as syntax, so a comment or a docstring moves nothing and a module
-the arithmetic runs is never left out (V232). The walk skips what decides none of the values a
+the arithmetic runs is never left out. The walk skips what decides none of the values a
 closure covers: this module, the installed composition (which kernels a build installs has its own
 identity, ``FeatureKernelRegistry.installed_capability_hash``), the catalog contracts (governance:
 editing an admission rule moves catalog identity, not the arithmetic) and, for the controls, the

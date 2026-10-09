@@ -9,16 +9,16 @@ put.
 So the development path gets its own closures. Four identities stay deliberately
 separate, and none of them is derived from another:
 
-- the numerical closure (``RISK_NUMERICAL_SOURCE_PATHS``) over the code that
+the numerical closure (``RISK_NUMERICAL_SOURCE_PATHS``) over the code that
   computes a covariance number;
-- the selected adapter's numerical/content identity;
-- this development executor/input-binding identity;
-- Host catalog governance identity.
+the selected adapter's numerical/content identity;
+this development executor/input-binding identity;
+Host catalog governance identity.
 
 Keeping them apart is what lets an unrelated newly installed adapter change the
 catalog without masquerading as a numerical change to an already selected
 method. (The frozen production closure and its pin, which the numerical closure
-used to share its entries with, retired with RT M01 on 2026-09-29.)
+used to share its entries with, retired with M01 on 2026-09-29.)
 """
 
 from __future__ import annotations
@@ -115,7 +115,7 @@ entry and what it imports inside the number-deciding packages, as syntax without
 docstrings or comments, LAWS ID3). A study plan binds these bytes (binding plan, P); no
 build file is an entry, and the installed versions are bound where they are read (ID6).
 
-It used to be derived from the frozen production closure, whose pin retired with RT M01
+It used to be derived from the frozen production closure, whose pin retired with M01
 (2026-09-29) together with the two production surface writers that were its other
 entries. What measures a run stays out of it: ``process_metrics.py`` once sat in that
 closure because a surface writer recorded ``peak_rss_bytes`` in a diagnostic dossier,

@@ -764,7 +764,7 @@ function causeLine(cause, inline = false) {
   if (!cause?.exception_type) return '';
   const sessions = cause.first_session ? (cause.last_session && cause.last_session !== cause.first_session ? `${cause.first_session} — ${cause.last_session}` : cause.first_session) : '';
   const where = [cause.step ? codeWords(cause.step) : '', cause.unit || '', sessions].filter(Boolean).join(' · ');
-  const words = html`${t('Raised')} <span class="mono">${cause.exception_type}</span>${where ? html` · ${where}` : ''}${cause.detail ? html` · <span class="owner-text">${cause.detail}</span>` : ''}`;
+  const words = html`${t('Raised')} <span class="mono">${cause.exception_type}</span>${where ? html` · ${where}` : ''}${cause.detail ? html` · <span class="owner-text">${t(cause.detail)}</span>` : ''}`;
   return inline ? html`<br><span class="cause-line">${words}</span>` : html`<p class="caption cause-line">${words}</p>`;
 }
 function refusal(body, tone = 'warning', o = {}) {
@@ -2030,6 +2030,7 @@ const CODE_WORDS = {
   TASK_REMEDIATE: "Apply Task remedy",
   UPGRADE_ACKNOWLEDGE: "Acknowledge upgrade",
   UPGRADE_OVERVIEW: "Upgrade overview",
+  WAKE_REGISTER: "Register Codex wake",
   WORKSPACE_BACKUP: "Back up workspace",
   WORKSPACE_BACKUPS: "Workspace backups",
   WORKSPACE_PREPARE_READBACK: "Read workspace preparation",

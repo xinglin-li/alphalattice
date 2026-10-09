@@ -1,9 +1,14 @@
 # Work with research agents
-Date: 2026-10-07
+Date: 2026-10-08
 
-Claude Code and Codex can lead research through the maintained CLI. Their host runs agents; AlphaLattice owns calculations, permission checks, validation, provenance and publication. The person owns trust of host declarations and person-only decisions. Native host configuration and workspace binding are covered in [Getting started](getting-started.md). `configure` checks local declarations; bridge binding records a workspace and session as `BOUND_NOT_ATTACHED`, which proves neither foreground attachment nor host trust. `doctor` reports local configuration, binding and usage settings, not that an agent ran. Choose the actual host. The installed [Research Skill](../../.agents/skills/alphalattice-research/SKILL.md) and role cards own step-by-step agent procedures.
+Codex or Claude Code leads your research; AlphaLattice calculates, validates and
+records it. The installing agent continues in the same session, and a session
+binds itself when it first works on the workspace. The [agent guide](../../AGENTS.md)
+owns setup, delegation and person decisions. Its
+[Research Skill](../../.agents/skills/alphalattice-research/SKILL.md) owns research
+procedures.
 
-## Roles and evidence
+## Specialists and evidence
 
 | Role | Responsibility |
 | --- | --- |
@@ -15,14 +20,26 @@ Claude Code and Codex can lead research through the maintained CLI. Their host r
 | Evidence Analyst | Submit cited issuer findings from its prepared bundle |
 | CRO | Separately challenge the selected book against those findings |
 
-Analyst and CRO receive the exact product-prepared material and return typed judgments. Bundles confer judgment only; they do not calculate weights, publish a book, or activate a strategy. The protected D5 population is counts-only: no issuer rows or outcomes are handed to a bundle. Keep the bundle's references and submission receipt. Do not invent citations or treat a conversation as a product result.
-
-Read result standing with the evidence. Its marks are `comparison`, `execution`, `contract`, `evidence` and `activation`, in that order; `statements` explain them and `reasons` supplies codes for holds/refusals. `SUCCEEDED` alone proves none of the other marks. A completed feature trial is not activation: its activation mark is `NOT_ACTIVATABLE`; `NOT_COMPARED` claims no metric change; `HELD` names its activation reason. A person reads the feature review before activation. Full result and refusal semantics belong to the [CLI reference](cli.md); scientific prerequisites belong to [Research flows](research-flows.md).
+Specialists interpret AlphaLattice's prepared material. Their judgment grants
+no calculation, publication or activation authority. Read each result's five
+standing fields: `comparison`, `execution`, `contract`, `evidence` and
+`activation`. Their statements explain each mark; a completed Task alone
+establishes no scientific correctness or activation. [Research flows](research-flows.md)
+covers prerequisites and claims. [Extending](extending.md) covers trials and activation.
 
 ## Goals and Team
 
-The first preparation's one `FIRST_USE` goal and 24-hour delegated scope are described in [Getting started](getting-started.md). Later goals record objective, constraints, criteria, deliverables and bounds, and bind work to an agent session. The Host checks submitted criteria, deliverable references, Task state and open problems against that record. A successful completeness check does not verify the truth of an interpretation or prove the broader objective achieved; read its evidence and unresolved work.
+**Goals** records the objective, criteria, deliverables, bounds and unresolved
+work. The Host checks the submission's shape and bindings: declared criteria,
+deliverable references, Task states and open problems. It does not judge an
+interpretation's truth. Follow the goal's **Timeline**, **Conversation** and **Results**.
 
-Team and a goal's Conversation show what the product recorded of a bound agent session's work: its requests, prepared bundles, submitted and accepted answers, decision notes and observed usage, with no product hook. The lead submits every answer, so an accepted answer is the lead's and its author stays `NOT_OBSERVED`. A prepared bundle without an accepted answer is listed as an open assignment; it reminds and never blocks submission. Usage shows each member's latest reading without combining parent and child counts; see [Privacy](privacy.md). No raw conversation or private reasoning is published.
+A Codex Task's registered wake is kept by the Host; Claude Code provides
+background completion notices.
 
-For formula-feature goal evidence, use the exact trial readback and review packet named by the product under `DATA_FEATURES`; the Host checks the stage and rereads both references. The extension guide describes the packet and activation boundary.
+**Team** and **Conversation** show recorded requests, prepared bundles, accepted
+answers, decision notes and observed usage. The lead submits every answer;
+specialist authorship stays `NOT_OBSERVED`. Prepared bundles awaiting answers
+appear as open assignments and do not block submission. Usage shows each member's
+latest reading separately. [Privacy](privacy.md) explains the reader and
+controls; raw conversation and private reasoning are not published.

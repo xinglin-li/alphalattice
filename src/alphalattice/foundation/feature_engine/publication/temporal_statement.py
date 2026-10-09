@@ -1,11 +1,11 @@
-"""What a result's window can claim about time, stated from its Panel's recorded marks (V347).
+"""What a result's window can claim about time, stated from its Panel's recorded marks.
 
 The approximate point-in-time contract backfills the initial cohort before T0 and follows the
 observed membership from T0; the Sector map and the provider's prices carry their own treatments.
 A readback, a report or a CRO material whose window reaches before T0 says so. Each statement
 here is generated from a typed mark the Panel records -- its `bootstrap_t0_session`, its initial
 cohort, its `survivorship_bias_warning`, its `sector_history_treatment` -- and the workspace's
-price basis, one template per mark value, so a new value (V346's Sector treatment, V345's price
+price basis, one template per mark value, so a new value (Sector treatment, price
 basis) changes the statement with no carrier edited, and a value with no template is named rather
 than dropped.
 """
@@ -75,7 +75,7 @@ class TemporalStatement(BaseModel):  # type: ignore[misc]
     sector_treatment: str
     sector_observed_on: date | None
     sector_reclassification_count: int = Field(default=0, ge=0)
-    """The reclassifications its sessions read, each from its effective session (V346)."""
+    """The reclassifications its sessions read, each from its effective session."""
     sector_first_reclassified: date | None = None
     """The first of their effective sessions; none while no reclassification is in force."""
     price_basis: str | None

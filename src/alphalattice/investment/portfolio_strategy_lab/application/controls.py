@@ -158,7 +158,7 @@ class RefusedControlDescriptor(_Contract):
     reason: str = Field(min_length=1)
     """Why the control is refused, in the product's words."""
     evidence_reference: str = Field(min_length=1)
-    """What the product serves or the law that decides it, never a plan (V287)."""
+    """What the product serves or the law that decides it, never a plan."""
 
 
 def _catalog_semantics(
@@ -436,7 +436,7 @@ _REFUSED_CONTROL_ROWS: tuple[tuple[str, str, str, str], ...] = (
     ),
 )
 """Each refused control: its refusal code, why in the product's words, and what the product
-serves or the law that decides it, never a plan (V287)."""
+serves or the law that decides it, never a plan."""
 
 REFUSED_CONTROL_IDS: frozenset[str] = frozenset(row[0] for row in _REFUSED_CONTROL_ROWS)
 

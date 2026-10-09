@@ -25,7 +25,9 @@ from alphalattice.investment.alpha_research.scores.model_renewal import (
     verified_lifecycle_admissions,
 )
 from alphalattice.investment.alpha_research.scores.product_lifecycle import (
+    DEFAULT_MODEL_LIFECYCLE,
     AlphaModelLifecycleRecipe,
+    model_lifecycle_of,
     resolve_alpha_refit_plan,
 )
 from alphalattice.investment.alpha_research.scores.product_replay import live_vintages
@@ -627,9 +629,9 @@ alpha:
     monkeypatch.setattr(Path, "open", counted_open)
     evidence, _ = workflow.run_sealed(document, **actor)
     assert evidence.program_hash == sealed.program_hash
-    assert (
-        evidence.numerical_call_count == 3
-    )  # one real tiny fit, its training prediction, one score
+    # One real tiny fit and one score: a lifecycle child's fit takes no training prediction,
+    # since its evidence stores no training error.
+    assert evidence.numerical_call_count == 2
     replay, _ = workflow.replay(document, **actor)
     assert replay.numerical_call_count == 0
     assert replay.artifact_uris == evidence.artifact_uris
@@ -1124,3 +1126,19 @@ def test_legacy_score_identity_readback_does_not_reopen_model_authority(monkeypa
     owner._verify_model_publication(score, SimpleNamespace(authority_hash="a" * 64))
     with pytest.raises(ValueError, match="publication_evidence_mismatch"):
         owner._verify_model_publication(score, SimpleNamespace(authority_hash="b" * 64))
+
+
+def test_the_full_lifecycle_is_the_components_own_and_the_light_default_trains_one_seed() -> None:
+    """FULL keeps the lifecycle hash; LIGHT fits one seed per vintage on the same calendar."""
+    assert DEFAULT_MODEL_LIFECYCLE == "LIGHT"
+    for name in ("G2_R0_TREND", "G6_R0_FAST_REBOUND"):
+        component = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component(name)
+        full = AlphaModelLifecycleRecipe.named(component, "FULL")
+        light = AlphaModelLifecycleRecipe.named(component, "LIGHT")
+        assert full == AlphaModelLifecycleRecipe.from_component(component)
+        assert len(full.seeds) == 3 and light.seeds == tuple(component.seeds[:1])
+        kept = {"content_hash", "seeds"}
+        assert light.model_dump(exclude=kept) == full.model_dump(exclude=kept)
+        assert model_lifecycle_of(component, light.content_hash) == "LIGHT"
+        assert model_lifecycle_of(component, full.content_hash) == "FULL"
+        assert model_lifecycle_of(component, "0" * 64) is None

@@ -35,7 +35,7 @@ class StorageAuthorityGroup(_Contract):
     authority_owner: str = Field(min_length=1)
     schema_writers: tuple[str, ...] = ()
     """Packages besides the authority's that create or alter these tables: the split the tree
-    holds, a table's schema written by another package than its data (V171)."""
+    holds, a table's schema written by another package than its data."""
     retention_owner: str = Field(min_length=1)
     rebuildability: str = Field(min_length=1)
     artifact_relationship: str = Field(min_length=1)
@@ -70,7 +70,7 @@ class ArtifactAuthorityGroup(_Contract):
     roots: tuple[Literal["artifacts", "runtime", "experiment", "workspace"], ...] = Field(
         min_length=1
     )
-    """Where the prefixes lie (V205): `artifacts` (the workspace's `artifacts/`, or a research
+    """Where the prefixes lie: `artifacts` (the workspace's `artifacts/`, or a research
     input's captured copy), `runtime` (its `runtime/artifacts/`), `experiment` (an experiment's
     output) or `workspace` (the workspace root). A writer is constructed with its root: the roots
     listed are those its constructions name literally, and `artifacts` where they pass one on."""
@@ -441,7 +441,7 @@ def discover_table_writes(
     A table named by a placeholder is a scan limit, never a write; a temporary table the module
     creates is not persistent, and neither are its writes. A module that writes tables it names
     at run time declares them in a module-level ``WRITTEN_TABLES`` tuple, each a data write of
-    that module (V264).
+    that module.
     """
 
     found: set[TableWrite] = set()
@@ -608,13 +608,13 @@ def _is_duckdb_connect(node: ast.AST) -> bool:
 
 
 def gate_after_instance_violations(paths: tuple[Path, ...]) -> tuple[str, ...]:
-    """Refuse a unit that asks for a write gate while it holds a store's instance (V81).
+    """Refuse a unit that asks for a write gate while it holds a store's instance.
 
-    Every writer takes the gate (`hold()`) first and the store's retained instance
+    Every writer takes the gate (`hold`) first and the store's retained instance
     (`retain(...)`) second; a unit that holds the instance and then asks for the gate waits on
     a writer holding the gate while it waits for that instance. Read in the source: in one
-    `with`, no `hold()` follows a `retain(...)`; inside a `retain(...)` block, or after one
-    entered on an exit stack, no `hold()` is asked for. What a called function takes is the
+    `with`, no `hold` follows a `retain(...)`; inside a `retain(...)` block, or after one
+    entered on an exit stack, no `hold` is asked for. What a called function takes is the
     lock-order recorder's (`tests/workspace_task_runner/lock_order.py`).
     """
     violations: list[str] = []

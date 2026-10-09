@@ -37,6 +37,9 @@
   "activity list": [
    "ACTIVITY_LIST"
   ],
+  "activity notify": [
+   "WAKE_REGISTER"
+  ],
   "activity recent": [
    "ACTIVITY_RECENT"
   ],
@@ -596,6 +599,7 @@
   "left_task_id": "The first of two studies to compare, by its Task.",
   "limit": "The most a page reads: 1 to 200 rows of the activity feed, 1 to 50 recent groups.",
   "model_id": "An Alpha model, by the id its declaration names (`model list` lists them).",
+  "model_lifecycle": "A component's model lifecycle: `LIGHT`, the default, or `FULL` by name.",
   "network_enabled": "true lets this workspace reach the network; false keeps it offline.",
   "observed_through": "The last session the update observes, as YYYY-MM-DD.",
   "operation": "The operation asked for; `alphalattice schema show <name>` lists its fields.",
@@ -644,6 +648,8 @@
   "view_to": "The last day read, as YYYY-MM-DD.",
   "view_topic": "Only this topic's Evidence.",
   "wait_seconds": "How long a Task's status may wait for the Task to move on; at most 20 seconds.",
+  "wake_read": "The exact command the wake names for the lead to read or re-run: the Task's `task show`, or the agent verb that registered it, its `--output` moved to the next free path.",
+  "wake_thread": "The Codex thread the Host queues a Task's wake to, by its id (`CODEX_THREAD_ID`).",
   "watch": "Tasks, by id, whose current projection the activity page joins; a short id the compact display gave reads as its whole id.",
   "window_limit": "The most windows the continued chain may read."
  },
@@ -1140,6 +1146,7 @@
     "experiment_kind",
     "feature_preparation_hash",
     "input_binding_hash",
+    "model_lifecycle",
     "research_input_id"
    ],
    "required": []
@@ -1660,6 +1667,7 @@
    "allowed": [
     "component_id",
     "input_binding_hash",
+    "model_lifecycle",
     "recovery_task_hash",
     "recovery_task_id",
     "research_input_id"
@@ -2102,6 +2110,18 @@
     "usage_reading_enabled"
    ]
   },
+  "WAKE_REGISTER": {
+   "allowed": [
+    "task_id",
+    "wake_read",
+    "wake_thread"
+   ],
+   "required": [
+    "task_id",
+    "wake_read",
+    "wake_thread"
+   ]
+  },
   "WORKSPACE_BACKUP": {
    "allowed": [
     "backup_generations_kept"
@@ -2227,6 +2247,7 @@
   "left_task_id": "left",
   "limit": "limit",
   "model_id": "model",
+  "model_lifecycle": "lifecycle",
   "network_enabled": "enabled",
   "observed_through": "through",
   "operation": "operation",
@@ -2275,6 +2296,8 @@
   "view_to": "view-to",
   "view_topic": "view-topic",
   "wait_seconds": "wait-seconds",
+  "wake_read": "read",
+  "wake_thread": "thread",
   "watch": "watch",
   "window_limit": "window-limit"
  },
@@ -2526,7 +2549,8 @@
   "history_limit": "from 1 to 50",
   "ledger_page": "from 1 to 100000",
   "limit": "from 1 to 200",
-  "operation": "one of GOAL_SCHEMA, GOAL_LIST, GOAL_OPEN, GOAL_REVISE, GOAL_SHOW, GOAL_NARRATIVE, GOAL_REFERENCE, GOAL_ATTACH, GOAL_NOTE, GOAL_EXPORT, GOAL_CONTINUE, GOAL_TAKE, GOAL_SUBMIT, GOAL_ABANDON, RESEARCH_HISTORY, EXPERIMENT_COMPARE, EXPERIMENT_ALPHA_COMPARE, EXPERIMENT_DELIVERY_EXPORT, RESEARCH_INPUTS, RESEARCH_INPUT_PLAN, RESEARCH_INPUT_CONFIRM, RESEARCH_INPUT_READBACK, MODEL_TRAINING_INPUT_PLAN, MODEL_TRAINING_INPUT_PREPARE, MODEL_TRAINING_INPUT_READBACK, FEATURE_CATALOG_CONTROLS, FEATURE_CATALOG_PLAN, FEATURE_CATALOG_READBACK, FEATURE_CATALOG_BUILD, FEATURE_CATALOG_BUILD_READBACK, FEATURE_TRIAL, FEATURE_REVIEW, FEATURE_ACTIVATE, FEATURE_DEACTIVATE, FEATURE_EXTENSIONS, FEATURE_TRIAL_READBACK, FEATURE_TRIALS, RESEARCH_STRATEGY_PLAN, RESEARCH_STRATEGY_CONTROLS, RESEARCH_STRATEGY_PREPARE, RESEARCH_STRATEGY_READBACK, RESEARCH_STRATEGY_INSTALL, EXPERIMENT_DRAFT, EXPERIMENT_PROMOTE, EXPERIMENT_CONTINUE, WORKSPACE_PREPARE_READBACK, WORKSPACE_PREPARE_PLAN, WORKSPACE_PREPARE_CONFIRM, STORAGE_CAP_SHOW, STORAGE_CAP_SET, STORAGE_READBACK, STORAGE_PLAN, STORAGE_CONFIRM, STORAGE_PIN, STORAGE_EVIDENCE_REBUILD, EXPERIMENT_CONTROLS, EXPERIMENT_LINK_RISK, EXPERIMENT_RISK_LINKS, EXPERIMENT_RISK_EXPORT, EXPERIMENT_PLAN, EXPERIMENT_PREVIEW_READBACK, EXPERIMENT_RUN, EXPERIMENTS, EXPERIMENT_READBACK, EXPERIMENT_SUMMARY, EXPERIMENT_REPLAY, EXPERIMENT_EXPORT, EXPERIMENT_CURATION, EXPERIMENT_CURATE, EXPERIMENT_HANDOFF_PREVIEW, EXPERIMENT_FOUNDATIONS, EXPERIMENT_FOUNDATION_PREVIEW, EXPERIMENT_FOUNDATION_SEAL, EXPERIMENT_FOUNDATION_READBACK, EXPERIMENT_FOUNDATION_SUMMARY, EXPERIMENT_FOUNDATION_EXPORT, EXPERIMENT_FOUNDATION_DRAFT, EXPERIMENT_PORTFOLIO_DRAFT, EXPERIMENT_VERIFY_ALL, CONTROLS, PLAN, RUN, STATUS, TASK_RECOVERY, TASK_GUARDIAN, TASK_INCIDENTS, TASK_REMEDIATE, RECOVER, TASKS, UPGRADE_OVERVIEW, UPGRADE_ACKNOWLEDGE, NETWORK_ACCESS, NETWORK_ACCESS_SET, PENDING_DECISIONS, ACTIVITY_REFUSALS, CANCEL, RESULTS, REPORT, COMPARE, FREEZE, FINALIZATION, EXPORT, EVIDENCE_CRO, EVIDENCE_CRO_EXPORT, EVIDENCE_REFRESH, EVIDENCE_PREPARE, EVIDENCE_PREVIEW, EVIDENCE_PACKET, EVIDENCE_LEDGER, EVIDENCE_DOCUMENTS, EVIDENCE_CONTINUE, EVIDENCE_ANALYSIS_SUBMIT, EVIDENCE_SELECT, CRO_REVIEW, CRO_REVIEW_DOSSIER, CRO_REVIEW_FINDING, CRO_REVIEW_SUBMIT, AGENT_BUNDLE_PREPARE, AGENT_ANSWER_SUBMIT, DATA_UPDATE_PLAN, DATA_UPDATE_RUN, DATA_UPDATE_READBACK, DATA_CHANGE_CONFIRM, DATA_ISSUES, DATA_ISSUE_PREVIEW, DATA_ISSUE_CONFIRM, DATA_ISSUE_DELEGATE, DATA_ISSUE_REVOKE, STRATEGY_SCORE_PLAN, STRATEGY_SCORE_RUN, STRATEGY_SCORE_READBACK, STRATEGY_CALIBRATION_PLAN, STRATEGY_CALIBRATION_RUN, STRATEGY_CALIBRATION_READBACK, PORTFOLIO_UPDATE_PLAN, PORTFOLIO_UPDATE_RUN, PORTFOLIO_UPDATE_READBACK, RESEARCH_UPDATE_PLAN, RESEARCH_UPDATE_RUN, RESEARCH_UPDATE_READBACK, RESEARCH_UPDATE_AUTOMATION_READBACK, RESEARCH_UPDATE_AUTOMATION_CONFIGURE, WORKSPACE_SHOW, OPERATION_LIST, ACTIVITY_LIST, ACTIVITY_RECENT, EVENT_DECLARE, SESSION_USAGE_READ, USAGE_READING, USAGE_READING_SET, CPU_BUDGET_SHOW, CPU_BUDGET_SET, WORKSPACE_BACKUP, WORKSPACE_BACKUPS, MODEL_EXTENSIONS, MODEL_ACTIVATE, MODEL_DEACTIVATE, STRATEGY_ACTIVATE, STRATEGY_DEACTIVATE",
+  "model_lifecycle": "one of LIGHT, FULL",
+  "operation": "one of GOAL_SCHEMA, GOAL_LIST, GOAL_OPEN, GOAL_REVISE, GOAL_SHOW, GOAL_NARRATIVE, GOAL_REFERENCE, GOAL_ATTACH, GOAL_NOTE, GOAL_EXPORT, GOAL_CONTINUE, GOAL_TAKE, GOAL_SUBMIT, GOAL_ABANDON, RESEARCH_HISTORY, EXPERIMENT_COMPARE, EXPERIMENT_ALPHA_COMPARE, EXPERIMENT_DELIVERY_EXPORT, RESEARCH_INPUTS, RESEARCH_INPUT_PLAN, RESEARCH_INPUT_CONFIRM, RESEARCH_INPUT_READBACK, MODEL_TRAINING_INPUT_PLAN, MODEL_TRAINING_INPUT_PREPARE, MODEL_TRAINING_INPUT_READBACK, FEATURE_CATALOG_CONTROLS, FEATURE_CATALOG_PLAN, FEATURE_CATALOG_READBACK, FEATURE_CATALOG_BUILD, FEATURE_CATALOG_BUILD_READBACK, FEATURE_TRIAL, FEATURE_REVIEW, FEATURE_ACTIVATE, FEATURE_DEACTIVATE, FEATURE_EXTENSIONS, FEATURE_TRIAL_READBACK, FEATURE_TRIALS, RESEARCH_STRATEGY_PLAN, RESEARCH_STRATEGY_CONTROLS, RESEARCH_STRATEGY_PREPARE, RESEARCH_STRATEGY_READBACK, RESEARCH_STRATEGY_INSTALL, EXPERIMENT_DRAFT, EXPERIMENT_PROMOTE, EXPERIMENT_CONTINUE, WORKSPACE_PREPARE_READBACK, WORKSPACE_PREPARE_PLAN, WORKSPACE_PREPARE_CONFIRM, STORAGE_CAP_SHOW, STORAGE_CAP_SET, STORAGE_READBACK, STORAGE_PLAN, STORAGE_CONFIRM, STORAGE_PIN, STORAGE_EVIDENCE_REBUILD, EXPERIMENT_CONTROLS, EXPERIMENT_LINK_RISK, EXPERIMENT_RISK_LINKS, EXPERIMENT_RISK_EXPORT, EXPERIMENT_PLAN, EXPERIMENT_PREVIEW_READBACK, EXPERIMENT_RUN, EXPERIMENTS, EXPERIMENT_READBACK, EXPERIMENT_SUMMARY, EXPERIMENT_REPLAY, EXPERIMENT_EXPORT, EXPERIMENT_CURATION, EXPERIMENT_CURATE, EXPERIMENT_HANDOFF_PREVIEW, EXPERIMENT_FOUNDATIONS, EXPERIMENT_FOUNDATION_PREVIEW, EXPERIMENT_FOUNDATION_SEAL, EXPERIMENT_FOUNDATION_READBACK, EXPERIMENT_FOUNDATION_SUMMARY, EXPERIMENT_FOUNDATION_EXPORT, EXPERIMENT_FOUNDATION_DRAFT, EXPERIMENT_PORTFOLIO_DRAFT, EXPERIMENT_VERIFY_ALL, CONTROLS, PLAN, RUN, STATUS, TASK_RECOVERY, TASK_GUARDIAN, TASK_INCIDENTS, TASK_REMEDIATE, RECOVER, TASKS, UPGRADE_OVERVIEW, UPGRADE_ACKNOWLEDGE, NETWORK_ACCESS, NETWORK_ACCESS_SET, PENDING_DECISIONS, ACTIVITY_REFUSALS, CANCEL, RESULTS, REPORT, COMPARE, FREEZE, FINALIZATION, EXPORT, EVIDENCE_CRO, EVIDENCE_CRO_EXPORT, EVIDENCE_REFRESH, EVIDENCE_PREPARE, EVIDENCE_PREVIEW, EVIDENCE_PACKET, EVIDENCE_LEDGER, EVIDENCE_DOCUMENTS, EVIDENCE_CONTINUE, EVIDENCE_ANALYSIS_SUBMIT, EVIDENCE_SELECT, CRO_REVIEW, CRO_REVIEW_DOSSIER, CRO_REVIEW_FINDING, CRO_REVIEW_SUBMIT, AGENT_BUNDLE_PREPARE, AGENT_ANSWER_SUBMIT, DATA_UPDATE_PLAN, DATA_UPDATE_RUN, DATA_UPDATE_READBACK, DATA_CHANGE_CONFIRM, DATA_ISSUES, DATA_ISSUE_PREVIEW, DATA_ISSUE_CONFIRM, DATA_ISSUE_DELEGATE, DATA_ISSUE_REVOKE, STRATEGY_SCORE_PLAN, STRATEGY_SCORE_RUN, STRATEGY_SCORE_READBACK, STRATEGY_CALIBRATION_PLAN, STRATEGY_CALIBRATION_RUN, STRATEGY_CALIBRATION_READBACK, PORTFOLIO_UPDATE_PLAN, PORTFOLIO_UPDATE_RUN, PORTFOLIO_UPDATE_READBACK, RESEARCH_UPDATE_PLAN, RESEARCH_UPDATE_RUN, RESEARCH_UPDATE_READBACK, RESEARCH_UPDATE_AUTOMATION_READBACK, RESEARCH_UPDATE_AUTOMATION_CONFIGURE, WORKSPACE_SHOW, OPERATION_LIST, ACTIVITY_LIST, ACTIVITY_RECENT, EVENT_DECLARE, WAKE_REGISTER, SESSION_USAGE_READ, USAGE_READING, USAGE_READING_SET, CPU_BUDGET_SHOW, CPU_BUDGET_SET, WORKSPACE_BACKUP, WORKSPACE_BACKUPS, MODEL_EXTENSIONS, MODEL_ACTIVATE, MODEL_DEACTIVATE, STRATEGY_ACTIVATE, STRATEGY_DEACTIVATE",
   "remedy": "one of CANCEL, RECOVER, REPLAN",
   "session_limit": "from 1 to 99",
   "view_last_days": "from 1 to 3660",
@@ -2729,7 +2753,7 @@
   "RESEARCH_INPUT_PLAN": "Plans sealing a new version of a research input from the local sources; no network.",
   "RESEARCH_INPUT_READBACK": "Shows an input capture Task and the input version it published.",
   "RESEARCH_STRATEGY_CONTROLS": "Shows the strategy-preparation declaration schema and the completed Alpha and Risk studies it can use.",
-  "RESEARCH_STRATEGY_INSTALL": "Installs a prepared strategy as non-default research in this workspace; the service must restart.",
+  "RESEARCH_STRATEGY_INSTALL": "Installs a prepared strategy as non-default research in this workspace; the running service serves its packages at once.",
   "RESEARCH_STRATEGY_PLAN": "Plans a strategy preparation from promoted Alpha and Risk studies; nothing runs.",
   "RESEARCH_STRATEGY_PREPARE": "Prepares the planned strategy's Portfolio inputs from its Alpha and Risk studies, as a Task.",
   "RESEARCH_STRATEGY_READBACK": "Shows a strategy preparation Task, what it prepared and what is still missing.",
@@ -2766,6 +2790,7 @@
   "UPGRADE_OVERVIEW": "Shows what the installed upgrade changed: saved studies, reviews and waiting Tasks.",
   "USAGE_READING": "Shows whether the Host may read the bound agent Sessions' own files for usage, and what it reads.",
   "USAGE_READING_SET": "Turns reading the bound agent Sessions' usage on or off for this workspace.",
+  "WAKE_REGISTER": "Asks the Host to queue one line to a Codex thread, naming the exact read, when the Task ends, needs a decision or is deferred; returns at once, the wake held in the Task's journal across turns and restarts.",
   "WORKSPACE_BACKUP": "Backs up what the workspace cannot rebuild, outside it, keeping the newest generations.",
   "WORKSPACE_BACKUPS": "Lists the kept backup generations and the backup root; makes none.",
   "WORKSPACE_PREPARE_CONFIRM": "Starts a planned workspace preparation: the CLI starts one under the workspace's first-use goal, or resumes one under a person's grant.",
@@ -3145,6 +3170,9 @@
   "model_id": [
    "string"
   ],
+  "model_lifecycle": [
+   "string"
+  ],
   "network_enabled": [
    "boolean"
   ],
@@ -3288,6 +3316,12 @@
   ],
   "wait_seconds": [
    "number"
+  ],
+  "wake_read": [
+   "string"
+  ],
+  "wake_thread": [
+   "string"
   ],
   "watch": [
    "array"

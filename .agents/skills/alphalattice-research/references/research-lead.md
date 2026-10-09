@@ -1,50 +1,25 @@
 # Leading research
-Date: 2026-10-07
+Date: 2026-10-08
 
-You coordinate the user's question; product owners keep methods and authority. Establish the question, horizon, input, evidence, budget and lawful next steps. Separate source facts, inference, specialist judgment and proposed action; state what the evidence can and cannot establish. A backtest is not deployment evidence. A goal records multi-step work ([goals](goals.md)); subagents do not replace Host ledgers.
+You coordinate the person's question; the product's owners keep methods and authority. Establish the question, horizon, input, evidence and budget. Separate source facts, inference, specialist judgment and proposed action, and state what the evidence can and cannot establish. A backtest is not deployment evidence; advice grants no permission.
 
-Give each specialist a distinct professional question and the complete relevant projection, including unfavorable evidence. Run independent Alpha and Risk questions in parallel; the Analyst precedes the CRO through product validation. Mutations share Host capacity and are serialized, even when specialists share an input. Advice grants no permission. Keep specialist text and your synthesis separate, with exact references; use one CRO assessment per review subject (Review budget below) and keep your response distinct ([review handoff](cro-handoff.md)).
-
-## First use and review order
-
-From the person's sentence, open `FIRST_USE` before preparation, then follow each answer's `next_action` and offered requests: preparation offers the research strategy's controls, which offer each required whole-support Alpha and Risk study and the Risk window; installation offers the strategy's book. Reuse completed required studies; add no exploratory Factor study, shortened trial or alternative model unless the question calls for it.
-
-Before CRO, read the exact book's current Evidence answer. Continue its exact selected packet lineage only under a declared cumulative allowance with positive sessions and windows remaining; analyze and publish each successor packet, then reread Evidence. A null first-reading allowance grants no continuation authority; never invent limits. `COMPLETE` describes the sealed reading plan only. An absent or exhausted allowance or `NOTHING_RESUMABLE` retains unread ranges and limits for bounded review: take current Evidence's `dossier` action, then that dossier answer's `cro_bundle` action ([Evidence handoff](evidence-analysis-handoff.md)).
-
-### Review budget
-
-Count review work by its subjects, not by attempts. One CRO assessment binds one subject: the exact book Task or update publication, its holdings date and the Evidence publication it reads. A first use that ends with its first forward update, as in the example under Reading the dates, has two subjects:
-
-| Subject | Holdings date | Evidence it reads | CRO assessments |
-| --- | --- | --- | --- |
-| The whole-support historical book Task | Its last sealed holdings, entered 2026-10-02 | Current Evidence after continuation is settled | 1 |
-| The first forward update's publication | The first actionable entry, 2026-10-06 | Current Evidence for that publication | 1 |
-
-The Analyst answers once for each prepared unit and once for each successor packet the declared allowance admits; each answer allows at most two corrections. Load a stage specialist only for a judgment the question needs. A correction is the same assessment, and an unchanged dossier carries its review forward (`REVIEW_CARRIED_FORWARD`) without a new one. A CRO run before continuation is settled reads an Evidence publication that the continuation replaces, so its assessment no longer stands for the book: settle continuation first.
-
-A budget is exhausted when the Evidence allowance has no sessions or windows left, when Evidence answers `NOTHING_RESUMABLE`, or when a bound the person declared for the goal is used. Then run nothing more against it. Take the bounded CRO on what was read, and report it in the goal submission: name the exhausted bound and what stays unread (`remainders`, unread ranges, unreviewed units) under `problems`, answer the affected criterion `NOT_MET` or `NOT_ASSESSED` with that note, and list any later subject, such as a newer update publication, as unreviewed. Never enlarge an allowance, and never let one subject's assessment stand for another.
+Give each specialist a distinct question and the complete relevant projection, unfavorable evidence included. Run independent Alpha and Risk questions in parallel; the Analyst precedes the CRO. Mutations share the Host and are serialized.
 
 ## Which chain yields positions
 
-Positions to hold come only from an activated installed strategy's forward update. Every other book's holdings are a historical replay: evidence about the past, never positions for the next session. Three requests show the difference:
+Positions to hold come only from an activated installed strategy's forward update; every other book's holdings are a historical replay.
 
-1. **"Build me a reviewed book from public data."** First use, as the answers offer it: `FIRST_USE` goal → strategy controls and its required studies → prepare and install → the whole-support book → Evidence and CRO → its activation under the goal's delegation, told to the person → the first update. Only that update yields positions; the book before it yields replayed holdings and the review that activation reads.
-2. **"Try a short-term reversal factor and show me a book."** Development research: Factor → curation → handoff → Alpha → `book draft` → book study → `study show`. It yields a development book's replayed holdings and metrics, a backtest, and no positions. Forward positions would need strategy authoring, installation, a whole-support book and activation: a new decision for the person.
-3. **"What should my active strategy hold next?"** An installed strategy: `workspace show` → `strategy-book controls --package <package>`. If `ACTIVE` and inside its horizon, its offered `research-update plan` → `run` → `show` yields the positions, read as Reporting positions describes. If `INACTIVE`, the person's activation comes first; past the horizon, a newer book does.
+1. **"Build me a reviewed book from public data."** The first use: its answers lead to the whole-support book, its review and activation; only the first forward update yields positions. Training prepares the light lifecycle by default (one seed of each model vintage, as `model_lifecycle` in its answers says); tell the person, and when they ask for the full one plan it by name: `training plan --input <input-id> --component <component-id> --lifecycle FULL`, then `study controls --input <input-id> --component <component-id> --lifecycle FULL`.
+2. **"Try a short-term reversal factor and show me a book."** Development research: Factor → curation → Alpha → `book draft` → book study. It yields a backtest and no positions; forward positions need strategy authoring, installation, review and activation, a new decision for the person.
+3. **"What should my active strategy hold next?"** `strategy-book controls --package <package>`: if `ACTIVE` and inside its horizon, its offered update yields the positions; if `INACTIVE`, activation comes first; past the horizon, a newer book.
 
-## After a reviewed installed book
+## Review budget
 
-On every fresh session, read `workspace show`'s first intent, `RUN_FORWARD`, and its package's `strategy-book controls` before a forward plan; `activation` offers the next step or names its held reason. Review the book, its review standing, the information cutoff and the conditional first actionable session before taking the exact offered activation under an open first-use goal, or asking the person to take it on Portfolio. Read first forward positions as Reading the dates and Reporting positions below describe.
-
-Positions before activation: the controls answer's `activation.review_holdings` holds the reviewed book's last sealed holdings, their cash and the sessions they were decided and entered (claim `REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS`). Show them with the conditional dates; they are the review's last holdings, not the next positions. The product computes no preview, so run no forward update and build no book to make one. Activation is reversible and deactivation keeps history: the person may activate, read the first forward update's first-day positions, and deactivate if they decline them.
-
-Installation enables historical replay; activation and enabling daily updates on Settings are separate person-only decisions. First-use delegation covers only the activation of its reviewed book, never automation.
-
-While active, follow `next_requests.update`: plan by package, run its offered plan and read back the Task that run returned. Report published positions with formation and entry dates and exact `claim`, as research rather than orders or advice. A blocked update from an earlier activation is history, not this Task's continuation.
+Count review work by subject, not attempt. One CRO assessment binds one subject: the exact book Task or update publication, its holdings date and the Evidence publication it reads. A first use that ends with its first forward update has two subjects: the whole-support book and the first update's publication. The Analyst answers once per prepared unit and once per successor packet the declared allowance admits, with at most two corrections each; an unchanged dossier carries its review forward (`REVIEW_CARRIED_FORWARD`). When the allowance is exhausted, Evidence answers `NOTHING_RESUMABLE` or a declared bound is used, run nothing more: take the bounded CRO on what was read and report the exhausted bound and what stays unread under `problems`. Never let one subject's assessment stand for another.
 
 ## Reading the dates
 
-`strategy-book controls` returns `strategy_dates`. Before activation the dates are `IF_ACTIVATED`, measured against the current clock; after it they are `ACTIVE`, measured against the activation time. Take this daily book: its sealed formations end on Thursday 2026-10-01, its component records run through Friday 2026-10-02, and the person activates it on Tuesday 2026-10-06 at 02:30:51 EDT (06:30:51Z), before the market opens.
+`strategy-book controls` returns `strategy_dates`: `IF_ACTIVATED` before activation, measured against the current clock, and `ACTIVE` after it, against the activation time. Take a daily book whose sealed formations end on Thursday 2026-10-01, whose component records run through Friday 2026-10-02, and which the person activates on Tuesday 2026-10-06 at 02:30:51 EDT (06:30:51Z), before the open.
 
 | Field | Value | Why |
 | --- | --- | --- |
@@ -53,17 +28,17 @@ While active, follow `next_requests.update`: plan by package, run its offered pl
 | `first_actionable_source.activated_at` | 2026-10-06T06:30:51Z | The person's activation |
 | `first_actionable_source.latest_completed_session` | 2026-10-05 | The last session XNAS and XNYS had both completed |
 | `first_actionable_source.formation_session` | 2026-10-05 | Decided at Monday's close, 16:00 EDT (20:00Z) |
-| `first_actionable_source.entry_at` | 2026-10-06T13:30:00Z | Tuesday's open, 09:30 EDT: the first planned entry strictly after activation |
+| `first_actionable_source.entry_at` | 2026-10-06T13:30:00Z | Tuesday's open: the first planned entry after activation |
 | `first_actionable_session` | 2026-10-06 | That entry's session |
 | `replayed_in_sample_forward_sessions` | count 1, 2026-10-02 to 2026-10-02 | Forward decisions through the cutoff and before the first actionable session |
 
-The 2026-10-02 decision entered at Monday 2026-10-05's open (13:30Z), before activation: it is causal replay inside the research window, never out-of-sample evidence. The 2026-10-05 decision is after the cutoff and enters at Tuesday's open, the first position to hold. An update run after activation and before Tuesday's open decides both sessions and publishes the conditional proposal for the 2026-10-06 entry. Read before activation, the same book names Monday 2026-10-05 as first actionable at 08:00 EDT on Monday (Friday's decision still enters at Monday's open), and Tuesday 2026-10-06 at 10:00 EDT on Monday.
+The 2026-10-02 decision entered at Monday's open, before activation: causal replay inside the research window, never out-of-sample evidence. The 2026-10-05 decision is after the cutoff and enters at Tuesday's open, the first position to hold.
 
 ## Reporting positions
 
-Read `research-update show` for the update Task the run returned. Each decision forms at its formation session's close and enters at the next session's open (`schedule.formation_close_at`, `schedule.entry_open_at`); returns run from that open to the holding end's open. Name the basis of each position:
+Read `research-update show` for the Task the run returned. Each decision forms at its formation session's close and enters at the next open (`schedule.formation_close_at`, `schedule.entry_open_at`). Name each position's basis, from `review_selector.position_basis`:
 
-- `CONDITIONAL_ESTIMATE` (`status` `PROPOSAL_PUBLISHED`): weights marked at the formation close for a conditional entry at the next open, not an execution target (`CLOSE_MARKED_ESTIMATE_NOT_EXECUTION_TARGET`).
-- `OBSERVED_RESEARCH_ENTRY`: the entry settled on that open's daily bar (`DAILY_BAR_QA_NOT_VERIFIED_VENUE_EXECUTION`), with cost lanes of 5 and 10 basis points a side; no venue fill is verified.
+- `CONDITIONAL_ESTIMATE` (`status` `PROPOSAL_PUBLISHED`): weights marked at the formation close for a conditional entry at the next open, not an execution target.
+- `OBSERVED_RESEARCH_ENTRY`: the entry settled on that open's daily bar, with cost lanes of 5 and 10 basis points a side; no venue fill is verified.
 
-`review_selector.position_basis` carries the basis, and each `position_rows` row states it in words. Quote the publication's `claim`, `POST_OBSERVED_QA_NOT_TIMELY_ADVICE`, with its `risk_status` and `cro_status`: Risk and the CRO have not assessed that proposal until its own review runs. Report positions as research with their formation and entry dates, never as orders or advice.
+Quote the publication's `claim` with its `risk_status` and `cro_status`: Risk and the CRO have not assessed the proposal until its own review runs. Before activation, the controls answer's `activation.review_holdings` are the reviewed book's last holdings (`REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS`); the product computes no preview, so run no update and build no book to make one. Activation is reversible and deactivation keeps history.

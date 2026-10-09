@@ -8,7 +8,7 @@ import importlib
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -194,6 +194,11 @@ def make_owner_exception(cls: type[Exception]) -> tuple[Exception, str]:
         return cls(
             "FEATURE_AXIS_AUTHORITY_MISMATCH"
         ), "INVALID_EXPERIMENT:FEATURE_AXIS_AUTHORITY_MISMATCH"
+    if name == "FeatureBaselinePopulationError":
+        return cls({}), "feature.baseline_qualified_population_insufficient"
+    if name == "DataTargetSessionLag":
+        day = date(2026, 1, 2)
+        return cls(target=day, reaching=0, total=1, minimum=1, latest=day), cls.failure_code
 
     # Inherited builtin exception constructors accept arbitrary args, not keyword
     # fields. A class-owned code (SplitAdjustedPriceIntegrityError) must survive a

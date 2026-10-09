@@ -219,7 +219,7 @@ def test_a_cli_invocation_cannot_claim_installed_agent_provenance(
 def test_a_seed_no_risk_method_consumes_cannot_create_a_second_identity(
     real_risk_workspace: RealRiskWorkspace,
 ) -> None:
-    """P2: this used to be a "changing the seed changes the Program" case.
+    """this used to be a "changing the seed changes the Program" case.
 
     It passed, and that was the problem. Both Risk capabilities are
     deterministic and neither reads the envelope's seed, so two documents
@@ -274,7 +274,7 @@ def test_changing_the_document_changes_the_program_identity(
 def test_a_thread_limit_is_bound_and_one_the_estimator_cannot_honour_is_refused_at_seal(
     real_risk_workspace: RealRiskWorkspace,
 ) -> None:
-    """regression (V120): the thread limit is part of the envelope's identity, and a Risk plan
+    """Regression: the thread limit is part of the envelope's identity, and a Risk plan
     whose installed estimator runs single-threaded is refused when it is sealed, at PLAN, where
     a sealed Program with two threads was refused only at RUN."""
 
@@ -462,7 +462,7 @@ def test_an_exploration_sample_is_named_by_its_handle_and_draws_the_same_names()
 
 
 def test_the_universe_is_offered_whole_or_sampled_in_the_sizes_admitted() -> None:
-    """requirement (V339, R4): a draft offers its universe whole or as a sample, from the metric
+    """requirement (R4): a draft offers its universe whole or as a sample, from the metric
     policy's minimum cross-section to one fewer than the Panel's names, the sizes the authority
     admits."""
 
@@ -484,7 +484,7 @@ def test_the_universe_is_offered_whole_or_sampled_in_the_sizes_admitted() -> Non
 
 
 def test_an_exported_declaration_reads_back_as_it_was_written() -> None:
-    """requirement (V146): YAML the Host writes reads back through the declaration loader to the
+    """Requirement: YAML the Host writes reads back through the declaration loader to the
     same values: a string that looks like an exponent stays a string, a number stays a number."""
 
     import yaml  # type: ignore[import-untyped]
@@ -507,7 +507,7 @@ def test_an_exported_declaration_reads_back_as_it_was_written() -> None:
 
 
 def test_every_desk_section_refuses_a_key_its_contract_does_not_name() -> None:
-    """regression (V249): the ordinary Alpha section compared no key set, so a misspelled key
+    """Regression: the ordinary Alpha section compared no key set, so a misspelled key
     was read by nothing and kept in the plan's identity, and three Desks refused one each their
     own way; each section is a typed contract and one code names the key where it was written."""
 

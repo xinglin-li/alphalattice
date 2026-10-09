@@ -133,7 +133,7 @@ def _multi_capability_mandate() -> tuple[AlphaModelCatalog, AlphaResearchModelMa
 
 
 def test_a_mandate_narrows_to_the_domains_a_family_chose() -> None:
-    """requirement (V299, V118): narrowed to a family's domains, a mandate keeps them in its
+    """Requirement: narrowed to a family's domains, a mandate keeps them in its
     own order with their models alone, so a model installed beside them moves nothing; one
     domain narrows as a development Program's does, and a domain it lacks is refused."""
 
@@ -291,7 +291,7 @@ def test_second_adapter_is_admitted_without_a_goal_research_model_union() -> Non
 
 
 def test_a_model_installed_beside_the_admitted_ones_moves_no_mandate_and_refuses_nothing() -> None:
-    """requirement (V118, LAWS.md ID3): a development Program binds the one model its mandate
+    """requirement (LAWS.md ID3): a development Program binds the one model its mandate
     admits for it, and a goal's mandate is compared with the installed catalog on the models
     it admits; installing another model moves neither and refuses no proposal."""
 

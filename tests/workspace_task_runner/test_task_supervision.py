@@ -1,4 +1,4 @@
-"""Guanyin's Supervisor and Recovery Center over Task Control (GY2, V83)."""
+"""Guanyin's Supervisor and Recovery Center over Task Control (GY2)."""
 
 from __future__ import annotations
 
@@ -129,7 +129,7 @@ def test_the_rules_tell_running_work_from_each_incident_and_a_valid_stop() -> No
     for lifecycle in ("REVIEW_PENDING", "DEFERRED", "CANCEL_REQUESTED"):
         assert classify(_facts(lifecycle=lifecycle, liveness="NOT_RECENT"), NOW) is None
     assert classify(_facts(lifecycle="QUEUED"), NOW) is None  # a command still drives it
-    # regression (V607): a recovery the dispatcher holds waits its turn, as a queued Task does;
+    # Regression: a recovery the dispatcher holds waits its turn, as a queued Task does
     # an incident on it woke a resume's follower while its recovery was starting.
     assert classify(_facts(lifecycle="RECOVERY_REQUIRED"), NOW) is None
 

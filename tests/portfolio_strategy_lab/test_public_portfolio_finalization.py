@@ -2013,16 +2013,10 @@ def _split_at(tmp_path: Path, *, prefix: int, window_end: int) -> _SplitPath:
 
 
 @pytest.mark.parametrize("prefix", [3, 4])
-def test_a_continuation_reports_its_sealed_boundary_not_a_flat_opening(
+def test_strong_replay_reopens_the_boundary_and_verifies_the_continuation_report(
     tmp_path: Path, prefix: int
 ) -> None:
-    """Row zero is not evidence of an empty book, and this is the path that proves it.
-
-    A continuation's first formation carried a real book in. Reported against a
-    zero vector it would have shown every carried name as newly opened, every
-    reduction as an open, and no exit at all -- a page that says the whole book
-    was bought that morning.
-    """
+    """The sealed opening, uninterrupted book and replay agree at both split positions."""
 
     split = _split_at(tmp_path, prefix=prefix, window_end=prefix)
     book = split.suffix_report.window_end_book
@@ -2057,22 +2051,6 @@ def test_a_continuation_reports_its_sealed_boundary_not_a_flat_opening(
     assert "the sealed boundary this path continued from" in page
     assert "opened flat" not in page
 
-
-@pytest.mark.parametrize("prefix", [3, 4])
-def test_a_split_path_and_an_uninterrupted_path_report_the_same_book(
-    tmp_path: Path, prefix: int
-) -> None:
-    """Splitting a path must not change what the report says the book did.
-
-    One field is *required* to differ, and it is the one this Gate added: the
-    uninterrupted arm's predecessor is an ordinary preceding formation of its own
-    path, and the split arm's is a carried boundary. Everything a reader acts on
-    -- the names, the weights, the comparands, the changes, the counts and the
-    total -- has to be identical, and the boundary session both arms name is the
-    same session.
-    """
-
-    split = _split_at(tmp_path, prefix=prefix, window_end=prefix)
     whole = split.whole_report.window_end_book
     suffix = split.suffix_report.window_end_book
 
@@ -2091,14 +2069,6 @@ def test_a_split_path_and_an_uninterrupted_path_report_the_same_book(
     assert whole.absolute_weight_change_total == suffix.absolute_weight_change_total
     assert whole.listing_axis_hash == suffix.listing_axis_hash
 
-
-@pytest.mark.parametrize("prefix", [3, 4])
-def test_strong_replay_reopens_the_boundary_and_verifies_the_continuation_report(
-    tmp_path: Path, prefix: int
-) -> None:
-    """The replay rebuilds the corrected report from the same sealed lane."""
-
-    split = _split_at(tmp_path, prefix=prefix, window_end=prefix)
     receipt = strong_replay(
         split.suffix_store,
         workspace_id="qa-final",

@@ -54,10 +54,12 @@ def test_policy_strings_and_external_parameter_paths_are_not_checkout_reads():
     reader = "scripts/check.py"
     blobs = {
         reader: (
-            b"from pathlib import Path\nROOT = Path(__file__).parents[1]\n"
+            b"import subprocess\nfrom pathlib import Path\nROOT = Path(__file__).parents[1]\n"
             b'POLICY = "config/hidden.json"\n'
             b'# (ROOT / "config" / "hidden.json").read_text()\n'
             b"def read_external(ROOT):\n    return ROOT.read_text()\n"
+            b'subprocess.check_output(["git", "log", "--full-history", "--format=%H", '
+            b'"HEAD", "--", POLICY])\n'
         ),
         "config/hidden.json": b"{}",
     }
@@ -69,6 +71,7 @@ def test_policy_strings_and_external_parameter_paths_are_not_checkout_reads():
     [
         'subprocess.run([str(ROOT / "scripts" / "hidden.py")])',
         'subprocess.run([sys.executable, str(ROOT / "scripts" / "hidden.py")])',
+        'subprocess.run([sys.executable, "--", str(ROOT / "scripts" / "hidden.py")])',
         'command = [sys.executable, str(ROOT / "scripts" / "hidden.py")]\n'
         "subprocess.check_output(command)",
     ],

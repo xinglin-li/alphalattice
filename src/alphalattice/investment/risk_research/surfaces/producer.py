@@ -56,7 +56,7 @@ class RiskDecompositionInputs:
     return_surface_hash: str
     formation_sectors: Mapping[str, str] | None = None
     """Each listing whose Sector at this formation is not its current one, with that Sector's
-    name (V346); None while every listing reads its current Sector."""
+    name; None while every listing reads its current Sector."""
 
     def validate(self, recipe: RiskDecompositionRecipe) -> None:
         """Require complete causal history, aligned inputs and classification coverage.
@@ -144,7 +144,7 @@ def _classification_design(
     formation_sectors: Mapping[str, str] | None = None,
 ) -> tuple[tuple[str, ...], FloatArray]:
     entries = {entry.listing_id: entry for entry in classification.entries}
-    # A reclassified listing's earlier Sector, by its key where the map names one (V346).
+    # A reclassified listing's earlier Sector, by its key where the map names one.
     keys = {entry.sector_name: entry.sector_key or entry.sector_name for entry in entries.values()}
     moved = formation_sectors or {}
     factor_by_listing = tuple(

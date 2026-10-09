@@ -19,7 +19,9 @@ and keeps two promises:
 
 from __future__ import annotations
 
+import json
 import os
+import secrets
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
@@ -47,11 +49,82 @@ def _connect(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
     return connect_duckdb(path, read_only=read_only)
 
 
-def _fresh_connection(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
-    """Open the process's instance of the file (a metadata read; a checkpoint on close)."""
+_SEAL_RECORD_SUFFIX = ".seal.json"
+"""Beside the store, like its WAL: the seal epoch and the file as its last close left it."""
 
+_EPOCHS: dict[Path, tuple[str, bool]] = {}
+"""Per file with an open instance: the seal epoch its seals vouch under, and whether the
+instance opened read only (`seal_epoch`)."""
+
+
+def _fingerprint(path: Path) -> list[list[int] | None]:
+    """The store file's and its WAL's size and mtime, as any program writing them leaves them."""
+    stamps: list[list[int] | None] = []
+    for item in (path, Path(f"{path}.wal")):
+        try:
+            stat = item.stat()
+        except FileNotFoundError:
+            stamps.append(None)
+        else:
+            stamps.append([stat.st_size, stat.st_mtime_ns])
+    return stamps
+
+
+def _seal_record(path: Path) -> dict[str, Any]:
+    try:
+        record = json.loads(Path(f"{path}{_SEAL_RECORD_SUFFIX}").read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def _write_seal_record(
+    path: Path, *, epoch: str, fingerprint: list[list[int] | None] | None
+) -> None:
+    target = Path(f"{path}{_SEAL_RECORD_SUFFIX}")
+    staged = target.with_name(f"{target.name}.tmp")
+    staged.write_text(json.dumps({"epoch": epoch, "fingerprint": fingerprint}), encoding="utf-8")
+    os.replace(staged, target)
+
+
+def seal_epoch(path: Path) -> str:
+    """The epoch whose seals the store's contents vouch for, a random token.
+
+    A seal is derived state its own writers keep current in their transactions (the Feature
+    year seals). Only an edit none of them made can leave one stale, and while an instance holds
+    the file only this process can write it. So the store's file is fingerprinted, by size and
+    mtime with its WAL, when its last writable instance closes, and the next instance's open
+    compares: a file otherwise than its last close left it -- another program wrote it -- or no
+    close recorded at all (a crash) takes a new token, and no seal of an earlier one vouches
+    again. A read-only open records nothing; one that finds the file moved holds a token of its
+    own. With no instance open, no seal vouches.
+    """
+    held = _EPOCHS.get(Path(path).resolve())
+    return held[0] if held is not None else secrets.token_hex(16)
+
+
+def _fresh_connection(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
+    """Open the process's instance of the file (a metadata read; a checkpoint on close).
+
+    The open first reads the file's fingerprint against its last recorded close (`seal_epoch`),
+    and clears the record until this instance's close records it again.
+    """
+
+    before = _fingerprint(path)
     with span("read", "duckdb_instance_open"):
-        return _connect(path, read_only=read_only)
+        raw = _connect(path, read_only=read_only)
+    try:
+        record = _seal_record(path)
+        epoch = record.get("epoch")
+        if not isinstance(epoch, str) or record.get("fingerprint") != before:
+            epoch = secrets.token_hex(16)
+        if not read_only:
+            _write_seal_record(path, epoch=epoch, fingerprint=None)
+    except BaseException:
+        raw.close()
+        raise
+    _EPOCHS[path] = (epoch, read_only)
+    return raw
 
 
 def _attached_connection(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
@@ -522,6 +595,11 @@ def _closed(path: Path) -> None:
         _CLOSING[path] -= 1
         if not _CLOSING[path]:
             del _CLOSING[path]
+            if path not in _INSTANCES:
+                # The file as this owner's last writable close leaves it (`seal_epoch`).
+                epoch, read_only = _EPOCHS.pop(path, ("", True))
+                if not read_only:
+                    _write_seal_record(path, epoch=epoch, fingerprint=_fingerprint(path))
         _STATE.notify_all()
 
 
@@ -796,6 +874,10 @@ class WorkspaceDatabase:
         """Retain this database for a bounded unit of work on the calling thread."""
         with retain_workspace_database(self.path, read_only=read_only, wait_seconds=wait_seconds):
             yield
+
+    def seal_epoch(self) -> str:
+        """The epoch whose seals this store's contents vouch for (`seal_epoch`)."""
+        return seal_epoch(self.path)
 
     @contextmanager
     def transaction(self) -> Iterator[duckdb.DuckDBPyConnection]:

@@ -531,6 +531,12 @@ def sources_short(
     )
 
 
+UNIT_FAILURE_EXCEPTION_TYPE_LIMIT = 120
+"""The recorded exception type fits Task Control's failure cause."""
+UNIT_FAILURE_EXCEPTION_MESSAGE_LIMIT = 400
+"""The recorded message fits Task Control's failure cause."""
+
+
 class AlternativeEvidenceUnitFailure(AlternativeEvidenceContract):
     """A unit that did not complete, sealed so the run can go on without it.
 
@@ -549,6 +555,19 @@ class AlternativeEvidenceUnitFailure(AlternativeEvidenceContract):
     ordered_entity_ids: tuple[str, ...] = Field(min_length=1, max_length=UNIT_LIMIT)
     stage_id: str = Field(min_length=1, max_length=80)
     failure_code: str = Field(min_length=1, max_length=200)
+    exception_type: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=UNIT_FAILURE_EXCEPTION_TYPE_LIMIT,
+        exclude_if=lambda value: value is None,
+        description="The actual exception class raised by this attempt; absent in older failures.",
+    )
+    exception_message: str | None = Field(
+        default=None,
+        max_length=UNIT_FAILURE_EXCEPTION_MESSAGE_LIMIT,
+        exclude_if=lambda value: value is None,
+        description="The exception's message, whitespace collapsed and limited to 400 characters.",
+    )
     recorded_at: datetime
     uncovered_entity_ids: tuple[str, ...] = Field(
         default=(), max_length=UNIT_LIMIT, exclude_if=lambda value: not value

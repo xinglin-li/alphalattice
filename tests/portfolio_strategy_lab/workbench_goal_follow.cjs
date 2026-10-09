@@ -18,9 +18,9 @@ const hash='a'.repeat(64);
 function element(){return {dataset:{},style:{setProperty(){}},classList:{add(){},remove(){},toggle(){},contains(){return false;}},innerHTML:'',childElementCount:1,open:false,hidden:false,querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){},removeEventListener(){},contains:()=>false,setAttribute(){},focus(){},matches:()=>false,close(){this.open=false;},showModal(){this.open=true;}};}
 function context(initial,{address='#page=overview&follow='+scope,typing=false,dialogOpen=false,narrative=null,decisions=null}={}){
   let checkpoint=clone(initial),overrideNarrative=narrative,overrideDecisions=decisions;
-  const requests=[],moves=[],toasts=[],gates=new Map(),storage=new Map(),main=element(),dialog=element(),live=element(),inspector=element();
+  const requests=[],moves=[],toasts=[],renders=[],gates=new Map(),storage=new Map(),main=element(),dialog=element(),live=element(),inspector=element();
   dialog.open=dialogOpen;
-  const nodes=new Map([['#main',main],['#dialog',dialog],['#tpLive',live],['#inspector',inspector]]);
+  const nodes=new Map([['#main',main],['#dialog',dialog],['#tpLive',live],['#inspector',inspector],['#toast',{...element(),hidden:true}]]);
   const location={hash:address,search:'',href:'http://127.0.0.1/workbench.html'+address};
   const setAddress=url=>{location.hash=url.includes('#')?'#'+url.split('#')[1]:url;location.href='http://127.0.0.1/workbench.html'+location.hash;};
   const document={hidden:false,activeElement:typing?{matches:()=>true}:null,querySelector:s=>nodes.get(s)||null,querySelectorAll:()=>[],getElementById:s=>nodes.get('#'+s)||null,addEventListener(){},
@@ -77,10 +77,10 @@ function context(initial,{address='#page=overview&follow='+scope,typing=false,di
     $:s=>nodes.get(s)||null,$$:()=>[],getSelection:()=>'',scrollTo(){},clone,...library(appDir)};
   vm.createContext(c);script('../data/zh.js').runInContext(c);c.window.ALPHA_ZH_READY=true;
   for(const file of files)script(file).runInContext(c);
-  vm.runInContext('globalThis.probe={Data,app,LiveActivity,LiveTasks,LiveStudy,LiveReview,LiveViews,LiveResearch,Inspect,Window,ACTIONS,PRODUCT_ACTIONS,dispatchAction,readRoute,hashParams};',c);
+  vm.runInContext('globalThis.probe={Data,app,LiveActivity,LiveTasks,LiveStudy,LiveReview,LiveViews,LiveWorkspace,LiveResearch,Inspect,Window,Geometry,Events,ACTIONS,PRODUCT_ACTIONS,dispatchAction,readRoute,hashParams};',c);
   const p=c.probe,shown={mode:null,by:null,body:'',opens:0,onClose:null};
   // Presentation primitives only. All route mechanics, readers and wanted boundaries stay real.
-  c.render=()=>{};c.patchMain=()=>{};c.preserveSurface=()=>({});c.restoreSurface=()=>{};c.notify=m=>toasts.push(m);c.closeDialog=()=>{dialog.open=false;};c.hideToast=()=>{};
+  c.render=()=>{renders.push(p.app.page);};c.patchMain=()=>{};c.preserveSurface=()=>({});c.restoreSurface=()=>{};c.notify=m=>toasts.push(m);c.closeDialog=()=>{dialog.open=false;};c.hideToast=()=>{};
   for(const key of ['render','renderSide','renderTop','afterRender','syncFrame','syncRoutes','onNavigate','trailMark','trailAfter','markDetail'])p.Window[key]=()=>{};
   p.Window.openInspector=o=>{shown.mode=o.mode;shown.by=o.by;shown.body=String(o.body);shown.onClose=o.onClose;shown.opens++;return true;};
   p.Window.inspectorMode=()=>shown.mode;p.Window.inspectorOpen=()=>Boolean(shown.mode);
@@ -89,10 +89,11 @@ function context(initial,{address='#page=overview&follow='+scope,typing=false,di
   p.Window.closeInspector=()=>{const onClose=shown.onClose;Object.assign(shown,{mode:null,by:null,onClose:null});onClose?.();return true;};
   p.Window.closeDetail=()=>{};p.LiveResearch.ready=()=>{};
   p.readRoute();
-  return {c,p,shown,dialog,requests,moves,toasts,checkpoint:name=>{checkpoint=clone(phase(name));},feed:name=>p.LiveActivity.absorbPage(clone(phase(name).activity)),
+  return {c,p,shown,dialog,requests,moves,toasts,renders,checkpoint:name=>{checkpoint=clone(phase(name));},feed:name=>p.LiveActivity.absorbPage(clone(phase(name).activity)),
     setNarrative:value=>{overrideNarrative=value;},setDecisions:value=>{overrideDecisions=value;},
     hold:route=>{let release;const held={promise:new Promise(r=>{release=r;}),entered:false,release:()=>release()};gates.set(route,held);return held;},
-    connect:async()=>{await p.Data.connect();assert.equal(p.Data.workspaceStatus,'ready',p.Data.workspaceError);await settle();}};
+    connect:async()=>{await p.Data.connect();assert.equal(p.Data.workspaceStatus,'ready',p.Data.workspaceError);await settle();},
+    boot:()=>{c.window.ALPHA_ENTRY={page:'history'};for(const owner of [p.Window,p.Geometry,p.Events,p.LiveViews,p.LiveTasks,p.LiveWorkspace])owner.bind=()=>{};script('boot.js').runInContext(c);}};
 }
 function q(ctx){return new URLSearchParams(ctx.c.location.hash.slice(1));}
 function followed(ctx){assert.equal(q(ctx).get('follow'),scope,'the exact Goal remains followed');assert.equal(ctx.p.LiveActivity.state().following,scope);}
@@ -207,11 +208,20 @@ async function check(name,fn){await fn();checks.push(name);}
     const paused=context(phase('factor'),{address:'#page=history&follow='+scope+'&follow_paused=1'});await paused.connect();paused.feed('factor');await settle();
     assert.equal(paused.p.app.page,'history');assert.equal(paused.p.LiveActivity.followPaused(),scope);assert.equal(paused.shown.opens,0);
   });
-  await check('latest stays quiet with no active Goal, then follows a newly attributed Task',async()=>{
+  await check('bare followed launches start Home, then follow a newly attributed Task',async()=>{
     // Labelled absence transport fixture; the later Goal/Task checkpoint and events are real.
     const empty=clone(phase('running'));empty.listing={goals:[]};empty.tasks=[];empty.decisions=[];
     empty.activity={...empty.activity,items:[],tasks:{}};
-    const ctx=context(empty,{address:'#page=overview&follow=latest'});await ctx.connect();
+    const none=clone(empty.narrative);none.record.tasks=[];
+    const exact=context(empty,{address:'#follow='+scope,narrative:none}),session=exact.hold('/api/session');exact.boot();
+    await until(()=>session.entered,'boot starts the real workspace read');
+    assert.equal(exact.p.Data.workspaceStatus,'loading');assert.equal(exact.renders[0],'overview','the first paint is Home while workspace facts are still unknown');
+    exact.c.window.AlphaLattice.setLocale('en');
+    assert.equal(exact.p.app.page,'overview');assert.equal(q(exact).get('page'),'overview','an early language preference cannot pin the Host default History');
+    session.release();await until(()=>exact.p.Data.workspaceStatus==='ready','the held session connects');await settle();
+    assert.equal(exact.p.app.page,'overview');assert.equal(q(exact).get('page'),'overview');followed(exact);
+    assert.equal(exact.shown.opens,0,'a Goal with no Task or person decision stays on Home');
+    const ctx=context(empty,{address:'#follow=latest'});ctx.boot();await until(()=>ctx.p.Data.workspaceStatus==='ready','the bare latest launch connects');await settle();
     ctx.p.LiveActivity.absorbPage(clone(empty.activity));await settle(); // establish the owner's initial feed epoch
     const reads=ctx.requests.filter(v=>v==='/api/goals').length;
     assert.ok(reads,'latest checks the actual Goal owner even before a Goal exists');

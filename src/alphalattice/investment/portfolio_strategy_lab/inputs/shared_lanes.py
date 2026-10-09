@@ -85,7 +85,7 @@ def sector_exposure_lanes(
     """One positional projection for frozen and authored research inputs.
 
     Args:
-        classification: Each listing's sector: a map, or a Sector history (V346).
+        classification: Each listing's sector: a map, or a Sector history.
         listings: The listings, in order.
         sessions: The formation axis; a history whose reclassification falls inside it gives
             one matrix and anchor per session, over every sector some session reads.

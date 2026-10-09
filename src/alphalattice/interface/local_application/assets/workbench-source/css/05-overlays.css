@@ -3,9 +3,6 @@
 body.modal-open {
   overflow: hidden;
 }
-/* Dialogs: native focus isolation and keyboard dismissal; the glass (law 150, 12-material) with the
-   large radius (the user's word, 2026-09-20: no right-angled box; Codex's dialogs and menus). The
-   head's inset went with the lens's rule in round 62 and is restored here. */
 dialog {
   color: var(--text);
   padding: 0;
@@ -50,8 +47,7 @@ dialog.quick-dialog[data-leaving] {
 dialog[data-leaving]::backdrop {
   animation: ui-fade-out var(--dur-1) var(--curve-move) forwards;
 }
-/* A dialog's parts fade, never the dialog: a glass layer under a fading host frosts nothing until the
-   fade ends (law 150). The dialog scales and its shadow grows (dialog-in, quick-in). */
+/* A fading glass host frosts nothing until its fade ends, so only the dialog's parts fade while the host scales. */
 dialog[open] > *,
 dialog[open]::before,
 dialog[open]::after {
@@ -71,20 +67,14 @@ dialog.sheet {
   max-height: none;
   width: var(--width-md);
 }
-/* The shortcuts sheet (round 51): a search, then the groups of the key map as dense rows with
-   their caps at the right; the caps sit at a menu row's end the same way. */
 dialog.key-sheet { width: var(--width-md); }
 .key-search { margin-bottom: var(--space-4); }
 .key-group + .key-group { margin-top: var(--space-5); }
-.key-group h3 { margin: 0 0 var(--space-1); font: var(--weight-strong) var(--style-footnote-size)/var(--style-footnote-leading) var(--font-ui); letter-spacing: var(--style-footnote-tracking); color: var(--muted); } /* round 89: a group inside the box is a section label */
+.key-group h3 { margin: 0 0 var(--space-1); font: var(--weight-strong) var(--style-footnote-size)/var(--style-footnote-leading) var(--font-ui); letter-spacing: var(--style-footnote-tracking); color: var(--muted); }
 .key-row { display: flex; align-items: center; gap: var(--space-3); min-height: var(--row-dense); border-bottom: 1px solid var(--edge-hair); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
 .key-row:last-child { border-bottom: 0; }
 .keycap { display: inline-flex; align-items: center; gap: var(--space-05); margin-left: auto; flex: none; }
 .keycap > i { font-style: normal; color: var(--faint); font-size: var(--style-caption-size); line-height: var(--style-caption-leading); margin: 0 var(--space-05); }
-/* Round 55: one menu. A popover on the overlay material beside its trigger (or at a pointer), the
-   picker the same menu fixed in the top layer at its trigger's width; rows of an icon slot, the
-   words with a note under them, and a cap, a check or a chevron at the end; a search field above
-   eight or more rows. The ···, the row's ···, the chip's values and the picker are instances. */
 .menu { position: absolute; right: 0; top: calc(100% + var(--popover-gap)); z-index: var(--layer-menu); display: grid; gap: var(--space-05); min-width: min(var(--width-xs), calc(var(--vw) - 2 * var(--viewport-inset))); max-width: calc(var(--vw) - var(--space-8)); max-height: var(--menu-limit, calc(var(--vh) - var(--space-16))); overflow-y: auto; padding: var(--space-2); border-radius: var(--radius-card); transform-origin: top right; animation: pop-in var(--dur-1) var(--curve-arrive); }
 .menu[hidden] { display: none; }
 .menu.menu-align-start { right: auto; left: 0; transform-origin: top left; }
@@ -105,7 +95,6 @@ dialog.key-sheet { width: var(--width-md); }
 .menu-row[aria-pressed=true] { background: var(--fill-selected); }
 .menu-row[aria-selected=true] { background: transparent; }
 .menu-row > .icon { width: var(--icon-size); height: var(--icon-size); flex: none; color: var(--muted); }
-/* F3 (law 135): a list's folder in the rail's menu stands indented under its list, as in the dock. */
 .menu-row > .menu-word { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-row > .menu-note { margin-left: auto; padding-block: 0; padding-left: var(--space-3); flex: none; color: var(--muted); font-weight: var(--weight-body); font-size: var(--style-caption-size); line-height: var(--style-caption-leading); letter-spacing: var(--style-caption-tracking); font-variant-numeric: tabular-nums; }
 .menu-row[aria-disabled=true] { color: var(--muted); cursor: default; }
@@ -121,8 +110,8 @@ dialog.key-sheet { width: var(--width-md); }
 .menu-tile .icon { width: var(--icon-lg); height: var(--icon-lg); }
 .menu-divider { margin: var(--space-1) 0; border: 0; border-top: 1px solid var(--edge-hair); }
 .menu.menu-popover { min-width: min(var(--width-sm), calc(var(--vw) - 2 * var(--viewport-inset))); }
-[data-anchor="product"] .menu { min-width: min(var(--width-sm), calc(var(--vw) - 2 * var(--viewport-inset))); } /* the Text size row: the word, the figure, two steps (round 86: the word was cut) */
-.menu-row .menu-segments { margin-left: auto; display: inline-flex; gap: var(--space-05); flex: none; } /* the Language row's EN / 中文 (round 86) */
+[data-anchor="product"] .menu { min-width: min(var(--width-sm), calc(var(--vw) - 2 * var(--viewport-inset))); }
+.menu-row .menu-segments { margin-left: auto; display: inline-flex; gap: var(--space-05); flex: none; }
 body[data-page] .menu-row .menu-segments [data-control="segment"] { min-height: var(--menu-segment-height); padding: 0 var(--space-2); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); }
 .menu-words { display: grid; gap: var(--space-05); min-width: 0; flex: 1; }
 /* CT3 keeps picker titles whole on one line. A title beyond the fitted popup measure rolls
@@ -131,21 +120,14 @@ body[data-page] .menu-row .menu-segments [data-control="segment"] { min-height: 
    an action menu keeps the neutral fill. */
 :is(.picker-pop, .choice-list) .menu-row { white-space: nowrap; overflow-wrap: normal; min-width: 0; max-width: 100%; } /* a grid item shrinks only when told to */
 .picker-pop .menu-row { min-width: max-content; max-width: none; }
-/* Round 94 (measured: a 1,264-session list cost 33 ms of layout and 132 ms of style on each open): the
-   rows off the list's screen are not laid out until they scroll in; each keeps its one-line height. */
 :is(.picker-pop, .choice-list) .picker-option { content-visibility: auto; contain-intrinsic-block-size: auto var(--row-dense); }
-:is(.picker-pop, .choice-list) .menu-words { display: flex; align-items: center; gap: 0; min-width: 0; flex: 1 1 auto; } /* round 94: the words' basis is their content, so a squeeze reaches the ✓'s box and the meta before the title */
-:is(.picker-pop, .choice-list) .menu-words > strong { display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-label); } /* round 94 (the user's still): an option is a menu row's word, not a wall of bold; the ✓ marks the chosen */
+:is(.picker-pop, .choice-list) .menu-words { display: flex; align-items: center; gap: 0; min-width: 0; flex: 1 1 auto; } /* The words keep their content basis so a squeeze reaches the checkmark and metadata before the title. */
+:is(.picker-pop, .choice-list) .menu-words > strong { display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-label); }
 :is(.picker-pop, .choice-list) .menu-words > strong > .icon { vertical-align: middle; margin-right: var(--space-2); }
 .choice-list .menu-words > strong { white-space: normal; overflow: visible; text-overflow: clip; } /* W: an option of a list in place wraps at its separators (a factor's name), never cut */
-:is(.picker-pop, .choice-list) .menu-words > small { flex: 0 999999 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* round 94: the meta takes what the title leaves and gives way whole (a shrink weight that leaves it no stub) */
+:is(.picker-pop, .choice-list) .menu-words > small { flex: 0 999999 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .picker-trigger.picker-chip > .picker-trigger-label { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; } /* the chip's label, its divider, its value */
 :is(.picker-pop, .choice-list) .picker-option:is(:hover, :focus-visible) { background: var(--fill-highlight); }
-/* Round 94 (the user's rule): the list is its trigger's width, or its widest title's when the titles
-   need more (`Picker.fit`); while measuring, the list takes its max-content with every row drawn and
-   no metas; the search field never sets the width. Inside the width the meta gives way whole before
-   the title loses a letter, and the ✓'s box can give up to 6 px so a list snaps to its trigger. The
-   220 px query that dropped the metas of a 240 px list is gone with the 240 px floor. */
 .picker-pop.measuring .menu-list { width: max-content; max-width: none; }
 .picker-pop.measuring .picker-option { content-visibility: visible; }
 .picker-pop.measuring .menu-words > small { display: none; }
@@ -158,7 +140,7 @@ body[data-page] .menu-row .menu-segments [data-control="segment"] { min-height: 
 .menu-check .icon { width: var(--icon-sm); height: var(--icon-sm); }
 .menu-row:is([aria-selected=true], [aria-checked=true]) .menu-check { opacity: 1; }
 .menu-empty { padding: var(--space-5) var(--space-3); color: var(--muted); text-align: center; font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
-.menu-more { padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); } /* round 94: the rows a long list keeps back */
+.menu-more { padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
 .dialog-head {
   border-bottom: 1px solid var(--line);
   display: flex;
@@ -186,11 +168,11 @@ body[data-page] .menu-row .menu-segments [data-control="segment"] { min-height: 
 .dialog-list-btn .icon {
   color: var(--ink-link);
 }
-.toast { /* bottom right (round 56, Linear's), a mark, the quoted id, the word; inside the window (round 94) so it reads the dock's width */
+.toast { /* The toast stays inside the window so its placement accounts for the dock's width. */
   position: fixed;
   bottom: var(--toast-offset);
   right: var(--space-6);
-  border-radius: var(--radius-card); /* it floats: the glass (law 150), not the lane (2026-09-23) */
+  border-radius: var(--radius-card);
   padding: var(--space-3) var(--space-4);
   font-size: var(--style-footnote-size);
   line-height: var(--style-footnote-leading);
@@ -205,7 +187,7 @@ body[data-page] .menu-row .menu-segments [data-control="segment"] { min-height: 
   animation: ui-crossfade var(--dur-1) var(--curve-move);
 }
 html[data-dock=right] .toast {
-  right: calc(var(--lead) + var(--space-6)); /* round 94 (the still): the toast stands over the lane, never over the dock's foot rows */
+  right: calc(var(--lead) + var(--space-6));
 }
 .toast[data-leaving] {
   animation: ui-fade-out var(--dur-1) var(--curve-move) forwards;
@@ -218,8 +200,6 @@ html[data-dock=right] .toast {
 .toast-name { max-width: var(--measure-name); font-weight: var(--weight-label); }
 #toastIcon .icon { width: var(--icon-size); height: var(--icon-size); }
 .toast code { font-family: var(--font-mono); color: var(--text); }
-/* Round 56: the composer — the context line, a title and a body with placeholders instead of
-   labels, the properties as chips along the bottom, the rest folded; one sheet, one primary. */
 .composer { display: grid; gap: var(--space-3); }
 .composer-context { color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
 .composer-title, .composer-body { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); padding: 0; resize: vertical; }
@@ -235,10 +215,6 @@ html[data-dock=right] .toast {
 .dialog-body .kv dd {
   text-align: left;
 }
-/* Round 93: the palette (Raycast's, Linear's ⌘K, VS Code's) -- no head, no close glyph, no foot; the
-   input row first with the context chip before the caret; rows one line with the words, the subtitle
-   after a middle dot and the chord at the right; sections as kickers; the highlighted row the neutral
-   face, never an outline or the accent (an action is not an option). */
 dialog.quick-dialog {
   width: min(var(--width-lg), calc(var(--vw) - 2 * var(--viewport-inset)));
   max-height: min(var(--quick-height), var(--quick-cover));
@@ -264,11 +240,8 @@ dialog.quick-dialog {
 .quick-context { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; max-width: var(--share-chip); min-height: var(--space-6); padding: 0 var(--space-2); border-radius: var(--radius-control); background: var(--ui-face); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .quick-context > code { font: var(--style-footnote-size)/var(--style-footnote-leading) var(--font-mono); }
 #quickResults { display: grid; gap: var(--space-1); padding: var(--space-2) 0 0; overflow: auto; }
-/* The command menu's rows (round 54): a section head in the eyebrow style, rows at the regular
-   row height with the words, a sub line and the key cap at the end. */
-.menu-section { margin: var(--space-3) var(--space-3) var(--space-1); color: var(--muted); font-size: var(--style-caption-size); line-height: var(--style-caption-leading); letter-spacing: var(--style-caption-tracking); font-weight: var(--weight-strong); } /* round 93 (law 75): a menu's section is a section label -- muted, 600, the caption */
+.menu-section { margin: var(--space-3) var(--space-3) var(--space-1); color: var(--muted); font-size: var(--style-caption-size); line-height: var(--style-caption-leading); letter-spacing: var(--style-caption-tracking); font-weight: var(--weight-strong); }
 .menu-section:first-child { margin-top: 0; }
-/* Round 57: the display popover — sections of checked rows and a row of toggle chips. */
 .display-options { position: relative; display: inline-flex; }
 .display-menu { min-width: min(var(--width-sm), calc(var(--vw) - 2 * var(--viewport-inset))); }
 .display-props { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) var(--space-2) var(--space-2); }
@@ -294,9 +267,6 @@ dialog.quick-dialog {
 .quick-result > .keycap { margin-left: auto; flex: none; }
 .quick-result > .icon { width: var(--icon-lg); height: var(--icon-lg); --icon-stroke: 1.6; color: var(--muted); flex: none; }
 .quick-words { min-width: 0; flex: 1 1 auto; display: flex; align-items: baseline; gap: 0; white-space: nowrap; overflow: hidden; }
-/* Round 95 (the user's reading): a title and its meta on one line are joined by the middle dot with a
-   half step either side -- the dot is the sheet's, never typed into the words (a typed leading space
-   collapses at a flex item's start and the dot hugged the title). */
 :is(.quick-words, .picker-pop .menu-words, .choice-list .menu-words) > small::before { content: '·'; margin: 0 var(--space-1); color: var(--muted); }
 .quick-words > strong { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--style-callout-size); line-height: var(--style-callout-leading); font-weight: var(--weight-label); }
 .quick-words > small { flex: 0 4 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); }
@@ -321,8 +291,6 @@ dialog.research-map-dialog {
 .dialog-head {
   flex-shrink: 0;
 }
-/* The peek (round 53): a card beside the held row on the glass (law 150); it arrives from a
-   6 px rise and is gone on Space or Esc. */
 .object-peek {
   position: fixed;
   z-index: var(--layer-peek);
@@ -341,8 +309,6 @@ dialog.research-map-dialog {
 .object-peek > .peek-note { color: var(--text); -webkit-line-clamp: var(--clamp-note); }
 .object-peek > .peek-keys { margin: var(--space-2) 0 0; display: flex; align-items: center; gap: var(--space-2); }
 .object-peek .peek-keys > .text-btn { gap: var(--space-2); padding-inline: var(--space-1); color: var(--muted); font-size: var(--style-caption-size); line-height: var(--style-caption-leading); }
-/* The alert (round 82, macOS): a short question with two answers -- ~340 px, centred, a bold
-   title, one line of body, equal pills; anything with a body of facts stays a dialog. */
 dialog.alert { width: auto; min-width: var(--width-sm); max-width: var(--width-md); text-align: center; }
 dialog.alert .dialog-head { justify-content: center; padding: var(--space-8) var(--space-6) 0; border: 0; }
 dialog.alert :is(.dialog-kind, .dialog-head .icon-btn) { display: none; }
@@ -362,14 +328,10 @@ dialog.alert .dialog-foot > .button { flex: 1 1 0; min-width: 0; white-space: no
 .dialog-body * {
   scrollbar-color: var(--scroll-thumb) transparent;
 }
-/* The code dialog (round 92): a document read whole. The block never wraps and scrolls both ways;
-   the dialog is as wide as a document wants; the copy glyph stands beside the close. */
 dialog.code-dialog { width: min(var(--width-xl), calc(var(--vw) - 2 * var(--viewport-inset))); }
 .code-dialog .dialog-body { padding: 0; display: flex; min-height: 0; }
 .code-document { flex: 1 1 auto; margin: 0; border: 0; border-radius: 0; background: transparent; white-space: pre; overflow: auto; max-height: var(--document-max); padding: var(--sheet-inset); }
 .dialog-tools { display: flex; align-items: center; gap: var(--space-1); flex: none; }
-/* The both-ways net (round 92): a narrow container -- the side column, a dialog's body, the Task
-   panel -- never clips a block or a table; they scroll inside it. */
 :is(#inspector, .dialog-body) :is(pre, .code-block, .table-scroll, table) { max-width: 100%; overflow: auto; }
 .dialog-foot {
   border-top: 1px solid var(--line);
@@ -436,8 +398,7 @@ body[data-page] :is(.button,.dialog-list-btn,.comparison-candidate) {
   outline: var(--focus-ring-width) solid var(--accent);
   outline-offset: var(--focus-ring-offset);
 }
-body:not([data-input="pointer"]) .quick-search:focus-within { border-bottom-color: var(--accent); } /* round 93: the keyboard's mark on the palette's row (its hairline takes the accent); nothing under the pointer */
-/* Round 93: the one tooltip -- the footnote on the glass (law 150), no arrow (Linear's; Apple's help tags), in the top layer. */
+body:not([data-input="pointer"]) .quick-search:focus-within { border-bottom-color: var(--accent); }
 #tip { position: fixed; inset: auto; margin: 0; width: max-content; max-width: var(--width-sm); overflow-wrap: normal; padding: var(--space-1) var(--space-2); border-radius: var(--radius-control); color: var(--text); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); pointer-events: none; overflow-wrap: anywhere; }
 #tip .keycap { margin-left: var(--space-1); vertical-align: middle; }
 /* The copy dialog's field when the clipboard is refused: eight editor lines. */

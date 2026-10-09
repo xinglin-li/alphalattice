@@ -48,7 +48,7 @@ def test_the_resolver_names_the_one_task_store() -> None:
 def test_the_resolver_takes_the_root_and_refuses_runtime_or_a_root_store_with_tasks(
     tmp_path: Path,
 ) -> None:
-    """regression (V206): callers passed the root or `runtime/`, so a workspace grew a second,
+    """Regression: callers passed the root or `runtime/`, so a workspace grew a second,
     empty store at its root; a `runtime/` directory is refused, an empty root store is left
     alone, and one that holds a Task is refused rather than abandoned."""
 

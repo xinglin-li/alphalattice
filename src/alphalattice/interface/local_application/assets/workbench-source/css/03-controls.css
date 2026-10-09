@@ -19,10 +19,7 @@ input,
 textarea {
   outline-offset: var(--focus-ring-offset);
 }
-/* The keyboard's focus ring (round 51, one rule): 2 px of the link ink at 2 px, on every control
-   the keyboard lands on. A focus ring is a keyboard's (round 24h): after a pointer interaction,
-   the ring the browser draws for a focus the page restored on repaint is noise; text fields keep
-   theirs, and the first key press brings every ring back. */
+
 :where(button,a,summary,select,input,textarea,[tabindex]):focus-visible {
   outline: var(--focus-ring-width) solid var(--accent);
   outline-offset: var(--focus-ring-offset);
@@ -31,16 +28,14 @@ textarea {
 body[data-input="pointer"] :where(button,a,summary,[tabindex]):focus-visible {
   outline-color: transparent;
 }
-/* A pointer's focus on a field (round 89, the user's stills: a blue border after a click): the
-   field's own border takes the accent at one pixel, not the keyboard's ring; a key press brings
-   the ring back. */
+
 body[data-page][data-input="pointer"] :is(input,select,textarea):focus-visible,
 body[data-page][data-input="pointer"] :is(.input-with-icon,.search-wrap,.es-search):focus-within {
   outline-color: transparent;
   border-color: var(--accent);
 }
 body[data-input="pointer"] :is(.list-row:has(> .list-row-main:focus-visible), .navigator-handle:focus-visible, .fv-step:focus-visible) {
-  outline-color: transparent; /* the other rings a pointer's focus would draw (round 89's search) */
+  outline-color: transparent;
 }
 button {
   cursor: pointer;
@@ -51,8 +46,7 @@ button {
 button:not(:disabled):active {
   transform: translateY(var(--press-shift));
 }
-/* Six tones, two variables (round 71, round 82): the tone's mark (Apple's colour) on a state line's
-   dot or a row's dot and behind a badge, the tone's ink (text-safe) on the badge's word. */
+
 :is(.badge,.state,.row-dot,.mark) { --tone-ink: var(--neutral-ink); --tone: var(--neutral); }
 :is(.badge,.state,.row-dot,.mark).warning { --tone-ink: var(--warning-ink); --tone: var(--warning); }
 :is(.badge,.state,.row-dot,.mark).danger { --tone-ink: var(--danger-ink); --tone: var(--danger); }
@@ -60,8 +54,7 @@ button:not(:disabled):active {
 :is(.badge,.state,.row-dot,.mark).good { --tone-ink: var(--good-ink); --tone: var(--good); }
 :is(.badge,.state,.row-dot,.mark).accent { --tone-ink: var(--ink-link); --tone: var(--accent); }
 :is(.badge,.state,.row-dot,.mark).cyan { --tone-ink: var(--cyan-ink); --tone: var(--cyan); }
-/* The badge is the tinted pill, kept where a word alone would mislead: the tone's dot and the
-   word in the text ink on 12% of the tone's mark (round 85: a word is never coloured, Linear's). */
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -93,7 +86,7 @@ button:not(:disabled):active {
   gap: var(--space-1);
   min-width: 0;
 }
-/* An inline field aligns its unit and input with neighbouring controls (V680, PR1/PR2). */
+
 .field.inline {
   display: flex;
   align-items: center;
@@ -142,13 +135,13 @@ button:not(:disabled):active {
 .object-meta .badge {
   margin: 0;
 }
-.session-controls .picker-anchor { flex: 0 1 auto; min-width: 0; } /* round 94: the next arrow stays beside the word at every width */
+.session-controls .picker-anchor { flex: 0 1 auto; min-width: 0; }
 button,
 a {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-/* A key cap (round 51): the footnote mono on the well with a hairline, 20 px at least. */
+
 kbd {
   font: var(--style-caption-size)/var(--style-caption-leading) var(--font-mono);
   color: var(--muted);
@@ -159,8 +152,7 @@ kbd {
   text-align: center;
   white-space: nowrap;
 }
-/* A boolean is a switch (round 82, macOS; round 84 at Codex's size): 38 × 22, the knob white, the
-   track blue when on; the native checkbox underneath keeps its keys, its label and its change event. */
+
 .switch {
   appearance: none;
   position: relative;
@@ -268,7 +260,7 @@ input:disabled,
 textarea:disabled {
   opacity: 1;
 }
-/* Stripe-style filters: a suggested dashed chip becomes one stated label/value chip. A chip is a control (round 90): the control's line and face in both appearances (Dark: the 12 % hairline, the 8 % face), never the box edge Dark leaves transparent. */
+
 .filter-chip {
   position: relative;
   display: inline-flex;
@@ -316,9 +308,8 @@ body[data-page][data-reading] :is(.filter-chip-main,.filter-chip-clear) {
   left: 0;
   transform-origin: top left;
 }
-.filter-chip.is-pending { border-style: solid; border-color: var(--ui-line); } /* round 95: a clause awaiting its values is already a stated chip */
-/* Round 56: a property chip — the filter chip's shape holding a value, its key cap shown on
-   hover or focus; a row of them under an object's title; a read-only property in the muted ink. */
+.filter-chip.is-pending { border-style: solid; border-color: var(--ui-line); }
+
 .property-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .property-chip { border-style: solid; border-color: var(--ui-line); }
 .property-chip > .filter-chip-main > .icon { width: var(--icon-sm); height: var(--icon-sm); color: var(--muted); }
@@ -379,12 +370,10 @@ body[data-page] .tp-section .tp-caption .text-btn {
   min-width: 0;
   max-width: 100%;
 }
-/* The one picker (round 91): a pill by its content in a form row, the field's width in a field;
-   `picker-text` reads as a word until hovered (the Lab's input version, the desk's book and reading);
-   `picker-chip` is a filter chip's face. The trigger stays neutral after a choice. */
+
 .picker-anchor { position: relative; min-width: 0; }
 .field .picker-anchor { max-width: var(--width-sm); }
-body[data-page] .picker-trigger.picker-text { width: auto; max-width: 100%; background-color: transparent; border-color: transparent; box-shadow: none; padding-left: 0; font-weight: var(--weight-strong); } /* round 93: over the field's own line and face */
+body[data-page] .picker-trigger.picker-text { width: auto; max-width: 100%; background-color: transparent; border-color: transparent; box-shadow: none; padding-left: 0; font-weight: var(--weight-strong); }
 body[data-page] .picker-trigger.picker-text:is(:hover, :focus-visible, [aria-expanded=true]) { background-color: var(--field-face); border-color: var(--edge-strong); box-shadow: var(--rim-top); padding-left: var(--space-3); }
 .picker-trigger { display: flex; align-items: center; gap: var(--space-2); width: 100%; color: var(--text); text-align: left; }
 .picker-trigger-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -405,7 +394,7 @@ body[data-page] .picker-trigger.picker-text:is(:hover, :focus-visible, [aria-exp
 th[aria-sort="none"] .table-sort-indicator { opacity: 0; }
 /* the glyph belongs to the sorted column; the others show it on hover */
 th[aria-sort="none"] .table-sort:is(:hover, :focus-visible) .table-sort-indicator { opacity: 1; }
-.data-table th.col-num .table-sort { justify-content: flex-end; } /* a numeric head sits over its figures (`col-num` is generated; round 86) */
+.data-table th.col-num .table-sort { justify-content: flex-end; }
 /* One standard: semantic action, navigation, status, identity — not one shape for all. */
 body[data-page][data-reading] [data-control="action"],
 body[data-page][data-reading] [data-control="primary"],
@@ -471,7 +460,7 @@ body[data-page][data-reading] [data-control="quiet"] {
   min-height: var(--icon-control-size);
   height: var(--icon-control-size);
   padding: var(--space-2);
-  border-radius: var(--radius-control); /* round 84: a glyph button is the glyph alone (Codex); the fill comes on hover */
+  border-radius: var(--radius-control);
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -518,23 +507,13 @@ body[data-page][data-reading] [data-control]:is(:disabled,[aria-disabled=true]) 
   background: transparent;
   border-color: transparent;
 }
-/* Loading (round 15): the control keeps its label, dimmed, with the live dot before it; it takes
-   no pointer while the owner answers; no spinner, no overlay. */
+/* An answering control keeps its label, dimmed, and takes no pointer. */
 [data-control][aria-busy=true] {
   cursor: progress;
   pointer-events: none;
   opacity: var(--opacity-secondary);
 }
-[aria-busy=true] > .busy-dot {
-  display: inline-block;
-  width: var(--dot-sm);
-  height: var(--dot-sm);
-  border-radius: 50%;
-  background: currentColor;
-  flex: none;
-  animation: live-breathe var(--dur-pulse) ease-in-out infinite;
-}
-/* One field (round 21, Linear's settings and Stripe's forms): a 36 px control at 13 px text. */
+
 body[data-page] .ui-field {
   min-height: var(--ui-field-height);
   padding: var(--control-pad-md) var(--space-3);
@@ -549,7 +528,7 @@ body[data-page] textarea.ui-field {
   line-height: var(--style-body-leading);
   resize: vertical;
 }
-:is(.field, .subject-choice, .session-selector) > label { /* round 90: one field label -- muted, the term's 500 */
+:is(.field, .subject-choice, .session-selector) > label {
   font-size: var(--style-callout-size);
   font-weight: var(--weight-label);
   line-height: var(--style-callout-leading);
@@ -609,11 +588,7 @@ body[data-page][data-reading] [data-control="segment"][aria-pressed=true] {
 body[data-page][data-reading] [data-control="segment"][aria-pressed=true]:hover:not(:disabled):not([aria-disabled=true]) {
   background: linear-gradient(var(--ds-control-hover),var(--ds-control-hover)),var(--fill-selected);
 }
-/* Tabs (law 110; the user's reading of 2026-09-22): the views of one thing -- words over the
-   strip's hairline, the current one in the ink over the indicator, the others muted; one height
-   (--tab-height) whatever the words; a strip never wraps (it scrolls sideways before it breaks its
-   line). The hairline is an inset shadow, so the indicator paints over it inside the strip's own
-   box and the keyboard's ring sits inside the tab. A value's choice is a segmented control. */
+
 body[data-page] .tabs {
   display: flex;
   align-items: stretch;
@@ -676,7 +651,7 @@ body[data-page] .tab-count {
   line-height: var(--style-callout-leading);
   box-shadow: none;
 }
-/* Round 34, one control system: a navigation link drawn as a compact button is the compact size. */
+
 .button.compact[data-control="navigation"] {
   min-height: var(--button-compact-height);
   padding: var(--control-pad-sm) var(--space-3);
@@ -699,7 +674,7 @@ body[data-page][data-reading] .reveal-details > summary {
   cursor: pointer;
 }
 .reveal-details > summary::-webkit-details-marker { display: none; }
-body[data-page][data-reading] .reveal-details > summary:not(.run-log-fold)::before { /* a log's fold line keeps its one chevron after its words (law 72); this one lost to it on the reading pages */
+body[data-page][data-reading] .reveal-details > summary:not(.run-log-fold)::before {
   content: '›';
   color: var(--muted);
   font-size: var(--style-title-2-size);
@@ -713,7 +688,7 @@ body[data-page][data-reading] .reveal-details > summary:not(.run-log-fold)::befo
 body[data-page][data-reading] .reveal-details > summary:hover { color: var(--ink-link); }
 /* Icon buttons: 36 px in heads and toolbars, 32 px compact in rows and code blocks. */
 body[data-page][data-reading] .icon-btn { width: var(--icon-button-reading-size); height: var(--icon-button-reading-size); min-width: var(--icon-button-reading-size); min-height: var(--icon-button-reading-size); padding: 0; display: inline-grid; place-items: center; }
-/* A row's icon button is 28, so a one-line row is the regular row (44) and a two-line row 64 (round 38). */
+
 body[data-page][data-reading] :is(.icon-btn.compact, .icon-btn.code-copy, .list-row .icon-btn, .data-table .icon-btn) { width: var(--icon-button-compact-size); height: var(--icon-button-compact-size); min-width: var(--icon-button-compact-size); min-height: var(--icon-button-compact-size); }
 /* Fields and selects are one height — the button's — with one face. */
 #main :is(input.ui-field, select.ui-field, .search-input) { min-height: var(--field-height); height: var(--field-height); padding-top: 0; padding-bottom: 0; font-size: var(--style-callout-size); line-height: var(--style-callout-leading); border-radius: var(--radius-control); }
@@ -772,8 +747,7 @@ body[data-page][data-reading] :is([data-control="action"],[data-control="primary
   }
 }
 
-/* V639: all study handoffs keep their actions inside the reading column.
-   At a narrow column, the two-line action chooses the existing 48px step. */
+
 .next-step-actions { min-width: 0; max-width: 100%; }
 .banner > .next-step-actions { flex: 1 1 100%; }
 @container reading-lane (width < 420px) {

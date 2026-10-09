@@ -289,7 +289,7 @@ class AlphaDevelopmentRequest(_Contract):
         installed catalogs after this boundary.
         """
 
-        # The one declaration loader (V276): a key written twice is refused.
+        # The one declaration loader: a key written twice is refused.
         loaded = load_safe_yaml_document(source)
         if not isinstance(loaded, dict):
             raise AlphaCampaignBoundaryError("ALPHA_DEVELOPMENT_REQUEST_YAML_INVALID")

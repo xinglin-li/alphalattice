@@ -1,4 +1,4 @@
-"""A catalog that only adds columns to the shipped one, layered on it (V92).
+"""A catalog that only adds columns to the shipped one, layered on it.
 
 A Feature row's identity binds its whole catalog (`feature_row_content_hash`), so a catalog that
 only adds a column to the shipped one, a person's activation, would re-identify and rewrite every

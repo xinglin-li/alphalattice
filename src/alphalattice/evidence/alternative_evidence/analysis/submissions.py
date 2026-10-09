@@ -133,7 +133,7 @@ def build_alternative_analysis_policy_binding(
     typed disclosure rules (`disclosures.py`), the litigation matter inventory
     (`matters.py`), the corporate-event inventory (`events.py`), the
     financing inventory (`financing.py`), the operations inventory the packet
-    shows (`operations.py`, V274), the topic routing and the temporal
+    shows (`operations.py`), the topic routing and the temporal
     comparison of the integrated selection (`routing.py`, `comparison.py`),
     the table views (`tables.py`) and the section reader they locate with
     (`structure.py`): a rule edit rotates this policy, never a sealed

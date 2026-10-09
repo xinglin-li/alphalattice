@@ -94,7 +94,6 @@ const LiveTeam = (() => {
     if (m) return {kind: 'history', ref: m[1].toLowerCase() + ':' + m[2].toLowerCase()};
     return null;
   }
-  const classify = (value) => qualify(value)?.kind || 'declaration';
   /* The qualified references one product observation names, from its typed identity fields. */
   function productReferences(item) {
     const p = item.payload || {}, found = [];
@@ -186,13 +185,6 @@ const LiveTeam = (() => {
     const ids = [...sessions.keys()].filter(Boolean);
     peerPrefix = ids.length > 1 ? ids.reduce((n, id) => { let i = 0; while (i < n && i < id.length && id[i] === ids[0][i]) i++; return i; }, ids[0].length) : 0;
     return {sessions: [...sessions.values()].sort((a, b) => b.last - a.last), unknown};
-  }
-  /* What can honestly be said about a participant from hooks alone. */
-  function participantState(pt) {
-    const starts = pt.hooks.filter((h) => h.hookEvent === 'SubagentStart').length, stops = pt.hooks.filter((h) => h.hookEvent === 'SubagentStop').length;
-    if (!pt.hooks.length) return {tone: 'metadata', label: pt.messages.length ? t('declared only · no host event observed') : t('no events')};
-    if (stops) return {tone: 'historical', label: countText(stops, '{n} stop hook observed · terminal state not established', '{n} stop hooks observed · terminal state not established')};
-    return {tone: 'metadata', label: countText(starts, '{n} start hook observed · not proof of a running or finished child', '{n} start hooks observed · not proof of a running or finished child')};
   }
   /* The foreground PM is a declaration that needs both halves: the parent session's own id as
    * the agent id, and the research_lead role. Either half alone is shown as what it is. */
@@ -1204,6 +1196,6 @@ const LiveTeam = (() => {
     // U54's 产出 carries no count: known only once both its reads answer, it would appear on one tab and move the others
     return s ? {exchanges: entriesOf(s).filter((e) => !e.replayOf).length, participants: s.participants.size, observations: s.facts.length} : {};
   }
-  return {pages: PAGES_SET, usageCount, usageTokenWords, usageMetadata, sessionLabel, roleName, recipientName, section, scene, select, counts, openMember, turnParticipants, turnOutputs, outputsOlder, outputsRead, leaveOutputs, setFactKind, readOlder, toggleWords, showActor, showEvent, revealExchange, more, toggleReplies, toggleFold, markSeen, arrivals, refresh, open, resolve, verify, sessionOf, participantState, classify, qualify, productReferences, summary, recordOf, sessionsNaming, questionSource, chooseQuestion, routeContext, runs, retained: () => S.retained, resolved: () => S.resolved};
+  return {pages: PAGES_SET, usageCount, usageTokenWords, usageMetadata, sessionLabel, roleName, recipientName, section, scene, select, counts, openMember, turnParticipants, turnOutputs, outputsOlder, outputsRead, leaveOutputs, setFactKind, readOlder, toggleWords, showActor, showEvent, revealExchange, more, toggleReplies, toggleFold, markSeen, arrivals, refresh, open, resolve, verify, sessionOf, qualify, productReferences, summary, recordOf, sessionsNaming, questionSource, chooseQuestion, routeContext, runs, retained: () => S.retained, resolved: () => S.resolved};
 })();
 for (const page of LiveTeam.pages) PAGES[page] = LiveTeam.section;

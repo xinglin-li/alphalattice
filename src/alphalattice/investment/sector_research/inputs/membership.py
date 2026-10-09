@@ -22,7 +22,7 @@ from ..contracts import SectorResearchError
 
 
 def load_sector_membership(*, resolver: ArtifactResolver, sector_revision: str) -> SectorHistory:
-    """Resolve one published sector revision to the Sector each session reads (V346).
+    """Resolve one published sector revision to the Sector each session reads.
 
     Exactly one revision map may match. Zero is an unpublished handle; more than
     one would mean the revision identity is not an identity, and picking either

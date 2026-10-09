@@ -1,6 +1,6 @@
 """A model's search axes: the ordered space a search may propose from (EX, its design's section 5).
 
-The format V309's proposers read. Each axis names one recipe parameter, its kind, its bounds or
+The format proposers read. Each axis names one recipe parameter, its kind, its bounds or
 choices, whether a numeric axis is searched on a log scale, an optional step, the default (the
 reference recipe's value) and, for a conditional axis, the earlier categorical axis and the
 choices it exists under. This wave the axes are declared, validated and held by the contract

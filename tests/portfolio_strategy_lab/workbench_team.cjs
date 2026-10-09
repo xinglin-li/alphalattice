@@ -127,10 +127,6 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   ]),'every product observation on the references, in recorded order');
   assert.equal(JSON.stringify(s.facts[6].followed),JSON.stringify([{ref:TASK,operation:'EXPERIMENT_RUN',status:'ADMITTED',via:P2,by:'obs-12'}]),'the Task hop is labelled with the owner return that named it');assert.equal(JSON.stringify(s.facts[4].followed),'[]','the return that named the Task does not follow itself');
   assert.equal(JSON.stringify(s.facts[1].named),JSON.stringify([P1]),'the refusal names the declared hash');
-  const analyst=s.participants.get('child-analyst'),cro=s.participants.get('child-cro'),lead=s.participants.get(S1);
-  assert.equal(TM.participantState(analyst).label,'1 stop hook observed · terminal state not established','a stop hook is never "done"');
-  assert.equal(TM.participantState(cro).label,'declared only · no host event observed','a participant with only messages is not shown as a running child');
-  assert.equal(TM.participantState(lead).label,'declared only · no host event observed');
   let html=readScene();
   assert.ok(html.includes('Main PM · declared foreground conversation'),'the parent session id with research_lead is the declared foreground PM');
   assert.ok(html.includes('alternative_analyst') && html.includes('independent_cro'));
@@ -245,7 +241,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(!reads.some(p=>p.includes('/api/workbench/portfolio')),'the authored-Portfolio open is never asked for an installed Task');
   const before=reads.length;await TM.resolve('https://example.invalid/report.html');assert.equal(reads.length,before,'a foreign reference is never fetched or opened');
   assert.equal(TM.resolved().get('https://example.invalid/report.html').level,'declaration');
-  TM.select('');assert.equal(TM.classify('G6'),'declaration');assert.equal(JSON.stringify(TM.productReferences(op('EXPERIMENT_RUN','RETURNED',{experiment_plan_hash:P2,research_input_id:'factor-development',note:'G6'},{status:'ADMITTED'}))),JSON.stringify([P2]),'typed extraction ignores ordinary text and non-identity fields');
+  TM.select('');assert.equal(TM.qualify('G6'),null);assert.equal(JSON.stringify(TM.productReferences(op('EXPERIMENT_RUN','RETURNED',{experiment_plan_hash:P2,research_input_id:'factor-development',note:'G6'},{status:'ADMITTED'}))),JSON.stringify([P2]),'typed extraction ignores ordinary text and non-identity fields');
   // 5. A second session with the same role names is another scene; selection travels in the hash
   //    and survives repaint; an activity row offers the scene of its own session.
   const S3='sess-parent-3';

@@ -107,7 +107,7 @@ class ResearchFoundationBinding(_ContractModel):
                 "NON_POINT_IN_TIME_RESEARCH",
                 "SEALED_HOLDOUT_LOCKED",
             }
-            # One Sector treatment, the one its Panel's sessions read (V346).
+            # One Sector treatment, the one its Panel's sessions read.
             if (
                 self.limitations is None
                 or not required.issubset(self.limitations)
