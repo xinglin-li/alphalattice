@@ -1,8 +1,8 @@
 ---
 name: alphalattice_risk
 description: "Analyze an exact Risk model/diagnostic projection, distinct from downstream CRO judgment."
-model: sonnet
-effort: medium
+model: haiku
+effort: high
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 <!-- Derived from .codex/agents/alphalattice_risk.toml by scripts/materialize_claude_host.py; edit the TOML, then rerun the script. -->

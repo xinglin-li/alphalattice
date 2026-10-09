@@ -2,7 +2,7 @@
 
 Owners: the seven role cards `.codex/agents/*.toml` (their `developer_instructions` are the
 professional role text) and the PM Skill `.agents/skills/alphalattice-research/`.
-Derivatives: `.claude/agents/<name>.md` (one subagent per card: sonnet, medium effort, the
+Derivatives: `.claude/agents/<name>.md` (one subagent per card: haiku, high effort, the
 tools its card's sandbox allows, no delegation), and a byte copy of the Skill under
 `.claude/skills/` (Claude Code reads only that directory). Default
 `.claude/settings.json` has no product lifecycle hooks; unrelated settings are preserved.
@@ -36,8 +36,8 @@ OPERATIONS = ROOT / "src" / "alphalattice" / "interface" / "local_application" /
 SKILL_NAME = "alphalattice-research"
 SKILL_SOURCE = ROOT / ".agents" / "skills" / SKILL_NAME
 CLAUDE = ROOT / ".claude"
-CLAUDE_MODEL = "sonnet"
-CLAUDE_EFFORT = "medium"
+CLAUDE_MODEL = "haiku"
+CLAUDE_EFFORT = "high"
 CLAUDE_TOOLS = {
     # No Agent tool for any card, so a specialist cannot delegate.
     "read-only": "Read, Grep, Glob",

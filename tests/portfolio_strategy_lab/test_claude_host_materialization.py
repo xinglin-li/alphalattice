@@ -53,7 +53,7 @@ def test_each_role_card_becomes_one_subagent_with_its_sandbox_tools(materialize)
         assert card["sandbox_mode"] == "workspace-write"
         stage = {"Read", "Grep", "Glob", "Edit", "Write", "Bash"}
         assert tools == ({"Read", "Write"} if evidence else stage)
-        assert (fields["model"], fields["effort"]) == ("sonnet", "medium")
+        assert (fields["model"], fields["effort"]) == ("haiku", "high")
         assert body.strip().endswith(card["developer_instructions"].strip())
         assert "\r" not in text
 
