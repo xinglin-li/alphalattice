@@ -1,20 +1,6 @@
-"""Card 33 (engineering consumer): a research team's declared work becomes a readable scene.
+"""Real CLI activity reads through the Team consumer without inventing native proof.
 
-Transport evidence over one booted product, driven through the real CLI: the
-main PM's assignment, a hook observation, permitted messages, a real
-domain-owner refusal on a declared reference, an unrelated Portfolio admission
-with an owner-verified result, an explicit producer retry, missing metadata,
-truncation, an unknown kind and a reconnect -- all through
-`LocalResearchClient.publish_event` and the existing activity feed. The feed's
-own pages are then read by the real consumer modules (`live-activity.js` +
-`live-team.js`) in Node, and the scene they derive is asserted here. Events are
-shaped exactly like the lead's producer; they are a fixture, not native-host
-proof, and the boundary assigns EXTERNAL_CLIENT / AGENT_PROPOSAL to every one.
-The refusal here (an EXPERIMENT_RUN of an unretained PLAN) and the admission
-(a Portfolio replay) are different contexts: this module proves that both are
-recorded and read truthfully, not that one corrected the other. The coherent
-same-context refusal, corrected submission and owner readback are proved in
-`tests/alternative_evidence_desk/test_team_scene_evidence_correction.py`.
+The unrelated refusal and replay admission establish no correction relationship.
 """
 
 from __future__ import annotations
@@ -157,7 +143,7 @@ def _consumer(feed: dict[str, Any], tmp: Path, *selection: str) -> dict[str, Any
 
 
 def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
-    live: LocalPortfolioWebSession, tmp_path: Path
+    live: LocalPortfolioWebSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     producer = _Producer(tmp_path)
     tasks_before = len(live.session.task_control_registry.tasks())  # type: ignore[union-attr]
@@ -237,10 +223,27 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     assert code == 2 and refused["data"]["failure_code"] == "research_experiment.preview_required"
     spec = tmp_path / "spec.yaml"
     spec.write_text("{}", encoding="utf-8")
-    code, sent = _cli(live, "strategy-book", "run", "--file", str(spec))
+    with monkeypatch.context() as m:
+        m.setenv("CODEX_THREAD_ID", SESSION)
+        code, sent = _cli(live, "strategy-book", "run", "--file", str(spec))
     assert code == 3 and sent["data"]["disposition"] == "ADMITTED"
     task_id = sent["data"]["task_id"]
     live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
+    early_page = _json(live, f"/api/activity?after={cursor}")
+    early_page["items"] = [
+        i
+        for i in early_page["items"]
+        if i["schema_kind"] != "ExternalActivityObserved"
+        or i["observation_id"] == assignment["observation_id"]
+    ]
+    early = _consumer({"pages": [start, early_page]}, tmp_path)
+    own = next(s for s in early["sessions"] if s["id"] == SESSION)
+    assert own["references"] == []
+    assert {f["phase"] for f in own["facts"] if f["operation"] == "RUN"} == {
+        "REQUESTED",
+        "RETURNED",
+    }
+    assert any(f["schema"] == "TaskControlTransition" and f["followed"] for f in own["facts"])
     corrected = producer.publish(
         live,
         producer.message(
@@ -286,7 +289,7 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     page = _json(live, f"/api/activity?after={cursor}&limit=100")
     assert page["disposition"] == "CONTINUED" and page["more"] is False
     declared = [i for i in page["items"] if i["schema_kind"] == "ExternalActivityObserved"]
-    assert len(declared) == 11 and all(i["authority"] == "AGENT_PROPOSAL" for i in declared)
+    assert len(declared) == 12 and all(i["authority"] == "AGENT_PROPOSAL" for i in declared)
     assert all(i["source_kind"] == "EXTERNAL_CLIENT" for i in declared)
     assert (
         sum(i["task_id"] == task_id for i in declared) == 1
@@ -295,7 +298,14 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     (session,) = scene["sessions"]
     assert session["id"] == SESSION and session["unknownKinds"] == ["NATIVE_SOMETHING_NEW"]
     assert scene["unknown"] == 0
-    assert sorted(session["references"]) == sorted([bogus_plan, task_id])
+    bound_ref = next(
+        i["payload"]["subject"]["reference"]
+        for i in declared
+        if i["payload"]["subject"].get("message_kind") == "session_bound"
+    )
+    assert sorted(session["references"]) == sorted(
+        [bogus_plan, task_id, bound_ref, bound_ref.split(":")[1]]
+    )
     kinds = [(e["kind"], e["messageKind"], e["replayOf"]) for e in session["entries"]]
     assert kinds == [
         ("message", "assignment", None),
@@ -304,6 +314,7 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
         ("message", "pm_response", None),
         ("message", "answer", None),
         ("message", "objection", None),
+        ("message", "session_bound", None),
         ("message", "answer", None),
         ("message", "pm_response", None),
         ("hook", None, None),
@@ -315,14 +326,15 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
         answered["bytes"] == str(len(long_answer.encode())) and answered["reference"] == bogus_plan
     )
     assert answered["qualified"] == "hash"
-    stop = session["entries"][8]
+    assert session["entries"][6]["channel"] == "PRODUCT_OPERATION"
+    stop = session["entries"][9]
     assert stop["hookEvent"] == "SubagentStop" and stop["terminal"] == "NOT_ESTABLISHED"
     assert stop["stopActive"] == "false" and stop["channel"] == "CODEX_HOOK"
     assert stop["timeKind"] == "BRIDGE_RECEIVED" and stop["authority"] == "AGENT_PROPOSAL"
-    assert session["entries"][6]["taskId"] == task_id
-    assert session["entries"][6]["reference"] == task_id
-    assert session["entries"][6]["qualified"] == "task"
-    assert session["entries"][9]["declaredKind"] is None and session["entries"][9]["role"] is None
+    assert session["entries"][7]["taskId"] == task_id
+    assert session["entries"][7]["reference"] == task_id
+    assert session["entries"][7]["qualified"] == "task"
+    assert session["entries"][10]["declaredKind"] is None and session["entries"][10]["role"] is None
     # Product observations on the same references, each on its own, in recorded order: the
     # refusal names the declared hash; the Portfolio RUN's observations name the verified Task.
     # The two contexts differ and no correction is stated between them.
@@ -345,7 +357,8 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
             "research_experiment.preview_required",
             [bogus_plan],
         ),
-        ("RUN", "RETURNED", "ADMITTED", None, [task_id]),  # the request row names no Task yet
+        ("RUN", "REQUESTED", None, None, []),
+        ("RUN", "RETURNED", "ADMITTED", None, [task_id]),
         ("SUCCEEDED", None, None, None, [task_id]),
         ("PortfolioResearchResult", None, None, None, [task_id]),
     ]
@@ -387,7 +400,7 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
         < evidence.index("owner-verified artifact")
     )
     assert "correct" not in html.lower()
-    assert "running" not in html.lower().replace("not proof of a running", "")
+    assert "running" not in (thread + evidence).lower().replace("not proof of a running", "")
     # Each exchange reads in place, reached the way the page reaches it: its line names
     # the member, the addressee and the kind once, the verification opens under it; the assignment
     # names its recipient; the long answer is a marked preview whose original this feed does not
@@ -471,7 +484,7 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     assert asked["requested"] == ["/api/results", f"/api/report?result_hash={result_hash}"]
     # The answer that declared the Task reads back with the owner's verification and the reader
     # History offers; no experiment entry is invented for an installed Task anywhere on the page.
-    verified_reader = asked["readers"][session["entries"][6]["observation"]]
+    verified_reader = asked["readers"][session["entries"][7]["observation"]]
     assert f"[verified:verified by Portfolio result] result {result_hash[:8]}" in verified_reader
     assert f"<history-open:result:{result_hash}>" in verified_reader
     assert f"experiment:{task_id}" not in asked["html"]

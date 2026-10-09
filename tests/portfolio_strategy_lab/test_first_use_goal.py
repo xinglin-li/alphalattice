@@ -252,15 +252,20 @@ def test_a_first_use_is_the_one_before_the_first_preparation(
 
 def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A first-use preparation's delegated data decision is recorded, shown and continued."""
+    from alphalattice.control.data_platform import remediation_case
+    from alphalattice.control.data_platform.contracts import (
+        DataRemediationExecutionReceipt,
+        DataRemediationExecutionSubmission,
+    )
     from alphalattice.control.product_host.composition.local_web_session import (
         LocalPortfolioWebSession,
     )
-    from tests.researcher_methodology_surface.real_workspace import (
-        OBSERVED_AT,
-        _source_loader_for,
-    )
+    from alphalattice.foundation.market_data_ops.runtime.remediation import canonical_hash
+    from alphalattice.protocols.actor_execution import ActorKind
+    from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT, _source_loader_for
     from tests.workspace_readiness.unexplained_move import unexplained_move
 
     provider, symbols = unexplained_move()
@@ -320,6 +325,43 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
 
         code, decided = send(preview["next_requests"]["confirm"])
         assert code == 0 and _code(decided) is None, decided
+        page = page_projection()
+        resolution = next(
+            i for i in page["issues"]["issues"] if i["case"]["case_token"] == decided["case_token"]
+        )["resolution"]
+        assert resolution["receipt"]["actor_submission"]["actor_kind"] == "EXTERNAL_AUTOMATION"
+        assert resolution["receipt"]["actor_submission"]["actor_id"] == f"claude-code:{SESSION}"
+        assert resolution["receipt"]["submission"]["proposal"]["rationale"] == delegation
+        operations = [
+            i["payload"]
+            for i in page["activity"]["items"]
+            if i["payload"].get("operation") == "DATA_ISSUE_CONFIRM"
+            and i["payload"].get("subject", {}).get("delegation") == delegation
+        ]
+        assert operations and all(p["caller"] == "EXTERNAL_AUTOMATION" for p in operations)
+        receipt = DataRemediationExecutionReceipt.model_validate(resolution["receipt"])
+        payload = receipt.submission.model_dump(mode="json", exclude={"submission_hash"})
+        payload["proposal"]["rationale"] = "legacy decision"
+        submission = DataRemediationExecutionSubmission(
+            **payload, submission_hash=canonical_hash(payload)
+        )
+        common = receipt.model_dump(exclude={"kind", "actor_submission", "receipt_hash"})
+        common["submission"] = submission
+        legacy = remediation_case.seal_validated_data_remediation_execution(
+            **common, actor_kind=ActorKind.HUMAN, actor_id=delegation
+        )
+        assert _cli(live, "goal", "take", opened["goal_id"], session=OTHER_SESSION)[0] == 0
+        panel = live.operations.data_issues.panel
+        for retained in (receipt, legacy):
+            with monkeypatch.context() as readers:
+                prior = {
+                    "receipt": retained.model_dump(mode="json"),
+                    "effect": {"failure_reasons": []},
+                }
+                readers.setattr(panel, "feature_input_resolution", lambda _, record=prior: record)
+                code, repeated = send(preview["next_requests"]["confirm"], session=OTHER_SESSION)
+                assert (code, repeated["status"]) == (0, "ALREADY_APPLIED")
+                assert repeated["receipt_hash"] == retained.receipt_hash
         node = shutil.which("node")
         assert node is not None, "The Workbench holder requires the installed Node runtime."
         app_dir = SCRIPT.parent.parent / "src/alphalattice/interface/local_application/assets"
@@ -330,7 +372,7 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
                 str(app_dir / "workbench-source/js/app"),
                 "--blocked-preparation",
             ],
-            input=json.dumps({**blocked_page, "decided": page_projection()}),
+            input=json.dumps({**blocked_page, "decided": page}),
             text=True,
             check=True,
             timeout=15,
@@ -342,9 +384,11 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         assert UUID(str(successor["task_id"])) != stopped.task_id
 
         code, shown = _cli(live, "goal", "show", opened["goal_id"])
-        (step,) = [
-            s for s in shown["record"]["delegated_steps"] if s["operation"] == "DATA_ISSUE_CONFIRM"
-        ]
+        step = next(
+            s
+            for s in shown["record"]["delegated_steps"]
+            if s["operation"] == "DATA_ISSUE_CONFIRM" and s["agent_session"] == SESSION
+        )
         assert (step["delegation"], step["agent_session"]) == (delegation, SESSION)
         assert (step["case_token"], step["option_id"]) == (
             preview["next_requests"]["confirm"]["data_issue_case_token"],

@@ -73,6 +73,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.lifecycle_research 
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
 )
+from alphalattice.investment.risk_research.experiments.window import REQUIRED_LOOKBACK_SESSIONS
 from alphalattice.investment.risk_research.surfaces.returns import CausalRiskReturnReader
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
@@ -284,7 +285,7 @@ class ResearchStrategyPreparation:
             "experiment_document": self._of(task).request.model_dump(mode="json"),
         }
 
-    def controls(self) -> dict[str, object]:
+    def controls(self, input_binding_hash: str | None = None) -> dict[str, object]:
         """Project installed preparation declarations and exact completed parent selections.
 
         Returns:
@@ -292,23 +293,43 @@ class ResearchStrategyPreparation:
             request; no Portfolio is run.
         """
         rows = self.list_experiments()["experiments"]
-        completed = [row for row in rows if row["lifecycle"] == "SUCCEEDED"]
+        completed = [
+            row
+            for row in rows
+            if row["lifecycle"] == "SUCCEEDED"
+            and (input_binding_hash is None or row.get("input_binding_hash") == input_binding_hash)
+        ]
         recipes = FROZEN_RESEARCH_BOOK_RECIPES
         required = sorted({v.component_id for recipe in recipes for v in recipe.components})
         alphas = [row for row in completed if row.get("component_recipe_id")]
         held = {row["component_recipe_id"] for row in alphas}
         missing = [component for component in required if component not in held]
         risks = [row for row in completed if row["kind"] == "risk.covariance-development"]
-        windows = self._risk_windows(alphas)
+        windows, formations = self._risk_windows(alphas)
         # A completed Risk study covers until a calibrated Alpha study names its window.
-        covered = any(
-            all(
+        covering = []
+        for risk in risks:
+            if not all(
                 str(risk["sessions"]["start"]) <= window["start"]
                 and str(risk["sessions"]["end"]) >= window["end"]
                 for window in windows
-            )
-            for risk in risks
-        )
+            ):
+                continue
+            if windows:
+                try:
+                    root, surface = risk_return_surface(
+                        self.session.workspace, self.read_experiment(UUID(str(risk["task_id"])))
+                    )
+                    if (
+                        risk_history_shortfall(
+                            CausalRiskReturnReader(root).available_sessions(surface), formations
+                        )
+                        is not None
+                    ):
+                        continue
+                except (KeyError, OSError, ValueError):
+                    continue
+            covering.append(risk)
         return {
             "status": "AVAILABLE",
             "declaration_schema": FrozenPortfolioPreparationRequest.model_json_schema(),
@@ -322,8 +343,8 @@ class ResearchStrategyPreparation:
             "risk_windows": windows,
             # The declaration is the reader's to write (V136).
             "next_requests": {
-                **self._component_routes(missing),
-                **({} if covered else {"risk": self._risk_route()}),
+                **self._component_routes(missing, input_binding_hash),
+                **({} if covering else {"risk": self._risk_route(input_binding_hash)}),
                 "plan": {"operation": "RESEARCH_STRATEGY_PLAN", "experiment_document": None},
             },
             "claim": (
@@ -332,20 +353,27 @@ class ResearchStrategyPreparation:
             ),
         }
 
-    def _selector(self) -> dict[str, object]:
-        """The workspace's one input, bound; left to choose when it has several."""
+    def _selector(self, input_binding_hash: str | None = None) -> dict[str, object]:
+        """Bind the declaration's input, or the workspace's sole input when unselected."""
         inputs = read_research_workspace_manifest(self.session.workspace).experiment_inputs or ()
+        if input_binding_hash is not None:
+            return {
+                "research_input_id": next(
+                    (v.input_id for v in inputs if v.binding_hash == input_binding_hash), None
+                ),
+                "input_binding_hash": input_binding_hash,
+            }
         return (
             {"research_input_id": inputs[0].input_id, "input_binding_hash": inputs[0].binding_hash}
             if len(inputs) == 1
             else {"research_input_id": None}
         )
 
-    def _risk_route(self) -> dict[str, object]:
+    def _risk_route(self, input_binding_hash: str | None = None) -> dict[str, object]:
         """The Risk study's controls on the input, its window from `risk_windows`."""
         return {
             "operation": "EXPERIMENT_CONTROLS",
-            **self._selector(),
+            **self._selector(input_binding_hash),
             "experiment_kind": "risk.covariance-development",
         }
 
@@ -360,7 +388,9 @@ class ResearchStrategyPreparation:
             )
         )
 
-    def _risk_windows(self, alphas: list[dict[str, Any]]) -> list[dict[str, str]]:
+    def _risk_windows(
+        self, alphas: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], tuple[date, ...]]:
         """Each completed calibrated Alpha study's window a Risk study must cover (V533)."""
         calibrated = {
             v.component_id
@@ -369,6 +399,7 @@ class ResearchStrategyPreparation:
             if v.weight_rule == "mu.iv0"
         }
         windows = []
+        formations: list[date] = []
         for alpha in alphas:
             if alpha.get("component_recipe_id") not in calibrated:
                 continue
@@ -377,16 +408,33 @@ class ResearchStrategyPreparation:
             except (KeyError, OSError, ValueError):
                 continue
             if schedule:
+                calendar = read_factor_bundle(
+                    self.session.workspace, str(alpha["input_binding_hash"])
+                ).sessions
+                if schedule[0].formation_session not in calendar:
+                    continue
+                first = calendar.index(schedule[0].formation_session)
+                formations.extend(point.formation_session for point in schedule)
+                history_start = first - RISK_HISTORY_SESSIONS + REQUIRED_LOOKBACK_SESSIONS
                 windows.append(
                     {
                         "alpha_task_id": str(alpha["task_id"]),
                         "start": schedule[0].formation_session.isoformat(),
                         "end": schedule[-1].formation_session.isoformat(),
+                        "formation_history": {
+                            "start": calendar[history_start].isoformat()
+                            if history_start >= 0
+                            else None,
+                            "end": calendar[first - 1].isoformat() if first else None,
+                            "required_return_sessions": RISK_HISTORY_SESSIONS,
+                        },
                     }
                 )
-        return windows
+        return windows, tuple(formations)
 
-    def _component_routes(self, missing: list[str]) -> dict[str, dict[str, object]]:
+    def _component_routes(
+        self, missing: list[str], input_binding_hash: str | None = None
+    ) -> dict[str, dict[str, object]]:
         """Each missing component's first step toward its lifecycle study (V505, RR5).
 
         Its study's controls once its training inputs are prepared on the input, else the
@@ -394,12 +442,11 @@ class ResearchStrategyPreparation:
         choose otherwise.
         """
         manifest = read_research_workspace_manifest(self.session.workspace)
-        inputs = manifest.experiment_inputs or ()
-        selector = self._selector()
+        selector = self._selector(input_binding_hash)
         trained = {
             v.component_id
             for v in manifest.model_training_inputs or ()
-            if len(inputs) == 1 and v.input_binding_hash == inputs[0].binding_hash
+            if v.input_binding_hash == selector.get("input_binding_hash")
         }
         return {
             f"component:{component}": (

@@ -1,16 +1,5 @@
-// The observed research team scene, read from the real activity consumer: events shaped exactly
-// like the lead's producer (NATIVE_SUBAGENT_START_HOOK / NATIVE_SUBAGENT_STOP_HOOK /
-// NATIVE_COORDINATION_MESSAGE) grouped by declared native session, participant and qualified
-// reference; assignment, question, answer, objection and PM response told apart; the 500-character
-// preview kept apart from the referenced original; product observations attached only through the
-// same qualified references and rendered in recorded order with the current Task state apart;
-// observation identity kept when a client-declared event id repeats (identical replay collapsed
-// and named, conflicting content shown and flagged); the foreground PM only from the declared
-// parent id with the research_lead role; unqualified references never correlated; discovery,
-// preview readback and owner verification told apart; only the compatible artifact verification
-// reads as owner-verified; the Verify answer lands on the row that asked; an installed Portfolio
-// replay verified through the Portfolio owner's index and REPORT, an authored experiment through
-// its readback. No HTTP, model or data work.
+// Read the real Team consumer, preserving declarations, native provenance and owner receipts
+// as separate records. No HTTP, model or data work.
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const library=require('./workbench_library.cjs'); // the library's constants and the scripts' parameters, from the source (Q2)
 const finish=library.guard('workbench_team');
@@ -620,17 +609,19 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   // U53: the Product record leads with the session's own work; a person's reads on the Local Web are one line, closed until
   // pressed; a group whose records differ only in time does not open
   const S53='sess-parent-53',P53='5'.repeat(64);
-  const originalGroupRow=c.evidenceRow,originalGroupLink=c.link,groupReadings=[],namedLinks=[];
-  c.evidenceRow=(r,x,o={})=>{if(o.cls==='team-fold-row')groupReadings.push({why:String(r.why),columns:o.columns,props:o.props});return originalGroupRow(r,x,o);};
+  const originalGroupRow=c.evidenceRow,originalGroupLink=c.link,groupReadings=[],namedLinks=[],unnamedWhys=[];
+  let unnamed53;
+  c.evidenceRow=(r,x,o={})=>{if(o.cls==='team-fold-row')groupReadings.push({why:String(r.why),columns:o.columns,props:o.props});if(r.id===unnamed53.observation_id)unnamedWhys.push(String(r.why));return originalGroupRow(r,x,o);};
   c.link=(label,page,cls,extra)=>{namedLinks.push({page,extra});return originalGroupLink(label,page,cls,extra);};
   A.absorbPage(page('CONTINUED',[message(S53,S53,'research_lead','assignment','Re-read the book and report its turnover.',{reference:P53,recipient:'child-53',message_id:'as-53'}),
-    op('EXPERIMENT_RUN','REQUESTED',{experiment_plan_hash:P53},{ref:'run53'}),op('EXPERIMENT_RUN','RETURNED',{experiment_plan_hash:P53},{ref:'run53',status:'REFUSED',failure_code:'research_experiment.preview_required'}),
+    op('EXPERIMENT_RUN','REQUESTED',{experiment_plan_hash:P53},{ref:'run53'}),op('EXPERIMENT_RUN','RETURNED',{experiment_plan_hash:P53},{ref:'run53',status:'REFUSED',failure_code:'research_experiment.preview_required'}),(unnamed53=op('EXPERIMENT_CONTROLS','RETURNED',{agent_session:S53,agent_vendor:'codex'})),
     ...[1,2,3].flatMap((i)=>[op('EVIDENCE_PREVIEW','REQUESTED',{experiment_plan_hash:P53},{ref:'hp'+i,caller:'HUMAN'}),op('EVIDENCE_PREVIEW','RETURNED',{experiment_plan_hash:P53},{ref:'hp'+i,caller:'HUMAN',status:'PREVIEWED'})])]));
   hash.value='#page=team-evidence&team='+S53;c.app.page='team-evidence';html=TM.section();
   const facts53=(html.split('id="teamProductFacts"')[1]||'').split('</section>')[0];
   assert.ok(facts53.includes('Read or asked by a person on the Local Web')&&facts53.indexOf('product refusal')>=0&&facts53.indexOf('product refusal')<facts53.indexOf('Read or asked by a person'),'the members work first, the person line after it: '+facts53.slice(0,400));
   assert.ok(!facts53.includes('EVIDENCE_PREVIEW'),'the person reads stay closed until pressed');
-  assert.ok(html.includes('The product\'s records about this session\'s exact references'),'the folder names its exact-reference receipts');
+  assert.ok(html.includes(c.t('The product\'s records about this session.')),'the folder names the session records');
+  assert.ok(unnamedWhys.length&&unnamedWhys.every(why=>!why.includes(c.t('names'))),'an unreferenced receipt has no dangling names label');
   TM.toggleFold('people');html=TM.section();
   const open53=(html.split('id="teamProductFacts"')[1]||'').split('</section>')[0];
   assert.ok(open53.includes('EVIDENCE_PREVIEW'),'pressed, the person groups show');
@@ -859,7 +850,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
       else assert.ok(outputs.includes(outputWords.t('This session submitted no Task and took no goal'))&&outputs.includes(outputWords.t('The Host returned no Task submitted by this session and no Goal bound to it. A written answer file or a cited reference does not create either record.')),'the unsubmitted diagnostic stays empty with its recorded limit');
       hash.value='#page=team-evidence&team='+acceptedSession;c.app.page='team-evidence';const facts=TM.section();
       if(delivered)assert.ok(facts.includes('AGENT_ANSWER_SUBMIT')&&!facts.includes('Foreign Task receipt'),'only the exact accepted Task receipt joins Product record');
-      else assert.ok(facts.includes(outputWords.t('No product observations are retained in the current activity window.'))&&facts.includes(outputWords.t('This view lists retained product operation receipts for the session\'s exact references. A native Start/Stop or a completion relay does not supply one.')),'no accepted product receipt is invented from the file relay');
+      else assert.ok(facts.includes(outputWords.t('No product observations are retained in the current activity window.'))&&!facts.includes('AGENT_ANSWER_SUBMIT'),'no accepted product receipt is invented from the file relay');
       assert.equal(TM.counts().observations,delivered?1:0,'foreign receipts never count for this exact session');
       if(!delivered)for(const destination of ['team','team-outputs'])assert.ok(outputLinks.some(x=>x.page===destination&&x.extra?.team===acceptedSession),'quiet ways keep the exact selected session');
     }

@@ -1062,10 +1062,11 @@ const LiveWorkspace = (() => {
     const history=b.recorded_decisions || [], standing=b.continued_dispositions || [];
     const issue=(b.issues || []).find(v=>v.case.case_token===token);
     if(issue) {
-      const [tone,word]=ISSUE_STATUS[issue.status] || ['review_pending',issue.status], m=firstMove(issue.case), actor=issue.resolution?.receipt?.actor_submission;
+      const [tone,word]=ISSUE_STATUS[issue.status] || ['review_pending',issue.status], m=firstMove(issue.case), receipt=issue.resolution?.receipt, actor=receipt?.actor_submission;
+      const delegated=receipt?.submission?.proposal?.rationale?.startsWith('first-use-goal:') || actor?.actor_id?.startsWith('first-use-goal:');
       // the way on once decided (N6): the Task that waits for the reader, offered as on the lobby -- only when no case asks first
       const asking=(b.issues || []).some(v=>['AWAITING_CHOICE','OPTION_REFUSED'].includes(v.status)), decided=(b.issues || []).some(v=>v.status==='CONFIRMED_PENDING_REVALIDATION');
-      return html`${objectHead(issueName(subjectsOf(issue),issue.case.failure_code),'','',stateLine(tone,{word:t(issueAgent(issue) ? 'Agent is deciding data issues' : word),next:''}),[],{object:true,id:token,facts:[[t('Move session'),m?.session || ''],actor?.actor_id?.startsWith('first-use-goal:') ? [t('Decision'),t('Decided under first-use delegation')] : [t('Decided by'),actor?.actor_kind ? actorWords(actor.actor_kind) : '']].filter(([,v])=>v)})}${issueBody(issue,history)}${asking ? '' : (b.continuations || []).map((c,i)=>continuationCard(c,i,decided))}`;
+      return html`${objectHead(issueName(subjectsOf(issue),issue.case.failure_code),'','',stateLine(tone,{word:t(issueAgent(issue) ? 'Agent is deciding data issues' : word),next:''}),[],{object:true,id:token,facts:[[t('Move session'),m?.session || ''],[t('Decided by'),actor?.actor_kind && !(delegated && actor.actor_kind==='HUMAN') ? actorWords(actor.actor_kind) : ''],[t('Decision'),delegated ? t('Decided under first-use delegation') : '']].filter(([,v])=>v)})}${issueBody(issue,history)}${asking ? '' : (b.continuations || []).map((c,i)=>continuationCard(c,i,decided))}`;
     }
     const names=Object.assign({},...(b.issues || []).map(x=>x.subjects || {}));
     const h=history.find(v=>v.case_token===token);

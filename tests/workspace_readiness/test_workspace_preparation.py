@@ -1980,12 +1980,7 @@ def test_a_deferred_preparation_confirmed_again_goes_to_its_owner(tmp_path, monk
 def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_short(
     tmp_path, monkeypatch
 ) -> None:
-    """Requirement: a heavy plan's estimate drives the early memory refusal.
-
-    The real preparation plan answer carries its resource estimate; its confirm is refused
-    before any Task when available memory is below the estimated peak, admitted when it fits,
-    and an admitted Task's next stage blocks when memory falls again.
-    """
+    """A calibrated plan estimate drives memory refusal before admission and each stage."""
     from types import SimpleNamespace
     from uuid import uuid4
 
@@ -2055,3 +2050,29 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
         assert gate.stage_refusal(task) == resource_estimates.MEMORY_INSUFFICIENT
         monkeypatch.setattr(resource_estimates, "available_work_memory_bytes", lambda: None)
         assert gate.stage_refusal(task) is None  # an unknown amount skips the check
+
+        for component, calls, wall, cores in (
+            ("G2_R0_TREND", 8856, 96, 26),
+            ("G6_R0_FAST_REBOUND", 12624, 399, 25),
+        ):
+            alpha = {
+                "status": "PLANNED",
+                "plan_hash": component,
+                "execution_preview": {
+                    "component_id": component,
+                    "prediction_call_upper_bound": calls,
+                    "methodology_id": "MODEL_LIFECYCLE_REPLAY",
+                    "model_adapter_id": "dynamic_panel_lightgbm",
+                },
+            }
+            for budget, expected in ((1, round(wall * 1.5)), (4, wall), (cores, wall)):
+                resource_estimates.CpuBudgetStore(tmp_path / "runtime").write(
+                    budget, chosen_by="EXTERNAL_AUTOMATION", chosen_at=OBSERVED_AT
+                )
+                gate.plan_answered("EXPERIMENT_PLAN", alpha)
+                assert alpha["resource_estimate"]["wall_seconds"] == expected
+                assert "1.5 cores" in alpha["resource_estimate"]["basis"]
+            assert alpha["resource_estimate"]["peak_memory_bytes"] == int(3.3 * 2**30)
+            alpha["execution_preview"]["model_adapter_id"] = "regularized_linear"
+            gate.plan_answered("EXPERIMENT_PLAN", alpha)
+            assert alpha["resource_estimate"]["wall_seconds"] == round(185 * calls / 8832)

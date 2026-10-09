@@ -3118,7 +3118,7 @@ window.ALPHA_ZH = {
   "Before a PLAN": "PLAN 之前",
   "No Tasks yet": "还没有任务",
   "No product observations are retained in the current activity window.": "当前活动窗口内没有保留的产品观察。",
-  "This view lists retained product operation receipts for the session's exact references. A native Start/Stop or a completion relay does not supply one.": "此视图列出明确对应此会话引用的已保留产品操作回执。原生启动/停止事件或完成消息的转述不会提供这种回执。",
+  "This view lists retained product operation receipts attributed to this session or naming its exact references. A native Start/Stop or a completion relay does not supply one.": "此视图列出归属于此会话或指向其确切引用的已保留产品操作回执。原生启动/停止事件或完成消息的转述不会提供这种回执。",
   "The Host returned no Task submitted by this session and no Goal bound to it. A written answer file or a cited reference does not create either record.": "Host 未返回由此会话提交的任务或绑定于它的目标。写出的答复文件或引用不会创建这两种记录。",
   "No saved research yet.": "还没有保存的研究。",
   "No study data; open a workspace or a saved study.": "没有研究数据；请打开工作区或已保存的研究。",
@@ -5871,7 +5871,7 @@ window.ALPHA_ZH = {
   "Experiment evidence": "实验证据",
   "Its owner found no artifact": "所有者未找到产物",
   "Its owner could not read it back": "所有者无法读回",
-  "The product's records about this session's exact references.": "与本会话确切引用有关的产品记录。",
+  "The product's records about this session.": "与本会话有关的产品记录。",
   "The product's records about what the session cited": "与会话引用过的对象有关的产品记录",
   "The Task list of this session moved since its first page was read: read it again from the first page.": "读取第一页之后，本会话的任务列表已变化：请从第一页重新读取。",
   "No Task submitted by this session": "本会话未提交任何任务",
@@ -6212,7 +6212,7 @@ window.ALPHA_ZH = {
   "Nothing the session's members ran is recorded for what it cited.": "没有记录到本会话成员对其所引用对象运行过的任何操作。",
   "{n} record": "{n} 条记录",
   "{n} records": "{n} 条记录",
-  "Operations and their answers, Task Control facts and the artifacts their owners verified, each naming a reference this session declared; the session's own work first, a person's reads on the Local Web in one line.": "操作及其回应、任务控制事实，以及由其所有者验证的产出物，每一项都指向本会话声明的某个引用；本会话自己的工作在前，人在 Local Web 上的读取合为一行。",
+  "Operations and their answers attributed to this session or naming its exact references, with Task Control facts and verified artifacts; the session's own work first, a person's reads on the Local Web in one line.": "归属于此会话或指向其确切引用的操作及回应，以及任务控制事实和已验证产出物；本会话自己的工作在前，人在 Local Web 上的读取合为一行。",
   // V564: a missing artifact told from a tampered one (DOC's codex/v564-artifact-missing, merged 96060966)
   "The requested artifact {subject} is not kept in this workspace. Read workspace show to find a kept input or result. If a completed record names this missing file, restore a backup that holds it into a new folder and work there.": "此工作区没有保存所请求的制品 {subject}。请读取 workspace show，查找已保存的输入或结果。如果某条已完成的记录指向这个缺失的文件，请把保有它的备份恢复到一个新文件夹，并在那里工作。",
   // V574: a message field the Host's activity record cannot hold (the fork's claude/v570-v574-attribution)

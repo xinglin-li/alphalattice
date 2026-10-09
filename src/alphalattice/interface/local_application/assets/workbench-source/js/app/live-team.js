@@ -152,32 +152,36 @@ const LiveTeam = (() => {
       s.entries.set(entry.id, entry);
       s.last = Math.max(s.last, item.ordinal);
     }
-    // Product observations that name a qualified reference this session declared: each one on
-    // its own, in recorded order. External payloads inside mixed groups name nothing here. One
-    // hop follows an owner's own answer: an operation return that names a declared reference and
-    // a Task id links that Task's Task Control and artifact observations, labelled with the
-    // operation that named it. Nothing further is inferred.
+    // Product observations carry the requesting session independently of what its messages
+    // cite. This is request provenance, never native authorship or execution authority. Other
+    // observations still join only by exact qualified references. One hop follows the Task
+    // named by the owner's return; External payloads inside mixed groups name nothing here.
     for (const s of sessions.values()) {
-      if (!s.references.size) continue;
       const product = [];
       for (const g of LiveActivity.retained()) {
         if (g.items.every((v) => v.schema_kind === 'ExternalActivityObserved')) continue;
-        for (const item of g.items) if (item.schema_kind !== 'ExternalActivityObserved') product.push({item, group: g, refs: [...new Set(productReferences(item))]});
+        for (const item of g.items) if (item.schema_kind !== 'ExternalActivityObserved') {
+          const p = item.payload || {}, sub = p.subject || {};
+          const attributed = item.schema_kind === 'ProductOperationObserved'
+            && item.source_kind === 'PRODUCT_OPERATION' && item.authority === 'OPERATIONAL_ASSERTION'
+            && Boolean(s.id) && ['codex', 'claude-code'].includes(sub.agent_vendor) && sub.agent_session === s.id;
+          product.push({item, group: g, refs: [...new Set(productReferences(item))], attributed});
+        }
       }
-      const derived = new Map(); // Task id -> the owner return that named it for a declared reference
+      const derived = new Map(); // Task id -> the owner return that named it for this session
       for (const fact of product) {
         const p = fact.item.payload || {};
         if (fact.item.schema_kind !== 'ProductOperationObserved' || p.phase !== 'RETURNED') continue;
         const declared = fact.refs.filter((r) => s.references.has(r));
         for (const key of ['task_id', 'publication_task_id']) {
           const q = qualify(p[key]);
-          if (declared.length && q && !s.references.has(q.ref) && !derived.has(q.ref)) derived.set(q.ref, {operation: p.operation, status: p.status || null, via: declared[0], by: fact.item.observation_id});
+          if ((fact.attributed || declared.length) && q && !s.references.has(q.ref) && !derived.has(q.ref)) derived.set(q.ref, {operation: p.operation, status: p.status || null, via: declared[0] || s.id, by: fact.item.observation_id});
         }
       }
       for (const fact of product) {
         const named = fact.refs.filter((r) => s.references.has(r));
         const followed = fact.refs.filter((r) => !s.references.has(r) && derived.has(r) && derived.get(r).by !== fact.item.observation_id).map((r) => ({ref: r, ...derived.get(r)}));
-        if (named.length || followed.length) s.facts.push({...fact, named, followed});
+        if (fact.attributed || named.length || followed.length) s.facts.push({...fact, named, followed});
       }
       s.derived = derived;
       s.facts.sort((a, b) => a.item.ordinal - b.item.ordinal);
@@ -473,7 +477,7 @@ const LiveTeam = (() => {
     const links = [...named.map((r) => html`<span class="mono">${short(r, r.includes(':') ? 20 : 8)}</span>`), ...(f.followed || []).map((x) => html`<span class="mono">${short(x.ref)}</span> <span class="muted">(${t('Task named by {operation} {status} for {ref}', {operation: x.operation, status: x.status || '', ref: short(x.via)})})</span>`)];
     const outcome = html`${p.failure_code ? coded(p.failure_code) : ''}${p.failure_type && p.failure_code === 'activity.failure_detail_withheld' ? html` <span class="mono">${p.failure_type}</span>` : ''}${withheldWhy(p)}`;
     const course = u.request && u.response ? html`${t('requested')} ${clock(u.request.item.occurred_at)} → ${clock(item.occurred_at)} · ` : ''; // the return's kind is the row's title, its meaning the state word
-    const why = html`${course}${outcome}${group.task_id ? html` ${t('Task')} ${short(group.task_id)} ·` : ''} ${t('names')} ${links}`;
+    const why = html`${course}${outcome}${group.task_id ? html` ${t('Task')} ${short(group.task_id)} ·` : ''}${links.length ? html` ${t('names')} ${links}` : ''}`;
     const fresh = u.facts.some((x) => S.factNew.has(x.item.observation_id)), flash = u.facts.some((x) => S.factFlash.has(x.item.observation_id));
     const isNew = fresh ? html` <span class="team-unread">${t('New')}</span>` : '';
     if (fold) {
@@ -887,7 +891,7 @@ const LiveTeam = (() => {
     return evidenceRow({kind: 'Observation', type: 'observation', subject: g.title, state: tone, word: codeWords(state), why, id: g.key}, null, {...refsSlot, to: {action: 'team-fold', value: g.key}, cls: 'team-fold-row', attrs: html`data-fold="${g.key}" data-fold-count="${n}" aria-expanded="${open}"`});
   }
   function evidenceView(s) {
-    if (!s.facts.length) return emptyState(html`${t('No product observations are retained in the current activity window.')}${infoMark(t('This view lists retained product operation receipts for the session\'s exact references. A native Start/Stop or a completion relay does not supply one.'))}`, link(t('Outputs'), 'team-outputs', 'text-btn', {team: s.id, actor: '', event: ''}), '', 'elsewhere');
+    if (!s.facts.length) return emptyState(html`${t('No product observations are retained in the current activity window.')}${infoMark(t('This view lists retained product operation receipts attributed to this session or naming its exact references. A native Start/Stop or a completion relay does not supply one.'))}`, link(t('Outputs'), 'team-outputs', 'text-btn', {team: s.id, actor: '', event: ''}), '', 'elsewhere');
     const stated = entriesOf(s).filter((e) => !e.replayOf), tally = new Map();
     for (const f of s.facts) { const k = factKind(f); if (k) tally.set(k, (tally.get(k) || 0) + 1); }
     const kind = tally.has(S.factKind) ? S.factKind : '';
@@ -936,9 +940,9 @@ const LiveTeam = (() => {
       properties: [['lead', t('Lead')], ['roles', t('Roles')], ['size', t('Participants and exchanges')], ['objections', t('Objections')]]}); // N3 (law 121): the path says Sessions
   }
   // round 90: one lede per page, its own (the sentence budget); member statements and product evidence stay two things
-  const LEDES = {team: 'The conversation, who is in it and what they cite.', 'team-participants': 'Who took part, the models they ran and the tokens they spent.', 'team-sessions': 'Retained conversations, read back exactly.', 'team-outputs': 'What this session produced: accepted answers, submitted Tasks and their artifacts, and the goals it took.', 'team-evidence': 'The product\'s records about this session\'s exact references.'};
+  const LEDES = {team: 'The conversation, who is in it and what they cite.', 'team-participants': 'Who took part, the models they ran and the tokens they spent.', 'team-sessions': 'Retained conversations, read back exactly.', 'team-outputs': 'What this session produced: accepted answers, submitted Tasks and their artifacts, and the goals it took.', 'team-evidence': 'The product\'s records about this session.'};
   // N3: what a section's caption said is the page's (i)
-  const INFO = {'team-outputs': 'Accepted answers retain their recorded author, submitter and sealed references. Tasks appear only when this session submitted them; goals appear only when bound to it.', 'team-participants': 'Each member\'s latest reading by model: its own so far, never a sum of readings, and not attributed to a goal or a Task.', 'team-evidence': 'Operations and their answers, Task Control facts and the artifacts their owners verified, each naming a reference this session declared; the session\'s own work first, a person\'s reads on the Local Web in one line.'};
+  const INFO = {'team-outputs': 'Accepted answers retain their recorded author, submitter and sealed references. Tasks appear only when this session submitted them; goals appear only when bound to it.', 'team-participants': 'Each member\'s latest reading by model: its own so far, never a sum of readings, and not attributed to a goal or a Task.', 'team-evidence': 'Operations and their answers attributed to this session or naming its exact references, with Task Control facts and verified artifacts; the session\'s own work first, a person\'s reads on the Local Web in one line.'};
   function section() {
     const {sessions, unknown} = scene(), sel = selection(), view = app.page;
     // law 123: a session's page with no session chosen opens Sessions, the Team's Home

@@ -797,11 +797,11 @@ class PortfolioResearchOperations:
             )
         )
         try:
-            # A step the first-use goal delegates is the person's, its agent carrying it, and
-            # the goal's ledger records it as delegated (V452, OP19).
+            # The observer records the actual executor; delegation supplies authority only
+            # when the existing dispatcher checks the person's step.
             body = self._execute_observed(
                 request,
-                caller="HUMAN" if delegation else caller,
+                caller=caller,
                 agent_execution=agent_execution,
             )
         finally:
@@ -1028,6 +1028,9 @@ class PortfolioResearchOperations:
         """
 
         observer = self.observer
+        provenance = REQUEST_PROVENANCE.get()
+        # Delegated authority affects admission, never the observed caller.
+        authority = "HUMAN" if provenance is not None and provenance.delegation else caller
         span = (
             None
             if observer is None
@@ -1070,7 +1073,7 @@ class PortfolioResearchOperations:
                 ):
                     body = typed_failures(
                         self._execute_within_memory(
-                            execution_request, caller=caller, agent_execution=agent_execution
+                            execution_request, caller=authority, agent_execution=agent_execution
                         )
                     )
                 if recovery is not None:
@@ -2744,14 +2747,11 @@ class PortfolioResearchOperations:
                             "research_strategy.risk_history_insufficient",
                         )
                     ):
-                        # A Risk study over the window or from the start the refusal names, on
-                        # this input (V533, V596).
-                        refusal["next_requests"] = {
-                            "risk_controls": _risk_controls(
-                                self.workspace_session.workspace,
-                                request.experiment_document or {},
-                            )
-                        }
+                        recovery = self.research_strategies.controls(
+                            (request.experiment_document or {}).get("input_binding_hash")
+                        )
+                        refusal["risk_windows"] = recovery["risk_windows"]
+                        refusal["next_requests"] = recovery["next_requests"]
                     return refusal
             case "MODEL_TRAINING_INPUT_PLAN":
                 assert request.research_input_id is not None and request.component_id is not None
@@ -6223,19 +6223,6 @@ def _opens_goal(operation: str, provenance: RequestProvenance | None) -> bool:
         and observed_operation(operation)
         and operation not in {"EVENT_DECLARE", "SESSION_USAGE_READ", "USAGE_READING_SET"}
     )
-
-
-def _risk_controls(workspace: Path, document: Mapping[str, Any]) -> dict[str, object]:
-    """The Risk study's controls on a strategy declaration's input, its window left to choose
-    from the refusal's words (V533)."""
-    binding = document.get("input_binding_hash")
-    inputs = read_research_workspace_manifest(workspace).experiment_inputs or ()
-    return {
-        "operation": "EXPERIMENT_CONTROLS",
-        "research_input_id": next((v.input_id for v in inputs if v.binding_hash == binding), None),
-        "input_binding_hash": binding,
-        "experiment_kind": "risk.covariance-development",
-    }
 
 
 def _portfolio_source(request: PortfolioResearchOperationRequest) -> dict[str, str | None]:

@@ -1,4 +1,4 @@
-"""What a heavy plan is estimated to take, and the memory check that refuses it early (PERF-1).
+"""What a heavy plan is estimated to take, and the memory check that refuses it early.
 
 A plan answer for a heavy Task (workspace preparation, model-training inputs, a lifecycle Alpha
 study, a research update) carries `resource_estimate`: wall seconds and peak memory at the
@@ -13,9 +13,9 @@ admitted (the stage blocks; RECOVER reopens it once memory is free). Available m
 commit Windows can still give, or Linux's MemAvailable plus SwapFree; elsewhere it is unknown
 and the check is skipped.
 
-These are execution facts (LAWS PA2): no sealed plan, identity or decision reads them. The
-calibration is measured on the first-use journey (PERF-0 and PERF-1 receipts, a 32-core
-desktop, 472 listings) and scaled by the plan's size; another machine's speed differs.
+These are execution facts: no sealed plan, identity or decision reads them. Each calibration
+retains its measured size and CPU budget. Shared-machine receipts are indicative, scaled by
+plan size and capped CPU scaling; another machine's speed differs.
 """
 
 from __future__ import annotations
@@ -79,6 +79,16 @@ _CALIBRATIONS: Mapping[str, _Calibration] = {
         "candidate listings", 520, 16, 390.0, 0.0, 2.3, 5.2 * _GIB / 520, 0.0, 0.0
     ),
 }
+_LIFECYCLE_CALIBRATIONS: Mapping[str, _Calibration] = {
+    # Retained lifecycle receipts on 471 listings: 45/60 fits, 18/20 features.
+    # Shared-machine observations; only elapsed cost changes, never memory admission.
+    "G2_R0_TREND": _Calibration(
+        "prediction calls", 8856, 26, 96.152624, 0.0, 1.5, 0.0, 3.3 * _GIB, 0.0
+    ),
+    "G6_R0_FAST_REBOUND": _Calibration(
+        "prediction calls", 12624, 25, 398.845444, 0.0, 1.5, 0.0, 3.3 * _GIB, 0.0
+    ),
+}
 _PLAN_RUNS = {
     "MODEL_TRAINING_INPUT_PLAN": ("MODEL_TRAINING_INPUT_PREPARE", "experiment_plan_hash"),
     "RESEARCH_UPDATE_PLAN": ("RESEARCH_UPDATE_RUN", "update_plan_hash"),
@@ -129,8 +139,8 @@ class ResourceGate:
     def __init__(self, workspace: Path) -> None:
         """Bind the workspace whose CPU budget the estimates use."""
         self.workspace = workspace
-        self._by_plan: dict[str, tuple[str, float]] = {}
-        self._by_task: dict[UUID, tuple[str, float]] = {}
+        self._by_plan: dict[str, tuple[str, float, str | None]] = {}
+        self._by_task: dict[UUID, tuple[str, float, str | None]] = {}
         self._lock = threading.Lock()
 
     def _cores(self) -> int:
@@ -139,16 +149,21 @@ class ResourceGate:
         )
         return int(cores)
 
-    def estimate(self, run_operation: str, units: float) -> dict[str, Any]:
+    def estimate(
+        self, run_operation: str, units: float, lifecycle_component: str | None = None
+    ) -> dict[str, Any]:
         """The estimate at the current budget, the lighter one where it lowers the peak."""
-        calibration = _CALIBRATIONS[run_operation]
+        calibration = (
+            _LIFECYCLE_CALIBRATIONS.get(lifecycle_component or "") or _CALIBRATIONS[run_operation]
+        )
         cores = self._cores()
         value = {
             "label": "ESTIMATE",
             "basis": (
                 f"measured on the first-use journey at {calibration.reference_units:g} "
-                f"{calibration.unit} and {calibration.reference_cores} cores, scaled by this "
-                "plan's size and the CPU budget; another machine's speed differs"
+                f"{calibration.unit} and {calibration.reference_cores} cores; scaled by this "
+                f"plan's size, with CPU scaling capped at {calibration.parallelism:g} cores; "
+                "higher budgets keep the same time rate; another machine's speed differs"
             ),
             **_estimate(calibration, units, cores),
             "available_memory_bytes": available_work_memory_bytes(),
@@ -169,9 +184,17 @@ class ResourceGate:
         if not isinstance(plan_hash, str) or units is None:
             return
         run_operation = _PLAN_RUNS[plan_operation][0]
+        preview = body.get("execution_preview", {})
+        component = (
+            preview.get("component_id")
+            if plan_operation == "EXPERIMENT_PLAN"
+            and preview.get("methodology_id") == "MODEL_LIFECYCLE_REPLAY"
+            and preview.get("model_adapter_id") == "dynamic_panel_lightgbm"
+            else None
+        )
         with self._lock:
-            self._by_plan[plan_hash] = (run_operation, units)
-        body["resource_estimate"] = self.estimate(run_operation, units)
+            self._by_plan[plan_hash] = (run_operation, units, component)
+        body["resource_estimate"] = self.estimate(run_operation, units, component)
 
     def run_refusal(
         self,

@@ -967,11 +967,20 @@ class WorkspaceDataIssueApplication:
             raise ValueError("feature_input.human_confirmation_required")
         if caller == "HUMAN" and grant_hash is not None:
             raise ValueError("feature_input.human_confirmation_does_not_use_delegation")
-        actor_kind = ActorKind.HUMAN if caller == "HUMAN" else ActorKind.EXTERNAL_AUTOMATION
-        # A person's decision their first-use goal delegated names that goal (V452).
-        delegated = getattr(REQUEST_PROVENANCE.get(), "delegation", None)
+        # The first-use goal supplies authority; its agent remains the executor. The receipt
+        # carries that authority in the rationale beside the actual session's actor binding.
+        provenance = REQUEST_PROVENANCE.get()
+        delegated = getattr(provenance, "delegation", None)
+        actor_kind = (
+            ActorKind.HUMAN
+            if caller == "HUMAN" and delegated is None
+            else ActorKind.EXTERNAL_AUTOMATION
+        )
         actor_id = (
-            (delegated or "local-web-human")
+            ":".join(value for value in (provenance.vendor, provenance.session) if value)
+            or "external-automation"
+            if delegated is not None and provenance is not None
+            else "local-web-human"
             if caller == "HUMAN"
             else self.delegation.actor_id(grant_hash or "")
         )
@@ -990,6 +999,14 @@ class WorkspaceDataIssueApplication:
             ):
                 receipt = DataRemediationExecutionReceipt.model_validate(prior["receipt"])
                 decision = receipt.policy_decision
+                recorded_actor = receipt.actor_submission
+                authority = (
+                    receipt.submission.proposal.rationale
+                    if recorded_actor.actor_kind is ActorKind.EXTERNAL_AUTOMATION
+                    else recorded_actor.actor_id
+                    if recorded_actor.actor_kind is ActorKind.HUMAN
+                    else None
+                )
                 matches = (
                     decision.case_token,
                     decision.evidence_hash,
@@ -1001,8 +1018,10 @@ class WorkspaceDataIssueApplication:
                     option_id,
                     option_hash,
                 ) and (
-                    receipt.actor_submission.actor_kind is actor_kind
-                    and receipt.actor_submission.actor_id == actor_id
+                    authority == delegated
+                    if delegated is not None
+                    else recorded_actor.actor_kind is actor_kind
+                    and recorded_actor.actor_id == actor_id
                 )
                 failed = bool(prior["effect"].get("failure_reasons"))
                 if not matches and not failed:
@@ -1053,7 +1072,9 @@ class WorkspaceDataIssueApplication:
                 evidence_hash=evidence_hash,
                 option_id=option_id,
                 rationale=(
-                    "Human confirmed the displayed immutable data option."
+                    delegated
+                    if delegated is not None
+                    else "Human confirmed the displayed immutable data option."
                     if caller == "HUMAN"
                     else self.delegation.rationale(grant_hash or "")
                 ),

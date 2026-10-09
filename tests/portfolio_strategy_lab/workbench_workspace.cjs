@@ -76,15 +76,15 @@ c.objectRow=publicBuilders.objectRow;
     const settled=reads.length;w.observe();await new Promise(r=>setImmediate(r));assert.equal(reads.length,settled,'no settled issue polling');assert.equal(decisionReads,1,'the event is consumed once');
     await w.refresh('welcome','',true);assert.ok(!String(w.page()).includes(c.t('Retry this Task')),'a cold read keeps the exact continuation offer after the decision');
     assert.equal(posts.length,0,'rendering never admits work');
-    const vocabulary=library.words(root),head=c.objectHead,submission=owner.issues.issues[0].resolution.receipt.actor_submission,actorId=submission.actor_id;let facts=[];c.objectHead=(...args)=>{facts=args[5]?.facts || [];return head(...args);};
+    const vocabulary=library.words(root),head=c.objectHead,receipt=owner.issues.issues[0].resolution.receipt,submission=receipt.actor_submission,proposal=receipt.submission.proposal,rationale=proposal.rationale;let facts=[];c.objectHead=(...args)=>{facts=args[5]?.facts || [];return head(...args);};
     c.hashParams=()=>new URLSearchParams({issue:owner.issues.issues[0].case.case_token});c.app.page='issues';
     vocabulary.I18N.set('en');const authority='Decided under first-use delegation',english=vocabulary.t(authority);c.actorWords=vocabulary.actorWords;
     for(const lang of ['en','zh']) {
       vocabulary.I18N.set(lang);c.t=vocabulary.t;w.page();
       assert.deepEqual(Array.from(facts.find(([key])=>key===c.t('Decision')) || []),[c.t('Decision'),c.t(authority)],'the real recorded case names its exact delegation authority in '+lang);
       if(lang==='zh')assert.notEqual(c.t(authority),english,'the delegation authority has a Chinese key');
-      assert.ok(!facts.some(([key])=>key===c.t('Decided by')),'the receipt authority never claims an actor');
-      submission.actor_id='ordinary-session';w.page();assert.deepEqual(Array.from(facts.find(([key])=>key===c.t('Decided by')) || []),[c.t('Decided by'),c.actorWords(submission.actor_kind)],'an ordinary actor keeps its recorded actor word');submission.actor_id=actorId;
+      assert.deepEqual(Array.from(facts.find(([key])=>key===c.t('Decided by')) || []),[c.t('Decided by'),c.actorWords(submission.actor_kind)],'the actual agent is named beside its authority');
+      proposal.rationale='ordinary decision';w.page();assert.ok(!facts.some(([key])=>key===c.t('Decision')),'an ordinary decision has no delegation authority');assert.deepEqual(Array.from(facts.find(([key])=>key===c.t('Decided by')) || []),[c.t('Decided by'),c.actorWords(submission.actor_kind)],'an ordinary actor keeps its recorded actor word');proposal.rationale=rationale;
     }
     finish();return;
   }

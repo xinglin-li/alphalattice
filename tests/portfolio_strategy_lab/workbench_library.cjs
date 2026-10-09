@@ -167,7 +167,7 @@ library.words = (appDir, routeUrl = null) => {
   vm.createContext(c);
   for (const name of ['html.js', '../data/zh.js', 'i18n.js', 'status.js', 'icons.js', 'components.js'])
     vm.runInContext(fs.readFileSync(path.join(appDir, name), 'utf8'), c);
-  return vm.runInContext('({I18N, t, said, html, coded, badge, countText, actorWords, ACTORS, codeWords, declaredCodeWord, stageOf, stageWord, stateLine, stateOf, typedBtn, refCell, hashCell, locatorCell, codeCell, notRead, refusalParts, causeLine, evidenceRow, goalReferenceIntegrity, hint, objectRow, stat, figureTile, glyphWord, measureStrip, TONE, EVIDENCE, CODE_WORDS, STATES, STAGES})', c);
+  return vm.runInContext('({I18N, t, said, html, link, coded, badge, countText, actorWords, ACTORS, codeWords, declaredCodeWord, stageOf, stageWord, stateLine, stateOf, typedBtn, refCell, hashCell, locatorCell, codeCell, notRead, refusalParts, causeLine, evidenceRow, goalReferenceIntegrity, hint, objectRow, stat, figureTile, glyphWord, measureStrip, TONE, EVIDENCE, CODE_WORDS, STATES, STAGES})', c);
 };
 // The handover's one-argument Node command also enumerates the public owners. Pytest
 // supplies this JSON directly so its eight harnesses need no extra interpreter process.

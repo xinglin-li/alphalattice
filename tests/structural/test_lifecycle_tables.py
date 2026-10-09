@@ -318,6 +318,12 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): ENDED,
     (
         "control/product_host/maintenance/data_update.py",
+        "WorkspaceDataUpdateApplication._supplemented",
+        "CANCELLED,SUCCEEDED",
+    ): "an audit's confirmation joins the membership change it was admitted onto while that "
+    "change has not succeeded or been cancelled; a stopped one still takes it on its resume",
+    (
+        "control/product_host/maintenance/data_update.py",
         "WorkspaceDataUpdateApplication._waiting",
         "DEFERRED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "a data update that has not ended answers its own plan, a deferred one too, whose run "

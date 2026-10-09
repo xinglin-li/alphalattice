@@ -11859,6 +11859,13 @@
    "successor": "af81e625975765e2822e7b00417d484d32ec329d6480a89a99712a15f6c29a5d",
    "change": "A stopped stock-list change resumes through its own cycle (2026-10-08)",
    "reason": "The update cycle records its working membership and recovery reads that record, so a stock-list change stopped part-way resumes; the shared repository module in these closures changed, and no value moves."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "22747ff5933499f161f92dd88d47a74a27a396159de21087f5a97ca284b4b9a7",
+   "successor": "3d87c7d6907fc5a7e07d26eaca52e4deaa1928e65a37ba239962ff3b21fe3f87",
+   "change": "A Risk recovery carries its support range and formation history (2026-10-09)",
+   "reason": "The strategy controls name the Risk history a book's decomposition needs and count a Risk study as covering only with enough history, so the first Risk study is the right one; no value moves."
   }
  ]
 }

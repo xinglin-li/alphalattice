@@ -4455,12 +4455,7 @@ def test_authored_text_is_never_a_reference_and_one_reference_has_two_spellings(
 
 
 def test_a_books_risk_window_and_its_bound_section_are_refused_with_the_way_on():
-    """regression (V501, V502; the fork's research chain on ls1-chain): a book refused for a
-    Risk study short of its formations said "run it over the Alpha study's window", which a
-    Risk study then refused, wordless, for its first sessions' missing lookback; and a changed
-    window answered `authority_field_mismatch` with no words. Each names what holds and the
-    way on: the Alpha study's scored formations, read from the Alpha study; the draft's bound
-    `experiment` section."""
+    """Risk support and immutable experiment-section refusals offer their way forward."""
 
     import json
 
@@ -4611,10 +4606,7 @@ def test_a_support_refusal_is_worded_with_its_cause_and_the_books_way_on(live, m
 
 
 def test_prepared_training_inputs_offer_their_components_study(tmp_path):
-    """regression (V530, RR5d): a succeeded training-input readback offered only its own read,
-    so the agent searched the source for the next step. Prepared inputs offer each component's
-    lifecycle study controls, bound to the input they were prepared on, and the Host's request
-    contract takes the offered request as it stands."""
+    """Prepared inputs offer component study controls that the request contract accepts."""
 
     from datetime import UTC, datetime
     from types import SimpleNamespace
@@ -4665,60 +4657,31 @@ def test_prepared_training_inputs_offer_their_components_study(tmp_path):
     assert set(owner.readback(uuid4())["next_requests"]) == {"readback"}
 
 
-def test_a_strategy_short_of_its_risk_window_names_it_and_offers_the_risk_study(tmp_path):
-    """regression (V533, RR5d): a strategy plan whose Risk study did not cover its calibrated
-    Alpha study's matured formations was refused `research_strategy.risk_parent_support_incomplete`
-    with no words, no window and no request, and the agent found the window by reading the Risk
-    study. The refusal names the window needed and the one the Risk study covers, its words
-    say the way on, and it offers the Risk study's controls on the strategy's own input. Every
-    code a strategy's declaration or readback can meet is worded."""
+@pytest.mark.parametrize(
+    ("code", "next_action"),
+    [
+        (
+            "research_strategy.risk_parent_support_incomplete:"
+            "needed 2019-10-07..2024-09-30, Risk study 2026-09-01..2026-09-30",
+            "STUDY_RISK_OVER_THE_NEEDED_WINDOW",
+        ),
+        (
+            "research_strategy.risk_history_insufficient:formation 2022-10-03 has 64 Risk return "
+            "sessions before it, 567 needed, a Risk study starting on or before 2020-08-11",
+            "STUDY_RISK_FROM_THE_NEEDED_START",
+        ),
+    ],
+)
+def test_a_strategy_short_of_its_risk_window_names_it_and_offers_the_risk_study(code, next_action):
+    """Risk support and history refusals name the cause and recovery."""
 
     import re
-    from types import SimpleNamespace
 
-    from alphalattice.control.product_host.composition.portfolio_research_operations import (
-        PortfolioResearchOperations,
-    )
-    from alphalattice.control.product_host.composition.research_workspace import (
-        ResearchWorkspaceManifest,
-        publish_research_workspace_manifest,
-    )
     from alphalattice.interface.local_application.cli_contract import refusal_words
-    from alphalattice.interface.local_application.portfolio_research import (
-        PortfolioResearchOperationRequest,
-    )
 
-    code = (
-        "research_strategy.risk_parent_support_incomplete:"
-        "needed 2019-10-07..2024-09-30, Risk study 2026-09-01..2026-09-30"
-    )
-
-    def plan(_document: object) -> None:
-        raise ValueError(code)
-
-    publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("s"))
-    host = PortfolioResearchOperations.__new__(PortfolioResearchOperations)
-    host.research_strategies = SimpleNamespace(plan=plan)  # type: ignore[assignment]
-    host.workspace_session = SimpleNamespace(workspace=tmp_path)  # type: ignore[assignment]
-    binding = "b" * 64
-    answer = host._workspace_operation(
-        PortfolioResearchOperationRequest(
-            operation="RESEARCH_STRATEGY_PLAN", experiment_document={"input_binding_hash": binding}
-        ),
-        caller="HUMAN",
-    )
-    assert answer is not None and answer["failure_code"] == code
-    assert answer["next_requests"] == {
-        "risk_controls": {
-            "operation": "EXPERIMENT_CONTROLS",
-            "research_input_id": None,
-            "input_binding_hash": binding,
-            "experiment_kind": "risk.covariance-development",
-        }
-    }
     words = refusal_words(code)
-    assert "needed 2019-10-07..2024-09-30, Risk study 2026-09-01..2026-09-30" in words["detail"]
-    assert words["next_action"] == "STUDY_RISK_OVER_THE_NEEDED_WINDOW"
+    assert code.partition(":")[2] in words["detail"]
+    assert words["next_action"] == next_action
     source = (
         Path(__file__).resolve().parents[2]
         / "src/alphalattice/control/product_host/data_preparation/research_strategy.py"
@@ -4737,26 +4700,19 @@ def test_a_strategy_short_of_its_risk_window_names_it_and_offers_the_risk_study(
 
 
 def test_strategy_controls_offer_each_missing_components_first_step(tmp_path):
-    """regression (V505, RR5): a fresh workspace asked to run a book forward read strategy
-    controls naming the required components with no completed lifecycle study and offering
-    only the strategy's plan, so its agent found no way to the components. Each missing
-    component offers its first step, the input left to choose where the workspace has none
-    or several; a component a completed lifecycle study holds is not missing."""
+    """Missing components expose their first step until a completed study holds them."""
 
-    from datetime import UTC, datetime
     from types import SimpleNamespace
 
     from alphalattice.control.product_host.composition.research_workspace import (
         ResearchWorkspaceManifest,
         publish_research_workspace_manifest,
     )
-    from alphalattice.control.product_host.data_preparation.research_strategy import (
-        ResearchStrategyPreparation,
-    )
+    from alphalattice.control.product_host.data_preparation import research_strategy as module
 
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("fwd"))
     studies: list[dict[str, object]] = []
-    owner = ResearchStrategyPreparation(
+    owner = module.ResearchStrategyPreparation(
         SimpleNamespace(workspace=tmp_path),  # type: ignore[arg-type]
         clock=lambda: datetime(2026, 10, 2, tzinfo=UTC),
         read_experiment=lambda _task: {},
@@ -4772,18 +4728,13 @@ def test_strategy_controls_offer_each_missing_components_first_step(tmp_path):
             "component_id": component,
         }
     studies.append(
-        {
-            "lifecycle": "SUCCEEDED",
-            "kind": "alpha.model-development",
-            "component_recipe_id": required[0],
-        }
+        dict(lifecycle="SUCCEEDED", kind="alpha.model-development", component_recipe_id=required[0])
     )
     again = owner.controls()
     assert again["missing_components"] == required[1:]
     assert f"component:{required[0]}" not in again["next_requests"]
     assert again["next_requests"]["plan"]["operation"] == "RESEARCH_STRATEGY_PLAN"
-    # Risk is offered beside the components until a completed Risk study covers the window a
-    # calibrated Alpha study names (FLOW-3); no window is known before one completes.
+    # Risk stays offered until a completed study covers the calibrated Alpha support.
     assert again["risk_windows"] == []
     assert again["next_requests"]["risk"] == {
         "operation": "EXPERIMENT_CONTROLS",
@@ -4800,10 +4751,112 @@ def test_strategy_controls_offer_each_missing_components_first_step(tmp_path):
     assert "risk" not in owner.controls()["next_requests"]
 
 
+def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path, monkeypatch):
+    """Risk recovery carries its selected input and exact history, skipping absent formations."""
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
+    from alphalattice.control.product_host.composition.research_workspace import (
+        ResearchWorkspaceExperimentInput,
+        ResearchWorkspaceManifest,
+        publish_research_workspace_manifest,
+    )
+    from alphalattice.control.product_host.data_preparation import research_strategy as module
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+
+    binding, first, last = "b" * 64, date(2022, 10, 3), date(2022, 10, 7)
+    manifest = ResearchWorkspaceManifest.research_only("risk").with_bindings(
+        experiment_inputs=(
+            ResearchWorkspaceExperimentInput(input_id="first", binding_hash="a" * 64),
+            ResearchWorkspaceExperimentInput(input_id="selected", binding_hash=binding),
+        )
+    )
+    publish_research_workspace_manifest(tmp_path, manifest)
+    calendar = tuple(date(2020, 1, 1) + timedelta(days=i) for i in range(1300))
+    monkeypatch.setattr(module, "read_factor_bundle", lambda *_: SimpleNamespace(sessions=calendar))
+    calibrated = module.FROZEN_RESEARCH_BOOK_RECIPES[0].components[0].component_id
+    common = {
+        "lifecycle": "SUCCEEDED",
+        "input_binding_hash": binding,
+        "sessions": {"start": str(first), "end": str(last)},
+    }
+    studies = [
+        {
+            **common,
+            "kind": "alpha.model-development",
+            "component_recipe_id": calibrated,
+            "task_id": "alpha",
+        },
+        *(
+            {**common, "kind": "risk.covariance-development", "task_id": str(uuid4())}
+            for _ in range(2)
+        ),
+    ]
+    owner = module.ResearchStrategyPreparation(
+        SimpleNamespace(workspace=tmp_path),
+        clock=lambda: datetime(2026, 10, 2, tzinfo=UTC),
+        read_experiment=lambda _: {},
+        list_experiments=lambda: {"experiments": studies},
+    )
+    calls, schedule = [], module.local_research_economic_schedule
+
+    def counted_schedule(**arguments):
+        calls.append(arguments)
+        return schedule(**arguments)
+
+    monkeypatch.setattr(module, "local_research_economic_schedule", counted_schedule)
+    axis = calendar[calendar.index(first) - module.RISK_HISTORY_SESSIONS + 1 :]
+    monkeypatch.setattr(module, "risk_return_surface", lambda *_: (tmp_path, axis))
+    monkeypatch.setattr(
+        module.CausalRiskReturnReader, "available_sessions", lambda _self, surface: surface
+    )
+    recovery = owner.controls(binding)
+    assert len(calls) == 1
+    (window,) = recovery["risk_windows"]
+    assert (window["start"], window["end"]) == (str(first), str(last))
+    history_start = (
+        calendar.index(first) - module.RISK_HISTORY_SESSIONS + module.REQUIRED_LOOKBACK_SESSIONS
+    )
+    assert window["formation_history"] == {
+        "start": str(calendar[history_start]),
+        "end": str(calendar[calendar.index(first) - 1]),
+        "required_return_sessions": module.RISK_HISTORY_SESSIONS,
+    }
+    assert recovery["next_requests"]["risk"] == {
+        "operation": "EXPERIMENT_CONTROLS",
+        "research_input_id": "selected",
+        "input_binding_hash": binding,
+        "experiment_kind": "risk.covariance-development",
+    }
+    axis = calendar[calendar.index(first) - module.RISK_HISTORY_SESSIONS :]
+    assert "risk" not in owner.controls(binding)["next_requests"]
+    calendar = tuple(day for day in calendar if day != first)
+    recovery = owner.controls(binding)
+    assert recovery["risk_windows"] == []
+
+    def refused_plan(_document):
+        raise ValueError("research_strategy.risk_history_insufficient")
+
+    monkeypatch.setattr(owner, "plan", refused_plan)
+    host = PortfolioResearchOperations.__new__(PortfolioResearchOperations)
+    host.research_strategies = owner
+    answer = host._workspace_operation(
+        PortfolioResearchOperationRequest(
+            operation="RESEARCH_STRATEGY_PLAN", experiment_document={"input_binding_hash": binding}
+        ),
+        caller="HUMAN",
+    )
+    assert answer["risk_windows"] == recovery["risk_windows"]
+    assert answer["next_requests"] == recovery["next_requests"]
+
+
 def test_the_first_intent_is_the_way_forward_and_names_it_in_words() -> None:
-    """regression (a first use): `workspace show` lists `RUN_FORWARD` first, naming the research
-    strategy's controls while nothing is installed and an installed strategy's book controls
-    before it has a book."""
+    """First-use intent offers strategy preparation or the installed strategy's book."""
 
     from types import SimpleNamespace
 
@@ -4834,64 +4887,8 @@ def test_the_first_intent_is_the_way_forward_and_names_it_in_words() -> None:
     }
 
 
-def test_a_strategy_short_of_risk_history_names_the_start_and_offers_the_risk_study(tmp_path):
-    """regression (V596, DOC's RR5g-0 F3): a strategy plan admitted a Risk study whose evaluated
-    window covered the book's formations, and its preparation then stopped after 90 s
-    `frozen_portfolio.risk_history_insufficient`, unrecoverable, since each formation needs 63
-    initialization and 504 factor-fit Risk return sessions before it. The plan judges that
-    history by the same function its materialization reads and refuses before any Task, naming
-    the first formation short of it, the sessions held and needed and the Risk start that would
-    hold them, and offers the Risk study's controls on the strategy's own input."""
-
-    from types import SimpleNamespace
-
-    from alphalattice.control.product_host.composition.portfolio_research_operations import (
-        PortfolioResearchOperations,
-    )
-    from alphalattice.control.product_host.composition.research_workspace import (
-        ResearchWorkspaceManifest,
-        publish_research_workspace_manifest,
-    )
-    from alphalattice.interface.local_application.cli_contract import refusal_words
-    from alphalattice.interface.local_application.portfolio_research import (
-        PortfolioResearchOperationRequest,
-    )
-
-    code = (
-        "research_strategy.risk_history_insufficient:formation 2022-10-03 has 64 Risk return "
-        "sessions before it, 567 needed, a Risk study starting on or before 2020-08-11"
-    )
-
-    def plan(_document: object) -> None:
-        raise ValueError(code)
-
-    publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("s"))
-    host = PortfolioResearchOperations.__new__(PortfolioResearchOperations)
-    host.research_strategies = SimpleNamespace(plan=plan)  # type: ignore[assignment]
-    host.workspace_session = SimpleNamespace(workspace=tmp_path)  # type: ignore[assignment]
-    binding = "b" * 64
-    answer = host._workspace_operation(
-        PortfolioResearchOperationRequest(
-            operation="RESEARCH_STRATEGY_PLAN", experiment_document={"input_binding_hash": binding}
-        ),
-        caller="HUMAN",
-    )
-    assert answer is not None and answer["failure_code"] == code
-    assert answer["next_requests"]["risk_controls"]["experiment_kind"] == (
-        "risk.covariance-development"
-    )
-    assert answer["next_requests"]["risk_controls"]["input_binding_hash"] == binding
-    words = refusal_words(code)
-    assert "a Risk study starting on or before 2020-08-11" in words["detail"]
-    assert words["next_action"] == "STUDY_RISK_FROM_THE_NEEDED_START"
-
-
 def test_a_strategys_risk_history_is_judged_by_one_owner_for_its_plan_and_preparation():
-    """requirement (V596's class, TE12): a plan admits only what its executor runs. The Risk
-    history each formation needs (the installed decomposition's initialization and factor
-    fit) is judged by one function, which both the strategy's plan and its materialization
-    call; a formation holding one session fewer than the rule is short, one holding exactly
-    the rule is not."""
+    """The plan and preparation share one exact Risk history requirement."""
 
     import inspect
     from datetime import date, timedelta
