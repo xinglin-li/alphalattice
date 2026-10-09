@@ -2,8 +2,8 @@
 
 Pure functions and single contracts. The product path -- one sealed book
 through a real ledger, a real Alternative Evidence Task, a real review Task and
-the interface projection -- is proved in `test_evidence_review_route.py`, and
-over HTTP in `test_evidence_review_http_route.py`. This file asks the questions
+the interface projection -- is proved by the route tests, in process and over
+HTTP. This file asks the questions
 that need no workspace: how the scope selects, what the obligation may say, what
 the route function does with an assessment, and what the review key binds.
 
