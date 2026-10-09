@@ -140,6 +140,8 @@ RULES = [
             "tests/portfolio_strategy_lab/test_native_answer_route_class.py",
             "tests/portfolio_strategy_lab/test_strategy_scoring.py",
             "tests/portfolio_strategy_lab/test_workbench_readback.py",
+            "tests/portfolio_strategy_lab/test_workbench_zh_catalog.py",
+            "tests/portfolio_strategy_lab/workbench_stack_census.cjs",
             "tests/portfolio_strategy_lab/test_workbench_goal_follow_browser.py",
             "tests/portfolio_strategy_lab/test_workbench_owner_words.py",
             "tests/portfolio_strategy_lab/test_team_scene_producers.py",
@@ -200,6 +202,12 @@ RULES = [
             ),
             "tests/portfolio_strategy_lab/test_workbench_readback.py": (
                 "needs the private UI QA kit"
+            ),
+            "tests/portfolio_strategy_lab/test_workbench_zh_catalog.py": (
+                "needs the private UI QA catalog census"
+            ),
+            "tests/portfolio_strategy_lab/workbench_stack_census.cjs": (
+                "plants geometry cases for the private stack census"
             ),
             "tests/portfolio_strategy_lab/workbench_dom.cjs": "needs the private UI QA kit",
             "tests/portfolio_strategy_lab/test_workbench_goal_follow_browser.py": (

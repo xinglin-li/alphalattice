@@ -179,3 +179,85 @@ async function teamPages() {
     limit: 'Concurrent refreshes of the same collection URL share one raw answer. Independent old/new collection wire replies are therefore not a reachable staged race; no decoder or internal microtask hook is used.'}, null, 2));
   finish();
 })().catch(error => {console.error(error); process.exitCode = 1;});
+
+// workbench async selection never accepts an obsolete response.
+{
+const library=require('./workbench_library.cjs'),complete=library.guard("workbench_async_selection_never_accepts_an_obsolete_response");
+const _appDir=require('node:path').resolve(process.argv[2]),_project=require('node:path').resolve(__dirname,'../..');
+const fs = require('fs'), vm = require('vm'), assert = require('assert/strict');
+const c = {window:{ALPHA_PRODUCT:true}, document:{body:{dataset:{}}}, app:{},
+  Inspect:{selectObservation(){}}, URLSearchParams};
+library.context(c);
+vm.runInContext(fs.readFileSync(require('node:path').join(_appDir,'data.js'),'utf8')+';globalThis.data=Data;',c);
+(async () => {
+  let finishOld;
+  const old = c.data.load(() => new Promise(r => { finishOld=r; }));
+  await c.data.load({subject:{task_id:'new',session:'2024-01-03'},series:[]});
+  finishOld({subject:{task_id:'old',session:'2024-01-02'},series:[]});
+  await old;
+  assert.equal(c.data.subject().task_id,'new');
+  assert.equal(c.app.session,'2024-01-03');
+  await c.data.load(() => Promise.reject(Error('artifact_tampered')));
+  assert.equal(c.data.ready,false);
+  assert.equal(c.data.error,'artifact_tampered');
+complete();
+})().catch(e=>{console.error(e);process.exitCode=1;});
+}
+
+// listed task state follows task control without a reload.
+{
+const library=require('./workbench_library.cjs'),complete=library.guard("listed_task_state_follows_task_control_without_a_reload");
+const _appDir=require('node:path').resolve(process.argv[2]),_project=require('node:path').resolve(__dirname,'../..');
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+let state='RUNNING', reads={history:0,experiments:0}, repaints=0, hold=null;
+const kind='alpha.model-development', one=(lifecycle)=>({task_id:'t1',lifecycle,task_kind:kind});
+const answer=async(path)=>{
+  if(path.startsWith('/api/session'))
+    return {session_token:'s',workspace_id:'w',research_context:{tasks:{tasks:[one('RUNNING')]}}};
+  if(path.startsWith('/api/research-history')){
+    reads.history++;if(hold)await hold;
+    return {entries:[{entry_id:'e1',task_id:'t1',kind,status:state}],next_cursor:null};}
+  if(path.startsWith('/api/experiments')){
+    reads.experiments++;return {experiments:[{task_id:'t1',kind,lifecycle:state}]};}
+  throw Error('unexpected read '+path);};
+const c={window:{ALPHA_PRODUCT:true},document:{body:{dataset:{page:'alpha'}}},app:{},
+  URLSearchParams,location:{search:'',hash:'#page=alpha'},
+  hashParams:()=>new URLSearchParams(c.location.hash.slice(1)),
+  Inspect:{selectObservation(){},reopenFromAddress(){}},
+  Window:{render(){}},LiveResearch:{ready(){}},replaceHash(){},render(){},
+  LiveViews:{studyFacts:()=>({}),inputState:()=>({})},patchMain(){repaints++;},
+  fetch:async(path)=>{const body=await answer(path);
+    return {ok:true,status:200,text:async()=>JSON.stringify(body)};}};
+library.context(c);
+vm.runInContext(fs.readFileSync(require('node:path').join(_appDir,'data.js'),'utf8')+';globalThis.data=Data;',c);
+const settle=()=>new Promise(r=>setImmediate(r));
+(async()=>{
+  await c.data.connect();
+  assert.equal(c.data.history()[0].status,'running','the history lists the run as running');
+  const before={...reads}, painted=repaints, once={history:before.history+1,
+    experiments:before.experiments+1};
+  // Task Control reports the run ended (the activity feed's projection): the lists say so at once
+  state='SUCCEEDED';
+  c.data.mergeTasks([one('SUCCEEDED')]);
+  assert.equal(c.data.lifecycleOf('t1','RUNNING'),'SUCCEEDED','a snapshot gives way to the report');
+  assert.equal(c.data.history()[0].status,'historical','the row reads the report before a re-read');
+  await settle();
+  assert.deepEqual(reads,once,'one re-read of both listings');
+  assert.equal(c.data.experiments()[0].lifecycle,'SUCCEEDED','the experiments are read again');
+  assert.ok(repaints>painted,'the page repaints');
+  // the same report again moves nothing and reads nothing
+  c.data.mergeTasks([one('SUCCEEDED')]);
+  await settle();
+  assert.deepEqual(reads,once,'an unchanged report reads nothing');
+  // an ended word is final: a stale projection never turns it back
+  assert.equal(c.data.lifecycleOf('t1','CANCELLED'),'CANCELLED');
+  // moves reported during a re-read cost one more read, not one each
+  let release;hold=new Promise(r=>{release=r;});
+  c.data.mergeTasks([{task_id:'t2',lifecycle:'RUNNING',task_kind:kind}]);
+  c.data.mergeTasks([{task_id:'t2',lifecycle:'SUCCEEDED',task_kind:kind}]);
+  c.data.mergeTasks([{task_id:'t3',lifecycle:'RUNNING',task_kind:kind}]);
+  hold=null;release();await settle();await settle();
+  assert.equal(reads.history,before.history+3,'three moves during one read: it and one more');
+complete();
+})().catch(e=>{console.error(e);process.exitCode=1;});
+}

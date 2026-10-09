@@ -191,3 +191,50 @@ const settle=()=>new Promise(r=>setImmediate(r));
   }
   finish();
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+// research editor rejects late plan and requires one current confirmation.
+{
+const library=require('./workbench_library.cjs'),complete=library.guard("research_editor_rejects_late_plan_and_requires_one_current_confirmation");
+const _appDir=require('node:path').resolve(process.argv[2]),_project=require('node:path').resolve(__dirname,'../..');
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+let finish, runFinish, plans=0, runs=0, dialogs=0;
+const doc={experiment:{kind:'factor.screening-development'}};
+const plan={status:'PLANNED',plan_hash:'exact',program:{kind:doc.experiment.kind},
+  execution_preview:{},document:doc};
+const c={URLSearchParams,console,window:{confirm:()=>true},app:{page:'lab',yaml:'',mode:'yaml'},
+  Data:{workspaceStatus:'ready',inputs:()=>[{id:'input',binding_hash:'hash',available:true,lifecycle:'REGISTERED'}],
+    read:async()=>({status:'READY',template:doc,yaml:'experiment: {}',
+      input_id:'input',input_binding_hash:'hash'}),
+    post:async(path,payload)=>{
+      if(path.endsWith('/plan')){plans++;return new Promise(r=>{finish=r;});}
+      assert.ok(path.endsWith('/run'));assert.deepEqual(JSON.parse(JSON.stringify(payload)),{experiment_plan_hash:'exact'});
+      runs++;return new Promise(r=>{runFinish=r;});
+    },refreshHistory:async()=>{}},
+  clone:v=>JSON.parse(JSON.stringify(v)),render:()=>{},replaceHash:()=>{},
+  hashParams:()=>new URLSearchParams(),
+  Lab:{markDraftChanged(){},onYamlInput(e){c.app.yaml=e.target.value;}},
+  LiveTasks:{select:async()=>{}},closeDialog(){},openDialog(){dialogs++;},t:v=>v,
+  html:(s,...v)=>s.join(''),kv:()=>'',btn:()=>'',icon:()=>'',copyText:()=>{},json:(v)=>JSON.stringify(v,null,2),codeMarkup:(s)=>String(s),codeEsc:(s)=>String(s),raw:(s)=>String(s),noteLine:()=>'',
+  codeRef:(title,text)=>'<p>'+title+'</p>',refCell:(u)=>String(u),hashCell:(h)=>String(h||'—'),
+  readingPane:(title,kind,body)=>'<aside>'+title+body+'</aside>',hint:(term)=>term,factsRef:()=>'',
+  LiveViews:{researchTiming:()=>''}};
+// the library's constants and builders, from the source
+library.context(c,_appDir);
+vm.runInContext(fs.readFileSync(require('node:path').join(_appDir,'live-research.js'),'utf8')+';globalThis.research=LiveResearch;',c);
+(async()=>{
+  await c.research.ready(); await c.research.run();assert.equal(runs,0);
+  const stale=c.research.preview();
+  c.research.edit({target:{id:'yamlEditor',value:'changed'}});finish(plan);await stale;
+  c.research.reviewRun();await c.research.run();assert.equal(dialogs,0);assert.equal(runs,0);
+  const current=c.research.preview();finish(plan);await current;
+  c.research.reviewRun();c.research.edit({target:{id:'yamlEditor',value:'changed again'}});
+  await c.research.run();assert.equal(runs,0);
+  const last=c.research.preview();finish(plan);await last;c.research.reviewRun();
+  c.research.dismissConfirmation();await c.research.run();assert.equal(runs,0);
+  c.research.reviewRun();
+  const one=c.research.run();await c.research.run();assert.equal(runs,1);
+  runFinish({status:'REUSED_EXACT',publication_task_id:'retained',task_id:null});await one;
+  assert.equal(runs,1);assert.equal(c.app.labTask,'retained');
+complete();
+})().catch(e=>{console.error(e);process.exitCode=1;});
+}

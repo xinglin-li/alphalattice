@@ -200,3 +200,38 @@ const replay = {
   console.log(JSON.stringify({cases: results.length, failures: 0, results}, null, 2));
   finish();
 })().catch(error => {console.error(error); process.exitCode = 1;});
+
+// alpha comparison route keeps the newer exact selection when an old read finishes.
+{
+const library=require('./workbench_library.cjs'),complete=library.guard("alpha_comparison_route_keeps_the_newer_exact_selection_when_an_old_read_finishes");
+const _appDir=require('node:path').resolve(process.argv[2]),_project=require('node:path').resolve(__dirname,'../..');
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+let route=new URLSearchParams(
+  'page=alpha&study=left&alpha_left_task=left&alpha_left_candidate=left-candidate&'+
+  'alpha_right_task=old-right&alpha_right_candidate=old-candidate');
+let finishOld;
+const published=(candidate)=>({
+  status:'EXPERIMENT_PUBLISHED',program:{kind:'alpha.model-development'},
+  result:{candidates:[{candidate_id:candidate,status:'DEVELOPMENT_EVALUATED'}]}});
+const c={URLSearchParams,app:{page:'alpha'},closeDialog(){},render(){},
+  hashParams:()=>new URLSearchParams(route),
+  replaceHash:(update)=>{for(const [k,v] of Object.entries(update)){
+    if(v==='')route.delete(k);else route.set(k,v);}},
+  Data:{read:async(url)=>{const task=new URL('http://local'+url).searchParams.get('task_id');
+    if(task==='left')return published('left-candidate');
+    if(task==='old-right')return new Promise(resolve=>{finishOld=resolve;});
+    if(task==='new-right')return published('new-candidate');
+    throw Error('unexpected task '+task);}}};
+library.context(c);
+vm.runInContext(fs.readFileSync(require('node:path').join(_appDir,'live-study.js'),'utf8')+';globalThis.live=LiveStudy;',c);
+(async()=>{
+  await c.live.open('left','alpha');
+  await c.live.alphaComparisonTask('new-right','new-candidate');
+  finishOld(published('old-candidate'));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(JSON.parse(JSON.stringify(c.live.routeContext('alpha'))),{
+    study:'left',alpha_left_task:'left',alpha_left_candidate:'left-candidate',
+    alpha_right_task:'new-right',alpha_right_candidate:'new-candidate'});
+complete();
+})().catch(e=>{console.error(e);process.exitCode=1;});
+}

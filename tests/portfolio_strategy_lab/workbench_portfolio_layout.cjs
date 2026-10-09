@@ -165,7 +165,8 @@ assert.ok(emptyFrom>=0 && emptyTo>emptyFrom && wordsFrom>=0 && wordsTo>wordsFrom
 const headFrom=componentsSource.indexOf('function contextFacts(');
 const headTo=componentsSource.indexOf('/* Attributes a builder is handed',headFrom);
 assert.ok(headFrom>=0 && headTo>headFrom,'the actual object-head facts builder remains available');
-const inputHeads=process.argv[3] ? JSON.parse(fs.readFileSync(process.argv[3],'utf8')) : null;
+const inputHeads=process.argv[3] ? JSON.parse(process.argv[3]).portfolio_heads : null;
+assert.ok(Array.isArray(inputHeads)&&inputHeads.length===3,'the shared producer supplies every owner input-head case');
 const oldBranch="    if (noForwardObservations) return html`<div id=\"portfolioPerformance\">${controls}</div>`;";
 const branchAnchor='    const noForwardObservations=forward && Data.series().length===0;';
 assert.ok(portfolioSource.includes(branchAnchor),'the negative control reinserts the exact former tabs-only branch');
@@ -510,4 +511,160 @@ async function runPortfolioTransportAssertions() {
     ]);
   } finally { if(watchdog)clearTimeout(watchdog); }
 }
-runPortfolioTransportAssertions().catch(error=>{console.error(error);process.exitCode=1;});
+{
+  const {makeContext,connect,settle,clone,markupNodes}=require('./workbench_route_context.cjs');
+  const finish=library.guard('portfolio layout');
+const H=c=>c.repeat(64),SESSIONS=['2024-08-05','2024-08-12'];
+const view = (task, session) => ({schema: 'verified-portfolio-display',
+  subject: {task_id: task, result_hash: H('c'), source_kind: 'INSTALLED_RESULT', receipt_hash: H(task.at(-1)), title: 'Portfolio · 40 / 3 · ew', input_id: 'factor-development', input_hash: 'hash-a', input_date: '2026-08-03', session, support: {start: '2019-08-05', end: '2024-08-12', as_of: {session: '2026-08-03', phase: 'OFFICIAL_CLOSE'}}, cost_per_side: '5'},
+  notice: 'Published historical research; not independent validation, current advice or trade authority.', seriesBasis: 'index',
+  series: [{date: SESSIONS[0], daily: 0.1, benchmarkDaily: null, value: 100.1, benchmark: null}, {date: SESSIONS[1], daily: -0.1, benchmarkDaily: null, value: 100, benchmark: null}], sessions: SESSIONS,
+  metrics: {total: 1, annual: 2, vol: 3, drawdown: -1, sharpe: 0.5, sortino: 0.6, informationRatio: null, turnover: 12.5, costBps: 4},
+  metricProvenance: {status: 'ARCHIVED_BASE', report_hash: H('x'), window_hash: H('y')},
+  holdings_basis: {basis:'HISTORICAL_REPLAY',comparison_basis:'PRECEDING_FORMATION',preceding_formation_session:'2024-07-29',formation_session:session,entry_session:null,observed_through:session},
+  holdings: [{ticker: 'ABC', name: 'abc-one', listing_id: 'L-1', sector: null, mapped: null, target: 2.0, executed: 1.5,current_weight:0.015,preceding_weight:0.01,weight_change:0.005,disposition:'INCREASED'}, {ticker: 'DEF', name: 'def-two', listing_id: 'L-2', sector: null, mapped: null, target: 2.5, executed: 2.4,current_weight:0.024,preceding_weight:0.025,weight_change:-0.001,disposition:'REDUCED'}],
+  universe: {eligible: 457, total: 466, quarantine: 9, definition: 'notice'}, limitations: ['DEVELOPMENT_EVIDENCE_ONLY'], reviewSelector: null,
+  declaration: {top_k: 40, tranches: 3, exit_rank: 70, weight_rule: 'ew', cost_bps_per_side: '5', unavailable_return_policy: 'quarantine_listings'},
+  source: {task_id: task, receipt_hash: H(task.at(-1)), input_binding_hash: 'hash-a', alpha_task_id: null, candidate_id: 'cand-' + task, target_recipe_id: 'TARGET', foundation_admission_hash: null, origin_task_id: null}});
+async function projectionAssertions() {
+ const rollingReads=[],forwardReads=[];let forwardScenario='recorded';
+ const body=endpoint=>{
+  if(!endpoint.startsWith('/api/workbench/portfolio'))return {};
+  const u=new URL(endpoint,'http://localhost'),task=u.searchParams.get('task_id');
+  if(!['book-b','book-c'].includes(task))return {};
+    const body=view(task,u.searchParams.get('portfolio_session') || SESSIONS[1]);
+    if (task === 'book-b' && u.searchParams.get('performance') !== 'latest' && u.searchParams.get('scope') !== 'holdings') {
+      rollingReads.push({task, session: u.searchParams.get('portfolio_session') || SESSIONS[1]});
+      const revision=rollingReads.length;
+      body.rolling_performance={head_hash:H(String(revision%9+1)),base_report_hash:H('r'),base_result_hash:H('s'),head_storage:'SEALED',formation_range:{start:SESSIONS[0],end:'2024-08-19',base_end:SESSIONS[1]},outcomes_observed_through:`2024-08-${String(12+revision).padStart(2,'0')}`,claim:'DEVELOPMENT_EVIDENCE_WITH_POST_OBSERVED_QA_EXTENSION',execution_basis:'DAILY_BAR_QA_NOT_VERIFIED_VENUE_EXECUTION',cost_bps_per_side:5,metrics:{cumulative_return:0.12,annualized_return:0.1+revision*0.01,annualized_volatility:0.2,maximum_drawdown:-0.08,sharpe:0.7,sortino:0.9},metric_absences:{},curve:[{formation_session:SESSIONS[0],net_simple_return:0.01+revision*0.001,benchmark_simple_return:0.002,value:100.1,benchmark:100.2},{formation_session:SESSIONS[1],net_simple_return:-0.02,value:98.098,benchmark:100.1,benchmarkDaily:-0.001},{formation_session:'2024-08-19',net_simple_return:0.03,value:101.04094,benchmark_simple_return:null,benchmark:null}],open_positions:[{status:'ENTRY_SETTLED_OUTCOME_PENDING',formation_session:'2024-08-19',entry_session:'2024-08-20',holding_end_session:'2024-08-26'},{status:'PROPOSAL_NOT_YET_SETTLED',formation_session:'2024-08-26',entry_session:'2024-08-27',holding_end_session:'2024-09-02'}],observation_count:10+revision,outcome_count:revision};
+    }
+    if(u.searchParams.get('performance')==='latest') {
+      forwardReads.push(task);
+      const revision=forwardReads.length;
+      if(task==='book-b') body.forward_holdings={status:'RECORDED_FORWARD_HOLDINGS',available:true,basis:'CONDITIONAL_ESTIMATE',comparison_basis:'FORMATION_CLOSE_ESTIMATE',formation_session:'2024-08-19',entry_session:'2024-08-20',holding_end_session:'2024-08-26',observed_through:'2024-08-20',publication_hash:H('4'),position_hash:H('5'),checkpoint_hash:H('6'),source_book_task_id:task,strategy_package_id:'pkg',cash:null,holdings:[{ticker:'ABC',name:'abc-one',listing_id:'L-1',sector:null,mapped:null,target:null,executed:null,current_weight:0.025,preceding_weight:0.02,weight_change:0.005,disposition:null}]};
+      body.forward_performance=task==='book-b' && forwardScenario==='zero' ? {available:true,status:'INSUFFICIENT_REALIZED_OBSERVATIONS',cost_bps_per_side:'5',selected_window_metrics:{},selected_window_metric_absences:Object.fromEntries(['cumulative_return','annualized_return','annualized_volatility','maximum_drawdown','sharpe','sortino'].map((key)=>[key,{reason:'INSUFFICIENT_REALIZED_OBSERVATIONS',detail:'At least two settled one-session outcomes are needed for these metrics. Published proposals are not realized returns.'}])),selected_window_metric_provenance:{status:'INSUFFICIENT_REALIZED_OBSERVATIONS',selected_start:null,selected_end:null,observation_count:0,return_unit:'FRACTION',source_book_task_id:task,publication_hash:H('8'),window_hash:H('7'),claim:'POST_OBSERVED_QA_NOT_TIMELY_ADVICE',execution_basis:'DAILY_BAR_QA_NOT_VERIFIED_VENUE_EXECUTION'},series:[]} : task==='book-b' ? {available:true,status:'RECORDED_REALIZED_FORWARD_WINDOW',cost_bps_per_side:'5',selected_window_metrics:{annualized_return:0.2+Math.max(0,revision-1)*0.01,annualized_volatility:0.1,maximum_drawdown:-0.05,sharpe:1.25,sortino:1.5},selected_window_metric_absences:{},selected_window_metric_provenance:{status:'RECORDED_REALIZED_FORWARD_WINDOW',selected_start:SESSIONS[0],selected_end:SESSIONS[1],observation_count:2,return_axis:'CONTIGUOUS_ONE_SESSION_ENTRY_OPEN_TO_HOLDING_END_OPEN',return_unit:'FRACTION',annualization_sessions_per_year:252,volatility_degrees_of_freedom:1,sharpe_cash_return_per_session:0,sortino_downside_threshold:0,strategy_package_id:'pkg',strategy_package_hash:H('a'),checkpoint_hash:H('b'),source_book_task_id:task,publication_hash:H(String(revision%9+1)),history_prefix_hash:H('d'),settlement_path_hash:H('e'),source_snapshot_hash:H('f'),observed_through:SESSIONS[1],published_at:'2026-10-04T16:00:00Z',claim:'POST_OBSERVED_QA_NOT_TIMELY_ADVICE',execution_basis:'DAILY_BAR_QA_NOT_VERIFIED_VENUE_EXECUTION',window_hash:H('1'),net_return_field:'net_simple_return',cost_assumption_hash:H('2'),cost_bps_per_side:'5',platform_one_way_cost_bps:'5'},series:[{session:SESSIONS[0],formation_session:SESSIONS[0],entry_session:SESSIONS[0],holding_end_session:SESSIONS[0],net_simple_return:0.01+Math.max(0,revision-1)*0.001},{session:SESSIONS[1],formation_session:SESSIONS[0],entry_session:SESSIONS[1],holding_end_session:SESSIONS[1],net_simple_return:-0.02}]} : {available:false,status:'NO_REALIZED_FORWARD_PUBLICATION'};
+    }
+
+  return body;
+ };
+ const c=makeContext({hash:'#page=overview',realData:true,body});
+ const {Data:D,app,LiveViews:V}=c.probe;c.AbortController=AbortController;
+ await connect(c);c.setRoute('#page=portfolio&book=book-b');
+ await D.openPortfolio('book-b',SESSIONS[1]);app.tab='holdings';
+ const read=expression=>clone(vm.runInContext(expression,c));
+ const render=()=>String(c.probe.PAGES.portfolio());
+ const text=markup=>markup.replace(/<[^>]*>/g,'');
+ const performance=()=>{const markup=render();return markup.slice(markup.indexOf('id="portfolioPerformance"'),markup.indexOf('id="bookActivation"'));};
+ const selectedSource=()=>[...performance().matchAll(/<button([^>]*)>(.*?)<\/button>/gs)].filter(([,attrs])=>attrs.includes('role="tab"')&&attrs.includes('aria-selected="true"')).map(([,attrs,body])=>text(body));
+ const hasClass=(node,name)=>node.attrs.class?.split(' ').includes(name);
+ const performanceNodes=()=>markupNodes(performance());
+ const holdingCells=()=>[...render().match(/<tr data-holding-row="L-1"[^]*?<\/tr>/)[0].matchAll(/<td class="num[^"]*">(.*?)<\/td>/g)].map(([,value])=>text(value));
+ const word=(key,args={})=>{c.fixtureKey=key;c.fixtureArgs=args;return vm.runInContext('t(fixtureKey,fixtureArgs)',c);};
+ const factValues=()=>{const page=render(),start=page.indexOf('metric-basis'),text=page.slice(start,page.indexOf('</div>',start));return [...text.matchAll(/<span class="context-key">([^<]*)<\/span>\s*<b[^>]*>(.*?)<\/b>/g)].map(([,label,value])=>({label,value:value.replace(/<[^>]*>/g,"" )}));};
+ assert.equal(D.metrics().annual,(0.1+rollingReads.length*0.01)*100);
+ assert.deepEqual(selectedSource(),['Historical report']);
+ assert.deepEqual(read('({annual:Data.raw().metrics.annual,result:Data.raw().subject.result_hash,rolling:Data.raw().rolling_performance.base_result_hash})'),{annual:2,result:H('c'),rolling:H('s')});
+ assert.equal(D.series().length,3);
+ assert.deepEqual(clone(D.series().map(({date,daily,value,benchmark,benchmarkDaily})=>({date,daily,value,benchmark,benchmarkDaily}))),[{date:SESSIONS[0],daily:0.011*100,value:100.1,benchmark:100.2,benchmarkDaily:0.2},{date:SESSIONS[1],daily:-2,value:98.098,benchmark:100.1,benchmarkDaily:-0.001},{date:'2024-08-19',daily:3,value:101.04094,benchmark:null,benchmarkDaily:null}]);
+ assert.deepEqual(clone(D.raw().holdings_basis),view('book-b',SESSIONS[1]).holdings_basis);
+ assert.deepEqual(holdingCells().slice(1),['1.5%','+0.50 pp']);
+ const firstRollingDate=D.raw().rolling_performance.outcomes_observed_through,rollingFirstReads=rollingReads.length;
+ assert.deepEqual(factValues(),[{label:'Formation range',value:'2024-08-05 — 2024-08-19'},{label:'Outcomes through',value:firstRollingDate},{label:'Cost',value:'5 bps per side'}]);
+ const proof=()=>String(V.proofBody('annual'));
+ let markup=render(),nodes=markupNodes(markup);
+ assert.equal(nodes.filter(node=>node.attrs.class?.split(' ').includes('rolling-open-periods')).length,1);
+ for(const key of ['Entry settled; outcome pending','Proposal not yet settled'])assert.ok(markup.includes(word(key)));
+ assert.match(text(markup),/Open periods.*Entry settled; outcome pending.*Formation\s*2024-08-19.*Entry\s*2024-08-20.*Holding end\s*2024-08-26/s);
+ assert.match(text(markup),/Proposal not yet settled.*Formation\s*2024-08-26.*Entry\s*2024-08-27.*Holding end\s*2024-09-02/s);
+ assert.equal(nodes.filter(node=>node.attrs.class?.split(' ').includes('rolling-provenance')).length,0);
+ assert.ok(!markup.includes(H('r').slice(0,12))&&!markup.includes('Head storage'));
+ assert.ok(proof().includes(word('Owner-reported metric for rolling outcomes')));
+ assert.match(text(proof()),/Rolling head.*Base report.*Base result/s);
+ assert.ok(proof().includes(firstRollingDate)&&!proof().includes(H('x').slice(0,12)));
+ for(const key of ['Development evidence extended with post-observed QA outcomes','Daily-bar QA; venue execution is not verified'])assert.ok(proof().includes(word(key)));
+ vm.runInContext('I18N.set("zh")',c);
+ assert.deepEqual(factValues(), [
+    {label:'形成日范围',value:'2024-08-05 — 2024-08-19'},
+    {label:'结果观测截至',value:firstRollingDate},
+    {label:'成本',value:'5 每边 bps'},
+  ]);
+ assert.match(render().replace(/<[^>]*>/g,''),/未结束的期间.*已结算.*形成日 2024-08-19/s);
+ assert.match(proof().replace(/<[^>]*>/g,''),/滚动结果指标由所有者报告/);
+ assert.match(proof().replace(/<[^>]*>/g,''),/开发证据.*事后观测 QA/);
+ assert.match(proof().replace(/<[^>]*>/g,''),/日线 QA.*未经交易场所执行验证/);
+ for(const [key,value] of [
+ ["The daily checkpoint's source book has no readable publishing Task. Read the saved studies to confirm the Task; if its retained record is missing, restore a verified workspace backup and read again.","每日检查点的来源账本没有可读取的发布任务。请读取已保存的研究以确认该任务；如果保留记录缺失，请恢复经过验证的工作区备份后重新读取。"],
+ ["This book's declared cost has no sealed daily return lane. Daily updates record 5 or 10 bps per side; read a book with one of those declared costs, or report the unavailable lane. Do not substitute another cost.","此账本声明的成本没有已封存的日收益档位。每日更新记录每侧 5 或 10 个基点；请读取声明了其中一种成本的账本，或报告该档位不可用。请勿替换为其他成本。"],
+ ["The rolling report's sealed base, update, or link does not match its declared identity or date axis, so no performance values are shown. Restore a verified workspace backup, then read the saved study again.","滚动报告的已封存基准、更新或链接与声明的身份或日期轴不符，因此不显示绩效数值。请恢复经过验证的工作区备份，然后重新读取已保存的研究。"]])assert.equal(word(key),value);
+ vm.runInContext('I18N.set("en")',c);
+ const firstMetric=D.metrics().annual;
+ D.setTasks([{task_id:'portfolio-history-refresh-probe',lifecycle:'RUNNING'}]);D.setTasks([{task_id:'portfolio-history-refresh-probe',lifecycle:'SUCCEEDED'}]);await settle();
+ assert.ok(rollingReads.length>rollingFirstReads&&D.metrics().annual>firstMetric);
+ assert.equal(D.subject().task_id,'book-b');assert.equal(D.subject().session,SESSIONS[1]);assert.equal(D.performanceMode(),'historical');
+ assert.notEqual(D.raw().rolling_performance.outcomes_observed_through,firstRollingDate);
+ assert.equal(D.metrics().annual,(0.1+rollingReads.length*0.01)*100);
+ assert.equal(markupNodes(render()).filter(node=>node.attrs.class?.split(' ').includes('stat')&&node.parent?.attrs.class?.split(' ').includes('five')).length,5);
+ await D.openPortfolio('book-b',SESSIONS[1],'portfolio',null,null,'forward');
+ assert.equal(D.performanceMode(),'forward');assert.equal(D.forwardPerformance().available,true);
+ assert.ok(c.records.requests.some(endpoint=>new URL(endpoint,'http://local').searchParams.get('performance')==='latest'));
+ assert.equal(D.metrics().annual,20);
+ assert.deepEqual(selectedSource(),['Forward realized']);
+ assert.deepEqual(read('({raw:Data.series()[0].net_simple_return,display:Data.series()[0].daily})'),{raw:0.01,display:1});
+ assert.equal(D.raw().forward_holdings.holdings[0].current_weight,0.025);
+ assert.deepEqual(holdingCells().slice(1),['2.5%','+0.50 pp']);
+ assert.match(text(performance()),new RegExp(SESSIONS[0]+'.*'+SESSIONS[1]));
+ assert.match(text(performance()),/Not timely advice|事后观测 QA/);
+ assert.equal(performanceNodes().filter(node=>hasClass(node,'stat-strip')&&hasClass(node,'five')).length,0);
+ assert.equal(performanceNodes().filter(node=>hasClass(node,'rolling-provenance')).length,0);
+ assert.equal(markupNodes(render()).filter(node=>node.attrs['data-navigator']).length,0);
+ const firstForwardReads=forwardReads.length;
+ D.setTasks([{task_id:'portfolio-refresh-probe',lifecycle:'RUNNING'}]);D.setTasks([{task_id:'portfolio-refresh-probe',lifecycle:'SUCCEEDED'}]);await settle();
+ assert.ok(forwardReads.length>firstForwardReads);
+ assert.equal(performanceNodes().filter(node=>hasClass(node,'stat-strip')&&hasClass(node,'five')).length,0);
+ assert.ok(Math.abs(D.metrics().annual-(0.2+Math.max(0,forwardReads.length-1)*0.01)*100)<1e-8);
+ assert.ok(Math.abs(D.series()[0].daily-(0.01+Math.max(0,forwardReads.length-1)*0.001)*100)<1e-8);
+ forwardScenario='zero';await D.reload();
+ assert.equal(D.forwardPerformance().status,'INSUFFICIENT_REALIZED_OBSERVATIONS');assert.equal(D.series().length,0);
+ assert.deepEqual(read('({metrics:Data.metrics(),rows:Data.series().length,historyAnnual:Data.raw().metrics.annual})'),{metrics:{},rows:0,historyAnnual:2});
+ const empty=text(performance());
+ assert.match(empty,/Fewer than two settled outcomes were recorded/);
+ assert.match(empty,/0 observations.*Net of 5 bps per side/);
+ assert.doesNotMatch(empty,/Not timely advice|No published observations|Realized window|2024-08-05|2024-08-12/);
+ assert.equal(performanceNodes().filter(node=>hasClass(node,'performance-surface')||node.attrs['data-box']).length,0);
+ assert.equal(performanceNodes().filter(node=>hasClass(node,'stat-strip')&&hasClass(node,'five')).length,0);
+ assert.equal(performanceNodes().filter(node=>node.attrs['data-empty']==='elsewhere').length,1);
+ for(const name of ['chart-toolbar','chart-headline','chart-under'])assert.equal(performanceNodes().filter(node=>hasClass(node,name)).length,0);
+ assert.equal(performanceNodes().filter(node=>node.tag==='svg'&&(()=>{for(let p=node.parent;p;p=p.parent)if(p.attrs.id==='performanceChart')return true;return false;})()).length,0);
+ assert.match(D.forwardPerformance().selected_window_metric_absences.annualized_return.detail,/At least two settled one-session outcomes/);
+ assert.equal(performanceNodes().filter(node=>node.attrs['data-action']==='chart-data').length,0);
+ const beforeHistoricalSelection=c.records.requests.length;
+ await D.openPortfolio('book-b',SESSIONS[1],'portfolio',null,null,'historical');
+ assert.equal(D.metrics().annual,(0.1+rollingReads.length*0.01)*100);
+ assert.equal(D.raw().metrics.annual,2);
+ assert.equal(performanceNodes().filter(node=>hasClass(node,'stat')&&hasClass(node.parent,'five')).length,5);
+ assert.ok(c.records.requests.slice(beforeHistoricalSelection).map(endpoint=>new URL(endpoint,'http://local')).some(u=>u.pathname==='/api/workbench/portfolio'&&u.searchParams.get('task_id')==='book-b'&&u.searchParams.get('portfolio_session')===SESSIONS[1]&&u.searchParams.get('performance')!=='latest'));
+ assert.equal(D.performanceMode(),'historical');
+ await D.openPortfolio('book-c',SESSIONS[1],'portfolio',null,null,'forward');
+ assert.equal(D.forwardPerformance().status,'NO_REALIZED_FORWARD_PUBLICATION');
+ assert.deepEqual(read('({mode:Data.performanceMode(),metrics:Data.metrics(),historyAnnual:Data.raw().metrics.annual})'),{mode:'forward',metrics:{},historyAnnual:2});
+}
+async function coverageAssertions() {
+ const cv={mapping:'100.000%',reviewed_ending_weight:'44.000%',reviewed_absolute_change:'0.000%',selected_issuers:'100.000%'};
+ let projection={explanation:'',review_attribution:[],available_actions:[],required_actions:[],issuer_rows:[],issue_cards:[],citations:[],claim_limits:[],reasons:[],rule_ids:[],gaps:[],eligible_versions:[],scope_coverage:{attainable_below_minimum:false,book_positions:2,unmapped_positions:0,minimum_required_weight:'60.000%',whole_book_reviewed_weight:'44.000%'},coverage:{...cv,nothing_filed_ending_weight:'56.000%',unreached_ending_weight:'0.000%',accounted_ending_weight:'100.000%',nothing_filed_window_days:30},task_id:null,task_lifecycle:null,book:{result_hash:H('r'),formation_session:SESSIONS[1],held_count:2},evidence_as_of:'2026-10-02T16:00:00Z',evidence_expires_at:'2026-10-03T16:00:00Z',review_publication_hash:H('p'),review_state:'COMPLETE',disposition:'NO_MATERIAL_OBJECTION',policy_version:'v1',state:'REVIEW_PUBLISHED'};
+ const c=makeContext({hash:'#page=books',realData:true,body:url=>url.startsWith('/api/evidence-cro?')?projection:{}}),review=c.probe.LiveReview;
+ c.AbortController=AbortController;await connect(c);await review.open({result_hash:H('r')});
+ const render=()=>String(review.page()),text=markup=>markup.replace(/<[^>]*>/g,''),classes=node=>node.attrs.class?.split(' ')||[];
+ const word=key=>{c.fixtureKey=key;return vm.runInContext('t(fixtureKey)',c);};
+ const under=(node,cls)=>{for(let p=node.parent;p;p=p.parent)if(classes(p).includes(cls))return true;return false;};
+ let markup=render(),words=text(markup);
+ assert.ok(words.includes(word('at or above the floor')));
+ for(const value of [/44(?:\.000)?%/,/56(?:\.000)?%/,/0(?:\.000)?%/,/100(?:\.000)?%/])assert.match(words,value);
+ assert.equal(markupNodes(markup).filter(node=>node.tag==='i'&&under(node,'meter-bar')&&under(node,'coverage-meter')).length,1);
+ projection={...projection,coverage:cv};await review.refresh();markup=render();words=text(markup);
+ assert.ok(words.includes(word('Whole-book coverage accounting was not recorded; the floor comparison is unavailable.')));
+ assert.match(words,/44(?:\.000)?%/);assert.match(words,/floor comparison is unavailable/);
+ assert.equal(markupNodes(markup).filter(node=>classes(node).includes('coverage-meter')).length,0);
+}
+  (async()=>{await runPortfolioTransportAssertions();await projectionAssertions();await coverageAssertions();finish();})()
+    .catch(error=>{console.error(error);process.exitCode=1;});
+}

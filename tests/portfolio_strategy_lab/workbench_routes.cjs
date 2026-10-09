@@ -1,214 +1,7 @@
-// TE12 / PG2: enumerate production routes, offered collection rows, object tabs and recovery.
-// Primitive DOM and deterministic owner answers keep this a UI contract; the browser regression
-// separately presses Reload across actual documents over the service and built bundle.
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
-const project = path.resolve(__dirname, '../..');
-const library = require(path.join(project, 'tests/portfolio_strategy_lab/workbench_library.cjs'));
-const finish = library.guard('workbench_routes');
-const appDir = process.argv[2] ? path.resolve(process.argv[2]) : path.join(project, 'src/alphalattice/interface/local_application/assets/workbench-source/js/app');
-// Source files stay immutable during this process. Reuse bytes and compiled modules;
-// every scenario still receives its own fresh VM context and fixture state.
-const sourceBytes = new Map(), fixedScripts = new Map();
-const source = name => {
-  if(!sourceBytes.has(name))sourceBytes.set(name,fs.readFileSync(path.join(appDir,name),'utf8'));
-  return sourceBytes.get(name);
-};
-const fixedScript = name => {
-  if(!fixedScripts.has(name))fixedScripts.set(name,new vm.Script(source(name),{filename:name}));
-  return fixedScripts.get(name);
-};
-const build = fs.readFileSync(path.join(project, 'scripts/build_local_web_ui.py'), 'utf8');
-const files = [...build.slice(build.indexOf('APP_FILES = ['), build.indexOf('\n]', build.indexOf('APP_FILES = ['))).matchAll(/"js\/app\/([^"\n]+)"/g)].map(m => m[1]).filter(name => name!=='boot.js');
-const failures = [], counts = {routes:0, rendered_routes:0, registered_pages:0, object_addresses:0, opener_checks:0, offered_rows:0, object_tab_pairs:0, study_shapes:0, renderer_shapes:0, recovery_documents:0};
-const H = 'a'.repeat(64), ID = '11111111-2222-3333-4444-555555555555';
-const clone = value => JSON.parse(JSON.stringify(value));
-
-function makeContext({hash='#page=overview', body=null, catalog=[],historyRows=[],rawHistory=[],realData=false,inspectorDom=false} = {}) {
-  const storage = new Map(), records = {pushes:[], replaces:[], reloads:0, missingData:new Set(), requests:[], readVisits:[]};
-  const main = {dataset:{},innerHTML:'', childElementCount:1, querySelector(){return null;}, querySelectorAll(){return [];}, insertAdjacentHTML(_where, value){this.innerHTML += value;}};
-  const live = {textContent:''}, dialog = {dataset:{},open:false, close(){this.open=false;}, showModal(){this.open=true;}};
-  const inspector = {hidden:true,dataset:{},style:{setProperty(){}},innerHTML:'',querySelector:()=>null,querySelectorAll:()=>[],contains:()=>false,setAttribute(){},focus(){}};
-  const selectors = new Map([['#main',main], ['#tpLive',live], ['#dialog',dialog]]);
-  if(inspectorDom)selectors.set('#inspector',inspector);
-  const location = {hash, search:'', href:'http://127.0.0.1/workbench.html'+hash, reload(){records.reloads++;}};
-  const setAddress = address => {if(typeof address==='string'){location.hash=address.includes('#') ? '#'+address.split('#')[1] : address; location.href='http://127.0.0.1/workbench.html'+location.hash;}};
-  const dataMethods = {
-    workspaceStatus:'ready', workspaceError:'', manifest:{}, status:'ready', ready:false, mode:'local',
-    workspace:()=> 'Routing fixture', clocks:()=>({data:'2026-08-03',feature:'2026-08-03'}), inputs:()=>[], sessions:()=>[], experiments:()=>catalog, history:()=>historyRows,
-    portfolioEntries:()=>historyRows.map(row=>row.raw).filter(entry=>entry && ['portfolio.policy-development','INSTALLED_RESULT'].includes(entry.kind) && entry.status==='SUCCEEDED'),
-    inputVersion:()=>({available:true,date:'2026-08-03',cutoff:'2026-08-03'}), subject:()=>null, notice:()=>'',
-    actionableTasks:()=>[], unrecoverableTasks:()=>[], tasks:()=>[], runs:()=>[], runsOf:()=>[], updates:()=>[], decisions:()=>[], versions:()=>[],
-    holdings:()=>[], series:()=>[], studies:()=>[], books:()=>[], recent:()=>[], riskLinks:()=>[], researchUpdate:()=>null, cpuBudget:()=>({}),
-    lifecycleOf:(_id,fallback)=>fallback, declaredOf:id=>catalog.find(v=>v.task_id===id)||null,
-    offers:()=>false, route:op=>library.hostRoutes()[op]?.path || '/fixture/'+op,
-    read:async endpoint=>{records.requests.push(endpoint); if(typeof body==='function')return body(endpoint); if(endpoint.startsWith('/api/goals'))return body || {status:'GOAL_LIST',goals:[]}; if(endpoint.includes('curation'))return {candidates:[],curation:[],decision:null}; return body || {};},
-    readShared:(...args)=>dataMethods.read(...args),
-    visitPage:page=>records.readVisits.push(['visit',page]),
-    leavePage:page=>records.readVisits.push(['leave',page]),
-    refreshExperiments:async()=>{}, post:async()=>{throw Error('business write forbidden in routing harness');},
-    registerTaskReader(){}, registerRefresh(){}, registerTeamReader(){}, subscribe(){},
-  };
-  // Neutral missing owner answers are recorded, not silently treated as evidence of an owner contract.
-  const Data = new Proxy(dataMethods,{get(target,key){if(key in target)return target[key]; records.missingData.add(String(key)); return ()=>null;}});
-  const document = {querySelector:s=>selectors.get(s)||null, querySelectorAll:()=>[], getElementById:id=>selectors.get('#'+id)||null,
-    documentElement:{dataset:{},lang:'en',style:{setProperty(){}},classList:{add(){},remove(){},toggle(){}},clientWidth:1100},
-    body:{dataset:{},classList:{add(){},remove(){},toggle(){},contains(){return false;}},style:{setProperty(){}},querySelectorAll(){return [];}},
-    activeElement:null, addEventListener(){},createElement(){return {innerHTML:'',content:{children:[]},classList:{},style:{}};}};
-  const localStorage = {getItem:key=>storage.get(key)||null, setItem:(key,value)=>storage.set(key,value)};
-  const c = {console:{...console,error(){}}, URL,URLSearchParams,TextEncoder,Intl,Date,Math,Set,Map,Promise,Data,document,location,localStorage,sessionStorage:localStorage,
-    history:{state:{alpha:1},pushState(state,_title,address){this.state=state;records.pushes.push(address);setAddress(address);},replaceState(state,_title,address){this.state=state;records.replaces.push(address);setAddress(address);}},
-    window:{AlphaStaticMark:require(path.resolve(appDir,'../engines/static-mark.js')),innerWidth:1100,innerHeight:1000,addEventListener(){},removeEventListener(){},confirm:()=>true,matchMedia:()=>({matches:false,addEventListener(){}})},
-    navigator:{platform:'Win32'},innerWidth:1100,innerHeight:1000,matchMedia:()=>({matches:false,addEventListener(){}}),
-    addEventListener(){},removeEventListener(){},requestAnimationFrame:fn=>{fn();return 1;},cancelAnimationFrame(){},queueMicrotask(){},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},
-    MutationObserver:class{observe(){} disconnect(){}},ResizeObserver:class{observe(){} disconnect(){}},HTMLElement:class{},
-    clone, $:s=>selectors.get(s)||null,$$:()=>[],getSelection:()=>'',scrollTo(){},async fetch(endpoint,options={}){
-      if(!realData)throw Error('network forbidden in routing prototype');if(options.method&&options.method!=='GET')throw Error('business write forbidden in routing harness');records.requests.push(endpoint);
-      const value=endpoint.startsWith('/api/session')?{session_token:'fixture-only',workspace_id:'Routing fixture',routes:library.hostRoutes(),research_context:{inputs:{versions:[]},tasks:{tasks:[]}}}:endpoint.startsWith('/api/research-history')?{entries:rawHistory,next_cursor:null}:endpoint==='/api/experiments'?{experiments:catalog}:endpoint==='/api/decisions'?{decisions:[]}:typeof body==='function'?body(endpoint):body || {};
-      const resolved = await value;
-      return {ok:true,status:200,headers:{get:()=> 'application/json'},text:async()=>JSON.stringify(resolved)};
-    },
-    viewW:()=>1100, viewH:()=>1000, toolsMenu(){},toggleRowMenu(){},experienceSettings(){},hideToast(){},closeDialog(){},notify(){},copyText(){},
-    setHeld(){},toggleDisplayMenu(){},chooseDisplay(){},openCodeRef(){},download(){},reveal(){},
-    ...library(appDir)};
-  library.context(c);
-  // Match the product's dictionary-before-reader boot: I18N retains this object.
-  // Loading a replacement dictionary afterwards silently tested English in zh mode.
-  fixedScript('../data/zh.js').runInContext(c);c.window.ALPHA_ZH_READY=true;
-  for(const file of files) if(realData || file!=='data.js')fixedScript(file).runInContext(c);
-  vm.runInContext('globalThis.probe={Data,app,ROUTES,PAGES,PAGE_TABS,OBJECT_KEYS,Inspect,Window,LiveViews,LiveStudy,LiveGoals,LiveModels,LiveFeatureResearch,LiveTeam,LiveActivity,LiveActivation,LiveReview,LiveWorkspace,LiveFeatures,LiveResearch,LiveTasks,Settings,ACTIONS,PRODUCT_ACTIONS,readRoute,routeUrl,routeObject,routeObjectId,listUrl,navigate,objectEntry,render,renderFailure,failureCard};',c);
-  const realRender = c.probe.render;
-  c.render = ()=>{}; // Navigation calls retain all production route mechanics; layout itself is read explicitly below.
-  c.closeDialog = ()=>{}; c.hideToast = ()=>{}; c.notify = ()=>{}; // Primitive chrome only; never replace route or reader logic.
-  c.probe.Window.render=()=>{}; // Frame chrome is outside this route/reader contract.
-  c.records=records;c.main=main;c.live=live;c.inspector=inspector;c.realRender=realRender;
-  c.setRoute = address=>{setAddress(address);c.probe.readRoute();};
-  return c;
-}
-
-async function check(name, fn) {try{await fn();}catch(error){failures.push({name,message:error.message,stack:error.stack});console.log('FAIL '+name+': '+error.stack);}}
-function q(c){return new URLSearchParams(c.location.hash.slice(1));}
-function resetHistory(c){c.records.pushes.length=0;c.records.replaces.length=0;}
-function nonempty(markup,label){
-  assert.ok(String(markup || '').trim(),label+' returns nonempty markup');
-  for(const [, declared] of String(markup).matchAll(/\bdata-row-columns="([^"]*)"/g)) {
-    const columns=declared.trim().split(/\s+/).filter(Boolean);
-    assert.ok(columns.length<=8,label+': named facts fit the shared eight-column row: '+columns.join(', '));
-  }
-}
-const settle=async()=>{for(let i=0;i<4;i++)await new Promise(resolve=>setImmediate(resolve));};
-const decode=value=>String(value).replace(/&quot;/g,'"').replace(/&#39;|&#x27;/g,"'").replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
-// U121 / TE12: inspect the actual shared locator markup, including its ancestry. This
-// bounded source-tree control does not claim browser layout or a native clipboard read.
-function markupNodes(markup) {
-  const nodes=[],stack=[],voids=new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
-  for(const match of String(markup).matchAll(/<\/?([a-z][\w:-]*)\b([^<>]*)>/gi)) {
-    const tag=match[1].toLowerCase();
-    if(match[0].startsWith('</')) { const at=stack.map(n=>n.tag).lastIndexOf(tag);if(at>=0)stack.length=at;continue; }
-    const attrs=Object.fromEntries([...match[2].matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map(a=>[a[1],decode(a[2]??a[3])]));
-    const node={tag,attrs,parent:stack.at(-1)||null};nodes.push(node);
-    if(!voids.has(tag)&&!match[0].endsWith('/>'))stack.push(node);
-  }
-  return nodes;
-}
-function ancestors(node) { const out=[];for(let parent=node.parent;parent;parent=parent.parent)out.push(parent);return out; }
-const hasClass=(node,name)=>(node.attrs.class||'').split(/\s+/).includes(name);
-function assertLocators(markup,ids,label,{row=null}={}) {
-  const nodes=markupNodes(markup),copies=nodes.filter(n=>n.tag==='button'&&n.attrs['data-action']==='copy-text');
-  for(const copy of copies)assert.ok(!ancestors(copy).some(n=>['a','button'].includes(n.tag)&&hasClass(n,'list-row-main')),label+': copy is outside the clickable row');
-  for(const id of ids) {
-    const copy=copies.find(n=>n.attrs['data-value']===id&&(!row||ancestors(n).some(a=>a.attrs['data-key']===row))&&ancestors(n).some(a=>hasClass(a,'run-ref')));
-    assert.ok(copy,label+': full identity has the shared copy control: '+id);
-    const cell=ancestors(copy).find(n=>hasClass(n,'run-ref'));
-    assert.ok(nodes.some(n=>n.attrs['data-tip']===id&&ancestors(n).includes(cell)),label+': hover holds the same full identity: '+id);
-    assert.ok(copy.attrs['aria-label'],label+': copy control has accessible words');
-  }
-}
-function localizedContext(lang,options) {
-  const c=makeContext(options);
-  vm.runInContext("I18N.set('"+lang+"');",c);c.probe.readRoute();return c;
-}
-function offered(markup,action,value){const tags=[...String(markup).matchAll(/<button\b[^>]*>/g)].map(m=>m[0]);const row=tags.find(tag=>decode(/data-action="([^"]*)"/.exec(tag)?.[1])===action&&decode(/data-value="([^"]*)"/.exec(tag)?.[1])===value);assert.ok(row,'collection offers '+action+' '+value);return row;}
-function followAnchor(c,markup,predicate){const href=[...String(markup).matchAll(/<a\b[^>]*href="([^"]*)"/g)].map(m=>decode(m[1])).find(h=>predicate(new URLSearchParams(h.slice(1))));assert.ok(href,'collection offers exact object link');c.history.pushState({alpha:1},'',href);c.probe.readRoute();return href;}
-async function press(c,action,value){const handler=c.probe.ACTIONS[action] || c.probe.PRODUCT_ACTIONS[action];assert.equal(typeof handler,'function','offered action '+action+' has a handler');await handler(value);await settle();}
-async function connect(c){await c.probe.Data.connect();assert.equal(c.probe.Data.workspaceStatus,'ready',c.probe.Data.workspaceError);c.probe.readRoute();await settle();}
-function goalBody(hash=H){return {status:'GOAL_NARRATIVE',goal_hash:hash,head_hash:hash,evidence_verification:'COMPLETE',references:[],record:{},goal:{goal_id:ID,goal_hash:hash,revision:1,parent_hash:null,state:'OPEN',recorded_at:'2026-08-03T12:00:00Z',submitted_by:'HUMAN',declaration:{kind:'RESEARCH',title:'Routing Goal',objective:'Read exact saved routing fixture',criteria:[],deliverables:[]},references:[],statements:[],submission:null,completion:null}};}
-function studyBody(kind='alpha.model-development',status='EXPERIMENT_PUBLISHED',shape='development'){
-  const b={status,task_id:ID,program:{kind,program_hash:H},research_input_id:'fixture-input',input_binding_hash:H,limitations:[],standing:null,
-    document:{experiment:{sessions:{start:'2026-07-01',end:'2026-08-03',as_of:{session:'2026-08-03'}}},alpha:{target_recipe_id:'TARGET',model_parameters:{family:'ridge'},ordered_feature_ids:[]},factor:{factor_ids:[]},risk:{estimator:{capability:'sample-covariance',parameters:{}}}},
-    alpha_source:{factor_task_id:ID,curation_receipt_hash:H},execution_preview:{fold_count:0,folds:[],split_policy:{}},result:{candidates:[],folds:[],evaluations:[],evidence_report:{items:[],hypothesis_count:0}},fold_results:[]};
-  if(shape==='lifecycle'){delete b.alpha_source;b.lifecycle_research={lifecycle:{month_interval:1,anchor_month:1,training_window_sessions:20,purge_sessions:1,seeds:[1],vintage_weights:[1]},fit_call_count:0,prediction_call_count:0,formation_sessions:[]};}
-  if(shape==='qualification'){delete b.alpha_source;b.alpha_qualification={status:'QUALIFIED',conclusions:[],limitations:[],qualification_hash:H};}
-  return b;
-}
-function portfolioBody(){return {schema:'verified-portfolio-display',subject:{task_id:ID,receipt_hash:H,title:'Fixture book',input_id:'fixture-input',input_hash:H,input_date:'2026-08-03',session:'2026-08-03',support:{start:'2026-07-01',end:'2026-08-03',as_of:{session:'2026-08-03',phase:'OFFICIAL_CLOSE'}},cost_per_side:'5'},notice:'Published historical research.',seriesBasis:'index',series:[],sessions:['2026-08-03'],metrics:{},position:{session:'2026-08-03',decisionMode:'REBALANCE',holdingCount:0,cash:1},holdings:[],universe:{eligible:0,total:0,quarantine:0,definition:''},limitations:[],reviewSelector:{experiment_task_id:ID,experiment_receipt_hash:H,portfolio_session:'2026-08-03'},declaration:{top_k:1,tranches:1,exit_rank:1,weight_rule:'ew',cost_bps_per_side:'5'},source:{task_id:ID,receipt_hash:H,input_binding_hash:H,alpha_task_id:ID,candidate_id:'fixture-candidate'}};}
-function reviewBody(){return {state:'EVIDENCE_AUTHORITY_NOT_ADMITTED',book:{authority:'DEVELOPMENT_RESULT',result_hash:H,formation_session:'2026-08-03',held_count:0},explanation:'Fixture has no evidence authority.',issuer_rows:[],available_actions:[],required_actions:[],claim_limits:[],eligible_versions:[],issue_cards:[],reasons:[],citations:[],gaps:[]};}
-
-// V683: use production renderPage for visit teardown, with only the content/chrome reduced.
-// The read owners, route methods, generations and navigation remain the production ones.
-function lifecycleContext(options={}) {
-  const c=makeContext({...options,inspectorDom:true});c.scrollX=0;c.scrollY=0;c.main.contains=()=>false;c.main.style={};
-  c.probe.LiveViews.page=()=>'<section>Read lifetime fixture</section>';
-  c.probe.Window.afterRender=()=>{};c.probe.Window.markDetail=()=>{};
-  c.probe.Inspect.closePeek=()=>{};c.probe.Inspect.refreshFacts=()=>{};
-  c.probe.Inspect.refreshRecord=()=>{};c.probe.Inspect.reopenFromAddress=()=>{};
-  c.probe.LiveTasks.refreshInspector=()=>{};c.probe.LiveWorkspace.afterPaint=()=>{};
-  vm.runInContext('globalThis.lifecyclePaint=renderPage;Portfolio.syncSessionButtons=()=>{};Portfolio.bindCharts=()=>{};Geometry.schedule=()=>{};',c);
-  c.render=c.lifecyclePaint;c.patchMain=c.lifecyclePaint;
-  c.probe.readRoute();c.render();
-  return c;
-}
-const lifetimeGate=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
-const readCancelled=()=>Object.assign(Error('Read cancelled'),{name:'AbortError'});
-
-
-// Actual Data, Review and renderer handoff; only the offline transport is held.
-// Recording selected public read calls counts subscribers even when raw GETs join.
-function reviewReadContext() {
-  const publication='d'.repeat(64),selector={result_hash:H};
-  const projection={...reviewBody(),state:'REVIEW_PUBLISHED',review_publication_hash:publication,
-    book:{authority:'DEVELOPMENT_RESULT',result_hash:H,formation_session:'2026-08-03',held_count:0}};
-  const c=lifecycleContext({hash:'#page=books',realData:true,body:url=>url.startsWith('/api/evidence-cro?')?projection:{}}),p=c.probe;
-  c.AbortController=AbortController;p.Data.leavePage(p.app.page);p.Data.visitPage(p.app.page);
-  const fetch=c.fetch,read=p.Data.read,gates=new Map(),requests=[],selected=[],downloads=[];
-  p.Data.read=(...args)=>{selected.push(args[0]);return read(...args);};
-  c.download=(text,name,type)=>downloads.push({text,name,type});
-  c.fetch=async(url,init={})=>{
-    const held=gates.get(url);if(!held)return fetch(url,init);
-    gates.delete(url);c.records.requests.push(url);
-    const row={url,signal:init.signal,aborted:false};requests.push(row);held.entered=true;held.request=row;
-    const aborted=()=>{row.aborted=true;};init.signal?.addEventListener('abort',aborted,{once:true});
-    let value;try{value=await held.promise;}finally{init.signal?.removeEventListener('abort',aborted);}
-    return {ok:true,status:200,headers:{get:()=> 'application/json'},text:async()=>JSON.stringify(value)};
-  };
-  const hold=(url,value)=>{
-    assert.ok(!gates.has(url));let release;
-    const held={entered:false,promise:new Promise(resolve=>{release=resolve;}),release:()=>release(value)};
-    gates.set(url,held);return held;
-  };
-  return {c,p,selector,projection,publication,hold,requests,selected,downloads,
-    projectionURL:'/api/evidence-cro?'+new URLSearchParams(selector),
-    exportURL:'/api/evidence-cro/export?'+new URLSearchParams({...selector,review_publication_hash:publication})};
-}
-async function reviewReadEntered(held) {
-  for(let i=0;i<20&&!held.entered;i++)await new Promise(resolve=>setImmediate(resolve));
-  assert.ok(held.entered,'the actual Review reader reaches the held owner');
-}
-async function reviewReadCompleted(promise) {
-  let end;promise.then(()=>{end=true;},error=>{end=error;});
-  for(let i=0;i<5&&!end;i++)await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(end,true,'the cancelled page subscriber completes before its shared raw wire');await promise;
-}
-async function loadedReport(e) {
-  await connect(e.c);await e.p.LiveReview.open(e.selector,'','evidence-stream');
-  e.p.LiveReview.step('report');assert.equal(e.p.app.page,'report');
-  assert.equal(e.p.LiveReview.facts().state,'REVIEW_PUBLISHED');
-}
-
-(async()=>{
-  // V676 / TE12: Portfolio and its opened book share one registered reader; Home
+// Production routes and owner readers; each scenario has an isolated VM.
+const {assert,fs,path,vm,library,appDir,source,fixedScript,files,counts,H,ID,clone,makeContext,check,q,resetHistory,nonempty,settle,decode,markupNodes,ancestors,hasClass,assertLocators,localizedContext,offered,followAnchor,press,connect,goalBody,studyBody,portfolioBody,reviewBody,lifecycleContext,lifetimeGate,readCancelled,reviewReadContext,reviewReadEntered,reviewReadCompleted,loadedReport,run} = require('./workbench_route_context.cjs');
+run('workbench_routes', async () => {
+  // : Portfolio and its opened book share one registered reader; Home
   // and Settings consume automation. Change only outside-page owner answers:
   // no Task transition, Reload, explicit reread, navigation or business write.
   for (const site of ['Portfolio','book','Home','Settings']) for (const lang of ['en','zh']) await check('External strategy standing '+site+'/'+lang,async()=>{
@@ -349,16 +142,6 @@ async function loadedReport(e) {
     const g={goal_id:ID,goal_hash:H,title:'Routing Goal',objective:'Read one exact fixture',kind:'RESEARCH',state:'OPEN',revision:1,reference_count:0,recorded_at:new Date().toISOString()};
     const c=makeContext({hash:'#page=goals',body:endpoint=>endpoint==='/api/goals'?{goals:[g]}:goalBody()});c.probe.readRoute();await c.probe.LiveGoals.ensure();offered(c.probe.LiveViews.page(),'goal-open',H);resetHistory(c);await press(c,'goal-open',H);await c.probe.LiveGoals.ensure();assert.equal(c.records.pushes.length,1);assert.equal(q(c).get('goal'),H);nonempty(c.probe.LiveViews.page(),'offered Goal');counts.offered_rows++;
   });
-  // U191: hiding the visual brand never hides the application menu's identity.
-  for(const lang of ['en','zh']) for(const mode of ['sidebar','rail']) await check('Named product menu '+mode+'/'+lang,()=>{
-    const c=localizedContext(lang), side={innerHTML:'',classList:{toggle(){}},querySelector(){return null;},querySelectorAll(){return [];}};
-    const select=c.document.querySelector;c.document.querySelector=selector=>selector==='#side'?side:select(selector);
-    vm.runInContext("savePreference('navigation', '"+mode+"');",c);c.probe.Window.renderSide();
-    const buttons=markupNodes(side.innerHTML).filter(x=>x.attrs['data-action']==='product-menu');
-    assert.equal(buttons.length,1);assert.equal(buttons[0].attrs['aria-label'],'AlphaLattice');
-    assert.equal(buttons[0].attrs['aria-haspopup'],'menu');
-    counts.named_product_menus=(counts.named_product_menus||0)+1;
-  });
   await check('offered Model row',async()=>{
     const model={model_id:'fixture-model',state:'INSTALLED',contract:{findings:[]},identity:{moves:[]}};
     const c=makeContext({hash:'#page=models',body:{models:[model]}});c.probe.readRoute();await c.probe.LiveModels.ensure();offered(c.probe.LiveViews.page(),'model-open',model.model_id);resetHistory(c);await press(c,'model-open',model.model_id);assert.equal(c.records.pushes.length,1);assert.equal(q(c).get('model'),model.model_id);nonempty(c.probe.LiveViews.page(),'offered Model');counts.offered_rows++;
@@ -397,7 +180,43 @@ async function loadedReport(e) {
     const raw={entry_id:'experiment:'+ID,task_id:ID,kind:'portfolio.policy-development',status:'SUCCEEDED',recorded_at:new Date().toISOString(),input_id:'fixture-input',input_binding_hash:H,book:{experiment_task_id:ID,experiment_receipt_hash:H,portfolio_session:'2026-08-03'}};
     const c=makeContext({hash:'#page='+page,realData:true,rawHistory:[raw],body:portfolioBody()});await connect(c);offered(c.probe.LiveViews.page(),'history-open',raw.entry_id);resetHistory(c);await press(c,'history-open',raw.entry_id);assert.equal(c.records.pushes.length,1);assert.equal(q(c).get('book'),ID);assert.equal(c.probe.app.page,page==='compare'?'compare':'portfolio');assert.ok(c.probe.Data.ready,c.probe.Data.error);nonempty(c.probe.LiveViews.page(),'offered Portfolio '+page);counts.offered_rows++;
   });
-  // U195 / P3b: discover installed books and authored studies through the real Data
+  await check('Portfolio exact saved selections',async()=>{
+    const dates=['2024-08-05','2024-08-12'], books=['book-b','book-c'];
+    const rawHistory=books.map(task=>({entry_id:'experiment:'+task,task_id:task,kind:'portfolio.policy-development',status:'SUCCEEDED',book:{portfolio_session:dates[1],experiment_receipt_hash:H}}));
+    const body=endpoint=>{
+      if(!endpoint.startsWith('/api/workbench/portfolio?'))return {};
+      const q=new URL(endpoint,'http://fixture').searchParams,base=portfolioBody();
+      return {...base,sessions:dates,subject:{...base.subject,task_id:q.get('task_id'),session:q.get('portfolio_session')||dates[1]}};
+    };
+    const c=makeContext({hash:'#page=factor&study=study-a',realData:true,rawHistory,body}),D=c.probe.Data;
+    c.AbortController=AbortController;
+    let at=0,hashchange;
+    const entries=[{state:c.history.state,address:c.location.hash}],push=c.history.pushState.bind(c.history),replace=c.history.replaceState.bind(c.history);
+    c.history.pushState=(state,title,address)=>{push(state,title,address);entries.splice(at+1);entries.push({state,address:c.location.hash});at++;};
+    c.history.replaceState=(state,title,address)=>{replace(state,title,address);entries[at]={state,address:c.location.hash};};
+    c.window.addEventListener=(name,fn)=>{if(name==='hashchange')hashchange=fn;};
+    c.probe.Inspect.bindHover=()=>{};
+    const select=c.document.querySelector,toast={addEventListener(){}};
+    c.document.querySelector=selector=>selector==='#toastClose'?toast:select(selector);
+    select('#dialog').addEventListener=()=>{};
+    vm.runInContext('Events.bind()',c);assert.equal(typeof hashchange,'function');
+    const traverse=async delta=>{at+=delta;const entry=entries[at];c.history.state=entry.state;c.location.hash=entry.address;c.location.href='http://fixture/workbench.html'+entry.address;hashchange();await settle();};
+    await connect(c);resetHistory(c);
+    await D.openEntry('experiment:book-b');
+    assert.equal(c.records.pushes.length,1);assert.equal(c.probe.app.page,'portfolio');
+    assert.equal(q(c).get('book'),'book-b');assert.equal(q(c).get('session'),dates[1]);assert.equal(q(c).get('study'),null);
+    await D.openEntry('experiment:book-b');assert.equal(c.records.pushes.length,1);
+    await D.openPortfolio('book-b',dates[0]);await D.reload();assert.equal(c.records.pushes.length,1);
+    await D.openPortfolio('book-b',dates[0],'portfolio',null,null,'forward');
+    await D.openEntry('experiment:book-c');assert.equal(c.records.pushes.length,2);assert.equal(D.subject().task_id,'book-c');
+    await traverse(-1);
+    assert.equal(D.subject().task_id,'book-b');assert.equal(D.subject().session,dates[0]);assert.equal(D.performanceMode(),'forward');
+    assert.equal(q(c).get('book'),'book-b');assert.equal(q(c).get('session'),dates[0]);assert.equal(c.records.pushes.length,2);
+    await traverse(-1);assert.equal(c.probe.app.page,'factor');assert.equal(q(c).get('study'),'study-a');
+    await traverse(1);assert.equal(D.subject().task_id,'book-b');assert.equal(D.subject().session,dates[0]);assert.equal(D.performanceMode(),'forward');
+    await traverse(1);assert.equal(D.subject().task_id,'book-c');assert.equal(c.records.pushes.length,2);
+  });
+  // P3b: discover installed books and authored studies through the real Data
   // collection, with failures and unrelated records as negative controls. No per-book
   // read is needed to list them; pressing a row reads its exact owner Task/date once.
   for(const lang of ['en','zh']) for(const page of ['portfolio','compare']) await check('Portfolio eligible collection '+page+'/'+lang,async()=>{
@@ -429,7 +248,7 @@ async function loadedReport(e) {
     }
   });
   // Real Goal readback and LiveViews dispatch on every Goal folder, both route identity forms.
-  // U189 / P3a: the last canonical Task mutation reads in the person's zone.
+  // P3a: the last canonical Task mutation reads in the person's zone.
   // Missing and legacy clocks stay blank; a request/Goal clock cannot fill them.
   const previousTimezone=process.env.TZ;
   try {
@@ -551,7 +370,7 @@ async function loadedReport(e) {
     await check('RHS missing '+side+' candidate/run guard',async()=>{await c.probe.LiveStudy.alphaComparisonRun();assert.equal(c.records.requests.filter(p=>p.startsWith('/api/experiments/alpha-compare?')).length,0,'an absent candidate is never offered for comparison');});counts.rhs_cases=(counts.rhs_cases||0)+1;
   }
 
-  // U121 (V664): every composed identity in these collection refusals uses the shared
+  // every composed identity in these collection refusals uses the shared
   // full-hover/copy cell. Scripted owner answers exercise production readers and builders;
   // the real QA scene separately proves the service, browser hover and copy-control journey.
   await check('refusal locator ancestry control',()=>{
@@ -658,7 +477,7 @@ async function loadedReport(e) {
     });
   }
 
-  // V667 / TE12: every registered addressed reader survives a fresh document and
+  // : every registered addressed reader survives a fresh document and
   // the real connection's completion. A newly registered mode needs its own fixture.
   const inspectorFixtures = {
     facts: {page:'goal-results',goal:H,facts:'1'},
@@ -710,7 +529,7 @@ async function loadedReport(e) {
     const opening=c.probe.LiveTasks.open(ID);c.probe.Inspect.openRecord();release(inspectorAnswer('/api/tasks/recovery'));await opening;await settle();
     assert.equal(c.probe.Window.inspectorMode(),'record');assert.equal(q(c).get('task'),ID);assert.equal(q(c).get('record'),'1');
   });
-  // V668 / TE12: the public owner's admitted operation/stage table is the class,
+  // : the public owner's admitted operation/stage table is the class,
   // including both comparison families and all four experiment stages.
   const referenceOperations=library.codes().goal_reference_operations;
   assert.ok(referenceOperations && Object.keys(referenceOperations).length,'reference kinds come from their owner');
@@ -771,7 +590,7 @@ async function loadedReport(e) {
     const markup=String(c.probe.Window.detailPane('reference'));assert.ok(markup.includes('could not be read at its recorded identity')&&!markup.includes('Cumulative net wealth'),'a mismatched owner answer never becomes the selected reading');
   });
 
-  await check('V683 Alpha Foundation label reads one exact summary',async()=>{
+  await check('Alpha Foundation label reads one exact summary',async()=>{
     const F='f'.repeat(64),full=studyBody(),summaryPath=library.hostRoutes().EXPERIMENT_FOUNDATION_SUMMARY?.path;
     assert.equal(summaryPath,'/api/experiments/foundations/summary');full.alpha_source.foundation_admission_hash=F;
     const c=lifecycleContext({hash:'#page=alpha',body:url=>url.startsWith(summaryPath+'?')?{status:'FOUNDATION_SUMMARY',foundation_admission_hash:F,ordered_factor_ids:['first','second','third','fourth','fifth'],verification:'METADATA_ONLY_SOURCE_GRAPH_NOT_CHECKED'}:full}),p=c.probe;
@@ -781,7 +600,7 @@ async function loadedReport(e) {
     assert.deepEqual(c.records.requests.filter(url=>url.startsWith('/api/experiments/foundations')),[summaryPath+'?'+new URLSearchParams({foundation_admission_hash:F})],'Alpha label reads no full Foundation list or readback');
     assert.equal(q(c).get('study'),ID);assert.equal(p.app.page,'alpha');
   });
-  for(const departure of ['page','study'])await check('V683 Alpha Foundation label discards a reply after '+departure+' leave',async()=>{
+  for(const departure of ['page','study'])await check('Alpha Foundation label discards a reply after '+departure+' leave',async()=>{
     const old=lifetimeGate(),F='f'.repeat(64),other='66666666-2222-3333-4444-555555555555';let labels=0;
     const exact='/api/experiments/foundations/summary?'+new URLSearchParams({foundation_admission_hash:F});
     const c=lifecycleContext({hash:'#page=alpha',body:url=>{if(url===exact)return ++labels===1?old.promise:{status:'FOUNDATION_SUMMARY',foundation_admission_hash:F,ordered_factor_ids:['fresh-factor']};const body=studyBody();body.task_id=new URLSearchParams(url.split('?')[1]).get('task_id');body.alpha_source.foundation_admission_hash=F;return body;}}),p=c.probe;
@@ -798,7 +617,7 @@ async function loadedReport(e) {
     assert.equal(q(c).get('study'),departure==='page'?ID:other);counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
 
-  await check('V683 selected Foundation renderer ensure never starts a lobby read',async()=>{
+  await check('selected Foundation renderer ensure never starts a lobby read',async()=>{
     const standing=lifetimeGate(),collection='/api/experiments/foundations',exact='/api/experiments/foundations/readback?'+new URLSearchParams({foundation_admission_hash:H});let ensureCalls=0;
     const a={admission_hash:H,factor_task_id:ID,input_id:'fixture-input',input_binding_hash:H,curation_receipt_hash:H,foundation:{foundation_hash:H,ordered_factor_ids:['factor'],limitations:[],execution_outcome:{market_as_of:'2026-08-03'}}};
     const c=lifecycleContext({hash:'#page=foundation&foundation='+H,body:url=>{if(url===exact)return {status:'FOUNDATION_SEALED',admission:a};if(url===collection)return standing.promise;throw Error('unexpected Foundation read '+url);}}),p=c.probe,ensure=p.LiveStudy.ensure;
@@ -817,7 +636,7 @@ async function loadedReport(e) {
     counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
 
-  for(const departure of ['abort','revision','page'])await check('V683 Foundation standing full read retries after '+departure,async()=>{
+  for(const departure of ['abort','revision','page'])await check('Foundation standing full read retries after '+departure,async()=>{
     const old=lifetimeGate(),a={admission_hash:H,factor_task_id:ID,input_id:'fixture-input',input_binding_hash:H,curation_receipt_hash:H,foundation:{foundation_hash:H,ordered_factor_ids:['factor'],limitations:[],execution_outcome:{market_as_of:'2026-08-03'}}};let collections=0,shared=0;
     const historical={foundations:[{status:'FOUNDATION_SEALED',admission:a,standing:'HISTORICAL',standing_code:'research_foundation.not_current'}]};
     const c=lifecycleContext({hash:'#page=foundation&foundation='+H,body:url=>url==='/api/experiments/foundations'?(++collections===1?old.promise:historical):{status:'FOUNDATION_SEALED',admission:a}}),p=c.probe,read=p.Data.read;
@@ -837,7 +656,7 @@ async function loadedReport(e) {
     assert.ok(c.records.requests.includes('/api/experiments/foundations/readback?'+new URLSearchParams({foundation_admission_hash:H})),'the selected admission still uses full owner readback');
     counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  for(const departure of ['abort','page'])await check('V683 Storage backup collection retries after '+departure,async()=>{
+  for(const departure of ['abort','page'])await check('Storage backup collection retries after '+departure,async()=>{
     const old=lifetimeGate(),exact='/api/workspace/backup';let backups=0,shared=0;
     const fresh={backup_root:'fixture-backup-fresh',generations:[],refusals:[]};
     const c=lifecycleContext({hash:'#page=storage',body:url=>{if(url===exact)return ++backups===1?old.promise:fresh;if(url.startsWith('/api/workspace/storage'))throw Error('local_web.service_unreachable');return {};}}),p=c.probe,read=p.Data.read;
@@ -854,7 +673,7 @@ async function loadedReport(e) {
   });
 
 
-  await check('V683 loaded Report auxiliary export leaves no successor writes',async()=>{
+  await check('loaded Report auxiliary export leaves no successor writes',async()=>{
     const e=reviewReadContext(),{p,c}=e;await loadedReport(e);
     const old=e.hold(e.exportURL,{marker:'abandoned export',html:'obsolete HTML'});
     const exporting=p.LiveReview.readExport();await reviewReadEntered(old);
@@ -877,7 +696,7 @@ async function loadedReport(e) {
     fresh.release();await reread;p.LiveReview.exportReport('json');assert.equal(JSON.parse(e.downloads[0].text).marker,'fresh export');
     assert.equal(p.app.page,'report');assert.equal(p.LiveReview.facts().error,'');counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 current Report owner refusal remains visible',async()=>{
+  await check('current Report owner refusal remains visible',async()=>{
     const e=reviewReadContext(),{p}=e;await loadedReport(e);
     const refusal=e.hold(e.exportURL,{status:'REFUSED',refused:'fixture.report_refused',message:'Current report read refused'});
     const reading=p.LiveReview.readExport();await reviewReadEntered(refusal);refusal.release();await reading;
@@ -885,7 +704,7 @@ async function loadedReport(e) {
     assert.ok(String(p.LiveReview.page()).includes('Current report read refused'),'the current typed refusal is rendered');
     assert.equal(p.LiveReview.facts().busy,'');counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 retained Review Task retry keeps its new subscriber',async()=>{
+  await check('retained Review Task retry keeps its new subscriber',async()=>{
     const e=reviewReadContext(),{p}=e;await loadedReport(e);
     const url='/api/tasks/recovery?'+new URLSearchParams({task_id:ID});
     const old=e.hold(url,{task_id:ID,task_kind:'alternative_evidence.document_intelligence',lifecycle:'RUNNING',stages:[],verified_stage_count:0,total_stage_count:1});
@@ -903,7 +722,7 @@ async function loadedReport(e) {
     assert.ok(String(p.LiveReview.page()).includes('Current Task read refused'),'a current Task owner refusal remains visible');
     counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 Review projection owns its ticket after destination paint',async()=>{
+  await check('Review projection owns its ticket after destination paint',async()=>{
     const e=reviewReadContext(),{p,c}=e;await connect(c);
     for(const page of ['evidence-stream','report']){
       const held=e.hold(e.projectionURL,e.projection),opening=p.LiveReview.open(e.selector,'',page);
@@ -917,7 +736,7 @@ async function loadedReport(e) {
     counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
 
-  await check('V683 Review same-selector return through renderer teardown',async()=>{
+  await check('Review same-selector return through renderer teardown',async()=>{
     const selector={result_hash:H},c=lifecycleContext({hash:'#page=evidence',body:reviewBody()}),p=c.probe;
     await p.LiveReview.open(selector,'','evidence');
     const fullReads=()=>c.records.requests.filter(url=>url.startsWith('/api/evidence-cro?'));
@@ -928,7 +747,7 @@ async function loadedReport(e) {
     assert.equal(p.LiveReview.facts().busy,'');assert.equal(q(c).get('review_selector'),JSON.stringify(selector));
     counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 destination packet survives the previous Review page teardown',async()=>{
+  await check('destination packet survives the previous Review page teardown',async()=>{
     const selector={result_hash:H},c=lifecycleContext({hash:'#page=evidence',body:{...reviewBody(),state:'ANALYST_PACKET_PREPARED'}}),p=c.probe,documents=[];
     p.Data.readDocument=async url=>{documents.push(url);const value={status:'EVIDENCE_PACKET_READY',packet:'# Analyst packet\n\n```json\n{"spans":[]}\n```\n',prepared_task_id:ID,submission_template:{operation:'EVIDENCE_ANALYSIS_SUBMIT',result_hash:H,task_id:ID,analysis_context_hash:H,packet_hash:H}};return {value,text:JSON.stringify(value)};};
     await p.LiveReview.open(selector,'','evidence');await p.LiveReview.useTask(ID);
@@ -936,7 +755,7 @@ async function loadedReport(e) {
     assert.equal(p.LiveReview.facts().packet?.task,ID,'the destination read is adopted, not invalidated by leaving Evidence');
     assert.equal(p.LiveReview.facts().busy,'');counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 same-page book supersession releases retained-document read',async()=>{
+  await check('same-page book supersession releases retained-document read',async()=>{
     const old=lifetimeGate();let documentReads=0;
     const c=lifecycleContext({hash:'#page=evidence',body:url=>url.startsWith('/api/evidence/documents')?(++documentReads===1?old.promise:{status:'EVIDENCE_DOCUMENTS',documents:[],page:1,page_count:1,total:0}):reviewBody()}),p=c.probe;
     await p.LiveReview.open({result_hash:H},'','evidence');p.LiveReview.documentsPage('1');await settle();
@@ -945,7 +764,7 @@ async function loadedReport(e) {
     old.resolve({status:'EVIDENCE_DOCUMENTS',documents:[],page:1,page_count:1,total:0});await settle();
     assert.equal(p.LiveReview.facts().busy,'');counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 unfinished Alpha strict read resumes after a page visit',async()=>{
+  await check('unfinished Alpha strict read resumes after a page visit',async()=>{
     const old=lifetimeGate();let strictReads=0;
     const full={...studyBody(),receipt:{receipt_hash:H}},summary={...studyBody('alpha.model-development','EXPERIMENT_SUMMARY')};
     const c=lifecycleContext({hash:'#page=alpha',body:url=>url.startsWith('/api/experiments/summary?')?summary:url.startsWith('/api/experiments/readback?')?(++strictReads===1?old.promise:full):{}}),p=c.probe;
@@ -955,7 +774,7 @@ async function loadedReport(e) {
     assert.equal(strictReads,2,'returning resumes the unfinished strict read');assert.equal(p.LiveStudy.context()?.receipt_hash,H,'the full owner read replaces the summary');
     counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 unfinished Factor curation resumes after a page visit',async()=>{
+  await check('unfinished Factor curation resumes after a page visit',async()=>{
     const old=lifetimeGate();let choiceReads=0;
     const choices={receipt_hash:H,choices:[],limitations:[],decisions:[{receipt_hash:H}],inputs:['fixture-input']};
     const c=lifecycleContext({hash:'#page=factor',body:url=>url.startsWith('/api/experiments/curation?')?(++choiceReads===1?old.promise:choices):studyBody('factor.screening-development')}),p=c.probe,previews=[];
@@ -967,7 +786,7 @@ async function loadedReport(e) {
     assert.equal(previews.length,1,'the restored curation can supply its saved decision');assert.equal(previews[0].payload.curation_receipt_hash,H);
     counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 fresh cross-study open owns the destination visit',async()=>{
+  await check('fresh cross-study open owns the destination visit',async()=>{
     const other='66666666-2222-3333-4444-555555555555';
     const c=lifecycleContext({hash:'#page=factor',body:url=>{if(url.startsWith('/api/experiments/curation?'))return {receipt_hash:H,choices:[],limitations:[],decisions:[],inputs:[]};const task=new URLSearchParams(url.split('?')[1]).get('task_id');return {...studyBody(task===ID?'factor.screening-development':'alpha.model-development',url.startsWith('/api/experiments/summary?')?'EXPERIMENT_SUMMARY':'EXPERIMENT_PUBLISHED'),task_id:task,receipt:url.startsWith('/api/experiments/summary?')?undefined:{receipt_hash:H}};}}),p=c.probe;
     await p.LiveStudy.open(ID,'factor');await p.LiveStudy.open(other,'alpha');
@@ -975,7 +794,7 @@ async function loadedReport(e) {
     assert.equal(c.records.requests.filter(url=>url.startsWith('/api/experiments/readback?')&&url.includes(other)).length,1);
     counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 unfinished Lab controls reload after a page visit',async()=>{
+  await check('unfinished Lab controls reload after a page visit',async()=>{
     const old=lifetimeGate();let controlReads=0;
     const controls={status:'READY',document:{experiment:{kind:'factor.screening-development'},factor:{factor_ids:[]}},yaml:'factor draft',controls:[],research_input_id:'fixture-input',input_binding_hash:H,plan_request:{research_input_id:'fixture-input',input_binding_hash:H}};
     const route='#'+new URLSearchParams({page:'lab',research_input:'fixture-input',input_binding:H,experiment_kind:'factor.screening-development'});
@@ -986,7 +805,7 @@ async function loadedReport(e) {
     assert.equal(controlReads,2,'an unfinished initialized load is retried on return');assert.equal(p.LiveResearch.entryState(),'ready','load busy was released and the new declaration adopted');
     assert.equal(p.LiveResearch.context().input_binding_hash,H);counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 completed Study write releases busy after leaving its page',async()=>{
+  await check('completed Study write releases busy after leaving its page',async()=>{
     const answer=lifetimeGate();let writes=0,catalogReads=0;
     const choices={receipt_hash:H,choices:[],limitations:[],decisions:[],inputs:[]};
     const c=lifecycleContext({hash:'#page=factor',body:url=>url.startsWith('/api/experiments/curation?')?choices:studyBody('factor.screening-development')}),p=c.probe;
@@ -997,7 +816,7 @@ async function loadedReport(e) {
     p.navigate('factor',{study:ID});await p.LiveStudy.catalog();assert.equal(catalogReads,1,'a finished write cannot leave the Study permanently busy');
     counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 cancelled comparison member is retried for the same saved pair',async()=>{
+  await check('cancelled comparison member is retried for the same saved pair',async()=>{
     const other='66666666-2222-3333-4444-555555555555',old=lifetimeGate();let rightReads=0;
     const body=task=>({...studyBody(),task_id:task,result:{candidates:[{candidate_id:task===ID?'left':'right',status:'DEVELOPMENT_EVALUATED'}]}});
     const c=lifecycleContext({hash:'#page=alpha-compare',body:url=>{const task=new URLSearchParams(url.split('?')[1]).get('task_id');return task===other?(++rightReads===1?old.promise:body(other)):body(ID);}}),p=c.probe;
@@ -1007,7 +826,7 @@ async function loadedReport(e) {
     assert.equal(rightReads,2,'returning to the same pair resumes its cancelled member read');
     assert.ok(!String(p.LiveStudy.page()).includes('Read cancelled'),'cancellation is not kept as an owner comparison refusal');counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  await check('V683 cancelled Team verification preserves its previous discovery',async()=>{
+  await check('cancelled Team verification preserves its previous discovery',async()=>{
     const old=lifetimeGate(),ref=ID;
     const c=lifecycleContext({hash:'#page=team',body:url=>url.startsWith('/api/status?')?{task_id:ID,task_kind:'research_experiment',lifecycle:'SUCCEEDED'}:url.startsWith('/api/experiments/readback?')?old.promise:{}}),p=c.probe;
     await p.LiveTeam.resolve(ref);const previous=p.LiveTeam.resolved().get(ref);assert.equal(previous.level,'discovered');
@@ -1016,5 +835,5 @@ async function loadedReport(e) {
     p.navigate('team');p.Data.read=async()=>({...studyBody('factor.screening-development'),task_id:ID});await p.LiveTeam.verify(ref);
     assert.equal(p.LiveTeam.resolved().get(ref).level,'verified','the cancelled verification released its busy reference');counts.read_lifetimes=(counts.read_lifetimes||0)+1;
   });
-  console.log(JSON.stringify({counts,failures:failures.length}));if(failures.length)process.exitCode=1;finish();
-})().catch(error=>{console.error(error);process.exitCode=1;});
+
+});

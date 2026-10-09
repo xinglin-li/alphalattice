@@ -764,3 +764,43 @@ c.objectRow=publicBuilders.objectRow;
   }
   finish();
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+// data issue count names current cases apart from retained decisions.
+{
+const library=require('./workbench_library.cjs'),complete=library.guard("data_issue_count_names_current_cases_apart_from_retained_decisions");
+const _appDir=require('node:path').resolve(process.argv[2]),_project=require('node:path').resolve(__dirname,'../..');
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const {babelParse,traverse}=require(
+ require('node:path').join(_project,'third_party/playwright/node_modules/playwright/lib/transform/babelBundle.js'));
+const dir=require('node:path').dirname(_appDir)+'/';
+const source=fs.readFileSync(dir+'app/live-workspace.js','utf8');let fn;
+traverse(babelParse(source,'live-workspace.js',false),{FunctionDeclaration(p){
+ if(p.node.id?.name==='issuesSection')fn=source.slice(p.node.start,p.node.end);}});
+assert.ok(fn);
+const c={window:{},document:{documentElement:{}},console,states:new Map(),
+ count:String,html:(parts,...values)=>parts.map((s,i)=>s+(values[i]??'')).join(''),
+ issues:b=>({current:b.issues.length,recorded:b.recorded_decisions.length}),
+ panel:(title,caption,body)=>({title,caption,body}),
+ noteLine:()=>({kind:'empty'}),notRead:()=>({kind:'refused'})};
+library.context(c);vm.runInContext(fs.readFileSync(dir+'data/zh.js','utf8'),c);
+vm.runInContext(fs.readFileSync(dir+'app/i18n.js','utf8')+';globalThis.I18N=I18N;',c);
+c.t=c.I18N.t;vm.runInContext(fn+';globalThis.read=issuesSection;',c);
+for(const lang of ['en','zh']) {
+ c.I18N.set(lang);
+ for(const current of [0,3]) {
+  c.states.set('issues',{body:{issues:Array(current).fill({}),
+   recorded_decisions:Array(6).fill({})}});
+  const read=c.read();
+  assert.ok(read.title.includes('>'+current+'</span>'),'the count is current, not retained');
+  assert.equal(read.caption,c.t('Current cases read'));
+  assert.deepEqual({...read.body},{current,recorded:6});
+ }
+ c.states.set('issues',{body:{issues:[],recorded_decisions:[]}});
+ assert.equal(c.read().kind,'empty');
+ c.states.set('issues',{error:'unreadable'});
+ assert.equal(c.read().kind,'refused','an unread owner is never a zero count');
+}
+assert.deepEqual(Array.from(c.I18N.untranslated()),[]);
+assert.equal(c.t('Current cases read'),'已读取的当前案例');
+complete();
+}

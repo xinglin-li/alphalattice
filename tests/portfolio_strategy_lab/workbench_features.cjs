@@ -143,3 +143,38 @@ const shown=()=>c.F.page(), here=()=>entries[at];
   assert.deepEqual(posts,['/api/features/plan','/api/features/build','/api/features/plan','/api/features/build','/api/features/plan','/api/features/plan']);
   finish();
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+// feature input prerequisite keeps its elsewhere route.
+{
+const library=require('./workbench_library.cjs'),complete=library.guard("feature_input_prerequisite_keeps_its_elsewhere_route");
+const _appDir=require('node:path').resolve(process.argv[2]),_project=require('node:path').resolve(__dirname,'../..');
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const {babelParse,traverse}=require(
+ require('node:path').join(_project,'third_party/playwright/node_modules/playwright/lib/transform/babelBundle.js'));
+const dir=require('node:path').dirname(_appDir)+'/';
+function fn(file,name){const source=fs.readFileSync(dir+file,'utf8');let found;
+ traverse(babelParse(source,file,false),{FunctionDeclaration(p){
+  if(p.node.id?.name===name)found=source.slice(p.node.start,p.node.end);}});
+ assert.ok(found,name);return found;}
+const c={window:{},document:{documentElement:{}},console,
+ S:{operation:'CREATE',controls:null,busy:false,spec:null},operations:{CREATE:'Create'},
+ html:(parts,...values)=>parts.map((s,i)=>s+(values[i]??'')).join(''),
+ segBtn:()=>'',typedBtn:()=>'',objectHead:()=>'',stateLine:()=>'',
+ pageWord:()=> 'New experiment',
+ link:(word,page,cls)=>'<a class="'+cls+'" href="#page='+page+'">'+word+'</a>',
+ notice:()=>'',skeleton:()=>'<div class="skeleton"></div>'};
+library.context(c);vm.runInContext(fs.readFileSync(dir+'data/zh.js','utf8'),c);
+vm.runInContext(fs.readFileSync(dir+'app/i18n.js','utf8')+';globalThis.I18N=I18N;',c);
+c.t=c.I18N.t;
+vm.runInContext(fn('app/components.js','emptyState')+'\n'+fn('app/live-features.js','composeView')+
+ ';globalThis.read=composeView;',c);
+for(const lang of ['en','zh']){c.I18N.set(lang);const read=c.read({binding:null});
+ assert.ok(read.includes('data-empty="elsewhere"'),'input selection happens elsewhere');
+ assert.ok(read.includes('href="#page=lab"'),'its existing prerequisite route stays available');
+ assert.ok(read.includes(c.t('Select an input')));
+ assert.ok(!read.includes('class="button primary"'));
+ assert.ok(!c.read({binding:'held-input'}).includes('section-empty'),
+  'bound editors retain their own body');}
+assert.deepEqual(Array.from(c.I18N.untranslated()),[]);
+complete();
+}
