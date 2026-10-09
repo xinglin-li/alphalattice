@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -287,10 +288,7 @@ def test_progress_publication_retries_a_transient_windows_reader_lock(
 
 
 def test_a_read_back_projection_keeps_the_update_owner_invariants(tmp_path: Path) -> None:
-    """A projection validated from a file is held to the update's rules before any ratio is
-    derived and its instants must be timezone-aware: a sealed document with a zero total,
-    negative counts or a naive instant is a typed refusal (a ValueError, never numeric
-    work), while every projection a publisher wrote validates as itself, hash unchanged."""
+    """A readback projection preserves the update owner's invariants."""
 
     from pydantic import ValidationError
 
@@ -425,8 +423,6 @@ def test_indexed_missing_content_is_lost_work_and_not_a_tampered_index(
     tmp_path: Path, lookup: str
 ) -> None:
     """BEHAVIOUR: all six persisted index readers distinguish a lost child from a bad index."""
-    import json
-    from functools import partial
 
     from alphalattice.control.workspace_runtime.content_store import ContentAddressedStoreError
     from alphalattice.investment.portfolio_strategy_lab.publication.advancement_ledger import (

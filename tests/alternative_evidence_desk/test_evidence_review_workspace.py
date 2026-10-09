@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-import ast
+import importlib.util
 import json
+import os
 import re
 import shlex
+import subprocess
+import sys
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -30,6 +33,7 @@ from tests.alternative_evidence_desk.review_package import (
     CAPABILITY_HASH,
     _package,
 )
+from tests.structural.source_shape_samples import _OPTION_CASES
 
 
 @pytest.fixture
@@ -395,12 +399,7 @@ def _rr5f_book(
 def test_the_installer_leaves_quiet_holdings_out_of_its_floor_as_the_coverage_run_does(
     tmp_path, monkeypatch, capsys, installer_universe
 ):
-    """requirement (RR5f): the first Evidence authority setup judges its floor as the
-    coverage run does -- an issuer whose filing index at the cutoff shows nothing filed in the
-    window holds nothing to count -- the floor, cutoff and source checks unchanged. Four holdings
-    with filings and four quiet install at 0.60 and the answer names which were quiet; the
-    recorded import of that acquisition judges alike. A book whose every holding was quiet has
-    no document at all, refused in words with its numbers and no acquisition offered again."""
+    """The installer leaves quiet holdings out of its floor as the coverage run does."""
 
     book = _rr5f_book(
         tmp_path / "eight", monkeypatch, capsys, installer_universe, filed=4, quiet=4, failed=0
@@ -444,12 +443,7 @@ def test_the_installer_leaves_quiet_holdings_out_of_its_floor_as_the_coverage_ru
 def test_a_failed_acquisition_counts_against_the_floor_and_its_refusal_offers_the_cutoff_again(
     tmp_path, monkeypatch, capsys, installer_universe
 ):
-    """requirement (TE12): a quiet issuer leaves the share and a failed acquisition stays
-    in it. Four holdings with filings, two quiet and two failed install at 0.60 -- four of six
-    counted -- and the same book under a floor of 0.70 is refused with its numbers in words:
-    covered, needed, quiet and failed. The refusal offers the same official acquisition again,
-    bound to the one cutoff it counted at, and that request as printed, run once the source
-    serves the two bodies, installs all six."""
+    """A failed acquisition counts against the floor and its refusal offers the cutoff again."""
 
     from alphalattice.interface.local_application.cli_contract import refusal_words
 
@@ -490,13 +484,7 @@ def test_a_failed_acquisition_counts_against_the_floor_and_its_refusal_offers_th
 def test_a_recorded_import_names_the_root_it_could_not_read_and_its_own_check_is_its_way_on(
     tmp_path, monkeypatch, capsys, installer_universe
 ):
-    """requirement (RR5f): a recorded import given the artifact store's parent as its root
-    is refused naming the option it read, the file it failed on relative to that root and what
-    the option should hold, no absolute path, and its way on is the import's own check, offline,
-    offered at the one directory below that root holding the named source set. That check, run
-    as printed, reads and judges without installing; the corrected root installs. A recorded
-    import short of its floor is offered the import's check, never an acquisition or the network
-    decision."""
+    """A recorded import names the root it could not read and its own check is its way on."""
 
     from alphalattice.control.product_host.composition.research_workspace import (
         read_research_workspace_manifest,
@@ -563,11 +551,7 @@ def test_a_recorded_import_names_the_root_it_could_not_read_and_its_own_check_is
 def test_a_recorded_import_whose_knowledge_root_lacks_an_object_names_it_under_that_option(
     tmp_path, monkeypatch, capsys, installer_universe
 ):
-    """Requirement: a recorded import whose knowledge root exists but lacks an object
-    the source set names is refused by that option, naming the object relative to the root and
-    what the option must hold, its way on the import's own check and nothing created in the
-    root it was given; a root that is not there is refused the same way, at the root itself,
-    and not made; the acquiring workspace's own store installs."""
+    """A recorded import whose knowledge root lacks an object names it under that option."""
 
     book = _rr5f_book(tmp_path, monkeypatch, capsys, installer_universe, filed=4, quiet=0, failed=0)
     code, acquired = book.run(*book.acquire)
@@ -605,43 +589,6 @@ def test_a_recorded_import_whose_knowledge_root_lacks_an_object_names_it_under_t
     assert code == 0, installed
 
 
-_OPTION_CASES = {
-    "accessions": ("--acquire-sec", "--entities", "AAPL", "--accessions", "bad", "--preflight"),
-    "entities": ("--acquire-sec", "--entities", *(f"QE{index}" for index in range(9))),
-    "evidence_as_of": (
-        "--acquire-sec",
-        "--entities",
-        "AAPL",
-        "--evidence-as-of",
-        "not-a-time",
-        "--preflight",
-    ),
-    "maximum_documents_per_issuer": (
-        "--acquire-sec",
-        "--entities",
-        "AAPL",
-        "--maximum-documents-per-issuer",
-        "2",
-    ),
-    "minimum_entity_coverage": (
-        "--acquire-sec",
-        "--entities",
-        "AAPL",
-        "--minimum-entity-coverage",
-        "1.5",
-    ),
-    "model_name": ("--acquire-sec", "--entities", "AAPL", "--model-name", "fixture-model"),
-    "research_input_id": (
-        "--acquire-sec",
-        "--entities",
-        "AAPL",
-        "--research-input-id",
-        "fixture-input",
-    ),
-    "semantic_model": ("--acquire-sec", "--entities", "AAPL"),
-    "source_artifact_root": ("--source-set-hash", "a" * 64),
-    "source_set_hash": ("--source-set-hash", "../escape"),
-}
 """A value of each option the setup refuses on, through its real entry; the
 knowledge root's own case is the recorded import's above."""
 
@@ -688,10 +635,7 @@ def test_every_option_the_setup_refuses_on_names_what_it_must_hold_from_the_offe
 
 
 def test_the_setup_offer_and_its_refusals_read_one_table_of_what_each_option_must_hold() -> None:
-    """requirement (TE12): the Host's setup offer states, for each option it leaves to
-    the person, what it must hold, from `SETUP_OPTIONS`, as every refusal on an option names it;
-    the installer keeps no text of its own, every option it refuses on is in the table, and the
-    table holds exactly the options offered or refused on."""
+    """The setup offer and its refusals read one table of what each option must hold."""
 
     from scripts import materialize_evidence_cro_authority as setup
 
@@ -703,16 +647,6 @@ def test_the_setup_offer_and_its_refusals_read_one_table_of_what_each_option_mus
                 assert f"{flag} names {SETUP_OPTIONS[option]}" in choice["why"], choice
                 offered.add(option)
     assert setup.SETUP_OPTIONS is SETUP_OPTIONS and not hasattr(setup, "SOURCE_ROOTS")
-    tree = ast.parse(Path(setup.__file__).read_text(encoding="utf-8"))
-    refused = {
-        node.args[1].value
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and getattr(node.func, "id", None) == "OptionRefused"
-        and len(node.args) == 2
-        and isinstance(node.args[1], ast.Constant)
-    }
-    assert refused <= set(_OPTION_CASES) and refused <= set(SETUP_OPTIONS)
     roots = {"source_artifact_root", "source_knowledge_root"}
     assert set(SETUP_OPTIONS) == offered | set(_OPTION_CASES) | roots
 
@@ -869,10 +803,6 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     interpreter.write_bytes(b"selector-test-only")
     monkeypatch.setattr(create_retrieval_environment, "interpreter_path", lambda: interpreter)
     # `serve` imports these itself (a CLI call never pays for them), so the modules are patched.
-    import importlib.util
-    import os
-    import subprocess
-    import sys
 
     monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
     spawned = []
@@ -912,7 +842,6 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     assert "--stop-on-stdin" in opened.stdout
     interpreter.unlink()
     assert run_alphalattice.serve(args) == 2
-    import json
 
     missing = json.loads(capsys.readouterr().out)
     assert missing["next_action"] == "CREATE_DECLARED_RETRIEVAL_ENVIRONMENT"

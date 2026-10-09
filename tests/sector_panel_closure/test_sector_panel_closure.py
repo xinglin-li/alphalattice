@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime
+from dataclasses import replace
+from dataclasses import replace as with_fields
+from datetime import UTC, date, datetime, timedelta
 from threading import Lock
 
 import pyarrow as pa
@@ -244,7 +246,6 @@ def test_sector_staging_is_resumable_and_commits_only_at_fan_in(tmp_path, refres
     assert provider.calls == calls_before_early_resume
 
     due = NOW.replace(minute=NOW.minute + 6)
-    from dataclasses import replace as with_fields
 
     serial = with_fields(stager, transport_policy=SectorTransportPolicy(max_workers=1))
     acquired = serial.acquire(observed_at=due)
@@ -263,9 +264,6 @@ def test_sector_staging_is_resumable_and_commits_only_at_fan_in(tmp_path, refres
     assert feature_state.current_sector_state(manifest) is not None
     assert all(count == 1 for symbol, count in provider.calls.items() if symbol != "Y02")
     assert provider.calls["Y02"] == 2
-
-    from dataclasses import replace
-    from datetime import timedelta
 
     prior = feature_state.current_sector_state(manifest)
     fetch = provider.fetch_current_sector

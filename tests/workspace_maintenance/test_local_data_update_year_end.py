@@ -158,17 +158,7 @@ def _capture_panel_closure(workspace: Path):
 def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_boundary(
     year_end, tmp_path, monkeypatch
 ):
-    """Baseline, clean append, restart, historical correction -- on the page's routes.
-
-    Controlled end-to-end evidence over a deterministic Provider, not a live
-    recording: the append reaches partition reuse through the product path
-    (closed years keep their files and identities, the current year is
-    recomposed), exact reuse admits no second Task or publication, a restart
-    fetches nothing, and a restated bar in the previous year is refused until
-    the product's own full-history audit approval, after which only the
-    cross-sections from the corrected session on change. Old and new
-    snapshots stay verifiable through their closure recipes.
-    """
+    """Three day journey reuses partitions and corrects across the year boundary."""
 
     from alphalattice.foundation.feature_engine.panels.closure_contracts import (
         PanelDerivationRecipe,

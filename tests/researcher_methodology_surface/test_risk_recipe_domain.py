@@ -23,12 +23,7 @@ from alphalattice.investment.risk_research.estimators.domains import (
 
 
 def test_declared_domain_matches_the_recipe_contract() -> None:
-    """The declaration must not drift from what the contract will validate.
-
-    Declaring the axes is what makes the admissible set reviewable, but a
-    declaration nobody checks is just a second source of truth. Every declared
-    default has to seal, and the sealed result has to be the current recipe.
-    """
+    """Declared domain matches the recipe contract."""
 
     admitted = COVARIANCE_PARAMETER_DOMAIN.admit({})
     sealed = seal_contract(CovarianceRecipe, "recipe_hash", **admitted)
@@ -40,17 +35,7 @@ def test_declared_domain_matches_the_recipe_contract() -> None:
 
 
 def test_the_domain_is_declared_and_narrow_beyond_the_one_widened_axis() -> None:
-    """The residual, asserted rather than described.
-
-    ``ewma_decay`` now admits two values, which is what makes the authoring chain
-    observable at all -- see
-    ``test_an_authored_recipe_parameter_reaches_the_real_estimator``. Every other
-    axis is still a single declared point, so this milestone proves a parameter
-    domain is declarable, governed, and *routed*, not that arbitrary tuning
-    works. Widening any further axis is another edit to
-    ``risk_research/contracts.py``, inside the Risk source closure, and so
-    another explicitly identity-moving change.
-    """
+    """The domain is declared and narrow beyond the one widened axis."""
 
     widened = {axis.name for axis in COVARIANCE_PARAMETER_DOMAIN.axes if len(axis.admissible) > 1}
     assert widened == {"ewma_decay"}

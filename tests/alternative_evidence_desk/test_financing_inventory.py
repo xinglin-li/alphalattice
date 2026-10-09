@@ -70,14 +70,7 @@ AMOUNT = re.compile(r"^\s*(?:\$|\d[\d,.]*\s*(?:million|billion)?\s*$)")
 
 
 def test_financing_units_are_the_source_paragraphs_that_name_an_instrument() -> None:
-    """requirement (4/5): the debt note is the region and the securities note
-    and the MD&A are not; each paragraph naming an instrument is one unit
-    titled by the first instrument as written with every other listed; the
-    stated absence is a unit of its own basis; the covenant statement that
-    only refers to the notes is a cued region statement with its scope not
-    stated; the table placeholder is unassigned as not carried; the
-    sub-heading names the group; the bulleted capacity list continues its
-    lead; no amount, rate or balance is parsed into any field."""
+    """Financing units are the source paragraphs that name an instrument."""
 
     text = _financing_filing()
     structure = DocumentStructure(text, document_type="10-K")
@@ -176,11 +169,7 @@ def test_financing_units_are_the_source_paragraphs_that_name_an_instrument() -> 
 def test_the_financing_family_is_delivered_beside_the_others_under_one_allowance(
     tmp_path: Path,
 ) -> None:
-    """requirement (5/6): with all three families requested the financing
-    units are inventoried, dealt through the one 64-window allowance beside
-    the litigation matters and the event units, read whole, attributed under
-    `-F-` handles with `M01:FINANCING` provenance, and the record names the
-    families; no separate allowance exists."""
+    """The financing family is delivered beside the others under one allowance."""
 
     runtime, request, _registry, _snapshot, document_set, generation = _open_recorded(
         tmp_path,
@@ -237,15 +226,7 @@ def test_the_financing_family_is_delivered_beside_the_others_under_one_allowance
 
 
 def test_an_absence_stated_for_one_instrument_negates_no_other(tmp_path: Path) -> None:
-    """requirement (3): the negation's scope is the clause that states it. A
-    paragraph whose only instrument mention is a stated absence is an
-    `explicit negative`; one sentence that states an absence for one
-    instrument beside an amount outstanding under another, and a negative
-    qualified by an exception, are `mixed statement` units -- visible as
-    text, never a unit-wide negative; the multi-sentence paragraph that
-    states a capacity and then 'no borrowings under these ... lines' is a
-    mixed statement too. The basis reaches the need's detail and the
-    delivered unit view unchanged."""
+    """An absence stated for one instrument negates no other."""
 
     text = _financing_filing()
     inventory = financing_inventory(

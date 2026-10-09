@@ -253,12 +253,7 @@ def test_market_prefix_refuses_invalid_scopes_and_missing_provider(market_source
 
 
 def test_listing_set_reads_answer_each_listings_own_reads(market_source):
-    """requirement: one read of a listing set answers exactly what each listing's reads answer.
-
-    The daily seal read every listing's bars and actions with three queries a listing and
-    component; the set readers keep each listing's rows, bounds, order, latest provider mapping
-    and missing-mapping refusal.
-    """
+    """Set-scoped listing reads match each listing's individual read."""
     market, _ = market_source
     with market.database.connect(read_only=False) as connection:
         connection.execute(
@@ -293,12 +288,7 @@ def test_listing_set_reads_answer_each_listings_own_reads(market_source):
 @settings(max_examples=300, deadline=None)
 @given(st.data())
 def test_a_rolling_refresh_compares_returns_from_the_session_before_it(data):
-    """regression: every warm refresh took the log return of each listing's whole adjusted series.
-
-    A rolling refresh replaces sessions from its first observed one on and keeps every earlier
-    one, so a return can change only from the kept session before it. Comparing from there must
-    name exactly the sessions the whole-series comparison names, for gap fills and appends too.
-    """
+    """A rolling refresh compares returns from the session before it."""
     calendar = [date(2026, 1, 1) + timedelta(days=i) for i in range(data.draw(st.integers(2, 30)))]
     closes = st.floats(1.0, 500.0, allow_nan=False)
     kept = data.draw(st.lists(st.booleans(), min_size=len(calendar), max_size=len(calendar)))

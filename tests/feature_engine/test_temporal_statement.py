@@ -90,10 +90,7 @@ def test_a_window_says_where_it_stands_to_t0(
 
 
 def test_every_mark_value_generates_its_statement_and_an_unknown_one_is_named() -> None:
-    """Requirement: the Sector treatment and the price basis each come from a template
-    keyed by the mark, so before every session uses the current classification, T0 onward
-    included; a mark with no template is named, never dropped; no survivorship sentence where
-    the Panel records none, and no T0 where it records no membership."""
+    """Every mark value generates its statement and an unknown one is named."""
 
     current = _state(_summary(), "2021-01-04", "2016-09-12")
     assert current.statements[2] == (

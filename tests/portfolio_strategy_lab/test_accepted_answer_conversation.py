@@ -1704,10 +1704,7 @@ def test_goal_retry_keeps_original_binding_or_stays_unbound(
 
 
 def test_an_answer_from_a_session_that_bound_itself_is_delivered(product_answer_scene):
-    """regression (AX's REACCEPT, 2026-10-08 00:21): five accepted Analyst answers each read
-    `native_bridge.accepted_delivery_failed`, retries too: no configured project held a binding
-    of their Session. The submission's own request binds its Session first (AUTOBIND), so the
-    accepted answer is filed in its Conversation, and a retry is the same row."""
+    """An answer from a session that bound itself is delivered."""
     from alphalattice.interface.local_application.native_setup import autobind_root
 
     scene = product_answer_scene

@@ -64,15 +64,7 @@ HANDLE = re.compile(r"^M-[A-Z0-9-]{1,48}-O-[0-9]{3}$")
 
 
 def test_operations_units_are_the_notes_paragraphs_and_the_dated_statements() -> None:
-    """requirement (W2, the completeness assignment): the restructuring note
-    and the significant-items note are regions, the acquisitions note stays
-    the corporate-event family's, the segment disclosures note is no
-    closure; in the risk factors and the MD&A the paragraph holding a dated
-    closure is a region of its own and one unit while a paragraph stating
-    openings is nothing; the charges paragraphs are units grouped under
-    their sub-heading and titled by the dated sentence; the cross-reference
-    stub and the gain paragraph are unassigned; a current report has no
-    region; nothing is parsed into a field."""
+    """Operations units preserve the source note paragraphs and dated statements."""
 
     text = _operations_filing()
     structure = DocumentStructure(text, document_type="10-K")
@@ -157,13 +149,8 @@ def test_operations_units_are_the_notes_paragraphs_and_the_dated_statements() ->
 
 
 def test_routing_v4_serves_the_operations_family_and_opens_the_uncertain_cue_regions() -> None:
-    """requirement (W2; routing rules v4): the operations units serve the
-    operations topic (their lane), the family's regions are routed to it by
-    inventory and withdraw its residual search there; an uncertain
-    sub-heading naming a covenant opens a liquidity region bounded by the
-    next heading of any rank, inside the MD&A only; the significant-items note heading is an
-    operations cue; the customer-concentration and cybersecurity-effect
-    typed families serve the commercial and product topics."""
+    """Routing serves the operations family and opens uncertain cue regions within their source
+    bounds."""
 
     assert ROUTING_RULES_ID == "alternative-evidence.topic-routing.v6"
     assert topics_of_unit(
@@ -259,10 +246,7 @@ def test_routing_v4_serves_the_operations_family_and_opens_the_uncertain_cue_reg
 def test_the_operations_family_is_delivered_in_its_own_lane_beside_the_others(
     tmp_path: Path,
 ) -> None:
-    """requirement (W2): with the integrated families requested the
-    operations units are inventoried, dealt through the one allowance in
-    the operations lane, read whole, attributed under `-O-` handles with
-    `M01:OPERATIONS` provenance, and the record names the four families."""
+    """The operations family is delivered in its own lane beside the others."""
 
     runtime, request, _registry, _snapshot, document_set, generation = _open_recorded(
         tmp_path,

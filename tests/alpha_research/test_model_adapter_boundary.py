@@ -401,13 +401,7 @@ def test_explicit_catalog_rejects_unknown_adapter_and_schema() -> None:
 def test_regularized_linear_adapter_refuses_parameters_outside_its_schema(
     parameters: dict[str, object],
 ) -> None:
-    """regression: a declared parameter the schema has no field for was a crash.
-
-    ``{"family": "ridge", "alpha": 1.0, "seed": 7}`` reached the dataclass
-    constructor and surfaced as a ``TypeError`` -- an HTTP 500 at the Local Web
-    PLAN route instead of the typed ``authoring_model_recipe_not_admissible``
-    refusal every other inadmissible recipe gets.
-    """
+    """Regularized linear adapter refuses parameters outside its schema."""
 
     adapter = RegularizedLinearAdapter()
     recipe = AlphaModelRecipeEnvelope.create(
@@ -666,32 +660,6 @@ def _nested_fit_plan_inputs():  # type: ignore[no-untyped-def]
         required_runtime_capabilities=(NESTED_FIT_RUNTIME_CAPABILITY,),
     )
     return fold, training_input, domain, numerical_binding
-
-
-def test_every_fit_plan_call_site_states_its_protocol() -> None:
-    """Every `build_alpha_model_fit_plan(...)` call in the source tree passes ``protocol``.
-
-    The parameter is keyword-only and required, so an untold caller fails at
-    run time, in the fold, after the arrays were leased -- and the callers are
-    not all under strict mypy. Read the source instead.
-    """
-
-    import ast
-
-    root = Path(__file__).resolve().parents[2] / "src"
-    untold: list[str] = []
-    for path in sorted(root.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            callee = node.func
-            name = callee.id if isinstance(callee, ast.Name) else getattr(callee, "attr", None)
-            if name != "build_alpha_model_fit_plan":
-                continue
-            if not any(keyword.arg == "protocol" for keyword in node.keywords):
-                untold.append(f"{path.relative_to(root)}:{node.lineno}")
-    assert untold == [], untold
 
 
 def test_nested_fit_plan_binds_exact_partitions_and_readonly_values() -> None:
@@ -1270,11 +1238,7 @@ def _declared_development_state(
 
 
 def test_an_agents_model_of_its_own_kind_is_refitted_through_its_projection() -> None:
-    """requirement (V342): qualification and the current refit sealed the installed families'
-    states alone, so an agent's model could finish a study and never be qualified; its current
-    refit seals the kind its adapter projects, bound to the adapter, its numerical binding and
-    the projection, and the stability policy judges it by its model-agnostic statistics; a
-    declared state carrying a kind's diagnostics, and a tree an agent projects, are refused."""
+    """An agent's model of its own kind is refitted through its projection."""
 
     fold, arrays = _current_refit_fixture()
     candidate_id = "agent-declared-current-fixture"

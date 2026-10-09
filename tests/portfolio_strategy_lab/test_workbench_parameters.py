@@ -156,11 +156,7 @@ def test_a_literal_whose_rule_moved_to_another_breakpoint_is_not_new(planted):
 
 
 def test_red_is_failure_alone():
-    """Colour is a meaning (CO6; the user, 2026-09-25: 红色严格保留给失败): red is the failure
-    meaning's tone and no other's; the state table gives it to the failures alone -- blocked and
-    refused are attention -- and no caller names the colour, only the meaning (the workshop's
-    specimen list shows every tone by name)."""
-    import re
+    """Red indicates failure and no other standing."""
 
     p = json.loads(gate.PARAMETERS.read_text(encoding="utf-8"))
     meanings = p["groups"]["role.meaning"]["tokens"]

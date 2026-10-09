@@ -52,7 +52,7 @@ function fixture(responses = {}, initial = '#page=evidence', inspector = '') {
       return {ok: true, text: async () => JSON.stringify(body)};
     },
   };
-  vm.createContext(library.into(c, appDir));
+  library.context(c, appDir);
   vm.runInContext(library.readingSource(appDir), c);
   vm.runInContext(library.explainCodeSource(appDir), c);
   for (const name of ['status', 'data', 'router', 'live-review', 'live-research', 'live-activity', 'live-tasks']) {

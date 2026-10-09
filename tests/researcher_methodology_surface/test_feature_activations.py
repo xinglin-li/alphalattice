@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
+from uuid import UUID
 
 from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
@@ -74,11 +78,7 @@ def test_a_workspace_catalog_is_the_shipped_one_with_its_activations(tmp_path: P
 def test_a_feature_review_matches_the_executed_input_catalog_and_preprocessing(
     tmp_path: Path,
 ) -> None:
-    """Regression: another declaration of identical work shares trial evidence;
-    another recipe, input revision or joint feature definition cannot borrow its effect or
-    build, and neither the packet nor the listing offers activation from that other trial.
-    """
-    import json
+    """A feature review matches the executed input catalog and preprocessing."""
 
     from alphalattice.control.product_host.composition.feature_trials import FeatureTrial
     from alphalattice.control.product_host.research_authoring.feature_extensions import (
@@ -232,7 +232,6 @@ def test_a_feature_review_matches_the_executed_input_catalog_and_preprocessing(
 
 def test_feature_trial_keys_cover_every_executed_definition_field() -> None:
     """contract: generated field mutations cover the execution projection, not named recipes."""
-    from types import SimpleNamespace
 
     from alphalattice.control.product_host.research_authoring.feature_extensions import (
         FeatureExtensions,
@@ -285,9 +284,6 @@ def test_feature_trial_keys_cover_every_executed_definition_field() -> None:
 
 def test_feature_build_reuses_execution_but_not_changed_source_axes(tmp_path: Path) -> None:
     """regression: a plan's reason does not rebuild; recipes and complete axes cannot alias."""
-    from contextlib import nullcontext
-    from types import SimpleNamespace
-    from uuid import UUID
 
     from alphalattice.control.product_host.data_preparation.feature_research import (
         TASK_KIND,
@@ -401,8 +397,6 @@ def test_feature_build_reuses_execution_but_not_changed_source_axes(tmp_path: Pa
 
 def test_feature_trial_reopens_equivalent_declarations_on_one_baseline(tmp_path: Path) -> None:
     """regression: the trial ledger reuses complete work, not a declaration's prose hash."""
-    from types import SimpleNamespace
-    from uuid import UUID
 
     from alphalattice.control.product_host.composition.feature_trials import FeatureTrials
 

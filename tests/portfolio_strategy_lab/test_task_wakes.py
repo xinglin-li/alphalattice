@@ -300,10 +300,7 @@ _VERB_ARGUMENTS = {
 def test_an_agent_verb_registers_its_running_task_and_its_rerun_keeps_every_answer(
     live, codex, tmp_path, monkeypatch, capsys, verb
 ) -> None:
-    """requirement (WAKE ruling 3, board 16:32 and 16:49): at its first running Task an agent
-    verb registers the wake and returns; the wake names the verb's own command, its `--output`
-    moved to the next free `.wake<n>` path, so the re-run reuses the finished steps and no
-    saved answer is overwritten."""
+    """An agent verb registers its running task and its rerun keeps every answer."""
     task = _task(live, "verb")
     monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
     original = LocalResearchClient.request

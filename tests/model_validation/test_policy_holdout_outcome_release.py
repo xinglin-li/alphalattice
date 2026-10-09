@@ -233,14 +233,7 @@ def test_policy_holdout_reader_rejects_value_tamper_with_preserved_metadata(
 def test_unsealed_snapshot_stays_legacy_readback_and_grants_no_method_authority(
     tmp_path: Path,
 ) -> None:
-    """A snapshot published before the method seam keeps its rows and gains nothing.
-
-    This fixture is exactly that case: a manifest and chunks with no method seal
-    beside them. Reading must stay possible -- frozen evidence does not become
-    unreadable because a seam was added later -- while every attempt to speak
-    for its method fails. Resolving twice must not upgrade it either: authority
-    is acquired by publishing, not by looking.
-    """
+    """Unsealed snapshot stays legacy readback and grants no method authority."""
 
     reader, _sealed = _reader(tmp_path)
     development = CausalExecutionOutcomeDevelopmentReader(tmp_path)
@@ -264,11 +257,7 @@ def test_unsealed_snapshot_stays_legacy_readback_and_grants_no_method_authority(
 def test_policy_holdout_final_schedule_point_stays_one_session(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The claim-bound trailing point is still T -> T+1 -> T+2.
-
-    The offsets moved into the recipe; the Policy Holdout release is frozen at
-    the one-session clock and must resolve exactly what it always did.
-    """
+    """Policy holdout final schedule point stays one session."""
 
     reader, _sealed = _reader(tmp_path)
     formation = date(2026, 3, 2)

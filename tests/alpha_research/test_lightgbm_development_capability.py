@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
 from importlib import import_module
 from importlib.metadata import version
@@ -273,14 +274,7 @@ def _plan_and_workspace() -> tuple[AlphaFoldArrayPlan, _ArrayWorkspace]:
 
 
 def test_default_catalog_and_current_mandate_install_the_product_lightgbm_only() -> None:
-    """The research inventory opens the main product's adapter, not this development grid.
-
-    The linear family stays first so every existing ``capability-1`` declaration
-    resolves as before; the Dynamic Panel LightGBM adapter -- the one the
-    installed G2/G6 components train and score with -- is ``capability-2``. The
-    retired development-only LightGBM adapter's id (Phase 2B's grid, RT R05) is not
-    installed.
-    """
+    """Default catalog and current mandate install the product LightGBM only."""
 
     catalog = build_installed_alpha_model_catalog()
     mandate = build_current_alpha_research_model_mandate(catalog=catalog)
@@ -644,12 +638,7 @@ def test_dynamic_panel_lightgbm_installs_aligned_regularization_and_training_sur
 def test_dynamic_panel_training_policy_kind_is_checked_before_its_value(
     training_policy: object, admitted: bool
 ) -> None:
-    """A YAML list or mapping where the policy name belongs is a typed refusal.
-
-    The membership test against the admitted policies would hash the value
-    first; an unhashable one used to escape as a TypeError, which the entry
-    points cannot name. The parameter owner checks the kind, then the value.
-    """
+    """Dynamic panel training policy kind is checked before its value."""
 
     from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
         DynamicPanelLightGBMAdapter,
@@ -878,11 +867,8 @@ def test_lightgbm_fits_on_one_thread_unless_the_sealed_canary_holds(
 def test_a_lightgbm_that_grows_a_sealed_canary_keeps_its_threads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """requirement (PA3, W10): a dependency change keeps LightGBM's threads when the new
-    version, with no canary of its own, grows a sealed version's canary on one thread; it is
-    then proven against that canary at the requested count, and one that grows another fits on
-    one thread. Its fake versions and thread count are its own, so no proof it leaves is
-    another test's."""
+    """A changed LightGBM version keeps requested threads only after proving its results against
+    a sealed numerical canary."""
 
     grown: list[int] = []
     monkeypatch.setattr(lightgbm_threads_module, "LIGHTGBM_THREAD_CANARIES", {"0.0.1": "a" * 64})
@@ -909,11 +895,8 @@ def test_the_sealed_lightgbm_canary_holds_at_two_threads_on_this_machine() -> No
 
 
 def test_dataset_reuse_mutates_every_binning_field_and_preserves_operator_parameters() -> None:
-    """regression (V526): generated binning-field mutations miss; operator pacing/logging hit.
-
-    This uses the real Dataset selector with a counting constructor, without fitting a model.
-    """
-    from copy import deepcopy
+    """Every binning-field change invalidates Dataset reuse while operator pacing and logging
+    parameters preserve it."""
 
     from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological import (
         ChronologicalLightGBMParameters,
@@ -1040,8 +1023,6 @@ def test_a_fixed_fit_measures_its_training_error_unless_the_plan_reads_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A fixed-iteration fit measures training error unless its plan explicitly reads none."""
-    import re
-    from pathlib import Path
 
     import lightgbm
 
@@ -1102,10 +1083,3 @@ def test_a_fixed_fit_measures_its_training_error_unless_the_plan_reads_none(
     assert unread.selection_diagnostic == measured.selection_diagnostic
     with pytest.raises(ValueError, match="ALPHA_MODEL_TRAINING_ERROR_NOT_MEASURED"):
         unread.measured_training_mse()
-    src = Path(__file__).resolve().parents[2] / "src"
-    opting_out = sorted(
-        path.relative_to(src).as_posix()
-        for path in src.rglob("*.py")
-        if re.search(r"training_error=None", path.read_text(encoding="utf-8"))
-    )
-    assert opting_out == ["alphalattice/investment/alpha_research/scores/model_renewal.py"]

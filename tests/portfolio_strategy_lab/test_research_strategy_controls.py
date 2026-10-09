@@ -54,6 +54,7 @@ def test_strategy_controls_offer_each_missing_components_first_step(tmp_path: Pa
     owner = _owner(tmp_path, studies)
     controls = owner.controls()
     required = controls["required_components"]
+    assert required and controls["missing_components"] == required
     for component in required:
         assert controls["next_requests"][f"component:{component}"] == {
             "operation": "MODEL_TRAINING_INPUT_PLAN",
@@ -64,6 +65,15 @@ def test_strategy_controls_offer_each_missing_components_first_step(tmp_path: Pa
     again = owner.controls()
     assert again["missing_components"] == required[1:]
     assert f"component:{required[0]}" not in again["next_requests"]
+    assert again["next_requests"]["plan"]["operation"] == "RESEARCH_STRATEGY_PLAN"
+    assert again["risk_windows"] == []
+    assert again["next_requests"]["risk"] == {
+        "operation": "EXPERIMENT_CONTROLS",
+        "research_input_id": None,
+        "experiment_kind": "risk.covariance-development",
+    }
+    studies.append(RISK)
+    assert "risk" not in owner.controls()["next_requests"]
 
 
 def test_strategy_controls_offer_the_risk_study_until_one_covers_the_window(

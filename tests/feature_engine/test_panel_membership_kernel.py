@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import date, timedelta
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -64,7 +66,6 @@ SESSIONS = tuple(date(2026, 1, 5) + timedelta(days=offset) for offset in range(8
 
 
 def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_them(tmp_path):
-    from types import SimpleNamespace
 
     from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
@@ -137,7 +138,6 @@ def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_th
 
 
 def test_dated_quality_exclusion_preserves_nominal_members_and_old_reference_bits() -> None:
-    from dataclasses import replace
 
     axis = _axis(60)
     sectors = _sectors(axis)
@@ -236,20 +236,7 @@ def test_dated_quality_exclusion_preserves_nominal_members_and_old_reference_bit
 
 
 def test_epoch_rows_are_the_bits_of_a_panel_over_exactly_those_members() -> None:
-    """requirement: a session's numbers depend on its members and nothing else.
-
-    A Panel over a 24-name axis where three names leave after the fourth
-    session must produce, for every session, exactly the rows a Panel whose
-    whole axis was that session's member set produces over the same sessions
-    -- bit for bit -- because that is what lets a partition computed before
-    the exit be reused after it, and one computed after the exit be reused by
-    a build whose axis has since grown again. "Over the same sessions" is
-    deliberate: numpy reduces a one-session block and a many-session block in
-    different orders, so a session computed alone differs in its last bits
-    from the same session inside a batch (a property of the kernel's sector
-    mean that predates membership epochs and never enters reuse, which is by
-    identity, not by recomputation).
-    """
+    """Epoch rows are the bits of a panel over exactly those members."""
 
     axis = _axis(24)
     sectors = _sectors(axis)
@@ -468,11 +455,7 @@ def test_current_policy_uses_unchanged_coverage_for_missing_member_rows(missing_
 
 @pytest.mark.parametrize("value", [np.inf, -np.inf])
 def test_a_non_finite_raw_value_is_missing_in_every_installed_method(value: float) -> None:
-    """Requirement: a non-finite raw value counts as missing, as NaN does, in every
-    session statistic of every installed Panel method -- the median, MAD, winsor and coverage
-    alike -- so it never moves another name's value and is never published as a clipped one.
-    A stock value and a state child each; the session stays published, so the comparison
-    reads the other names rather than a withheld session."""
+    """A non finite raw value is missing in every installed method."""
 
     from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
         build_installed_panel_preprocessing_catalog,

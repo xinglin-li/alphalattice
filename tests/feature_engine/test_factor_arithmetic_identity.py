@@ -149,14 +149,7 @@ def _installed_family_hash(family: str) -> str:
 
 
 def test_the_control_closure_names_only_the_shared_arithmetic() -> None:
-    """requirement: the control closure is the shared arithmetic and what it runs, nothing else.
-
-    The materializer and the parent formula module are its owners, and the rule walks what
-    they import (the observation clock that decides the skipped sessions, the factor
-    contracts). Catalog contracts stay outside: editing an admission rule must move catalog
-    identity, not claim the arithmetic changed. No extension family and no registry mechanics
-    are in it, which is the control/extension split.
-    """
+    """The control closure names only the shared arithmetic."""
 
     assert SHARED_FACTOR_ARITHMETIC_OWNERS == (
         "alphalattice.foundation.feature_engine.producers.base_materializer",
@@ -171,11 +164,7 @@ def test_the_control_closure_names_only_the_shared_arithmetic() -> None:
 
 
 def test_a_method_family_closure_contains_its_module_and_the_shared_owners() -> None:
-    """requirement: a family binds its own formulas *and* what post-processes them.
-
-    A closure naming only the family module would stand still through a rewrite of the
-    materializer that projects its inputs and screens its outputs.
-    """
+    """A method family closure contains its module and the shared owners."""
 
     owners = FACTOR_METHOD_FAMILY_OWNERS[OPEN_INTRADAY_METHOD_FAMILY]
     assert owners == ("alphalattice.foundation.feature_engine.producers.factors.open_intraday",)
@@ -193,12 +182,7 @@ def test_a_method_family_closure_contains_its_module_and_the_shared_owners() -> 
 
 
 def test_a_family_edit_cannot_reach_a_control_and_a_shared_edit_reaches_both() -> None:
-    """requirement: identity isolation where it holds, and reach where the code is shared.
-
-    An edit reaches exactly the closures that hash its module: no family module is in the
-    control walk, and the materializer, which projects and screens every extension series,
-    is in the controls' walk and in every family's.
-    """
+    """A family edit cannot reach a control and a shared edit reaches both."""
 
     control = _control_walk()
     materializer = SHARED_FACTOR_ARITHMETIC_OWNERS[0]
@@ -209,11 +193,7 @@ def test_a_family_edit_cannot_reach_a_control_and_a_shared_edit_reaches_both() -
 
 
 def test_editing_one_family_leaves_an_unrelated_family_bit_identical() -> None:
-    """requirement: family isolation runs both ways, not only against the controls.
-
-    No family's walk hashes another family's own module, so two families installed side by
-    side stay apart when one is edited.
-    """
+    """Editing one family leaves an unrelated family bit identical."""
 
     for family, owners in FACTOR_METHOD_FAMILY_OWNERS.items():
         others = _FAMILY_MODULES - set(owners)
@@ -223,13 +203,7 @@ def test_editing_one_family_leaves_an_unrelated_family_bit_identical() -> None:
 
 
 def test_registry_mechanics_reach_every_family_and_composition_reaches_none() -> None:
-    """requirement: the split is exactly where the values are shaped.
-
-    The registry resolves a kernel, validates its inputs, checks the returned shape and
-    coerces the numeric domain, so every family binds it. The module that *lists* which
-    kernels a build installs decides no value, so no closure walks it, and that is what
-    makes installing family B invisible to family A.
-    """
+    """Registry mechanics reach every family and composition reaches none."""
 
     assert (_MECHANICS,) == EXTENSION_KERNEL_OWNERS
     assert _COMPOSITION in WALK_EXCLUDED
@@ -240,14 +214,7 @@ def test_registry_mechanics_reach_every_family_and_composition_reaches_none() ->
 
 
 def test_a_comment_moves_no_identity_and_a_changed_rule_is_a_new_one(tmp_path: Path) -> None:
-    """requirement: identity follows syntax, and the switch keeps what was sealed (V70, V231).
-
-    A module's rule digest ignores its comments and docstrings, so C8's docstrings move
-    nothing. The switch recorded each component's rule value beside its byte value: while the
-    walk gives that rule value, the component keeps its byte value; a component whose rule the
-    switch did not record carries its rule value, and a changed rule is a new value its role
-    reads, which a Panel binds only through a recorded move (LAWS.md ID1, V345).
-    """
+    """A comment moves no identity and a changed rule is a new one."""
 
     spec = find_spec(SHARED_FACTOR_ARITHMETIC_OWNERS[1])
     assert spec is not None and spec.origin is not None
@@ -298,13 +265,7 @@ def test_a_registered_kernel_must_measure_the_module_that_owns_its_callable() ->
 
 
 def test_every_factor_identity_folds_the_measured_arithmetic() -> None:
-    """requirement: a rewritten materializer cannot keep the identities it had.
-
-    Checked by re-deriving each identity with a different closure value and
-    requiring every one of them to move. Declarations alone would leave all base
-    core identities and the extension identity untouched, which is exactly the
-    state that let a Panel successor claim provenance it could not prove.
-    """
+    """Every factor identity folds the measured arithmetic."""
 
     catalog = FeatureCatalog.load()
     registry = default_extension_kernel_registry()
@@ -358,13 +319,7 @@ def test_every_factor_identity_folds_the_measured_arithmetic() -> None:
 
 
 def test_the_catalog_binding_contains_the_arithmetic_it_describes() -> None:
-    """requirement: equal catalog hashes must mean equal arithmetic.
-
-    This is the property the withdrawn Panel claim assumed and did not have. The
-    binding's formula identity is rebuilt here with a different closure value and
-    must produce a different catalog hash; if it did not, "this catalog produced
-    that Panel" would remain unfalsifiable.
-    """
+    """The catalog binding contains the arithmetic it describes."""
 
     catalog = FeatureCatalog.load()
     binding = catalog.binding
@@ -439,19 +394,7 @@ def _registry_with_second_family() -> FeatureKernelRegistry:
 
 
 def test_installing_a_second_family_leaves_the_first_bit_identical() -> None:
-    """requirement: adding a method does not invalidate an unrelated method.
-
-    This is the defect the previous split left behind. The family closures
-    contained the module that composes the installed registry, so registering
-    family B edited that module and rotated family A's implementation identity --
-    and A's methodology identity with it, since methodology folds implementation.
-    Nothing about A had changed.
-
-    The installed set is still an identity and still moves; it is just not A's.
-    A consumer asking "is this the same build" reads
-    ``installed_capability_hash``, and a consumer asking "is this the same code
-    behind this factor" reads the factor's own identity.
-    """
+    """Installing a second family leaves the first bit identical."""
 
     bundle = desktop_core_feature_bundle()
     a_only = default_extension_kernel_registry()

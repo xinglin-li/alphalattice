@@ -48,13 +48,7 @@ from tests.alternative_evidence_desk.table_view_support import (
 
 
 def test_the_catalogue_and_the_rendering_agree_with_the_original() -> None:
-    """requirement (6B): the placeholder names the table's row count, its
-    caption, footnote, heading path, family and scale statement; the same
-    walk of the original finds the one uncarried table; the view renders
-    every row over its headings with caption, table note, scale, columns
-    and footnote; a page under a small ceiling holds whole rows with the
-    headings repeated and names what remains; a row count that disagrees or
-    a table without headings is refused by name."""
+    """The catalogue and the rendering agree with the original."""
 
     html = original_html()
     text = canonical_text(html)
@@ -153,13 +147,7 @@ def test_the_catalogue_and_the_rendering_agree_with_the_original() -> None:
 
 
 def test_a_table_view_is_delivered_through_the_verified_session_read(tmp_path: Path) -> None:
-    """requirement (6B): a live-acquired original stands behind its canonical
-    document; the session issues a view handle under the matter budget at
-    the placeholder's exact range, reads it as any span (the placeholder
-    range proved against the canonical bytes), renders the page from the
-    verified original and binds the span to the original's content hash
-    and the parser; the span set seals and reads back; a tampered original
-    is refused by name; a recorded text has no original and no view."""
+    """A table view is delivered through the verified session read."""
 
     html = original_html()
     transport = SecScenarioTransport(
@@ -330,15 +318,7 @@ def test_a_table_view_is_delivered_through_the_verified_session_read(tmp_path: P
 
 
 def test_a_leading_row_of_years_is_the_view_s_heading_row_and_the_canonical_text_stays() -> None:
-    """requirement (section 7 of the completeness assignment; view rules
-    v2): the one demonstrated general shape of the refused tables -- a
-    leading row of years, or of years beside words, read as a body row by
-    the numeric test -- is read as the heading row by the table view: the
-    view's headings are the source's years, every row reads over them, the
-    rules id names v2; the canonical rendering keeps the table uncarried,
-    so its placeholder and every canonical byte stay as they were; a first
-    row that holds a number that is not a year (a maturity schedule's
-    '2026 | 300') stays refused by name."""
+    """A leading row of years is the view's heading row and the canonical text stays."""
 
     assert TABLE_VIEW_RULES_ID == "alternative-evidence.table-view.v2"
     html = year_headed_html()

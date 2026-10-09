@@ -200,76 +200,8 @@ def _publish_index(resolver: ArtifactResolver, *, catalog_hash: str) -> FeatureP
     return index
 
 
-def test_the_publisher_owns_the_semantic_index_handoff() -> None:
-    """requirement: the terminal publisher completes the handoff itself.
-
-    Composed, not reimplemented: the index has exactly one writer, and the
-    publisher holds that writer rather than a copy of it, so a published Panel
-    and its index cannot disagree about what they describe.
-    """
-
-    annotations = FeaturePanelSnapshotPublisher.__init__.__annotations__
-    assert "semantic_index" in annotations, (
-        "the terminal publisher must own the handoff; a Panel nobody can resolve is not published"
-    )
-    assert annotations["semantic_index"] == "FeaturePanelSemanticIndexService | None"
-
-    # The collaborator is the existing service, not a second writer: the default
-    # constructs that one type, and `obtain` remains its only creator.
-    import inspect
-
-    constructed = inspect.getsource(FeaturePanelSnapshotPublisher.__init__)
-    assert "FeaturePanelSemanticIndexService(resolver)" in constructed
-    assert hasattr(FeaturePanelSemanticIndexService, "obtain")
-
-
-def test_publication_refuses_to_return_before_the_index_resolves() -> None:
-    """requirement: an unresolvable Panel is a failed publication, not a warning.
-
-    Checked on the published contract rather than by mutating a real workspace:
-    the publisher asserts the index is findable before it returns, so a partial
-    handoff raises instead of handing back a snapshot research cannot use.
-    """
-
-    import inspect
-
-    body = inspect.getsource(FeaturePanelSnapshotPublisher.publish)
-    assert "self.semantic_index.obtain(" in body
-    assert "find_feature_panel_semantic_index" in body
-    assert "semantic_index_handoff_incomplete" in body
-    # It runs after the lifecycle projection because the reader it scans is
-    # ACTIVE-gated; ordering the other way would refuse its own Panel.
-    assert body.index("publish_feature_panel_lifecycle_projection") < body.index(
-        "self.semantic_index.obtain("
-    )
-    # And only for a gateway-qualified Panel. Without a Feature Input Gateway
-    # admission the reader refuses by design; forcing an index there would
-    # defeat that gate rather than finish a handoff, so such a Panel stays
-    # unresolvable for a reason rather than for a missing artifact.
-    assert "gateway_qualified" in body
-    assert body.index("gateway_qualified") < body.index("self.semantic_index.obtain(")
-
-
-def test_publication_refuses_rows_from_another_catalog_before_composing() -> None:
-    """requirement: the wrong-catalog check happens before any value is read."""
-
-    import inspect
-
-    body = inspect.getsource(FeaturePanelSnapshotPublisher.publish)
-    assert "assert_installed_catalog_rows" in body
-    assert body.index("assert_installed_catalog_rows") < body.index("self._read_consistent_source(")
-
-
 def test_recovery_stages_name_one_recovery_each() -> None:
-    """requirement: "blocked" must say which stage, because they recover differently.
-
-    A complete closure with an unpublished Panel must be expressible, or the only
-    describable recovery is a rebuild -- and a rebuild throws away work that is
-    already correct. Damage must be separable from a pending transition, because
-    reconciling against damaged state is not a repair. And a Panel awaiting
-    Gateway admission must be separable from one whose handoff simply did not
-    finish, because the first is a gate and the second is a repair.
-    """
+    """Recovery stages name one recovery each."""
 
     assert {stage.value for stage in FeatureBuildStage} == {
         "base_closure_incomplete",
@@ -294,13 +226,7 @@ def test_recovery_stages_name_one_recovery_each() -> None:
 def test_the_closure_owner_decides_the_closure_half_of_the_stage(
     tmp_path: Path, disposition: str, expected: FeatureBuildStage
 ) -> None:
-    """requirement: the stage is read from the owner, not from a caught exception.
-
-    Every one of these used to be reported as a pending transition, because the
-    caller wrapped ``assert_ready`` in ``except Exception``. Damage in particular
-    must not arrive labelled as the one disposition automatic reconciliation is
-    allowed to touch.
-    """
+    """The closure owner decides the closure half of the stage."""
 
     resolver = ArtifactResolver(tmp_path / "artifacts")
     closure = _StubClosure(cast(FeatureClosureDisposition, disposition))
@@ -323,15 +249,7 @@ def test_the_closure_owner_decides_the_closure_half_of_the_stage(
 
 
 def test_an_active_snapshot_without_a_semantic_index_is_not_terminal(tmp_path: Path) -> None:
-    """requirement: terminal means the whole terminal contract holds.
-
-    The build used to stamp ``TERMINAL_PANEL_COMPLETE`` on the strength of having
-    returned, and the classifier used to stamp it on an active snapshot alone. A
-    Panel with an active snapshot and no semantic index is exactly the state
-    `WorkspaceResearchAuthorityResolver` refuses, so calling it terminal reports
-    a Panel research cannot read as finished work -- and hides a repair that
-    costs one artifact.
-    """
+    """An active snapshot without a semantic index is not terminal."""
 
     resolver = ArtifactResolver(tmp_path / "artifacts")
     closure = _StubClosure("MEMBERSHIP_COMPLETE")
@@ -367,58 +285,6 @@ def test_an_active_snapshot_without_a_semantic_index_is_not_terminal(tmp_path: P
     assert service._durable_build_stage() == FeatureBuildStage.TERMINAL_PANEL_COMPLETE
 
 
-def test_a_completed_build_derives_its_stage_instead_of_asserting_it() -> None:
-    """regression: the completed path may not hardcode the terminal contract.
-
-    A completed build has materialised the Panel and recorded its binding. The
-    snapshot, its Gateway admission and its semantic index belong to the
-    publisher and the Gateway, and none of them has run yet at that point.
-    """
-
-    import ast
-    import inspect
-    import textwrap
-
-    body = inspect.getsource(FeatureFoundationService.build)
-    assert "build_stage=FeatureBuildStage.TERMINAL_PANEL_COMPLETE" not in body
-
-    def outcome(call: ast.Call) -> str:
-        named = {keyword.arg: keyword.value for keyword in call.keywords}
-        if "failure_code" in named:
-            return ast.unparse(named["failure_code"])
-        details = call.args[3] if len(call.args) > 3 else None
-        waits = isinstance(details, ast.Dict) and any(
-            isinstance(key, ast.Constant) and key.value == "panel" for key in details.keys
-        )
-        return "COMPLETED, the Panel not composed" if waits else "COMPLETED"
-
-    derived = {
-        outcome(node)
-        for node in ast.walk(ast.parse(textwrap.dedent(body)))
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "FeatureBuildOutcome"
-        and any(
-            keyword.arg == "build_stage"
-            and ast.unparse(keyword.value) == "self._durable_build_stage()"
-            for keyword in node.keywords
-        )
-    }
-    # Every blocked outcome after the base stage, and the completed ones, derive their stage
-    # from durable state: the failed materialization, the sector, source-state and membership
-    # refusals, completion, and a first use whose Panel waits for its qualified membership
-    # (V311).
-    assert derived == {
-        "failure_code",
-        "'feature.membership_sector_unresolved'",
-        "str(exc) if str(exc).startswith('feature.') else 'feature.panel_source_state_incomplete'",
-        "str(exc) if str(exc) == 'feature.membership_admission_required' "
-        "else 'feature.membership_manifest_mismatch'",
-        "COMPLETED",
-        "COMPLETED, the Panel not composed",
-    }
-
-
 class _RecordingIndexOwner:
     """Stands in for the one real index writer, and counts what it is asked to do."""
 
@@ -448,18 +314,7 @@ def _publisher(
 
 
 def test_semantic_index_recovery_recomputes_no_feature_value(tmp_path: Path) -> None:
-    """requirement: a missing index is repaired by making the index, and nothing else.
-
-    The Panel's manifest and chunks already exist and are already correct. The
-    only lawful repair reads them; rebuilding the Panel to produce bytes that are
-    already right is how a workspace loses work it had finished. The Feature
-    store raises on any access here, so "no Feature value was recomputed" is
-    proven by the recovery running at all rather than asserted in prose.
-
-    The stand-in is the real writer's shape, not a second implementation: the
-    publisher's default collaborator is `FeaturePanelSemanticIndexService`, which
-    the composition test above pins.
-    """
+    """Semantic index recovery recomputes no feature value."""
 
     resolver = ArtifactResolver(tmp_path / "artifacts")
     from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
@@ -488,13 +343,7 @@ def test_semantic_index_recovery_recomputes_no_feature_value(tmp_path: Path) -> 
 
 
 def test_recovery_respects_the_gate_that_withheld_the_index(tmp_path: Path) -> None:
-    """requirement: recovery finishes a handoff; it does not overrule an admission.
-
-    Without a Feature Input Gateway admission the index was withheld on purpose.
-    Completing it anyway would convert a deliberate refusal into an accident, so
-    the recovery reports nothing to do and leaves the Panel unresolvable for the
-    reason it is unresolvable.
-    """
+    """Recovery respects the gate that withheld the index."""
 
     resolver = ArtifactResolver(tmp_path / "artifacts")
     from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
@@ -521,39 +370,8 @@ def test_recovery_respects_the_gate_that_withheld_the_index(tmp_path: Path) -> N
     assert index_owner.calls == [MANIFEST_URI]
 
 
-def test_the_maintenance_path_completes_the_handoff_without_republishing(tmp_path: Path) -> None:
-    """requirement: the recovery is reachable from the product, not only by hand.
-
-    The state it repairs -- Panel published, no Feature work outstanding -- is
-    the state the maintenance cycle otherwise reports as completed and never
-    revisits, which is why the index stayed missing indefinitely.
-    """
-
-    import inspect
-
-    from alphalattice.control.data_platform.maintenance.coordinator import (
-        WorkspaceMaintenanceCoordinator,
-    )
-
-    # ``run`` holds the cycle's connection hold and delegates the cycle body.
-    assert "self._run(" in inspect.getsource(WorkspaceMaintenanceCoordinator.run)
-    assert "self._run_cycle(" in inspect.getsource(WorkspaceMaintenanceCoordinator._run)
-    body = inspect.getsource(WorkspaceMaintenanceCoordinator._run_cycle)
-    assert "complete_semantic_index_handoff" in body
-    assert "workspace_maintenance.semantic_index_handoff_failed" in body
-    # Reached on the completed path, not only after a fresh publication.
-    assert body.index("complete_semantic_index_handoff") > body.index(
-        "_publish_snapshot_with_bounded_retry"
-    )
-
-
 def test_the_semantic_index_orders_each_sessions_row_hashes_by_listing_as_before() -> None:
-    """regression: the index grouped 1.1M rows in Python, a tuple per row, for ~4 s a day.
-
-    One sort now orders each session's row hashes by listing, ties by row hash. The digests
-    must be the ones the per-row grouping gave, whatever the rows' physical order and however
-    the listing ids sort, so the index of every published Panel keeps its identity.
-    """
+    """The semantic index orders each session's row hashes by listing."""
 
     import pyarrow as pa
 

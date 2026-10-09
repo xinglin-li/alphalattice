@@ -6,6 +6,29 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+// Create each harness context in one place; only an explicit app directory adds library defaults.
+library.context = function(c, appDir) {
+  return vm.createContext(arguments.length === 1 ? c : library.into(c, appDir));
+};
+// These pure renderers retain the formats their callers assert, including meaningful spaces.
+library.stubs = {
+  empty: ()=>'',
+  label: label=>label,
+  labelSpace: l=>l+' ',
+  buttonHeldReason: (l,a,v,cls,off)=>'<'+a+':'+v+(off?' off='+off:'')+'>{'+l+'} ',
+  buttonHeld: (l,a,v,cls,off)=>'<'+a+':'+v+(off?' off':'')+'>{'+l+'} ',
+  buttonFields: (l,a,v,cls,reason)=>`[${l}|${a}|${v}|${reason||''}]`,
+  headingTextSpace: (n,m,a)=>n+' '+m+' '+a+' ',
+  headingText: (n,m,a)=>n+' '+m+' '+a,
+  headingTitleSpace: (title)=>'HEAD('+title+') ',
+  headingNameMeta: (name,meta)=>name+String(meta||''),
+  headingStateFields: (n,meta,actions,state)=>'HEAD('+n+'|'+meta+'|'+actions+'|'+(state||'')+') ',
+  headingSubject: (name,meta,actions,state,tools,details={})=>`<header class="object-header"><h1${details.headingId?` id="${details.headingId}"`:''}>${name}</h1>${state||''}${meta||''}${actions||''}</header>`+(details.subject?`<div class="object-subject">${details.subject}</div>`:''),
+  subjectSelected: (label,id,choices,o={})=>label+' '+choices.map(ch=>{const [v,l]=Array.isArray(ch)?ch:[ch.value,ch.title];return '('+(v===o.selected?'*':'')+l+')';}).join(''),
+  subjectListed: (label,id,choices,o={})=>label+' '+choices.map(ch=>{const [,l]=Array.isArray(ch)?ch:[ch.value,ch.title];return '('+l+')';}).join(''),
+  subjectPicker: (label,id,choices,o={})=>`<picker id="${id}">`+choices.map(c=>`<button data-value="${c.value}" aria-selected="${c.value===o.selected}">${c.title}<small>${c.meta||''}</small></button>`).join('')+'</picker>',
+};
+
 function library(appDir) {
   const source = JSON.parse(fs.readFileSync(path.join(appDir, '..', '..', 'design', 'parameters.json'), 'utf8'));
   const BREAKPOINTS = {};
@@ -23,7 +46,7 @@ function library(appDir) {
   const table = JSON.parse(fs.readFileSync(path.join(appDir, '..', '..', '..', '..', 'labels.json'), 'utf8'));
   const LABELS = Object.fromEntries(table.labels.map((l) => [l.id, {kind: l.kind, title: l.title, title_zh: l.title_zh, summary: l.summary, summary_zh: l.summary_zh}]));
   const context = {String, BREAKPOINTS, PARAMETER_VALUES};
-  vm.createContext(context);
+  library.context(context);
   vm.runInContext(text.slice(from, to) + ';globalThis.out={SHORT,short,LIST_PAGE,LEGEND,LOBBY,param};', context);
   return {...context.out, BREAKPOINTS, PARAMETER_VALUES, LABELS};
 }
@@ -36,7 +59,7 @@ function builders(c, appDir) {
   if (from < 0 || to < 0) throw Error('components.js: the Evidence library is not marked');
   const section = text.slice(from, to);
   const names = [...section.matchAll(/^(?:function\s+(\w+)|const\s+(\w+)\s*=)/gm)].map((m) => m[1] || m[2]);
-  vm.createContext(c);
+  library.context(c);
   return vm.runInContext(`(() => {${section}; return {${names.join(',')}};})()`, c);
 }
 // The page chrome a lobby composes (law 136) from outside the library's sections: the first axis,
@@ -142,7 +165,7 @@ library.refusal = (c, appDir) => {
   const from = text.indexOf('function refusal(body, tone =');
   const to = text.indexOf('\n/* ---- run shapes', from);
   if (from < 0 || to < 0) throw Error('components.js: the refusal renderer is not marked');
-  if (!vm.isContext(c)) vm.createContext(c);
+  if (!vm.isContext(c)) library.context(c);
   vm.runInContext(text.slice(from, to) + '\nglobalThis.refusal=refusal;', c);
   return c.refusal;
 };
@@ -164,7 +187,7 @@ library.words = (appDir, routeUrl = null) => {
   const c = {console, window: {}, document: {documentElement: {}}, app: {},
     html: (parts, ...values) => parts.reduce((out, part, i) => out + part + (values[i] ?? ''), ''),
     ...(routeUrl ? {routeUrl} : {}), ...library(appDir)};
-  vm.createContext(c);
+  library.context(c);
   for (const name of ['html.js', '../data/zh.js', 'i18n.js', 'status.js', 'icons.js', 'components.js'])
     vm.runInContext(fs.readFileSync(path.join(appDir, name), 'utf8'), c);
   return vm.runInContext('({I18N, t, said, html, link, coded, badge, countText, actorWords, ACTORS, codeWords, declaredCodeWord, stageOf, stageWord, stateLine, stateOf, typedBtn, refCell, hashCell, locatorCell, codeCell, notRead, refusalParts, causeLine, evidenceRow, goalReferenceIntegrity, hint, objectRow, stat, figureTile, glyphWord, measureStrip, TONE, EVIDENCE, CODE_WORDS, STATES, STAGES})', c);

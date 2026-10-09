@@ -88,6 +88,7 @@ from tests.alternative_evidence_desk.review_dossiers import (
     _submission,
     controlled_answer,
 )
+from tests.structural.source_shape_samples import specialist_answer_bound_samples
 
 APPROVED_SOURCES: tuple[str, ...] = ("SEC_EDGAR_OFFICIAL",)
 
@@ -278,14 +279,7 @@ def test_every_mapped_issuer_is_in_scope_and_eight_is_only_a_unit() -> None:
 
 
 def test_units_are_packed_from_each_issuer_s_own_source_count() -> None:
-    """requirement (6A, W1): with each issuer's logical source count the units
-    are packed under the issuer limit and the admitted document set, heaviest
-    holding first, so an issuer's selection is never decided by how many
-    issuers share its unit and the heaviest holdings are read first; inside a
-    unit the issuers keep the scope's order, so a book whose selections fit
-    one unit is the one request it always was; an issuer that filed nothing in
-    the window is not packed; an issuer whose own selection exceeds the set,
-    a missing count and a missing weight rank are refused by name."""
+    """Units are packed from each issuer's own source count."""
 
     from alphalattice.evidence.alternative_evidence.contracts import ADMITTED_DOCUMENT_CAPACITY
     from alphalattice.evidence.alternative_evidence.runtime.coverage import (
@@ -367,14 +361,7 @@ def test_units_are_packed_from_each_issuer_s_own_source_count() -> None:
 
 
 def test_a_run_of_many_units_carries_a_plan_task_control_admits() -> None:
-    """regression (the retained book's PREPARE, 2026-09-20): a book packed
-    from each issuer's source count needs more units than the issuer-limit
-    cut ever produced -- fourteen for the 64-issuer book -- and its Task plan
-    carries one set of stages per unit (84 at preparation), which Task
-    Control's plan of at most 64 work items refused at submission. The plan
-    bound is sized for every unit the run contract admits across every
-    stage, the recovery view carries every stage of such a plan, and the
-    adapter names a run the plan could not carry by its size."""
+    """A run of many units carries a plan admitted by Task Control."""
 
     from annotated_types import MaxLen
 
@@ -548,14 +535,7 @@ def test_the_actor_schema_cannot_express_a_number() -> None:
 def test_the_four_axis_route_matrix_is_deterministic(
     kwargs: dict[str, Any], band: ExposureBand, expected: PortfolioReviewRoute, rule_id: str
 ) -> None:
-    """Severity, exposure band and the capped confidence decide together (the
-    seam plan's section 7): a high-severity risk on an exposed holding objects
-    when its findings support it and asks a person -- advisory, never
-    blocking -- when they are contested or limited; any other material risk is
-    accepted with its limits; a low one is listed without objection. Position
-    size changes what the book must do about a finding, never whether it is
-    true.
-    """
+    """The four axis route matrix is deterministic."""
 
     dossier = _dossier(band=band)
     receipt, recommendation = _seal(
@@ -623,13 +603,7 @@ def test_the_citation_structure_caps_what_the_actor_may_claim(
     effective: CROEvidenceInterpretation,
     expected: PortfolioReviewRoute,
 ) -> None:
-    """The Host counted the documents; the actor's `SUPPORTED` cannot exceed them.
-
-    One document is a single source, a contradicting document is a contest, no
-    document is a gap. An objection therefore needs two independent documents
-    behind the finding, whatever the reviewer said; anything less on an
-    exposed holding goes to a person, advisory.
-    """
+    """The citation structure caps what the actor may claim."""
 
     receipt, recommendation = _seal(
         _dossier(structure=structure), _submission(_issue(FINDING, ENTITY))
@@ -643,12 +617,7 @@ def test_the_citation_structure_caps_what_the_actor_may_claim(
 
 
 def test_a_holding_that_filed_nothing_is_counted_apart_and_never_as_no_risk() -> None:
-    """requirement (W1): a holding whose filing index held nothing in the window
-    is in the dossier with its weight and in no unit. The coverage counts weight
-    three ways -- read, filed nothing, not read -- and a review with nothing
-    unread is complete, one with weight unread partial. The holding's
-    conclusion is NOTHING_FILED, and the limitation says it is not a finding of
-    no risk."""
+    """A holding that filed nothing is counted apart and never as no risk."""
     from alphalattice.interface.local_application.evidence_cro import (
         EvidenceCroBook,
         evidence_cro_body,
@@ -781,11 +750,7 @@ def test_deterministic_evidence_facts_are_stated_limits_never_gates(
 
 
 def test_low_coverage_is_adjudicated_and_its_limit_stated() -> None:
-    """requirement: a review of part of a book judges what it read. At 20%
-    coverage the supported, high-severity risk still stands for its issuer --
-    formerly a guard returned before adjudication -- and the coverage is a
-    stated limit; an empty answer on the same dossier concludes nothing
-    against the issuer and says no major negative was found."""
+    """Low coverage is adjudicated and its limit stated."""
 
     dossier = _dossier(reviewed_ending_weight_coverage=0.2)
     receipt, recommendation = _seal(dossier, controlled_answer(dossier, ControlledRisk(ENTITY)))
@@ -809,15 +774,7 @@ def test_low_coverage_is_adjudicated_and_its_limit_stated() -> None:
 def test_a_sealed_review_reads_back_and_a_retired_policy_name_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: a published review reopens on restart under strict validation
-    and keeps the identity it was stored under; a review naming a retired policy --
-    the numbered names only the QA copies held, history since 2026-09-23 (D2) --
-    is refused at the same boundary, sealed anew or read back.
-
-    The recommendation goes through the real store, whose reader re-validates and
-    requires the identity to match the name it was filed under (an earlier version
-    of this test used `model_construct`, which skips the validator).
-    """
+    """A sealed review reads back and a retired policy name is refused."""
 
     from alphalattice.evidence.alternative_evidence.publication.artifacts import (
         AlternativeEvidenceArtifactStore,
@@ -1115,12 +1072,7 @@ def test_no_material_objection_never_says_safe() -> None:
 
 
 def test_an_answer_that_lost_items_is_never_published_as_clean() -> None:
-    """requirement (first release, false assurance): items the Host dropped
-    from the reviewer's answer after two corrections are unfinished work, not
-    a clean review. An empty accepted part with a dropped risk does not say no
-    major negative was found: the review is partial, a person is asked to read
-    the answer as written, and the drop is a stated limitation. A route the
-    admitted risks set higher stands; an answer that lost nothing is unchanged."""
+    """An answer that lost items is never published as clean."""
 
     dossier = _dossier()
     lost = (AnswerProblem(item=1, text="F9 is not a finding of this bundle."),)
@@ -1373,11 +1325,7 @@ def _internal_import_closure(start: str) -> set[str]:
 
 
 def test_the_local_web_composition_reaches_the_review_seam_and_no_agent_adapter() -> None:
-    """The owners are on the product's own import closure; the Agent adapters are not.
-
-    A route that exists only in tests is not a product route. And a Host that
-    imported an Agent adapter would load LangChain to answer a GET.
-    """
+    """The local web composition reaches the review seam and no agent adapter."""
 
     closure = _internal_import_closure(
         "alphalattice.control.product_host.composition.local_web_session"
@@ -1435,11 +1383,7 @@ def test_a_renderer_change_rotates_no_review_identity() -> None:
 
 
 def test_an_open_issue_is_stated_again_resolved_or_counted_as_last_assessed() -> None:
-    """requirement (W3): an open issue of the issuers' register stands in front
-    of the reviewer until a review resolves it. A risk that carries it states it
-    again as assessed now; a resolution citing a finding closes it; one the
-    reviewer says nothing of counts as last assessed -- routed, never dropped.
-    An answer naming an issue the bundle does not hold is told so."""
+    """An open issue is stated again resolved or counted as last assessed."""
 
     from alphalattice.evidence.alternative_evidence.contracts import seal_contract
     from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
@@ -1524,13 +1468,7 @@ def test_an_open_issue_is_stated_again_resolved_or_counted_as_last_assessed() ->
 
 
 def test_a_book_holding_more_open_issues_than_an_answer_can_address_still_seals() -> None:
-    """requirement (CS, V211): an answer states at most sixteen risks and
-    resolves at most sixteen issues, and every open issue it leaves unnamed is
-    carried as last assessed. A register of more open issues than that once
-    made every answer unsealable (`material_issues=too_long`, AX1b: 42 open
-    issues, 49 to 51 issues sealed). The carried ones sit outside the
-    reviewer's bound, each is routed, none is dropped; a seventeenth issue of
-    the reviewer's own is refused by name."""
+    """A book holding more open issues than an answer can address still seals."""
 
     from alphalattice.evidence.alternative_evidence.contracts import seal_contract
     from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
@@ -1601,10 +1539,7 @@ def test_a_book_holding_more_open_issues_than_an_answer_can_address_still_seals(
 
 
 def test_a_seal_that_meets_a_record_bound_is_refused_with_its_bounds() -> None:
-    """requirement (CS, V212): when an answer within its format would seal a
-    record past one of the record's bounds, the agent is told which bound, how
-    many and how many are allowed, and to tell its lead -- never a bare
-    `request_refused:<field>=too_long` with no way on."""
+    """A seal that meets a record bound is refused with its bounds."""
 
     from pydantic import ValidationError
 
@@ -1652,12 +1587,7 @@ def test_a_seal_that_meets_a_record_bound_is_refused_with_its_bounds() -> None:
 
 
 def test_a_resolution_past_the_answer_bound_is_corrected_by_its_author() -> None:
-    """regression (V576, an outside review at d7f94002): seventeen legitimate resolutions passed
-    the screen, which bounded the risks but counted no resolution, and the record's model then
-    refused them as `agent_bundle.seal_bound_exceeded`, whose words call it the Host's limit and
-    send the specialist to its lead; the README stated no bound for `resolved`. The screen reads
-    the first sixteen and asks its author to correct, as it does for risks, and the README states
-    the bound, the answer model's own."""
+    """A resolution past the answer bound is corrected by its author."""
 
     from alphalattice.evidence.alternative_evidence.contracts import seal_contract
     from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
@@ -1710,25 +1640,14 @@ def test_a_resolution_past_the_answer_bound_is_corrected_by_its_author() -> None
 
 
 def test_every_bound_a_specialist_answer_sets_is_screened_and_stated() -> None:
-    """requirement (V576's class, TE12): an answer past a bound its own model sets is corrected
-    by its author, never refused as the Host's limit. Every top-level bound of the CRO's and the
-    Evidence Analyst's answer models is the number its screen reads, and its README states it
-    from that number."""
+    """Every bound a specialist answer sets is screened and stated."""
 
-    import inspect
-
-    from alphalattice.evidence.alternative_evidence.analysis import (
-        submissions as analyst_screen,
-    )
     from alphalattice.evidence.alternative_evidence.analysis import views as analyst_views
     from alphalattice.evidence.alternative_evidence.analysis.contracts import (
-        ANALYST_ANSWER_TEXT_FIELDS,
         AlternativeEvidenceAnalystAnswer,
     )
-    from alphalattice.oversight.chief_risk_officer.decision import submissions as cro_screen
     from alphalattice.oversight.chief_risk_officer.decision import views as cro_views
     from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
-        REVIEW_ANSWER_TEXT_FIELDS,
         PortfolioReviewAnswer,
     )
 
@@ -1740,23 +1659,12 @@ def test_every_bound_a_specialist_answer_sets_is_screened_and_stated() -> None:
             if isinstance(limit := getattr(value, "max_length", None), int)
         }
 
-    cro = {
-        "risks": ("MAXIMUM_ANSWER_RISKS", cro_screen.MAXIMUM_ANSWER_RISKS),
-        "resolved": ("MAXIMUM_ANSWER_RESOLUTIONS", cro_screen.MAXIMUM_ANSWER_RESOLUTIONS),
-        "summary": ("REVIEW_ANSWER_TEXT_FIELDS", REVIEW_ANSWER_TEXT_FIELDS["summary"]),
-    }
-    analyst = {
-        "findings": ("MAXIMUM_ANSWER_FINDINGS", analyst_screen.MAXIMUM_ANSWER_FINDINGS),
-        "notes": ("ANALYST_ANSWER_TEXT_FIELDS", ANALYST_ANSWER_TEXT_FIELDS["notes"]),
-    }
-    for model, screened, views in (
+    cro, analyst = specialist_answer_bound_samples()
+    for model, screened, _views in (
         (PortfolioReviewAnswer, cro, cro_views),
         (AlternativeEvidenceAnalystAnswer, analyst, analyst_views),
     ):
         assert bounds(model) == {name: number for name, (_, number) in screened.items()}, model
-        readme = inspect.getsource(views)
-        for name, (constant, _number) in screened.items():
-            assert f"`{name}`" in readme and constant in readme, (model, name)
 
 
 def test_published_issuer_summary_separates_generated_words_from_authored_text() -> None:

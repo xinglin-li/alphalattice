@@ -502,12 +502,7 @@ def test_every_lifecycle_set_is_registered_with_its_reason() -> None:
 
 
 def test_only_the_data_owners_defer_and_no_transition_sets_review_pending() -> None:
-    """requirement (V524, S2): the states a consumer must classify are the ones some Task can
-    reach. Only the preparation and data update owners defer a Task, and the research update
-    through the data update's stages (V601); each such kind reads its deferral in STATUS. Task
-    Control has no transition to REVIEW_PENDING; the client's
-    tables keep it for answers' `status`. A new deferring owner, or a review transition, fails
-    here first."""
+    """Only the data owners defer and no transition sets review pending."""
 
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         PortfolioResearchOperations,

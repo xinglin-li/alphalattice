@@ -105,10 +105,7 @@ def _states(receipt: Any) -> dict[str, str]:
 
 
 def test_completion_states_are_delivery_facts_and_a_subset_is_an_answer(tmp_path: Path) -> None:
-    """requirement: an answer naming one issuer's finding completes every
-    issuer by what was delivered -- the named one with findings, the one read
-    and not named with none, the one without a document as missing -- and
-    reports no check for anyone."""
+    """Completion states are delivery facts and a subset is an answer."""
 
     common, aliases = _inputs(tmp_path)
     answer = AlternativeEvidenceAnalystAnswer.model_validate(
@@ -203,10 +200,7 @@ def test_each_finding_is_screened_on_its_own_in_plain_words(tmp_path: Path) -> N
 
 
 def test_historical_completions_read_as_sealed_and_the_aggregate_rule_is_per_issuer() -> None:
-    """requirement: a v1 completion validates and serializes without new keys
-    (its hashes stand); mixed legacy/new children never inflate the new
-    child's coverage (the base counted every issuer when any child was
-    legacy)."""
+    """Historical completions read as sealed and the aggregate rule is per issuer."""
 
     v1 = AnalysisCompletion(
         completion_schema="issuer-check-outcomes-v1",

@@ -99,12 +99,8 @@ def test_a_same_shaped_surface_on_another_axis_is_refused(
 
 
 def test_a_permuted_listing_axis_is_refused(real_risk_workspace: RealRiskWorkspace) -> None:
-    """Membership is not enough: the covariance axis is positional.
-
-    A surface holding the same listings in a different order would silently
-    transpose every matrix, so it is rejected rather than matched on set
-    equality.
-    """
+    """A covariance surface with a permuted listing axis is refused even when its membership is
+    unchanged."""
 
     surface = real_risk_workspace.return_surface
     listings = tuple(surface.epoch.ordered_listing_ids)
@@ -122,12 +118,8 @@ def test_no_published_surface_is_refused(real_risk_workspace: RealRiskWorkspace)
 
 
 def test_two_exact_matches_are_refused(real_risk_workspace: RealRiskWorkspace) -> None:
-    """Ambiguity has no safe default.
-
-    Choosing the newest would make the result depend on when the run happened
-    rather than on what the document said, which is exactly the reproducibility
-    the evidence graph is meant to provide.
-    """
+    """Selecting a return surface refuses two exact matches rather than choosing by publication
+    time."""
 
     surface = real_risk_workspace.return_surface
     # A genuinely different surface that still matches on every selection axis:

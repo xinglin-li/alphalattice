@@ -176,10 +176,7 @@ def test_the_window_is_what_the_issuer_filed_recently_and_nothing_older_is_kept(
 
 
 def test_a_filing_read_earlier_gives_its_capacity_to_what_is_new() -> None:
-    """requirement (W3): the filing is the unit of reuse. A filing an earlier
-    analysis read is not selected again while it stays in the window: it is
-    deferred as read earlier, and the capacity goes to what is new -- the
-    request names what was read, and the plan is the request's own."""
+    """A filing read earlier gives its capacity to what is new."""
 
     read = frozenset(WINDOWED[:2])
     plan = _plan(_FloodTransport(FLOOD), _request(budget=4), read_earlier=read)
@@ -271,10 +268,7 @@ def test_a_request_under_the_retired_policy_is_refused_at_planning() -> None:
 
 
 def test_an_issuer_s_plan_is_its_own_whatever_the_width_of_the_request() -> None:
-    """requirement (6A): the logical selection is decided under the issuer's
-    policy budget before any packing, so an issuer of an eight-issuer request
-    plans the same filings as an issuer alone; the admitted set bounds the
-    unit's plans together (`apply_unit_capacity`), never by division."""
+    """An issuer's plan is its own whatever the width of the request."""
 
     wide = _plan(_FloodTransport(FLOOD), _request(issuers=WIDE, budget=12))
     alone = _plan(_FloodTransport(FLOOD), _request(budget=12))
@@ -304,11 +298,7 @@ def _windowed_plans(rows: list[tuple[str, ...]], issuers: tuple[str, ...]) -> tu
 
 
 def test_a_unit_whose_plans_exceed_the_admitted_set_defers_filings_round_robin() -> None:
-    """requirement (6A): eight issuers' own plans of six filings each are
-    bounded together: filings are deferred BEYOND_UNIT_CAPACITY from the
-    issuer holding the most, oldest first, until the unit's selections fit the
-    24-document set; a plan that fits is returned unchanged; the result is the
-    same whatever order the plans arrive in."""
+    """A unit whose plans exceed the admitted set defers filings round robin."""
 
     plans = _windowed_plans(FLOOD, WIDE)
     assert all(len(plan.selected) == 6 for plan in plans)
@@ -350,10 +340,8 @@ NEGATIVE: list[tuple[str, ...]] = [
 
 
 def test_the_inventory_carries_an_eight_k_s_items_and_admits_late_filing_notices() -> None:
-    """requirement (Q3): the submissions index states each current report's
-    items at no extra request, so the inventory records them; a late-filing
-    notice (NT 10-K, NT 10-Q) is a filing beside the 8-Ks; a form the
-    selection does not read (a prospectus) is not discovered."""
+    """The filing inventory carries 8-K items and admits late-filing notices alongside current
+    reports."""
 
     plan = _plan(_FloodTransport(NEGATIVE), _request(budget=12))
     assert plan.discovered_count == 8, "the prospectus is not discovered"
@@ -370,11 +358,7 @@ def test_the_inventory_carries_an_eight_k_s_items_and_admits_late_filing_notices
 
 
 def test_major_negatives_come_first_then_periodic_reports_then_routine_events() -> None:
-    """requirement (Q3, W1): recency was the only order, so a non-reliance or a
-    delisting notice followed by one routine 8-K was deferred behind it. Under
-    capacity the late-filing notices and the 8-Ks carrying a negative item
-    (1.03, 2.04, 2.06, 3.01, 4.01, 4.02) come first, then the periodic reports,
-    then the routine current reports, each newest first."""
+    """Major negatives come first then periodic reports then routine events."""
 
     plan = _plan(_FloodTransport(NEGATIVE), _request(budget=5))
     assert [entry.accession[-3:] for entry in plan.events] == ["102", "103", "105", "020", "101"]
@@ -384,11 +368,7 @@ def test_major_negatives_come_first_then_periodic_reports_then_routine_events() 
 
 
 def test_the_unit_defers_routine_events_before_periodic_reports_and_major_negatives() -> None:
-    """requirement (Q3): packing a unit defers from the issuer holding the most
-    selected filings, its routine events oldest first, and a periodic report or
-    a major negative only when that issuer has no routine event left;
-    re-sealing a plan keeps its entries as they are (no serializer warnings
-    from dumped dictionaries)."""
+    """The unit defers routine events before periodic reports and major negatives."""
 
     plans = _windowed_plans(NEGATIVE, WIDE[:5])
     assert all(len(plan.events) == 6 for plan in plans)
@@ -451,13 +431,7 @@ def test_acquisition_fetches_exactly_the_plan_and_records_it(tmp_path: Path) -> 
 def test_a_scoped_acquisition_fetches_the_named_originals_as_the_index_holds_them(
     tmp_path: Path,
 ) -> None:
-    """requirement: named accessions are fetched exactly as the issuer's own
-    official index holds them (form, primary document, ownership by CIK),
-    every other discovered filing is deferred as outside the scope, an
-    accession the index does not hold is named and never fetched from a
-    guessed location, and each acquired document keeps its time apart: the
-    filing date at DATE precision, the official acceptance, the reported
-    period from the official metadata and the retrieval clock."""
+    """A scoped acquisition fetches the named originals as the index holds them."""
 
     from alphalattice.evidence.alternative_evidence.documents.workspace import (
         AlternativeEvidenceDocumentPublisher,

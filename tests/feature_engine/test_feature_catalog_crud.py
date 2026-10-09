@@ -13,6 +13,7 @@ panel or prototype executor -- and the source pin names this checkout's code.
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -210,7 +211,6 @@ def test_feature_build_retains_raw_contract_and_combines_preprocessing_in_one_ta
 
 
 def test_research_formula_value_children_are_bounded_reused_and_tamper_checked(tmp_path):
-    from datetime import date
 
     from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.catalog.research_values import (

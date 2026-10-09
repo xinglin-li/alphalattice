@@ -1,5 +1,6 @@
 """The native bridge after FLOW-1: Session bindings and Host-read observations, no hooks."""
 
+import ast
 import importlib.util
 import json
 import os
@@ -7,6 +8,7 @@ import shutil
 import tomllib
 from dataclasses import asdict
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -443,12 +445,7 @@ def test_claude_code_host_binding_is_kept_apart_from_codex(tmp_path):
 
 
 def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_path):
-    """requirement (V574): each bound the bridge applies is pinned here against the contract it
-    carries, as the contract's own validator admits it: a bound tighter than its contract refuses
-    what the contract admits, a looser one passes what the Host then refuses under another word.
-    Every length bound in the bridge is a named constant, and every named one is a row."""
-
-    import ast
+    """Every bound the bridge applies is the contract of what it carries."""
 
     from pydantic import ValidationError
 
@@ -656,16 +653,7 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
 def test_a_binding_is_found_up_from_any_folder_and_serves_its_session_and_specialists(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (V568): one bind, the one `native_setup bind` and `session bind` share, writes
-    the binding in the project holding its host's declarations, the nearest up from where it
-    runs, making a Claude Code project's `.codex` folder; a changed scope for that Session refuses.
-    The binding is found from any folder within the project, as git finds its .git, and serves
-    the bound session, a Claude Code subagent that carries its id, and a Codex specialist whose
-    own rollout names a spawn chain reaching the bound session within `SPAWN_HOPS`; no other
-    session, of either host, whatever its id."""
-
-    import shutil
-    from uuid import uuid4
+    """A binding is found up from any folder and serves its session and specialists."""
 
     from alphalattice.interface.local_application import native_bridge as bridge
     from alphalattice.interface.local_application.native_setup import (

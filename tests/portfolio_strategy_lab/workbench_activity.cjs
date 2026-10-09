@@ -32,7 +32,7 @@ const c={Window:{renderTop(){}},console,URLSearchParams,Date,Number,Math,Set,Map
 const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes (round 72)');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
 c.Data.readShared = (...args) => c.Data.read(...args);
 c.LiveGoals={observe:()=>{goalObservations++;}};
-vm.createContext(library.into(c,root));vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);vm.runInContext(percentRule(root),c);vm.runInContext(runShapes(root),c);vm.runInContext(fs.readFileSync(path.join(root,'live-activity.js'),'utf8')+';globalThis.A=LiveActivity;',c);
+library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);vm.runInContext(percentRule(root),c);vm.runInContext(runShapes(root),c);vm.runInContext(fs.readFileSync(path.join(root,'live-activity.js'),'utf8')+';globalThis.A=LiveActivity;',c);
 (async()=>{
   const A=c.A;
   // 1. First read is the tail: nothing is announced for history the reader just joined.

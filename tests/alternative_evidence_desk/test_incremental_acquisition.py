@@ -58,12 +58,7 @@ from tests.alternative_evidence_desk.sec_scenario_transport import (
 
 
 def test_a_fresh_source_check_with_no_change_downloads_no_body_again(tmp_path: Path) -> None:
-    """requirement (plan section 2 and 3; matrix rows 2-3): the same issuer
-    prepared again for a later cutoff, the official inventory unchanged.
-    Metadata may be fetched once per issuer per pass; every selected body
-    is already held and verified locally, so zero filing bodies are fetched
-    and the source set references the retained bytes. On the base every
-    selected body was downloaded again (scratchpad p0-base-2e9e852e-repro)."""
+    """A fresh source check with no change downloads no body again."""
 
     transport = _transport()
     runtime = _runtime(tmp_path)
@@ -202,12 +197,7 @@ def test_two_securities_of_one_issuer_share_the_issuer_bodies(tmp_path: Path) ->
 def test_a_failed_body_keeps_its_siblings_and_the_next_attempt_fetches_only_it(
     tmp_path: Path,
 ) -> None:
-    """requirement (plan section 3; matrix rows 9 and 12): one body fails.
-    The bodies obtained before and after it are committed and survive; the
-    issuer keeps the filings it did obtain, the failed one named (no filing
-    is a required baseline since W1); the next attempt fetches only the body
-    that failed. On the base the issuer kept
-    nothing and re-fetched everything."""
+    """A failed body keeps its siblings and the next attempt fetches only it."""
 
     transport = _transport()
     transport.fail_body(AAPL, TEN_K, lambda: RuntimeError("scenario: source unavailable"))
@@ -300,17 +290,7 @@ def test_a_cancellation_after_a_committed_body_resumes_without_refetching_it(
 def test_a_known_oversize_body_is_deferred_by_its_record_and_not_transferred_again(
     tmp_path: Path,
 ) -> None:
-    """requirement (Phase A3): a body over the request's document cap is
-    deferred by name with the cap stated and the transfer abandoned at the
-    cap; the observation is sealed by the resource's identity, and a later
-    request under a cap no larger than the observed one -- another cutoff,
-    another Task, another process -- makes no body request for it while
-    still reporting it deferred. A larger cap or an explicit accession scope
-    permits one bounded retry; no time does (W6: a filing observed oversize
-    leaves the 30-day window before any recheck would be due); the other
-    resources continue normally. On the base the
-    same doomed transfer was repeated once per pass (the campaign
-    re-attempted REG's and SBAC's 10-Ks on every fresh check)."""
+    """A known oversize body is deferred by its record and not transferred again."""
 
     transport = _transport()
     big = filing_body(EIGHT_K.accession, words=200_000)
@@ -435,11 +415,7 @@ def test_an_explicit_accession_scope_retries_a_deferred_resource_once(tmp_path: 
 
 
 def test_a_tampered_local_body_is_refused_by_name_and_never_refetched(tmp_path: Path) -> None:
-    """requirement (plan section 3; matrix row 14): a retained body whose
-    bytes no longer match its reference is a named integrity failure of the
-    resource -- `source_object_tampered` -- not a silent refetch that would
-    launder the corruption. The issuer keeps its other filings; the tampered
-    one is refused by name."""
+    """A tampered local body is refused by name and never refetched."""
 
     transport = _transport()
     runtime = _runtime(tmp_path)
@@ -472,11 +448,7 @@ def test_a_tampered_local_body_is_refused_by_name_and_never_refetched(tmp_path: 
 def test_a_refused_durable_keep_stops_the_request_under_the_storage_owner_code(
     tmp_path: Path,
 ) -> None:
-    """requirement (plan section 5; matrix row 13): the storage budget refuses
-    the second body's keep. The request stops there by the owner's own
-    code, nothing further is fetched that could not be kept, the first body
-    stays committed, and the next attempt under a restored budget fetches
-    only what was never kept."""
+    """A refused durable keep stops the request under the storage owner's code."""
 
     class BudgetRefused(RuntimeError):
         failure_code = "storage.managed_capacity_exceeded"
@@ -524,10 +496,7 @@ def test_a_refused_durable_keep_stops_the_request_under_the_storage_owner_code(
 
 
 def test_a_denied_transport_makes_no_reuse_claim_and_names_the_refusal(tmp_path: Path) -> None:
-    """requirement (matrix row 16): with the network denied at the transport,
-    no inventory can be read, so no local body is claimed fresh for the new
-    cutoff -- the issuer fails by the transport's own refusal and the
-    request is UNAVAILABLE, not a stale set presented as checked."""
+    """A denied transport makes no reuse claim and names the refusal."""
 
     transport = _transport()
     runtime = _runtime(tmp_path)
@@ -550,10 +519,7 @@ def test_a_denied_transport_makes_no_reuse_claim_and_names_the_refusal(tmp_path:
 def test_a_lost_index_is_rebuilt_from_committed_assets_without_a_download(
     tmp_path: Path,
 ) -> None:
-    """requirement (plan section 5; matrix row 15): an index projection is
-    derived -- from the canonical documents and the committed vectors --
-    and its loss or eviction is repaired from them: the rebuild asks the
-    source for nothing and the retained originals are not touched."""
+    """A lost index is rebuilt from committed assets without a download."""
 
     transport = _transport()
     runtime = _runtime(tmp_path)
@@ -581,11 +547,7 @@ def test_a_lost_index_is_rebuilt_from_committed_assets_without_a_download(
 
 
 def test_a_retained_body_over_a_later_request_cap_is_deferred_by_name(tmp_path: Path) -> None:
-    """A body acquired under one request's cap and asked for by a request
-    with a smaller cap: the cap governs the retained body as it governs a
-    transfer -- deferred by name, no request, and never carried into the
-    reading that would refuse it (seen on the rehearsal: a held 10-K over
-    the product's default cap failed its whole issuer at citation time)."""
+    """A retained body over a later request cap is deferred by name."""
 
     transport = _transport()
     big = filing_body(TEN_K.accession, words=60_000)
@@ -613,11 +575,7 @@ def test_a_retained_body_over_a_later_request_cap_is_deferred_by_name(tmp_path: 
 
 
 def test_a_storage_preflight_refuses_an_issuer_before_any_transfer(tmp_path: Path) -> None:
-    """requirement (plan section 5; matrix row 13): the bytes an issuer's
-    transfers would add at every layer -- original, staging, canonical
-    text, vectors, index projection -- are put to the storage owner once
-    before the first transfer; a refusal stops the request under the
-    owner's code with nothing fetched and nothing written."""
+    """A storage preflight refuses an issuer before any transfer."""
 
     class DiskShort(RuntimeError):
         failure_code = "storage.disk_space_insufficient"
@@ -658,11 +616,7 @@ def test_a_storage_preflight_refuses_an_issuer_before_any_transfer(tmp_path: Pat
 def test_an_amendment_fetches_only_itself_and_the_original_stays_as_sealed(
     tmp_path: Path,
 ) -> None:
-    """requirement (matrix row 5): a 10-K/A appears after the 10-K was
-    acquired. The plan selects the amendment with the original it links
-    to; the original is reused from its retained bytes, only the amendment
-    is fetched, both are named separately in the accounting, and the first
-    request's set still resolves to the same bytes it sealed."""
+    """An amendment fetches only itself and the original stays as sealed."""
 
     transport = _transport()
     runtime = _runtime(tmp_path)
@@ -703,13 +657,7 @@ def test_an_amendment_fetches_only_itself_and_the_original_stays_as_sealed(
 def test_a_corrupt_commit_record_is_a_named_integrity_refusal_not_a_cache_miss(
     tmp_path: Path,
 ) -> None:
-    """requirement (R3): one body committed, the Task interrupted before the
-    source set was published, the commit record damaged, the store reopened
-    and the same issuer requested again. The damaged provenance is named
-    (`source_commitment_corrupt`); nothing is treated as never held, nothing
-    is fetched, no replacement record is sealed, and the damaged and intact
-    files are left exactly as found. On the base the damaged record was
-    skipped, the body downloaded again and provenance sealed twice."""
+    """A corrupt commit record is a named integrity refusal not a cache miss."""
 
     transport = _transport()
     first = _runtime(tmp_path)
@@ -768,10 +716,7 @@ def test_a_corrupt_commit_record_is_a_named_integrity_refusal_not_a_cache_miss(
 def test_a_lost_body_under_an_intact_commit_is_restored_under_that_commit(
     tmp_path: Path,
 ) -> None:
-    """requirement (R3): the legitimate recovery. The commit is intact and
-    the bytes are gone: the resource is not held, its body is fetched once
-    and restored at the same content address, and the intact commit stays
-    the one record of it -- no second record for the same bytes."""
+    """A lost body under an intact commit is restored under that commit."""
 
     transport = _transport()
     runtime = _runtime(tmp_path)

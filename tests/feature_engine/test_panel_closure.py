@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 from pathlib import Path
+from types import MappingProxyType, SimpleNamespace
 
 import duckdb
 import numpy as np
@@ -222,18 +223,7 @@ def test_artifact_only_rematerializer_reproduces_fixture_bytes(tmp_path: Path) -
 def test_base_probe_judges_partial_groups_by_retained_cells_and_proven_scope(
     tmp_path: Path,
 ) -> None:
-    """regression: a partially superseded batch could vouch for a wrong base source.
-
-    The probe skipped the receipt check of a partial group and compared
-    nothing in its place, and took a matching cell count as proof that the
-    retained rows belonged to the batch. Every candidate artifact here is
-    separately valid: the right base closure (the values the snapshot was
-    built from), a wrong one (the same cells after a base value moved without
-    the Panel cell being recomputed), a clip record that makes the one
-    frozen batch partial, and one whose scope does not cover the frozen cell.
-    """
-
-    import duckdb
+    """Base probe judges partial groups by retained cells and proven scope."""
 
     from alphalattice.foundation.feature_engine.panels.closure_contracts import (
         PanelDerivationRecipe,
@@ -373,14 +363,7 @@ def test_legacy_partial_receipt_recovers_the_original_epoch_layout(tmp_path, mon
 def test_a_recipe_published_before_partition_reuse_republishes_its_exact_bytes(
     tmp_path: Path,
 ) -> None:
-    """regression: a legacy recipe's identity survived, its serialization did not.
-
-    The recipe model gained optional origin fields whose identity rule
-    excludes absent values, so a pre-reuse recipe re-derives its recorded
-    hash. The writer then serialized those absent fields as ``null`` and
-    published different bytes under the historical hash; the content store
-    refused the retry. The published shape must be the identity's shape.
-    """
+    """A recipe published before partition reuse republishes its exact bytes."""
 
     resolver, database, snapshot_hash = _fixture_workspace(tmp_path)
     source = PanelClosureSourceRepository(database_path=database, resolver=resolver)
@@ -791,16 +774,8 @@ def _populate_database(
 
 
 def test_installed_preprocessing_catalog_and_clipping_evidence_round_trip(tmp_path) -> None:
-    """The Panel's transformation is an installed method with a durable receipt.
+    """Installed preprocessing catalog and clipping evidence round trip."""
 
-    Evidence is measured while transforming, so it can say what the clip did;
-    the assertions below check that it survives a durable round trip and that a
-    tampered receipt is refused rather than read back as fact.
-    """
-
-    import json
-
-    from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.panels.development_input import (
         DevelopmentFeatureOverlayColumn,
         DevelopmentFeatureOverlayManifest,
@@ -952,15 +927,7 @@ _D1, _D2, _D3, _D4 = "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08"
 
 
 def test_clipping_evidence_joins_cells_by_session_and_keeps_calendar_order() -> None:
-    """regression: a replaced middle session lands in its own position.
-
-    The original batch measured three sessions, a later batch recomputed only
-    the middle one. Concatenating what each batch still owned sealed
-    (1, 3, 9); the evidence must read (1, 9, 3), each count beside its own
-    session's finite count, with the batch identities folded in the order
-    the batches first appear on the axis. One batch owning every cell is the
-    fold every earlier complete build produced.
-    """
+    """Clipping evidence joins cells by session and keeps calendar order."""
 
     from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
     from alphalattice.foundation.feature_engine.producers.cross_section import (
@@ -1068,8 +1035,6 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """requirement: inert Formula extensions reach Alpha without rebuilding the base Panel."""
-
-    from types import MappingProxyType, SimpleNamespace
 
     from alphalattice.control.product_host.research_authoring import panel_methodology_sources
     from alphalattice.control.product_host.research_authoring.panel_methodology_sources import (
@@ -1568,16 +1533,8 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
 
 
 def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> None:
-    """From a Panel, the method that built it is reachable and verified.
+    """Panel snapshot identity binds the preprocessing method."""
 
-    The marker is the edge that stops the clipping receipt being an orphan, and
-    the lineage it yields is what a snapshot binds -- so two Panels whose
-    numbers coincide are still distinguishable when different methods produced
-    them. A marker whose evidence describes another Panel is refused rather
-    than bound.
-    """
-
-    from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
         ROBUST_SECTOR_NEUTRAL_Z,
         build_installed_panel_preprocessing_catalog,
@@ -1726,14 +1683,7 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
 
 
 def test_preprocessing_lineage_terminates_in_resolvable_implementation_facts() -> None:
-    """The implementation is a document a reader can open, not a leaf hash.
-
-    A binding that carries only ``implementation_binding_hash`` lets a reader
-    confirm two documents quote the same string and nothing else: not which
-    modules were hashed, not which versions were pinned, not whether the closure
-    named has anything to do with this Panel. So the child travels with the
-    binding, and a substituted one is refused rather than followed.
-    """
+    """Preprocessing lineage terminates in resolvable implementation facts."""
 
     from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
         ROBUST_SECTOR_NEUTRAL_Z,

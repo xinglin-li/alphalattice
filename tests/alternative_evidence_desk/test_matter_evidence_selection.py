@@ -57,12 +57,7 @@ def _allocate(documents: tuple[DocumentNeeds, ...], **options: int) -> Allocatio
 def test_segmentation_rules_v3_split_by_the_source_and_leave_region_statements_to_the_region() -> (
     None
 ):
-    """requirement (4.1/4.2): a further filing with its own caption opens a
-    matter inside a paragraph; a paragraph cut by a page break is read
-    whole so its dated filing is seen; a materiality closing after the last
-    matter is the region's, never that matter's; the accrual lead-in that
-    says 'some matters described below' is associated with the matters and
-    a closing that names none stays at the region with its scope open."""
+    """Segmentation splits by source structure and leaves region statements in their region."""
 
     text = _matters_filing()
     structure = DocumentStructure(text, document_type="10-Q")
@@ -134,13 +129,7 @@ def test_segmentation_rules_v3_split_by_the_source_and_leave_region_statements_t
 
 
 def test_needs_are_dealt_in_the_sealed_service_order_and_adjacent_needs_share_a_window() -> None:
-    """requirement (4.3, service order v2): each lane's region qualifications
-    first (a filing that names no matter has only those), the issuers in
-    turn; then a lane alternates an opening with an extension of a
-    disclosure already opened while both exist, so no opening waits behind
-    every other opening; a need that touches a chosen window joins it; what
-    the allowance or the budget refuses is listed with the reason, never
-    silently dropped."""
+    """Needs are dealt in the sealed service order and adjacent needs share a window."""
 
     matters_text = _matters_filing(extra=12, long=True)
     generic_text = _filing(note_lines=[GENERIC_ONLY])

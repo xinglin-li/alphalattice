@@ -62,7 +62,7 @@ function fixture(owners = {}, initial = '#page=history', search = '') {
         text: async () => { request.textReads++; return reply.text ?? JSON.stringify(reply.value); }};
     },
   };
-  vm.createContext(library.into(c, appDir));
+  library.context(c, appDir);
   for (const name of ['data.js', 'router.js']) vm.runInContext(fs.readFileSync(path.join(appDir, name), 'utf8'), c, {filename: name});
   vm.runInContext('render = () => globalThis.paints.push(app.page); patchMain = render; globalThis.D=Data; globalThis.go=navigate;', Object.assign(c, {paints}));
   function hold(matches) {

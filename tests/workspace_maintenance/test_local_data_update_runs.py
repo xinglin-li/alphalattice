@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import json
 import shutil
+from contextlib import closing
 from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from threading import Event, Thread
+from types import SimpleNamespace
 
 import pyarrow as pa
 import pytest
@@ -116,7 +118,6 @@ def _bytes(root: Path):
 def test_formation_catchup_distinguishes_absence_from_authority_failure(
     monkeypatch, failure, cancelled, expected
 ):
-    from types import SimpleNamespace
 
     from alphalattice.control.data_platform.maintenance.data_changes import WorkspaceDataChanges
     from alphalattice.foundation.market_data_ops.runtime.universe_maintenance import (
@@ -453,11 +454,7 @@ def test_real_update_plan_run_reuse_and_foundation_readback(
 
 
 def test_a_restarted_host_runs_a_maintenance_plan_by_its_hash_within_its_hour(qualified, tmp_path):
-    """regression (V537, from the user's review at a84e523f): a maintenance plan lived only in
-    its owner's memory, so `data-update run --from plan.json` after a Host restart was refused
-    `content_store.artifact_tampered`, a tamper code for a plan no store had kept. It is a
-    preview in the plan store, apart from the change plans a person confirms: a restarted Host
-    reopens it within its hour, and past it the refusal says to plan again, with its words."""
+    """A restarted host runs a maintenance plan by its hash within its hour."""
 
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
@@ -512,20 +509,7 @@ def test_a_restarted_host_runs_a_maintenance_plan_by_its_hash_within_its_hour(qu
 def test_selected_update_readback_is_scoped_by_its_own_cycle_and_counts_distinct_dates(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """regression: the selected Task's units and Panel account are its own, not today's.
-
-    Deterministic, mocked I/O: the plan's cycle request names membership revision
-    A while the active readiness names revision B (a later transition) with its
-    own same-session maintenance run. The readback keys the units by the run the
-    cycle recorded when it admitted them, or -- for a cycle recorded before that
-    record existed -- by the cycle's request, verified against the run's own
-    revision; never by today's manifest. Partition reuse comes from the receipt's
-    resulting Panel (unavailable by name when that Panel is gone, never the active
-    Panel's); one date named by both a raw and an adjusted correction counts once;
-    processed, corrected and re-verified units are labelled apart from new sessions.
-    """
-
-    from types import SimpleNamespace
+    """Selected update readback is scoped by its own cycle and counts distinct dates."""
 
     from alphalattice.control.data_platform.maintenance.contracts import (
         ListingMarketDataChange,
@@ -990,23 +974,7 @@ def standing_quarantine_seed(ten_sector, tmp_path_factory):
 def test_a_standing_quarantine_is_continued_across_an_unchanged_anomaly_and_not_otherwise(
     standing_quarantine_seed, tmp_path, monkeypatch, day_two
 ):
-    """requirement: a due recheck re-examines the evidence; it does not re-ask an unchanged case.
-
-    Day one: the first listing's close doubles and stays doubled (a
-    historical jump); the Human confirms ``recoverable_quarantine`` and the
-    same Task continues to a publication over the other 59. Day two is an
-    ordinary append. Unchanged anomaly: the recheck runs, finds the same
-    unexplained move on the same session with the same adjacent closes, no
-    new reason and no correction, and continues the standing quarantine to
-    the next recheck without a new decision; the day publishes, the listing
-    stays excluded, the journal stays empty, and the disposition reads back
-    as original decision -> new evidence -> rule -> continuation. New anomaly:
-    a second unexplained session appears, so the old decision does not cover
-    it and a new case is raised. Explained: the provider now reports a 2:1
-    split on the session, the move is action-explained, the fresh
-    qualification passes and the listing is requalified by the existing
-    owner -- a standing quarantine never keeps a recovered listing out.
-    """
+    """A standing quarantine is continued across an unchanged anomaly and not otherwise."""
 
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
     from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
@@ -1150,12 +1118,7 @@ def test_a_standing_quarantine_is_continued_across_an_unchanged_anomaly_and_not_
 def test_quarantine_decision_keeps_nominal_membership_and_continues_the_same_task(
     ten_sector, tmp_path, monkeypatch
 ):
-    """A quality choice changes dated source usability, not the formal Universe.
-
-    The existing Human-only truth decision remains required. No extra membership
-    review or second Data Task is needed, and the published Panel retains nominal
-    rows while refusing the quarantined source in that session's calculations.
-    """
+    """Quarantine decision keeps nominal membership and continues the same task."""
     from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.panels.reader import (
         FeaturePanelReader,
@@ -1220,12 +1183,7 @@ def test_quarantine_decision_keeps_nominal_membership_and_continues_the_same_tas
 def test_missing_quality_scope_refuses_publication_and_child_evidence_still_refuses(
     ten_sector, tmp_path, monkeypatch
 ):
-    """Unknown eligibility never becomes an unmasked successful publication.
-
-    A quarantine no longer derives a child, so its old child-binding injection
-    cannot test this route. Keep that distinct boundary on its real owner below.
-    """
-    from contextlib import closing
+    """Missing quality scope refuses publication and child evidence still refuses."""
 
     from alphalattice.control.product_host.composition.workspace import WorkspaceRuntime
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
@@ -1463,12 +1421,7 @@ def _same_value(old: object, new: object) -> bool:
 def test_an_activation_computes_its_column_and_the_update_carries_every_other_value(
     qualified, tmp_path, monkeypatch
 ):
-    """regression (V398) and requirement (V92): after a person activates a formula factor, the
-    next data update succeeds and computes that factor alone. The shipped catalog's rows stay
-    as they were, under their own identity, beside the column catalog the factor's rows are
-    written under; the extended catalog's rows, read composed of the two, and its Panel equal
-    those a whole build of the extended catalog makes, and the Panel's recovery binding names
-    the column's closure head beside the base's."""
+    """An activation computes its column and the update carries every other value."""
 
     from alphalattice.control.product_host.research_authoring.feature_activations import (
         workspace_feature_catalog,
@@ -1719,11 +1672,7 @@ def test_a_deferred_feature_build_is_built_again_once_its_retry_is_due(
 def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
     qualified, tmp_path, monkeypatch
 ):
-    """regression (V444, V436's measure): an update whose Feature build ran out of memory
-    stopped at `feature.materialization_failed` and nothing more, so an agent could not tell the
-    machine from a defect. The build's own cause (what it raised, the listing in hand and its
-    sessions) reaches the update Task's stopped stage: its status and the update's readback say
-    it beside the code."""
+    """A feature build that failed names its cause beside its code."""
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
@@ -1780,19 +1729,7 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
 def test_honoured_cancel_marks_the_cycle_and_a_new_plan_reuses_its_listing_progress(
     qualified, tmp_path, monkeypatch
 ):
-    """regression: a cancelled Task left its maintenance cycle at ``running``.
-
-    The Task lifecycle already said CANCELLED; the cycle it ran kept saying
-    ``running`` until a later process reaped it as a lost worker, and the
-    maintenance readback presented it as stale live work. The safe checkpoint
-    that honours the cancel now records it on the cycle as well; the cycle is
-    terminal for that request, its listing progress stays with the maintenance
-    operation, and the next plan's cycle continues from it without a re-fetch.
-
-    A cycle advances one network chunk (25 listings); this ten-name workspace
-    would finish its market data in one, so the cycle is bounded to one
-    listing here to place the cancel inside the market-data phase.
-    """
+    """Honoured cancel marks the cycle and a new plan reuses its listing progress."""
 
     from alphalattice.control.data_platform.maintenance.contracts import (
         MaintenanceStatus,

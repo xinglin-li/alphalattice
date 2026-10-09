@@ -508,13 +508,7 @@ def test_owner_verification_failure_triggers_one_strict_solve() -> None:
 def test_direct_osqp_builds_the_structure_once_and_the_solver_per_solve(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """requirement: the cached thing is the structure, not the solver instance.
-
-    One instance driven by repeated ``update`` calls was the earlier design and
-    it is what made a campaign's completed trial set depend on execution order:
-    see the history test below. What is still cached is the 2K sparse pattern,
-    which is what is expensive to assemble and carries no state.
-    """
+    """Direct OSQP builds the structure once and the solver per solve."""
 
     setup_calls = 0
     original_setup = optimizer_module.osqp.OSQP.setup
@@ -549,15 +543,7 @@ def test_direct_osqp_builds_the_structure_once_and_the_solver_per_solve(
 
 
 def test_a_solve_does_not_depend_on_the_solves_before_it() -> None:
-    """regression: the same problem after a different history gave a different answer.
-
-    Two runs of one campaign over the same sealed Program published 16 and 15
-    solver non-convergences. The cause was a reused OSQP instance: state carried
-    across ``update`` calls moved the answer in the last bit, and for a problem
-    that needs most of its 20,000 iterations that is enough to flip whether it
-    certifies. This pins the property the fix buys -- an answer that is a
-    function of the problem alone -- rather than the fix itself.
-    """
+    """A solve does not depend on the solves before it."""
 
     size = 22
     covariance = _covariance(size)

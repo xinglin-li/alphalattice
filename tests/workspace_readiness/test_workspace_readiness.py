@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta, timezone, tzinfo
 from hashlib import sha256
@@ -43,6 +44,8 @@ from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+
+_SIMPLE_NAMESPACE = SimpleNamespace
 
 PROFILE = (
     Path(__file__).resolve().parents[2]
@@ -651,21 +654,7 @@ class RecoveringHistoryProvider(ShortHistoryAdditionProvider):
 
 
 def test_feature_recheck_scope_resolves_only_across_the_request_own_raw_transition(tmp_path):
-    """requirement: a raw retry's success is not authority over the Feature scope.
-
-    A Feature/Sector recheck is planned against the source parent of its
-    day. When the same request's raw retry admits candidates, the parent
-    moves through the transition that retry recorded, and the scope must
-    resolve across exactly that transition under the readiness owner's own
-    rules: the planned parent is the transition's prior, the merged parent
-    its next, the fingerprint the approved source's, the admitted names the
-    retry's own; the scope names no prior member and no admitted candidate;
-    prior members, the scope and the admitted candidates are exactly the
-    parent. A scope over a wrong or stale parent is refused although its
-    listings are a subset of the merged parent; a scope naming a prior
-    member or an admitted candidate is refused; a transition the request
-    did not record resolves nothing.
-    """
+    """Feature recheck scope resolves only across the request's own raw transition."""
 
     from alphalattice.foundation.feature_engine.inputs.contracts import FeatureCandidateRecheck
     from alphalattice.foundation.market_data_ops.sources.manifest import (
@@ -946,18 +935,8 @@ def test_activated_source_preserves_existing_unusable_members_but_not_index_leav
 def test_universe_spy_divergence_preflight_composes_qualified_inputs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The Host composes the two lanes it alone may combine, and only advises.
-
-    The Universe side is the equal-weight mean of the same open-to-open
-    one-session return over every qualified listing; the SPY side is the
-    existing benchmark surface, untouched. Data access is stubbed here so the
-    composition itself -- alignment, aggregation, identity binding,
-    classification -- is what runs, with engineered numbers whose expected
-    aggregate is known by hand.
-    """
-
-    from contextlib import nullcontext
-    from types import SimpleNamespace
+    """Universe and benchmark divergence preflight combines qualified inputs through the Host
+    without changing either lane."""
 
     import alphalattice.control.data_platform.preflight as readiness
 
@@ -1047,16 +1026,9 @@ def test_universe_spy_divergence_preflight_composes_qualified_inputs(
 def test_preflight_authority_failure_blocks_instead_of_reporting_no_verdict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A resolution failure must not read like a clean run.
+    """Preflight authority failure blocks instead of reporting no verdict."""
 
-    Only a workspace that cannot express a matured scope may yield no verdict.
-    A missing research manifest, a session with no qualified members, or an
-    uninstalled policy all mean the evidence should have existed and its
-    authority could not be resolved -- so each seals a typed blocking result
-    that reaches the Host's own outcome rather than collapsing to ``None``.
-    """
-
-    from types import SimpleNamespace
+    SimpleNamespace = _SIMPLE_NAMESPACE
 
     import alphalattice.control.data_platform.preflight as preflight
     from alphalattice.control.product_host.data_preparation.host import (
@@ -1110,23 +1082,6 @@ def test_preflight_authority_failure_blocks_instead_of_reporting_no_verdict(
         is None
     )
     del SimpleNamespace
-
-
-def test_only_the_foundation_writes_its_rebuild_requirement() -> None:
-    """Regression: Market Data's activation inserted the Foundation's rebuild requirement
-    by its own SQL, a state the storage registry gives to Foundation; the owner defines the
-    insert and the activation runs it as the caller's step, inside its transaction."""
-
-    import re
-
-    root = Path(__file__).resolve().parents[2] / "src" / "alphalattice"
-    writes = re.compile(r"(?:INSERT INTO|UPDATE)\s+feature_universe_rebuild_requirement")
-    writers = sorted(
-        path.relative_to(root).as_posix()
-        for path in root.rglob("*.py")
-        if writes.search(path.read_text(encoding="utf-8"))
-    )
-    assert writers == ["foundation/research_foundation/storage/repository.py"]
 
 
 class UnawareZone(tzinfo):

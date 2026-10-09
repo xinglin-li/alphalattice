@@ -1,7 +1,9 @@
 """The Claude Code host files are exact derivatives of the Codex-native owners."""
 
+import itertools
 import json
 import re
+import shlex
 import tomllib
 from pathlib import Path
 
@@ -66,12 +68,7 @@ def _sections(card: Path) -> dict[str, str]:
 
 
 def test_each_card_says_its_place_on_the_skills_paths(materialize):
-    """requirement (V381, V382, V389): AX12's work was a ten-step path and 25 more launches
-    rebuilt it from help and schemas. Each card's Place names its place among the research
-    Skill's shortest paths, every name one of the Skill's paths; a stage card's Role says when it
-    runs them (EXECUTE) and an evidence card that it runs none."""
-
-    import re
+    """Each card says its place on the skills paths."""
 
     skill = (ROOT / ".agents/skills/alphalattice-research/SKILL.md").read_text(encoding="utf-8")
     paths = set(re.findall(r"^- \*\*(.+?)\*\*", skill, flags=re.MULTILINE))
@@ -90,14 +87,7 @@ def test_each_card_says_its_place_on_the_skills_paths(materialize):
 
 
 def test_each_card_carries_its_capability_and_graph(materialize):
-    """requirement (V384, V386, V387, V389): every card is one layout: Role, Place, its generated
-    CLI or Bundle with the graph of its work, Method, Boundaries. A stage card's CLI links the
-    shared command contract (its exit-code table carries every CLI outcome), then gives its reads
-    and its EXECUTE commands, every file under <out>, written from the operation table and
-    current with it; an unknown flag, or a graph walking to a command the role lacks, is refused,
-    not written."""
-
-    import re
+    """Each card carries its capability and graph."""
 
     from alphalattice.interface.local_application.cli_contract import EXIT_CODES
 
@@ -152,8 +142,6 @@ def test_each_card_carries_its_capability_and_graph(materialize):
 def test_the_skill_carries_every_command_its_paths_use(materialize):
     """requirement (V384): the lead is an agent like the stage roles, so its Skill carries the
     same command list, current with the table, naming every command its shortest paths run."""
-
-    import re
 
     skill = (ROOT / ".agents/skills/alphalattice-research/SKILL.md").read_text(encoding="utf-8")
     assert skill == materialize.skill_text()
@@ -222,10 +210,7 @@ def test_settings_merge_keeps_unrelated_keys_and_removes_only_product_matcher(ma
 
 
 def test_every_host_declaration_says_what_its_card_says(materialize):
-    """regression (V584, an outside review at `9ce7832d`): `.codex/config.toml` described the CRO
-    and the Analyst as submitting their answers with one command, the CRO returning the receipt,
-    while their cards run no command and the lead submits. Every host's declaration of a role
-    says what the role's card says: Codex's agent table and Claude Code's subagent alike."""
+    """Every host declaration says what its card says."""
 
     with (ROOT / ".codex" / "config.toml").open("rb") as stream:
         declared = tomllib.load(stream)["agents"]
@@ -257,12 +242,7 @@ def _forms(materialize) -> list[str]:
 
 
 def test_every_command_form_the_skill_generator_writes_parses(materialize):
-    """regression (V585, an outside review at `9ce7832d`): the Skill taught `research-update show
-    <task>`, which the parser refuses, since the Task is its `--task`. Every command form the
-    generator writes parses with the product's own parser, each placeholder filled with a value
-    of its kind."""
-
-    import shlex
+    """Every command form the skill generator writes parses."""
 
     from alphalattice.interface.local_application import cli
 
@@ -288,14 +268,7 @@ def test_every_command_form_the_skill_generator_writes_parses(materialize):
 
 
 def test_every_command_example_writes_and_reads_under_out_or_the_workspace(materialize):
-    """regression (V577, an outside review at `d7f94002`): the Skill's examples wrote
-    `--output draft.json` and `--output delivery.json` and read `--from portfolio.json`, bare
-    names that land in the checkout, against its own rule that answers go under `<out>`. Every
-    path a command example in the guide, the Skill or a card writes or reads names `<out>/` or
-    the workspace."""
-
-    import itertools
-    import shlex
+    """Every command example writes and reads under out or the workspace."""
 
     nouns = {form.split()[0] for form in _forms(materialize)} | {"request", "bundle", "study"}
     path_flags = {"--output", "--from", "--file", "--choices", "--save-declaration", "--dir"}

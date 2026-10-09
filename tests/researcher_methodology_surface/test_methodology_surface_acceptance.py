@@ -47,19 +47,7 @@ def _imported_modules(root: Path) -> tuple[tuple[str, str], ...]:
 
 @pytest.mark.parametrize("desk", _DESKS)
 def test_no_desk_experiments_package_can_reach_its_publication_owner(desk: str) -> None:
-    """Development execution has no authority to move a current pointer.
-
-    Enforced in the import graph rather than by convention: a development
-    executor that can reach its publication owner is one refactor away from
-    writing a current pointer, and nothing in a green test suite would notice
-    until it did.
-
-    Stated for every Desk, not just Risk. Risk proved the property; a Desk-local
-    test could not stop the next Desk from reintroducing it, and Factor's
-    executor is exactly the module that would have been tempted -- its
-    deterministic primitives sit one package away from the production runtime
-    that owns the pointer.
-    """
+    """No desk experiments package can reach its publication owner."""
 
     experiments = SOURCE_ROOT / desk / "experiments"
     if not experiments.is_dir():
@@ -74,20 +62,7 @@ def test_no_desk_experiments_package_can_reach_its_publication_owner(desk: str) 
 
 
 def test_no_generic_owner_names_an_installed_method() -> None:
-    """Adding a method must not have taught any shared owner its name.
-
-    Each capability in this milestone was proven by installing a method the
-    product does not ship: an extension Feature kernel, a second Risk recipe
-    schema, a third Alpha standardization, a third searchable Portfolio policy.
-    If any generic owner mentioned one of them, "install a method" would mean
-    "install a method and edit the shared path", and the next one would need the
-    same edits again.
-
-    The Feature extension is the exception that proves the rule and is checked
-    separately below: its mathematics and its typed recipe are product-owned by
-    design, so the name is expected in the capability that owns it and nowhere
-    else.
-    """
+    """No generic owner names an installed method."""
 
     generic = (
         "control/research_program",
@@ -119,15 +94,7 @@ def test_no_generic_owner_names_an_installed_method() -> None:
 
 
 def test_the_feature_extension_recipe_is_owned_only_by_its_capability() -> None:
-    """The one product-owned extension, and it lives in exactly one place.
-
-    ``overnight_return`` is deliberately different from the other three: its
-    mathematics and its typed ``FactorSpec`` belong in the Feature capability,
-    because a recipe assembled in a test fixture would make "add a method in the
-    domain directory" false. So the name is required in its owner and forbidden
-    everywhere else -- including the panel publisher and the Factor consumer that
-    quote the catalog summary it appears in.
-    """
+    """The feature extension recipe is owned only by its capability."""
 
     owner = SOURCE_ROOT / "foundation/feature_engine/producers/factors/open_intraday.py"
     assert "overnight_return_21" in owner.read_text(encoding="utf-8")
@@ -143,13 +110,7 @@ def test_the_feature_extension_recipe_is_owned_only_by_its_capability() -> None:
 
 
 def test_product_host_is_the_only_installed_composition_root() -> None:
-    """Nothing under ``src`` may import the composition root.
-
-    ``product_host`` is where concrete, Desk-aware wiring is allowed to live, and
-    that is only safe while it has zero legal in-degree: anything that could
-    import it could reach every Desk through it, and the layering would be a
-    naming convention rather than a constraint.
-    """
+    """Product host is the only installed composition root."""
 
     offenders = [
         f"{where} -> {module}"
@@ -186,14 +147,7 @@ _DEVELOPMENT_KINDS = (
 
 
 def test_every_development_kind_is_reachable_from_the_canonical_installer() -> None:
-    """Each Desk kind resolves to a real executor branch, not to "not installed".
-
-    The Factor executor existed for a whole milestone while
-    ``build_installed_desk_executors`` installed Risk alone, so the only thing
-    that could run a Factor experiment was a test that built the executor itself.
-    A kind the canonical installer does not recognize is a Desk the product
-    cannot run, regardless of what its own package contains.
-    """
+    """Every development kind is reachable from the canonical installer."""
 
     source = (SOURCE_ROOT / "control/product_host/research_authoring/execution.py").read_text(
         encoding="utf-8"
@@ -208,14 +162,7 @@ def test_every_development_kind_is_reachable_from_the_canonical_installer() -> N
 
 
 def test_the_installer_builds_one_desk_rather_than_every_desk() -> None:
-    """Resolving one Desk's authority is not a precondition for another's.
-
-    The eager installer read Risk's return surface and sector state before
-    returning anything, so a Factor run in a workspace that had never published a
-    return surface failed on an artifact Factor does not read. Asserted on the
-    source because the failure it prevents only appears in workspaces that are
-    missing something, and a green workspace cannot show it.
-    """
+    """The installer builds one desk rather than every desk."""
 
     source = (SOURCE_ROOT / "control/product_host/research_authoring/execution.py").read_text(
         encoding="utf-8"
@@ -228,12 +175,7 @@ def test_the_installer_builds_one_desk_rather_than_every_desk() -> None:
 
 
 def test_no_development_executor_can_reach_a_publication_owner() -> None:
-    """Restated for the two executors this milestone added.
-
-    ``test_no_desk_experiments_package_can_reach_its_publication_owner`` covers
-    the packages; this names the two modules that would have been tempted, since
-    both sit one import away from a runtime that owns a current pointer.
-    """
+    """No development executor can reach a publication owner."""
 
     for relative, forbidden in (
         ("foundation/factor_research/experiments/execution.py", "factor_research.publication"),
@@ -262,15 +204,7 @@ def test_development_evidence_is_namespaced_away_from_published_categories() -> 
 
 
 def test_the_frozen_research_foundation_contract_is_unchanged() -> None:
-    """Alpha's development binding is beside the constitution, not inside it.
-
-    The tempting shortcut was to fill ``ResearchFoundationBinding``'s four
-    lineage fields -- a factor training outcome, a screening result, a candidate
-    slate, a Research Desk factor input -- with the one Factor development hash a
-    development run has. That validates and hashes, and it is false: four
-    different questions answered with the same evidence. This asserts the
-    constitution still asks for all four separately.
-    """
+    """The frozen research foundation contract is unchanged."""
 
     from alphalattice.foundation.research_foundation.contracts import ResearchFoundationBinding
     from alphalattice.investment.alpha_research.inputs.development_foundation import (

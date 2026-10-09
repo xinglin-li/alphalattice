@@ -77,11 +77,7 @@ def _prepared_and_analysed(service: Any) -> dict[str, Any]:
 def test_a_quiet_issuer_is_checked_and_a_sourceless_issuer_is_not_counted_as_reviewed(
     book: Any, tmp_path: Path
 ) -> None:
-    """Requirement: completion comes from delivery facts. QA05's
-    documents state no claim: it was read, nothing was reported, and it is
-    reviewed. QA17 has no document: its unit's seven peers are prepared and
-    analysed without it; QA17 is `SOURCE_MISSING`, named, in the denominator
-    and not reviewed; the review of the book is partial, never full."""
+    """A quiet issuer is checked and a sourceless issuer is not counted as reviewed."""
 
     workspace, report = book
     documents = coverage_documents(
@@ -189,10 +185,7 @@ def test_a_quiet_issuer_is_checked_and_a_sourceless_issuer_is_not_counted_as_rev
 def test_a_subset_answer_is_a_review_and_the_rest_is_listed_as_not_named(
     book: Any, tmp_path: Path
 ) -> None:
-    """requirement (ER5, restated by the answer format): a reviewer names the
-    major negatives it finds and nothing else. The findings it does not name
-    are listed by the program as read and not named -- the review is not
-    partial for them and their issuers are not unadjudicated."""
+    """A subset answer is a review and the rest is listed as not named."""
 
     workspace, report = book
     authority = coverage_authority(

@@ -43,10 +43,7 @@ from tests.alternative_evidence_desk.sec_scenario_transport import (
 
 
 def test_one_default_is_read_by_the_policy_the_product_and_the_materializer() -> None:
-    """requirement (section 3): the normal default is 10,000,000 bytes, the
-    contract's ceiling; the product's admitted policy and the materializer's
-    `--maximum-document-bytes` read the same definition, so no user needs a
-    flag to obtain a supported annual filing."""
+    """The policy, product, and materializer share the document-byte default of 10,000,000."""
 
     from scripts import materialize_evidence_cro_authority as materializer
 
@@ -84,10 +81,7 @@ def test_one_default_is_read_by_the_policy_the_product_and_the_materializer() ->
 def test_a_retained_body_between_two_and_ten_megabytes_is_reused_under_the_default(
     tmp_path: Path,
 ) -> None:
-    """requirement (section 3): a body of about three megabytes acquired
-    under an explicit cap is reused without a download by a request under
-    the default; an explicit smaller cap on a later request still defers it
-    by name; the same request at the ceiling reuses it again."""
+    """A retained body between two and ten megabytes is reused under the default."""
 
     transport = _transport()
     big = filing_body(TEN_K.accession, words=420_000)
@@ -125,10 +119,7 @@ def test_a_retained_body_between_two_and_ten_megabytes_is_reused_under_the_defau
 
 
 def test_a_request_sealed_with_the_earlier_cap_reads_back_as_sealed(tmp_path: Path) -> None:
-    """requirement (section 3): a historical request carries its cap
-    explicitly and keeps it -- 2,000,000 stays 2,000,000 on readback, its
-    hash unchanged -- while a request sealed today carries 10,000,000
-    explicitly, so no representation is silently reinterpreted."""
+    """A request sealed with the earlier cap reads back as sealed."""
 
     historical = _request(cap=2_000_000)
     payload = json.loads(historical.model_dump_json())

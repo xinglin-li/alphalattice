@@ -41,14 +41,14 @@ function fixture({statusSource = read('status'), dataSource = read('data'), task
       else throw Error('Unexpected duration fixture read: ' + url);
       return {ok: true, headers: {get: () => 'application/json'}, text: async () => JSON.stringify(value)};
     }};
-  vm.createContext(library.into(c, appDir));
+  library.context(c, appDir);
   for (const name of ['html', '../data/zh', 'i18n', 'icons']) vm.runInContext(read(name), c);
   vm.runInContext(statusSource, c); vm.runInContext(read('components'), c);
   // The public Time grouping exposes the row's real stateLine duration; grouping chrome is a port.
   vm.runInContext('Lobby', c).render = (name, spec) => {rows.length = 0; const html = vm.runInContext('html', c);
     return html`${spec.items.map(item => {const markup = spec.row(item, {props: {}, group: 'time'}); rows.push({item, markup}); return markup;})}`;
   };
-  c.objectHead = () => '';
+  c.objectHead = library.stubs.empty;
   vm.runInContext(dataSource, c); vm.runInContext(tasksSource, c);
   vm.runInContext('globalThis.D=Data;globalThis.T=LiveTasks;globalThis.line=stateLine;', c);
   return {c, requests, rows, body: () => String(inspector.body)};

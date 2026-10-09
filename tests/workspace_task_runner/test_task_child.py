@@ -218,11 +218,7 @@ def test_a_fit_log_records_the_numerical_thread_counts(tmp_path: Path) -> None:
 
 
 def test_a_spread_worker_loads_its_numerical_libraries_on_one_thread() -> None:
-    """regression (V436, the fork's measurement): every kept worker reserved its numerical
-    libraries' buffers for one thread per processor at import, about 1.5 GB of commit each, so
-    a few Hosts' first builds exhausted the machine. A spread worker, whose calls run on one
-    thread, is told so before its libraries load; the Task's own worker keeps the default its
-    calls run under, on which a Risk number can depend."""
+    """A spread worker loads its numerical libraries on one thread."""
 
     parent = {name: os.environ.get(name) for name in ONE_THREAD_VARIABLES}
     assert run_in_child(f"{HERE}:thread_variables", {}) == parent
@@ -235,11 +231,7 @@ def test_a_spread_worker_loads_its_numerical_libraries_on_one_thread() -> None:
 
 
 def test_spread_numerical_calls_hold_one_thread_and_leave_normal_calls_unchanged() -> None:
-    """PATTERN: the shared limiter reaches real BLAS work, with the same exact result.
-
-    Spread calls hold one thread. The ordinary Task worker has no thread scope,
-    so the same call retains its ambient numerical counts before and afterward.
-    """
+    """Spread numerical calls hold one thread and leave normal calls unchanged."""
     import numpy as np
 
     values = np.arange(64, dtype=np.float64).reshape(8, 8)

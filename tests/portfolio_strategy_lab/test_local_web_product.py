@@ -12,17 +12,27 @@ Provider, no network beyond loopback, no protected evidence.
 
 from __future__ import annotations
 
+import builtins
 import dataclasses
+import http.client
+import http.cookiejar
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
+from argparse import Namespace
 from contextlib import suppress
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from http.client import HTTPConnection, HTTPException
+from io import BytesIO, StringIO, TextIOWrapper
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
@@ -75,7 +85,6 @@ from tests.portfolio_strategy_lab.local_web_support import (
 )
 
 # the served pages and the bundle-reading tests read the built assets: built once per session
-pytestmark = pytest.mark.usefixtures("workbench_build")
 
 DEVELOPMENT_SESSIONS = _resolved().workspace.formation_sessions
 
@@ -86,27 +95,6 @@ def _agent(
     assert session.operations is not None
     bridge = InstalledAgent(session.operations)
     return json.loads(bridge.invoke(request))
-
-
-def test_settings_storage_cap_uses_the_live_owner_and_preserves_invalid_input(
-    live: LocalPortfolioWebSession,
-) -> None:
-    """V680: the Settings route sets execution configuration, without creating a Task."""
-    initial = _json(live, "/api/workspace/storage/cap")
-    assert initial["capacity"]["setting"]["cap_bytes"] == "auto"
-    cap = str(20 * 1024**3)
-    changed = _json(
-        live, "/api/workspace/storage/cap", method="POST", payload={"storage_cap_bytes": cap}
-    )
-    assert changed["status"] == "CONFIGURED"
-    assert changed["capacity"]["cap_bytes"] == int(cap)
-    assert changed["capacity"]["setting"]["chosen_by"] == "HUMAN"
-    status, _headers, body = _request(
-        live, "/api/workspace/storage/cap", method="POST", payload={"storage_cap_bytes": "0"}
-    )
-    assert status == 200 and json.loads(body)["failure_code"] == "storage.cap_setting_invalid"
-    assert _json(live, "/api/workspace/storage/cap")["capacity"]["cap_bytes"] == int(cap)
-    assert _json(live, "/api/tasks")["tasks"] == []
 
 
 def _run_to_completion(session: LocalPortfolioWebSession) -> str:
@@ -351,11 +339,7 @@ def test_compact_output_is_non_authoritative_and_saved_exports_stay_exact(tmp_pa
 
 
 def test_a_compact_answer_is_one_read_and_names_each_part_it_left_out() -> None:
-    """requirement (V402, the outside review's F6): the compact view bounded nodes, not bytes,
-    and eight mappings of thirty 899-character strings printed 218,529 bytes with nothing
-    marked. The display stays within its budget, one read on every agent host; it names each
-    part it left out as `--section` reads it, keeps standing whole and a refusal whole when it
-    fits, and pages a long list from the list itself."""
+    """A compact answer is one read and names each part it left out."""
     from alphalattice.interface.local_application.client import (
         COMPACT_ANSWER_BYTES,
         answer_part,
@@ -405,7 +389,6 @@ def test_a_compact_answer_is_one_read_and_names_each_part_it_left_out() -> None:
 
 
 def test_cli_document_reader_keeps_utf8_and_byte_limits_for_files_and_stdin(tmp_path, monkeypatch):
-    from io import BytesIO, TextIOWrapper
 
     from alphalattice.interface.local_application.client import _text
 
@@ -567,9 +550,6 @@ def test_a_trial_the_owner_refuses_to_compare_claims_no_change(tmp_path):
     score support differs) still reported a change between their saved metrics; it stands
     NOT_COMPARED, the refusal says why, and the saved metrics stay each on its own."""
 
-    from datetime import UTC, datetime
-    from uuid import uuid4
-
     from alphalattice.control.product_host.composition.feature_trials import (
         FeatureTrial,
         FeatureTrials,
@@ -629,10 +609,6 @@ def test_trial_and_feature_listings_keep_readable_siblings_with_damaged_records(
 ):
     """regression (V633, TE12): one corrupt Feature trial hid its readable siblings, and
     FeatureExtensions did not forward the damaged-record refusal with an inspection route."""
-
-    from datetime import UTC, datetime
-    from pathlib import Path
-    from types import SimpleNamespace
 
     from alphalattice.control.product_host.composition.feature_trials import (
         FeatureTrial,
@@ -710,8 +686,6 @@ def test_a_trial_offers_its_own_read_and_once_completed_each_review():
     times, since the trial's answer offered no request; it offers its read, and once completed
     each factor's review, all filled for --from."""
 
-    from datetime import UTC, datetime
-
     from alphalattice.control.product_host.composition.feature_trials import (
         FeatureTrial,
         trial_requests,
@@ -744,8 +718,6 @@ def test_a_trial_offers_its_own_read_and_once_completed_each_review():
 def test_a_review_packets_trial_says_whether_its_alpha_studies_were_compared(tmp_path):
     """requirement (U56, V363): the packet a person activates from carries each trial's Alpha
     standing; one not compared carries the owner's words and no change."""
-
-    from datetime import UTC, datetime
 
     from alphalattice.control.product_host.composition.feature_trials import FeatureTrial
     from alphalattice.control.product_host.research_authoring.feature_extensions import (
@@ -798,11 +770,7 @@ def test_a_review_packets_trial_says_whether_its_alpha_studies_were_compared(tmp
 
 
 def test_every_result_states_one_standing_from_its_owners_marks():
-    """requirement (V368): ran, contract, compared, evidence and activation were separate marks
-    in separate answers, so an agent read a COMPLETED trial whose comparison was refused as
-    done; every result answer states them as one standing, the comparison first, each value
-    with the owner's code that holds it and its statement, and a value missing its code, or a
-    code beside a value that names none, is refused."""
+    """Every result states one standing from its owners' marks."""
 
     from alphalattice.control.product_host.composition.result_standing import (
         ResultStanding,
@@ -929,14 +897,7 @@ def test_every_result_states_one_standing_from_its_owners_marks():
 
 
 def test_each_flow_names_its_prerequisites_and_the_way_on(tmp_path):
-    """requirement (V367): an agent found each entry's prerequisites by help, schemas and
-    refusals (AX11 spent 26 launches before its first goal; AX10 built a feature before it
-    learned its trial needed an Alpha study); each flow names the results it needs on its
-    input, the completed ones the workspace holds, newest first and at most five of each, what
-    is missing and the requests allowed next, a choice left as None."""
-
-    from datetime import UTC, datetime, timedelta
-    from types import SimpleNamespace
+    """Each flow names its prerequisites and the way on."""
 
     from alphalattice.control.product_host.composition.research_prerequisites import (
         holdings,
@@ -1067,13 +1028,7 @@ def test_each_flow_names_its_prerequisites_and_the_way_on(tmp_path):
 
 
 def test_an_older_curation_still_opens_alpha_beyond_the_newest_five(tmp_path):
-    """regression (V497, the user's review): six Factor studies on one input, only the oldest
-    curated, and `workspace show` said none was curated, sending the agent to curate again:
-    the holdings kept the newest five before the curated ones were looked for. A prerequisite
-    is judged over every study, its display over the newest five."""
-
-    from datetime import UTC, datetime, timedelta
-    from types import SimpleNamespace
+    """An older curation still opens alpha beyond the newest five."""
 
     from alphalattice.control.product_host.composition.research_prerequisites import (
         holdings,
@@ -1121,10 +1076,7 @@ def test_an_older_curation_still_opens_alpha_beyond_the_newest_five(tmp_path):
 
 
 def test_a_draft_onto_another_input_takes_that_inputs_revision():
-    """regression (V498, the user's review): `study draft <A> --input B` kept A's revision, and
-    (B, A's hash) was refused `research_input.version_not_admitted` unless `--binding` named
-    B's. Another input named without a revision takes that input's declared anchor; the same
-    input keeps the origin's exact revision; a revision named wins."""
+    """A draft onto another input takes that input's revision."""
 
     from alphalattice.control.product_host.composition.research_experiments import draft_revision
 
@@ -1136,13 +1088,7 @@ def test_a_draft_onto_another_input_takes_that_inputs_revision():
 
 
 def test_a_history_row_offers_its_reads_bound_to_it():
-    """regression (V499, the user's review): `history list --entry E` answered the row's
-    locators, and the agent copied them into `evidence show --update ... --basis ...`. Each row
-    offers its reads bound to it: its Task, its book's review and, for a CRO review, its
-    export; the CLI's `--from` then reads the row the agent chose."""
-
-    from datetime import UTC, datetime
-    from uuid import uuid4
+    """A history row offers its reads bound to it."""
 
     from alphalattice.control.product_host.composition.research_history import HistoryEntry
     from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
@@ -1229,11 +1175,7 @@ def test_history_book_discovery_offers_exact_reads_without_a_full_projection(fie
 
 
 def test_a_request_that_fills_an_object_in_part_is_a_template_naming_the_fields_left(tmp_path):
-    """regression (V373): AX12's agent ran the curation's `curate` as `next_commands` listed it
-    and was refused for the author's choices it never gave; a request that fills an object in
-    part (the receipt, not the choices) is a template naming each field left, its command
-    writes no flag the CLI lacks, `request --from` refuses it unfilled, and a plan's own
-    document, the owner's whole, is never read for choices."""
+    """A request that fills an object in part is a template naming the fields left."""
 
     from alphalattice.interface.local_application.cli_contract import choices, command
 
@@ -1257,10 +1199,7 @@ def test_a_request_that_fills_an_object_in_part_is_a_template_naming_the_fields_
 
 
 def test_a_provider_that_limits_or_changes_its_interface_is_worded_with_the_way_on():
-    """requirement (V375, RR5): a first use or an update met a provider that limited the
-    requests, did not answer or changed its interface, and the codes had no words; each is
-    worded, and a deferred Task's answer says when it resumes, by which request, and, where
-    research inputs are published, that they stand."""
+    """A provider that limits or changes its interface is worded with the way on."""
 
     from alphalattice.control.product_host.composition.plain_refusals import deferral, explain
 
@@ -1306,7 +1245,6 @@ def test_a_provider_that_limits_or_changes_its_interface_is_worded_with_the_way_
 
 
 def test_next_request_fills_choices_preserves_references_and_requires_explicit_action(tmp_path):
-    from argparse import Namespace
 
     from alphalattice.interface.local_application.client import (
         _next_request,
@@ -1464,7 +1402,6 @@ def test_declaration_comparison_preserves_absence_and_nested_parameter_changes()
 
 @pytest.mark.parametrize("lines", ["stop\n", "ignored\nstop\n", ""])
 def test_attached_launcher_stops_on_explicit_stdin_or_eof(tmp_path, monkeypatch, lines):
-    from io import StringIO
 
     from scripts import run_local_portfolio_web
 
@@ -1534,7 +1471,6 @@ def test_a_host_waiting_for_its_stop_lets_the_processes_it_starts_begin(ending: 
 def test_cli_missing_dependency_names_locked_setup_but_does_not_hide_missing_product(
     monkeypatch, capsys
 ):
-    import builtins
 
     from scripts import run_alphalattice
 
@@ -1665,7 +1601,6 @@ def test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced(
 def test_cli_reports_an_interrupted_response_body_without_retrying_work(
     live, monkeypatch, capsys, fault
 ):
-    import http.client
 
     from alphalattice.interface.local_application.cli import main
 
@@ -1979,7 +1914,6 @@ def test_results_selects_reused_task_metadata_without_scanning_reports(
     live: LocalPortfolioWebSession, monkeypatch, association: str
 ) -> None:
     """V683/OP4: the selected Task's sealed association is exact, and damage is a named refusal."""
-    from datetime import timedelta
 
     from alphalattice.control.product_host.publication.portfolio_research import (
         PortfolioResearchPipelineManifest,
@@ -2381,10 +2315,7 @@ def test_every_response_carries_the_local_only_headers(live: LocalPortfolioWebSe
 def test_assets_are_cached_by_content_hash_and_nothing_else_is(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """Round 96: the host page names each asset by its content-hashed path (the build's
-    manifest), and only those paths are immutable; the page, the plain names and every
-    API answer stay `no-store`, so an older link reads the current build and the product's
-    state never comes from a cache."""
+    """Assets are cached by content hash and nothing else is."""
 
     manifest_path = (
         Path(__file__).resolve().parents[2]
@@ -2501,10 +2432,7 @@ def test_a_mutation_is_refused_before_any_application_work(
 def test_a_route_that_writes_takes_the_write_check(
     live: LocalPortfolioWebSession, path: str
 ) -> None:
-    """V184: admitting a training-input Task and writing storage plan files are
-    writes, refused like any mutation without the session's token; since HB each
-    route's check follows its operation in the registry (a POST that is not one of
-    its reads), not a flag written beside the route."""
+    """A route that writes takes the write check."""
 
     status, _headers, body = _request(live, path, method="POST", payload={}, token=None)
     assert status == 403, (status, body[:300])
@@ -2514,15 +2442,7 @@ def test_a_route_that_writes_takes_the_write_check(
 def test_a_refused_write_ends_its_connection_without_a_reset(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """regression (V551, a flaky write check in two consolidated runs): a write refused before
-    its body was answered and its socket closed with the announced body unread, and a socket
-    closed with unread bytes is reset, so a client under load read a reset (WinError 10053)
-    instead of the refusal, 12 of 720 times in a stress run. The refused request's announced
-    body is read and dropped within the admitted bound, so the refusal arrives whole and the
-    connection ends cleanly, even when the body arrives after the answer."""
-
-    import socket
-    import time
+    """A refused write ends its connection without a reset."""
 
     body = json.dumps({"padding": "x" * 4096}).encode("utf-8")
     port = live.web.bound_port  # type: ignore[union-attr]
@@ -2557,10 +2477,7 @@ def _launch_path(live: LocalPortfolioWebSession) -> str:
 def test_only_the_launch_url_gives_a_browser_the_session(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """V183: the session token went to any local caller that asked `/api/session`, and the
-    web entry's caller is a person, so any local program could take a person's
-    operations. The cookie is issued only at the launch URL, whose key the Host holds
-    in memory, and the token is read only with that cookie; a refusal names the way on."""
+    """Only the launch URL gives a browser the session."""
 
     token = live.web.application.session_token  # type: ignore[union-attr]
     for path in ("/", "/workbench.html"):
@@ -2587,9 +2504,6 @@ def test_only_the_launch_url_gives_a_browser_the_session(
 
 def test_browser_session_cookies_are_port_scoped_and_restart_replaces_only_its_own():
     """behavior: shared localhost cookie jars keep concurrent Hosts independent by port."""
-    import http.cookiejar
-    import urllib.error
-    import urllib.request
 
     def application(label):
         web = LocalWebApplication()
@@ -2746,10 +2660,7 @@ def test_plan_performs_no_numerical_or_task_work(live: LocalPortfolioWebSession)
 def test_a_session_portfolio_replan_keeps_its_optional_input_choice(
     live: LocalPortfolioWebSession, monkeypatch: pytest.MonkeyPatch, prepared_input
 ) -> None:
-    """regression: a stopped update's bound request reaches its plan owner whole,
-    including an explicit null selector, and admits no Task. Other invalid fields
-    are still held at the custom HTTP door before that owner is called.
-    """
+    """A session portfolio replan keeps its optional input choice."""
     assert live.operations is not None and live.operations.updates is not None
     owner = live.operations.updates
     original = owner.plan
@@ -2852,15 +2763,7 @@ def test_exact_reuse_performs_zero_numerical_work(live: LocalPortfolioWebSession
 def test_capacity_is_the_workspaces_own_and_is_reported_truthfully(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """The refusal is Task Control's, surfaced -- not a capacity invented here.
-
-    The workspace admits one active task and at most one queued behind it, and a
-    freshly admitted task is queued until the worker picks it up. So *which*
-    submission is refused depends on whether the worker has started, and the
-    honest assertion is about the invariant rather than about an index: a
-    refusal appears quickly, it carries no task id, and it never becomes a
-    silent third queue slot.
-    """
+    """Capacity is the workspace's own and is reported truthfully."""
 
     application = live.application
     dispatcher = live.dispatcher
@@ -2976,13 +2879,7 @@ def test_the_dispatcher_joins_its_worker_on_close(tmp_path: Path) -> None:
 
 
 def test_a_failed_start_leaves_no_lease_worker_or_socket(tmp_path: Path) -> None:
-    """Start is all or nothing. A bind that cannot happen releases everything.
-
-    The lease and the dispatcher worker are acquired *before* the socket, so a
-    port collision used to leave a held workspace and a non-daemon thread with
-    no URL to stop them through. The proof that they were released is that a
-    second session starts on the same workspace and serves.
-    """
+    """A failed start leaves no lease worker or socket."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -3128,13 +3025,7 @@ def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(
 def test_an_idle_keep_alive_connection_does_not_block_shutdown(
     tmp_path: Path,
 ) -> None:
-    """A browser that walks away must not hold the workspace lease hostage.
-
-    `HTTP/1.1` keeps the connection, so the handler thread sits in a read that a
-    tab left open will never satisfy. Shutdown joins request threads -- rightly,
-    they are writers -- so without a bound on that read, closing the service
-    waits on a browser instead of on its own work.
-    """
+    """An idle keep alive connection does not block shutdown."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -3176,7 +3067,6 @@ def test_an_idle_keep_alive_connection_does_not_block_shutdown(
 
 
 def test_shutdown_drains_current_request_without_admitting_keepalive_followups():
-    from http.client import HTTPConnection, HTTPException
 
     from alphalattice.interface.local_application.web import LocalWebApplication, LocalWebService
 
@@ -3219,8 +3109,6 @@ def test_shutdown_drains_current_request_without_admitting_keepalive_followups()
 def test_disconnected_response_closes_transport_without_retrying_or_masking_application_errors(
     failure, monkeypatch
 ):
-    from io import BytesIO
-    from types import SimpleNamespace
 
     from alphalattice.interface.local_application.web import (
         AdmittedRequest,
@@ -3626,14 +3514,7 @@ def test_process_cleanup_does_not_adopt_children_of_reused_parent_ids() -> None:
 def test_the_evidence_and_cro_section_names_why_it_waits(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """The section is installed and says exactly what it is waiting for.
-
-    Before any run there is no sealed book. After a run there is a development
-    book, and this workspace admits no issuer registry or listing authority, so
-    the section cannot name an issuer and says so -- rather than showing a
-    provisional recommendation a later run would replace. Human and Agent read
-    the same typed state and receive the same refusal.
-    """
+    """The evidence and CRO section names why it waits."""
 
     application = live.web.application  # type: ignore[union-attr]
     registered = {path for _method, path in application.routes}
@@ -3902,14 +3783,7 @@ def _default_spec_document(live: LocalPortfolioWebSession) -> dict[str, Any]:
 
 
 def test_every_registered_route_answers(live: LocalPortfolioWebSession) -> None:
-    """Walk the whole routing table, because a route nobody calls is a route
-    nobody has tested.
-
-    Two real defects reached a browser before this existed: `/api/controls` read
-    field names off the control catalog that the catalog does not have, and then
-    iterated a tuple by the wrong name. Both are 500s on a route every other test
-    happened to skip.
-    """
+    """Every registered route answers."""
 
     result_hash = _run_to_completion(live)
     frozen = _json(live, "/api/freeze", method="POST", payload={"result_hash": result_hash})
@@ -4055,7 +3929,6 @@ def test_automation_settings_use_the_same_http_agent_permission_path(live):
 
 
 def test_automation_uses_durable_settings_and_sequential_wakes(tmp_path):
-    from datetime import UTC, datetime
 
     from alphalattice.control.product_host.composition.research_update_automation import (
         ResearchUpdateAutomation,
@@ -4113,13 +3986,7 @@ def test_automation_uses_durable_settings_and_sequential_wakes(tmp_path):
 
 
 def test_automation_attends_what_it_admitted_and_never_replans_a_stopped_update(tmp_path):
-    """regression (V604): the daily update armed only the next session's ready time, so a
-    deferral it admitted held the running place unattended past its retry time. It reads what
-    it admitted once the worker is idle: a deferral is resumed at its retry time, an older
-    target that published has the ready session planned at once, and a stopped update is left
-    to its words -- planned again then, each run would admit a new Task that stops again."""
-
-    from datetime import timedelta
+    """Automation attends what it admitted and never replans a stopped update."""
 
     from alphalattice.control.product_host.composition.research_update_automation import (
         ResearchUpdateAutomation,
@@ -4269,14 +4136,7 @@ def _crash_child(workspace: str, phase: str) -> None:
 def test_a_published_input_refreshes_every_manifest_holder(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """requirement (RX, V182): after an input is published every application reads
-    the manifest the Host refreshed. They read one holder, so none keeps a copy of
-    its own to fall behind and refuse its next plan (`workspace_manifest_changed`)
-    though its inputs had not moved. The update automation keeps the hash its
-    settings are approved under, so it asks for approval again, as a restart
-    would."""
-
-    from types import SimpleNamespace
+    """A published input refreshes every manifest holder."""
 
     operations = live.operations
     assert operations is not None and operations.automation is not None
@@ -4297,13 +4157,7 @@ def test_a_published_input_refreshes_every_manifest_holder(
 
 
 def test_an_authored_id_is_sent_as_written_whatever_the_ledger_holds(tmp_path):
-    """regression (V561, the user's review at de555b07; V544 in part): a criterion named
-    `abcdefabcdef` was rewritten to a ledger hash that began so, since restoration read every
-    field ending `_id`. Only a field the request contract types as an issued reference is read
-    back, an issued history entry id among them; an authored id is sent as written with no, one
-    or several ledger matches, and a typed reference still restores and refuses ambiguity."""
-
-    import pytest
+    """An authored identity is sent as written whatever the ledger holds."""
 
     from alphalattice.control.product_host.composition.reference_prefixes import ReferenceLedger
     from alphalattice.interface.local_application.client import (
@@ -4334,13 +4188,7 @@ def test_an_authored_id_is_sent_as_written_whatever_the_ledger_holds(tmp_path):
 
 
 def test_a_short_reference_is_read_back_as_the_one_value_it_begins(tmp_path):
-    """requirement (V393): the Host keeps every hash and id it answers a client with, and the
-    client reads a value of the shape the compact display gives one as the one value that
-    begins so, at any depth, before the request is sent; one that begins several is refused
-    with them, one that begins none is refused under a `_hash` key and elsewhere sent as
-    written, since a name may take that shape."""
-
-    import pytest
+    """A short reference is read back as the one value it begins."""
 
     from alphalattice.control.product_host.composition.reference_prefixes import ReferenceLedger
     from alphalattice.interface.local_application.client import (
@@ -4384,10 +4232,7 @@ def test_a_short_reference_is_read_back_as_the_one_value_it_begins(tmp_path):
 
 
 def test_a_watched_task_reads_back_from_the_short_id_the_display_gave(tmp_path):
-    """regression (V488, the user's review): `activity list --watch` sent the compact display's
-    short Task id as text and the feed refused it (`activity.watch_invalid`), while `task show`
-    read the same short id back. The watch list is typed as Task references, so each short id
-    reads back as its whole id before the request is sent."""
+    """A watched task reads back from the short identity the display gave."""
 
     from alphalattice.control.product_host.composition.reference_prefixes import ReferenceLedger
     from alphalattice.interface.local_application.client import whole_references
@@ -4400,15 +4245,7 @@ def test_a_watched_task_reads_back_from_the_short_id_the_display_gave(tmp_path):
 
 
 def test_authored_text_is_never_a_reference_and_one_reference_has_two_spellings(tmp_path):
-    """requirement (V399, the CLI review's F1 and F2): only a field the request contract types
-    as a hash or an id reads a shown beginning back, so authored text equal to one stays byte
-    for byte and a typed field refuses a beginning the Host never answered with; a continuation
-    takes a bound whole value and its shown beginning as one reference, the whole kept, and
-    still refuses a different value."""
-
-    import json
-
-    import pytest
+    """Authored text is never a reference and one reference has two spellings."""
 
     from alphalattice.control.product_host.composition.reference_prefixes import ReferenceLedger
     from alphalattice.interface.local_application.client import (
@@ -4455,9 +4292,7 @@ def test_authored_text_is_never_a_reference_and_one_reference_has_two_spellings(
 
 
 def test_a_books_risk_window_and_its_bound_section_are_refused_with_the_way_on():
-    """Risk support and immutable experiment-section refusals offer their way forward."""
-
-    import json
+    """A book's risk window and its bound section are refused with the way on."""
 
     from alphalattice.control.product_host.composition.plain_refusals import explain
     from alphalattice.interface.local_application import cli_contract
@@ -4477,11 +4312,7 @@ def test_a_books_risk_window_and_its_bound_section_are_refused_with_the_way_on()
 
 
 def test_a_book_stopped_on_unsupported_returns_reads_its_owners_words_and_way_on():
-    """regression (V504, RR5): a first-use book declared `require_complete`, as the Skill asked
-    without the person's authorization, and stopped on `benchmark_support_absent`, whose
-    recovery view said only that its owner recorded the code. The owner words both causes and
-    the way on (the draft's declared quarantine, which a first-use goal's delegation gives),
-    and a Task stopped on any worded owner code reads those words in its recovery view."""
+    """A book stopped on unsupported returns reads its owner's words and way on."""
 
     from alphalattice.control.product_host.composition.plain_refusals import explain
     from alphalattice.control.product_host.composition.task_recovery import stop_detail
@@ -4496,80 +4327,8 @@ def test_a_book_stopped_on_unsupported_returns_reads_its_owners_words_and_way_on
     assert unworded.startswith("The Task stopped at a governed boundary")
 
 
-def test_every_task_stop_sentence_fits_its_bound_and_reads_whole() -> None:
-    """requirement (V565, V504, the class): a Task stopped on a code reads its owner's words
-    whole in its recovery view, whose bound is `STOP_WORDS_BOUND`. Every registered code an
-    owner words, every Evidence unit failure a Task stops on as an unprepared unit -- each code
-    the Evidence package raises, a wrapped task failure, the source shortfalls with their facts,
-    an unworded code as long as a failure code is kept -- a book's support causes and every data
-    Task's stop fit it. V541's unit words had run to 729 and 860 characters, and the Task Center
-    read them cut mid-word."""
-
-    import ast
-    import re
-
-    from alphalattice.control.guanyin.data.workspace_maintenance import (
-        maintenance_failure_detail,
-    )
-    from alphalattice.control.product_host.composition.plain_refusals import (
-        SOURCE_SHORT_CODES,
-        STOP_WORDS_BOUND,
-        explain,
-    )
-    from alphalattice.control.product_host.composition.task_recovery import stop_detail
-
-    repo = Path(__file__).resolve().parents[2]
-    registered = json.loads((repo / "config/registries/refusals.json").read_text("utf-8"))
-    worded = {}
-    for code in registered["entries"]:
-        try:
-            words = explain(code).get("detail")
-        except (KeyError, TypeError, ValueError):
-            continue
-        if words:
-            worded[code] = words
-    assert len(worded) > 50
-    evidence = {
-        code
-        for path in (repo / "src/alphalattice/evidence/alternative_evidence").rglob("*.py")
-        for code in re.findall(r'"(alternative_evidence\.[a-z_]+)', path.read_text("utf-8"))
-    }
-    units = {
-        *evidence,
-        "alternative_evidence.task_failed:knowledge.semantic_pack_not_pinned",
-        *(code + ":0 of 78 issuers hold a source, 47 needed" for code in SOURCE_SHORT_CODES),
-        "an_owner." + "x" * (120 - len("an_owner.")),
-    }
-    read_whole = [
-        *("alternative_evidence.unit_not_prepared:" + code for code in sorted(units)),
-        *(
-            f"portfolio_research.benchmark_support_absent:{cause}:SUBJECT-7f3a"
-            for cause in ("returns_unavailable", "no_eligible_name")
-        ),
-    ]
-    for code in read_whole:
-        worded[code] = explain(code)["detail"]
-        assert stop_detail("research_experiment", code, "TASK_CONTROL") == worded[code], code
-    long = {code: len(words) for code, words in worded.items() if len(words) > STOP_WORDS_BOUND}
-    assert long == {}, long
-    tree = ast.parse(
-        (repo / "src/alphalattice/control/guanyin/data/workspace_maintenance.py").read_text("utf-8")
-    )
-    data = [
-        key.value
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Dict)
-        for key in node.keys
-        if isinstance(key, ast.Constant) and isinstance(key.value, str)
-    ]
-    assert data and all(len(maintenance_failure_detail(code)) <= STOP_WORDS_BOUND for code in data)
-
-
 def test_a_support_refusal_is_worded_with_its_cause_and_the_books_way_on(live, monkeypatch):
-    """regression (V511, RR5): the words, the Task's status and its recovery view gave the
-    support refusal no cause and no bound way on: its draft request named no Alpha study. Each
-    cause is worded with where it holds and its own way on, bound to the Alpha study and
-    candidate the stopped study's plan names; the bare code keeps V504's words."""
+    """A support refusal is worded with its cause and the book's way on."""
 
     from alphalattice.control.product_host.composition.plain_refusals import explain
 
@@ -4606,11 +4365,7 @@ def test_a_support_refusal_is_worded_with_its_cause_and_the_books_way_on(live, m
 
 
 def test_prepared_training_inputs_offer_their_components_study(tmp_path):
-    """Prepared inputs offer component study controls that the request contract accepts."""
-
-    from datetime import UTC, datetime
-    from types import SimpleNamespace
-    from uuid import uuid4
+    """Prepared training inputs offer their component's study."""
 
     from alphalattice.control.product_host.data_preparation.model_training import (
         ModelTrainingInputApplication,
@@ -4675,8 +4430,6 @@ def test_prepared_training_inputs_offer_their_components_study(tmp_path):
 def test_a_strategy_short_of_its_risk_window_names_it_and_offers_the_risk_study(code, next_action):
     """Risk support and history refusals name the cause and recovery."""
 
-    import re
-
     from alphalattice.interface.local_application.cli_contract import refusal_words
 
     words = refusal_words(code)
@@ -4701,9 +4454,6 @@ def test_a_strategy_short_of_its_risk_window_names_it_and_offers_the_risk_study(
 
 def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path, monkeypatch):
     """Risk recovery carries its selected input and exact history, skipping absent formations."""
-    from datetime import timedelta
-    from types import SimpleNamespace
-
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         PortfolioResearchOperations,
     )
@@ -4806,8 +4556,6 @@ def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path
 def test_the_first_intent_is_the_way_forward_and_names_it_in_words() -> None:
     """First-use intent offers strategy preparation or the installed strategy's book."""
 
-    from types import SimpleNamespace
-
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         INSTALLED_BOOK_WORDS,
         RUN_FORWARD_WORDS,
@@ -4838,12 +4586,6 @@ def test_the_first_intent_is_the_way_forward_and_names_it_in_words() -> None:
 def test_a_strategys_risk_history_is_judged_by_one_owner_for_its_plan_and_preparation():
     """The plan and preparation share one exact Risk history requirement."""
 
-    import inspect
-    from datetime import date, timedelta
-
-    from alphalattice.control.product_host.data_preparation.research_strategy import (
-        ResearchStrategyPreparation,
-    )
     from alphalattice.control.product_host.research_authoring import frozen_portfolio
     from alphalattice.investment.risk_research.surfaces.decomposition import (
         INSTALLED_RISK_DECOMPOSITION_RECIPE,
@@ -4858,11 +4600,6 @@ def test_a_strategys_risk_history_is_judged_by_one_owner_for_its_plan_and_prepar
     short = frozen_portfolio.risk_history_shortfall(sessions, [sessions[rule - 1], sessions[-1]])
     assert short == (sessions[rule - 1], rule - 1)
     assert frozen_portfolio.risk_history_shortfall(sessions, [sessions[rule]]) is None
-    for owner in (
-        ResearchStrategyPreparation.plan,
-        frozen_portfolio.prepare_frozen_portfolio_authority,
-    ):
-        assert "risk_history_shortfall(" in inspect.getsource(owner), owner
 
 
 ALPHA, BETA = "ALPHA_BOOK", "BETA_BOOK"
@@ -4953,12 +4690,7 @@ def _admitted(registry: Any, envelope: Any, goal: Any, plan: Any) -> str:
 
 
 def test_a_cancelled_research_update_keeps_its_stop_and_offers_its_task_record(live, capsys):
-    """OP4 regression: the V604 real replay left this cancelled read without words or a route.
-
-    The same Task contract and writer-stopped cancellation code are reproduced through Task
-    Control, without replaying scientific stages. The actual CLI follows the read-only route;
-    neither read changes the cancelled record or offers a run or replan.
-    """
+    """A cancelled research update keeps its stop and offers its task record."""
     from alphalattice.control.product_host.composition.decision_advancement import task_contract
     from alphalattice.control.task_control.contracts import TaskExecutionCompatibility
     from alphalattice.interface.local_application.cli import main
@@ -5073,11 +4805,7 @@ def _planned_task(registry: Any, kind: str, plan: dict[str, object]) -> str:
 
 
 def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(live, monkeypatch):
-    """V683/EV/OP4: synthetic completion metadata is read without a scientific replay.
-
-    This is a metadata-port fixture, not evidence that an advancement executed. The real
-    Task contract, stage binding and publication seal readers remain in the path.
-    """
+    """Completed update metadata keeps exact target claim and sealed lookup."""
     from alphalattice.control.product_host.composition.decision_advancement import (
         STAGES,
         task_contract,
@@ -5175,15 +4903,7 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(li
 def test_a_strategys_latest_work_is_read_by_its_package_and_never_anothers(
     live, monkeypatch, capsys, tmp_path
 ):
-    """requirement (V595, TE12): with two strategies running forward, a strategy's latest update
-    is read by its package and never another strategy's; the unselected read answers as before
-    while one strategy holds updates and is refused, offering each one's own, once two do; a Task
-    named with another strategy is refused; and the daily update names each strategy's own latest
-    update with its read bound to it. Through the real CLI and the automation route, and the same
-    one reader for every kind of work planned per strategy: scores, calibration, Portfolio
-    updates."""
-
-    from datetime import date
+    """A strategy's latest work is read by its package and never another's."""
 
     from alphalattice.control.product_host.composition.decision_advancement import task_contract
     from alphalattice.control.product_host.composition.portfolio_updates import (
@@ -5284,10 +5004,7 @@ def test_a_strategys_latest_work_is_read_by_its_package_and_never_anothers(
 
 
 def test_every_web_handler_preserves_every_typed_owner_exception(live, monkeypatch) -> None:
-    """property (V679, TE12): source-discovered refusal classes cross every real registered
-    handler via its public owner call. The original handler and exactly one reached owner
-    call are checked, so an invalid request or replacement route cannot falsely pass.
-    """
+    """Every web handler preserves every typed owner exception."""
     from tests.portfolio_strategy_lab.typed_owner_refusals import typed_owner_cases
     from tests.portfolio_strategy_lab.web_refusal_support import exercise_registered_handler_matrix
 
@@ -5372,13 +5089,7 @@ def test_a_port_the_browser_refuses_is_never_the_workbenchs():
 
 
 def test_a_plan_deep_verifies_the_updates_holding_each_recipes_latest_score() -> None:
-    """regression: every plan re-verified every completed update's score chain.
-
-    The plan acts on each recipe's latest score: its authority and observations. Only the
-    updates holding one, ties included, have their whole chains verified again; an older day's
-    score is read by its own snapshot hash under its Task's sealed evidence.
-    """
-    from types import SimpleNamespace
+    """A plan deep verifies the updates holding each recipe's latest score."""
 
     from alphalattice.control.product_host.composition.decision_advancement import (
         latest_per_recipe,
@@ -5406,13 +5117,7 @@ def test_a_plan_deep_verifies_the_updates_holding_each_recipes_latest_score() ->
 def test_the_completed_scores_seam_refuses_a_changed_latest_chain_and_a_changed_older_score(
     tmp_path,
 ) -> None:
-    """tamper: what a plan no longer re-reads must still refuse what it reads.
-
-    The update holding a recipe's latest score is verified through its whole chain, and a
-    failure there refuses by its own name, never reaching back to an older update. An older
-    day's score loads by its own snapshot hash, so a changed score file refuses there.
-    """
-    from types import SimpleNamespace
+    """The completed scores seam refuses a changed latest chain and a changed older score."""
 
     from alphalattice.control.product_host.composition.decision_advancement import (
         SCHEMA,

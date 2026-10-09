@@ -73,9 +73,9 @@ for(const file of fs.readdirSync(appDir).filter(f=>f.endsWith('.js'))) {
       if(url==='/api/tasks/guardian')return {tasks:[]};if(url==='/api/tasks/incidents')return {incidents};
       throw Error('unexpected owner read '+url);},setTasks(){},runsOf:()=>[],taskRefusals:()=>[]},
     LiveActivity:{refresh(){}},Window:{renderSide(){},inspectorMode:()=>''},patchMain(){},stateMoving:()=>false,
-    objectHead:()=>'',btnAttrs:()=>'',icon:()=>'',groupHead:()=>'',pager:()=>'',tile:()=>'',
+    objectHead:library.stubs.empty,btnAttrs:()=>'',icon:()=>'',groupHead:()=>'',pager:()=>'',tile:()=>'',
     emptyState:()=>'',link:()=>'',when:x=>x,pageOf:rows=>({shown:rows,page:0,pages:1})};
-  vm.createContext(c);
+  library.context(c);
   vm.runInContext(fs.readFileSync(path.join(appDir,'live-tasks.js'),'utf8')+';globalThis.tasks=LiveTasks;',c);
   await c.tasks.refresh();const initialReads=reads;
   for(const lang of ['en','zh','en']) {

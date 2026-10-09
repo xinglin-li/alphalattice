@@ -15,6 +15,7 @@ import math
 import re
 import shutil
 import urllib.parse
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -111,13 +112,7 @@ def test_the_cro_cli_bundle_names_every_unreviewed_holding(
     unit_count: int,
     unreviewed_count: int,
 ) -> None:
-    """CONTRACT (V609): naturally aggregate failed units, then read every real CLI file.
-
-    This is REV's rotating three-tranche book, with one analysed eight-issuer
-    unit and unavailable sources for the remainder; no dossier or renderer is
-    injected. The short case keeps unavailable units inline; other lists may
-    independently overflow.
-    """
+    """The CRO CLI bundle names every unreviewed holding."""
     entities = tuple(f"QAY{number:03d}" for number in range(1, held_count + 1))
     topics = tuple(EvidenceTopic)
     for index, entity in enumerate(entities):
@@ -510,14 +505,7 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
 def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
     book: Any, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """requirement: an independent unit failure does not block healthy issuers;
-    the failed unit stays in every denominator with its owner's failure code,
-    and preparing again keeps the units that completed. The unit short of its
-    sources names the coverage it reached and needed and the issuer without one,
-    the preview predicted it, and the readback words it with its ways on (V541).
-    Once its source is restored, the readback uses the verified retry and keeps
-    the original failed unit as history. A completed Task names its failed
-    units, without equating verified failure receipts with prepared units."""
+    """One unit failure is recorded and the rest of the book goes on."""
 
     workspace, report = book
     missing = COVERAGE_ENTITIES[16]
@@ -743,13 +731,7 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
 def test_a_book_its_sources_cannot_cover_says_so_with_its_ways_on(
     book: Any, tmp_path: Path
 ) -> None:
-    """regression (V541, RR5d's FINDING 20:13): a real SEC package held filings for 3 of a
-    78-issuer book's issuers; the preview offered the run, every unit then failed
-    `alternative_evidence.minimum_entity_coverage_not_met` with no words, and the readback's
-    only request was the same preview. The preview refuses a run no unit can prepare, naming
-    each unit's code and issuers without a source, with the ways on; a run sent anyway fails
-    each unit naming its reach and need; the readback says the book cannot be reviewed under
-    the installed sources, with each unit's words and the ways on."""
+    """A book its sources cannot cover says so with its ways on."""
 
     workspace, report = book
     held = COVERAGE_ENTITIES[0]
@@ -811,16 +793,7 @@ def test_a_book_its_sources_cannot_cover_says_so_with_its_ways_on(
 def test_units_prepared_under_two_packages_say_why_they_cannot_be_reviewed_together(
     book: Any, tmp_path: Path
 ) -> None:
-    """regression (V546, V547; RR5d's FINDINGS 21:24 and 21:41): the lead installed one recorded
-    package per unit, each replacing the last. A packet prepared under the first went stale on
-    the next install, and its Analyst's answer was refused with a bare
-    `alternative_evidence.task_resource_authority_mismatch`; the units answered under each
-    package then stood at different cutoffs, the review's dossier refused with a bare
-    `chief_risk_officer.dossier_cutoff_invalid`, and the book's readback failed. The stale packet
-    is said where it is listed, and its answer is refused naming what moved, with its unit and
-    the preview that prepares it again; the dossier, the CRO's bundle and the book's readback
-    name the cutoff, the late citations and the earliest of their dates, with the way on. The
-    invariant stands: no citation is read as of a cutoff before it was available."""
+    """Units prepared under two packages say why they cannot be reviewed together."""
 
     workspace, report = book
     # The book's units, heaviest first, as its preview plans them: each package below covers
@@ -954,15 +927,7 @@ def test_units_prepared_under_two_packages_say_why_they_cannot_be_reviewed_toget
 def test_official_acquisition_reviews_a_wide_book_with_quiet_holdings_at_one_cutoff(
     book: Any, tmp_path: Path
 ) -> None:
-    """requirement (V541's W1 question, V546; decided on evidence before RR5's repeat): official
-    acquisition reads every holding's filing index at one cutoff, names the holdings that filed
-    nothing in the window and packs only the others, so a quiet holding never counts against
-    the installed floor. At the strictest floor -- every issuer of a unit holding a source -- a
-    fifty-issuer book with three quiet holdings packs the other 47 into six units, prepares
-    every one at that one cutoff, and its whole review's dossier compiles, the quiet holdings
-    read as nothing filed and nothing left unreached."""
-
-    from dataclasses import replace
+    """Official acquisition reviews a wide book with quiet holdings at one cutoff."""
 
     from alphalattice.control.product_host.composition.evidence_review_workspace import (
         live_evidence_policy,
@@ -1055,46 +1020,9 @@ def test_official_acquisition_reviews_a_wide_book_with_quiet_holdings_at_one_cut
 
 
 def test_every_coverage_floor_is_judged_by_one_rule_that_leaves_quiet_holdings_out() -> None:
-    """requirement (V587, TE12): the coverage floor is judged by one rule, `sources_short`,
-    wherever it is judged -- a unit's preparation, the preview that predicts it and the
-    installer's package -- and no owner divides by its issuers against the floor by hand. Each
-    judge that reads an acquisition hands the rule the issuers an index read at the cutoff found
-    quiet (`index_quiet`), asked only when the share falls short; the preview's units come from
-    a packing that already left them out (V541). A quiet issuer leaves the share, a failed one
-    stays in it."""
-
-    import ast
+    """Every coverage floor is judged by one rule that leaves quiet holdings out."""
 
     from alphalattice.evidence.alternative_evidence.runtime.coverage import sources_short
-
-    root = Path(__file__).resolve().parents[2] / "src" / "alphalattice"
-    judges: dict[str, bool] = {}
-    by_hand: set[str] = set()
-    for path in sorted(root.rglob("*.py")):
-        relative = path.relative_to(root).as_posix()
-        for function in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
-                continue
-            for node in ast.walk(function):
-                if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "sources_short":
-                    judges[f"{relative}::{function.name}"] = any(
-                        keyword.arg == "quiet" for keyword in node.keywords
-                    )
-                parts = list(ast.walk(node)) if isinstance(node, ast.Compare) else []
-                divides = any(isinstance(p, ast.BinOp) and isinstance(p.op, ast.Div) for p in parts)
-                if divides and any(
-                    (isinstance(p, ast.Name) and p.id == "floor")
-                    or (isinstance(p, ast.Attribute) and p.attr == "minimum_entity_coverage")
-                    for p in parts
-                ):
-                    by_hand.add(f"{relative}::{function.name}")
-    composition = "control/product_host/composition"
-    assert judges == {
-        f"{composition}/evidence_authority_setup.py::_materialize": True,
-        f"{composition}/evidence_review_application.py::units_short_of_sources": False,
-        "evidence/alternative_evidence/runtime/task_adapter.py::_execute_stage": True,
-    }
-    assert by_hand == {"evidence/alternative_evidence/runtime/coverage.py::sources_short"}
 
     asked: list[tuple[str, ...]] = []
 
@@ -1200,13 +1128,7 @@ def test_an_interrupted_run_resumes_after_restart_without_repeating_completed_un
 
 
 def test_a_single_unit_book_is_a_run_of_one_unit(tmp_path: Path) -> None:
-    """requirement (C2, 2026-09-23): every book is a coverage run. A book that
-    fits one unit is a run of one unit, with the run, the per-unit packet
-    request and the readers a wider book has; its lone unit carries exactly
-    the request, obligation and intent a single preparation of the book
-    carried, so a single preparation's completion is that unit's completion.
-    One unit has no progress table, and the preview still names its source
-    check where a reader of a one-unit book looks for it."""
+    """A single unit book is a run of one unit."""
 
     from tests.alternative_evidence_desk.review_http_support import (
         build_authority,
@@ -1257,13 +1179,7 @@ def test_a_single_unit_book_is_a_run_of_one_unit(tmp_path: Path) -> None:
 def test_a_preparation_admitted_before_every_book_was_a_run_is_carried_into_the_run(
     tmp_path: Path,
 ) -> None:
-    """requirement (C2, retirement row H7): a one-unit book prepared as a single
-    request before C2 -- the Task a workspace on the accepted baseline may hold
-    -- is not prepared twice: the book's run finds that completion by the
-    unit's intent and carries it, embedding nothing again. The single Task
-    stays readable by its id; no new single preparation is ever admitted."""
-
-    from dataclasses import replace
+    """A preparation admitted before every book was a run is carried into the run."""
 
     from alphalattice.control.product_host.composition.evidence_review_application import (
         AlternativeEvidenceRefreshCommand,
@@ -1328,13 +1244,7 @@ def test_a_preparation_admitted_before_every_book_was_a_run_is_carried_into_the_
 
 
 def test_the_book_ledger_reads_every_group_of_a_wide_book(book: Any, tmp_path: Path) -> None:
-    """requirement (first-release integration T4, A11): a wide book's ledger
-    is one read of every group of its newest coverage Task -- each group's
-    cells the unit packet's own coverage cells, its packet named by Task and
-    unit -- twenty groups a page; the read adds no Task and no write, and a
-    page past the last refuses by name."""
-
-    from dataclasses import replace
+    """The book ledger reads every group of a wide book."""
 
     from alphalattice.evidence.alternative_evidence.analysis.routing import TOPICS
     from alphalattice.evidence.alternative_evidence.contracts import (

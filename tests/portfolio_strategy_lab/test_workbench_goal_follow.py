@@ -7,14 +7,10 @@ fixtures: this proves routing and race safety, not scientific or native acceptan
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from uuid import UUID, uuid4
-
-import pytest
 
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
@@ -55,10 +51,8 @@ from tests.feature_input_gateway.gateway_support import (
     _sectors,
     _temporal,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.local_web_support import _json, run_node
 from tests.workspace_task_runner.task_control_support import digest
-
-pytestmark = pytest.mark.usefixtures("workbench_build")
 
 
 def _checkpoint_experiment(workspace_id: str, salt: str):
@@ -411,17 +405,16 @@ def test_real_task_events_follow_the_attributed_goal_and_preserve_manual_reading
     path = tmp_path / "goal-follow-fixture.json"
     path.write_text(json.dumps(fixture), encoding="utf-8", newline="\n")
     root = Path(__file__).resolve().parents[2]
-    node = shutil.which("node")
-    assert node is not None, "The Workbench holder requires the installed Node runtime."
-    subprocess.run(
+    run_node(
         [
-            node,
             str(Path(__file__).with_name("workbench_goal_follow.cjs")),
             str(
                 root / "src/alphalattice/interface/local_application/assets/workbench-source/js/app"
             ),
             str(path),
         ],
+        missing="The Workbench holder requires the installed Node runtime.",
+        required=True,
         check=True,
         timeout=15,
     )

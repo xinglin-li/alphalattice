@@ -61,18 +61,7 @@ def _factor_summary(workspace: RealRiskWorkspace) -> dict[str, Any]:
 def test_the_extension_factor_materializes_through_the_real_service(
     extension_feature_workspace: RealRiskWorkspace,
 ) -> None:
-    """The decisive case: the method computed, and the panel says which code did.
-
-    The availability summary is derived from what was **materialized**, not from
-    what the catalog declared, so a factor whose kernel never ran would appear
-    with no available sessions and a null ratio of one. That is what makes this a
-    materialization proof rather than a restatement of the catalog.
-
-    The recipe is asserted to be product-owned in the same place, because the two
-    are one claim: a ``FactorSpec`` assembled in a fixture would make "add a
-    method in the domain directory" false -- the mathematics would live in the
-    product while the recipe deciding its window, lag and inputs lived in a test.
-    """
+    """The extension factor materializes through the real service."""
 
     spec = overnight_return_factor_spec()
     kernel = default_extension_kernel_registry().resolve(spec.formula_ref)
@@ -109,15 +98,7 @@ def test_installing_the_method_disturbs_no_shipped_identity(
     real_risk_workspace: RealRiskWorkspace,
     extension_feature_workspace: RealRiskWorkspace,
 ) -> None:
-    """Readback compatibility, stated as a comparison between two real panels.
-
-    The shared workspace is built from the shipped catalog and knows nothing about
-    the extension. Its manifest must not mention the new factor, and every factor
-    it does carry must report the same implementation identity in both panels --
-    otherwise installing a method would silently restate the identity of methods
-    nobody touched, and every panel published before this one would stop being
-    comparable.
-    """
+    """Installing the method disturbs no shipped identity."""
 
     shipped = FeatureCatalog.load()
     development = development_feature_catalog()

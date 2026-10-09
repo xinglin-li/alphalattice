@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const library = require('./workbench_library.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -56,7 +57,7 @@ const c = {
   Inspect:{observationDock:()=>'',window:()=>[0,0],presetsFor:()=>[],setWindow:()=>{}},
   chartHead:()=>'<div class="chart-headline"></div>', chart:()=>'<svg></svg>',
 };
-vm.createContext(c);
+library.context(c);
 vm.runInContext(fs.readFileSync(path.join(appDir,'pages-portfolio.js'),'utf8'),c,{filename:'pages-portfolio.js'});
 
 const render = () => c.PAGES.portfolio();
@@ -181,7 +182,7 @@ function performanceReader(source,locale,theme,width) {
     Data:{...Data,raw:()=>owner,subject:()=>owner.subject,forwardPerformance:()=>owner.forward_performance,
       performanceMode:()=>selectedMode,series:()=>selectedMode==='forward' ? owner.forward_performance?.available===true ? owner.forward_performance.series || [] : [] : historicalRows},
   };
-  vm.createContext(view);
+  library.context(view);
   vm.runInContext(fs.readFileSync(path.join(appDir,'..','data','zh.js'),'utf8'),view,{filename:'zh.js'});
   vm.runInContext(fs.readFileSync(path.join(appDir,'i18n.js'),'utf8'),view,{filename:'i18n.js'});
   vm.runInContext(componentsSource.slice(emptyFrom,emptyTo)+componentsSource.slice(wordsFrom,wordsTo)+codedSource+componentsSource.slice(headFrom,headTo),view,{filename:'components-performance-readers.js'});
@@ -310,7 +311,7 @@ async function transportAssertions() {
     Portfolio:{refreshSessionSurface:()=>{},refreshPerformanceSurface:()=>{}},
     scrollX:0,scrollY:0,URLSearchParams,console,
   };
-  vm.createContext(transport);
+  library.context(transport);
   vm.runInContext(fs.readFileSync(path.join(appDir,'data.js'),'utf8'),transport,{filename:'data.js'});
   await vm.runInContext(`Data.openPortfolio('book','2024-08-12')`,transport);
   assert.equal(new URL(requests[0],'http://local').searchParams.has('scope'),false,'first open is a full owner read');
@@ -361,7 +362,7 @@ async function overlappingPerformanceReads() {
     LiveResearch:{ready:()=>{}},Portfolio:{refreshSessionSurface:()=>{},refreshPerformanceSurface:()=>{}},
     scrollX:0,scrollY:0,URLSearchParams,console,
   };
-  vm.createContext(transport);
+  library.context(transport);
   vm.runInContext(fs.readFileSync(path.join(appDir,'data.js'),'utf8'),transport,{filename:'data.js'});
   await vm.runInContext(`Data.openPortfolio('book','2024-08-12')`,transport);
   let releaseHistorical,releaseForward;
@@ -433,7 +434,7 @@ function navigatorFixture(source=portfolioSource) {
     setTimeout:callback=>{const id=++ticket;timers.set(id,callback);return id;},
     clearTimeout:id=>timers.delete(id),
   };
-  vm.createContext(view);
+  library.context(view);
   vm.runInContext(source,view,{filename:'pages-portfolio.js'});
   vm.runInContext('Portfolio.bindCharts()',view);
   const snapshot=()=>JSON.parse(JSON.stringify({start:start.textContent,end:end.textContent,

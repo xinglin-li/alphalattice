@@ -74,13 +74,7 @@ def _legacy_usage_record(**overrides: Any) -> dict[str, Any]:
 def test_a_usage_record_is_content_addressed_in_fact_not_only_in_name(
     tmp_path: Path,
 ) -> None:
-    """requirement: editing what a stage cost must invalidate the hash it is filed under.
-
-    The record carried a `usage_hash` that nothing recomputed, so tokens, calls,
-    elapsed time, the model id or the coverage counter could each be changed in
-    place and still read back. A content-addressed artifact that does not check
-    its content is a filename, not an identity.
-    """
+    """A usage record is content addressed in fact not only in name."""
 
     store = AlternativeEvidenceArtifactStore(tmp_path / "artifacts")
     record = record_provider_stage_usage(
@@ -112,12 +106,7 @@ def test_a_usage_record_is_content_addressed_in_fact_not_only_in_name(
 def test_a_record_written_before_the_coverage_counter_still_reads_back(
     tmp_path: Path,
 ) -> None:
-    """requirement: an artifact already on disk must not need rewriting to be read.
-
-    Its hash covers a payload with no `attempts_with_tokens` key at all, so it is
-    verified against that payload and nothing else. Its coverage is unstated
-    rather than reported as none, because nobody measured it.
-    """
+    """A record written before the coverage counter still reads back."""
 
     store = AlternativeEvidenceArtifactStore(tmp_path / "artifacts")
     legacy = _legacy_usage_record()
@@ -162,11 +151,7 @@ def test_a_record_written_before_the_coverage_counter_still_reads_back(
 
 
 def test_a_stage_that_reports_no_usage_cannot_hide_a_model_call(tmp_path: Path) -> None:
-    """requirement: reconciliation is not optional when usage is missing.
-
-    Absent usage returned early, before the check that exists to catch a receipt
-    claiming a model call beside a stage that accounted for none.
-    """
+    """A stage that reports no usage cannot hide a model call."""
 
     store = AlternativeEvidenceArtifactStore(tmp_path / "artifacts")
 
@@ -196,16 +181,7 @@ def test_a_stage_that_reports_no_usage_cannot_hide_a_model_call(tmp_path: Path) 
 
 
 def test_a_zero_call_stage_that_measured_something_is_refused(tmp_path: Path) -> None:
-    """requirement: the receipt and the measurement must agree before nothing is filed.
-
-    The zero-call branch returned `None` on the strength of the call count
-    alone, so a total carrying real Provider counters was discarded whenever the
-    receipt also said zero calls. Both sides contradicted each other and the
-    contradiction was resolved by throwing the measurement away, which is the
-    one outcome usage integrity exists to prevent.
-
-    Returning nothing is honest only when there is nothing to return.
-    """
+    """A zero call stage that measured something is refused."""
 
     from alphalattice.protocols.actor_execution.usage import ProviderStageUsage
 

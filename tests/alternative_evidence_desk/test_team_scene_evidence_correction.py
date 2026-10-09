@@ -16,8 +16,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
-import subprocess
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -38,6 +36,7 @@ from tests.alternative_evidence_desk.review_http_support import (
     build_workspace,
     start_service,
 )
+from tests.portfolio_strategy_lab.local_web_support import run_node
 
 MODULES = (
     Path(__file__).resolve().parents[2]
@@ -125,13 +124,11 @@ class _Producer:
 
 
 def _consumer(feed: dict[str, Any], tmp: Path, *selection: str) -> dict[str, Any]:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("Node.js development runtime required")
+    run_node(None)
     path = tmp / "feed.json"
     path.write_text(json.dumps(feed), encoding="utf-8")
-    result = subprocess.run(
-        [node, str(RUNNER), str(MODULES), str(path), *selection],
+    result = run_node(
+        [str(RUNNER), str(MODULES), str(path), *selection],
         capture_output=True,
         encoding="utf-8",
         timeout=20,

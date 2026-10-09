@@ -83,10 +83,7 @@ def test_a_planted_claim_beyond_the_excerpt_is_retrievable_with_exact_span(
 
 
 def test_the_widened_session_budgets_bind_at_their_edge(tmp_path: Path) -> None:
-    """requirement: the program's twenty questions and thirty-two reads fit
-    the session; the twenty-fifth search and the thirty-third read refuse by
-    name, and the receipt's remaining count is what the session enforces.
-    """
+    """The widened session budgets bind at their edge."""
 
     from alphalattice.evidence.alternative_evidence.retrieval.session import (
         MAXIMUM_SEARCHES,
@@ -195,14 +192,7 @@ def test_a_matched_range_is_delivered_as_whole_sentences() -> None:
 
 
 def test_a_bare_amount_carries_the_source_scale_statement_nearest_before_it() -> None:
-    """requirement: a delivered numbers fact carries the source's unit
-    declaration when its note states one, origin-identified.
-
-    The scale sits at the head of the note, far from the sentence: the
-    nearest statement before the passage is quoted at its own range. An
-    amount that names its own scale in the text is in that scale and asks
-    for nothing; a source that states no scale gives none.
-    """
+    """A bare amount carries the source scale statement nearest before it."""
 
     note = (
         "Note 5. Debt\n\n(In thousands, except share and per share data)\n\n"
@@ -232,15 +222,7 @@ def test_a_bare_amount_carries_the_source_scale_statement_nearest_before_it() ->
 
 
 def test_a_one_cell_layout_table_keeps_its_amount_in_the_sentence() -> None:
-    """requirement: the generic extraction defect behind DG's lost amounts.
-
-    A filing agent sets an inline-XBRL amount in a one-cell table inside a
-    sentence; an HTML parser closes the paragraph there and the extractor
-    prunes tables, so the sentence read "... not to exceed $" with nothing
-    after it. A one-cell table is a layout device: its text stays in the
-    sentence. A real table stays a table and is pruned, and a layout cell
-    inside a real table counts toward that table, not as narrative.
-    """
+    """A one cell layout table keeps its amount in the sentence."""
 
     from alphalattice.kernel.live_evidence.online_sources import (
         CANONICAL_EXTRACTION_RULES_ID,
@@ -289,12 +271,7 @@ class _CarryEverywhere:
 
 
 def test_the_sec_table_policy_admits_disclosure_items_only() -> None:
-    """requirement: not every table, and never the financial statements.
-    A 10-Q carries tables in Part II Items 1 to 5 and in Part I Item 4; a
-    10-K in Items 1 to 5 and 9 to 9C of Parts I and II (TPL's 10-K sets the
-    proxy items out in full and its statements after Part IV under "Item
-    1" again); an 8-K in every item; nothing before the first heading. A
-    block that is not a heading changes nothing."""
+    """The SEC table policy admits disclosure items only."""
 
     from alphalattice.evidence.alternative_evidence.documents.canonicalization import (
         TABLE_CARRY_RULES_ID,
@@ -402,12 +379,7 @@ def test_the_sec_table_policy_admits_disclosure_items_only() -> None:
 
 
 def test_the_cover_ends_in_the_front_matter_not_at_a_later_cover_like_line() -> None:
-    """requirement: a combined registrant's 10-K (NEE with FPL) closes with a
-    statement that no proxy soliciting material was sent to the
-    co-registrant's holders -- a cover-like line at the very end. The cover
-    ended there, the whole filing was front matter, and its Legal
-    Proceedings item and contingencies note were never litigation regions.
-    The cover ends before the body's first Part or Item heading."""
+    """The cover ends in the front matter not at a later cover like line."""
 
     from alphalattice.evidence.alternative_evidence.analysis.matters import litigation_regions
     from alphalattice.evidence.alternative_evidence.documents.structure import (
@@ -456,12 +428,7 @@ def test_the_cover_ends_in_the_front_matter_not_at_a_later_cover_like_line() -> 
 
 
 def test_the_report_period_is_the_cover_statement_never_a_year_the_body_names() -> None:
-    """regression: the first-release acceptance's four 10-Ks for years ended
-    2025 whose typed statements carried report periods of 2026, 2027 and
-    2028 (a later fiscal year the body names) and 2024 (a cover the pattern
-    does not match, the body naming only the predecessor year), stated as
-    resolved. The report's period is its cover's statement; a cover that
-    states none is ABSENT."""
+    """The report period is the cover statement never a year the body names."""
 
     from alphalattice.evidence.alternative_evidence.documents.structure import (
         DocumentStructure,
@@ -499,16 +466,7 @@ def _cell(text: str = "", *, span: int = 1) -> str:
 
 
 def test_tables_reach_the_canonical_text_as_self_describing_rows() -> None:
-    """requirement: the issuer repurchase table of Part II Item 2(c) never
-    reached a packet -- every table was pruned whole. Shaped on the retrieved
-    originals (BKNG, NEE, MLM 10-Qs: headings over spanned columns, a currency
-    sign in its own cell, footnote marks, dashes, blank cells, a period label
-    broken over two rows, a units note row, a Total row): a development
-    set, not independent validation. Each row carries its headings, a blank
-    cell says nothing, a dash stays a dash, nothing is summed or merged.
-    A one-row layout table is the line it displays (DG's item headings); a
-    large table and a table of contents leave a line saying they were not
-    carried; the one-cell layout unwrap and the inline-XBRL unwrap stand."""
+    """Tables reach the canonical text as self describing rows."""
 
     from alphalattice.evidence.alternative_evidence.documents.canonicalization import (
         SecTableCarry,
@@ -682,11 +640,7 @@ the headed table below is a development shape built from that real cell."""
 
 
 def test_a_long_cell_is_never_cut_silently() -> None:
-    """requirement: a carried cell longer than the carried cell size lost its
-    suffix without a word -- a deadline, an exception or a unit past the cut
-    became an unqualified statement. A cell within the size is carried
-    whole; a longer one is carried as far as the size and says, in the cell,
-    how much the original retains; nothing about it reads as complete."""
+    """A long cell is never cut silently."""
 
     from alphalattice.evidence.alternative_evidence.documents.canonicalization import (
         SecTableCarry,
@@ -725,12 +679,7 @@ def test_a_long_cell_is_never_cut_silently() -> None:
 
 
 def test_a_spanning_cell_keeps_its_grid_position() -> None:
-    """requirement: `rowspan` was not accounted, so the second heading row
-    of FRT's 10-K Item 5 dividends table ("High" | "Low" under "Price Per
-    Share") slid to the first columns and every quarter read "High: Fourth
-    quarter; Price Per Share: $102.81 $90.03" -- the quarter under "High",
-    the two prices merged and unnamed. A spanning cell occupies its grid
-    positions in the rows it spans, for a heading and for a body subject."""
+    """A spanning cell keeps its grid position."""
 
     from alphalattice.evidence.alternative_evidence.documents.canonicalization import (
         SecTableCarry,
@@ -786,11 +735,7 @@ def test_a_spanning_cell_keeps_its_grid_position() -> None:
 
 
 def test_inline_text_beside_a_replaced_table_is_kept() -> None:
-    """requirement: FRT's 10-Q cover sets "For the quarterly period ended
-    June 30, 2026" as a bare span after a check-box table inside one div.
-    With the table replaced by a block, the extractor dropped the span; the
-    text beside a replaced table is wrapped into paragraphs of its own and
-    stays, before and after the table."""
+    """Inline text beside a replaced table is kept."""
 
     from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
 
@@ -817,13 +762,7 @@ def test_inline_text_beside_a_replaced_table_is_kept() -> None:
 
 
 def test_a_div_paragraph_among_p_paragraphs_is_read() -> None:
-    """requirement: DG's 10-Q sets its Item 4 conclusion as
-    <div><span>(a)</span><i>Disclosure Controls and Procedures</i><span>. Under
-    the supervision ... concluded ...</span></div> among <p> paragraphs; the
-    extractor reads div paragraphs only in a document with too few p
-    paragraphs, so the conclusion vanished and the family reported the item
-    as stating nothing. Such a div is read as a paragraph; a filing that
-    sets its paragraphs as div is left to the extractor's own div path."""
+    """A div paragraph among p paragraphs is read."""
 
     from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
 
@@ -866,16 +805,7 @@ def test_a_div_paragraph_among_p_paragraphs_is_read() -> None:
 
 
 def test_a_linked_paragraph_set_as_a_div_closes_before_the_next_block() -> None:
-    """requirement: COST's 10-K sets its paragraphs as divs and its debt
-    note's heading as a bold div after a paragraph that cross-references
-    Note 1 with a link; the extractor keeps a linked div a div and writes
-    no line break after it, so the canonical text read "... Please see
-    Note 1 for additional information. Note 4—Debt" on one line and the
-    structure opened no debt note. The linked paragraph is a paragraph:
-    the heading stands alone and the structure sees it; the reference
-    stays inside its sentence, never a heading; a paragraph of links (a
-    table of contents set as divs) is left to the extractor's own reading;
-    nothing is added or lost."""
+    """A linked paragraph set as a div closes before the next block."""
 
     from lxml import etree
 
@@ -951,18 +881,7 @@ def test_a_linked_paragraph_set_as_a_div_closes_before_the_next_block() -> None:
 
 
 def test_inline_xbrl_is_unwrapped_and_its_hidden_header_is_never_prose() -> None:
-    """requirement: the extraction defect behind DG's retrieved originals.
-
-    A filing sets its narrative amounts as inline-XBRL elements inside the
-    sentence; on a document of ordinary length the extractor dropped each
-    unknown element with its tail, so "was approximately $" ended the
-    sentence and the amount, its scale word and the rest of the sentence
-    vanished (76 of 145 narrative amounts in DG's 10-K). The hidden
-    `ix:header` -- contexts, units and facts the filing never displays --
-    was emitted as one line of prose. Under rules v3 the amount stays in
-    its sentence with its sign as displayed, and the hidden facts are not
-    in the text at all.
-    """
+    """Inline XBRL is unwrapped and its hidden header is never prose."""
 
     from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
 
@@ -1199,11 +1118,7 @@ def test_sec_material_sections_fail_closed_when_item_boundaries_are_ambiguous(
 
 
 def test_a_heading_longer_than_a_heading_can_be_is_carried_as_a_paragraph() -> None:
-    """requirement (live campaign, unit u05): an exhibit-index footnote set as
-    a heading tag became a 300-character Markdown heading, named every
-    chunk after it and exceeded the citation contract's 256-character
-    heading, failing the unit's retrieval build. Under rules v5 such a line
-    is the paragraph it is; a real heading is untouched."""
+    """Text exceeding the heading-length bound is carried as a paragraph."""
 
     from alphalattice.kernel.live_evidence.online_sources import (
         CANONICAL_EXTRACTION_RULES_ID,
@@ -1231,15 +1146,7 @@ def test_a_heading_longer_than_a_heading_can_be_is_carried_as_a_paragraph() -> N
 
 
 def test_an_item_heading_closing_with_a_scale_parenthetical_is_the_item() -> None:
-    """requirement (the completeness assignment, H4; structure rules v3): a
-    periodic report's item line that closes with a parenthetical statement
-    (COST's MD&A: 176 characters with its "(amounts in millions, ...)") is
-    the item at its title's length, and the parenthetical -- a scale
-    statement -- is the section's unit declaration. Under v2 the line
-    exceeded the heading bound, the MD&A sat under "Item 6—Reserved", and a
-    liquidity statement in it was unroutable (development unit U-029). A
-    line past the bound that is not an item stays a paragraph; the carry
-    policy's shared rule sees the same item."""
+    """An item heading closing with a scale parenthetical is the item."""
 
     from alphalattice.evidence.alternative_evidence.documents.structure import (
         STRUCTURE_RULES_ID,
@@ -1290,15 +1197,7 @@ def test_an_item_heading_closing_with_a_scale_parenthetical_is_the_item() -> Non
 
 
 def test_a_filing_that_labels_no_item_heads_its_items_by_their_official_titles() -> None:
-    """requirement (H4; structure rules v3): a 10-K whose body carries no
-    "Item N" line and heads each item with its official title alone (SYF's
-    form: "Cybersecurity", "Controls and Procedures", "Other Information")
-    has those lines as its item headings with their official parts implied,
-    so the typed families and the routing reach Item 1C, 9A and 9B; a
-    repeated title later in the text stays a sub-heading; a filing with
-    labelled items keeps every bare title a sub-heading (COST's "Legal
-    Proceedings" inside its contingencies note); fewer than three titles
-    promote nothing."""
+    """A filing that labels no item heads its items by their official titles."""
 
     from alphalattice.evidence.alternative_evidence.documents.structure import DocumentStructure
 
@@ -1356,12 +1255,7 @@ def test_a_filing_that_labels_no_item_heads_its_items_by_their_official_titles()
 
 
 def test_a_headingless_filing_s_cover_ends_before_its_body() -> None:
-    """requirement (H4; structure rules v3): a current report whose canonical
-    text carries no item line (the casebook's recorded DG 8-K) bounds its
-    cover by its body: the shell-company line of Item 9.01 and the signature
-    at the end are not the cover, so the vote results in between are a body
-    the routing gives every topic. Under v2 the cover ran to 4,271 of 4,546
-    characters and the body was nothing."""
+    """A headingless filing's cover ends before its body."""
 
     from alphalattice.evidence.alternative_evidence.documents.structure import DocumentStructure
 

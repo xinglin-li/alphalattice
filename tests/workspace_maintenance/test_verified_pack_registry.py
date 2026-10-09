@@ -11,6 +11,9 @@ change; a lease's close keeps the session; the ledger counts the reuses.
 from __future__ import annotations
 
 import os
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -173,10 +176,7 @@ def test_capability_probe_is_proven_once_and_again_after_a_pack_change(
 
 
 def test_a_host_that_runs_items_at_once_holds_a_session_for_each(tmp_path: Path) -> None:
-    """requirement (first-day speed): one session per pack unless the Host
-    raises it; raised, leases held at once each take a session of their own up
-    to the bound, then share the least-leased; a released session is taken
-    again before another loads; a changed pack retires every one of them."""
+    """A host that runs items at once holds a session for each."""
 
     registry = embeddings.VerifiedPackRegistry()
     consumed = (tmp_path / "model.bin",)
@@ -211,14 +211,7 @@ def test_a_host_that_runs_items_at_once_holds_a_session_for_each(tmp_path: Path)
 
 
 def test_a_model_call_gives_up_the_callers_lock_only_where_it_yields() -> None:
-    """Requirement: a caller inside `yielding_during_inference` gives its
-    lock up while the model runs and holds it again after; outside that scope,
-    or once a build withholds it (a committed generation materialized under the
-    workspace's lock), the model call keeps the caller's lock."""
-
-    import threading
-    from collections.abc import Iterator
-    from contextlib import contextmanager
+    """A model call releases the caller's lock only at its declared yield."""
 
     writer = threading.Lock()
     observed: list[bool] = []
@@ -256,10 +249,7 @@ def test_a_model_call_gives_up_the_callers_lock_only_where_it_yields() -> None:
 
 
 def test_sessions_of_two_widths_are_held_side_by_side(tmp_path: Path) -> None:
-    """requirement (the final close-out, F2): a unit's sessions are its own share of
-    the CPU budget. A lease takes a held session of its width, loading one while
-    fewer than the bound are held, and leaves the others to their own callers; an
-    idle one of another width gives its place when the pool is full."""
+    """Sessions of two widths are held side by side."""
 
     registry = embeddings.VerifiedPackRegistry()
     registry.hold_up_to(2)
@@ -291,14 +281,7 @@ def test_sessions_of_two_widths_are_held_side_by_side(tmp_path: Path) -> None:
 def test_model_work_waits_for_the_foreground_and_a_gate_at_its_first_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """requirement (F2): while a reader the lead waits on runs (a bundle), another
-    thread's model call waits and goes on when the reader ends -- the reader's own
-    calls do not wait; and a thread's gate runs once, at its first model call that
-    gives up the caller's lock, never while the lock is held."""
-
-    import threading
-    from collections.abc import Iterator
-    from contextlib import contextmanager
+    """Model work waits for the foreground and a gate at its first call."""
 
     registry = embeddings.VerifiedPackRegistry()
     monkeypatch.setattr(embeddings, "VERIFIED_PACKS", registry)

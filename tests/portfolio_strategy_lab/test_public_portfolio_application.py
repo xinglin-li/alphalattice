@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field, replace
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 import pytest
@@ -120,10 +122,7 @@ def test_default_path_runs_under_task_control_and_reuses_exact_result(tmp_path: 
 
 
 def test_a_results_identity_binds_its_request_never_a_commands_words(tmp_path: Path) -> None:
-    """requirement (V403, the grammar's test run CG2): a result's hash binds its request
-    (spec_hash), never the words of the public script's command, so a change to that script's
-    flags moves no result; the export composes the command from the result's Task, and a result
-    published before, whose hash covers its command, verifies as published."""
+    """A result's identity binds its request independently of the command's wording."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -209,12 +208,7 @@ def test_interrupted_verification_recovers_the_exact_published_result(
 
 
 def test_plan_resolves_authorities_and_performs_no_numerical_work(tmp_path: Path) -> None:
-    """The zero counters are a measurement here, not a field somebody set.
-
-    The numerical half of resolution -- twelve model replays and a Risk surface
-    per formation -- is only reachable through `resolve`. PLAN never calls it, so
-    the count is what proves the claim rather than the contract's own literal.
-    """
+    """Plan resolves authorities and performs no numerical work."""
 
     with _harness(tmp_path) as harness:
         preview = harness.application.plan(PortfolioResearchSpec.default()).preview
@@ -319,12 +313,7 @@ def test_run_refuses_a_preview_for_a_different_request(tmp_path: Path) -> None:
 def test_a_cost_change_reuses_the_execution_ledger_and_rebuilds_only_economics(
     tmp_path: Path,
 ) -> None:
-    """The single most load-bearing row of the matrix.
-
-    Cost is an economic overlay: it changes net returns and nothing about which
-    names were held. If this fails, a researcher moving a slider re-runs a
-    walk-forward to arrive at identical fills.
-    """
+    """A cost change reuses the execution ledger and rebuilds only economics."""
 
     with _harness(tmp_path) as harness:
         base = _run(harness, PortfolioResearchSpec.default())
@@ -381,12 +370,7 @@ def test_each_control_rotates_exactly_what_the_catalog_says_it_does(
 def test_unchanged_alpha_risk_and_score_identities_are_reused_exactly(
     tmp_path: Path,
 ) -> None:
-    """A descendant change must not disturb one upstream identity.
-
-    The execution ledger records every score and Risk projection the walk
-    consumed, so comparing those tuples compares the actual artifacts rather than
-    a claim that they were reused.
-    """
+    """Unchanged alpha risk and score identities are reused exactly."""
 
     with _harness(tmp_path) as harness:
         base = _run(harness, PortfolioResearchSpec.default())
@@ -434,12 +418,7 @@ def test_a_report_never_splices_two_holdings_configurations(tmp_path: Path) -> N
 
 
 def test_the_study_window_slices_the_ledger_and_keeps_its_prefix(tmp_path: Path) -> None:
-    """A window is an observation of a continuous path, never a cold start.
-
-    The execution ledger keeps all three formations under both requests; only the
-    window guard and the report unit rows move. The retained prefix is what shows
-    the opening book was established rather than assumed.
-    """
+    """The study window slices the ledger and keeps its prefix."""
 
     with _harness(tmp_path) as harness:
         sessions = tuple(_resolved().workspace.formation_sessions)
@@ -487,12 +466,7 @@ def test_the_benchmark_comparison_is_a_declared_descendant(tmp_path: Path) -> No
 
 
 def test_the_local_service_cli_and_agent_share_one_contract(tmp_path: Path) -> None:
-    """Three entry points, one admission path, one control catalog.
-
-    The service is handed the same application the CLI wires, and the Agent
-    projection is built from the objects the service returns. If any of them had
-    its own validation or its own defaults, this would be three products.
-    """
+    """The local service CLI and agent share one contract."""
 
     with _harness(tmp_path) as harness:
         service = LocalPortfolioResearchService(application=harness.application)
@@ -589,12 +563,7 @@ def test_the_service_changes_a_window_without_touching_other_controls(
 
 
 def test_the_rendered_page_is_offline_self_contained_and_truthful(tmp_path: Path) -> None:
-    """One file, no network, and every claim carrying its qualifier.
-
-    The absences are the assertions: no script, no external host, no font
-    request. A page that fetched anything would render differently -- or not at
-    all -- for a researcher working offline, which is the ordinary case.
-    """
+    """The rendered page is offline self contained and truthful."""
 
     with _harness(tmp_path) as harness:
         service = LocalPortfolioResearchService(application=harness.application)
@@ -708,12 +677,7 @@ def test_a_windowed_report_books_the_window_end_not_the_path_end(tmp_path: Path)
 
 
 def test_a_flat_development_opening_is_unchanged(tmp_path: Path) -> None:
-    """A path that really did open empty still reports exactly that.
-
-    The regression that follows this one changes what happens at row zero. This
-    is the arm that must not move: a development run opens flat, every position
-    is an open, nothing exited, and the page says so in those words.
-    """
+    """A development run that opens flat reports every position as an opening and no exits."""
 
     with _harness(tmp_path) as harness:
         sessions = tuple(_resolved().workspace.formation_sessions)
@@ -818,12 +782,8 @@ def test_the_page_shows_a_truthful_empty_state_rather_than_a_zero(tmp_path: Path
 
 
 def test_the_default_gate_8b_path_is_unchanged_end_to_end(tmp_path: Path) -> None:
-    """Adding controls must not replace the working default route.
-
-    PLAN, RUN, exact reuse, REPORT, HTML and EXPORT all still work with the
-    frozen tuple and nothing supplied, and the exported command round-trips back
-    to the same request.
-    """
+    """The installed default portfolio path supports planning, execution, exact reuse, reporting,
+    and export end to end."""
 
     with _harness(tmp_path) as harness:
         service = LocalPortfolioResearchService(application=harness.application)
@@ -904,12 +864,7 @@ def test_task_control_and_checkpoints_stay_in_the_runtime_authority(tmp_path: Pa
 
 
 def test_exact_reuse_performs_no_numerical_resolution(tmp_path: Path) -> None:
-    """`REUSED_EXACT` has to mean the work was not done, not that it was discarded.
-
-    Before this, a reuse resolved every score and Risk surface and only then
-    discovered the result already existed. The counter is the proof: the second
-    run must not enter the numerical half at all.
-    """
+    """Exact reuse performs no numerical resolution."""
 
     with _harness(tmp_path) as harness:
         registry = harness.session.task_control_registry
@@ -958,14 +913,7 @@ def test_exact_reuse_performs_no_numerical_resolution(tmp_path: Path) -> None:
 def test_a_descendant_change_reads_the_stored_path_instead_of_rewalking(
     tmp_path: Path, changed: dict[str, object]
 ) -> None:
-    """ "Reuses the execution ledger" has to be a claim about work.
-
-    It was true of the hash and false of the effort: a changed cost re-ran the
-    whole walk-forward to arrive at a ledger byte-identical to the stored one.
-    Everything a descendant needs is program-determined, so it now lives on the
-    ledger and is read back, and the program itself is found by holdings plus
-    authorities rather than recompiled. The counter is the proof.
-    """
+    """A descendant change reads the stored path instead of rewalking."""
 
     with _harness(tmp_path) as harness:
         base = harness.application.run(spec=PortfolioResearchSpec.default())
@@ -985,12 +933,7 @@ def test_a_descendant_change_reads_the_stored_path_instead_of_rewalking(
 def test_the_spy_comparator_is_the_only_descendant_that_still_resolves(
     tmp_path: Path,
 ) -> None:
-    """It is a spec-level choice rather than a property of the path.
-
-    Every other descendant is answered from the ledger; the SPY lane is an
-    external series the ledger has no reason to carry, so asking for it is the
-    one case that legitimately reaches back to the Host.
-    """
+    """Only an external benchmark comparison resolves beyond the stored execution ledger."""
 
     with _harness(tmp_path) as harness:
         harness.application.run(spec=PortfolioResearchSpec.default())
@@ -1002,12 +945,7 @@ def test_the_spy_comparator_is_the_only_descendant_that_still_resolves(
 
 
 def test_plan_separates_ledger_coverage_from_owner_support(tmp_path: Path) -> None:
-    """Owner support and materialized coverage are different questions.
-
-    An owner can have support the ledger has never been run over. Before a run
-    there is no ledger coverage at all, and saying `None` is the honest answer;
-    after one it is read from the path itself rather than restated from support.
-    """
+    """Plan separates ledger coverage from owner support."""
 
     with _harness(tmp_path) as harness:
         spec = PortfolioResearchSpec.default()
@@ -1030,13 +968,7 @@ def test_plan_separates_ledger_coverage_from_owner_support(tmp_path: Path) -> No
 
 
 def test_the_page_never_forces_the_body_to_scroll_sideways(tmp_path: Path) -> None:
-    """A long explanatory pill must wrap, not widen the document.
-
-    Measured in a browser, the page was 5,309px wide against a 1,265px viewport
-    because `.tag` carried `white-space: nowrap` -- right for a short pill and
-    wrong for a sentence. Wide content belongs in its own scroll container; the
-    body does not scroll.
-    """
+    """The page never forces the body to scroll sideways."""
 
     with _harness(tmp_path) as harness:
         service = LocalPortfolioResearchService(application=harness.application)
@@ -1060,13 +992,7 @@ def test_the_page_never_forces_the_body_to_scroll_sideways(tmp_path: Path) -> No
 
 
 def test_the_beta_stripped_unit_uses_the_backtesting_beta_owner(tmp_path: Path) -> None:
-    """Beta-stripped means `net - beta * anchor`, not `net - anchor`.
-
-    Subtracting the anchor outright is an excess return, and labelling that
-    beta-stripped is a false claim whenever beta is not exactly 1. The stored
-    beta must be the Backtesting owner's, and the rows must be the stripped
-    series -- both checked against the owner rather than against a restatement.
-    """
+    """The beta stripped unit uses the backtesting beta owner."""
 
     with _harness(tmp_path) as harness:
         result = harness.application.run(spec=PortfolioResearchSpec.default()).result
@@ -1131,11 +1057,7 @@ def test_beta_is_estimated_over_the_path_and_a_window_cannot_move_it(
 
 
 def test_a_degenerate_anchor_refuses_only_the_unit_that_needs_beta() -> None:
-    """The Backtesting owner refuses a benchmark that did not move, and so do we.
-
-    Coupling every view to one coefficient would be worse than the honest
-    absence: two of the three units never asked for a beta.
-    """
+    """A degenerate anchor refuses only the unit that needs beta."""
 
     sessions = (date(2024, 1, 2), date(2024, 1, 3), date(2024, 2, 1))
     net = np.array([0.01, -0.02, 0.03], dtype=np.float64)
@@ -1170,12 +1092,7 @@ def test_a_degenerate_anchor_refuses_only_the_unit_that_needs_beta() -> None:
 def test_a_changed_input_authority_rotates_everything_and_reopens_nothing(
     tmp_path: Path, field: str, value: str
 ) -> None:
-    """Unchanged axes are not enough. Eligibility and outcomes decide fills.
-
-    Both can be corrected while the session and listing axes stay identical, so a
-    program keyed on the axes alone would reopen a ledger built from the
-    superseded authority and call it exact reuse.
-    """
+    """A changed input authority rotates everything and reopens nothing."""
 
     with _harness(tmp_path) as harness:
         base = harness.application.run(spec=PortfolioResearchSpec.default())
@@ -1233,11 +1150,7 @@ def test_task_admission_binds_the_admission_and_the_authorities(tmp_path: Path) 
 def test_the_admission_hash_excludes_cache_state_so_recovery_still_matches(
     tmp_path: Path,
 ) -> None:
-    """Publishing changes the preview and must not change what was authorised.
-
-    Binding the whole preview would make an interrupted run unrecoverable the
-    moment it had published, because the next plan reports a cache hit.
-    """
+    """The admission hash excludes cache state so recovery still matches."""
 
     with _harness(tmp_path) as harness:
         spec = PortfolioResearchSpec.default()
@@ -1457,12 +1370,7 @@ def test_authority_receipt_binds_the_full_axis_and_frozen_source_snapshot(
 def test_a_custom_study_end_reports_every_fact_at_that_window_end(
     tmp_path: Path,
 ) -> None:
-    """A window that moved only the row table would be a full-path report in disguise.
-
-    Holdings, Risk, cap counts, liquidity, wealth and turnover all have to be
-    taken at the selected end, and the ones that can move here are checked
-    against the path-end values rather than merely asserted to exist.
-    """
+    """A custom study end reports every fact at that window end."""
 
     with _harness(tmp_path) as harness:
         sessions = tuple(_resolved().workspace.formation_sessions)
@@ -1543,12 +1451,7 @@ def test_a_report_cannot_carry_risk_facts_from_outside_its_window(tmp_path: Path
 
 
 def test_plan_distinguishes_result_hit_ledger_hit_and_full_miss(tmp_path: Path) -> None:
-    """Three states, because they cost three different amounts.
-
-    Collapsing the middle one into "miss" tells a researcher that changing a
-    report unit costs a walk-forward, which is exactly the thing the invalidation
-    matrix exists to deny.
-    """
+    """Plan distinguishes result hit ledger hit and full miss."""
 
     with _harness(tmp_path) as harness:
         spec = PortfolioResearchSpec.default()
@@ -1604,12 +1507,7 @@ def test_a_plan_state_that_disagrees_with_its_work_estimate_is_refused(
 def test_the_watermark_and_the_materialized_ledger_never_impersonate_each_other(
     tmp_path: Path,
 ) -> None:
-    """Two different questions: what the owners can serve, and what has been run.
-
-    They are read from different objects -- the owner intersection and the
-    ledger's own sessions -- and the preview refuses a ledger coverage that
-    escapes the watermark in either direction.
-    """
+    """The watermark and the materialized ledger never impersonate each other."""
 
     with _harness(tmp_path) as harness:
         spec = PortfolioResearchSpec.default()
@@ -1643,12 +1541,7 @@ def test_the_watermark_and_the_materialized_ledger_never_impersonate_each_other(
 def test_comparison_names_every_changed_control_from_durable_receipts(
     tmp_path: Path,
 ) -> None:
-    """Most controls never reach a report, so a field diff cannot name them.
-
-    `top_k`, `exit_rank` and the cost appear nowhere on a report projection. A
-    comparison built by diffing report fields would call two very different
-    configurations identical, which is worse than refusing to compare them.
-    """
+    """Comparison names every changed control from durable receipts."""
 
     with _harness(tmp_path) as harness:
         service = LocalPortfolioResearchService(application=harness.application)
@@ -1879,14 +1772,7 @@ def _watched(
 
 
 def test_export_manifest_needs_no_lineage_or_program_port(tmp_path: Path) -> None:
-    """requirement: the optional ports stay optional.
-
-    A service built with nothing but an application is a supported
-    configuration -- the CLI builds one, and this suite builds one a dozen times
-    above. Export publishes `None` for the lineage and Program fields in that
-    case; it must not inherit the fully wired Local Web composition's
-    requirements and refuse.
-    """
+    """Export manifest needs no lineage or program port."""
 
     with _harness(tmp_path) as harness:
         spec = PortfolioResearchSpec.default()
@@ -1907,13 +1793,7 @@ def test_export_manifest_needs_no_lineage_or_program_port(tmp_path: Path) -> Non
 
 
 def test_result_only_refusals_come_before_any_child_read(tmp_path: Path) -> None:
-    """requirement: a check the result alone decides must not open the report.
-
-    Both refusals are decidable from the result: two identical spec hashes are
-    not two configurations, and a spec that is not this result's is not this
-    result's. Opening the report first turns a refusal into a read, and fails
-    differently when the report cannot be opened at all.
-    """
+    """Result only refusals come before any child read."""
 
     with _harness(tmp_path) as harness:
         result = _run(harness, PortfolioResearchSpec.default())
@@ -1958,15 +1838,7 @@ def test_result_only_refusals_come_before_any_child_read(tmp_path: Path) -> None
 
 
 def test_export_reads_its_children_in_the_declared_order(tmp_path: Path) -> None:
-    """requirement: the order among the children export does need, once it needs them.
-
-    Result, then report, then Program, then lineage -- the order this chain read
-    them in before it was consolidated. Which one is asked first decides which
-    error a caller sees when more than one is broken, so it is a behaviour and
-    not an implementation detail. It is also the order an accessor shape permits
-    rather than enforces: nothing stops a future caller from resolving a port
-    into an argument again, which is exactly how this went wrong once.
-    """
+    """Export reads its children in the declared order."""
 
     with _harness(tmp_path) as harness:
         spec = PortfolioResearchSpec.default()
@@ -1986,12 +1858,7 @@ def test_export_reads_its_children_in_the_declared_order(tmp_path: Path) -> None
 
 
 def test_one_comparison_opens_each_artifact_once(tmp_path: Path) -> None:
-    """requirement: the read reduction this seam claims, as a standing number.
-
-    Two results, two reports, two economic ledgers -- one open each. Before the
-    consolidation this comparison opened six results and four reports, because
-    every helper re-derived what it needed from the hash.
-    """
+    """One comparison opens each artifact once."""
 
     with _harness(tmp_path) as harness:
         left = _run(harness, PortfolioResearchSpec.default())
@@ -2004,12 +1871,7 @@ def test_one_comparison_opens_each_artifact_once(tmp_path: Path) -> None:
 
 
 def test_a_later_operation_re_reads_rather_than_trusting_earlier_bytes(tmp_path: Path) -> None:
-    """requirement: reuse lives inside one operation and never outlives it.
-
-    The value an operation holds is discarded with it, so the next request opens
-    the artifacts again. Corrupting the report between the two calls is how that
-    is proved: a service that had kept the first read would answer happily.
-    """
+    """A later operation re reads rather than trusting earlier bytes."""
 
     with _harness(tmp_path) as harness:
         result = _run(harness, PortfolioResearchSpec.default())
@@ -2029,13 +1891,7 @@ def test_a_later_operation_re_reads_rather_than_trusting_earlier_bytes(tmp_path:
 
 
 def test_every_task_that_published_a_result_is_named(tmp_path: Path) -> None:
-    """requirement (RX, V189): a second run that reuses a result publishes a
-    second manifest, and the store names it: by its Task, and among the Tasks
-    that used the result. The by-result index still names the first, the Task
-    that produced it."""
-
-    from datetime import UTC, datetime, timedelta
-    from uuid import uuid4
+    """Every task that published a result is named."""
 
     from alphalattice.control.product_host.publication.portfolio_research import (
         PortfolioResearchPipelineManifest,
@@ -2070,9 +1926,6 @@ def test_result_collection_keeps_readable_rows_and_names_a_bad_result_index(
     tmp_path: Path,
 ) -> None:
     """V633/TE12: discovery keeps its sound rows; scientific selectors stay fail-closed."""
-
-    from datetime import UTC, datetime, timedelta
-    from uuid import uuid4
 
     from alphalattice.control.product_host.publication.portfolio_research import (
         PortfolioResearchPipelineManifest,
@@ -2119,13 +1972,8 @@ def test_the_shared_axis_says_what_is_missing(
     as absent, apart from several; a frozen axis sharing nothing with the Risk surface says
     its counts, in a code the Host serves as written (V306: 0 of 466 listings in 80)."""
 
-    from types import SimpleNamespace
-
     from alphalattice.interface.local_application.failure_codes import safe_failure_code
     from alphalattice.investment.portfolio_strategy_lab.application import resolution
-    from alphalattice.investment.portfolio_strategy_lab.inputs.shared_lanes import (
-        PortfolioResearchCompositionError,
-    )
 
     root = tmp_path / "runtime" / "artifacts"
     root.mkdir(parents=True)

@@ -16,6 +16,7 @@ delivered through the same mechanism.
 
 from __future__ import annotations
 
+import json
 import urllib.parse
 from datetime import timedelta
 from pathlib import Path
@@ -121,7 +122,6 @@ def test_the_whole_response_is_delivered_when_it_fits_and_measured_as_sent(
         aliases = body["response_schema"]["$defs"]["AlternativeEvidenceAnswerFinding"][
             "properties"
         ]["cite"]["items"]["enum"]
-        import json
 
         rows = json.loads(body["packet"].split("\n\n", 2)[1])["spans"]
         # The answer cites by alias: one per delivered span, every one named.
@@ -143,10 +143,7 @@ def test_the_whole_response_is_delivered_when_it_fits_and_measured_as_sent(
 def test_an_oversize_packet_is_delivered_in_complete_parts_through_executable_continuations(
     tmp_path: Path,
 ) -> None:
-    """requirement: under a declared budget the response is cut into complete
-    spans, each part within the budget as serialized, followed through the
-    operations path and the Web route to completion with nothing missing or
-    duplicated, and the answer binds to the whole packet."""
+    """An oversize packet is delivered in complete parts through executable continuations."""
 
     service, selected, task_id = _prepared(tmp_path)
     try:
@@ -334,12 +331,8 @@ def test_a_span_that_cannot_fit_on_its_own_is_a_typed_outcome(
 def test_the_dossier_is_delivered_through_the_same_mechanism(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: the Codex-facing dossier cannot silently concatenate an
-    oversize whole-book input: parts over findings with their citations, the
-    schema and template on every part, stale continuations refused, and the
-    assessment authored after every part admitted. The small book's dossier is
-    under the product's minimum budget, so the minimum is lowered here to
-    exercise the mechanism; the product's 32 KiB floor is unchanged."""
+    """An oversized dossier is delivered as complete bounded parts with executable continuations
+    and intact citations."""
 
     from alphalattice.evidence.alternative_evidence.analysis import packet as packet_module
 

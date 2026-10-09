@@ -363,11 +363,7 @@ def test_a_formula_factor_names_its_preprocessing_recipe_and_no_other_factor_doe
 
 
 def test_the_sector_leaf_is_a_field_only_a_formula_reading_it_names() -> None:
-    """Requirement: `sector_return` reads `sector_return_log`; a formula that reads no
-    Sector leaf is kept under the price kernel with the fields every formula had, one that reads
-    it under the Sector kernel, whose fields add it; its goldens hold against the reference, and
-    the registry refuses a field its kernel does not offer and a Sector formula under the price
-    kernel."""
+    """The sector leaf is a field only a formula reading it names."""
 
     from alphalattice.foundation.feature_engine.catalog.contracts import (
         desktop_core_feature_bundle,
@@ -467,12 +463,7 @@ def _as_of_download(bars: list[RawDailyBar], ratios: list[tuple[date, float]]) -
 
 @pytest.mark.parametrize("skip", [0, 2])
 def test_a_point_in_time_leaf_reads_each_session_as_it_stood_and_admits_a_level(skip: int) -> None:
-    """Requirement: a point-in-time leaf reads each session's values as they traded,
-    re-based to the session a value is for: a price by every recorded ratio between, a share volume
-    by the share splits alone, a fractional ratio being a spin-off's price adjustment. So a level
-    form is admitted, a later split re-basing the stored bars moves no value, a split-basis leaf at
-    a level stays refused, and the formula is kept under the point-in-time kernel, whose goldens
-    hold against the reference."""
+    """A point in time leaf reads each session as it stood and admits a level."""
 
     for ratio in (1.589, 1.281, 1.253, 1.128, 1.196):  # RTX, GE twice, DHR, MMM
         assert not is_share_split(ratio), ratio
@@ -562,11 +553,7 @@ def test_every_source_field_carries_its_point_in_time_mark_and_a_rescaled_leaf_h
 
 
 def test_the_daily_build_carries_the_as_traded_fields_its_catalog_reads() -> None:
-    """Requirement: a catalog holding an activated point-in-time formula has a listing's
-    frame carry the as-traded fields, and the daily materializer hands them to the formula's
-    kernel, which computes there what it computes alone; a catalog that reads none asks for
-    none and computes what it did; a point-in-time formula is admitted to the active Panel, a
-    Sector one stays a research factor."""
+    """The daily build carries the as traded fields its catalog reads."""
 
     from alphalattice.foundation.feature_engine.producers.base_materializer import (
         BaseFeatureMaterializer,
@@ -702,10 +689,7 @@ _SMALLEST = {
 
 
 def test_every_operators_smallest_formula_runs_its_goldens() -> None:
-    """Regression: a review computes a formula's goldens,
-    and a one-session formula's boundary golden has no row; tests held only a 20-session
-    formula. Every operator the language declares, in its smallest legal formula, plans, states
-    its specification and computes every golden within tolerance, the boundary ones included."""
+    """Every operator's smallest formula passes its numerical goldens."""
 
     from alphalattice.control.product_host.research_authoring.feature_extensions import (
         formula_controls,

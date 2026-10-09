@@ -13,10 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_the_tree_adds_nothing_to_a_registry_without_registering_it() -> None:
-    """requirement (binding plan G0; LAWS.md PA1, DA6, TE5, OW1): the whole tree against the
-    registries' baselines: no unregistered parameter, failure code, format or Task kind, no new
-    private import or patch in a test, no semantic owner that is not a package, and no package
-    whose product area is off its namespace, beyond what the baselines hold."""
+    """The tree adds nothing to a registry without registering it."""
 
     assert problems(ROOT, tracked(ROOT)) == []
 
@@ -112,10 +109,7 @@ def test_a_format_that_names_no_reader_or_a_missing_one_is_refused(tmp_path: Pat
 
 
 def test_where_answers_a_noun_from_the_registries(tmp_path: Path) -> None:
-    """requirement (G0): `devtools where <noun>` answers from the registries, before code is
-    written: the package that owns the noun, its owner in G1's map with what other packages still
-    define of it and the map's note on what stays elsewhere, the operations and identity roles
-    that name it."""
+    """The where command resolves a requested noun from the owner registries."""
 
     lines = where(ROOT, "task")
     assert any(line.startswith("package task_control:") for line in lines), lines

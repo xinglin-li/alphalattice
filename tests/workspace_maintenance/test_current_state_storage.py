@@ -112,10 +112,7 @@ def test_storage_cap_counts_managed_models_panels_and_artifacts_and_follows_the_
 def test_a_stage_scope_walks_once_and_still_refuses_the_crossing_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: in a stage's scope the managed trees are walked once and
-    each admission adds what the stage already admitted, so the write that crosses the cap
-    refuses at that write; the market database is read at every admission; the next stage
-    walks again, deletions included; outside a scope every admission walks."""
+    """A stage scope walks once and still refuses the crossing write."""
     from alphalattice.control.product_host.storage import inventory
 
     (tmp_path / "artifacts").mkdir()

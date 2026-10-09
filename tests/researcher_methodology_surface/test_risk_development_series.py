@@ -1,8 +1,11 @@
 """Dated Risk axes compose existing finite estimators and replayable artifact graphs."""
 
-from datetime import date, timedelta
+import gc
+import json
+import shutil
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import numpy as np
 import pyarrow as pa
@@ -606,11 +609,6 @@ def test_an_installed_book_names_the_admitted_risk_report_subject_before_the_act
 ):
     """Regression: installed books offer the study boundary before confirmation;
     every association door refuses that selector by name and its saved way continues."""
-    import gc
-    import json
-    import shutil
-    from datetime import UTC, datetime
-    from uuid import uuid4
 
     from alphalattice.control.task_control.contracts import (
         ResearchGoal,

@@ -15,11 +15,15 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
@@ -75,6 +79,7 @@ from tests.alternative_evidence_desk.review_http_support import (
     start_service,
 )
 from tests.alternative_evidence_desk.review_package import _package
+from tests.structural.source_shape_samples import bundle_refusal_declarations
 
 ONE_UNIT = "u01"
 """The harness book's only unit: every book is prepared as a coverage run (C2)."""
@@ -82,8 +87,6 @@ ONE_UNIT = "u01"
 
 def test_every_bundle_manual_refusal_registers_its_words_and_way_on() -> None:
     """OP4: the real door guard accepts every manual way the bundle owner offers."""
-    import ast
-    import inspect
 
     from alphalattice.control.product_host.composition.evidence_review_bundles import (
         PACKET_SELECTOR_CODES,
@@ -97,20 +100,7 @@ def test_every_bundle_manual_refusal_registers_its_words_and_way_on() -> None:
 
     # Census the owner's literal namespace declarations, then exercise its public
     # refusal entry and the real door guard; no private import or patched state.
-    tree = ast.parse(Path(inspect.getfile(agent_bundle_refusal)).read_text(encoding="utf-8"))
-    declarations = [
-        ast.literal_eval(node)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Dict)
-        and node.keys
-        and all(
-            isinstance(key, ast.Constant)
-            and isinstance(key.value, str)
-            and key.value.startswith("agent_bundle.")
-            for key in node.keys
-        )
-    ]
-    assert declarations, "the bundle's declared refusal vocabulary is part of the census"
+    declarations = bundle_refusal_declarations()
     for code, message in {k: v for words in declarations for k, v in words.items()}.items():
         variants = (code, f"{code}:{ONE_UNIT}") if code in PACKET_SELECTOR_CODES else (code,)
         for variant in variants:
@@ -165,7 +155,6 @@ def service(tmp_path: Path, http_book) -> Iterator[_Service]:
 def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors(
     service, tmp_path, capsys, via_http
 ):
-    from dataclasses import replace
 
     from alphalattice.interface.local_application.cli import main
     from alphalattice.interface.local_application.client import LocalResearchClient
@@ -364,10 +353,7 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
 
 
 def test_a_captured_preparation_is_reused_after_time_moves_on(tmp_path: Path, http_book) -> None:
-    """requirement: the preview hands out a captured intent (cutoff and binding);
-    submitting it later is the same preparation, a bare request is a new one as
-    of now, and an expired or moved binding is refused by name with the preview
-    as the next step -- across a restart, on a clock that only moves forward."""
+    """A captured preparation is reused after time moves on."""
 
     from alphalattice.interface.local_application.client import LocalResearchClient
 
@@ -503,7 +489,6 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(tmp_path: Path, ht
 def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
     service, monkeypatch, tmp_path, capsys
 ):
-    from dataclasses import replace
 
     from alphalattice.interface.local_application.cli import main
     from alphalattice.interface.local_application.client import LocalResearchClient
@@ -657,7 +642,6 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
 def test_a_third_answer_with_problems_is_done_and_its_valid_part_admitted(service):
     """Two corrections at most, counted durably; the third answer is kept whole
     where it is acceptable and its problem recorded as dropped, never stuck."""
-    from dataclasses import replace
 
     from alphalattice.interface.local_application.client import LocalResearchClient
 
@@ -749,7 +733,6 @@ def test_a_dropped_analyst_item_reaches_the_review_as_a_gap(service):
     """A finding the Host dropped from the Analyst's third answer is not
     silently absent: the published analysis carries it as its first gap, and
     the CRO's bundle names it before the other gaps."""
-    from dataclasses import replace
 
     from alphalattice.interface.local_application.client import LocalResearchClient
     from alphalattice.oversight.chief_risk_officer.decision.views import render_review_bundle
@@ -794,12 +777,7 @@ def test_a_dropped_analyst_item_reaches_the_review_as_a_gap(service):
 def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
     service, tmp_path, capsys, monkeypatch
 ):
-    """S5: the lead prepares each role's bundle; each specialist sends only its
-    own answer file with the one command, corrects what the Host names and
-    returns the receipt -- all the lead receives. No agent-facing file carries a
-    hash, the files are the installed agent's own view, and each submission is
-    an activity fact under its role."""
-    from dataclasses import replace
+    """The two commands carry each specialist from its bundle to a receipt."""
 
     from alphalattice.evidence.alternative_evidence.analysis.views import render_analyst_bundle
     from alphalattice.interface.local_application.cli import main
@@ -1371,15 +1349,7 @@ def _forbid_outbound_network(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
 def test_the_real_composition_starts_and_refuses_without_a_provider_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, http_book
 ) -> None:
-    """requirement: the launcher's own path, with no DeepSeek authority.
-
-    This builds a workspace the way the product ships one and starts it through
-    `LocalPortfolioWebSession.from_workspace(...).start()`, so the composition
-    owner admits the workspace, verifies the Evidence and CRO manifest, calls
-    `admit_evidence_review_workspace` itself and builds its own
-    `EvidenceReviewAuthority`. Nothing about that authority is constructed or
-    injected here.
-    """
+    """The real composition starts and refuses without a provider credential."""
 
     workspace = http_book[0]
     authority_root = workspace / "authority" / "semantic-model"
@@ -1503,12 +1473,7 @@ def test_the_real_composition_starts_and_refuses_without_a_provider_credential(
 def test_local_web_starts_and_serves_portfolio_without_a_provider_credential(
     credential_free_service: _Service,
 ) -> None:
-    """requirement: a valid workspace with no DEEPSEEK_API_KEY still starts.
-
-    The session came up, so the manifest was read and the whole Portfolio half
-    is live. This is the case that used to raise `deepseek_authority_absent`
-    out of admission and stop the product from opening at all.
-    """
+    """Local web starts and serves portfolio without a provider credential."""
 
     result_hash = credential_free_service.result_hash()
     assert len(result_hash) == 64
@@ -1520,13 +1485,7 @@ def test_local_web_starts_and_serves_portfolio_without_a_provider_credential(
 def test_evidence_cro_refuses_with_zero_work_when_no_credential_is_admitted(
     credential_free_service: _Service,
 ) -> None:
-    """requirement: managed work refuses by name; the state names the native next step.
-
-    Both model actor slots hold an object that raises on any attribute access,
-    so one model call fails this test instead of passing quietly. The section's
-    state is not a credential refusal: without any evidence it awaits a native
-    preparation, and only the managed refresh and review are withheld.
-    """
+    """Evidence CRO refuses with zero work when no credential is admitted."""
 
     service = credential_free_service
     result_hash = service.result_hash()
@@ -1554,17 +1513,7 @@ def test_evidence_cro_refuses_with_zero_work_when_no_credential_is_admitted(
 
 
 def test_a_published_review_reopens_with_no_provider_credential(tmp_path: Path, http_book) -> None:
-    """requirement: reading an admitted review is not model work.
-
-    A workspace that published a review keeps it readable when the process that
-    reopens it holds no Provider credential. The section used to refuse before
-    it read anything, so the Portfolio result stayed open while the review that
-    had already been published disappeared -- which is the comparison that makes
-    the defect plain.
-
-    Both model actor slots in the reopened service raise on any attribute
-    access, so a single actor call fails this test rather than passing quietly.
-    """
+    """A published review reopens with no provider credential."""
 
     workspace, report = http_book
     online = build_authority(tmp_path=tmp_path, report=report)
@@ -1650,14 +1599,7 @@ def test_a_published_review_reopens_with_no_provider_credential(tmp_path: Path, 
 def test_a_person_and_the_installed_agent_choose_and_are_recorded_apart(
     service: _Service,
 ) -> None:
-    """requirement: the Agent can choose, and neither caller can claim the other.
-
-    The actor-neutral operation accepted the publication hash but the Agent
-    envelope did not, so an installed Agent could not select at all; and the
-    owner hard-coded HUMAN, so had it been able to, its choice would have been
-    filed as a person's. Provenance now comes from the entry that ran the call,
-    which is the one place a model cannot write to.
-    """
+    """A person and the installed agent choose and are recorded apart."""
 
     result_hash = service.result_hash()
     assert service.post("/api/evidence-refresh", {"result_hash": result_hash})["disposition"] == (
@@ -1798,15 +1740,7 @@ class _patched:
 
 
 def test_a_real_restart_resumes_both_task_kinds_exactly_once(tmp_path: Path, http_book) -> None:
-    """A new process, over the same workspace and the same authorities.
-
-    The first service is stopped completely -- worker joined, socket closed,
-    workspace lease released -- and a second is constructed over the same
-    workspace with the same session-independent authority. Each Task kind is
-    interrupted inside its own adapter so Task Control marks it
-    `RECOVERY_REQUIRED` from its own failure path; the next service resumes the
-    original task id and publishes exactly once.
-    """
+    """A real restart resumes both task kinds exactly once."""
 
     workspace, report = http_book
     authority = build_authority(tmp_path=tmp_path, report=report)
@@ -1874,8 +1808,6 @@ def test_a_request_that_names_no_book_is_told_what_names_one() -> None:
     """regression (V242): a bundle asked for with its Task alone read "This workspace holds no
     sealed book", though the workspace held one its request did not name; the refusal says what
     names a book and which request writes the whole selector."""
-
-    from types import SimpleNamespace
 
     from alphalattice.control.product_host.composition.evidence_review_application import (
         EvidenceReviewApplication,
@@ -1960,10 +1892,7 @@ def test_a_position_basis_beside_another_book_is_refused_by_its_name() -> None:
 
 
 def test_an_unprepared_units_packet_says_why_and_offers_the_coverage_read():
-    """regression (V388): AX13's planted-majors run followed the preparation's
-    `analyst_bundle_u01` after its Task succeeded; u01 held only issuers with no recorded
-    document, failed `document_set_empty`, and both reads came back as a bare code. A unit's
-    state now refuses with words and the book's coverage read; another code is not taken."""
+    """An unprepared units packet says why and offers the coverage read."""
 
     from alphalattice.control.product_host.composition.plain_refusals import (
         EVIDENCE_UNIT_CODES,
@@ -1988,12 +1917,7 @@ def test_a_review_request_naming_a_book_the_workspace_does_not_hold_is_refused_i
     tmp_path: Path,
     http_book,
 ) -> None:
-    """regression (V546, the class): a review request whose selector named a result or a handoff
-    the workspace does not hold answered `content_store.artifact_tampered`, telling a person
-    their workspace was tampered with, and one naming a study's or an update's Task the
-    workspace does not hold a bare `TaskNotFoundError`. Each is refused by the selector's own
-    code, worded with its way on, on every read of the route; a stored result that is present
-    and does not validate stays the store's refusal."""
+    """A review request naming a book the workspace does not hold is refused in words."""
 
     from alphalattice.interface.local_application.cli_contract import refusal_words
 
@@ -2071,13 +1995,7 @@ def _invented(full: dict[str, Any], handle: str) -> dict[str, Any]:
 def test_two_answers_to_one_bundle_sent_at_once_are_numbered_one_and_two_and_both_kept(
     service: _Service, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression (V557, the user's CLI review at de555b07): two different answers to one
-    binding sent at once were both counted as its first, and the second write found the slot
-    taken and was skipped, so one answer -- its problems, its read files, its author -- was lost.
-    The owner counts, admits and files one binding's answers in turn: sent at once, they are
-    answers 1 and 2, each kept whole."""
-
-    import threading
+    """Two answers to one bundle sent at once are numbered one and two and both kept."""
 
     from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
     from alphalattice.protocols.actor_execution.answers import AgentRun, answer_digest
@@ -2168,15 +2086,8 @@ def test_two_answers_to_one_bundle_sent_at_once_are_numbered_one_and_two_and_bot
 def test_no_analyst_is_credited_with_another_bundles_answer(
     service: _Service, tmp_path: Path
 ) -> None:
-    """regression (V555, the user's CLI review at de555b07, AU3; FLOW-1): two Analysts of one
-    role once had the first's answer recorded with the second's identity, the author inferred
-    from native starts. FLOW-1 reads no child from hooks or messages: every bundle's answer,
-    in whatever order the lead submits them, is recorded as the lead Session's with its author
-    unobserved, in the answer returned and in the record kept, and never as any Analyst's."""
+    """No analyst is credited with another bundle's answer."""
 
-    from alphalattice.control.product_host.composition.evidence_review_bundles import (
-        EvidenceReviewBundles,
-    )
     from alphalattice.interface.local_application.cli_contract import (
         REQUEST_PROVENANCE,
         RequestProvenance,
@@ -2247,11 +2158,7 @@ def test_no_analyst_is_credited_with_another_bundles_answer(
 
 
 def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> None:
-    """regression (V580, an outside review the fork verified at 854fb088): `bundle submit
-    --wait` returned before its Task: the receipt answered the verdict as its status and no
-    lifecycle, so the CLI read it as done and followed nothing. The receipt keeps the admitted
-    Task's state beside the verdict, for the Analyst and the CRO alike, and reads as pending; a
-    reused answer, whose work is done, still reads as done."""
+    """A specialist's receipt names its task's state so a wait follows it."""
 
     from alphalattice.control.product_host.composition.evidence_review_application import (
         agent_answer_result,
@@ -2281,13 +2188,7 @@ def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> N
 def test_review_continue_carries_a_real_book_from_its_analyst_to_its_published_review(
     service, tmp_path, capsys
 ):
-    """requirement (AGENT-TIME verb 3): over the real Host, `review continue` submits the
-    Analyst's written answer and follows its publication, reads the book's Evidence, dossier and
-    the CRO's offered bundle and writes it; on the CRO's answer it follows the review's
-    publication. Each call is one command; the Tasks run as the Host runs them."""
-    import threading
-    import time
-    from dataclasses import replace
+    """Review continue carries a real book from its analyst to its published review."""
 
     from alphalattice.interface.local_application.cli import main
     from alphalattice.interface.local_application.client import LocalResearchClient

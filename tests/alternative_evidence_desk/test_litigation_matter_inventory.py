@@ -71,13 +71,8 @@ def test_similar_party_names_stay_distinct_and_procedural_filings_continue_a_mat
 
 
 def test_named_is_the_owner_classification_and_group_is_the_source_heading() -> None:
-    """requirement: a matter's `group` is the sub-heading the source sets it
-    under -- a title, never a category -- and `named` is the owner's
-    classification. A survey that compared the heading to a category word
-    reported zero named matters over sixteen filings whose dated securities,
-    antitrust and derivative filings the owner names; the count must be
-    taken from the classification the delivered records use, not from the
-    heading."""
+    """A matter's named status comes from the owner's classification and its group remains the
+    source heading."""
 
     text = _filing(
         note_lines=[
@@ -114,15 +109,8 @@ def test_named_is_the_owner_classification_and_group_is_the_source_heading() -> 
 
 
 def test_a_dash_run_in_label_a_caption_with_et_al_and_a_us_district_court_open_matters() -> None:
-    """requirement: NEE's contingencies note -- "Legal Proceedings \u2013 NEE, FPL,
-    ... are the named defendants in a purported shareholder securities class
-    action lawsuit filed in the U.S. District Court for the Southern District
-    of Florida ..." and "In November 2024, NEE was named as defendant in an
-    antitrust lawsuit (Avangrid, Inc. et al. v. NextEra Energy, Inc.) filed in
-    the U.S. District Court for the District of Massachusetts." Under v1 the
-    dash was not a run-in label, "et al." and "v." ended the dated lead and
-    "U.S. District Court" was not a court: three named proceedings were
-    unassigned text."""
+    """Dash run-in labels, captions containing et al., and U.S. District Court references
+    identify named litigation matters."""
 
     securities = (
         "Legal Proceedings \u2013 NEE, FPL, and certain current and former executives, are the "

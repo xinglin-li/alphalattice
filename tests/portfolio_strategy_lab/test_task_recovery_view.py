@@ -14,8 +14,10 @@ the Task between the operation's entry and that boundary.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -119,7 +121,6 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
     live.start()
 
     def cli_read(expected_exit: int, expected: dict[str, Any]) -> None:
-        import json
 
         from alphalattice.interface.local_application.cli import main
 
@@ -302,10 +303,7 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
 def test_a_confirmed_recovery_is_refused_at_task_control_when_the_task_moved_meanwhile(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The supervisor's interleaving: RECOVER confirmed against version A passes the entry
-    check; before the queued command reaches Task Control, another real recovery runs and
-    interrupts the Task again at version B. The confirmed resume is refused inside
-    `restart_recovery`, starts nothing from B, and says so as the dispatcher's own fact."""
+    """A confirmed recovery is refused at task control when the task moved meanwhile."""
 
     interrupting = _InterruptsOnce(_Resolver(_resolved()), interruptions=2)
     live = _service(tmp_path, interrupting, "qa-race-recover")
@@ -471,11 +469,7 @@ def test_cancellation_requested_is_shown_apart_from_acknowledged(
 def test_a_queued_task_cancelled_before_execution_reads_cancelled_while_its_command_returns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Task Control's state and the dispatcher's operation-return mask stay apart: the cancel
-    lands in the runner's claim gap (the command has not returned), the registry says
-    CANCELLED / TASK_CANCELLED_BEFORE_START, and the view says exactly that -- never
-    RUNNING, NOT_REQUESTED, HEALTHY -- while `operation_running` and the masked status block
-    carry the dispatcher's fact."""
+    """A queued task cancelled before execution reads cancelled while its command returns."""
 
     live = _service(tmp_path, _Resolver(_resolved()), "qa-gap")
     live.start()
@@ -625,12 +619,7 @@ def test_a_stage_the_memory_check_blocked_is_offered_and_takes_its_recovery(
 def test_a_strategy_book_too_short_for_a_rebalance_stops_before_its_walk_in_words(
     tmp_path: Path,
 ) -> None:
-    """requirement (V519, V500's class): a strategy book whose resolved scores leave a
-    formation fewer tradable, scored names than a rebalance selects stops before its walk,
-    by that session, never in the middle of it, and the read of the stopped Task says why in
-    the door's words with the way on, as a refusal does (OP4)."""
-
-    from dataclasses import replace
+    """A strategy book too short for a rebalance stops before its walk in words."""
 
     import numpy as np
 
@@ -667,11 +656,7 @@ def test_a_strategy_book_too_short_for_a_rebalance_stops_before_its_walk_in_word
 def test_unavailable_activity_telemetry_leaves_recovery_usable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The observation store cannot open; the view and the recovery operation still answer
-    from Task Control and the dispatcher, and the feed says UNAVAILABLE beside them. The
-    runner's heartbeat sidecar is then refused by the filesystem at its existence check
-    (the supervisor's injection, which the route answered with 500): the same view still
-    answers, says UNREADABLE and permits the same recovery of the same Task version."""
+    """Unavailable activity telemetry leaves recovery usable."""
 
     workspace = tmp_path / "workspace"
     (workspace / "runtime" / "observations.sqlite").mkdir(parents=True)  # a directory, not a store
@@ -755,11 +740,7 @@ class _Held:
 def test_liveness_reads_the_runners_operational_heartbeat_not_only_the_durable_timestamp(
     tmp_path: Path,
 ) -> None:
-    """The supervisor's reproduction: a Task held inside its resolver, the service clock
-    advanced 60 s, and the runner's own second background heartbeat. Task Control's durable
-    timestamp is the start (60 s old); the runner's sidecar signal (sequence 2, bound to
-    this Task, execution and worker) is 0 s old, and the view reads OBSERVED by that
-    signal -- the way `stale_active_tasks` reads it -- without instantiating a runner."""
+    """Liveness reads the runner's operational heartbeat alongside its durable timestamp."""
 
     base = datetime(2026, 9, 15, 10, 0, tzinfo=UTC)
     offset = [0.0]
@@ -824,16 +805,7 @@ def test_liveness_reads_the_runners_operational_heartbeat_not_only_the_durable_t
 def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_liveness(
     tmp_path: Path,
 ) -> None:
-    """With the same held Task and the clock 60 s ahead, the builder is fed the runner's
-    signal through the read-only reader over controlled sidecars: a fresh signal of a
-    previous execution is not consulted (the store is keyed by execution), a signal for
-    this execution from another worker is unbound and not counted, an unreadable sidecar is
-    said so, and only a signal bound to this execution and worker reads as observed. A
-    sidecar that cannot be read never hides the bound signal another sidecar holds, and
-    when no bound signal can be read, unreadable is said before unbound. The reported age
-    follows the later timestamp and names its source: a bound signal older than Task
-    Control's durable timestamp is available, at its own age, and not the source. None of
-    it changes lifecycle authority or the permitted actions."""
+    """Stale unreadable or unbound telemetry never establishes current liveness."""
 
     base = datetime(2026, 9, 15, 11, 0, tzinfo=UTC)
     offset = [0.0]
@@ -1035,13 +1007,7 @@ def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_livenes
 def test_every_owner_that_offers_a_plan_is_its_stopped_tasks_re_plan(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """V188: each Task kind's re-PLAN is the one the owner that admits it declares
-    beside its kind, collected from the owners the Host composes, never a
-    hand-written map. A stopped training-input, research-strategy or Feature-build
-    Task offers its owner's own PLAN preview, never `NONE`; each operation named is
-    one the operation registry holds."""
-
-    import json
+    """Each offered plan resumes the stopped task at its owner."""
 
     registry = json.loads(
         (
@@ -1095,7 +1061,6 @@ def test_the_view_refuses_an_unknown_task_and_a_missing_query_typed(
     monkeypatch,
     capsys,
 ) -> None:
-    import json
 
     from alphalattice.interface.local_application.cli import main
 
@@ -1138,7 +1103,6 @@ def test_a_cancelled_verification_sweep_offers_and_runs_its_replan(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """CONTRACT: the cancelled sweep's saved recovery admits a new sweep, not a resume."""
-    import json
 
     from alphalattice.interface.local_application.cli import main
 

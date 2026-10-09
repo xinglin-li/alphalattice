@@ -145,12 +145,7 @@ def _lane(allocation: Allocation, family: str) -> list[tuple[str, int, str]]:
 
 
 def test_a_family_s_unit_count_grants_it_no_service_over_another_lane() -> None:
-    """requirement (5A/5D): the litigation lane's service under a debt note
-    of 10 units is exactly its service under one of 30 units -- the other
-    lane's density buys it no turn; under a note of 3 units (a lane that
-    exhausts) the litigation lane is served more, never less, and its
-    first turns are the same. The allowance is shared, not reserved: no
-    turn is left unused while a lane has work."""
+    """A family's unit count grants it no service over another lane."""
 
     litigation = _litigation_needs("AAPL", "d-lit", matters=14, long_first=True)
     allowance = 16
@@ -180,10 +175,7 @@ def test_a_family_s_unit_count_grants_it_no_service_over_another_lane() -> None:
 
 
 def test_splitting_the_same_source_into_more_units_changes_no_other_lane_s_service() -> None:
-    """requirement (5D): the debt note as 8 paragraphs naming two instruments
-    each and as 16 paragraphs naming one each are the same source
-    obligation for the litigation lane: its admitted needs are identical;
-    the financing lane's own turns hold one window each way."""
+    """Splitting the same source into more units changes no other lane's service."""
 
     litigation = _litigation_needs("AAPL", "d-lit", matters=14, long_first=True)
     coarse = _financing_needs("AAPL", "d-debt", units=8, per_paragraph=2)
@@ -198,10 +190,7 @@ def test_splitting_the_same_source_into_more_units_changes_no_other_lane_s_servi
 
 
 def test_duplicate_and_overlapping_needs_open_no_second_window() -> None:
-    """requirement (5C/5D): a need stated twice at one range, and a need
-    whose range lies inside another's, are served by the one excerpt that
-    holds them -- admitted under the window they join, never a window of
-    their own, and never counted as read twice."""
+    """Duplicate and overlapping needs open no second window."""
 
     financing = _financing_needs("AAPL", "d-debt", units=4)
     first = next(n for n in financing.needs if n.kind == "LEAD")
@@ -225,11 +214,7 @@ def test_duplicate_and_overlapping_needs_open_no_second_window() -> None:
 
 
 def test_one_long_disclosure_cannot_monopolise_its_lane() -> None:
-    """requirement (5B/5D): a lane with one eight-part matter and ten
-    single-part matters alternates the long matter's parts with the
-    openings -- no two extensions in a row while an opening remains, the
-    long matter holding at most half of the lane's turns -- and the
-    matter's parts stay in order."""
+    """One long disclosure cannot monopolise its lane."""
 
     litigation = _litigation_needs("AAPL", "d-lit", matters=11, long_first=True)
     lane = [
@@ -252,11 +237,7 @@ def test_one_long_disclosure_cannot_monopolise_its_lane() -> None:
 
 
 def test_an_absent_family_leaves_no_turn_unused_and_the_order_is_sealed() -> None:
-    """requirement (5A/5E): with the litigation family alone every turn of
-    the allowance serves litigation; the service order is a function of
-    the needs alone, the same at any allowance, and a second session that
-    passes over what the first delivered resumes it at the first need not
-    yet served."""
+    """An absent family leaves no turn unused and the order is sealed."""
 
     a = _litigation_needs("AAPL", "d-a", matters=12, long_first=True)
     b = _litigation_needs("MSFT", "d-b", matters=12)
@@ -285,10 +266,7 @@ def test_an_absent_family_leaves_no_turn_unused_and_the_order_is_sealed() -> Non
 
 
 def test_an_allowance_or_a_budget_that_admits_little_refuses_the_rest_by_name() -> None:
-    """requirement (5D): two windows of allowance admit two windows and list
-    every other need under `window allowance`; a byte budget below the
-    first need admits nothing and lists every opening under `byte budget`
-    and every extension under `opening pending`; nothing is dropped."""
+    """An allowance or a budget that admits little refuses the rest by name."""
 
     litigation = _litigation_needs("AAPL", "d-lit", matters=6, long_first=True)
     financing = _financing_needs("AAPL", "d-debt", units=4)
@@ -336,13 +314,7 @@ def _synthetic_need(
 
 
 def test_progress_keys_are_qualified_by_document() -> None:
-    """regression (the lead's static finding, 2026-09-19): two filings of two
-    issuers state a region statement at the same character offset, so the
-    statements share the key `S:600`. After issuer A's statement opens,
-    issuer B's continuation of its own statement is not eligible -- B's
-    opening has not been served -- and the sealed order deals B's part 1
-    before its part 2; an allowance that ends between them refuses the
-    part 2, never delivers it without its opening."""
+    """Progress keys are qualified by document."""
 
     a_base = _litigation_needs("AAA", "doc-a", matters=1)
     b_base = _litigation_needs("BBB", "doc-b", matters=2)

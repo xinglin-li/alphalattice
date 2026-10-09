@@ -180,11 +180,7 @@ def test_the_clock_decides_every_formation_and_the_axes_are_whatever_they_are(
 
 
 def test_the_provider_is_handed_the_executed_book_and_the_drifted_book_apart() -> None:
-    """Score alignment: reference is post-fill, pretrade is post-drift.
-
-    Confusing them is the expensive mistake the provider protocol exists to
-    prevent, so the owner is checked to pass two genuinely different arrays.
-    """
+    """The provider is handed the executed book and the drifted book apart."""
 
     workspace = _workspace(formations=8, listings=19)
     provider = _Provider(listings=19, held=4)
@@ -229,12 +225,7 @@ def test_equal_scores_break_ties_by_position_and_stay_stable() -> None:
 
 
 def test_sleeve_state_carries_across_segment_boundaries_exactly() -> None:
-    """Two segments joined at a boundary equal one segment over the whole axis.
-
-    The property the whole continuous ledger depends on: if state did not carry
-    exactly, a protected continuation would start from a book the development
-    path never held.
-    """
+    """Sleeve state carries across segment boundaries exactly."""
 
     workspace = _workspace(formations=11, listings=27)
     whole = run_portfolio_walk_forward_segment(

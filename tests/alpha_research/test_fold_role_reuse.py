@@ -18,11 +18,8 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
 
 
 def test_shared_role_cache_mutates_source_recipe_and_consuming_windows() -> None:
-    """Regression: a second training window reused the first matrix and indexed past it.
-
-    The real materializer must return the same arrays as a fresh cache for each
-    window; receipt-only labels must retain the matrix's cache entry.
-    """
+    """Role-cache reuse matches a fresh materialization for each source recipe and consuming
+    window while receipt-only labels preserve the cache entry."""
     sessions = tuple(date(2024, 1, 1) + timedelta(days=i) for i in range(60))
     ids = tuple(f"L{i}" for i in range(6))
     rng = np.random.default_rng(1729)

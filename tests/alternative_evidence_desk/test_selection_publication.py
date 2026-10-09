@@ -55,14 +55,7 @@ def _refuse(_additional: int) -> None:
 def test_the_store_places_what_it_does_not_hold_and_verifies_what_it_holds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (C0, the owning operation): members the store does not
-    hold are admitted as one sum and written in the given order; members it
-    holds are verified and cost no admission, so a set held whole is a
-    valid retry that writes nothing and needs no allowance; one held and
-    one missing admits the missing bytes alone; a refused admission places
-    nothing; a member on disk under its identity with other bytes refuses
-    by name before any admission or write, and its path existing proves
-    nothing."""
+    """The store places what it does not hold and verifies what it holds."""
 
     store = AlternativeEvidenceArtifactStore(tmp_path)
     first, second = _member("the set", "1"), _member("its receipt", "2")
@@ -112,11 +105,7 @@ def test_the_store_places_what_it_does_not_hold_and_verifies_what_it_holds(
 
 
 def test_an_operation_verifies_each_record_once(tmp_path: Path) -> None:
-    """regression: inside one operation's scope a record loaded by its
-    identity is read and verified once and its later loads return it; an
-    operation inside another joins the scope; a record that is not frozen is
-    never kept; outside a scope every load reads the file and verifies it
-    again, so a damaged record refuses by name."""
+    """An operation verifies each record once."""
 
     store = AlternativeEvidenceArtifactStore(tmp_path)
     note = _FrozenNote(text="the set", note_hash="1" * 64)
@@ -139,16 +128,7 @@ def test_an_operation_verifies_each_record_once(tmp_path: Path) -> None:
 def test_a_selection_is_published_only_over_verified_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (C0, the public path): the receipt and span set of a
-    selection are admitted together and placed in dependency order; the
-    receipt's own selection replayed at capacity writes nothing and needs no
-    allowance; a retry after an interruption between the two placements
-    admits and places the receipt alone; a receipt or span set already
-    under the name with other bytes (the lead's probe, on the owning path)
-    refuses the selection by name -- nothing overwritten, nothing placed
-    beside it; without a set to place the set the receipt names must be
-    there and be the one delivered; a set that is not the receipt's named
-    dependency is refused."""
+    """A selection is published only over verified artifacts."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     try:
@@ -255,11 +235,7 @@ def test_a_selection_is_published_only_over_verified_artifacts(
 def test_a_commitment_already_under_its_name_is_verified_not_assumed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (C0, the commitment path): the pair-score commitment is
-    placed through the same operation -- a record under the commitment's
-    name that is not it refuses the selection by name and is never named by
-    the receipt, while an admission refused for capacity leaves the blocks
-    unanchored and the selection whole, as before."""
+    """A commitment already under its name is verified not assumed."""
 
     monkeypatch.setattr(reranking, "PAIR_SCORE_BLOCK_MINIMUM", 1)
     runtime, _passes = _counted_runtime(tmp_path)

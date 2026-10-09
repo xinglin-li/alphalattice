@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from contextvars import copy_context
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -41,34 +41,8 @@ class LaggingProvider(RecordingProvider):
 def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """counterexample: a row that exists is not a row that still applies to the source.
-
-    First use has materialized every candidate's as-of row (the build that
-    the partial sector then refused) and the counterexample is not frozen. At the lawful
-    pause between two cycles -- the coordinator answered RUNNING after the
-    sector exclusion, the next cycle has not started -- two legitimate
-    corrections land through the existing write and audit entries, each
-    followed by the fresh full-history action audit the correction needs:
-
-    * A's last 64 volumes were identical, so ``price_volume_corr_63`` (a
-      shipped baseline factor over adjusted close and ``volume_raw``) has a
-      zero denominator at the as-of session and its stored row excludes A;
-      one corrected volume inside the window makes it computable.
-    * B computed normally; the correction makes its last 64 volumes
-      identical, so the recomputed row cannot qualify B.
-
-    The early baseline judgement must not exclude A from its stale row: the
-    row's source-verification receipt no longer verifies against today's
-    inputs, so the judgement is left to the build, which recomputes both and
-    is then judged by the owner it always was. The counterexample therefore holds A and not
-    B -- the same membership the original order (judge after the build)
-    produces -- and B's exclusion carries its recomputed reason; the
-    qualification obligation written into the membership earlier skips no
-    later check.
-    """
-
-    from datetime import timedelta
-    from uuid import UUID
+    """First use judges baseline eligibility from rows whose current source verification still
+    applies."""
 
     from alphalattice.control.data_platform.maintenance.coordinator import (
         WorkspaceMaintenanceCoordinator,

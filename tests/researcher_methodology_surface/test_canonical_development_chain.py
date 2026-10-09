@@ -22,6 +22,7 @@ nothing, because the alternative is relabelling a legacy lane as canonical.
 
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -98,13 +99,7 @@ def _sector_revision(workspace: RealRiskWorkspace) -> str:
 
 
 def test_host_publishes_the_canonical_target_and_its_scale(canonical_publication) -> None:  # type: ignore[no-untyped-def]
-    """A real Host writer, resolving real authority, producing durable evidence.
-
-    The assertions worth making are about *where the identities came from*. The
-    outcome snapshot, the method binding and the maturity lag on the published
-    recipe binding all equal what the outcome reader independently resolves, and
-    none of them was available to the caller to supply.
-    """
+    """Host publishes the canonical target and its scale."""
 
     service, published, snapshot_hash, _revision = canonical_publication
     reader = CausalExecutionOutcomeDevelopmentReader(service.store.root.parent)
@@ -152,14 +147,7 @@ def test_published_canonical_evidence_resolves_back_to_the_outcome_method(
 def test_forged_but_self_consistent_target_authority_is_refused(
     canonical_publication,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Self-consistency is not authority.
-
-    The forged pair below is internally perfect: the binding re-derives its own
-    hash, the evidence re-derives its own hash and names that binding, and both
-    publish cleanly. What it cannot do is make the causal outcome store agree
-    that it sealed a method binding it never sealed -- which is the whole reason
-    verification descends to a reader this Desk does not own.
-    """
+    """Forged but self consistent target authority is refused."""
 
     service, published, _snapshot_hash, _revision = canonical_publication
 
@@ -266,13 +254,7 @@ def _score_claim(published, candidate_id: str, **overrides):  # type: ignore[no-
 def test_matched_handles_are_paired_by_lineage_not_by_hash_order(
     canonical_publication,  # type: ignore[no-untyped-def]
 ) -> None:
-    """A score and a scale are paired by the binding they share, not by filename.
-
-    Once more than one candidate or snapshot exists, the lexicographically first
-    score binding and the first dispersion forecast need not descend from the
-    same target binding at all -- so a lookup that took ``[0]`` of each would let
-    hash ordering decide which scale was applied to which prediction.
-    """
+    """Matched handles are paired by lineage not by hash order."""
 
     service, published, _snapshot, _revision = canonical_publication
     matching = _score_claim(published, "candidate-matched")
@@ -295,14 +277,8 @@ def test_canonical_development_entrypoint_publishes_and_inspects(
     canonical_publication,  # type: ignore[no-untyped-def]
     real_risk_workspace: RealRiskWorkspace,
 ) -> None:
-    """The installed CLI action, not just the service behind it.
-
-    A Host service with no non-test caller is a capability module. This drives
-    the real entry point over the shared workspace and asserts it both refuses a
-    request it cannot resolve and reports what is durably published.
-    """
-
-    import importlib.util
+    """The installed development CLI refuses unresolved requests and reports durably published
+    evidence."""
 
     spec = importlib.util.spec_from_file_location(
         "_canonical_cli",

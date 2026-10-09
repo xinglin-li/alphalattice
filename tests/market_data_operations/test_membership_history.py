@@ -77,13 +77,7 @@ def _event(
 
 
 def test_journal_replay_keeps_earlier_intervals_and_their_identities() -> None:
-    """requirement: entry, exit and re-entry never rewrite what came before them.
-
-    D joins after T0 and is absent from the backfill and from the sessions
-    before its entry; B leaves and keeps its membership before the exit; a
-    re-entry is a new interval with the gap intact; the identity of every
-    session before an event is the same with or without that event.
-    """
+    """Journal replay keeps earlier intervals and their identities."""
 
     entry = SESSIONS[SESSIONS.index(T0) + 1]
     exit_session = SESSIONS[SESSIONS.index(T0) + 3]
@@ -429,14 +423,7 @@ def _manifest(symbols: tuple[str, ...]) -> UniverseManifest:
 def test_a_workspace_from_before_this_stage_reads_its_manifest_without_a_writer(
     tmp_path: Path,
 ) -> None:
-    """requirement: an existing workspace opens under the new code before any upgrade.
-
-    The obligations column and the journal tables are created by the store's
-    writer at the next manifest bootstrap. The page reads manifests, the
-    bootstrap record and the journal on read-only connections first, so every
-    one of those readers must answer over the older schema: no obligations,
-    no bootstrap, no events.
-    """
+    """A workspace from before this stage reads its manifest without a writer."""
 
     market = MarketDataRepository(tmp_path / "workspace")
     manifest = _manifest(("A", "B", "C"))

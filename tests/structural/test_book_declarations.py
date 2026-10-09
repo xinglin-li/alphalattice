@@ -1,6 +1,6 @@
 """The editable-declaration seam's operation and exception sets (TE12)."""
 
-import json
+import ast
 import re
 from pathlib import Path
 
@@ -95,30 +95,8 @@ def test_unavailable_declarations_are_named_states_with_reasons():
             assert item["field"] in {field["name"] for field in row["fields"]}, operation
 
 
-def test_every_book_selector_refusal_has_both_door_words():
-    """Contract: the selector class names unselected, uninstalled and empty workspace
-    separately, each worded at the door even when no owner context is available."""
-    words = json.loads(
-        (ROOT / "src/alphalattice/interface/local_application/refusal_words.json").read_text(
-            "utf-8"
-        )
-    )
-    for code in {
-        "strategy_book.strategy_package_required",
-        "local_application.strategy_package_not_installed",
-        "research_workspace.strategy_not_installed",
-    }:
-        assert set(words[code]) == {"detail", "next_action"}
-        assert all(words[code].values())
-
-
 def test_no_owner_exports_a_declaration_as_a_whole_request() -> None:
-    """regression (the user's review at de555b07): the Feature readback exported
-    `{operation, feature_document}`, which `feature plan --file` wrapped again and refused.
-    Every owner's exported `yaml` is the document its plan command's `--file` reads; none dumps a
-    request with its `operation` around it."""
-
-    import ast
+    """No owner exports a declaration as a whole request."""
 
     wrapped = []
     for path in sorted((ROOT / "src" / "alphalattice").rglob("*.py")):

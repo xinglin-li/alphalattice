@@ -184,14 +184,7 @@ def _score(casebook: dict[str, object], document_set: Any, library: Any, *spans:
 
 
 def test_the_grounded_rule_credits_only_what_the_source_confirms_was_shown() -> None:
-    """requirement: an excerpt earns recall only when the source vouches for it.
-
-    Two earlier rules were each too weak. The first compared a range to a
-    midpoint and never read the excerpt. The second read the excerpt but took
-    it on trust, so an invented excerpt under a real handle would have scored.
-    Every negative case here uses an otherwise-valid document handle, so each
-    fails for the reason it names and not at an earlier lookup.
-    """
+    """The grounded rule credits only what the source confirms was shown."""
 
     casebook, document_set, library = _grounded_fixture()
     first = _GROUNDED_CURRENT.index(_GROUNDED_FACT)
@@ -321,18 +314,7 @@ def monkeypatched(owner: Any, name: str, value: Any) -> Iterator[None]:
 
 
 def test_every_artifact_the_reranker_loader_reads_is_bound(tmp_path: Path) -> None:
-    """requirement: the admitted identity covers everything that decides inference.
-
-    The loader reads `config.json` for the pad token, `tokenizer_config.json`
-    for `model_max_length`, `special_tokens_map.json` for the added tokens and
-    `tokenizer.json` for the tokenizer, all before the graph runs. Binding only
-    the graph and the tokenizer admitted a pack whose `model_max_length` was 16
-    -- identical verification output, and a pair's score moved from 0.5765 to
-    8.3125 because the passage was truncated. Each case below therefore alters
-    one behaviour-bearing artifact and must be refused rather than admitted, and
-    an unadmitted extra file must be refused too, because the loader would read
-    whatever the directory holds.
-    """
+    """Every artifact the reranker loader reads is bound."""
 
     spec = HybridIndexSpec.fixed_v2()
     with pytest.raises(KnowledgeRetrievalError, match="missing a consumed artifact"):
@@ -420,12 +402,7 @@ def test_every_frozen_probe_stays_in_the_denominator() -> None:
 def test_a_generation_sealed_under_another_retrieval_binding_is_refused(
     tmp_path: Path,
 ) -> None:
-    """requirement: stale artifacts cannot silently reuse.
-
-    The rotation is only worth something if a generation carrying the previous
-    binding is refused rather than reopened. It is refused before a session
-    exists, so no stale packet can be assembled from it.
-    """
+    """A generation sealed under another retrieval binding is refused."""
 
     runtime, passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime)

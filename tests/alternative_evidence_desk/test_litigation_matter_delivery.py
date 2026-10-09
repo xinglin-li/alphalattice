@@ -151,12 +151,7 @@ def test_matter_windows_are_verified_spans_of_the_packet_with_their_own_accounti
 
 
 def test_the_runtime_seals_a_continuation_receipt_over_the_prior_spans(tmp_path: Path) -> None:
-    """requirement: a continuation is a successor receipt of the same
-    request, document set and generation that carries the program's and the
-    typed families' entries unchanged and the continued matter record over
-    the prior spans plus the new windows; the prior receipt stays as it was;
-    a foreign lineage, a mismatched span set or a PRIOR handle of this very
-    session refuses by name."""
+    """The runtime seals a continuation receipt over the prior spans."""
 
     # Matters longer than a window, one window each: more of them than one
     # session's allowance, so the first reading leaves windows pending.

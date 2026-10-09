@@ -1,6 +1,7 @@
 """A new Task reuses only a freshly proved, immutable workspace prefix."""
 
 from datetime import date
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -239,13 +240,7 @@ def _column_hashes(prepared):
 
 
 def test_the_day_after_a_renewal_reuses_its_wider_history_as_a_cold_rebuild(daily_workspace):
-    """requirement: a kept history of more Feature columns than the day needs is reused exactly.
-
-    A renewal day also captures its training factors, and the next day needs fewer columns. The
-    next day proves the kept prefix over the Features it was kept for, reuses it, and keeps only
-    the columns it needs: each equals a cold rebuild's, value for value and by hash, and the
-    day's scoring inputs are the same.
-    """
+    """The day after a renewal reuses its wider history as a cold rebuild."""
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
     previous = _publish(store, _capture(daily_workspace, FIRST, WIDE))
     history = AlphaCurrentArtifactStore(
@@ -291,13 +286,7 @@ def test_the_day_after_a_renewal_reuses_its_wider_history_as_a_cold_rebuild(dail
 
 
 def test_a_kept_history_is_refused_for_more_columns_or_another_implementation(daily_workspace):
-    """requirement: reuse needs the same implementation and a history holding the needed columns.
-
-    A history kept for fewer Feature columns than a capture needs proves another prefix and is
-    rebuilt; the selection that finds a history names the slot, package and implementation, and
-    no authority, so a renewal keeps it and a changed implementation does not.
-    """
-    from types import SimpleNamespace
+    """A kept history is refused for more columns or another implementation."""
 
     from alphalattice.control.product_host.composition.strategy_scoring import (
         workspace_observation_history_selection,

@@ -1,7 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import tempfile
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Thread
+from types import SimpleNamespace
+from typing import Any
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -100,13 +108,7 @@ def test_recorded_acquisition_freezes_source_evidence_only(tmp_path: Path) -> No
 def test_recorded_material_beyond_an_issuers_capacity_is_deferred_and_named(
     tmp_path: Path,
 ) -> None:
-    """requirement (6A): an issuer's recorded selection is its own -- the
-    newest of each baseline type first, then the newest, as many as the
-    policy's per-issuer budget admits, whatever the width of the request --
-    and the admitted document set bounds the unit's selections together:
-    a unit that exceeds it defers non-baseline documents round-robin from
-    the issuer holding the most, oldest first, each named in the snapshot,
-    never rejected silently by the canonicalizer's capacity later."""
+    """Recorded material beyond an issuer's capacity is deferred and named."""
 
     service = AlternativeEvidenceAcquisitionService(artifact_root=tmp_path)
     request = seal_contract(
@@ -438,16 +440,8 @@ def test_mutable_companyfacts_requires_prior_as_of_snapshot() -> None:
 
 
 def test_the_writer_passes_only_from_its_holder_and_a_routing_commits_its_own() -> None:
-    """requirement (first-day speed): one stage at a time holds the runtime's
-    writer -- held again by its holder it is a no-op, given up only by its
-    holder, taken back after -- and units routed at once each commit their own
-    staged comparisons, under the writer."""
-
-    from collections.abc import Iterator
-    from contextlib import contextmanager
-    from threading import Thread
-    from types import SimpleNamespace
-    from typing import Any
+    """A writer transfers only from its current holder and each routing commits under its own
+    ownership."""
 
     from alphalattice.evidence.alternative_evidence.runtime.reuse import SealedComparisons
     from alphalattice.evidence.alternative_evidence.runtime.service import EvidenceWriter
@@ -496,13 +490,7 @@ def test_the_writer_passes_only_from_its_holder_and_a_routing_commits_its_own() 
 
 
 def test_the_cpu_budget_splits_between_units_at_once_and_threads(tmp_path: Path) -> None:
-    """requirement (the final close-out, F1): the operator's CPU budget -- `auto`,
-    the processors not in use, or a number of cores shared with the preparations
-    running -- is split between units at once (the safe width each) and each
-    session's threads, the first unit alone on more; the choice is the workspace's,
-    an unreadable one is refused by name, and each plan is recorded with why."""
-
-    from datetime import UTC, datetime
+    """The CPU budget splits between units at once and threads."""
 
     from alphalattice.evidence.alternative_evidence.runtime.execution import (
         CpuBudget,
@@ -592,15 +580,7 @@ def _enter(writer: object, entered: list[str]) -> None:
 
 
 def test_a_preparation_counts_its_stages_for_the_book_and_the_publisher() -> None:
-    """requirement (S3, first-day speed): each counted stage of a unit reports its
-    owner's count -- filings of its plan, documents of those acquired, chunks of
-    those cut, a unit selected -- ends whole, hands the publisher its start, its
-    end and at most one move a second, and a stage that stops leaves no count; the
-    book's four counts add the units; a publisher that fails never stops the work;
-    the Host publishes each as a valid workspace progress update."""
-
-    from datetime import UTC, datetime, timedelta
-    from uuid import uuid4
+    """A preparation counts its stages for the book and the publisher."""
 
     from alphalattice.control.observation_runtime.telemetry.progress import (
         WorkspaceProgressPublisher,
@@ -658,8 +638,6 @@ def test_a_preparation_counts_its_stages_for_the_book_and_the_publisher() -> Non
     chunks.finish(3607)
     assert progress.units(task)["u01"].completed == 3607
 
-    import tempfile
-
     with tempfile.TemporaryDirectory() as root:
         publisher = WorkspaceProgressPublisher(Path(root))
         publish_evidence_work(publisher, progress.units(task)["u01"])
@@ -678,13 +656,7 @@ def test_a_preparation_counts_its_stages_for_the_book_and_the_publisher() -> Non
 
 
 def test_the_writer_lets_a_returning_step_through_first_and_the_heaviest_unit_next() -> None:
-    """Requirement: who takes the writer is decided, not raced -- a thread
-    coming back to its stage goes before a stage that has not begun, the unit
-    that runs first in the book before a later one, and a long stage's safe
-    point lets the returning step through and goes on before any new stage."""
-
-    import time
-    from threading import Thread
+    """The writer lets a returning step through first and the heaviest unit next."""
 
     from alphalattice.evidence.alternative_evidence.runtime.service import EvidenceWriter
 

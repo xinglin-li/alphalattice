@@ -9,6 +9,9 @@ writes immutable evidence, and a replay performs none.
 
 from __future__ import annotations
 
+import copy
+import json
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -226,8 +229,6 @@ def test_run_executes_for_real_and_replay_reads_back_with_zero_calls(
 def test_risk_recovery_reuses_verified_chunks_and_refuses_a_tampered_prefix(
     real_risk_workspace, tmp_path, monkeypatch
 ):
-    import json
-    from copy import deepcopy
 
     from alphalattice.investment.risk_research.experiments.observation import ObservingAdapter
 
@@ -456,19 +457,7 @@ def test_each_command_resolves_authority_and_compiles_once(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """requirement: one fresh authority resolution per command, not several.
-
-    Every command here resolves the authority against the live workspace, and
-    every command still must -- that is the check that makes a sealed identity
-    mean something. What it must not do is resolve the same handles two or three
-    times inside one call, which is what happened when each command re-derived
-    the envelope and the authority that sealing had already produced. `resume`
-    was the worst: it sealed, then delegated to a command that sealed again.
-
-    Executions are counted beside them, because the point of the reduction is
-    that it did not touch them: `preflight`, `replay`, `resume`-into-reuse and
-    `inspect` still reach no executor at all.
-    """
+    """Each command resolves authority and compiles once."""
 
     document = load_authoring_document(_FIXTURE.read_text(encoding="utf-8"))
     counted = _counted(real_risk_workspace, tmp_path)
@@ -539,13 +528,7 @@ def test_a_study_whose_inputs_moved_reads_by_its_recorded_program(
 def test_a_run_is_held_offline_and_a_plan_over_budget_is_refused_at_plan(
     real_risk_workspace: RealRiskWorkspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Regression: the offline rule read the process switch and only Risk's
-    executor checked it, so an outcome followed the shell that started the process, and a Risk
-    PLAN over its budget was stored and refused only at RUN. Every Desk's call runs held offline
-    whatever its workspace allows, so a network open for an update refuses no study, and Risk's
-    compile checks the budget at PLAN."""
-
-    import copy
+    """A run is held offline and a plan over budget is refused at plan."""
 
     from alphalattice.control.workspace_runtime.network_access import (
         CONTROL_PATH,

@@ -477,10 +477,7 @@ def test_unheld_ineligible_coverage_needs_no_price_but_held_exposure_still_does(
 
 
 def test_an_update_too_short_for_a_rebalance_is_refused_before_it_proposes(numerical):
-    """requirement (V519, V500's class): a research update whose session leaves fewer
-    tradable, scored names than the active book selects per rebalance is refused by that
-    session before it proposes, in the door's words with its way on, never inside the
-    decision."""
+    """An update too short for a rebalance is refused before it proposes."""
 
     from alphalattice.interface.local_application.cli_contract import refusal_words
 
@@ -900,7 +897,6 @@ def test_prepared_captured_rows_keep_refusals_and_reject_forged_sources():
 
 
 def test_frozen_input_extension_refuses_past_corrections_not_future_rows():
-    from dataclasses import replace
 
     from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
         FrozenPriceVolumeInputs,

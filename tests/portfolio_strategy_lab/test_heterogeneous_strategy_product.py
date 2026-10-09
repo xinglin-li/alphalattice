@@ -192,13 +192,7 @@ def test_four_independent_books_merge_before_the_shared_transition() -> None:
 
 
 def test_one_component_carrying_everything_is_the_book_itself() -> None:
-    """A single-component plan must not pay for a merge it does not have.
-
-    The merge renormalises and reconciles against the executed book. Running one
-    component through it would leave the predecessor's numbers slightly different
-    for no reason anybody chose, so `open_component_book` returns the component's
-    own provider and this proves it -- by identity, not by tolerance.
-    """
+    """One component carrying everything is the book itself."""
 
     formations = _formations()
     book = INSTALLED_HETEROGENEOUS_BOOK_RECIPE.component_book_recipe

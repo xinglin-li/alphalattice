@@ -8,7 +8,6 @@ plan that held the whole manifest's hash refused after any other owner's publica
 
 from __future__ import annotations
 
-import ast
 import json
 import re
 from argparse import Namespace
@@ -43,8 +42,6 @@ from alphalattice.control.product_host.data_preparation import input_capture, re
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.kernel.shared_kernel.retired_spellings import RETIRED_SPELLINGS
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 def _input(input_id: str, digit: str) -> ResearchWorkspaceExperimentInput:
@@ -297,10 +294,7 @@ def test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding(
 def test_a_manifest_holding_a_spelling_the_renames_retired_is_refused_by_name(
     tmp_path: Path, spelling: str
 ) -> None:
-    """requirement (OP4): a workspace prepared before the 2026-10-02 renames holds
-    spellings they retired (an artifact key, a strategy id, a kind); its manifest is refused
-    at the reader by that name, whatever else it holds, with the door's words and its way on,
-    a new workspace, and is left as it is."""
+    """A manifest holding a spelling the renames retired is refused by name."""
 
     payload = ResearchWorkspaceManifest.research_only("before-renames").model_dump(mode="json")
     held = spelling + ("component" if spelling.endswith(":") else "")
@@ -400,21 +394,3 @@ def test_a_research_installation_holds_a_persons_activation() -> None:
             strategy_artifacts=(artifact,),
             strategy_installation="NON_DEFAULT_RESEARCH",
         )
-
-
-def test_only_the_owner_writes_the_manifest() -> None:
-    """the product changes the manifest through the one write; the whole-file publisher
-    is called only by its owner (tests' fixtures and lease-held scripts hold the workspace
-    alone)."""
-
-    owner = "src/alphalattice/control/product_host/composition/research_workspace.py"
-    callers = []
-    for path in sorted((ROOT / "src").rglob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if (
-                isinstance(node, ast.Call)
-                and getattr(node.func, "id", getattr(node.func, "attr", None))
-                == "publish_research_workspace_manifest"
-            ):
-                callers.append(f"{path.relative_to(ROOT).as_posix()}:{node.lineno}")
-    assert callers and all(caller.startswith(owner + ":") for caller in callers), callers

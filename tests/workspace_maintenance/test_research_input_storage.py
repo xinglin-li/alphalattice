@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import inspect
 import json
 import os
 import sys
 import threading
 from datetime import UTC, date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -34,12 +37,14 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import _manifest
 
+if sys.platform == "win32":
+    import _winapi
+
 
 def test_observation_capacity_takes_a_fresh_sample_when_the_workspace_reopens(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """V680: a retained sample from another session cannot set this session's allowance."""
-    from types import SimpleNamespace
 
     from alphalattice.control.workspace_runtime.storage import capacity
 
@@ -121,11 +126,7 @@ def test_file_digests_bind_every_path_to_the_object_whose_bytes_were_read(
 def test_an_alias_replaced_after_grouping_never_answers_another_objects_digest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """The window: every path is open and grouped, no byte is read yet; the
-    non-representative link B is pointed at an independent file. Where the
-    platform lets that happen the call refuses B by name; where it holds the
-    open object in place the replacement itself is refused and B still reads
-    as the object that was verified."""
+    """An alias replaced after grouping never answers another object's digest."""
 
     from alphalattice.control.product_host.research_authoring.factor_inputs import (
         file_digest,
@@ -281,8 +282,6 @@ def test_managed_inventory_preserves_file_identity_and_link_refusal(tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()
     if sys.platform == "win32":
-        import _winapi
-
         _winapi.CreateJunction(str(outside), str(folder / "linked"))
     else:
         (folder / "linked").symlink_to(outside, target_is_directory=True)
@@ -538,16 +537,7 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
 
 
 def test_a_bundle_damaged_before_its_publication_leaves_no_receipt(tmp_path: Path, monkeypatch):
-    """counterexample: the receipt must follow the whole read, never precede it.
-
-    The binding completes and the manifest is written last; before the
-    revision is published, the sealed database in the target bundle is
-    damaged (the source workspace is unchanged). The Task must block with
-    no publication record and no lineage movement, and the same Task, once
-    the Human confirms again over restored bytes, publishes exactly one
-    record. The publisher has no switch that records a revision unread.
-    """
-    import inspect
+    """A bundle damaged before its publication leaves no receipt."""
 
     from alphalattice.control.product_host.data_preparation import input_capture
     from alphalattice.control.product_host.research_authoring.input_revisions import (
@@ -708,11 +698,7 @@ def test_roots_pins_stale_cleanup_shared_objects_and_metadata_survive(
 
 
 def test_storage_readback_breaks_managed_bytes_down_by_root(tmp_path: Path):
-    """The page's storage summary is the inventory's own accounting, by role: the roles
-    sum to the managed total (a shared object counted once, under the first root that
-    names it), every reference counts logically, a role the workspace does not have is
-    zero, not absent, and every store that holds the workspace's content is counted (V208):
-    an installed authority package among them."""
+    """Storage readback breaks managed bytes down by root."""
 
     from alphalattice.control.product_host.storage.input_references import MANAGED_ROOTS
     from alphalattice.control.product_host.storage.inventory import managed_file_inventory
@@ -799,13 +785,7 @@ def test_no_link_fallback_checks_capacity_before_copy(tmp_path: Path, monkeypatc
 def test_source_snapshot_roots_keep_current_previous_and_rooted_and_release_the_rest(
     tmp_path, monkeypatch
 ):
-    """Root routing only: injected reader results are not numerical/hash evidence.
-
-    requirement (V207): a generation no research input captured is kept while it is the current
-    or the previous one; past the previous, and a chunk no generation published, is released
-    under the confirmed plan; without a data update's receipt none is past the previous.
-    """
-    from types import SimpleNamespace
+    """Source snapshot roots keep current previous and rooted and release the rest."""
 
     from alphalattice.control.data_platform.maintenance.registry import (
         DuckDbWorkspaceMaintenanceRegistry,
@@ -874,12 +854,7 @@ def test_source_snapshot_roots_keep_current_previous_and_rooted_and_release_the_
 def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """requirement (V208): an Evidence workspace on the retained recipe that holds its own model
-    copy is offered, in the storage plan a person confirms, the copy's link to the machine's
-    store when the store holds its packs; the confirmation links it and the next plan offers
-    nothing more. The packs here are small stand-ins for the retained recipe's two."""
-
-    import hashlib
+    """The plan links a retained retrieval model copy to the store."""
 
     from alphalattice.control.product_host.composition.evidence_review_workspace import (
         EvidenceReviewArtifactBinding,

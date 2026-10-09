@@ -16,6 +16,9 @@ never touched.
 
 from __future__ import annotations
 
+import multiprocessing
+import threading
+from concurrent.futures import ProcessPoolExecutor
 from contextlib import closing
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -168,15 +171,7 @@ def _publish(workspace: RealRiskWorkspace, *, hours: int) -> PublishedCausalExec
 def test_a_re_derived_snapshot_keeps_its_one_seal_and_reuses_exactly_afterwards(
     tmp_path: Path,
 ) -> None:
-    """requirement: a moved watermark over unchanged rows re-derives, never re-seals.
-
-    The dividend recorded here is dated before the first formation session, so no
-    schedule interval reaches it and no published row or action lineage moves;
-    only the store's action counters do. The second publication must read the
-    sources again, land on the same snapshot, keep the first binding and seal
-    marker as the snapshot's sole authority, and leave a receipt for the new
-    watermark so the third publication is an exact reuse without a source read.
-    """
+    """A re derived snapshot keeps its one seal and reuses exactly afterwards."""
 
     workspace = build_real_risk_workspace(tmp_path / "workspace")
     first = _publish(workspace, hours=0)
@@ -241,18 +236,7 @@ def test_a_re_derived_snapshot_keeps_its_one_seal_and_reuses_exactly_afterwards(
 def test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read(
     tmp_path: Path,
 ) -> None:
-    """regression: the coverage axis admits the snapshot; an index on disk admits nothing.
-
-    The first publication built the Panel's semantic index. The Panel is
-    then superseded. The next publication must be refused by the axis
-    reader's admission -- before the index is consulted, before a source
-    row is read, and without a receipt or any other artifact written --
-    exactly as the row-validating axis refused it before. The snapshot
-    already published over the Panel stays readable through the outcome
-    readers: reading history is not admitting new research. A snapshot
-    that lost its Gateway admission, and a chunk whose row count the
-    manifest misstates, are refused by the same owner.
-    """
+    """A superseded panel with an index on disk is refused before any read."""
 
     from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
     from alphalattice.foundation.feature_engine.storage.repositories import (
@@ -336,18 +320,7 @@ def test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read(
 
 
 def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(tmp_path: Path) -> None:
-    """requirement: worker-process derivation changes how long a publication takes, nothing it says.
-
-    The same product-built workspace is published twice from two fresh
-    copies: once with every listing derived in this process, once with the
-    parallel path forced (two workers, the size threshold lowered). The
-    snapshot hash, every chunk's logical identity and the bytes of every
-    chunk file must be the same, and one listing's unit of derivation must
-    answer the same rows, hashes and source bindings from a worker as from
-    this process.
-    """
-
-    from concurrent.futures import ProcessPoolExecutor
+    """Parallel derivation publishes the identical snapshot and bytes."""
 
     from alphalattice.control.product_host.research_authoring.factor_inputs import file_digest
     from alphalattice.foundation.causal_outcomes.execution import publication as owner
@@ -433,17 +406,7 @@ def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(tmp_path
 
 
 def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path: Path) -> None:
-    """recovery: one failing unit fails the publication whole, cleanly.
-
-    The parallel path is forced (two workers). One listing's actions carry
-    an event the derivation refuses, so its unit raises inside a worker.
-    The publication must surface that refusal, write no artifact -- no
-    chunk, manifest, binding, seal or receipt -- close the store handle it
-    opened, and leave no worker process or pool thread behind; the same
-    workspace then publishes normally once the source is sound.
-    """
-
-    import threading
+    """A worker failure publishes nothing and leaves no worker behind."""
 
     import psutil
 
@@ -502,17 +465,7 @@ def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path
 
 
 def test_executor_creation_and_process_start_refusals_publish_nothing(tmp_path: Path) -> None:
-    """failure: public worker-start refusals keep their cause and publish no artifact.
-
-    An eighty-listing product-written workspace crosses the publisher's parallel
-    derivation threshold without changing private policy. Refuse executor creation
-    through multiprocessing's public context factory, then refuse a real spawn
-    Process.start call. Finally admit one child and refuse the next start, proving
-    pool shutdown removes a worker already admitted. Every refusal must surface
-    the same stable code, preserve the OS error as its cause, and publish nothing.
-    """
-
-    import multiprocessing
+    """Executor creation and process start refusals publish nothing."""
 
     import psutil
 
@@ -624,12 +577,7 @@ def test_existing_seal_reuse_ignores_only_the_source_revision_counter() -> None:
 
 
 def test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel(tmp_path: Path) -> None:
-    """Real publishers/readers after an exit; no fabricated Panel or Outcome artifact.
-
-    The synthetic membership decision is submitted to the existing coordinator's
-    binding and governance owners. This is a producer/consumer integration case,
-    not a browser or official-index-source acceptance.
-    """
+    """Outcomes and risk keep the historical members of a ragged panel."""
     from alphalattice.control.data_platform.maintenance.contracts import (
         MaintenanceTrigger,
         WorkspaceMaintenanceRequest,

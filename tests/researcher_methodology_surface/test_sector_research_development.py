@@ -153,12 +153,7 @@ def test_sector_numerical_thread_policy_refuses_a_pool_that_ignored_the_limit(
 
 
 def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else() -> None:
-    """Equal-weight mean of constituent log returns: no winsor, no rank, no demean.
-
-    The strongest statement a golden can make is exact float equality against
-    an independent composition, so that is what is asserted -- for both the fit
-    lane and the raw economic diagnostic lane.
-    """
+    """Clean target is the hand computed sector mean and nothing else."""
 
     table, sectors, sessions, surface, evidence = _synthetic_evidence()
     ordered = table.sort_by([("formation_session", "ascending"), ("listing_id", "ascending")])
@@ -227,12 +222,8 @@ def test_same_shaped_wrong_inputs_are_refused_before_any_model() -> None:
 
 
 def test_zero_and_ewma_goldens_with_the_warmup_boundary_at_twenty_one() -> None:
-    """ZERO is exactly zero; the EWMA equals its hand-built weighted mean.
-
-    The warmup boundary is asserted at both edges: the twentieth matured
-    observation refuses with the typed reason, the twenty-first emits a value.
-    No zero fill, no backfill, no seeded fallback.
-    """
+    """Zero and EWMA estimators match their formulas and emit only after the
+    twenty-one-observation warmup."""
 
     _table, _sectors, sessions, _surface, evidence = _synthetic_evidence()
     matrix = grid_to_matrix(evidence.sector_target_values)
@@ -276,15 +267,7 @@ def test_zero_and_ewma_goldens_with_the_warmup_boundary_at_twenty_one() -> None:
 def test_new_batch_methods_match_their_formula_and_their_warmup_boundary(
     method_id: str, session_count: int, minimum_history: int
 ) -> None:
-    """Each new method equals its documented formula, computed independently here.
-
-    The expectations are rebuilt from the Formula Specification rather than by
-    calling the adapter's own helpers, so the lag ordering, the cross-sector
-    demeaning, the per-session rescaling and the ``alpha_max``-relative penalty
-    are all pinned by something that would not move with them. The warmup
-    boundary is asserted at both edges: one observation short refuses with the
-    typed reason, and the exact minimum emits.
-    """
+    """New batch methods match their formula and their warmup boundary."""
 
     _table, _sectors, sessions, _surface, evidence = _synthetic_evidence(
         session_count=session_count
@@ -453,12 +436,7 @@ def sector_publication(real_risk_workspace: RealRiskWorkspace):  # type: ignore[
 def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type: ignore[no-untyped-def]
     sector_publication, real_risk_workspace: RealRiskWorkspace
 ) -> None:
-    """The outcome method, maturity lag and catalog identity come from evidence.
-
-    None of them was available to the caller to supply, and the verifier's
-    terminal edge re-derives the seal from the outcome reader rather than from
-    anything Sector Research wrote.
-    """
+    """Host derives every identity and the verifier walks to the seal."""
 
     service, snapshot_hash, revision, ewma, _zero, _range = sector_publication
     reader = CausalExecutionOutcomeDevelopmentReader(real_risk_workspace.artifact_root)
@@ -607,16 +585,7 @@ def test_tamper_missing_child_and_wrong_lineage_are_refused(  # type: ignore[no-
 def test_selection_resolution_is_owned_by_sector_and_refuses_wrong_axes(  # type: ignore[no-untyped-def]
     sector_publication, real_risk_workspace: RealRiskWorkspace
 ) -> None:
-    """A consumer holds a selection; the values come from this Desk, verified.
-
-    The ZERO control is synthesized here against the requested axis -- never by
-    the consumer from a method id. An evidence handle is walked down to the
-    outcome seal before a single value is mapped, and every listing receives
-    exactly its own sector's value through the same membership revision the
-    forecast was built against. A session outside the forecast axis, a listing
-    the revision does not cover, and a selection naming the wrong method are
-    each refused with their own code.
-    """
+    """Selection resolution is owned by sector and refuses wrong axes."""
 
     from alphalattice.investment.sector_research.experiments.resolution import (
         SectorForecastResolver,
@@ -698,12 +667,8 @@ def test_selection_resolution_is_owned_by_sector_and_refuses_wrong_axes(  # type
 def test_the_installed_cli_publishes_and_inspects(  # type: ignore[no-untyped-def]
     sector_publication, real_risk_workspace: RealRiskWorkspace
 ) -> None:
-    """A scripted publish and inspect through the real entry point.
-
-    The publish re-states the ZERO run the fixture already sealed, which also
-    proves idempotency: identical content re-publishes to identical hashes and
-    the store's reuse-identical path accepts it.
-    """
+    """The installed sector CLI publishes and inspects the same sealed evidence with identical
+    hashes."""
 
     _service_obj, snapshot_hash, revision, _ewma, zero, (first, last) = sector_publication
     script = Path(__file__).resolve().parents[2] / "scripts" / "run_sector_research_development.py"
@@ -870,18 +835,7 @@ def _reseal_forged_experiment(  # type: ignore[no-untyped-def]
 def test_forged_recipe_policy_and_closure_cannot_pass_the_verifier(  # type: ignore[no-untyped-def]
     sector_publication,
 ) -> None:
-    """Three internally perfect forgeries, three installed-authority refusals.
-
-    A re-sealed surface carrying a 999-session half-life is refused because the
-    frozen singleton is inside catalog identity, not merely the implementation.
-    A target evidence compiled under a one-listing sector floor is refused
-    because the clean-target policy is re-derived from the installed builder.
-    And a program binding naming a different Host execution closure is refused
-    because the compiler, selection, evaluation and service bytes that ran are
-    part of what the program *is*. Before these checks, every one of these
-    graphs verified: each hash re-derived, each child belonged to its parent,
-    and the terminal seal held.
-    """
+    """Forged recipe policy and closure cannot pass the verifier."""
 
     from alphalattice.investment.sector_research.models.contracts import SectorForecastRecipe
     from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -942,18 +896,8 @@ def test_forged_recipe_policy_and_closure_cannot_pass_the_verifier(  # type: ign
 def test_the_campaign_compares_calibrates_decides_and_replays(  # type: ignore[no-untyped-def]
     real_risk_workspace: RealRiskWorkspace,
 ) -> None:
-    """One Campaign, end to end, through the real Host on the real workspace.
-
-    The whole chain in one path, because the parts are only worth what they are
-    worth together: every installed method against one compiled target, a
-    cross-fitted shrink calibration each, the frozen comparison rules, an
-    actor-neutral submission the Host validates before sealing, and a replay
-    that recomputes all of it and performs no numerical call.
-
-    The decision is allowed to be ``ZERO``. A test that required a non-zero
-    winner would be requiring a scientific result, which is not a property of
-    the software.
-    """
+    """A real sector campaign compares, calibrates, validates, seals, and replays its evidence
+    without numerical recomputation."""
 
     snapshot_hash, _manifest_ref = publish_causal_outcomes(real_risk_workspace)
     service = _service(real_risk_workspace)

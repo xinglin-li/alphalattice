@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pyarrow as pa
@@ -292,8 +293,6 @@ def test_the_write_batch_does_not_enter_a_panels_derivation_binding(tmp_path: Pa
     """Regression: the Feature closure's head is decided by how many listings each
     transition writes, an execution parameter, and it entered every Panel's derivation binding;
     two closures of one Panel that differ only in their heads publish one binding, without one."""
-
-    from types import SimpleNamespace
 
     from alphalattice.foundation.feature_engine.panels.logical_contracts import (
         PanelDerivationBinding,

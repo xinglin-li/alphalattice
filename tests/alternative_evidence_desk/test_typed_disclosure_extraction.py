@@ -371,13 +371,7 @@ Item 2: buybacks, never an unregistered sale."""
 
 
 def test_a_carried_repurchase_table_is_not_an_unregistered_sale_and_is_delivered_whole() -> None:
-    """requirement: with the repurchase table now in the region's text, the
-    family still finds no unregistered sale -- no instance, no none, the
-    repurchase noted as the other subject -- and the inspected scope it
-    delivers runs through the whole table, rows and footnote, when the
-    2,400-character cut lands inside a row; a table too large for the
-    reader's per-span ceiling ends at its last whole row, never inside one,
-    and the observation says the item continues."""
+    """A carried repurchase table is not an unregistered sale and is delivered whole."""
 
     from alphalattice.evidence.alternative_evidence.analysis.disclosures import _SCOPE_BYTES
 
@@ -525,12 +519,7 @@ def test_multiple_persons_actions_and_kinds_stay_multiple_and_the_issuer_is_not_
 
 
 def test_a_bulleted_list_of_arrangements_is_read_sentence_by_sentence() -> None:
-    """requirement: NEE's Item 9B / Item 5 form -- a lead-in ("... adopted
-    during the three months ended December 31, 2025 were as follows:") and
-    one bullet per arrangement, each a dated statement behind a list glyph.
-    Under rules v2 the glyph was the sentence's first word and every bullet
-    was an unrecognised statement (state AMBIGUOUS, no instance). The glyph
-    is layout; the lead-in stays visible as unrecognised."""
+    """A bulleted list of arrangements is read sentence by sentence."""
 
     lead_in = (
         "(c)\u00a0\u00a0\u00a0\u00a0Rule 10b5-1 trading arrangements terminated during the three "
@@ -746,10 +735,7 @@ def test_prior_comparison_distinguishes_change_continuation_baseline_and_rule_mo
 
 
 def test_comparison_reads_material_fields_not_only_event_labels(tmp_path: Path) -> None:
-    """R3: the same person, action and date restated from 12,000 to 20,000
-    shares is not a continuing assertion; a changed duration or qualifier
-    is a change; an unchanged restatement continues; a re-reported period
-    is a correction, never a newly occurring event."""
+    """Comparison reads material fields not only event labels."""
 
     plan_12k = _ten_q(item5=[PLANS_NONE_EXCEPT, PLAN_ADOPTED])
     prior = _sealed_record(tmp_path / "prior", plan_12k, revision="10-q-2026-q2")
@@ -843,11 +829,7 @@ def test_comparison_reads_material_fields_not_only_event_labels(tmp_path: Path) 
 def test_two_same_day_sales_stay_two_assertions_and_a_change_to_one_cannot_disappear(
     tmp_path: Path,
 ) -> None:
-    """R3 (remaining): two distinct sales on one day share subject, action
-    and date; a change to the first must not be hidden by the second, a
-    genuinely identical repetition folds to one, and when the source does
-    not say which changed assertion corresponds to which, the comparison
-    says so instead of pairing by guess."""
+    """Two same day sales stay two assertions and a change to one cannot disappear."""
 
     same_day = (
         "On May 12, 2026, we issued 5,000 shares of common stock to a consultant as "
@@ -1067,15 +1049,7 @@ def _scope_delivery(tmp_path: Path, item2: list[str]) -> tuple[Any, Any, str]:
 def test_the_delivered_scope_respects_the_reader_byte_ceiling_on_every_path(
     tmp_path: Path,
 ) -> None:
-    """requirement: the delivered scope is a range the shared reader returns
-    whole. Three paths cut it: a region shorter than 2,400 characters whose
-    UTF-8 bytes exceed the reader's per-span ceiling was returned unchecked
-    (the reader then bounded it mid-row with a limitation); a paragraph
-    crossing the 2,400th character whose end did not fit fell back to the
-    raw character cut inside the row; and a single row longer than the
-    ceiling was delivered as a fragment. Synthetic shapes, labelled: the
-    dash rule line, the long row and the oversized row are built to the
-    ceiling, not taken from a filing."""
+    """The delivered scope respects the reader byte ceiling on every path."""
 
     from alphalattice.evidence.alternative_evidence.analysis.disclosures import _SCOPE_BYTES
 
@@ -1167,11 +1141,7 @@ def test_instances_beyond_the_typed_span_budget_stay_recorded_not_dropped(tmp_pa
 def test_generic_and_typed_read_budgets_are_separate_under_one_verified_reader(
     tmp_path: Path,
 ) -> None:
-    """R1: the generic thirty-two reads do not consume or block the typed
-    families' sixteen, typed exhaustion leaves the generic accounting
-    untouched, and a tampered source refuses through the typed path -- in
-    the order a session is used: generic reads first, then typed selection
-    in the same session."""
+    """Generic and typed read budgets are separate under one verified reader."""
 
     text = _ten_q(item2=[SALE, REPURCHASES], item5=[PLANS_NONE_EXCEPT, PLAN_ADOPTED])
     runtime, request, _registry, _snapshot, document_set, generation = _open_recorded(
@@ -1323,10 +1293,7 @@ def test_a_negated_or_conditional_conclusion_states_no_conclusion() -> None:
 
 
 def test_a_sales_none_with_an_exception_keeps_the_exception(tmp_path: Path) -> None:
-    """R2: the exception to a none is read by the sale rule when it states a
-    sale, stays visible and unresolved when it does not, and never becomes
-    an unqualified EXPLICIT_NONE -- through extract_document and through the
-    packet boundary the analyst reads."""
+    """A sales absence qualified by an exception retains that exception."""
 
     observation = _one(_ten_q(item2=[NO_SALES_EXCEPT_SALE]), SALES)
     assert observation.state is TypedDisclosureState.EXTRACTED
@@ -1544,16 +1511,7 @@ def _ten_k(*, item1c: list[str] | None = None, note: list[str] | None = None) ->
 
 
 def test_customer_concentration_reads_the_segment_note_s_stated_shares_and_absences() -> None:
-    """requirement (W2, typed rules v4; the three traced losses): in the
-    segment note a counted customer beside a percentage of revenue is a
-    `STATED` share with the shares and the base as fields; an absence at a
-    threshold or of reliance is `ABSENT` with the threshold as its field;
-    a share of customers by geography is kept visible as unrecognised and
-    "no revenues from external customers in the U.S." is not read; the
-    stated and absent instances coexist as assertions (a none scoped to a
-    threshold contradicts no share); with no segment, concentration or
-    customer note the family is NOT_FOUND, never a none; nothing names a
-    customer or sums a share."""
+    """Customer concentration reads the segment note's stated shares and absences."""
 
     text = _ten_k(
         note=[ONE_BOTTLER, NO_BOTTLERS, DIRECT_CUSTOMERS, GEOGRAPHIC, NO_RELIANCE, NO_US_REVENUE]
@@ -1596,14 +1554,7 @@ def test_customer_concentration_reads_the_segment_note_s_stated_shares_and_absen
 
 
 def test_the_cybersecurity_effect_statement_is_read_from_item_1c() -> None:
-    """requirement (W2, typed rules v4): Item 1C's statement of whether
-    cybersecurity threats or incidents have materially affected the
-    registrant is `NOT_AFFECTED` when the effect clause is negated in its
-    own clause, `_QUALIFIED` when stated through awareness or belief or
-    under an exception, `AFFECTED` when stated without a negation; a
-    forward-looking sentence alone is a risk statement (NOT_FOUND with the
-    context named) and a program sentence naming material risks is not
-    the statement; the family is not sealed for a 10-Q."""
+    """The cybersecurity effect statement is read from item 1c."""
 
     plain = _one(_ten_k(item1c=[CYBER_PROGRAM, CYBER_NOT_AFFECTED]), CYBER, "10-K")
     assert plain.state is TypedDisclosureState.EXTRACTED and plain.item == "1C"
@@ -1634,12 +1585,7 @@ def test_the_cybersecurity_effect_statement_is_read_from_item_1c() -> None:
 
 
 def test_typed_spans_serve_every_assertion_before_the_inspected_scopes(tmp_path: Path) -> None:
-    """requirement (W2, lead decision B at the typed channel): the typed
-    span budget is dealt in two passes -- every observation's assertions
-    document by document, then the inspected scopes of the non-extracted
-    observations -- and an observation of a family the form does not
-    define is not sealed, so the later documents' assertions are never
-    displaced by the earlier documents' none and not-found scopes."""
+    """Typed spans serve every assertion before the inspected scopes."""
 
     annual = _ten_k(item1c=[CYBER_NOT_AFFECTED], note=[NO_BOTTLERS])
     quarterly = _ten_q(item2=[SALE], item5=[PLAN_ADOPTED])
@@ -1719,18 +1665,7 @@ NO_CUSTOMER_CORRELATIVE = (
 def test_a_correlative_and_an_open_determination_are_not_a_cyber_negative(
     tmp_path: Path,
 ) -> None:
-    """requirement (the first-release safety closeout, finding A; typed rules
-    v5): the negation governs the asserted predicate only. "have not only
-    materially affected our operations but also increased costs" asserts the
-    effect (`AFFECTED`, no exception qualifier from its "but also"); "have
-    not yet determined whether ... has materially affected" and "unable to
-    determine whether ... have materially affected" are no conclusion
-    (AMBIGUOUS, the sentence visible, no polarity); the affirmative, the
-    scoped negative, the awareness-qualified negative and the forward-looking
-    risk statement keep their readings. Proved at the extraction owner, on
-    the sealed typed record and on the public typed projection -- under v4
-    the correlative sealed as a qualified negative and the open determination
-    as a negative or an affirmative."""
+    """A correlative and an open determination are not a cyber negative."""
 
     def observation(sentence: str):
         return _one(_ten_k(item1c=[CYBER_PROGRAM, sentence]), CYBER, "10-K")
@@ -1786,13 +1721,7 @@ def test_a_correlative_and_an_open_determination_are_not_a_cyber_negative(
 
 
 def test_a_concentration_absence_beside_another_assertion_stays_qualified() -> None:
-    """requirement (finding A's analogue at the concentration family): an
-    absence stated beside another assertion in the same sentence -- a share
-    of another base after "however", a correlative over two years -- is
-    never a unit-wide unqualified absence: the polarity is
-    `ABSENT_QUALIFIED`, the rest of the sentence is its qualifier (the other
-    share stays visible inside it, never a silent second assertion), and the
-    threshold and the base of the absence are bound."""
+    """A concentration absence beside another assertion stays qualified."""
 
     observation = _one(
         _ten_k(note=[NO_CUSTOMER_BUT, NO_CUSTOMER_CORRELATIVE]), CONCENTRATION, "10-K"
@@ -1848,25 +1777,7 @@ CYBER_COORDINATED_AWARENESS = (
 def test_a_negation_of_another_predicate_never_negates_the_cyber_effect(
     tmp_path: Path,
 ) -> None:
-    """requirement (the predicate-scope correction; typed rules v6, the cyber
-    rule v3): a negation is read only where the rule binds it to the effect
-    -- the predicate's own verb group, a negative subject that governs the
-    predicate, or a negated awareness or experience verb whose object is the
-    cyber subject. "Cybersecurity incidents were not prevented by our
-    controls and have materially affected our operations" negates
-    prevention, not the effect: under v5 it sealed as a certain
-    `NOT_AFFECTED`; the rule cannot prove which polarity the sentence
-    asserts, so it is AMBIGUOUS with the sentence visible as
-    `SCOPE_UNRESOLVED` (the parser's limit), never the registrant's own
-    `NO_CONCLUSION`. The controls: the affirmative, the predicate-scoped
-    negative, the negative subject, "not only ... but also", the unmade
-    determination, the awareness-qualified negative, the forward-looking
-    risk statement, the negated experience verb over "any cybersecurity
-    incidents" and an idiom's inert "not limited to". Proved at the
-    extraction owner, on the sealed record (the sentence delivered whole as
-    the observation's scope, its bytes untouched), on the public typed
-    projection and at the comparison consumer, which compares nothing
-    against an unresolved state and names a rule change as such."""
+    """A negation of another predicate never negates the cyber effect."""
 
     def observation(sentence: str):
         return _one(_ten_k(item1c=[CYBER_PROGRAM, sentence]), CYBER, "10-K")

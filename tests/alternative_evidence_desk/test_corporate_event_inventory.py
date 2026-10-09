@@ -53,13 +53,7 @@ HANDLE = re.compile(r"^M-[A-Z0-9-]{1,48}-[0-9]{3}$")
 
 
 def test_event_regions_and_units_come_from_the_source_structure() -> None:
-    """requirement (K3): the acquisitions note, the note named after its
-    counterparty whose lead dates an acquisition, and the subsequent-events
-    note are regions; the policy note, the debt note with a dated issue and
-    the MD&A with a dated sale are not. A dated action opens a unit, a
-    run-in title before the date included; the allocation and table of that
-    event continue it; the category lead-in, the pro forma paragraph and
-    the evaluation statement stay the region's; handles fit the record."""
+    """Event regions and units come from the source structure."""
 
     text = _event_filing()
     structure = DocumentStructure(text, document_type="10-K")
@@ -172,11 +166,7 @@ def test_event_regions_and_units_come_from_the_source_structure() -> None:
 
 
 def test_a_current_report_is_one_unit_per_item_and_a_quarterly_without_events_has_no_need() -> None:
-    """requirement (K3): every item of an 8-K other than the exhibits item is
-    a region and one unit -- its whole body, dated by the first date it
-    states -- whatever the item says; a 10-Q with no event note has no event
-    region, no unit and no need, and its litigation note is not an event
-    region."""
+    """A current report is one unit per item and a quarterly without events has no need."""
 
     text = _current_report()
     structure = DocumentStructure(text, document_type="8-K")
@@ -212,12 +202,7 @@ def test_a_current_report_is_one_unit_per_item_and_a_quarterly_without_events_ha
 
 
 def test_a_late_filing_notice_is_one_unit_per_narrative_part() -> None:
-    """requirement (Q3, rules v2): a late-filing notice (Form 12b-25, NT 10-Q)
-    is read by the event family: its narrative (Part III) and its other
-    information (Part IV) are each a region and one unit, the whole body under
-    the part heading; the registrant and rule parts are not events, and the
-    signature closes the last part. The same text filed as a quarterly report
-    has no event region: the rule is the late-filing notice's own."""
+    """A late filing notice is one unit per narrative part."""
 
     text = _late_filing_notice()
     structure = DocumentStructure(text, document_type="NT 10-Q")

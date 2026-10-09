@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -34,14 +34,7 @@ def _bar(session: date, *, close: float = 100.0) -> RawDailyBar:
 
 
 def test_price_action_sentinels_anchor_known_events_and_quarantine_extremes() -> None:
-    """Golden truth lives in this fixture; the product owns only the comparison.
-
-    The known points are the real AAPL 4-for-1 split (2020-08-31) and the real
-    2020-08-07 cash dividend of 0.205. A provider history that reproduces both
-    is anchored; one that omits, distorts, or inflates an event is classified
-    for quarantine review -- never repaired, never made universally
-    authoritative.
-    """
+    """Price action sentinels anchor known events and quarantine extremes."""
 
     split_session = date(2020, 8, 31)
     dividend_session = date(2020, 8, 7)
@@ -202,13 +195,7 @@ def test_universe_spy_divergence_is_advisory_and_exactly_aligned() -> None:
 
 
 def test_session_authority_judges_only_the_range_it_covers() -> None:
-    """A qualified axis is evidence about its own range and silent outside it.
-
-    Both halves matter. Inside the range an off-axis bar is a real defect and
-    must quarantine; outside it the authority never established anything, and
-    treating silence as a negative would quarantine listings for reaching
-    further back than the axis the Host happened to resolve.
-    """
+    """Session authority judges only the range it covers."""
 
     axis = (date(2026, 1, 5), date(2026, 1, 6), date(2026, 1, 7))
     authority = build_trading_session_authority(calendar_ids=("XNAS", "XNYS"), sessions=axis)
@@ -260,8 +247,6 @@ def test_session_authority_judges_only_the_range_it_covers() -> None:
 
 def test_resolved_session_authority_excludes_weekends_and_is_content_addressed() -> None:
     """The Host resolves one calendar, and the same range always seals the same axis."""
-
-    from datetime import UTC, datetime
 
     from alphalattice.control.data_platform.preflight import (
         resolve_trading_session_authority,

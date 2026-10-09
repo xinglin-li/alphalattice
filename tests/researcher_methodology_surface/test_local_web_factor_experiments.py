@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import gc
 import json
+import multiprocessing
 import os
 import shutil
 import subprocess
@@ -10,8 +12,11 @@ import sys
 import threading
 import time
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+from uuid import UUID
 
 import pytest
 from threadpoolctl import threadpool_limits
@@ -129,7 +134,6 @@ def test_completed_alpha_hands_off_to_portfolio_without_refitting(
     completed_alpha_case, monkeypatch, tmp_path
 ):
     alpha_case = completed_alpha_case
-    from uuid import UUID
 
     from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
         HistoricalTradabilityBuilder,
@@ -496,13 +500,7 @@ def _seal_foundation(case, live):
 
 
 def test_a_foundation_preview_is_sealed_after_a_restart_within_its_hour(alpha_case):
-    """regression (V543, the sweep of V534): the Foundation kept its preview in one memory slot,
-    so a Host restart, or a second preview, between `foundation preview` and `foundation seal`
-    refused the seal `research_foundation.preview_required`, with no words. The preview is kept
-    in the plan store: a restarted Host seals it within its hour, and past it the refusal offers
-    the preview again, bound to the same study, decision and input."""
-
-    from datetime import UTC, datetime, timedelta
+    """A foundation preview is sealed after a restart within its hour."""
 
     root, binding, task, decision, _document = alpha_case
     clock = [datetime.now(UTC)]
@@ -541,7 +539,6 @@ def test_a_foundation_preview_is_sealed_after_a_restart_within_its_hour(alpha_ca
 
 
 def test_foundation_axis_cannot_be_narrowed_or_reordered_by_a_direct_compiler():
-    from unittest.mock import Mock
 
     from alphalattice.investment.alpha_research.experiments.authoring import AlphaExperimentCompiler
 
@@ -607,7 +604,6 @@ def test_historical_sector_coverage_is_bound_without_moving_legacy_foundations()
 
 
 def test_alpha_sector_coverage_follows_the_selected_panel_axis(monkeypatch, tmp_path):
-    from types import SimpleNamespace
 
     from alphalattice.control.product_host.research_authoring import authority, execution
 
@@ -663,7 +659,6 @@ def test_alpha_sector_coverage_follows_the_selected_panel_axis(monkeypatch, tmp_
 
 
 def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypatch):
-    from copy import deepcopy
 
     from alphalattice.investment.alpha_research.experiments.development_artifacts import (
         AlphaDevelopmentArtifactStore,
@@ -850,7 +845,6 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
         assert current["standing"] == "CURRENT" and "verification" not in current, current
         assert set(current["next_requests"]) == {"alpha-draft", "export"}
         # V633: one bad source stays local to its item; no sealed graph is inferred from a gap.
-        from uuid import UUID
 
         from alphalattice.control.task_control.registry import TaskNotFoundError
 
@@ -976,7 +970,6 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
 
 
 def test_experiment_collection_keeps_readable_tasks_beside_an_invalid_saved_plan(alpha_case):
-    from uuid import UUID
 
     from alphalattice.control.task_control.contracts import (
         ResearchGoal,
@@ -1024,7 +1017,6 @@ def test_experiment_collection_keeps_readable_tasks_beside_an_invalid_saved_plan
 
 def test_pending_task_damage_keeps_curation_for_a_readable_factor_study(inputs, published):
     """V661: unreadable peers do not hide curation owned by a readable Factor study."""
-    from uuid import UUID
 
     import duckdb
 
@@ -1076,7 +1068,6 @@ def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offer
     sampled_alpha_case,
 ):
     """V661: a real completed exploration and runnable preview need complete Task authority."""
-    from uuid import UUID
 
     import duckdb
 
@@ -1339,7 +1330,6 @@ def test_alpha_declared_model_runs_reopens_and_reuses_existing_owners(
 
 
 def test_alpha_refuses_invalid_authority_and_work_before_admitting_a_task(alpha_case, monkeypatch):
-    from copy import deepcopy
 
     from alphalattice.investment.alpha_research.experiments.development_execution import (
         AlphaExperimentExecutor,
@@ -1649,10 +1639,7 @@ def test_alpha_process_recovery_keeps_task_and_reuses_sealed_work(
 def test_a_study_stopped_under_the_old_schema_rule_is_refused_by_name_and_planned_again(
     alpha_case, tmp_path
 ):
-    """requirement (SH, a waiting Task's recovery): a study stopped while its Task's contract
-    hash still bound the schema's prose is refused at resume by name, never resumed under a
-    contract it did not start with and never left stuck: its recovery offers the cancel, and
-    the same request planned again runs as a new Task that keeps the stopped one's sealed folds."""
+    """A study stopped under the old schema rule is refused by name and planned again."""
 
     root = alpha_case[0]
     request = _alpha_payload(alpha_case, {"family": "ridge", "alpha": 6.0})
@@ -1692,14 +1679,7 @@ def test_a_study_stopped_under_the_old_schema_rule_is_refused_by_name_and_planne
 def test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool(
     inputs: Path, tmp_path: Path, monkeypatch
 ):
-    """regression: each object is read once per boundary, and every boundary still refuses.
-
-    The staging loop no longer re-reads a linked pool object or the source
-    per file; what it still reads is a copied file (a corrupt copy is
-    refused), the whole source at the end (a source that changed during the
-    binding is refused, and nothing is published), and a pool object whose
-    bytes no longer match its name (refused before it is linked).
-    """
+    """Binding refuses a corrupt copy a changed source and a tampered pool."""
 
     from alphalattice.control.product_host.research_authoring import factor_inputs as owner
 
@@ -1848,8 +1828,6 @@ def test_controls_and_a_missing_prerequisite_name_the_flows_way_on(inputs: Path,
     is missing, name the flow's prerequisites on the input: the completed studies it holds,
     what is missing and the requests allowed next."""
 
-    from uuid import UUID
-
     task_id, _report, _exported = published
     root = inputs
     with _session(root) as live:
@@ -1910,7 +1888,6 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
     published,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from uuid import UUID
 
     from alphalattice.foundation.factor_research.experiments.execution import (
         FactorExperimentExecutor,
@@ -2077,7 +2054,6 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
         )
         assert refused["status"] == "REFUSED", refused
         assert len(session.session.task_control_registry.tasks()) == count
-        from copy import deepcopy
 
         for section, key, bad_value in (
             ("alpha", "ordered_feature_ids", ["unknown"]),
@@ -2267,11 +2243,7 @@ def test_input_and_result_tamper_refuse_without_losing_historical_readback(
 def test_a_read_reuses_the_study_verification_while_its_files_are_unchanged(
     inputs: Path, published, monkeypatch
 ) -> None:
-    """requirement (binding plan, L1; V265, V89): a readback answers from the study's last full
-    verification while its files keep their path, size, time and identity, and says it checked
-    exactly that; export verifies in full; a change that keeps them is caught by export and by
-    the sweep, which names the study and drops what reads keep of it; a change of size or time
-    is verified at the next read."""
+    """A read reuses the study verification while its files are unchanged."""
 
     root = inputs
     task_id = published[0]
@@ -2308,10 +2280,7 @@ def test_a_read_reuses_the_study_verification_while_its_files_are_unchanged(
 def test_an_alpha_studys_full_verification_is_kept_on_disk_across_a_restart(
     alpha_case, monkeypatch
 ) -> None:
-    """requirement (V89, V265, decision 5): an Alpha study's full verification is kept on disk
-    as its read shows it, so a Host that starts again reads it without re-deriving every chunk;
-    the basis names what it checked; a file whose time moved, or another installed
-    implementation, is verified in full."""
+    """An alpha study's full verification is kept on disk across a restart."""
 
     from alphalattice.control.product_host.composition import research_experiments as owner
 
@@ -2356,8 +2325,6 @@ def test_the_sweep_is_due_after_a_week_or_an_upgrade_and_takes_up_what_it_left(
     """requirement (V89, decision 5): an idle Host admits the sweep when none ran since an
     upgrade or a week; it stops as soon as another Task waits, and the next sweep takes up the
     rest; each sweep seals a report under its content hash."""
-
-    from datetime import timedelta
 
     root = inputs
     with _session(root) as live:
@@ -2792,7 +2759,6 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
 
         # A queued study holds this workspace. The trial must remain stopped until
         # a request can admit work, and reopening then lets the idle hook advance it.
-        from uuid import UUID
 
         registry = live.session.task_control_registry
         baseline = registry.task(UUID(alpha["task_id"]))
@@ -3040,13 +3006,8 @@ def test_a_formula_reading_the_sector_leaf_is_built_and_tried_but_not_activated(
 
 
 def test_a_trial_refused_its_study_names_the_studies_it_can_run_against(completed_alpha_case):
-    """requirement (V354): a feature's plan states what its trial runs against before any build,
-    and offers the trial with the study left to choose; a trial asked of a study not handed off
-    from Factor evidence is refused with the completed studies on the feature's input it can run
-    against, newest first, and creates nothing."""
+    """A trial refused its study names the studies it can run against."""
     alpha_case = completed_alpha_case
-
-    from uuid import UUID
 
     root, _binding, factor_task, _decision, _original = alpha_case
     with _session(root) as live:
@@ -3147,10 +3108,7 @@ def test_a_trial_refused_its_study_names_the_studies_it_can_run_against(complete
 
 
 def test_a_formula_factor_is_reviewed_and_a_person_activates_it(completed_alpha_case):
-    """requirement (EX, the formula point): a formula factor declared with its recipe is built
-    and tried like any feature; its review packet states the contract, the build's coverage, the
-    trial's evidence and the formulas tried; an agent is refused the activation, a person
-    activates it into the workspace's registry and deactivates it."""
+    """A formula factor is reviewed and a person activates it."""
     alpha_case = completed_alpha_case
 
     from alphalattice.control.product_host.composition.research_workspace import (
@@ -3495,11 +3453,7 @@ def test_a_continuation_without_its_policy_is_told_the_field_and_the_draft(
 
 
 def test_a_qualification_concludes_every_study_on_its_question_since_the_goal_opened(alpha_case):
-    """requirement (GR3, V77): the Alpha owner's qualification is a Task over every development
-    study on the question admitted from a goal's opening on, whether a goal's session ran it or
-    not: the Host finds the family in Task Control, the Task refits what it nominates, applies
-    the benchmark and the stability rule, and seals a candidate set or an evidence-complete stop
-    that its readback reads at the Alpha owner's store. No stable model is a result."""
+    """A qualification concludes every study on its question since the goal opened."""
 
     from alphalattice.interface.local_application.portfolio_research import (
         PortfolioResearchOperationRequest,
@@ -3580,7 +3534,6 @@ def test_a_qualification_concludes_every_study_on_its_question_since_the_goal_op
         )
         assert sent["task_id"], sent
         live.dispatcher.drain_for_tests()
-        from uuid import UUID
 
         task = live.session.task_control_registry.task(UUID(sent["task_id"]))
         assert task.lifecycle.value == "SUCCEEDED", (
@@ -3734,11 +3687,7 @@ def _published(link, plan):
 
 
 def test_a_portfolio_study_weighs_by_a_linked_risk_studys_volatility(risk_link):
-    """requirement (V310, card RP): the Portfolio experiment took no Risk input, so its
-    inverse-volatility rules could not run; it names a completed Risk study on the same research
-    input, binds it as it binds the Alpha source, and weighs each name by the study's per-name
-    volatility, while equal weight reads none and an `iv` rule without a study is refused, its
-    way back the Alpha study's Portfolio draft (V322)."""
+    """A portfolio study weighs by a linked risk study's volatility."""
 
     link = risk_link
     refused = _planned(link, weight_rule="iv1")
@@ -3771,12 +3720,7 @@ def test_a_portfolio_study_weighs_by_a_linked_risk_studys_volatility(risk_link):
 
 
 def test_a_portfolio_study_runs_a_catalog_policy_on_a_linked_risk_studys_covariance(risk_link):
-    """requirement (V310, card RP): the catalog's solver-backed policies ran on nothing once the
-    Stage 6 campaign retired; a Portfolio study declares one (the kept `PortfolioPolicySpec`) and
-    decides each scored formation on the linked Risk study's covariance, projected one segment at
-    a time, while the tranche book's own fields stay unset and a declaration that cannot run is
-    refused before any work, pointing back to the Alpha study's Portfolio draft with the bound
-    it broke (V322); the policy's document leaves out the tranche fields it replaces (V323)."""
+    """A portfolio study runs a catalog policy on a linked risk study's covariance."""
 
     link, task = risk_link, risk_link.risk_task
     minimum = {"family": "TOP_K_MINIMUM_VARIANCE", "top_k": 20, "maximum_weight": 0.1}
@@ -3866,7 +3810,6 @@ def test_a_portfolio_draft_offers_only_risk_choices_its_reader_admits(
 ):
     """regression (V616's class): a scoped or incomplete Risk read is not offered for
     sizing; an integrity failure remains a named refusal, rather than disappearing."""
-    import gc
 
     source, metadata = risk_seed
     root = copy_workspace(source, tmp_path / "workspace", link_parquet=True)
@@ -3948,7 +3891,6 @@ def test_cli_wait_reads_a_real_alpha_task_whose_child_cannot_start(
     alpha_case, monkeypatch, tmp_path, capsys
 ):
     """V610/OP4/OP18: inject at OS child start, run the real CLI, read stop and legal recovery."""
-    import multiprocessing
 
     from alphalattice.control.task_control.child import ChildInterrupted, run_in_child
     from run_alphalattice import main

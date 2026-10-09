@@ -140,11 +140,7 @@ def test_every_script_starts_without_an_inherited_import_path(module: ScriptModu
 
 
 def test_every_product_importing_script_binds_this_tree_as_its_import_root() -> None:
-    """requirement: the process probe's failure mode is also caught by reading.
-
-    The probe above is the evidence; this names the one thing that made all four
-    failures identical, so a new script is refused before it is ever started.
-    """
+    """Every product importing script binds this tree as its import root."""
 
     unbound = sorted(
         module.name

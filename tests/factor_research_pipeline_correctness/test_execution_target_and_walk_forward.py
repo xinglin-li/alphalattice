@@ -230,12 +230,7 @@ def _seal(
 
 
 def test_frozen_one_session_target_policy_identity_is_unchanged() -> None:
-    """The frozen policy bytes are the compatibility promise of this Gate.
-
-    Pinned as a literal rather than recomputed, because a check that derived the
-    expected value from the same fields it is verifying would pass through any
-    field change at all.
-    """
+    """Frozen one session target policy identity is unchanged."""
 
     assert build_factor_target_policy().policy_hash == (
         "b98fa43b091ebacb5a1b1c997f6e92ffdf9c715e87f52802e0122034d0e7c72d"
@@ -267,15 +262,7 @@ def test_sealed_one_session_method_reproduces_the_legacy_default_surface() -> No
 
 
 def test_five_session_source_fails_on_method_before_any_numerical_work() -> None:
-    """A longer-span surface is refused for being the wrong method, not the wrong shape.
-
-    The two failures are deliberately distinct. A five-session seal cannot even
-    bind to a frozen one-session manifest: the manifest's formula is a
-    single-value Literal, so the seal's child graph disagrees with the surface
-    it claims and is refused before a single column is read. Handed no seal at
-    all, the same rows are refused later by the span the legacy default
-    asserts.
-    """
+    """Five session source fails on method before any numerical work."""
 
     listings = ("listing-a",)
     manifest = _manifest(listings)
@@ -323,13 +310,7 @@ def test_seal_from_another_snapshot_is_refused() -> None:
 
 
 def test_seal_citing_an_uninstalled_catalog_or_policy_cannot_reach_numerical_work() -> None:
-    """The consumer re-derives authority instead of comparing a subset of fields.
-
-    Both forgeries below are internally consistent and agree with the manifest
-    on snapshot, schedule and session axis -- everything a field comparison
-    looked at. They differ only in claiming a catalog or a publication policy
-    the Host never installed.
-    """
+    """Seal citing an uninstalled catalog or policy cannot reach numerical work."""
 
     listings = ("listing-a",)
     manifest = _manifest(listings)
@@ -353,14 +334,7 @@ def test_seal_citing_an_uninstalled_catalog_or_policy_cannot_reach_numerical_wor
 
 
 def test_bare_binding_without_terminal_seal_is_not_method_authority() -> None:
-    """A raw binding is a well-formed file, not a resolved publication.
-
-    Before this Gate the method-aware route accepted the binding object alone,
-    which meant anything that could construct one -- honestly or otherwise --
-    spoke with a publication's voice. The route now requires the resolved seal
-    graph, so the same Host-perfect binding, handed in bare, is refused with a
-    typed error rather than being promoted.
-    """
+    """Bare binding without terminal seal is not method authority."""
 
     listings = ("listing-a",)
     manifest = _manifest(listings)
@@ -417,11 +391,7 @@ def test_seal_naming_a_different_manifest_ref_is_refused() -> None:
 
 
 def test_shifted_schedule_axis_is_refused_before_target_compilation() -> None:
-    """Same shape, same span, shifted session: still refused.
-
-    Nothing about the surface looks irregular row by row; what fails is that one
-    row's entry session disagrees with the rest of its own formation group.
-    """
+    """Shifted schedule axis is refused before target compilation."""
 
     listings = ("listing-a", "listing-b")
     manifest = _manifest(listings)
@@ -709,10 +679,7 @@ def _ordinal_percentiles_one_column(values: np.ndarray) -> tuple[np.ndarray, np.
 
 
 def test_ordinal_percentiles_rank_only_the_finite_values_of_a_column() -> None:
-    """The counterexample: a ``-inf`` sorts before the finite values and must not
-    take an ordinal position from them; ``+inf`` and NaN sort after them and
-    must not either. Two sessions whose finite scores and order are identical
-    give a zero turnover whatever unavailable value the other rows carry."""
+    """Ordinal percentiles rank only the finite values of a column."""
 
     percentiles, finite = ordinal_percentile_columns(np.asarray([[-np.inf], [1.0], [2.0]]))
     assert np.array_equal(finite[:, 0], [False, True, True])
@@ -814,10 +781,7 @@ def test_period_pair_matrix_keeps_both_pairwise_formulas_bit_for_bit() -> None:
 
 
 def test_session_major_oos_evidence_is_the_one_factor_statistic_bit_for_bit() -> None:
-    """Every fold field of every factor equals the one-factor rule computed with
-    the formal owners on that factor alone: rank IC on the rows finite in both
-    the factor and the target, oriented by the fold's training mean, decile
-    spread on the simple return, pair coverage, and ordinal-rank turnover."""
+    """Session major out-of-sample evidence is the one factor statistic bit for bit."""
 
     panel_sessions = tuple(date(2026, 1, 2) + timedelta(days=index) for index in range(14))
     consumed = (*panel_sessions[:4], *panel_sessions[5:11])

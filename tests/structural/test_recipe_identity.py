@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+import typing
 from dataclasses import replace
 
 from pydantic import BaseModel
@@ -59,10 +61,7 @@ def _sealed() -> list[tuple[BaseModel, str]]:
 
 
 def test_a_renamed_label_moves_no_identity() -> None:
-    """requirement (NM1, LAWS.md ID10): every installed recipe, strategy, book and package names
-    its labels -- ids, titles, words that select nothing -- and its identity leaves them out at
-    every depth, so renaming them all moves no identity, while a change to what it computes
-    moves it. Planted on each installed one, and on the historical books' recipe hash."""
+    """A renamed label moves no identity."""
 
     for model, seal in _sealed():
         seal_field = frozenset({seal})
@@ -91,13 +90,7 @@ def test_a_renamed_label_moves_no_identity() -> None:
 
 
 def test_the_label_table_names_every_installed_strategy_component_and_rule() -> None:
-    """requirement (NM1): one label table, read by the CLI, the Workbench and the docs, names
-    each installed strategy, component, weight rule and coded policy by the id the code and the
-    workspaces keep, once, with an English and a Chinese title and summary; no English title
-    carries a stage code."""
-
-    import re
-    import typing
+    """The label table names every installed strategy component and rule."""
 
     from alphalattice.interface.local_application.labels import label, label_table, title
     from alphalattice.investment.alpha_research.scores.heterogeneous_product import (

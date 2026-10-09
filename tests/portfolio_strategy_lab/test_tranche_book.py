@@ -8,6 +8,9 @@ aggregate cap, and the first formation staging every sleeve.
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import date, timedelta
+
 import numpy as np
 import pytest
 from pydantic import ValidationError
@@ -28,7 +31,6 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
 
 
 def test_authored_data_quarantine_preserves_source_and_requires_a_usable_remainder():
-    from datetime import date, timedelta
 
     from alphalattice.investment.portfolio_strategy_lab.application import (
         research_experiment as owner,
@@ -58,14 +60,7 @@ def test_authored_data_quarantine_preserves_source_and_requires_a_usable_remaind
 
 
 def test_a_support_refusal_names_its_cause_and_where_it_holds():
-    """Regression: a first use's book stopped on `benchmark_support_absent`, and
-    neither the Task, its recovery view nor the words said which condition held or where, so the
-    agent searched the source. The code's subject names the cause, the names and sessions it
-    holds on and their span; a session with no eligible name comes first, since no
-    unavailable-return policy repairs it, a session the quarantine emptied among them. The code
-    fits a Task's record and reads as a typed code at any size."""
-
-    from datetime import date, timedelta
+    """A support refusal names its cause and where it holds."""
 
     from alphalattice.control.task_control.contracts import FAILURE_CODE_MAX_LENGTH
     from alphalattice.interface.local_application.failure_codes import safe_failure_code
@@ -116,8 +111,6 @@ def test_a_support_refusal_names_its_cause_and_where_it_holds():
 
 
 def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores(tmp_path):
-    from dataclasses import replace
-    from datetime import date, timedelta
 
     from alphalattice.capabilities.portfolio_backtesting.contracts import (
         MARKED_TO_MARKET_AT_CLOSE_T,
@@ -383,15 +376,7 @@ def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores
 
 
 def test_a_rebalance_never_selects_from_a_pool_smaller_than_the_book(tmp_path):
-    """requirement (the guide's own path): a book never stops mid-walk for a short pool.
-    A formation its candidate under-scored -- fewer scored names than a rebalance selects, as a
-    feature unavailable across the universe leaves it -- is held from the plan on, as an embargo
-    session is, and the book completes with no turnover there; a scored formation tradability
-    leaves short is refused before any segment is written; an under-scored first or last
-    formation is refused at plan time; each refusal names its session, worded with a way on."""
-
-    from dataclasses import replace
-    from datetime import date, timedelta
+    """A rebalance never selects from a pool smaller than the book."""
 
     from alphalattice.capabilities.portfolio_backtesting.contracts import (
         MARKED_TO_MARKET_AT_CLOSE_T,
@@ -561,12 +546,7 @@ def test_the_frozen_default_is_three_sleeves_of_thirty_five_at_exit_seventy() ->
 
 
 def test_the_sleeve_ceiling_is_a_multiple_of_the_sleeve_equal_weight() -> None:
-    """2.1 / top_k, and it holds that meaning at every admitted width.
-
-    This is the semantic most easily confused with the 6% aggregate cap. At the
-    default width the two are numerically identical, which is exactly why a test
-    that only checked 35 would not notice the confusion.
-    """
+    """The sleeve ceiling is a multiple of the sleeve equal weight."""
 
     assert INSTALLED_TRANCHE_BOOK_RECIPE.sleeve_ceiling == pytest.approx(2.1 / 35)
     for top_k in (17, 35, 75):
@@ -601,12 +581,7 @@ def test_each_sleeve_is_reviewed_once_per_cycle() -> None:
 
 
 def test_mu_rules_lift_negative_bucket_means_instead_of_dropping_them() -> None:
-    """Bucket means are simple returns; a long-only book cannot hold a negative.
-
-    The weakest bucket must keep a small positive weight, because membership
-    already voted it into the sleeve. Zeroing it here would be an exclusion no
-    rule asked for.
-    """
+    """Mu rules lift negative bucket means instead of dropping them."""
 
     mu = np.array([-0.02, 0.0, 0.05], dtype=np.float64)
     variance = np.full(3, 0.04, dtype=np.float64)
@@ -683,11 +658,7 @@ def test_no_positive_mass_returns_a_visible_equal_weight_fallback() -> None:
 
 
 def test_the_aggregate_cap_binds_on_a_name_no_single_sleeve_overweights() -> None:
-    """This is why the 6% cap is applied to the assembled book, not per sleeve.
-
-    Each sleeve here holds the shared name at a modest weight, well inside any
-    sleeve ceiling. Only the assembled book concentrates it.
-    """
+    """The aggregate cap binds on a name no single sleeve overweights."""
 
     # Ten names, three five-name sleeves, and name 0 is in all three. Inside any
     # sleeve it holds 0.2, which is that sleeve's equal weight and far under a
@@ -773,14 +744,7 @@ def test_a_changed_control_rotates_the_recipe_identity() -> None:
 
 
 def test_a_sparse_book_judges_feasibility_on_held_names_not_axis_length() -> None:
-    """Regression: the zeros can never absorb redistributed weight.
-
-    Sixteen held names out of a twenty-four name axis. Judging the ceiling
-    against the axis reads `0.06 * 24 = 1.44` and calls it feasible; the names
-    that can actually take weight give `0.06 * 16 = 0.96`, which is not. The
-    earlier version returned a vector whose maximum was above the ceiling while
-    reporting that it had been capped.
-    """
+    """A sparse book judges feasibility on held names not axis length."""
 
     weights = np.zeros(24, dtype=np.float64)
     weights[:16] = 1 / 16
@@ -790,12 +754,7 @@ def test_a_sparse_book_judges_feasibility_on_held_names_not_axis_length() -> Non
 
 
 def test_redistribution_never_opens_a_position_the_selection_did_not_make() -> None:
-    """Regression, and the more serious of the two.
-
-    A long-only book must hold what the membership rule selected and nothing
-    else. The earlier version spread excess weight into zero-weight names, so a
-    sixteen-name book came back holding twenty-four.
-    """
+    """Redistribution never opens a position the selection did not make."""
 
     weights = np.zeros(24, dtype=np.float64)
     weights[:16] = 1 / 16
@@ -823,13 +782,7 @@ def test_a_capped_disposition_is_a_checked_claim_not_a_label() -> None:
 
 
 def test_capped_names_are_pinned_and_do_not_reabsorb_weight() -> None:
-    """Review finding: the loop recomputed the over-set each pass.
-
-    A name sitting at exactly the ceiling is not ``> ceiling``, so it fell back
-    into the redistribution pool, took more weight and went over again. On this
-    vector that oscillates until the loop gives up, even though the answer below
-    is valid and obvious.
-    """
+    """Capped names are pinned and do not reabsorb weight."""
 
     result = cap_and_renormalise(np.array([0.5, 0.3, 0.2]), ceiling=0.34)
     assert result.disposition == "CAPPED"
@@ -841,12 +794,7 @@ def test_capped_names_are_pinned_and_do_not_reabsorb_weight() -> None:
 def test_water_filling_succeeds_whenever_the_ceiling_is_arithmetically_reachable(
     held: int,
 ) -> None:
-    """``ceiling * held >= 1`` is the whole feasibility condition.
-
-    Nothing about the tilt's shape may decide it. The earlier implementation
-    made steep tilts fail, which is what produced the false claim that the
-    boundary was data dependent.
-    """
+    """Water filling succeeds whenever the ceiling is arithmetically reachable."""
 
     ceiling = 1.0 / held * 1.2
     for steepness in (1.0, 5.0, 50.0, 500.0):
@@ -869,13 +817,7 @@ def test_only_a_ceiling_below_one_over_held_is_infeasible() -> None:
 
 
 def test_the_aggregate_cap_sets_an_exact_arithmetic_floor_on_top_k() -> None:
-    """The real control-surface finding, once the algorithm is correct.
-
-    At the staging formation every sleeve selects the same names, so the book
-    holds exactly ``top_k``. A 6% aggregate cap therefore needs
-    ``top_k >= ceil(1 / 0.06) = 17``, which is a constant and not a property of
-    the data. The declared control minimum of 15 is below it.
-    """
+    """The aggregate cap sets an exact arithmetic floor on top k."""
 
     for top_k in (15, 16):
         assert AGGREGATE_NAME_CAP * top_k < 1.0

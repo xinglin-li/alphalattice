@@ -10,12 +10,15 @@ preview reads the holdings and the source check back. No network anywhere.
 from __future__ import annotations
 
 import shutil
+import socket
 import threading
 from collections import Counter
 from dataclasses import replace
+from dataclasses import replace as moved
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import httpx
 import pytest
@@ -107,10 +110,7 @@ def _scenario() -> SecScenarioTransport:
 def test_the_official_source_is_admitted_only_by_consent_in_an_open_environment(
     tmp_path: Path,
 ) -> None:
-    """requirement (plan section 4): explicit network consent and offline
-    defaults. Without consent nothing is composed; with it the official
-    client still needs the environment to allow the network and to name the
-    SEC contact; an injected transport is admitted as such."""
+    """The official source is admitted only by consent in an open environment."""
 
     refused = admit_official_source(network_consent=False)
     assert refused.source is None and refused.transport_origin == "NONE"
@@ -156,12 +156,7 @@ def test_the_official_source_is_admitted_only_by_consent_in_an_open_environment(
 def test_the_workspace_admission_takes_the_live_branch_only_with_an_admitted_source(
     tmp_path: Path,
 ) -> None:
-    """requirement (plan section 4): the acquisition owner is wired through
-    the maintained application composition. The same verified package is
-    composed on the recorded branch by default, and on the live branch --
-    the source as the Task resources' live source, the policy asking for SEC
-    filings under LIVE_OFFICIAL with the consent recorded -- only when an
-    official source was admitted. A refused admission changes nothing."""
+    """The workspace admission takes the live branch only with an admitted source."""
 
     binding, _registry_path = _package(tmp_path)
     recorded = admit_evidence_review_workspace(
@@ -232,17 +227,7 @@ def test_the_workspace_admission_takes_the_live_branch_only_with_an_admitted_sou
 def test_the_public_operation_prepares_live_reuses_bodies_and_joins_a_refresh_in_flight(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (plan sections 4-5; matrix rows 2, 3, 12, 17): the live
-    branch through the real public operation over HTTP, with controlled
-    responses. The first preparation fetches every selected body once and
-    commits it; a second caller during it is answered with the Task in
-    flight, not a second acquisition; the same intent later is the exact
-    reuse (no source check at all); a new cutoff is a fresh source check
-    that reads the inventory and downloads no body again; the preview reads
-    the holdings and the source check back. The returned requests submit
-    unchanged."""
-
-    import socket
+    """The public operation prepares live reuses bodies and joins a refresh in flight."""
 
     real_connect = socket.socket.connect
 
@@ -333,7 +318,6 @@ def test_the_public_operation_prepares_live_reuses_bodies_and_joins_a_refresh_in
         assert len(transport.body_calls) == expected_bodies
         assert len(set(transport.body_calls)) == expected_bodies, "each body once, by one Task"
         adapter = service.review.evidence_task_adapter
-        from uuid import UUID
 
         other_check = adapter.source_check(UUID(other["task_id"]), unit_id=ONE_UNIT)
         assert other_check["reused_local_count"] == expected_bodies
@@ -484,12 +468,7 @@ def test_documents_lists_healthy_commitments_beside_a_named_refused_commitment(
 
 
 def test_a_parser_only_change_prepares_again_from_retained_bytes(tmp_path: Path) -> None:
-    """requirement (plan section 3; matrix row 8): a canonicalization rule
-    change supersedes the preparation but not the bytes. The next
-    preparation under the rotated binding checks the inventory and
-    canonicalizes again from the retained originals: zero body downloads,
-    every selected body reused, the new document set sealed under the new
-    binding."""
+    """A parser only change prepares again from retained bytes."""
 
     workspace, report = build_workspace(tmp_path)
     transport = _scenario()
@@ -535,7 +514,6 @@ def test_a_parser_only_change_prepares_again_from_retained_bytes(tmp_path: Path)
         check = service.get("/api/evidence/preview?" + query)["source_check"]
         assert check["reused_local_count"] == fetched and check["fetched_count"] == 0
         adapter = service.review.evidence_task_adapter
-        from uuid import UUID
 
         document_set = adapter._document_set(
             adapter.registry.task(UUID(again["task_id"])), ONE_UNIT
@@ -548,11 +526,7 @@ def test_a_parser_only_change_prepares_again_from_retained_bytes(tmp_path: Path)
 def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
     tmp_path: Path,
 ) -> None:
-    """requirement (matrix row 16, seen on the campaign restart): a live
-    preparation reopened with consent but no network reads back -- the
-    prepared Task, its packet, the holdings -- and a new source check is
-    refused by name with no outbound work and no local body presented as
-    fresh."""
+    """A denied source reads the live preparation back and fetches nothing."""
 
     workspace, report = build_workspace(tmp_path)
     transport = _scenario()
@@ -809,15 +783,7 @@ def test_a_failed_live_run_is_not_retried_with_a_denied_source(tmp_path: Path) -
 def test_a_holding_that_filed_nothing_in_the_window_is_named_and_not_packed(
     tmp_path: Path,
 ) -> None:
-    """requirement (W1): the preparation reads each holding's filing index at its
-    cutoff before packing. A holding whose index holds nothing in the 30-day
-    window is named by the run as nothing filed and packed into no unit; the
-    others are packed from the plans that read made, which the Task takes
-    without reading an index again. A book where no holding filed anything
-    prepares nothing, and says so."""
-
-    from dataclasses import replace as moved
-    from uuid import UUID
+    """A holding that filed nothing in the window is named and not packed."""
 
     def aged(ticker: str) -> list[ScenarioFiling]:
         # The same two periodic reports, accepted a quarter before the cutoff.
@@ -886,14 +852,7 @@ def test_a_holding_that_filed_nothing_in_the_window_is_named_and_not_packed(
 def test_a_holding_packed_on_its_reservation_that_filed_nothing_leaves_its_unit_s_floor(
     tmp_path: Path,
 ) -> None:
-    """requirement (V587, TE12): a unit's preparation judges its floor as the packing and the
-    installer do. A holding whose index could not be read at packing is packed on its
-    reservation; when the unit's acquisition reads its index and it filed nothing in the
-    window, it leaves the unit's share, while a holding whose filings failed to arrive stays
-    in it -- at the strictest floor the unit is refused naming both by their numbers."""
-
-    from dataclasses import replace as moved
-    from uuid import UUID
+    """A holding packed on its reservation that filed nothing leaves its unit's floor."""
 
     transport = _scenario()
     workspace, report = build_workspace(tmp_path)
@@ -971,13 +930,7 @@ def _live_service(tmp_path: Path, transport: SecScenarioTransport, now: list[Any
 
 
 def test_a_filing_read_once_is_carried_while_it_stays_in_the_window(tmp_path: Path) -> None:
-    """requirement (W3, the Analyst's side of its verification): the filing is
-    the unit of reuse. A day with no new filing prepares nothing -- no unit, no
-    Task, no Analyst -- and the review reads the earlier findings as of that
-    day; a day with a new filing reads only it, and the Analyst is told what
-    the earlier readings found, never the old filing again."""
-
-    from uuid import UUID
+    """A filing read once is carried while it stays in the window."""
 
     from alphalattice.control.product_host.composition.evidence_review_projection import (
         EvidenceCroProjector,
@@ -1100,10 +1053,7 @@ def test_a_filing_read_once_is_carried_while_it_stays_in_the_window(tmp_path: Pa
 
 
 def test_carried_findings_keep_an_issuer_whose_new_filing_cannot_be_read(tmp_path: Path) -> None:
-    """A failed new source keeps the earlier finding and its issuer visible,
-    without counting the issuer as reviewed. The same public route recovers
-    after the source is available, keeping every dossier validation.
-    """
+    """Carried findings keep an issuer whose new filing cannot be read."""
     from pydantic import ValidationError
 
     transport = _scenario()
@@ -1183,13 +1133,7 @@ def test_carried_findings_keep_an_issuer_whose_new_filing_cannot_be_read(tmp_pat
 def test_a_raised_risk_carries_forward_and_stays_open_after_its_filing_ages_out(
     tmp_path: Path,
 ) -> None:
-    """requirement (W3, the CRO's side of its verification): the issuers'
-    register. A day with no new filing calls no Analyst and no CRO: the last
-    review carries forward as of that day, routed as the CRO last assessed it.
-    A risk the CRO raised does not age out with its filing: forty days on,
-    with every filing out of the window, it still reads open in the book's
-    dossier, where the CRO reads it again -- and the register answers by
-    issuer, never by book."""
+    """A raised risk carries forward and stays open after its filing ages out."""
 
     from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
         translate_submission,
@@ -1317,13 +1261,7 @@ def test_a_raised_risk_carries_forward_and_stays_open_after_its_filing_ages_out(
 def test_an_open_issue_on_a_reading_of_an_earlier_method_is_read_and_stays_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (AX1, X4 with E2): after the Evidence method changes, every
-    earlier analysis reads as superseded, and the risks the CRO raised on them
-    stay open in the register. A later review of the book still reads each
-    open issue with the findings it rests on, marked as read under the earlier
-    method, so the CRO can state it again or resolve it; a review that says
-    nothing of it leaves it open. Before, the dossier refused
-    `evidence_review_evidence_not_current` for every such book, with no way on."""
+    """An open issue on a reading of an earlier method is read and stays open."""
 
     from alphalattice.control.product_host.composition.evidence_review_application import (
         ReviewOutcome,
@@ -1419,14 +1357,7 @@ def test_an_open_issue_on_a_reading_of_an_earlier_method_is_read_and_stays_open(
 
 
 def test_a_holding_with_nothing_to_cite_carries_the_review(tmp_path: Path) -> None:
-    """requirement (X3): the CRO's basis names only the holdings a finding or
-    an open issue names, since every risk and every resolution cites findings.
-    A holding that filed nothing, then files a report in which nothing is
-    found, carries the last review with no model call; a band crossed by a
-    holding with a finding is still a new question, one by a holding with
-    none -- or its leaving the book -- is not."""
-
-    from dataclasses import replace as moved
+    """A holding with nothing to cite carries the review."""
 
     from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import review_basis
     from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import ExposureBand
@@ -1537,11 +1468,7 @@ def test_a_holding_with_nothing_to_cite_carries_the_review(tmp_path: Path) -> No
 
 
 def test_a_raised_risk_stays_open_whichever_book_or_policy_raised_it(tmp_path: Path) -> None:
-    """requirement (X4): the issuers' register is every fresh review's,
-    whatever book it reviewed and whatever CRO decision policy sealed it. A
-    risk one book's review raised is read by a second book holding the issuer
-    in its first dossier after the policy rotated, stays open while reviews say
-    nothing of it, and closes when a review of either book resolves it."""
+    """A raised risk stays open whichever book or policy raised it."""
 
     from alphalattice.control.product_host.composition import evidence_review_application
     from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
@@ -1883,17 +1810,7 @@ def _reads_after(
 
 
 def test_a_day_reads_the_same_however_many_days_the_workspace_holds(tmp_path: Path) -> None:
-    """requirement (X2, Z2, K2): what a book's view, a preparation and a CRO
-    bundle read -- analyses replayed, reviews read for the register and the
-    basis and the register's own records, the readings ledger's scan, runs
-    and requests, the analysis and
-    review records a choice is made from, and the preparation's reuse
-    indexes of snapshots, document and source sets and commits -- does not
-    grow with the days a workspace holds. The same two recent days, measured
-    the day after, read the same whether or not two days forty days earlier
-    were prepared and reviewed too; only the names of the records are listed.
-    The records' days are derived: a workspace that holds none reads each
-    record once to learn its day, and the next read is as above."""
+    """A day reads the same however many days the workspace holds."""
 
     recent = (40, 41)
     alone = _reads_after(tmp_path / "recent", recent, 42)
@@ -1910,11 +1827,7 @@ def test_a_day_reads_the_same_however_many_days_the_workspace_holds(tmp_path: Pa
 
 
 def test_a_short_unit_is_delivered_whole_without_an_index(tmp_path: Path) -> None:
-    """requirement (W4): a unit whose filings together fit the bundle's file
-    bound is delivered whole. Its generation commits to the filings' bytes and
-    builds no index -- no passage embedded, no session opened, no question run,
-    nothing reranked -- and its pieces together are each filing's canonical
-    text, unchanged; the Analyst's bundle says the filings are whole."""
+    """A short unit is delivered whole without an index."""
 
     from alphalattice.evidence.alternative_evidence.analysis.views import render_analyst_bundle
     from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
@@ -1962,15 +1875,7 @@ def test_a_short_unit_is_delivered_whole_without_an_index(tmp_path: Path) -> Non
 
 
 def test_a_bundle_on_a_book_with_no_run_is_answered_as_it_was_read(tmp_path: Path) -> None:
-    """regression (V255, EV1, OP6): a book with no sealed run of its own reads its dossier at
-    the time it is read, the open issue another book's review raised carried into it. That
-    cutoff was the clock, so the dossier moved between the bundle and its answer and every
-    answer was refused stale (both AX1f runs); the bundle seals the time it read the dossier,
-    and the answer and its Task's admission and publication meet that dossier.
-    requirement (V256, OP10): a bundle names its book's last
-    review with how it reads and under which CRO policy, never by a hash."""
-
-    from uuid import UUID
+    """A bundle on a book with no run is answered as it was read."""
 
     from alphalattice.control.task_control.contracts import TaskLifecycle
     from alphalattice.investment.portfolio_strategy_lab.application.contracts import (

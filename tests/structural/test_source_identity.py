@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import json
 from collections import Counter
+from enum import StrEnum
 from pathlib import Path
 
 import pytest
@@ -177,12 +179,7 @@ def test_study_identities_track_no_platform_or_build_file() -> None:
 
 
 def test_every_recorded_role_is_in_the_roles_table_and_resolves() -> None:
-    """requirement (binding plan R1, LAWS.md ID1): the identity-roles table names every role the
-    successor records use, each with an installed-value function that resolves, a comparison and a
-    closure kind, or as retired with the card that retired it and why (a role whose code went: its
-    moves stay as history, RT); its number-deciding packages are registered packages."""
-
-    import importlib
+    """Every recorded role is in the roles table and resolves."""
 
     table = json.loads((ROOT / "config" / "identity-roles.json").read_text(encoding="utf-8"))
     roles = {entry["role"]: entry for entry in table["roles"]}
@@ -214,12 +211,7 @@ def test_every_recorded_role_is_in_the_roles_table_and_resolves() -> None:
 
 
 def test_every_factor_value_has_a_readout_role_and_binds_its_recorded_origin() -> None:
-    """requirement (V360, V345): one readout role per installed Factor method family, and one for
-    the controls, read each value identity as the rule measures it, so an edit to a shared owner
-    names each value it moves before U0 does (V359's first cut moved every family through
-    `registry.py` and the readout named none). A Panel and a catalog bind each value held at its
-    recorded origin (LAWS.md ID1), as they bind the source-availability catalog: a move recorded
-    as keeping every value keeps every Panel, and an unrecorded move is a new identity."""
+    """Every factor value has a readout role and binds its recorded origin."""
 
     from alphalattice.foundation.feature_engine.catalog.contracts import (
         SOURCE_AVAILABILITY_ROLE,
@@ -262,10 +254,7 @@ def test_every_factor_value_has_a_readout_role_and_binds_its_recorded_origin() -
 def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores_prose(
     tmp_path: Path,
 ) -> None:
-    """requirement (binding plan R1, LAWS.md ID3): a role's closure by rule is what its entries
-    import inside the number-deciding packages, hashed as syntax. A comment or a docstring edit
-    moves nothing; a statement moves it; a module outside the packages, under their platform
-    (storage), or imported only for typing, never enters it."""
+    """A rule closure follows imports inside the deciding packages and ignores prose."""
 
     from alphalattice.kernel.shared_kernel.source_identity import (
         NumberDecidingRule,
@@ -334,10 +323,7 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
 
 
 def test_a_span_moves_no_identity_and_any_other_form_reads_as_written() -> None:
-    """requirement (A4, LAWS.md ID3): a span measures and decides nothing, so a module with
-    `with span("...")`, `@spanned("...")` and their import reads as the module without them. A
-    span imported under another name, called with a value that is not literal text, or beside a
-    rebinding of its name reads as written and moves the identity like any statement."""
+    """A span moves no identity and any other form reads as written."""
 
     from alphalattice.kernel.shared_kernel.source_identity import (
         source_bytes_syntax_sha256 as digest,
@@ -528,10 +514,7 @@ def test_u0_records_an_opened_reads_numbers_and_names_the_sections_that_moved() 
 
 
 def test_the_environment_is_read_by_one_helper_and_the_named_keys() -> None:
-    """requirement (LAWS.md ID6, E0): the interpreter, the platform and the installed versions
-    are read by `kernel/shared_kernel/environment.py`, recorded beside a result and hashed into
-    no identity; every other reader is named, each a rebuild or proof key, a record of how data
-    was fetched, or a binding the card named beside it removes."""
+    """The environment is read by one helper and the named keys."""
 
     assert _environment_readers(ROOT / "src" / "alphalattice") == set(_ENVIRONMENT_READERS)
 
@@ -540,8 +523,6 @@ def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
     """requirement (SH, LAWS.md SC3, V98, V247): a schema's words -- a model's docstring, a
     field's description, an enum's docstring, a title, examples -- move no schema hash; a type,
     a constraint, a default or a required field does. A property named like prose keeps its name."""
-
-    from enum import StrEnum
 
     from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 

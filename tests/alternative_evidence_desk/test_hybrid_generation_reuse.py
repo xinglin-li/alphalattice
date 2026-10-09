@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -184,10 +184,7 @@ def _counts(runtime: Any) -> dict[str, int]:
 def test_a_changed_corpus_is_another_generation_composed_from_committed_blocks(
     tmp_path: Path,
 ) -> None:
-    """requirement: adding a document embeds only that document; revising one
-    re-embeds only the revision; removing one embeds nothing; every corpus is
-    its own generation with its own question, and its vectors are the same
-    numbers a full pass would give. Blocks come only from sealed generations."""
+    """A changed corpus is another generation composed from committed blocks."""
 
     runtime, passes = _counted_runtime(tmp_path)
     a = _release()
@@ -297,10 +294,8 @@ def test_blocks_are_reused_only_under_the_same_encoder_context(tmp_path: Path) -
     ), "the order of the inputs is part of the key"
     # A source asked under another context finds nothing in the sealed store.
     source = runtime.vector_block_source(_set)
-    from uuid import UUID
 
     from alphalattice.kernel.knowledge.hybrid import _hybrid_rows
-    from alphalattice.kernel.knowledge.retrieval import _build_chunks
 
     document_set = runtime.artifacts.load(
         "document-sets",
@@ -322,10 +317,7 @@ def test_blocks_are_reused_only_under_the_same_encoder_context(tmp_path: Path) -
 def test_a_single_payload_generation_serves_slices_and_a_tampered_block_serves_nothing(
     tmp_path: Path,
 ) -> None:
-    """requirement: a generation written as one payload (the retained v4 form)
-    serves a revision's vectors as a slice cut by its anchored manifest; a
-    block or sidecar that does not verify against its sealed record serves
-    nothing and the build embeds instead of trusting it."""
+    """A single payload generation serves slices and a tampered block serves nothing."""
 
     from alphalattice.kernel.knowledge.hybrid_contracts import (
         HybridVectorBlockSidecar,
@@ -601,13 +593,7 @@ def _rewrite_coherently(database: Path, payload: Path) -> tuple[bytes, str, str]
 
 
 def test_a_coherent_rewrite_cannot_be_laundered_through_a_new_cutoff(tmp_path: Path) -> None:
-    """requirement: reuse and restoration are anchored to the commitment the
-    sealed generation record holds, never to the database, its manifest or a
-    cleanup marker -- which can all be rewritten together. A new cutoff over
-    an index rewritten coherently refuses and seals nothing; an explicit
-    rebuild repairs the index from the committed payload; a marker that lies
-    is ignored in favour of the record; two records that disagree refuse.
-    """
+    """A coherent rewrite cannot be laundered through a new cutoff."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime)
@@ -757,13 +743,7 @@ def test_an_unsealed_index_with_other_vectors_is_refused_not_replaced(
 
 
 def test_a_legacy_generation_is_accounted_but_never_opened(tmp_path: Path) -> None:
-    """requirement (D2, 2026-09-23): a `knowledge-hybrid-v3` generation is history.
-
-    Its record still parses through the format dispatch -- the storage owner
-    accounts its index bytes -- but a session never opens it: the request is
-    refused by name before any index is read or any model runs, and the committed
-    generation of the same corpus opens as before, embedding nothing.
-    """
+    """A legacy generation is accounted but never opened."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime)
@@ -799,19 +779,7 @@ def test_a_legacy_generation_is_accounted_but_never_opened(tmp_path: Path) -> No
 def test_an_interrupted_build_reruns_its_uncommitted_work_and_publishes_once(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
-    """requirement: death before or after the index is placed leaves one
-    authoritative generation; uncommitted work reruns and is counted; work a
-    sealed record commits to is reused; an orphan is never its own proof.
-
-    Death while the index is staged: nothing was placed -- the payload is
-    placed only after the staged index is verified and admitted -- and the
-    next build embeds again (counted as a pass, never hidden) and publishes.
-    Death after the index was placed but before its record was sealed: no
-    durable commitment names the index, so the next build does not trust it;
-    it embeds again and keeps the orphan only because this pass reproduced it
-    exactly. Death after the record was sealed: the next build finds the
-    commitment and reuses the generation with no pass.
-    """
+    """An interrupted build reruns its uncommitted work and publishes once."""
 
     runtime, passes = _counted_runtime(tmp_path)
     request = _request_at(_NOW)
@@ -972,11 +940,7 @@ def _revision_inputs(runtime: Any, generation: Any, revision_label: str) -> tupl
 def test_a_first_reading_proves_no_earlier_generation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (X6): the vector block source looks only through the
-    generations that read one of the set's filings -- proving a generation
-    reads every block it holds. A set of filings no generation read proves
-    none (it proved every earlier generation whole); a set sharing a filing
-    proves the generation that read it and reuses its vectors."""
+    """A first reading proves no earlier generation."""
 
     from alphalattice.evidence.alternative_evidence.runtime import service
     from tests.alternative_evidence_desk.planted_corpus import PLANTED_CLAIMS, EvidenceTopic
@@ -1012,13 +976,7 @@ def test_a_first_reading_proves_no_earlier_generation(
 def test_a_sidecar_key_cannot_map_a_block_to_other_inputs_or_another_context(
     tmp_path: Path,
 ) -> None:
-    """requirement (R1): a reusable block proves its bytes AND its association
-    with the exact ordered encoder inputs, context and position. A sidecar
-    whose keys are swapped between two blocks of equal size -- every vector
-    byte, block digest, order and payload digest preserved -- serves nothing,
-    the build embeds, and the sealed generation still reads back whole; a
-    key claiming another encoder context serves nothing under that context;
-    the original metadata restores ordinary reuse."""
+    """A sidecar key cannot map a block to other inputs or another context."""
 
     from alphalattice.kernel.knowledge.hybrid_contracts import (
         embedding_context_hash,
@@ -1111,10 +1069,7 @@ def test_a_sidecar_key_cannot_map_a_block_to_other_inputs_or_another_context(
 def test_removed_trigram_postings_are_refused_before_results_are_trusted(
     tmp_path: Path,
 ) -> None:
-    """requirement (R3): the trigram index reads its columns from the content
-    table, so a row whose postings were removed with a valid FTS5 operation
-    still joins, counts and displays. The reader must prove postings against
-    content before any result is trusted; restoring the bytes reads exactly."""
+    """Removed trigram postings are refused before results are trusted."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime)
@@ -1168,13 +1123,7 @@ def test_removed_trigram_postings_are_refused_before_results_are_trusted(
 def test_an_evicted_generation_serves_no_blocks_until_its_index_is_rebuilt(
     tmp_path: Path,
 ) -> None:
-    """requirement (R1, bounded fallback): a block's key is derived from the
-    committed manifest, so a generation whose index is evicted proves no
-    mapping -- refused by name, its revisions embedded again -- while its own
-    cold readback and explicit rebuild still restore it from the retained
-    blocks with no model; once the index is back, its blocks serve again."""
-
-    from datetime import UTC, datetime
+    """An evicted generation serves no blocks until its index is rebuilt."""
 
     runtime, passes = _counted_runtime(tmp_path)
     a = _recorded_document()

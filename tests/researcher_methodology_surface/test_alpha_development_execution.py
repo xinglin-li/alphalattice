@@ -23,8 +23,9 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -123,8 +124,6 @@ from tests.researcher_methodology_surface.real_workspace import (
 
 
 def test_shared_score_rows_bind_positions_availability_and_unique_cells():
-    from datetime import date
-    from types import SimpleNamespace
 
     import pyarrow as pa
 
@@ -227,14 +226,7 @@ def test_an_authored_alpha_document_reaches_the_real_model_runtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`run` fits through the installed executor and returns real metric evidence.
-
-    And the run leaves a durable receipt behind. Both target bindings used to be
-    temporary locals folded into one opaque input-binding hash and then
-    discarded, so nothing on disk said which target method had run: the estimator
-    and fit children record the *lane*, whose ``standardization_id`` is a property
-    of a closed enum and therefore says rank-gauss whatever the recipe selected.
-    """
+    """An authored alpha document reaches the real model runtime."""
 
     handle, factor_ids, evidence_root = alpha_authority
     declared = factor_ids[:8]
@@ -371,16 +363,7 @@ def test_a_lightgbm_declaration_fits_the_installed_dynamic_panel_adapter(
     alpha_authority: tuple[str, tuple[str, ...], Path],
     tmp_path: Path,
 ) -> None:
-    """requirement: ``capability-2`` in the same Alpha document is the product's LightGBM.
-
-    The declaration names the second installed capability and the exact
-    estimator point the installed G6 component trains with. What must follow is
-    not "a fit happened" but *which* adapter fitted, under which plan, and that
-    the sealed model is the model: reloaded from its sidecar and asked again on
-    the fold's prediction surface it returns the scores the run published,
-    bit for bit. The direct plan is asserted because a fixed-iteration fit reads
-    no tuning partition, so a nested plan here would describe work never done.
-    """
+    """A LightGBM declaration fits the installed dynamic panel adapter."""
 
     handle, factor_ids, evidence_root = alpha_authority
     declared = factor_ids[:8]
@@ -472,12 +455,7 @@ def test_a_lightgbm_policy_without_a_stated_partition_is_refused_before_arrays(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An early-stopping policy needs a tuning partition this split does not state.
-
-    The Dynamic Panel domain admits the policy, so admission succeeds; what the
-    development planner cannot do is manufacture the inner partition, and it says
-    so as a typed refusal before any array is leased or any fit is attempted.
-    """
+    """A LightGBM policy without a stated partition is refused before arrays."""
 
     handle, factor_ids, evidence_root = alpha_authority
     parameters = {**_lightgbm_parameters(), "training_policy": "L2_EARLY_STOPPING"}
@@ -509,18 +487,7 @@ def test_the_declared_feature_axis_is_the_axis_that_was_fitted(
     alpha_authority: tuple[str, tuple[str, ...], Path],
     tmp_path: Path,
 ) -> None:
-    """requirement: the document's subset is what the arrays were built over.
-
-    This is the case that a green run could not previously distinguish. The
-    declared axis reached the input-binding hash and nothing else, so identity
-    recorded a subset while every matrix, budget, training binding and estimator
-    axis came from the full Factor evidence axis. Both halves succeeded, agreed
-    with themselves, and described different experiments.
-
-    Asserted on the fold plan the executor actually builds, because that is the
-    object every downstream array is derived from -- and the strict subset is
-    chosen deliberately, since an axis equal to the parent proves nothing.
-    """
+    """The declared feature axis is the axis that was fitted."""
 
     handle, selected_ids, evidence_root = alpha_authority
     declared = selected_ids[:2]
@@ -586,13 +553,7 @@ def test_an_axis_outside_the_parent_evidence_is_refused() -> None:
 
 
 def test_a_receipt_cannot_pair_one_recipe_with_another_recipes_values() -> None:
-    """requirement: the two target layers must describe one method.
-
-    A receipt asserting a robust-z declaration beside a rank-gauss
-    materialization would be the same class of defect one level up from the one
-    this gate closed: every hash valid, and the two halves about different
-    methods.
-    """
+    """A receipt cannot pair one recipe with another recipe's values."""
 
     methods = installed_alpha_target_methods(
         sector_revision="a" * 64,
@@ -763,13 +724,7 @@ def test_a_tampered_child_lineage_entry_is_refused_on_readback(
     alpha_authority: tuple[str, tuple[str, ...], Path],
     tmp_path: Path,
 ) -> None:
-    """requirement: the lineage is resolved, not merely re-read.
-
-    The tamper is chosen to be internally valid -- the entry is resealed and so
-    is the receipt -- so only resolving each child against the store catches it.
-    Two parallel tuples of estimator and fit hashes could never catch it at all:
-    there would be nothing joining an estimator to the fold its fit was for.
-    """
+    """A tampered child lineage entry is refused on readback."""
 
     handle, factor_ids, evidence_root = alpha_authority
     document = _document(handle=handle, feature_ids=factor_ids[:2])
@@ -954,17 +909,7 @@ def test_the_candidate_evidence_a_batch_names_is_verified_on_readback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """requirement: every artifact the batch result names is part of the proof.
-
-    The candidate result names a development report and an inference evidence
-    record; the report names one thin fold evidence per fold. They are what a
-    downstream reader consumes, so a receipt is complete only when each exists
-    under its exact hash, belongs to this program, surface, candidate and card,
-    and lists exactly the children the lineage resolved, at the same fold
-    positions. Every forgery below is internally valid -- resealed up to the
-    receipt -- so only binding each artifact to the resolved children refuses
-    it; a reader that walked the lineage alone admitted all of them.
-    """
+    """The candidate evidence a batch names is verified on readback."""
 
     handle, factor_ids, evidence_root = alpha_authority
     document = _document(handle=handle, feature_ids=factor_ids[:2])
@@ -1292,13 +1237,7 @@ def test_the_candidate_evidence_a_batch_names_is_verified_on_readback(
 def test_the_declared_standardization_is_the_one_that_executed(
     real_risk_workspace: RealRiskWorkspace,
 ) -> None:
-    """requirement: the recipe's named method ran, not the lane's derived default.
-
-    Asserted against the compiled surface rather than inferred from a green run.
-    A run completing proves only that *some* standardization was applied, and the
-    defect being closed is precisely one where the wrong one is applied and
-    everything still succeeds.
-    """
+    """The declared standardization is the one that executed."""
 
     recipes = installed_alpha_development_target_recipes(sector_revision="a" * 64)
     recipe = recipes.resolve(CROSS_STANDARDIZED_DEVELOPMENT_TARGET_RECIPE_ID)
@@ -1448,13 +1387,7 @@ def test_saved_alpha_comparison_reads_two_real_ridge_receipts_without_recomputin
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Two named regularization values compare only after exact evidence matches.
-
-    The comparison consumes the graphs the two readbacks verified: it resolves
-    no chunk of its own (counted per request), assembles no score matrix, and
-    keeps only the support -- which cells each candidate scored -- never the
-    values. Each chunk was proved exactly once, by the walk that read it.
-    """
+    """Saved alpha comparison reads two real ridge receipts without recomputing metrics."""
 
     handle, factor_ids, evidence_root = alpha_authority
     reader = AlphaDevelopmentReceiptReader(_ALPHA_STORE_ROOT(tmp_path))

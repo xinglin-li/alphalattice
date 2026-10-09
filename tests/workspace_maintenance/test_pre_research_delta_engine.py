@@ -895,12 +895,7 @@ def test_tampered_marker_child_fails_closed(tmp_path) -> None:
 
 
 def test_one_days_deltas_chain_alike_in_any_ledger_order() -> None:
-    """requirement: a day's adjusted-return deltas chain to one hash, whatever their ledger order.
-
-    The ledger orders one observation's rows by receipt hashes that bind the observation clock,
-    so the same day observed twice listed its deltas in two orders and published two chain
-    identities. The revision its readers bound keeps its prefix as published.
-    """
+    """One day's deltas compose identically in any ledger order."""
 
     from alphalattice.foundation.market_data_ops.returns.semantic_revisions import (
         build_adjusted_return_semantic_revision,

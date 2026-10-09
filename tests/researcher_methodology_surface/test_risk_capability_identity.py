@@ -129,19 +129,7 @@ class _RestatedCovarianceCapability:
 
 
 def test_a_capability_whose_adapter_is_not_the_installed_one_is_refused() -> None:
-    """The gap: admission and execution read the adapter from different places.
-
-    ``admit_recipe`` seals a Program using ``capability.adapter``. Execution
-    resolves an adapter out of the installed index *by id*. Only "an adapter with
-    this id is installed" was checked, so a capability could seal a Program under
-    implementation A's numerical binding while implementation B computed the
-    numbers -- and every hash on the resulting evidence would be internally
-    consistent while describing a computation that never happened.
-
-    Refused at construction, which is as early as it can be refused: the
-    contradiction exists the moment the Host installs the pair, before any
-    document has been authored.
-    """
+    """A capability whose adapter is not the installed one is refused."""
 
     with pytest.raises(ValueError, match="RISK_ESTIMATOR_CAPABILITY_BINDING_NOT_INSTALLED"):
         RiskEstimatorCatalog(
@@ -151,12 +139,7 @@ def test_a_capability_whose_adapter_is_not_the_installed_one_is_refused() -> Non
 
 
 def test_a_separate_instance_of_the_same_implementation_stays_installable() -> None:
-    """The check is on declared identity, not object identity.
-
-    ``CovarianceCapability.adapter`` constructs a fresh adapter every read, so
-    the capability's adapter is never the same object as the installed one. If
-    the guard above compared instances it would reject the only correct case.
-    """
+    """A separate instance of the same implementation stays installable."""
 
     installed = CovarianceEstimatorAdapter()
     capability = CovarianceCapability()
@@ -200,13 +183,7 @@ def test_execution_refuses_an_adapter_that_is_not_the_one_admitted(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """requirement: same id, different binding, zero estimates and no artifacts.
-
-    Checked again at execution rather than trusted from admission, because the
-    two happen at different times and the object that computes is fetched fresh.
-    Matching the exact error code is what proves the numerical-binding guard
-    fired rather than the catalog or recipe guard above it.
-    """
+    """Execution refuses an adapter that is not the one admitted."""
 
     authority, _requested = _bounded_authority(real_risk_workspace, count=3)
     input_binding, bounded = resolve_development_input_binding(
@@ -269,15 +246,7 @@ class _InertAdapter:
 
 
 def test_installing_an_unselected_adapter_moves_governance_but_not_the_method() -> None:
-    """requirement (-3): the two identities separate, asserted both ways.
-
-    The Program used to fold every installed capability's numerical binding, so
-    installing an unrelated adapter moved the identity of a computation that had
-    not changed by one bit. That makes "the Host installed something else"
-    indistinguishable from "these numbers would come out differently", and it
-    would have made -2's second adapter invalidate the first method's evidence
-    merely by existing.
-    """
+    """Installing an unselected adapter moves governance but not the method."""
 
     covariance = CovarianceEstimatorAdapter()
     catalog_a = RiskEstimatorCatalog((covariance,))
@@ -308,13 +277,7 @@ def test_installing_an_unselected_adapter_moves_governance_but_not_the_method() 
 
 
 def test_changed_executable_content_moves_the_selected_numerical_binding() -> None:
-    """requirement (-3): identity follows bytes, not module names.
-
-    ``implementation_owners`` is a tuple of module *names*, and a name denotes
-    whatever that module currently contains. Hashing only names let an adapter
-    be rewritten completely while its declared owners, its adapter id, and
-    therefore its numerical binding all stood still.
-    """
+    """Changed executable content moves the selected numerical binding."""
 
     original = CovarianceEstimatorAdapter().describe_numerical_binding()
     # Same adapter id, same declared owners, same policy -- different bytes.
@@ -337,11 +300,7 @@ def test_changed_executable_content_moves_the_selected_numerical_binding() -> No
 
 
 def test_the_declared_implementation_hash_is_the_real_module_bytes() -> None:
-    """The content hash must be derived, not asserted.
-
-    A hard-coded constant would satisfy every test above while saying nothing
-    about the code that runs, so this recomputes it from the files on disk.
-    """
+    """The declared implementation hash is the real module bytes."""
 
     from alphalattice.investment.risk_research.estimators import covariance, matrix_identity
     from alphalattice.investment.risk_research.estimators.contracts import (
@@ -378,13 +337,7 @@ def test_every_bound_identity_is_consumed_by_the_program_hash(field: str) -> Non
 
 
 def test_a_tampered_binding_fails_its_own_identity_check() -> None:
-    """Both identities self-check, and the inner one is the tighter statement.
-
-    Editing ``recipe_hash`` breaks the selected-method identity *and* the
-    development identity. The selected-method check reports first, which is the
-    more precise diagnosis: what changed is the computation, not the installed
-    set. Editing a governance-only field is checked separately below.
-    """
+    """A tampered binding fails its own identity check."""
 
     baseline = _binding()
     payload = baseline.model_dump(mode="json")

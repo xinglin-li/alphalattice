@@ -27,13 +27,8 @@ from alphalattice.capabilities.portfolio_backtesting.contracts import (
     [("0", 0), ("2.5", 5), ("5", 10), ("10", 20), ("20", 40)],
 )
 def test_the_admitted_ladder_is_exact_in_both_units(per_side: str, platform: int) -> None:
-    """The plan's 0/2.5/5/10/20 ladder, and the float the engine actually consumes.
-
-    The float check is the load-bearing half. A per-side type that could not hand
-    the engine an exact rate would have moved the ambiguity rather than removed
-    it; the frozen 0.5 increment is what makes every platform rate a whole
-    number of basis points.
-    """
+    """Every admitted per-side cost converts exactly between the declared units and the engine's
+    rate."""
 
     assumption = PortfolioPerSideCostAssumption.from_bps_per_side(per_side)
     assert assumption.cost_bps_per_side == Decimal(per_side)
@@ -50,11 +45,7 @@ def test_a_quote_finer_than_the_increment_is_refused_not_rounded() -> None:
 
 
 def test_a_value_off_the_frozen_increment_is_refused() -> None:
-    """0.3 is expressible in tenths but is not on the admitted 0.5 grid.
-
-    It is also the value that motivates the grid: no float holds 0.3 exactly, so
-    admitting it would put an inexact rate into a content hash.
-    """
+    """A value off the frozen increment is refused."""
 
     with pytest.raises(ValidationError, match="per_side_cost_increment_invalid"):
         PortfolioPerSideCostAssumption.from_bps_per_side("0.3")

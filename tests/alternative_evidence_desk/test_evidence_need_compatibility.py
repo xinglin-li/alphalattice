@@ -51,12 +51,7 @@ def historical_serialization(record: LitigationMatterRecord) -> dict[str, Any]:
 def test_a_historical_candidate_record_reads_unchanged_and_is_never_completed_or_continued(
     tmp_path: Path,
 ) -> None:
-    """requirement (3): the old reference with the field absent reads under its
-    own contract with its hash unchanged; the old non-reference record reads
-    as before; the new writer emits the state and refuses a reference
-    without one; an inconsistent state is refused; the summary discloses
-    the unspecified references and never grants them completeness; the
-    continuation owners refuse the historical prior by name."""
+    """A historical candidate record reads unchanged and is never completed or continued."""
 
     runtime, request, _registry, _snapshot, document_set, generation = _open_recorded(
         tmp_path, entities=("AAPL",), documents=(_document("AAPL", text=_matters_filing()),)

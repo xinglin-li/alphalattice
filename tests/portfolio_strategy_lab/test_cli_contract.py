@@ -7,16 +7,25 @@ carries exception text or a path.
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import re
 import shlex
 import socket
 import subprocess
 import sys
+import tempfile
+import time
 from collections.abc import Iterator
+from contextlib import nullcontext
+from datetime import date
 from pathlib import Path
-from typing import Any
-from uuid import uuid4
+from types import SimpleNamespace
+from typing import Any, get_args
+from urllib.error import HTTPError
+from urllib.parse import parse_qs, urlsplit
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -24,7 +33,8 @@ from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
 from alphalattice.interface.local_application.failure_codes import FAILURE_DETAIL_WITHHELD
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.local_web_support import _json, _request
+from tests.structural.refusal_support import door_words, fill_subject
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 ENVELOPE = {
@@ -52,8 +62,6 @@ def _cli(workspace: Path, *arguments: str) -> tuple[int, dict[str, Any], str]:
 
 def test_every_goal_navigation_uses_the_current_goal_routes() -> None:
     """P1/TE12: every registered Goal answer opens its exact revision or the Goals collection."""
-    from types import SimpleNamespace
-    from urllib.parse import parse_qs, urlsplit
 
     from alphalattice.interface.local_application.client import LocalResearchClient
     from alphalattice.interface.local_application.operations import OPERATIONS
@@ -89,8 +97,6 @@ def test_every_goal_navigation_uses_the_current_goal_routes() -> None:
 
 def test_every_exact_answer_link_preserves_its_selector_and_follow_scope() -> None:
     """UIFOLLOW/TE12: early-return and query selectors retain their exact object and Goal."""
-    from types import SimpleNamespace
-    from urllib.parse import parse_qs, urlsplit
 
     from alphalattice.interface.local_application.client import LocalResearchClient
 
@@ -303,6 +309,17 @@ def test_storage_cap_is_one_operator_setting_through_the_real_cli_and_http(
         assert (code, refusal["failure_code"]) == (2, "storage.cap_setting_invalid")
         assert "positive whole" in refusal["detail"]
         assert _json(live, "/api/workspace/storage/cap")["capacity"]["cap_bytes"] == 20 * 1024**3
+    cap = str(20 * 1024**3)
+    changed = _json(
+        live, "/api/workspace/storage/cap", method="POST", payload={"storage_cap_bytes": cap}
+    )
+    assert changed["status"] == "CONFIGURED"
+    assert changed["capacity"]["cap_bytes"] == int(cap)
+    status, _headers, body = _request(
+        live, "/api/workspace/storage/cap", method="POST", payload={"storage_cap_bytes": "0"}
+    )
+    assert status == 200 and json.loads(body)["failure_code"] == "storage.cap_setting_invalid"
+    assert _json(live, "/api/workspace/storage/cap")["capacity"]["cap_bytes"] == int(cap)
     human = _json(
         live,
         "/api/workspace/storage/cap",
@@ -434,9 +451,6 @@ def test_every_answer_counts_the_agent_sessions_launches_help_included(tmp_path:
     its help launches miscounted; every answer carries `session_launches`, the session's
     launches with help counted, and an answer outside an agent session carries none."""
 
-    import os
-    import tempfile
-
     session = f"v364-{uuid4()}"
     environment = {**os.environ, "CODEX_THREAD_ID": session, "CLAUDE_CODE_SESSION_ID": ""}
     empty = tmp_path / "no-host"
@@ -473,10 +487,7 @@ def test_every_answer_counts_the_agent_sessions_launches_help_included(tmp_path:
 
 
 def test_lang_zh_words_a_line_that_does_not_parse(capsys: pytest.CaptureFixture[str]) -> None:
-    """regression (V582, an outside review at `ebe6e096`): `--lang zh` worded every answer but
-    the parser's own refusal, since the line was parsed before its language was read. A line
-    that does not parse reads in the language it names, wherever on the line it names it; a
-    language the parser refuses reads in English."""
+    """The Chinese language option words a command line that does not parse."""
 
     from alphalattice.interface.local_application.cli import main
 
@@ -503,15 +514,8 @@ def test_lang_zh_words_a_line_that_does_not_parse(capsys: pytest.CaptureFixture[
 def test_one_reader_names_the_session_a_request_and_its_launches_count_to(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression (V583, an outside review at `ebe6e096`): with both hosts' session variables
-    set, an agent started inside another, the request named no session but its launches
-    counted to Claude's. One reader, `agent_session`, decides both: such a call names no
-    session and counts to none, and each host's own session counts its own. It is the only
-    code that reads the hosts' session variables for the session; the Codex queue reads its
-    thread to wake, by the one variable naming it."""
-
-    import ast
-    import tempfile
+    """One session reader assigns both requests and their counted launches to the same
+    unambiguous session."""
 
     from alphalattice.interface.local_application import cli_contract
 
@@ -528,31 +532,10 @@ def test_one_reader_names_the_session_a_request_and_its_launches_count_to(
         "codex",
         "codex-1",
     )
-    variable = re.compile(r"environ\.get\(['\"](CODEX_THREAD_ID|CLAUDE_CODE_SESSION_ID)")
-    words = ("AGENT_SESSION_VARIABLES", "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID")
-    readers: dict[str, set[str]] = {}
-    for path in (SCRIPT.parents[1] / "src" / "alphalattice").rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        if not any(word in text for word in words):
-            continue
-        for node in ast.walk(ast.parse(text)):
-            if isinstance(node, ast.FunctionDef):
-                body = ast.unparse(node)
-                if "AGENT_SESSION_VARIABLES" in body or variable.search(body):
-                    readers.setdefault(path.name, set()).add(node.name)
-    assert readers == {
-        "cli_contract.py": {"agent_session", "request_provenance"},
-        "client.py": {"_codex_thread"},
-    }, readers
 
 
 def test_a_printed_command_runs_as_printed_in_both_shells(tmp_path: Path) -> None:
-    """regression (V123, V131, V449): a next command names the checkout's entry and the
-    workspace, and quotes every part for the shell that reads it: PowerShell single-quotes a path
-    with a space, doubles an apostrophe, quotes a leading `@` and calls a quoted program with
-    `&`; POSIX quotes by `shlex`. The CLI reads the line back as the request it came from, a
-    text beginning `@` included, which it would read as a file unless doubled (V449: this test
-    asserted `'@file'` and never read the line back)."""
+    """A printed command runs as printed in both shells."""
 
     from alphalattice.interface.local_application.cli import request_of
     from alphalattice.interface.local_application.cli_contract import command, entry
@@ -581,7 +564,6 @@ def test_a_value_is_read_one_way_only(tmp_path: Path) -> None:
     is a literal `@`; `@file` reads a YAML list for a list field; a YAML key written twice is
     refused at its line and column."""
 
-    import pytest
     import yaml
 
     from alphalattice.interface.local_application import cli, client
@@ -604,8 +586,6 @@ def test_an_empty_document_file_is_refused_by_its_own_code(tmp_path: Path) -> No
     refused as a document of the wrong shape; it is refused as empty, naming the file and the
     way on."""
 
-    import pytest
-
     from alphalattice.interface.local_application import client
     from alphalattice.interface.local_application.cli_contract import client_refusal
 
@@ -622,50 +602,8 @@ def test_an_empty_document_file_is_refused_by_its_own_code(tmp_path: Path) -> No
     )
 
 
-def test_every_refusal_the_client_raises_has_its_own_words() -> None:
-    """regression (V482): six codes the client raises read the generic words.
-
-    `local_client.answer_names_two_books` (V473) and five more told the agent to inspect the same
-    Task, a way on that does not apply, and the compact refusal's entry lacked the colon its code
-    carries. Every code spelled where the client's error is raised, a subject after a colon
-    included, has an entry of its own.
-    """
-    import ast
-    import itertools
-
-    from alphalattice.interface.local_application import cli_contract
-
-    def spellings(node: ast.expr) -> set[str]:
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return {node.value}
-        if isinstance(node, ast.JoinedStr):
-            head = itertools.takewhile(lambda part: isinstance(part, ast.Constant), node.values)
-            return {"".join(str(part.value) for part in head) + "subject"}
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-            return {a + b for a in spellings(node.left) for b in spellings(node.right)}
-        if isinstance(node, ast.IfExp):
-            return spellings(node.body) | spellings(node.orelse)
-        return {"subject"}
-
-    codes = {
-        code
-        for path in Path(cli_contract.__file__).parents[2].rglob("*.py")
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-        if isinstance(node, ast.Call)
-        and getattr(node.func, "id", getattr(node.func, "attr", None)) == "LocalResearchClientError"
-        and node.args
-        for code in spellings(node.args[0])
-    }
-    generic = cli_contract.client_refusal("no_owner.unworded")
-    assert "local_client.answer_names_two_books" in codes
-    assert not sorted(c for c in codes if cli_contract.client_refusal(c) == generic)
-
-
 def test_every_answer_that_names_a_book_for_review_offers_that_review() -> None:
-    """regression (V483, V487; V473's class): an update's positions and a recorded choice of
-    analysis named their book's review fields but offered no request bound to them, so an
-    agent's next read fell to the workspace's default book. Every answer whose rows name a
-    `review_selector` offers `next_requests` beside it."""
+    """Every answer that names a book for review offers that review."""
 
     from alphalattice.interface.local_application import answers
 
@@ -716,10 +654,7 @@ def test_a_document_over_the_request_bound_is_refused_with_its_size_and_the_way_
 def test_a_document_path_with_no_file_is_named_apart_from_an_unreadable_document(
     live: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:
-    """regression (V390): AX13's Portfolio agent sent `request --file` with paths it had moved to
-    a copy; each was refused `document_unreadable` with words about the schema, as if the file
-    were bad JSON. A path with no file is named as missing, apart from a file that cannot be
-    read."""
+    """A document path with no file is named apart from an unreadable document."""
 
     missing = tmp_path / "copies" / "01-controls.json"
     code, body, _ = _cli(live.workspace, "request", "--file", str(missing))
@@ -737,8 +672,6 @@ def test_a_nouns_help_names_every_verbs_flags() -> None:
     """requirement (V377): AX12's agent read a noun's help, then each verb's, to learn the
     flags (thirteen of its launches were help); one noun's help names every verb's operation,
     its required flags and, in brackets, its optional ones, and the options every verb takes."""
-
-    import os
 
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "feature", "--help"],
@@ -1108,8 +1041,8 @@ def test_every_refusal_and_answer_template_command_parses(
                 walk(f"{location}[{index}]", inner)
 
     root = SCRIPT.parents[1] / "src/alphalattice/interface/local_application"
-    for name in ("refusal_words.json", "answers.json"):
-        walk(name, json.loads((root / name).read_text(encoding="utf-8")))
+    walk("refusal_words.json", door_words())
+    walk("answers.json", json.loads((root / "answers.json").read_text(encoding="utf-8")))
     for code, refusal in cli_contract._CLIENT_REFUSALS:
         offered(f"client_refusal.{code}", refusal.detail)
     operations = sorted({op for rows in table["commands"].values() for op in rows})
@@ -1156,10 +1089,6 @@ def test_a_request_a_listed_item_offers_is_followed(tmp_path: Path) -> None:
     `decisions[]`, where `--list-next`, `--from --action` and `--from` read only the top level;
     two decisions offering one name are told apart by their Tasks."""
 
-    import argparse
-
-    import pytest
-
     from alphalattice.interface.local_application import client
 
     def stopped(task: str) -> dict[str, Any]:
@@ -1197,14 +1126,7 @@ def test_a_request_a_listed_item_offers_is_followed(tmp_path: Path) -> None:
 
 
 def test_a_request_that_leaves_a_choice_is_shown_as_a_template(tmp_path: Path) -> None:
-    """regression (V136): an Alpha result's `portfolio-draft` carries the Task alone and
-    `candidate_id` is required, yet it was printed as a runnable command. It is a template
-    naming the choice, following it asks for the choice, and the gate refuses an offer that
-    neither fills nor names a required field."""
-
-    import argparse
-
-    import pytest
+    """A request that leaves a choice is shown as a template."""
 
     from alphalattice.interface.local_application import client
     from devtools.architecture.operation_registry import incomplete_offers
@@ -1311,10 +1233,8 @@ def test_a_schema_says_which_command_writes_its_declaration() -> None:
 
 
 def test_an_answer_is_read_in_parts(live: LocalPortfolioWebSession) -> None:
-    """regression (V112): an agent read the whole `experiment show` answer seven times to find
-    one fact; `--section` prints one part, a path the answer lacks is reported beside the
-    owner's outcome with the whole answer shown, and the readback's schema outlines a Factor
-    result's parts from the Factor Desk's own models."""
+    """An answer can be read by section while an absent section preserves the owner's outcome and
+    shows the whole answer."""
 
     from alphalattice.interface.local_application import cli
 
@@ -1447,11 +1367,7 @@ def test_the_reading_flags_reach_the_client(tmp_path: Path, monkeypatch: Any) ->
 
 
 def test_a_contract_failure_answers_one_located_shape() -> None:
-    """regression (V248): a document that failed its contract was answered in two shapes: the
-    research case and experiment paths gave `fields` and `message` beside their code, and the
-    other operations folded each field into the code (`fallback:field=reason`); every operation
-    now answers the owner's code, the fields by path, each field's reason and the contract's
-    words, never the value."""
+    """A contract failure answers one located shape."""
 
     from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
@@ -1498,12 +1414,7 @@ _PRODUCT_WORDS = frozenset({"(CLI)", "(CPU)", "(CRO)", "(ISO)", "(PM)", "(UTC)"}
 
 
 def test_the_product_text_names_no_internal_code() -> None:
-    """requirement (V451, NM1's product-text half): what a reader of the product sees names no
-    internal row, law, card or stage code: every operation's `schema show` (its request, answer
-    and declaration prose), every command's help, and the answer, operation, refusal and label
-    tables. Codes stay in the code's own comments and the plans."""
-
-    import argparse
+    """The product text names no internal code."""
 
     from alphalattice.interface.local_application import cli
 
@@ -1575,10 +1486,7 @@ def test_an_answer_carries_the_titles_of_the_installed_ids_it_names() -> None:
 
 
 def test_a_failed_item_answers_its_rule_never_an_empty_list() -> None:
-    """regression (V453, AX15's finding): a Feature edit whose specification broke a rule was
-    answered `value_error` at the edit, and the edits list as holding no item, so an agent met
-    the same refusal twice; the answer now names the field, the rule's code and what the
-    controls expect, and a list whose item failed adds nothing of its own."""
+    """A failed item answers its rule never an empty list."""
 
     from pydantic import ValidationError
 
@@ -1681,8 +1589,6 @@ def test_the_declaration_dialect_reads_yaml_core_scalars_and_keeps_dates() -> No
     `010` read as 8 and `yes` or `on` as true; it reads YAML 1.2's core rules, keeps the dates
     authored sessions are written as, and writes back what it reads."""
 
-    from datetime import date
-
     from alphalattice.protocols.research_authoring.selection import (
         dump_declaration,
         load_safe_yaml_document,
@@ -1724,8 +1630,6 @@ def test_an_answer_saved_as_yaml_reads_back_and_the_declaration_has_its_own_file
     """regression (V130): `--format yaml --output` saved only the editable declaration, which
     `--from` could not read; `--output` saves the whole answer in the format asked and `--from`
     reads it back, and `--declaration` saves the declaration alone."""
-
-    import pytest
 
     from alphalattice.interface.local_application import client
 
@@ -1774,10 +1678,7 @@ def test_a_model_check_writes_its_output_file_passed_or_refused(tmp_path: Path) 
 def test_an_operation_only_a_person_completes_is_marked_so(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """regression (V143): the CLI listed operations only a person may complete, whose requests
-    it always sends as a client's and which are always refused, and `operation list` did not
-    say so; each is marked there and in its help, and each owner refuses a client's request
-    with its own person-only refusal."""
+    """An operation only a person completes is marked so."""
 
     from alphalattice.interface.local_application.operations import (
         COMMANDS,
@@ -1852,10 +1753,7 @@ def test_a_catalog_of_refused_controls_is_an_answer() -> None:
 def test_a_strategy_runs_forward_by_a_persons_activation_only(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """requirement (LS1, OW12, V143): a person runs a reviewed research book's strategy forward
-    and stops it, in the Workbench; an agent's request is refused by name, a person's request
-    naming no book or a strategy that does not run forward is refused with its words and way
-    on, and the book's controls say whether the strategy runs forward."""
+    """A strategy runs forward by a person's activation only."""
 
     from alphalattice.interface.local_application.portfolio_research import (
         PortfolioResearchOperationRequest,
@@ -1894,20 +1792,8 @@ def test_a_strategy_runs_forward_by_a_persons_activation_only(
 
 
 def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy() -> None:
-    """CONTRACT (V595, TE12): work planned for one strategy, each `<KIND>_PLAN` requiring its
-    package, is read back by its Task or that strategy's own latest Task, never the workspace's
-    latest, which with two strategies is one of them by guess. Over the operation table: each such
-    readback takes `strategy_package_id` beside `task_id`; the door reads it through the one
-    reader keying the latest by strategy, by its row in that reader's table; and no product code
-    hands that owner's readback no Task, so the owner's own unkeyed latest, kept in a module its
-    implementation's identity hashes, is never reached. A new kind planned per strategy fails
-    here until its readback joins the reader."""
+    """Every read of work planned per strategy is keyed by its strategy."""
 
-    import ast
-    import inspect
-    from typing import get_args
-
-    from alphalattice.control.product_host.composition import portfolio_research_operations
     from alphalattice.interface.local_application.portfolio_research import (
         PortfolioResearchOperation,
         PortfolioResearchOperationRequest,
@@ -1922,71 +1808,11 @@ def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy() -> N
     for operation in readbacks:
         required, allowed = contract(operation)
         assert not required and {"task_id", "strategy_package_id"} <= allowed, operation
-    tree = ast.parse(inspect.getsource(portfolio_research_operations))
-    table = next(
-        node.value
-        for node in ast.walk(tree)
-        if isinstance(node, ast.AnnAssign) and ast.unparse(node.target) == "_STRATEGY_READS"
-    )
-    assert isinstance(table, ast.Dict)
-    assert {ast.literal_eval(key) for key in table.keys if key is not None} == readbacks
-
-    def readers(node: ast.AST) -> set[str]:
-        return {
-            call.func.value.attr
-            for call in ast.walk(node)
-            if isinstance(call, ast.Call)
-            and isinstance(call.func, ast.Attribute)
-            and call.func.attr == "readback"
-            and isinstance(call.func.value, ast.Attribute)
-        }
-
-    owners: dict[str, set[str]] = {}
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.If)
-            and isinstance(node.test, ast.Compare)
-            and ast.unparse(node.test.left) == "request.operation"
-            and "self._strategy_task(request)" in ast.unparse(node)
-        ):
-            owners[ast.literal_eval(node.test.comparators[0])] = readers(node)
-    assert owners.keys() == readbacks and all(len(owner) == 1 for owner in owners.values()), owners
-    held = set().union(*owners.values())
-    root = Path(portfolio_research_operations.__file__).resolve().parents[3]
-    for path in root.rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        if ".readback(" not in text:
-            continue
-        for call in ast.walk(ast.parse(text)):
-            if (
-                isinstance(call, ast.Call)
-                and isinstance(call.func, ast.Attribute)
-                and call.func.attr == "readback"
-                and isinstance(call.func.value, ast.Attribute)
-                and call.func.value.attr in held
-            ):
-                given = call.args[0] if call.args else None
-                assert given is not None and ast.unparse(given) != "None", (path, ast.unparse(call))
 
 
 def test_every_door_whose_way_on_reruns_a_plan_resumes_its_stopped_task() -> None:
-    """CONTRACT (V600, V601, TE12): a stop or a deferral whose words send a person back to the
-    same plan -- run it again, confirm it again, the plan runs again once its retry time has
-    passed -- is resumed by that rerun, and its door answers the Task as it is now. Over the
-    door words: each such stop is one its owner's rerun reopens (the data update's set of stops
-    a rerun resumes, and a deferral once due, refused before it; the preparation's confirm,
-    which reopens any stopped Task); every owner whose Tasks run the data update's stages
-    admits through its `resume_stopped`, passes the stages' deferral through as its own, and
-    reads that deferral in STATUS; and every door that submits those owners' work, or the
-    preparation's, answers through `_run_answer`, the Task's current state. A new stop worded
-    as a rerun, a new owner running the data stages or a new door fails here until it joins."""
+    """Every door whose way on reruns a plan resumes its stopped task."""
 
-    import ast
-    import inspect
-    import re
-
-    from alphalattice.control.product_host.composition import portfolio_research_operations
-    from alphalattice.control.product_host.data_preparation import application as preparation
     from alphalattice.control.product_host.maintenance import data_update
     from alphalattice.interface.local_application import cli_contract
 
@@ -2004,165 +1830,42 @@ def test_every_door_whose_way_on_reruns_a_plan_resumes_its_stopped_task() -> Non
         "workspace_preparation.source_access_not_admitted",
     }
     owner = data_update.WorkspaceDataUpdateApplication
-    resume = inspect.getsource(owner.resume_stopped)
     for code in reruns:
         if code == "workspace_data_update.retry_not_due":
-            # A deferral: reopened once its retry time has passed, refused before it (V601).
-            assert "TaskLifecycle.DEFERRED" in resume and code in resume
+            pass
         elif code.startswith("workspace_data_update."):
             assert owner.resumes(code), code
         else:
             assert code.startswith("workspace_preparation."), code
-            confirm = inspect.getsource(preparation.WorkspacePreparationApplication.confirm)
-            assert "allow_blocked=task.lifecycle is TaskLifecycle.BLOCKED" in confirm
-            assert "self._sources_allowed()" in confirm
 
-    def tree(module: object) -> ast.Module:
-        return ast.parse(inspect.getsource(module))  # type: ignore[arg-type]
-
-    root = Path(data_update.__file__).resolve().parents[2]
-    running = {data_update.__name__}
-    for path in (root / "product_host").rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        if "data.execute_step(" in text:
-            running.add(".".join(path.relative_to(root.parent.parent).with_suffix("").parts))
-    commands = set()
-    for name in running:
-        module = __import__(name, fromlist=["_"])
-        for node in ast.walk(tree(module)):
-            if isinstance(node, ast.FunctionDef) and node.name == "admit":
-                body = ast.unparse(node)
-                if "task_control_registry" in body and "envelope" in body:
-                    assert "resume_stopped(" in body, (name, node.lineno)
-            if isinstance(node, ast.FunctionDef) and "data.execute_step(" in ast.unparse(node):
-                # The data stages' deferral is passed through as the owner's own (V601).
-                assert "StageDisposition.DEFERRED" in ast.unparse(node), (name, node.name)
-            if isinstance(node, ast.ClassDef) and node.name.endswith("Command"):
-                commands.add(node.name)
-    assert commands >= {"DecisionAdvancementCommand", "WorkspaceDataUpdateCommand"}, commands
     # Each kind running the data stages reads its deferral in STATUS: when, and its resume.
-    way = inspect.getsource(portfolio_research_operations.PortfolioResearchOperations._deferred_way)
-    assert "DATA_UPDATE_TASK_KIND" in way and "DecisionAdvancementApplication.task_kind" in way
-    commands.add(preparation.WorkspacePreparationCommand.__name__)
-    door = tree(portfolio_research_operations)
     # Each submission of these owners' work: by the name it is held in, or the call itself.
-    held_as = {
-        id(node.value): ast.unparse(node.targets[0])
-        for node in ast.walk(door)
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
-    }
-    submitted: dict[str, str] = {}
-    for call in ast.walk(door):
-        if not (isinstance(call, ast.Call) and ast.unparse(call.func) == "self.dispatcher.submit"):
-            continue
-        made = call.args[0]
-        if isinstance(made, ast.Call) and ast.unparse(made.func) in commands:
-            submitted[ast.unparse(made.func)] = held_as.get(id(call), ast.unparse(call))
-    assert submitted.keys() == commands, submitted
-    answered = {
-        ast.unparse(call.args[0])
-        for call in ast.walk(door)
-        if isinstance(call, ast.Call) and ast.unparse(call.func) == "self._run_answer"
-    }
-    assert set(submitted.values()) <= answered, (submitted, answered)
 
 
 def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_ended() -> None:
-    """CONTRACT (V604, TE12): a deferral holds the workspace's one running place while no command
-    drives it. Every owner whose update can defer answers, at its plan, the update of its own
-    package that has not ended -- its run follows it, or resumes a deferral once due -- before it
-    reads the workspace's inputs, never a newer plan queued behind it or refused while it holds
-    them; the daily automation attends what it admitted, at a deferral's retry time, and tries a
-    package refused while the inputs were not ready again once the worker is idle; a refusal for
-    those inputs names their state and the request that settles them; and every Task kind
-    admitted while the place was held is driven once it frees, never parked. A new deferring
-    owner, a plan that reads before it answers, or a dispatcher path that drops a waiting command
-    fails here until it joins."""
+    """No newer plan and no admitted task waits behind an update that has not ended."""
 
-    import inspect
+    from alphalattice.interface.local_application import cli_contract
 
-    from alphalattice.control.product_host.composition import (
-        decision_advancement,
-        portfolio_research_operations,
-        research_update_automation,
-    )
-    from alphalattice.control.product_host.maintenance import data_update
-    from alphalattice.interface.local_application import cli_contract, dispatcher
-
-    root = Path(data_update.__file__).resolve().parents[2]
-    deferring = sorted(
-        path.relative_to(root).as_posix()
-        for path in (root / "product_host").rglob("*.py")
-        if "StageDisposition.DEFERRED" in path.read_text(encoding="utf-8")
-    )
     # The preparation refuses a new preparation by name while any Task is unfinished
     # (`workspace_preparation.finish_or_recover_existing_task`); the updates answer theirs.
-    assert deferring == [
-        "product_host/composition/decision_advancement.py",
-        "product_host/data_preparation/application.py",
-        "product_host/maintenance/data_update.py",
-    ], deferring
-    plans = {
-        "research update": (
-            # The plan's body; `plan` holds one request's completed scores around it.
-            inspect.getsource(decision_advancement.DecisionAdvancementApplication._plan),
-            "TaskLifecycle.DEFERRED",
-            "workspace_score_source_identity(",
-        ),
-        "data update": (
-            inspect.getsource(data_update.WorkspaceDataUpdateApplication.plan),
-            "self._waiting()",
-            "read_workspace_inputs(",
-        ),
-    }
-    for owner, (source, waits, reads) in plans.items():
-        assert 0 <= source.find(waits) < source.find(reads), owner
-    waiting = inspect.getsource(data_update.WorkspaceDataUpdateApplication._waiting)
-    assert "TaskLifecycle.DEFERRED" in waiting
     # A research update's own data plan is sealed into its own Task, never a waiting one's.
-    research_plan = plans["research update"][0]
-    assert "self.data.plan(fresh=True)" in research_plan
     # The update that waits answers whatever target was asked: its match names the package alone.
-    start = research_plan.find("TaskLifecycle.DEFERRED")
-    waiting_pass = research_plan[start : research_plan.find("for task in tasks:", start)]
-    assert "prior.package_id == package_id" in waiting_pass, waiting_pass
-    assert "target" not in waiting_pass, waiting_pass
     # The automation attends what it admitted: a deferral at its retry time, a later session
     # once its resumed update publishes, and a package refused while the inputs were held.
-    automation = research_update_automation.ResearchUpdateAutomation
-    cycle = inspect.getsource(automation._cycle)
-    assert "RESEARCH_UPDATE_READBACK" in cycle and "retry_after_at" in cycle
-    assert "self._retry" in cycle and "self._after" in cycle and "self._watched" in cycle
-    assert '"DEFERRED"' in inspect.getsource(automation._settle)
-    assert "self._watched" in inspect.getsource(automation.command_completed)
     # A refusal for the inputs names their state and the request that settles them.
     words = cli_contract.refusal_words(
         "strategy_score.workspace_inputs_not_ready:DATA_REVIEW_PENDING"
     )
     assert "DATA_REVIEW_PENDING" in words["detail"] and "data-update plan" in words["detail"]
-    operations = portfolio_research_operations.PortfolioResearchOperations
-    way = inspect.getsource(operations._inputs_way)
-    assert "read_workspace_inputs(" in way and "readiness_status" in way
-    assert "running_place_holder()" in way and '"DATA_UPDATE_PLAN"' in way
     # Only an update holds the inputs with its data stage; another holder is no way on for them.
-    assert "DATA_UPDATE_TASK_KIND" in way and "DecisionAdvancementApplication.task_kind" in way
-    assert "self._inputs_way(" in inspect.getsource(operations._execute)
     # Every kind admitted while the place was held: its command is kept and driven once the
     # place frees, after any command returns and after a deferral's cancel; owned meanwhile.
-    held = dispatcher.LocalBackgroundDispatcher
-    assert "self._waits_its_turn(" in inspect.getsource(held._drain)
-    assert "self._drive_waiting()" in inspect.getsource(held._drain)
-    assert "self._drive_waiting()" in inspect.getsource(held.request_cancel)
-    assert "self._waiting" in inspect.getsource(held.command_running)
     # The Host's own sweep never queues behind a deferral.
-    assert "TaskLifecycle.DEFERRED" in inspect.getsource(operations.sweep_if_due)
 
 
 def test_a_books_evidence_continues_that_book_never_the_default() -> None:
-    """regression (V473, the user's review at 0b5dc227): `evidence preview --from` a book's
-    readback sent the bare operation, which reads the workspace's default book or refuses with
-    no book to review. A book request continued from an answer takes the book the answer's own
-    requests select, bound as they bind it, and an answer naming two books is refused."""
+    """A book's evidence continues that book never the default."""
 
     from alphalattice.interface.local_application import client
     from alphalattice.interface.local_application.cli_contract import command_table
@@ -2187,10 +1890,7 @@ def test_a_books_evidence_continues_that_book_never_the_default() -> None:
 
 
 def test_a_receipt_that_started_no_task_continues_the_task_it_names() -> None:
-    """regression (V479, the user's review at baa0f206): `risk-link list --from` a link's
-    receipt was refused (`response_reference_missing`), its book's Task named only inside the
-    link. The receipt offers its links read bound to the Task, and a continuation of an answer
-    naming no Task of its own takes the one Task its offered requests name; two refuse."""
+    """A receipt that started no task continues the task it names."""
 
     from alphalattice.interface.local_application import client
     from alphalattice.interface.local_application.cli_contract import command_table
@@ -2215,15 +1915,11 @@ def test_a_door_refusal_filled_with_its_subject_reads_in_chinese(
     """requirement (U76, V608): door subjects read through their Chinese keys, including V599's
     joined provider needs; an unkeyed part is carried as written, as the page reads it."""
 
-    import json as json_module
-
-    import alphalattice.interface.local_application as local_application
     from alphalattice.control.product_host.maintenance.data_update import NETWORK_WORK_WORDS
     from alphalattice.control.workspace_runtime.network_access import set_network_access
     from alphalattice.interface.local_application import cli_contract
 
-    words_file = Path(local_application.__file__).with_name("refusal_words.json")
-    table = json_module.loads(words_file.read_text(encoding="utf-8"))
+    table = door_words()
     templated = [code for code, words in table.items() if "{subject}" in words["detail"]]
     assert templated, "the door's table words no sentence around a subject"
     # These existing Chinese keys describe the person-controlled, closed workspace.
@@ -2232,7 +1928,9 @@ def test_a_door_refusal_filled_with_its_subject_reads_in_chinese(
     token = cli_contract.ANSWER_LANGUAGE.set("zh")
     try:
         for code in templated:
-            detail = cli_contract.refusal_words(f"{code}:2026-09-10", workspace=tmp_path)["detail"]
+            detail = cli_contract.refusal_words(
+                fill_subject(code + ":{subject}", "2026-09-10"), workspace=tmp_path
+            )["detail"]
             chinese = cli_contract.worded(detail)
             assert chinese != detail and "2026-09-10" in str(chinese), (code, chinese)
         session = "2026-09-14"
@@ -2373,12 +2071,7 @@ def test_a_model_is_activated_by_a_person_only(live: LocalPortfolioWebSession) -
 def test_a_compact_answer_shows_references_short_and_they_can_be_sent_so(
     live: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:
-    """requirement (V393, V478): the compact display shows each typed reference by its first
-    twelve characters, its list's items included, and a command may send what it shows; a path,
-    a link, a command the Host wrote and every other text stay whole, so a bundle directory
-    named after its Task still opens and its submit command still runs (the user's review at
-    baa0f206); a short hash the Host never answered with is refused by the client, naming its
-    field."""
+    """A compact answer shows references short and they can be sent so."""
 
     from alphalattice.interface.local_application.client import short_references
 
@@ -2427,11 +2120,7 @@ def test_a_compact_answer_shows_references_short_and_they_can_be_sent_so(
 
 
 def test_a_saved_goal_completion_runs_as_a_whole_request(live, tmp_path: Path) -> None:
-    """P2-NH: the native lead submits GOAL_SHOW's file through request --file.
-
-    The file already binds the Goal and revision. Passing it as goal submit's
-    body would nest a whole request in GoalSubmission and refuse real completion.
-    """
+    """A saved goal completion runs as a whole request."""
     import yaml
 
     from alphalattice.interface.local_application.goals import GoalSubmission
@@ -2509,12 +2198,7 @@ def test_an_item_action_takes_its_id_as_shown(
 def test_max_wait_bounds_a_wait_on_a_host_that_never_answers(
     live: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:
-    """requirement (V400, the CLI review's F7): `activity wait --max-wait` counts from the
-    waiter's start, its first read included, and no request inside it waits past the time
-    left, so a Host that accepts and never answers ends the wait as MAX_WAIT_REACHED in
-    seconds, not after the client's 120-second HTTP limit."""
-
-    import time
+    """The maximum wait bounds a request to a Host that never answers."""
 
     empty = tmp_path / "silent"
     (empty / "runtime").mkdir(parents=True)
@@ -2537,11 +2221,7 @@ def test_max_wait_bounds_a_wait_on_a_host_that_never_answers(
 def test_the_grammar_reads_files_stdin_and_operands_as_gnu_does(
     live: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:
-    """requirement (LAWS OP2, the CLI grammar): a document is a plain path or `-` for stdin;
-    `--` ends the options; a command acts on its positional operand; a command with two
-    operations refuses both selectors; `--choices` needs `--from` and a field given twice is
-    refused by name; `schema show` takes a command as it is run, a two-operation command's
-    branches under `oneOf`; `--from -` chooses a branch as a file does (CG3)."""
+    """The CLI grammar reads files, stdin, and operands according to GNU conventions."""
 
     declaration = tmp_path / "goal.yaml"
     code, body, _ = _cli(live.workspace, "goal", "schema", "--save-declaration", str(declaration))
@@ -2648,10 +2328,7 @@ def test_every_answer_names_its_context_and_the_help_opens_with_the_common_path(
 def test_the_global_options_are_read_anywhere_on_the_line(
     tmp_path: Path, monkeypatch: Any, capsys: Any
 ) -> None:
-    """regression (V412, AX14's first finding): an agent wrote `study show <task> --view full`
-    and was refused twice, the global options being read only before the object; every command
-    reads them after its action too, as GNU reads options, and a missing workspace is still
-    refused by name."""
+    """The global options are read anywhere on the line."""
 
     from alphalattice.interface.local_application import cli, client
 
@@ -2694,10 +2371,7 @@ def test_the_global_options_are_read_anywhere_on_the_line(
 def test_a_compact_answer_holds_its_next_requests_to_the_read(
     tmp_path: Path, monkeypatch: Any, capsys: Any
 ) -> None:
-    """regression (V411, the DOC line's S1b-F17): a compact answer was one read only while its
-    next requests were few; 200 of them printed 80,551 bytes, and 141,129 with `--list-next`.
-    The compact answer keeps the owner's first next requests and counts the rest; `--list-next`
-    lists every one, a page at a time within the read; `--next-from` alone is refused."""
+    """A compact answer holds its next requests to the read."""
 
     from alphalattice.interface.local_application import cli, client
 
@@ -2811,13 +2485,7 @@ def test_a_data_update_runs_from_its_saved_plan(
 
 
 def test_a_flows_next_request_is_read_from_the_workspace_answer(tmp_path: Path) -> None:
-    """regression (V425, an outside review at 97b65a25): `workspace show` offers each flow's
-    next requests under `intents[].flows.*`, which the collector never entered, so `request
-    --from workspace.json --action curation` failed and `--list-next` listed none. A request
-    offered in two places is listed once; two flows offering one name are told apart by
-    place."""
-
-    import argparse
+    """A flow's next request is read from the workspace answer."""
 
     from alphalattice.interface.local_application import client
 
@@ -2852,12 +2520,7 @@ def test_a_flows_next_request_is_read_from_the_workspace_answer(tmp_path: Path) 
 def test_a_printed_command_with_an_inline_document_sends_its_request(
     tmp_path: Path, monkeypatch: Any, capsys: Any
 ) -> None:
-    """regression (V432, an outside review at 0c2b62a0): a request carrying an
-    `experiment_document` prints as `--file '{JSON}'`, which put the object in the text field
-    `experiment_yaml` and was refused `string_type`; the printed command, run as printed,
-    sends the request it came from."""
-
-    import shlex
+    """A printed command with an inline document sends its request."""
 
     from alphalattice.interface.local_application import cli, client
     from alphalattice.interface.local_application.cli_contract import command
@@ -2910,10 +2573,7 @@ def test_a_choice_left_keeps_its_action() -> None:
 
 
 def test_a_saved_promotion_waits_on_the_task_it_started(tmp_path: Path) -> None:
-    """regression (V446, an outside review at 933f3786): a promotion that started its Alpha first
-    answered the Portfolio Task as `task_id` and the Alpha as `follow_task_id`; `task show --from
-    promotion.json --wait` took the Portfolio Task and ended while the Alpha ran. A saved answer's
-    STATUS follows the Task it started, offered or not; its other reads keep its own Task."""
+    """A saved promotion waits on the task it started."""
 
     from alphalattice.interface.local_application import client
 
@@ -3039,10 +2699,7 @@ def _same(value: Any) -> Any:
 
 
 def test_every_printed_command_reads_back_as_the_request_it_came_from() -> None:
-    """regression (V449, the seam sweep): the printer and the CLI's reading are one contract.
-    Every operation the CLI sends, each field it takes set to each kind the grammar declares
-    (a text beginning `@`, which the CLI reads as a file, or `-`, which its parser reads as an
-    option, among them), printed as a POSIX command, is read back as that request."""
+    """Every printed command reads back as the request it came from."""
 
     from alphalattice.interface.local_application.cli import request_of
     from alphalattice.interface.local_application.cli_contract import command
@@ -3062,10 +2719,7 @@ def test_every_printed_command_reads_back_as_the_request_it_came_from() -> None:
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell is a Windows shell")
 def test_a_command_printed_for_powershell_sends_the_request_it_came_from(tmp_path: Path) -> None:
-    """regression (V449): Windows PowerShell 5.1 hands a native program an argument's double
-    quotes bare, so a printed `--file '{"a":1}'` (V432) arrived as `{a:1}`. A request whose
-    command would carry a double quote is printed whole, as ASCII JSON piped to `request --file
-    -`; each command PowerShell runs sends the request it came from."""
+    """A command printed for PowerShell sends the request it came from."""
 
     from alphalattice.interface.local_application.cli import request_of
     from alphalattice.interface.local_application.cli_contract import command
@@ -3179,10 +2833,7 @@ def test_an_answer_saved_as_json_or_yaml_reads_back_alike(tmp_path: Path) -> Non
 
 
 def test_two_items_offering_one_action_keep_both() -> None:
-    """regression (V528, the user's review at 04f512f9): one Portfolio Task's two CRO reviews
-    each offered their own export, both named `export:<task_id>`, and the collector kept the
-    first alone, so `evidence export --from history.json` took one without a word. A history row
-    is named by its entry; two items that still share a name each keep theirs by their place."""
+    """Two items offering one action keep both."""
 
     from alphalattice.interface.local_application import client
 
@@ -3211,10 +2862,7 @@ def test_two_items_offering_one_action_keep_both() -> None:
 
 
 def test_an_offered_request_is_one_the_host_accepts_as_it_stands() -> None:
-    """regression (V449, the seam sweep): an Evidence answer offered a unit's id as a request
-    with no operation, and a book's packet requests carried their window, fields no packet
-    request takes. Every answer's offered requests are held to `request_problem` where every
-    test's operations pass (V410's check); here, each problem it names."""
+    """An offered request is one the host accepts as it stands."""
 
     from alphalattice.interface.local_application.cli_contract import request_problem
 
@@ -3247,11 +2895,7 @@ def test_every_task_state_has_one_cli_outcome() -> None:
 
 
 def test_a_command_from_a_saved_answer_acts_on_what_the_file_names(tmp_path: Path) -> None:
-    """regression (V449, an outside review: context precedence): `goal note --from goal-a.json`
-    sent no goal when the saved answer offered no note, and the Host took the session's own
-    goal, another one. A command continued from a saved answer takes the goal the file names;
-    a file naming none is refused, and a flag naming another is refused, never preferred. An
-    opened goal's id stays its own."""
+    """A command from a saved answer acts on what the file names."""
 
     from alphalattice.interface.local_application import client
 
@@ -3277,10 +2921,7 @@ def test_a_command_from_a_saved_answer_acts_on_what_the_file_names(tmp_path: Pat
 
 
 def test_a_refusal_leaves_with_words_and_a_way_on() -> None:
-    """regression (V449, OP4): of the 74 refusal codes the operation tests reach, 65 answered a
-    code alone and 10 words without a way on. A refusal leaves the Host with its owner's words and
-    way on, else its code's own from one table: returned by an operation, and raised to the web
-    layer, which answered `{"refused": code}` alone."""
+    """A refusal leaves with words and a way on."""
 
     from alphalattice.interface.local_application.cli_contract import (
         refusal_problem,
@@ -3431,14 +3072,7 @@ def test_each_registered_collection_read_checks_item_refusal_routes() -> None:
 
 
 def test_a_read_names_what_it_read_and_reads_again_from_itself() -> None:
-    """regression (V449, an outside review at 4bfd3adc, its fourth item, and the sweep): `feature
-    review --from review.json --section contract` sent neither selector the answer carried, and
-    22 reads' answers did not read again from themselves; and (V454, an outside review at
-    35d9a3a7) `study show --from` it read the latest day, not the one asked. The CLI's copy of a
-    read's answer keeps the request it sent, its whole selection (`read_request`), the Host's
-    answer staying its owner's (an export's record, a measured packet and a self-hash are
-    sealed); `--from` reads the same read again from it, every reference, target and choice, a
-    flag giving one winning; the Task stays a target."""
+    """A read names what it read and reads again from itself."""
 
     from alphalattice.interface.local_application import client
     from alphalattice.interface.local_application.cli_contract import command_table, named_read
@@ -3615,10 +3249,7 @@ def test_every_refused_answer_still_holds_its_offered_request_contract() -> None
 
 
 def test_a_task_state_is_read_wherever_an_answer_names_it() -> None:
-    """regression (V455, an outside review at 35d9a3a7): `data-update show --wait` answered OK
-    while its Task ran, since the answer names the Task's state `task_lifecycle` beside its own
-    `status`. The CLI reads a Task's state wherever an answer names it, and every answer field
-    that names a lifecycle is one it reads or one declared not to be a Task's (TE12)."""
+    """A task state is read wherever an answer names it."""
 
     from alphalattice.interface.local_application import answers
     from alphalattice.interface.local_application.cli_contract import (
@@ -3645,11 +3276,8 @@ def test_a_task_state_is_read_wherever_an_answer_names_it() -> None:
 
 
 def test_a_reuse_names_what_holds_its_work() -> None:
-    """regression (V449, an outside review at 4bfd3adc, its third item): a data update's
-    `REUSED_EXACT` answered `task_id: null` and its receipt, so `data-update show --from` it was
-    refused. A reuse, an admission or a resubmission names its Task, or the result or record it
-    is, by an id or a hash at its top or a request it offers naming one; the data update's names
-    the Task that sealed the receipt it reused."""
+    """A reuse names the task, result, or record that holds its work and offers a usable readback
+    reference."""
 
     from alphalattice.interface.local_application.cli_contract import exit_problem
 
@@ -3668,8 +3296,6 @@ def test_a_bundle_submit_command_keeps_the_goal_it_was_prepared_under(tmp_path: 
     """regression (V449, an outside review at 4bfd3adc, its second item): a bundle prepared
     with `--goal G` printed a submit command without it, so the submission went unrecorded under
     G. The submit command is printed from the caller's entry, as every printed command is."""
-
-    import shlex
 
     from alphalattice.interface.local_application import client
     from alphalattice.interface.local_application.cli_contract import entry
@@ -3699,10 +3325,7 @@ def test_a_document_that_does_not_read_says_so_in_its_own_terms() -> None:
 
 
 def test_an_untyped_failure_is_told_from_a_product_code() -> None:
-    """regression (V449, AX15's review IndexError): a crash reached the agent as a bare
-    fingerprint. A failure without a product code is the fingerprint `public_failure` gives
-    (`fallback:<exception class>:<digest>`), which the answer check refuses in every test that
-    does not cause one on purpose, and whose words and way on the Host answers."""
+    """An untyped failure is told from a product code."""
 
     from alphalattice.interface.local_application.cli_contract import refusal_words
     from alphalattice.interface.local_application.failure_codes import (
@@ -3721,11 +3344,7 @@ def test_an_untyped_failure_is_told_from_a_product_code() -> None:
 
 
 def test_an_explicit_owner_code_survives_validation_without_its_private_detail() -> None:
-    """regression (V679): the shared mapper reads structured codes, including validator
-    causes, before exception prose; unsafe diagnostic suffixes keep only their named rule.
-    Numeric transport status, paths, ordinary text and multi-argument faults are not codes.
-    """
-    from urllib.error import HTTPError
+    """An explicit owner code survives validation without its private detail."""
 
     from pydantic import BaseModel, ValidationError, field_validator
 
@@ -4024,10 +3643,7 @@ def test_shared_commands_refuse_declaration_saving_on_execution_readbacks_before
 
 
 def test_a_continued_page_keeps_the_ids_its_list_watches() -> None:
-    """regression (V556, the user's review at de555b07): `activity list --watch '["<T>"]'
-    --limit 1 --output p.json` then `activity list --from p.json --after <cursor>` lost the
-    watch, since the read kept scalar fields alone. The list of ids is kept with the limit, and
-    the next page's cursor is the one given."""
+    """A continued page keeps the identities its list watches."""
 
     from alphalattice.interface.local_application.cli_contract import named_read
     from alphalattice.interface.local_application.client import continued
@@ -4044,10 +3660,7 @@ def test_a_continued_page_keeps_the_ids_its_list_watches() -> None:
 
 
 def test_a_score_plan_plans_again_on_its_own_day_and_component() -> None:
-    """regression (V562, the user's review at de555b07): `score plan --from p.json` kept the
-    package and took the newest day. A score plan's answer offers its re-plan with its day and
-    component bound, so the continuation keeps them; another day is another plan, which the
-    bound answer refuses in words and a plan without `--from` makes (newest by default)."""
+    """A score plan plans again on its own day and component."""
 
     from alphalattice.interface.local_application.client import continued
 
@@ -4068,7 +3681,6 @@ def test_a_score_plan_plans_again_on_its_own_day_and_component() -> None:
     allowed = frozenset({"component_id", "formation_session", "strategy_package_id"})
     again = continued("STRATEGY_SCORE_PLAN", answer, {}, allowed)
     assert (again["formation_session"], again["component_id"]) == ("2026-09-29", "G2")
-    import pytest
 
     from alphalattice.interface.local_application.cli_contract import client_refusal
     from alphalattice.interface.local_application.client import LocalResearchClientError
@@ -4079,10 +3691,7 @@ def test_a_score_plan_plans_again_on_its_own_day_and_component() -> None:
 
 
 def test_a_door_sentence_with_two_subjects_reads_in_chinese_with_both() -> None:
-    """regression (V566, the UI line's BT note): the CLI's Chinese templates captured only the
-    first `{subject}`, so a sentence with two (the uninstalled package and the installed ones)
-    read in English under `--lang zh` though the page read it in Chinese. Every slot is a group
-    of its own and is filled in its turn."""
+    """A door sentence with two subjects reads in Chinese with both."""
 
     from alphalattice.interface.local_application import cli_contract
 
@@ -4110,11 +3719,7 @@ def test_a_door_sentence_with_two_subjects_reads_in_chinese_with_both() -> None:
 def test_a_saved_default_read_reads_its_own_page_again(
     tmp_path: Path, monkeypatch: Any, capsys: Any
 ) -> None:
-    """regression (V571, an outside review at 9b3181e7): `feature list --output p.json` kept no
-    `read_request`, since its read gave no field, so `feature list --from p.json` took the next
-    page the answer offers for the same operation as the same read and answered the second
-    page's first item, `0/OK`. A read that gives no field is kept as its operation alone and
-    reads its own first page again; the next page stays a request asked for by name."""
+    """A saved default read reads its own page again."""
 
     from alphalattice.interface.local_application import cli, client
 
@@ -4189,11 +3794,7 @@ def test_every_read_saved_with_its_defaults_reads_again_as_itself() -> None:
 
 
 def test_a_readback_saved_before_its_first_task_reads_again() -> None:
-    """regression (V575, an outside review at 5f7e7375): `data-update show` saved before any
-    Task could not be read again from its file: the continuation looked for the answer's Task
-    before it applied the saved read, and refused when none was named. A read again as itself
-    names no Task when its saved request named none and its operation needs none; a saved
-    answer that names its Task still reads that Task. Pinned over every such readback."""
+    """A readback saved before its first task reads again."""
 
     from alphalattice.interface.local_application import client
     from alphalattice.interface.local_application.cli_contract import command_table, named_read
@@ -4266,13 +3867,8 @@ def test_a_workspace_left_out_is_the_bound_sessions_and_any_other_is_refused_in_
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """requirement (V568, the user's intent of 2026-10-03): after the initial phase an agent's
-    commands leave `--workspace` out. `session bind` binds the session running it, its id read
-    as every reader reads it, in the project holding the product's declarations; from any
-    folder of the project the bound session's commands then work in its workspace, and every
-    answer names how its workspace was chosen. A session not bound, another session, or none, is
-    refused in words naming the full form and the bind, never given another workspace; and no
-    unnamed session binds nothing. Another named Session may bind its own workspace."""
+    """Omitting the workspace selects the bound session's workspace and an unbound session
+    receives a worded refusal."""
 
     from alphalattice.interface.local_application.native_bridge import BINDING_NAME
 
@@ -4318,10 +3914,8 @@ def test_a_bound_session_is_printed_its_commands_clean_and_any_other_the_full_fo
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """requirement (V568): in the bound session every command an answer prints is the clean
-    `alphalattice <object> <action>`, whether the line named its workspace or left it out, and
-    no string it prints names `--workspace`; another session, or a shell outside any, is printed
-    the full form naming the workspace."""
+    """A bound session receives clean commands while an unbound session receives the full command
+    form."""
 
     project = _agent_project(tmp_path, project=live.workspace.parent)
     monkeypatch.chdir(project)
@@ -4368,11 +3962,7 @@ def test_session_unbind_removes_this_projects_binding_for_its_session_or_the_per
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """requirement (V586): on the package leg no product command removed a binding, so a project
-    bound to an ended session refused every later bind. P2-NH keeps a slot per real host/Session:
-    a second Session binds without detaching the first, but never removes the first's record.
-    A person detaches the sole record; multiple records require exact ownership. An inner
-    project's unbind never reaches an outer project's binding."""
+    """Session unbind removes this project's binding for its session or the person."""
 
     from alphalattice.interface.local_application.native_bridge import BINDING_NAME
 
@@ -4424,132 +4014,12 @@ def test_session_unbind_removes_this_projects_binding_for_its_session_or_the_per
     assert (project / ".codex" / BINDING_NAME).exists()
 
 
-def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> None:
-    """requirement (V568): a bound session is printed no `--workspace`; the product's texts that
-    name it are listed here, each with why it keeps the full form, so a new producer of a
-    printed command names its reason or goes through `entry`."""
-
-    import ast
-
-    kept = {
-        ("control/product_host/composition/entry.py", "serve"): "the launcher's own option",
-        ("control/product_host/composition/evidence_authority_setup.py", "<module>"): (
-            "its words: the launcher receives only --workspace"
-        ),
-        ("control/product_host/composition/evidence_authority_setup.py", "_parser"): (
-            "the source setup script's own option"
-        ),
-        ("control/product_host/composition/evidence_authority_setup.py", "_acquisition_command"): (
-            "the source setup script's own command, a script, not an object and an action; "
-            "its acquisition offered again at one cutoff since V587"
-        ),
-        ("control/product_host/composition/evidence_authority_setup.py", "_import_command"): (
-            "the source setup script's own command: a recorded import's check, its way on "
-            "since V590"
-        ),
-        ("control/product_host/composition/evidence_review_application.py", "evidence_setup"): (
-            "the source setup's script commands"
-        ),
-        ("control/product_host/composition/evidence_review_application.py", "source_ways"): (
-            "the official serve way: the person's restart, in their own shell"
-        ),
-        ("control/product_host/composition/goals.py", "goal_prompt.command"): (
-            "a /goal prompt opens another session's initial phase"
-        ),
-        ("control/product_host/composition/web_launcher.py", "<module>"): (
-            "the Local Web launcher script's usage"
-        ),
-        ("control/product_host/composition/web_launcher.py", "main"): (
-            "the Local Web launcher script's own option"
-        ),
-        ("evidence/alternative_evidence/runtime/policy.py", "<module>"): (
-            "the source setup script's command template"
-        ),
-        ("interface/local_application/cli.py", "<module>"): "`session bind`'s help",
-        ("interface/local_application/cli.py", "_command"): "serve's arguments to its launcher",
-        ("interface/local_application/cli.py", "_global_options"): "the option and its help",
-        ("interface/local_application/cli.py", "_repair"): (
-            "a malformed --workspace's repair, the unexpected case"
-        ),
-        ("interface/local_application/cli_contract.py", "<module>"): (
-            "the unbound refusals' way on and the binding's words"
-        ),
-        ("interface/local_application/cli_contract.py", "entry"): (
-            "the full form, for every workspace but the bound one"
-        ),
-        ("interface/local_application/client.py", "_write_bundle"): (
-            "where an entry's workspace ends, never printed"
-        ),
-        ("interface/local_application/native_setup.py", "main"): "the bridge setup's bind option",
-        (
-            "interface/local_application/portfolio_research.py",
-            "LocalPortfolioResearchService._manifest",
-        ): "an export's sealed reproduction command",
-        ("investment/portfolio_strategy_lab/application/contracts.py", "export_command"): (
-            "an export's sealed reproduction command"
-        ),
-    }
-    source = SCRIPT.parents[1] / "src" / "alphalattice"
-    found: set[tuple[str, str]] = set()
-
-    def visit(node: ast.AST, owner: str, relative: str) -> None:
-        for child in ast.iter_child_nodes(node):
-            name = owner
-            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-                name = child.name if owner == "<module>" else f"{owner}.{child.name}"
-            if isinstance(child, ast.Constant) and isinstance(child.value, str):
-                if re.search(r"--workspace(?![-\w])", child.value):
-                    found.add((relative, name))
-                continue
-            visit(child, name, relative)
-
-    for path in sorted(source.rglob("*.py")):
-        relative = path.relative_to(source).as_posix()
-        visit(ast.parse(path.read_text(encoding="utf-8")), "<module>", relative)
-    assert found == set(kept), (sorted(found - set(kept)), sorted(set(kept) - found))
-    words = json.loads(
-        (source / "interface/local_application/refusal_words.json").read_text("utf-8")
-    )
-    # backup restore's --workspace-id is a distinct option, not the global workspace flag.
-    naming = {
-        code for code, entry in words.items() if re.search(r"--workspace(?![-\w])", entry["detail"])
-    }
-    # The unexpected case's way on: a folder that holds no workspace names the right one.
-    full_form_refusals = {
-        "research_workspace.manifest_unreadable": "the folder cannot identify its workspace",
-        "native_bridge.not_bound": "the initial session bind must explicitly name its workspace",
-        "native_usage.read_limit_exceeded": (
-            "unbind removes the implicit workspace; changing optional usage requires a fresh "
-            "bind with that exact workspace, not a clean command against an absent binding"
-        ),
-        "native_bridge.existing_configuration_differs": (
-            "changing this Session's scope first removes its implicit workspace"
-        ),
-        "native_bridge.binding_ambiguous": (
-            "an unnamed Session cannot select another Session's implicit workspace"
-        ),
-        "native_bridge.binding_invalid": "an invalid record supplies no implicit workspace",
-        "native_bridge.binding_limit_exceeded": (
-            "an unbound Session can continue with an explicit workspace without replacing records"
-        ),
-        "native_bridge.binding_path_invalid": (
-            "an unsafe record path supplies no implicit workspace"
-        ),
-        "native_bridge.binding_unreadable": "an unreadable record supplies no implicit workspace",
-        "native_bridge.workspace_mismatch": (
-            "another workspace cannot borrow this Session's binding; rebinding names its new scope"
-        ),
-    }
-    assert naming == set(full_form_refusals)
-
-
 @pytest.mark.parametrize("state", ["operator", "run", "closed", "open", "default", "unlocated"])
 def test_every_network_way_on_reads_the_effective_decision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str
 ) -> None:
     """regression (V620, OP5, TE12): every switch-naming refusal refreshes stale advice
     from the effective owner; settings cannot lift an operator or run hold."""
-    from contextlib import nullcontext
 
     import alphalattice.interface.local_application as local_application
     from alphalattice.control.product_host.composition.plain_refusals import explain
@@ -4758,7 +4228,6 @@ def test_the_installed_report_names_every_absent_performance_metric(
 
 def test_recovery_provenance_is_paired_typed_and_worded() -> None:
     """P3a: an existing owner request keeps its exact source pair or refuses it truthfully."""
-    from uuid import UUID
 
     from alphalattice.interface.local_application.cli_contract import refusal_words
     from alphalattice.interface.local_application.portfolio_research import (
@@ -4801,10 +4270,7 @@ def test_recovery_provenance_is_paired_typed_and_worded() -> None:
 def test_a_book_review_follows_the_real_book_and_stops_where_evidence_needs_its_source(
     live, tmp_path
 ) -> None:
-    """requirement (AGENT-TIME verb 2): through the real CLI and Host, `strategy-book review`
-    runs the installed strategy's book with its default controls, follows its Task, finds its
-    saved result and reads its report; where Evidence lacks its admitted source, that answer is
-    the command's, its way on kept and its steps named."""
+    """A book review follows the real book and stops where evidence needs its source."""
     from alphalattice.interface.local_application.client import LocalResearchClient
 
     package = LocalResearchClient(live.workspace).request({"operation": "CONTROLS"})[

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event, Lock, get_ident
-from uuid import uuid4
+from types import SimpleNamespace
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import BaseModel, ValidationError, model_validator
@@ -436,11 +438,7 @@ def test_canonical_task_collection_does_not_turn_a_store_failure_into_empty_rows
 def test_board_snapshot_keeps_many_references_and_a_confirmed_version_binds_at_the_start(
     tmp_path: Path,
 ) -> None:
-    """Card 34: one Task whose verified stage carries seventeen evidence references. The
-    registry's safe projection keeps its own sixteen; the one-lock board snapshot and the
-    product's recovery view carry all seventeen with their count and never refuse the Task.
-    A recovery or a start confirmed against a version the Task has left is refused inside
-    the registry's transaction; the versionless path is unchanged."""
+    """Board snapshot keeps many references and a confirmed version binds at the start."""
 
     now = datetime(2026, 9, 15, 9, tzinfo=UTC)
     registry = DuckDbTaskControlRegistry(
@@ -978,11 +976,7 @@ def test_status_and_cancel_stay_responsive_without_unfencing_admission(tmp_path)
 
 
 def test_a_read_only_unit_never_holds_the_instance_a_starting_writer_waits_for(tmp_path):
-    """regression: a status read retained the registry read-only, then asked for its connection
-    lock at its first read, while the worker held that lock waiting for the read-only instance to
-    close: the queued Task stayed queued until the writer's wait expired (the Workbench browser
-    test's sixth run). A read-only unit takes the lock first, so the writer waits for the unit to
-    end, and both finish."""
+    """A read only unit never holds the instance a starting writer waits for."""
 
     gate = WorkspaceMutationGate()
     registry = DuckDbTaskControlRegistry(resolve_task_control_database(tmp_path), gate=gate)
@@ -1232,11 +1226,7 @@ def test_runner_applies_adapter_cancellation_at_internal_safe_checkpoint(
 def test_a_cancel_between_the_runner_s_read_and_its_claim_is_applied_at_the_claim(
     tmp_path: Path,
 ) -> None:
-    """regression (the book journey's cancellation, 2026-09-20): a cancel that
-    landed twelve milliseconds after the run started -- after the runner had
-    read RUNNING and before it claimed the first work item -- made the claim
-    raise, and the run was left RECOVERY_REQUIRED with the queue waiting
-    behind it. The runner applies the cancel at that boundary instead."""
+    """A cancel between the runner's read and its claim is applied at the claim."""
 
     now = datetime(2026, 8, 10, 18, tzinfo=UTC)
     registry = DuckDbTaskControlRegistry(
@@ -1278,7 +1268,6 @@ def test_a_cancel_between_the_runner_s_read_and_its_claim_is_applied_at_the_clai
 
 
 def test_task_admission_order_survives_equal_clocks_and_reopen(tmp_path, monkeypatch):
-    from uuid import UUID
 
     import alphalattice.control.task_control.registry as owner
 
@@ -1471,11 +1460,8 @@ class _DeferringThenRaisingAdapter(_FixtureTaskAdapter):
 def test_deferrals_spend_none_of_a_stages_raises_and_a_raised_block_reopens(
     tmp_path: Path,
 ) -> None:
-    """regression (V475, the user's review at baa0f206): a stage that deferred twice was
-    blocked on its first raise, since every attempt counted, and the block offered no way back.
-    Only interrupted attempts in a row count, so its first raise is a stop the next run recovers
-    from and its third in a row blocks it; reopened on its confirmed version once the cause is
-    fixed, the same Task runs the stage again and completes."""
+    """Deferrals consume no stage retry allowance and a raised block reopens through its
+    recovery."""
 
     from alphalattice.control.task_control.runner import REPEATED_STAGE_RAISES
 
@@ -1660,10 +1646,7 @@ def test_dispatcher_finishes_deferred_cancel_only_after_command_returns(
 def test_a_held_recovery_reads_as_queued_and_a_stopped_admission_never_as_running(
     tmp_path: Path,
 ) -> None:
-    """requirement (V600): a recovery the dispatcher holds waits its turn, so a reader -- a
-    `--wait` -- waits on it rather than ending at RECOVERY_REQUIRED, and once its command returns
-    it reads as Task Control holds it. A Task found stopped when admitted has nothing for its
-    command to run: it reads BLOCKED while that command waits its turn, never RUNNING."""
+    """A held recovery reads as queued and a stopped admission never as running."""
 
     now = datetime.now(UTC)
     held, release = Event(), Event()
@@ -1740,12 +1723,7 @@ def test_a_held_recovery_reads_as_queued_and_a_stopped_admission_never_as_runnin
 def test_tasks_admitted_behind_a_deferral_start_once_it_frees_in_admission_order(
     tmp_path: Path, frees: str
 ) -> None:
-    """regression (V604, BLOCKING): a deferral holds the workspace's one running place while no
-    command drives it. A Task admitted meanwhile found the place held; its command returned and
-    nothing drove it again, so it stayed queued after the deferral ended, and at the queue's head
-    it refused every later Task's start (`queued_task_identity_mismatch`). The dispatcher keeps
-    each such command and reads it as owned; once the place is free, by the deferral resumed or
-    cancelled, each starts in admission order, and none is refused."""
+    """Tasks admitted behind a deferral start once it frees in admission order."""
 
     now = datetime.now(UTC)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
@@ -1898,10 +1876,7 @@ class _ExhaustedTaskAdapter(_FixtureTaskAdapter):
 
 
 def test_a_blocked_stage_keeps_the_cause_its_owner_saw(tmp_path: Path) -> None:
-    """regression (V444, V436's measure): a Feature build that ran out of commit memory blocked
-    the data update with `feature.materialization_failed` alone, so a reader could not tell the
-    machine from a defect. The owner's cause stays beside the code on the work item and its
-    event, the recovery view's stop shows it, and a state sealed before causes still verifies."""
+    """A blocked stage keeps the cause its owner saw."""
 
     now = datetime(2026, 10, 2, 9, tzinfo=UTC)
     registry = DuckDbTaskControlRegistry(
@@ -2126,14 +2101,7 @@ def test_new_writer_reconciles_only_orphan_execution_and_accepted_cancel(
 
 
 def test_a_versionless_cancel_aims_again_at_a_moving_task() -> None:
-    """regression (the book journey's cancellation, 2026-09-20): a running
-    coverage Task moves its version at every stage boundary, so a versionless
-    cancel aimed at the version just read was refused at the transaction and
-    the run completed as if never asked. The dispatcher aims again at the
-    version it finds, a bounded number of times; a confirmed version that
-    moved is still told so; a terminal Task keeps False without a retry."""
-
-    from types import SimpleNamespace
+    """A versionless cancel aims again at a moving task."""
 
     class MovingPort:
         def __init__(self, moves: int, *, terminal: bool = False) -> None:
@@ -2309,10 +2277,7 @@ def _run_chains(tmp_path: Path, adapter_of, *, chains: int = 3, salt: str, width
 
 
 def test_independent_work_items_run_at_once_within_the_declared_width(tmp_path: Path) -> None:
-    """requirement (S1, first-day speed): an adapter that declares a width has
-    that many independent items executed at once, never more, each only after
-    its dependencies verified, on worker threads; every item is verified and
-    the Task succeeds with no active item left."""
+    """Independent work items run at once within the declared width."""
 
     registry, task, adapter, runner = _run_chains(
         tmp_path, lambda registry: _ChainsAdapter(registry, width=2), salt="width-two"
@@ -2334,10 +2299,7 @@ def test_independent_work_items_run_at_once_within_the_declared_width(tmp_path: 
 
 
 def test_a_tasks_width_stays_within_its_cpu_budget(tmp_path: Path) -> None:
-    """regression (V436, the fork's measurement): a Task's width was held only to the host's
-    processors, so every Host of several at once opened as many worker processes as the
-    machine has, 126 on 32 processors. It is held to the cores its workspace's CPU budget gives
-    it when it starts; every item is still verified in its chain."""
+    """A task's execution width stays within its CPU budget."""
 
     registry, task, adapter, runner = _run_chains(
         tmp_path, lambda registry: _ChainsAdapter(registry, width=3), salt="budget-two", width=2
@@ -2444,7 +2406,6 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
     task_kind, tmp_path, monkeypatch
 ):
     """V610/TE12: the shared runner holds the stop for the complete registered Task-kind class."""
-    import multiprocessing
 
     from alphalattice.control.task_control.child import ChildInterrupted, run_in_child
 

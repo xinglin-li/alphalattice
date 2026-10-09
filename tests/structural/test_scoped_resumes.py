@@ -9,12 +9,7 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "alphalattice"
 
 
 def test_every_owner_resume_names_the_task_its_request_chose() -> None:
-    """regression (the user's review at 4bde3cb9): `strategy run --plan <B>` marked B for
-    recovery, then resumed every recovery-required Task of its kind, A included, while its
-    answer named only B. The input capture, the training inputs and the feature build did the
-    same. An owner's resume of its kind names the Task its request chose (`only_task_id`); only
-    the Host's restart picks up every Task left recovery-required, which builds no kind table
-    of its own."""
+    """Every owner resume names the task its request chose."""
 
     calls: list[tuple[str, int, bool]] = []
     for path in sorted(SRC.rglob("*.py")):

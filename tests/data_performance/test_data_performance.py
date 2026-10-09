@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import inspect
 import json
-import re
 import time
 from dataclasses import replace
 from datetime import UTC, date, datetime
@@ -441,23 +439,6 @@ def test_one_response_hydration_rejects_invalid_adjusted_close(
         )
     assert captured.value.code == "data.invalid_adjusted_close_payload"
     assert "2026-01-02" in str(captured.value)
-
-
-def test_feature_engine_does_not_query_diagnostic_compatibility_view() -> None:
-    feature_root = (
-        Path(__file__).resolve().parents[2]
-        / "src"
-        / "alphalattice"
-        / "foundation"
-        / "feature_engine"
-    )
-    pattern = re.compile(r"\bFROM\s+feature_ineligibility\b", re.IGNORECASE)
-    offenders = [
-        path
-        for path in feature_root.glob("*.py")
-        if pattern.search(path.read_text(encoding="utf-8"))
-    ]
-    assert offenders == []
 
 
 def _seasonality_reference(
@@ -922,11 +903,6 @@ def test_feature_persistence_rolls_back_after_staged_rle_write(tmp_path) -> None
         connection.close()
 
 
-def test_feature_engine_mutation_does_not_query_diagnostic_view() -> None:
-    source = inspect.getsource(FeatureStateRepository.upsert_feature_materialization)
-    assert "FROM feature_ineligibility\n" not in source
-
-
 def test_feature_current_insert_skips_conflict_probe_until_a_revision_exists(tmp_path) -> None:
     session = date(2026, 1, 2)
     catalog = FeatureCatalog.load()
@@ -1006,16 +982,7 @@ def test_feature_current_insert_skips_conflict_probe_until_a_revision_exists(tmp
 
 
 def test_shared_session_cutoff_sets_stay_one_relation_per_batch(tmp_path) -> None:
-    """regression: 1.17M conflicting single-row cutoff inserts must not return.
-
-    Every listing offers the same sessions, so all but the first listing's cutoff
-    sets are conflicts that do nothing. Submitted per row that cost 3.3 s of the
-    3.5 s each listing took; the fix offers each listing's whole set as one
-    relation and lets the same conflict clause decide, and a batch offers a set an
-    earlier write of the batch inserted no more. Counted here in
-    *statements*, because the stored row count is identical either way -- which
-    is exactly why the defect survived a workspace inspection.
-    """
+    """Shared session cutoff sets stay one relation per batch."""
 
     sessions = tuple(pd.bdate_range("2026-01-02", periods=40).date)
     catalog = FeatureCatalog.load()

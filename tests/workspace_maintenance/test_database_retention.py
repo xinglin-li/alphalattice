@@ -14,6 +14,10 @@ retention -- instead of meeting DuckDB's configuration refusal.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import textwrap
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -65,13 +69,7 @@ def _until(predicate: Callable[[], bool], *, seconds: float = 10.0) -> None:
 def test_retained_unit_keeps_independent_transactions_and_rolls_back_failures(
     tmp_path: Path,
 ) -> None:
-    """requirement: reuse is of the instance, never of the transaction.
-
-    Inside one retention two operations open their own cursors: the first
-    commits, the second raises after writing and its rollback leaves the first
-    commit intact. The retention itself exits through the exception and the
-    file is reopenable in the other access mode afterwards.
-    """
+    """Retained unit keeps independent transactions and rolls back failures."""
 
     database = _prepared(tmp_path)
     with pytest.raises(RuntimeError, match="second unit"), database.retain(read_only=False):
@@ -94,15 +92,7 @@ def test_retained_unit_keeps_independent_transactions_and_rolls_back_failures(
 
 
 def test_read_only_request_inside_a_writable_retention_cannot_write(tmp_path: Path) -> None:
-    """regression (supervisor finding A): read-only access must not become writable.
-
-    On a read-only instance the engine refuses the write. Inside a writable
-    retention the same request used to receive a cursor of the writable
-    connection and its INSERT persisted. Now the handle lives in a read-only
-    transaction: the engine refuses the write, nothing persists, the handle
-    stays usable, and its cursors inherit the guard. The unit's own writable
-    requests still write.
-    """
+    """Read only request inside a writable retention cannot write."""
 
     database = _prepared(tmp_path)
     ordinary = database.connect(read_only=True)
@@ -133,18 +123,7 @@ def test_read_only_request_inside_a_writable_retention_cannot_write(tmp_path: Pa
 
 
 def test_guarded_handle_cannot_leave_its_read_only_transaction(tmp_path: Path) -> None:
-    """regression (sibling review of b0437295): the guard must hold across every door.
-
-    Re-arming before a call is not enough when the call itself can end the
-    transaction: ``COMMIT; INSERT`` in one string, a relation used after a
-    consumer's COMMIT, a method that returns the engine's own connection, or
-    a duplicate cursor. The handle now refuses, by the engine's statement
-    classification, whatever a read-only transaction cannot stop --
-    transaction control, ATTACH/DETACH, extensions, database copy/export,
-    VACUUM, CALL -- and never hands back the unguarded connection, so every
-    remaining statement and relation runs inside the read-only transaction
-    the engine enforces.
-    """
+    """Guarded handle cannot leave its read only transaction."""
 
     database = _prepared(tmp_path)
     with database.retain(read_only=False):
@@ -195,12 +174,8 @@ def test_guarded_handle_cannot_leave_its_read_only_transaction(tmp_path: Path) -
 
 
 def test_guarded_reader_sees_each_statement_fresh_and_a_snapshot_holds(tmp_path: Path) -> None:
-    """requirement: caller-visible read semantics are those of a read-only instance.
-
-    A read-only handle on the writable instance sees the latest committed
-    state at every statement, as autocommit reads do on a read-only instance;
-    ``read_transaction`` keeps one snapshot across statements.
-    """
+    """A guarded reader sees each statement's latest committed state and an explicit read
+    transaction holds one snapshot."""
 
     database = _prepared(tmp_path)
     with database.retain(read_only=False):
@@ -250,20 +225,7 @@ def test_read_only_retention_refuses_a_write_instead_of_upgrading(tmp_path: Path
 def test_session_read_boundary_holds_each_store_once_and_writers_queue_behind_it(
     tmp_path: Path,
 ) -> None:
-    """requirement: a projection that joins several readers opens each store once.
-
-    The session context ran six readers as twenty-four engine opens (half of
-    its time). Inside ``WorkspaceApplicationSession.reads`` every open of the
-    Task store and the market store is a cursor of an instance the boundary
-    holds; a write inside is refused by name, never upgraded. The boundary
-    takes the mutation gate first, then the registry's connection lock, then
-    the market instance -- the order the writers take them -- so a gated
-    writer of either store that arrives during the boundary queues at the
-    gate and completes after it, while the boundary's own reads never wait
-    for that writer (the alternative was a writer holding the gate while it
-    waited two minutes for the boundary's instance, and the boundary blocked
-    behind that gate on its next read).
-    """
+    """Session read boundary holds each store once and writers queue behind it."""
 
     database = _prepared(tmp_path)
     task_store = tmp_path / "runtime" / "research-task-control.duckdb"
@@ -335,14 +297,7 @@ def test_session_read_boundary_holds_each_store_once_and_writers_queue_behind_it
 
 
 def test_writer_waits_for_an_ordinary_reader_and_wakes_when_it_closes(tmp_path: Path) -> None:
-    """regression (supervisor finding B): handover tracks every live connection.
-
-    A writer releases its retention; a reader then opens an ordinary
-    read-only connection and keeps it; the writer retains again. The engine
-    would refuse the writer at once. The owner makes the writer wait for the
-    reader's close -- bounded, refused by name when the budget expires -- and
-    proceed as soon as it happens, after which the instance is gone.
-    """
+    """Writer waits for an ordinary reader and wakes when it closes."""
 
     database = _prepared(tmp_path)
     reader_open = threading.Event()
@@ -400,13 +355,7 @@ def test_writer_waits_for_an_ordinary_reader_and_wakes_when_it_closes(tmp_path: 
 
 
 def test_reader_during_a_writable_unit_reads_at_once_and_cannot_write(tmp_path: Path) -> None:
-    """requirement: page reads are not queued behind a writer's unit.
-
-    Another thread's read-only request while a writable instance is live is
-    served on that instance with the guard: no wait, no write. When the
-    writer releases while the reader is still open, the instance stays alive
-    for the reader and the writer's next unit attaches to it.
-    """
+    """Reader during a writable unit reads at once and cannot write."""
 
     database = _prepared(tmp_path)
     entered = threading.Event()
@@ -447,16 +396,7 @@ def test_reader_during_a_writable_unit_reads_at_once_and_cannot_write(tmp_path: 
 def test_an_idle_guarded_reader_defers_the_writer_flush_instead_of_stopping_it(
     tmp_path: Path,
 ) -> None:
-    """regression: a page's reader must not interrupt the writer's unit.
-
-    A guarded reader keeps a READ ONLY transaction open between statements.
-    Once the writer has updated a row after that transaction began, the
-    engine refuses the writer's CHECKPOINT ("other write transactions
-    active") until the reader moves on; a daily update's cancel probe held
-    such a reader for a minute and the escaped refusal interrupted the Task.
-    The owner's flush answers False instead, the unit continues, and the
-    log is folded once the reader is gone.
-    """
+    """An idle guarded reader defers the writer flush instead of stopping it."""
 
     database = _prepared(tmp_path)
     log = database.path.with_name(database.path.name + ".wal")
@@ -489,12 +429,7 @@ def test_an_idle_guarded_reader_defers_the_writer_flush_instead_of_stopping_it(
 
 
 def test_new_reader_lets_a_waiting_writer_take_the_instance_first(tmp_path: Path) -> None:
-    """requirement: a stream of short reads cannot starve a writer.
-
-    While a writer waits for a read-only instance to drain, a newly arriving
-    reader waits too; once the writer holds the writable instance the reader
-    is served on it. Both acquisition orders end with every connection closed.
-    """
+    """New reader lets a waiting writer take the instance first."""
 
     database = _prepared(tmp_path)
     first_open = threading.Event()
@@ -568,21 +503,7 @@ def test_same_thread_cannot_wait_for_its_own_read_only_connection(tmp_path: Path
 
 
 def test_guard_holds_through_keyword_and_statement_doors(tmp_path: Path) -> None:
-    """requirement: every exposed way of handing SQL to a guarded handle is classified.
-
-    The installed engine takes SQL through ``execute``, ``executemany``,
-    ``sql``, ``query`` and ``from_query`` -- positionally or as ``query=``,
-    as text or as a statement object it extracted earlier -- and offers
-    method forms of some refused statements (``checkpoint``,
-    ``install_extension``, ``load_extension``). A transaction-control
-    statement is refused on every SQL door, the method forms are refused by
-    the same code, and a write handed in as a statement object is refused
-    by the engine inside the read-only transaction like any other.
-
-    regression (supervisor, 8464f8eb): ``from_query("COMMIT; INSERT ...;
-    SELECT ...")`` was only re-armed, not classified, and the row persisted
-    after every connection closed.
-    """
+    """The read-only guard classifies every exposed SQL keyword and statement entry."""
 
     database = _prepared(tmp_path)
     with database.retain(read_only=False):
@@ -631,12 +552,7 @@ def test_guard_holds_through_keyword_and_statement_doors(tmp_path: Path) -> None
 def test_child_handles_end_with_their_parent_and_the_instance_is_released(
     tmp_path: Path,
 ) -> None:
-    """requirement: a cursor handed out inside a unit ends with the unit.
-
-    The engine closes cursors with their parent connection. A child a consumer
-    kept past its unit is closed, its own ``close`` is idempotent, and the
-    owner no longer tracks the instance once the root is gone.
-    """
+    """Child handles end with their parent and the instance is released."""
 
     database = _prepared(tmp_path)
     with database.retain(read_only=False):
@@ -653,19 +569,7 @@ def test_child_handles_end_with_their_parent_and_the_instance_is_released(
 def test_an_instance_of_this_process_still_letting_go_is_waited_for(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: a torn-down engine instance of this process is not another process.
-
-    When the last handle on an instance closes, the engine still holds the file
-    for the instant its checkpoint and lock release take; a request in that
-    window meets the engine's file lock named with this process's own pid. The
-    broker waits for it like an untracked instance and serves the request once
-    the file is free -- on the fresh path and when attaching to a tracked
-    instance from another thread -- instead of refusing it as another process
-    or stopping the work that asked. A lock named with another pid is still
-    refused by name, at once.
-    """
-
-    import os
+    """An instance of this process still letting go is waited for."""
 
     from alphalattice.control.workspace_runtime import database as broker
 
@@ -781,16 +685,7 @@ def test_an_instance_of_this_process_still_letting_go_is_waited_for(
 def test_the_attached_path_refuses_another_process_by_name_and_waits_finitely(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression: the attached path classifies the lock holder like the fresh path.
-
-    A tracked instance proves nothing about a lock the engine names with another
-    pid: attaching to that instance meets the same refusal by name, at once,
-    without a wait. And the wait for an instance of this process that never
-    lets go is bounded by the request's own limit, then refused as untracked;
-    nothing hangs and nothing of the holder's work is touched.
-    """
-
-    import os
+    """The attached path refuses another process by name and waits finitely."""
 
     from alphalattice.control.workspace_runtime import database as broker
 
@@ -852,17 +747,7 @@ def test_the_attached_path_refuses_another_process_by_name_and_waits_finitely(
 def test_a_closing_instance_is_untracked_first_and_openers_wait_for_the_close(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: nobody attaches to an instance the engine is closing.
-
-    The engine closes the instance with its last connection -- a checkpoint,
-    then the file -- and a connection attached to it in that window meets a
-    dying instance and, on Windows, the file lock as an ``IOException`` that
-    names another process. Observed on the real-copy flow: a status read
-    during an analysis Task's admission. The owner stops tracking the handle
-    before the engine closes it, so openers take the fresh path; one that
-    meets the file lock while this process's close is in flight waits for
-    the close, and only a lock with no close in flight names another process.
-    """
+    """A closing instance is untracked first and openers wait for the close."""
 
     from alphalattice.control.workspace_runtime import database as owner
 
@@ -934,14 +819,7 @@ def test_a_closing_instance_is_untracked_first_and_openers_wait_for_the_close(
 def test_the_handle_leaves_the_books_and_the_file_is_marked_closing_in_one_step(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: no opener can read "untracked, and nothing closing".
-
-    The untracking and the closing mark are one critical section: an opener
-    that runs while the engine's close of the last connection is in flight
-    sees no instance to attach to and the file marked closing, so a plain
-    file lock in that window is waited for; the mark is lifted when the
-    close returns, and the opener then opens the file for itself.
-    """
+    """Closing a handle atomically untracks it and marks its database instance as closing."""
 
     from alphalattice.control.workspace_runtime import database as owner
 
@@ -1014,20 +892,7 @@ def test_the_handle_leaves_the_books_and_the_file_is_marked_closing_in_one_step(
 def test_two_handles_closing_at_once_keep_the_file_marked_until_the_last_close_returns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: an opener never reads "untracked, and nothing closing" while a close
-    of this owner's is in flight, whichever of two closing handles lets go of the file last.
-
-    The engine releases the file with whichever connection drops the last
-    reference. Two top-level handles close at once: the first to leave the
-    books (not the instance's last, so nothing marked the file closing under
-    the last-handle rule) is still inside the engine's close when the second
-    -- the last on the books -- closes fast and lifts its own mark. Between
-    that lift and the first close's return the books are empty and, under
-    the last-handle rule, so was the closing mark: a plain file lock in that
-    window was refused as an unknown holder (the supervisor's owner-level
-    probe, 2026-09-21). Every engine close in flight is counted now, so the
-    opener waits on the one deadline and opens when the last close returns.
-    """
+    """Two handles closing at once keep the file marked until the last close returns."""
 
     from alphalattice.control.workspace_runtime import database as owner
 
@@ -1104,17 +969,7 @@ def test_two_handles_closing_at_once_keep_the_file_marked_until_the_last_close_r
 
 
 def test_another_process_in_the_other_mode_is_refused_by_name(tmp_path: Path) -> None:
-    """requirement: an incompatible external handle is refused, bounded and harmless.
-
-    The engine's file lock refuses the other access mode from another process
-    at once; the owner names it and changes nothing. Two read-only processes
-    coexist. Cross-process writers are not a supported contract and are not
-    brokered.
-    """
-
-    import subprocess
-    import sys
-    import textwrap
+    """Another process in the other mode is refused by name."""
 
     database = _prepared(tmp_path)
     script = textwrap.dedent(

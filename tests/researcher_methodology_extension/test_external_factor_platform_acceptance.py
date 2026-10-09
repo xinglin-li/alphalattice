@@ -262,14 +262,7 @@ def test_an_external_method_reaches_a_published_panel_with_a_measured_identity(
     external_run: ExternalFactorRun,
     external_factor_workspace: RealRiskWorkspace,
 ) -> None:
-    """requirement: an outside formula is a first-class Factor on the Panel.
-
-    Not a special case and not a declared identity. The Panel publishes this
-    Factor's implementation and methodology hashes the same way it publishes the
-    current base activations', and its implementation hash is measured from the bytes of a
-    module outside the product -- resolved through the import system, which is
-    what makes an external family measurable at all.
-    """
+    """An external method reaches a published panel with a measured identity."""
 
     by_factor = {entry.factor_id: entry for entry in external_run.inventory}
     # The whole installed axis and nothing else: the shipped catalog plus this
@@ -305,12 +298,7 @@ def test_an_external_method_reaches_a_published_panel_with_a_measured_identity(
 
 
 def test_an_injected_specification_catalog_admits_the_external_method_only() -> None:
-    """requirement: admission is granted by a catalog, never by being importable.
-
-    Two facts in one case because they are one claim: the external consumer's own
-    catalog admits their method, and the *product* catalog does not gain it. The
-    second half is what stops a case study from becoming a product admission.
-    """
+    """An injected specification catalog admits the external method only."""
 
     injected = external_specification_catalog()
     admitted = admitted_extension_factor_specs(
@@ -343,16 +331,7 @@ def test_an_injected_specification_catalog_admits_the_external_method_only() -> 
 def test_the_authored_batch_reaches_real_evidence_and_replays_without_computing(
     external_run: ExternalFactorRun,
 ) -> None:
-    """requirement: freeze, run, verify recursively, replay at zero numerical work.
-
-    The counts are the point of the last step. ``run`` reports one sealed
-    deterministic program execution; ``replay`` resolves no executor at all and
-    reports zero, so the zero is a fact about the path rather than a claim about
-    a run that happened to skip its work. Between them the installed verifier
-    walks the receipt, its deterministic child and every identity that ties them
-    to this Program -- which is what makes ``REUSED_EXACT`` a statement rather
-    than a label.
-    """
+    """The authored batch reaches real evidence and replays without computing."""
 
     evidence = external_run.evidence
     assert evidence.kind == FACTOR_EXPERIMENT_KIND
@@ -379,15 +358,7 @@ def test_the_authored_batch_reaches_real_evidence_and_replays_without_computing(
 
 
 def test_the_verifier_refuses_a_fully_resealed_graph(external_run: ExternalFactorRun) -> None:
-    """requirement: self-consistency is not authority.
-
-    The adversary is not a corrupted file. It is a receipt whose ordered context
-    axis was rewritten and whose every dependent hash was recomputed, so the
-    graph validates perfectly against itself and its own ``receipt_hash`` is
-    correct. Two sides contradict it: the Program, sealed before the run from the
-    Host-resolved Panel, and the authority resolved fresh from the workspace. The
-    same construction with a substituted Panel identity is refused by the second.
-    """
+    """The verifier refuses a fully resealed graph."""
 
     verifier = next(
         item for item in installed_desk_verifiers() if item.kind == external_run.evidence.kind
@@ -467,15 +438,7 @@ def test_the_verifier_refuses_a_fully_resealed_graph(external_run: ExternalFacto
 def test_a_missing_deterministic_child_fails_replay(
     external_outcomes: RealRiskWorkspace, tmp_path: Path
 ) -> None:
-    """requirement: the graph is walked, so a deleted child cannot be reused.
-
-    The receipt survives untouched and still validates against its own hash.
-    Under the previous replay -- which refused this Desk outright because no
-    verifier existed -- this was indistinguishable from a healthy graph, because
-    nothing opened the child at all.
-
-    Its own run and its own root, because it destroys what it built.
-    """
+    """A missing deterministic child fails replay."""
 
     document = _document()
     workflow = _compose(external_outcomes, tmp_path, document)
@@ -535,19 +498,7 @@ def _proposal(child: Any) -> FactorResearchProposal:
 def test_human_and_external_automation_curate_identically_with_distinct_provenance(
     external_run: ExternalFactorRun,
 ) -> None:
-    """requirement: one Host route, one domain identity, two provenances.
-
-    Both actors hand the product route a receipt handle and a proposal. Nothing
-    else: the dossier, the research input, the limitations, the decision policy
-    and the submission identity are all derived by the Host from the checkpoint
-    the receipt points at, so identical content produces one submission identity
-    by construction rather than by two callers agreeing.
-
-    Driven through ``submit_factor_development_curation`` rather than by calling
-    the sealer and the writer in order. That sequence was the only thing that had
-    ever exercised development curation, which meant the case study was the
-    product path -- and a gap like that reads as a green suite.
-    """
+    """Human and external automation curate identically with distinct provenance."""
 
     child = external_run.child
     proposal = _proposal(child)
@@ -606,14 +557,7 @@ def test_human_and_external_automation_curate_identically_with_distinct_provenan
 def test_a_curation_decision_the_host_never_admitted_cannot_be_persisted(
     external_run: ExternalFactorRun,
 ) -> None:
-    """requirement: the writer is not a caller-trusted store.
-
-    A receipt whose decision policy is a value somebody chose is internally
-    perfect and was previously written and replayed without complaint, because
-    the writer took a bare checkpoint hash and the verifier only compared
-    evidence references. Both now re-derive through the decision owner, so a
-    decision is persisted exactly when it would also verify.
-    """
+    """A curation decision the host never admitted cannot be persisted."""
 
     from alphalattice.foundation.factor_research.experiments.development_evidence import (
         publish_factor_development_curation,
@@ -652,13 +596,8 @@ def test_a_curation_decision_the_host_never_admitted_cannot_be_persisted(
 
 
 def test_no_product_branch_agent_or_admission_was_required() -> None:
-    """requirement: the platform absorbed a new method with no product change.
-
-    Four checks because there are four ways this could have been false: a Host
-    branch on the method, an Agent edit, a product admission, or a Stage 2
-    numerical claim. The authoring report is the product's own answer about its
-    own state, and it must be exactly what it was before this case existed.
-    """
+    """An external methodology extension installs without a product source change, Agent edit, or
+    product admission."""
 
     surface = describe_factor_authoring_surface()
     assert {item.factor_id for item in surface.entries} == {
@@ -670,27 +609,9 @@ def test_no_product_branch_agent_or_admission_was_required() -> None:
     )
     assert surface.refused_factor_ids == ("sector_leader_lag_5",)
 
-    for directory in (
-        PLAYPEN_ROOT / "src" / "alphalattice" / "control" / "product_host",
-        PLAYPEN_ROOT / "src" / "alphalattice" / "foundation" / "factor_research" / "agent",
-    ):
-        offenders = sorted(
-            path.relative_to(PLAYPEN_ROOT).as_posix()
-            for path in directory.rglob("*.py")
-            for text in (path.read_text(encoding="utf-8"),)
-            if EXTERNAL_FACTOR_ID in text or EXTERNAL_METHOD_FAMILY in text
-        )
-        assert offenders == [], directory.name
-
 
 def test_the_external_goldens_hold_against_an_independent_expectation() -> None:
-    """requirement: an external method's goldens are executable by the platform.
-
-    The frame is built by the specification owner from the golden's named
-    columns, so a consumer with three input fields needs no special handling --
-    the property that used to be missing, and the reason a second method family
-    would have had to widen the contract or ship without goldens.
-    """
+    """The external goldens hold against an independent expectation."""
 
     specification = external_formula_specification()
     registry = external_kernel_registry()

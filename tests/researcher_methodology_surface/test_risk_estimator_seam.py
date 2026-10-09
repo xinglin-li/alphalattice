@@ -336,13 +336,7 @@ def _hand_built_fast_slow(returns: FloatArray, *, eta: float, decay: float) -> F
 
 @pytest.mark.parametrize("eta", (0.25, 0.50, 0.75))
 def test_fast_slow_matches_its_formula_and_reports_both_shrinkages(eta: float) -> None:
-    """requirement: R1 is its documented formula, and says what it shrank by.
-
-    Parametrised over the whole declared blend axis rather than written three
-    times: one contract, three admitted points. Exact float equality against an
-    independent construction, because anything weaker would still pass if the
-    adapter blended in the wrong direction or normalized the wrong matrix.
-    """
+    """The fast and slow covariance estimator matches its formula and reports both shrinkages."""
 
     from alphalattice.investment.risk_research.estimators.fast_slow import (
         FAST_SLOW_RECIPE_SCHEMA_ID,
@@ -403,12 +397,8 @@ def test_fast_slow_matches_its_formula_and_reports_both_shrinkages(eta: float) -
 
 
 def test_fast_slow_refuses_same_shaped_wrong_inputs_before_estimating() -> None:
-    """requirement: a wrong axis, window or parameter fails before any fit.
-
-    Each refusal is a different boundary -- the declared domain, the adapter
-    route and the input shape -- and every one of them happens before a
-    Ledoit-Wolf fit is reached.
-    """
+    """The fast and slow covariance estimator refuses wrong inputs before estimating even when
+    their shapes match."""
 
     from alphalattice.investment.risk_research.estimators.capability import RiskCapabilityError
     from alphalattice.investment.risk_research.estimators.covariance import RiskNumericalError
@@ -472,12 +462,8 @@ def test_fast_slow_refuses_same_shaped_wrong_inputs_before_estimating() -> None:
 
 
 def test_installing_r1_leaves_the_control_method_identity_unmoved() -> None:
-    """requirement: a second installed method changes governance, not numbers.
-
-    ``catalog_hash`` moves because the Host installed something; the control's
-    own numerical binding must not, or every published covariance identity would
-    have moved with it.
-    """
+    """Installing an additional risk method leaves the control method's numerical identity
+    unchanged."""
 
     from alphalattice.investment.risk_research.estimators.covariance import (
         CovarianceEstimatorAdapter,

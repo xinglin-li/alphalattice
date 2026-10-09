@@ -80,7 +80,7 @@ function environment() {
     download:(text,name,type)=>downloads.push({text,name,type}),
     LiveResearch:{ready(){}}, LiveActivity:{setFollowing(){}},
   };
-  vm.createContext(library.into(c,root));
+  library.context(c, root);
   vm.runInContext(fs.readFileSync(path.join(root,'data.js'),'utf8')+';globalThis.owner=Data;',c,{filename:'data.js'});
   c.owner.visitPage('books');
   const move = page => {const previous=c.app.page;c.owner.leavePage(previous);c.app.page=page;hash.value='#page='+page;c.owner.visitPage(page);};

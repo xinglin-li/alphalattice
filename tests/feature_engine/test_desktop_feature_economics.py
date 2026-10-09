@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -85,7 +86,6 @@ def _values(asset: pd.DataFrame, market: pd.DataFrame) -> pd.DataFrame:
 def test_missing_interior_session_keeps_calendar_windows_and_preceding_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from types import SimpleNamespace
 
     from alphalattice.foundation.feature_engine.panels.materialization_identity import (
         align_feature_source_sessions,
@@ -494,13 +494,7 @@ def test_return_delta_and_factor_specific_sparse_ranges() -> None:
 
 
 def test_panel_binding_change_rebuilds_panel_without_base_feature_work() -> None:
-    """A manifest revision reaches no base row and, over a compatible base, no Panel row.
-
-    Under the session-cross-section rule a governance-only revision is a new
-    relationship over the same rows: the composition reuses every partition
-    whose cross-sections it still computes. Only without a compatible base
-    does the binding change recompute the whole Panel.
-    """
+    """Panel binding change rebuilds panel without base feature work."""
 
     sessions = tuple(pd.bdate_range("2026-07-01", periods=20).date)
     catalog = FeatureCatalog.load()
@@ -739,15 +733,8 @@ def test_source_perturbation_reach_is_covered_by_sparse_plan() -> None:
 
 
 def test_expand_ranges_bisects_a_calendar_and_keeps_an_unsorted_sequence_in_its_order() -> None:
-    """requirement: the sessions inside any range, in the sequence's own order.
-
-    A sorted calendar is sliced by bisection (the daily plan restriction
-    expanded every factor's ranges by a linear scan of 2,500 sessions); an
-    unsorted sequence still takes the linear filter, so both answer the same
-    set, and the calendar answer is in calendar order.
-    """
-
-    from datetime import timedelta
+    """Range expansion preserves the input sequence's order and uses calendar bisection when the
+    sequence is sorted."""
 
     calendar = tuple(date(2026, 1, 5) + timedelta(days=offset) for offset in range(0, 40, 2))
     ranges = (
@@ -785,14 +772,7 @@ def test_expand_ranges_bisects_a_calendar_and_keeps_an_unsorted_sequence_in_its_
 def test_planned_runs_of_selected_sessions_equal_the_calendar_scan(
     offsets: list[int], picked: set[int], repeat: bool
 ) -> None:
-    """requirement: a plan's runs of selected sessions are found by position, as the scan's.
-
-    The daily update planned one new session per factor by scanning the listing's whole calendar
-    (53 factors, two plans a listing, 473 listings). Finding the runs by calendar position must
-    give the scan's runs for any selection, and a calendar that repeats a session keeps the scan.
-    """
-
-    from datetime import timedelta
+    """Planned runs of selected sessions equal the calendar scan."""
 
     def scanned(calendar: tuple[date, ...], selected: set[date]) -> tuple[object, ...]:
         ordered = [session for session in calendar if session in selected]

@@ -68,11 +68,7 @@ def _moves(root: Path, *moves: tuple[str, str, str]) -> Path:
 
 
 def test_a_replay_follows_its_estimators_recorded_moves_and_nothing_else(tmp_path: Path) -> None:
-    """Regression: an edit in an estimator's closure that moved no number refused every
-    sealed Risk study's replay, since the replay compared its Program by equality; the recorded
-    Program is current when its catalog and its estimator's numerical binding follow recorded
-    moves to the installed ones, and a recipe or an authority the moves do not explain is still
-    another study."""
+    """A replay follows its estimator's recorded moves and nothing else."""
 
     old_catalog, new_catalog = "1" * 64, "2" * 64
     old_numerical, new_numerical = "3" * 64, "4" * 64

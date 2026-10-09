@@ -8,6 +8,7 @@ mismatched or a coherently fabricated priming all refuse before any result.
 
 from __future__ import annotations
 
+import sqlite3
 from contextlib import closing
 from dataclasses import replace
 from datetime import timedelta
@@ -106,13 +107,7 @@ def _one_line_document(entity_id: str = "AAPL") -> RecordedEvidenceDocument:
 
 
 def test_build_and_first_query_embed_the_corpus_exactly_once(tmp_path: Path) -> None:
-    """requirement: build plus immediate query is one full-corpus embedding pass.
-
-    Before the owner seam existed the build embedded the corpus to publish the
-    projection and the first query embedded it again to verify what had just
-    been written, so the expensive half of retrieval was paid twice for one
-    generation.
-    """
+    """Build and first query embed the corpus exactly once."""
 
     runtime, passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime)
@@ -164,14 +159,7 @@ def test_exact_in_process_reuse_does_not_embed_the_corpus_again(tmp_path: Path) 
 
 
 def test_a_cold_reopen_pays_one_fail_closed_verification_pass(tmp_path: Path) -> None:
-    """requirement: cold reopen keeps its full verification, at zero passes.
-
-    Priming is single use. A second session over the same generation has no
-    vectors in hand, so it reads the payload the build committed, checks it
-    against its digest, compares every stored vector with it byte for byte,
-    re-derives the corpus and proves the rows against the manifest. The
-    passage model is not run: the commitment is what is verified.
-    """
+    """A cold reopen pays one fail closed verification pass."""
 
     runtime, passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime)
@@ -205,12 +193,7 @@ def test_a_cold_reopen_pays_one_fail_closed_verification_pass(tmp_path: Path) ->
 
 
 def test_primed_and_cold_readers_agree_on_hits_and_packet_order(tmp_path: Path) -> None:
-    """requirement: identical hits and packet ordering across the optimization.
-
-    The primed reader skips the second corpus pass and nothing else. If it
-    disagreed with a cold reader about a single rank, the optimization would
-    have changed the product rather than its cost.
-    """
+    """Primed and cold readers agree on hits and packet order."""
 
     runtime, passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime)
@@ -249,12 +232,7 @@ def test_primed_and_cold_readers_agree_on_hits_and_packet_order(tmp_path: Path) 
 
 
 def test_chunks_sharing_one_source_line_remain_distinct_spans(tmp_path: Path) -> None:
-    """requirement: same-line multi-chunk fixture preserves every distinct span.
-
-    Keyed on `(document, revision, start_line, end_line)` alone, every chunk of
-    a single-line filing is one candidate, so a packet that may hold many spans
-    receives one per document however many distinct passages matched.
-    """
+    """Chunks sharing one source line remain distinct spans."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime, documents=(_one_line_document(),))
@@ -288,14 +266,7 @@ def test_chunks_sharing_one_source_line_remain_distinct_spans(tmp_path: Path) ->
 
 
 def test_a_mismatched_or_tampered_priming_refuses_before_any_result(tmp_path: Path) -> None:
-    """requirement: mismatched or tampered priming refuses before publication.
-
-    Priming is a claim about a generation, so it is checked like one. A reader
-    primed for one generation must not answer for another, and vectors that do
-    not describe the published projection must not open it. The pending leases
-    are reached directly because a healthy service never produces these states;
-    the point is that the owner refuses them if anything ever does.
-    """
+    """A mismatched or tampered priming refuses before any result."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     first_request, first_set, first = _built(runtime, documents=(_recorded_document(),))
@@ -385,14 +356,7 @@ def test_a_mismatched_or_tampered_priming_refuses_before_any_result(tmp_path: Pa
 
 
 def test_the_retrieval_binding_covers_the_owners_that_decide_selection(tmp_path: Path) -> None:
-    """requirement: correcting span identity rotates an identity, explicitly.
-
-    A binding that hashes only what a generation *stores* lets the rule that
-    decides what it *yields* change silently. `session.py` decides when two
-    hits are one passage and `packet.py` decides which passages reach the
-    analyst, so a change to either's code must move this hash; a comment moves
-    nothing, the binding being their syntax (LAWS.md ID3).
-    """
+    """The retrieval binding covers the owners that decide selection."""
 
     tracked = (
         "config/identity-roles.json",
@@ -430,14 +394,7 @@ def test_the_retrieval_binding_covers_the_owners_that_decide_selection(tmp_path:
 
 
 def test_a_query_embeds_its_query_and_never_a_passage(tmp_path: Path) -> None:
-    """requirement: zero passage embedding calls after the generation is open.
-
-    Opening verifies the whole published projection against the model. Every
-    query then re-embedded its `top_k` bodies to verify the hits it was about
-    to return, re-proving what the open had already proved and paying the model
-    per query for it. On the real corpus that was 8 calls per packet and the
-    dominant per-packet cost.
-    """
+    """A query embeds its query and never a passage."""
 
     queries: list[str] = []
     runtime, passes = _counted_runtime(tmp_path, queries=queries)
@@ -463,15 +420,7 @@ def test_a_query_embeds_its_query_and_never_a_passage(tmp_path: Path) -> None:
 
 
 def test_a_database_edited_after_open_still_refuses(tmp_path: Path) -> None:
-    """requirement: tampering after open must refuse, without re-embedding.
-
-    The commitment held in memory is what a query verifies against, so the
-    check has to be against the *stored* row rather than against itself.
-    Rewriting a stored vector after the projection was verified must fail the
-    hit rather than pass on a remembered value.
-    """
-
-    import sqlite3
+    """A database edited after open still refuses."""
 
     runtime, passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime)
@@ -500,13 +449,7 @@ def test_a_database_edited_after_open_still_refuses(tmp_path: Path) -> None:
 
 
 def test_two_chunks_from_one_line_return_different_excerpts(tmp_path: Path) -> None:
-    """requirement: the matched chunk comes back, not the head of its line.
-
-    A document with no Markdown heading is one whole-file section, so every
-    chunk of it shares one line range. Resolving by line returned the same
-    opening text for all of them; resolving by the chunk's own character range
-    returns what was matched.
-    """
+    """Two chunks from one line return different excerpts."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime, documents=(_one_line_document(),))
@@ -569,13 +512,7 @@ def test_a_span_excerpt_round_trips_to_the_sealed_source_bytes(tmp_path: Path) -
 
 
 def test_the_trigram_rule_is_declared_by_query_shape_not_by_a_clock() -> None:
-    """requirement: one deterministic rule, appropriate to trigram's purpose.
-
-    Trigram asks the index for an exact run of characters. A multi-word product
-    query is never that run, and asking anyway cost 190.7 seconds across the
-    eight installed queries for zero rows. The rule is the query's shape and the
-    index's own chunk size, so it decides the same way on any machine.
-    """
+    """The trigram rule is declared by query shape not by a clock."""
 
     spec = HybridIndexSpec.fixed_v2()
     size = spec.lexical_spec.chunk_size_codepoints
@@ -601,11 +538,7 @@ def test_the_trigram_rule_is_declared_by_query_shape_not_by_a_clock() -> None:
 def test_a_single_term_substring_query_still_reaches_the_trigram_channel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression: the rule must not retire substring and typo retrieval.
-
-    This is the case the channel exists for: a probe that is a fragment of a
-    word in the corpus, which no term index will match.
-    """
+    """A single term substring query still reaches the trigram channel."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime, documents=(_one_line_document(),))
@@ -652,12 +585,7 @@ def test_a_single_term_substring_query_still_reaches_the_trigram_channel(
 
 
 def test_source_edited_after_open_still_refuses(tmp_path: Path) -> None:
-    """requirement: per-query source verification keeps its commitment.
-
-    The query no longer rebuilds all 9,725 chunks to prove the source; it
-    re-reads and re-verifies the revisions the generation was built from. That
-    has to catch an edited blob just as the rebuild did.
-    """
+    """Source edited after open still refuses."""
 
     runtime, passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime)
@@ -681,20 +609,7 @@ def test_source_edited_after_open_still_refuses(tmp_path: Path) -> None:
 def test_a_coherently_fabricated_priming_is_refused_before_any_result(
     tmp_path: Path,
 ) -> None:
-    """requirement: priming must prove it derives from the authoritative source.
-
-    Verifying the database against the manifest and the vectors is not that
-    proof, because all three can be made to agree with chunks that were never
-    derived from the source. A chunk's identity folds its document, revision,
-    content hash, heading path, ordinal, source range and body hash -- but not
-    its title -- so titles can be rewritten while every chunk id, chunk hash,
-    embedding input and vector stays exactly as built. Rebuild the projection
-    and the manifest from those chunks and the whole generation is internally
-    coherent and still a fabrication.
-
-    The per-query chunk comparison used to catch this. It is now one derivation
-    at primed open, which is where the claim is actually made.
-    """
+    """A coherently fabricated priming is refused before any result."""
 
     runtime, passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime)
@@ -760,14 +675,7 @@ def test_a_coherently_fabricated_priming_is_refused_before_any_result(
 def test_a_builds_own_priming_opens_without_deriving_the_corpus_again(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (the shared algorithm and cost initiative, E): the build
-    derives the corpus from the authoritative library and proves the
-    manifest against it; the reader it primes opens on that proof -- one
-    derivation per build-and-open, not two -- while any priming this
-    process's build did not mark, or marked for another manifest, is
-    re-derived once at open and refused when it does not derive from the
-    source. Measured on a real unit the second derivation cost 6.4 s of a
-    27.6 s warm selection."""
+    """A build's own priming opens without deriving the corpus again."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     derivations: list[str] = []
@@ -857,24 +765,7 @@ def test_a_builds_own_priming_opens_without_deriving_the_corpus_again(
 def test_pair_scores_are_served_only_under_a_sealed_commitment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (review finding R2, reproduced on `ae9bc093`: a block that
-    verified against its own name and passed a four-pair sample served an
-    unsampled score changed from 0 to 9.9999): a block's name is a lookup
-    key, not the authority to serve it. A reader serves only the blocks the
-    admission it was opened with names -- the evidence runtime names those
-    its sealed commitments bind, each commitment named by the receipt of
-    the session that scored them -- and a block on disk under any other
-    name (the rewrite under its recomputed name, an injected coherent
-    block, a block no commitment names) is counted and never consulted.
-    An admitted block that does not verify refuses by name; two admitted
-    blocks that score one pair differently refuse by name; an admitted
-    block missing from disk is a missing proof, scored again; a reader
-    under another context sees none of it; a storage admission that
-    refuses leaves the pairs unsealed and the selection whole; a reader
-    without an admission keeps its in-process cache only. The four-pair
-    sample stays as a drift diagnostic. Exact reuse: a later process with
-    the commitment's blocks asks the model only for the sample and gets
-    the same ordering."""
+    """Pair scores are served only under a sealed commitment."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     scored: list[int] = []
@@ -1021,14 +912,7 @@ def test_pair_scores_are_served_only_under_a_sealed_commitment(
 def test_the_runtime_commits_the_blocks_a_session_scored_and_the_receipt_names_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (review findings R2 and R4): the runtime seals what its
-    session scored under the workspace's storage admission, commits the
-    blocks (`PairScoreCommitmentRecord`, the reranker context bound) and
-    names the commitment in the receipt; a later runtime over the same
-    workspace admits exactly those blocks and serves another request over
-    the same filings from them; a runtime whose storage admission refuses
-    seals no block, commits nothing, names nothing, and selects the same
-    evidence."""
+    """The runtime commits the blocks a session scored and the receipt names it."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     scored: list[int] = []
@@ -1235,20 +1119,7 @@ def test_a_priming_proof_binds_the_chunks_the_reader_consumes(tmp_path: Path) ->
 def test_a_projection_is_proved_at_first_open_on_the_reader_s_own_connection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (record section Y, R0; the lead's reproduction on
-    `4b0ba487`): a build's proof of the published projection is not the
-    reader's. Rows deleted from the file between a build's materialization
-    and the reader's first open never become hits, so no per-hit check can
-    refuse their omission -- the primed open proves the projection on its
-    own connection and refuses the damaged generation before any result:
-    every content row deleted under an unchanged manifest; a term-index row
-    deleted under an unchanged manifest; while an ordinary build and open
-    proves once at the build and once at the open, a lease released without
-    a session holds no handle on the index, an open that fails after the
-    proof closes its connection, and an independent reopen agrees with the
-    primed reader."""
-
-    import sqlite3
+    """A projection is proved at first open on the reader's own connection."""
 
     proofs: list[bool] = []
     original_verify = knowledge_hybrid._verify_projection

@@ -256,13 +256,7 @@ def test_installed_component_feature_history_keeps_exact_selected_context_bytes(
 def test_a_formation_row_from_its_window_is_the_full_pass_row_on_every_day(
     context_source, component_id
 ):
-    """regression: the seal ran every kernel over the whole history to keep one row.
-
-    That pass took 11.5 s for one component on the journey. The bounded kernels now read the
-    formation's trailing window and the recursions their whole history. On every fixture day, with
-    gaps, a late entrant, a Sector history and dated members, the row must be the full pass's row
-    bit for bit.
-    """
+    """A formation row from its window is the full pass row on every day."""
     component = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component(component_id)
     sector, market = assemble_panel_context_arrays(
         **context_source,

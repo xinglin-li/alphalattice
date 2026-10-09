@@ -112,13 +112,7 @@ def _state(service: _Service, selected: dict[str, str]) -> dict[str, Any]:
 
 
 def test_an_analysis_under_another_selection_is_not_the_current_answer(tmp_path: Path) -> None:
-    """requirement (3), restated by the retirement: a controlled analysis
-    published under the integrated selection; the admitted selection moved
-    to a retired one -- the production plan, the combined candidate: the
-    analysis is neither eligible nor automatically selected, the section
-    awaits evidence (its preview names the retirement) and the dossier does
-    not prepare from it. Back under the integrated selection it is current
-    again, and it stays readable as history throughout."""
+    """An analysis under another selection is not the current answer."""
 
     workspace, report = build_workspace(tmp_path)
     selected: dict[str, str] = {}

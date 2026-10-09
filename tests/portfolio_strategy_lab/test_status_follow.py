@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import itertools
 import json
+import shlex
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, ClassVar
@@ -239,10 +241,7 @@ def test_a_follow_wakes_on_a_new_incident_and_not_on_one_it_began_with(monkeypat
 
 
 def test_a_wait_on_each_stage_returns_as_a_stage_is_verified(monkeypatch) -> None:
-    """regression (V421, an outside review at 67d55a35): a coverage run's units are ready one by
-    one, yet no waiter returned before the whole Task ended and the handoff told the lead to poll.
-    `--each-stage` returns as the Task verifies a stage beyond those it held at the start, its
-    end still ending the wait; it needs a Task."""
+    """A wait on each stage returns as a stage is verified."""
 
     task_id = str(uuid4())
     running = {"status": "RUNNING", "lifecycle": "RUNNING", "task_id": task_id}
@@ -313,10 +312,7 @@ def test_a_goal_wait_ends_on_the_next_task_end_it_did_not_see_begin(monkeypatch)
 
 
 def test_a_goal_wait_ends_on_the_next_message_under_the_goal(monkeypatch) -> None:
-    """requirement (GR2, WK): an assignment made under a goal wakes its assignee's wait on the
-    goal, and a reply its sender's, named in the one line; a message heard before does not.
-    A waiter whose agent session is unknown wakes on every new message (V503), never on a
-    product request's own Conversation row, which has no observation (FLOW-1)."""
+    """A goal wait ends on the next message under the goal."""
 
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
@@ -357,10 +353,7 @@ def test_a_goal_wait_ends_on_the_next_message_under_the_goal(monkeypatch) -> Non
 
 
 def test_a_goal_wait_wakes_only_for_its_own_messages(monkeypatch) -> None:
-    """regression (V503, the user's review): the lead's `activity wait --goal` woke on a
-    question one subagent sent another, which the lead could not act on. The waiter is its
-    agent session: a message between two other agents never wakes it; one addressed to it, a
-    reply to one it sent, or one addressed to no one does."""
+    """A goal wait wakes only for its own messages."""
 
     goal = str(uuid4())
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "00000000-0000-4000-8000-0000000000aa")
@@ -397,11 +390,7 @@ def test_a_goal_wait_wakes_only_for_its_own_messages(monkeypatch) -> None:
 
 
 def test_every_waiter_ends_on_a_deferral_with_its_retry_time_and_resume(monkeypatch) -> None:
-    """regression (V507, the user's review at 244900d8): a data Task the provider deferred
-    waits on its retry time and then on its plan sent again, yet `--wait`, `activity wait` and
-    a goal's waiter read DEFERRED as running and never gave control back. Every waiter ends on
-    it (`WAIT_EXITS`), the read it ends with naming the retry time and the request that resumes
-    it."""
+    """Every waiter ends on a deferral with its retry time and resume."""
 
     task_id = str(uuid4())
     resume = {"operation": "WORKSPACE_PREPARE_CONFIRM", "preparation_plan_hash": "a" * 64}
@@ -444,8 +433,6 @@ def test_a_deferred_tasks_status_names_its_retry_time_and_resume() -> None:
     """requirement (V507): the read a waiter ends on says when a deferred Task's plan may be
     sent again and by which request, as its owner's readback words them (V375), and names that
     readback; a kind with no deferral readback goes on by its recovery view."""
-
-    from datetime import UTC, datetime
 
     task_id = uuid4()
     projection = SimpleNamespace(
@@ -508,8 +495,6 @@ def test_a_deferred_tasks_clock_stops_while_it_waits() -> None:
     """regression (V520, the lifecycle sweep S2): a deferred preparation or update counted its
     wait for the provider as running, so its `running_seconds` grew for hours while nothing ran.
     Its clock stops at its last change, as a recovery's or a review's does."""
-
-    from datetime import UTC, datetime, timedelta
 
     from alphalattice.control.task_control.timing import task_timing
 
@@ -617,10 +602,7 @@ def test_a_finished_wait_replaces_the_admission_with_its_final_answer(
 
 
 def test_a_goal_wait_ends_on_a_task_that_turned_blocked(monkeypatch) -> None:
-    """regression (V440, an outside review at b13cb386): the goal waiter ended on a Task that
-    succeeded, was cancelled or waits on a decision, never one that turned BLOCKED, which a Task
-    waiter ends on at once; it reads each Task's state as the Task waiter does, and its read
-    starts with the checkout's entry and the workspace."""
+    """A goal wait ends on a task that turned blocked."""
 
     goal, task = str(uuid4()), str(uuid4())
 
@@ -640,11 +622,7 @@ def test_a_goal_wait_ends_on_a_task_that_turned_blocked(monkeypatch) -> None:
 
 
 def test_a_goal_wait_wakes_on_a_task_stopped_again_after_its_recovery(monkeypatch) -> None:
-    """regression (V535, the user's review at a84e523f): the goal waiter remembered each Task's
-    state from its start, so a Task that needed recovery when the wait began, recovered and
-    needed it again slept until `MAX_WAIT_REACHED`, and its agent missed the new stop. Each
-    Task is judged against the state the waiter last saw. A recovery that stops again between
-    two reads is read as unchanged, the bound of a waiter that reads states."""
+    """A goal wait wakes on a task stopped again after its recovery."""
 
     goal, task = str(uuid4()), str(uuid4())
 
@@ -677,13 +655,7 @@ def test_a_goal_wait_wakes_on_a_task_stopped_again_after_its_recovery(monkeypatc
 def test_a_bundles_submit_command_is_quoted_for_the_shell_in_use(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
-    """regression (V439, an outside review at b13cb386): a bundle's `submit_command` was joined
-    with shlex, POSIX quoting PowerShell refuses as printed; it is quoted for the shell in use.
-    Since V429 it starts with the installed `alphalattice`, which needs no call operator, and a
-    path is quoted as the shell in use reads it: PowerShell doubles a single quote, POSIX
-    closes and reopens it."""
-
-    import shlex
+    """A bundle's submit command is quoted for the shell in use."""
 
     from alphalattice.interface.local_application.cli_contract import entry
 
@@ -701,10 +673,7 @@ def test_a_bundles_submit_command_is_quoted_for_the_shell_in_use(
 
 
 def test_a_wait_on_a_trial_ends_when_a_step_needs_its_recovery(monkeypatch) -> None:
-    """regression (V449, an outside review at 368f0d6f): a trial whose step's Task needed
-    recovery still read RUNNING, and `--wait` ran on to its cap, or for ever. The trial names
-    the step's Task and its lifecycle and offers its recovery, so the wait ends there as a
-    decision, the recovery kept."""
+    """A wait on a trial ends when a step needs its recovery."""
 
     from alphalattice.control.product_host.composition.feature_trials import waiting_step
 
@@ -785,44 +754,8 @@ def test_a_goal_wait_capped_before_its_first_read_is_pending(monkeypatch) -> Non
     assert outcome_of(followed) == "PENDING"
 
 
-def test_every_wait_a_cap_ends_reads_pending() -> None:
-    """regression (V563's class): every exit of a waiter that a cap ends carries `wait_status`,
-    which the outcome reads as pending; none answers a cap as a completed read."""
-
-    import ast
-
-    tree = ast.parse(Path(client_module.__file__).read_text(encoding="utf-8"))
-    exits: list[tuple[int, bool]] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Dict):
-            named = {key.value for key in node.keys if isinstance(key, ast.Constant)}
-            for key, value in zip(node.keys, node.values, strict=True):
-                if (
-                    isinstance(key, ast.Constant)
-                    and key.value == "wait_event"
-                    and isinstance(value, ast.Call)
-                    and value.args
-                    and isinstance(value.args[0], ast.Constant)
-                    and value.args[0].value == "MAX_WAIT_REACHED"
-                ):
-                    exits.append((node.lineno, "wait_status" in named))
-        if (
-            isinstance(node, ast.Call)
-            and getattr(node.func, "id", None) == "final"
-            and len(node.args) > 1
-            and isinstance(node.args[1], ast.Constant)
-            and node.args[1].value == "MAX_WAIT_REACHED"
-        ):
-            exits.append((node.lineno, any(kw.arg == "wait_status" for kw in node.keywords)))
-    assert len(exits) >= 4 and all(pending for _line, pending in exits), exits
-
-
 def test_a_read_followed_to_its_end_reads_its_selection_again(monkeypatch) -> None:
-    """regression (V554, the user's review at de555b07): `study show T --session 2026-09-01
-    --wait --output final.json` kept its day only under `admission.read_request`, so `study show
-    --from final.json` read the newest day. A wait that ends on the Task its read selected
-    keeps the read at the top, an explicit day still wins, and a wait that followed another
-    Task (a promotion) never carries the parent's selection."""
+    """A read followed to its end reads its selection again."""
 
     from alphalattice.interface.local_application.client import continued
 

@@ -185,13 +185,7 @@ def test_sleeve_shares_reset_to_equal_notional_at_each_formation() -> None:
 
 
 def test_the_projection_never_computes_a_return() -> None:
-    """Drift enters only as the engine's own drifted-over-executed ratio.
-
-    Scaling the drifted book by any positive constant must leave the projection
-    unchanged, because the sleeves are renormalised. A projection that had
-    recomputed returns from prices would not have that property, so this is a
-    behavioural check on where the arithmetic lives rather than a comment.
-    """
+    """The projection never computes a return."""
 
     sleeves = np.zeros((2, 6), dtype=np.float64)
     sleeves[0, :3] = 0.25
@@ -371,13 +365,7 @@ def _engine_workspace(formations: int) -> _Workspace:
 
 
 def test_the_provider_drives_the_installed_engine_end_to_end() -> None:
-    """The composition claim, exercised rather than asserted in prose.
-
-    The executor contributes no loop and no mechanics: turnover, costs and the
-    path all come back from the shared engine. If the provider did not satisfy
-    the engine's decision contract, this is where it would fail rather than in
-    a hand-rolled driver that happens to agree with it.
-    """
+    """The provider drives the installed engine end to end."""
 
     formations = 9
     provider = _provider(count=formations)
@@ -606,12 +594,7 @@ def test_the_executor_holds_no_covariance_matrix() -> None:
 
 
 def test_a_walk_too_short_for_a_rebalance_is_refused_before_the_book_opens() -> None:
-    """requirement (class): every formation a strategy book or a research update
-    walks selects each component's names from those both tradable and scored, so a formation
-    with fewer is refused by its session before the book opens -- the tranche book and the
-    capped sleeve book alike, a flat start and a continuation, for names unscored or
-    untradable -- never in the middle of the walk; a short formation past the walk's end is
-    not the walk's."""
+    """A walk too short for a rebalance is refused before the book opens."""
 
     listings = tuple(f"L{i:03d}" for i in range(LISTINGS))
     flat = _formations(6)

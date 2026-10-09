@@ -49,7 +49,7 @@ for(const file of fs.readdirSync(appDir).filter(x=>x.endsWith('.js'))) {
    Data:{history:()=>[{id:'synthetic',name:'Factor screening',kind:'Factor screening',summary:words.t('{n} factors',{n:2}),raw:{kind:'factor.screening-development',status:'SUCCEEDED'}}]},
    words:x=>x,titleOf:()=>words.t('Research experiment'),foldLabel:i=>words.t('Fold {n}',{n:i+1}),codeWords:words.codeWords,reading:{row:{reference:{label:'synthetic',request:{operation:'REPORT'}}}},
    panelHeader:on=>({title:words.t('Tasks'),kind:words.t('Research'),tabs:[{key:'facts',word:words.t('Facts'),on:on==='facts'},{key:'record',word:words.t('Record'),on:on==='record'}]})};
-  vm.createContext(c);let read;
+  library.context(c);let read;
   if(file==='live-views.js') {
    // History's header closes over its owner's naming helpers. Invoke the real opener
    // rather than extracting its expression and substituting a second naming rule.

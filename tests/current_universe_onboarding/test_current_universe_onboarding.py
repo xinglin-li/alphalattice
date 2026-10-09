@@ -53,7 +53,6 @@ PROFILE = (
 def test_bulk_calendar_preserves_scalar_clocks_hashes_and_cutoff(monkeypatch):
     import exchange_calendars
     import pyarrow as pa
-    import pytest
 
     from alphalattice.kernel.data.calendar import (
         calendar_schedule_schema,
@@ -878,7 +877,6 @@ def test_same_session_membership_uses_its_unchanged_full_anchor_and_real_rolling
 
 
 def test_admission_cache_is_set_only_after_complete_receipt_rebinding(tmp_path, monkeypatch):
-    import pytest
 
     class AfterAdmission(RuntimeError):
         pass
@@ -931,7 +929,6 @@ def test_admission_cache_is_set_only_after_complete_receipt_rebinding(tmp_path, 
 def test_scoped_candidate_onboarding_preserves_scope_and_does_not_refetch_other_names(
     tmp_path,
 ) -> None:
-    import pytest
 
     schedule = materialize_calendar_schedule(
         ("XNAS",), start=date(2016, 7, 31), end=AS_OF, as_of_timestamp=OBSERVED_AT
@@ -1143,17 +1140,7 @@ def test_provider_wide_deferred_degrades_only_on_resume_and_keeps_successes(
 def test_audit_fallback_and_resumed_units_hold_nothing_across_the_provider(
     tmp_path, monkeypatch
 ) -> None:
-    """regression: the audit's Provider fallback ran under the chunk's retained instance.
-
-    The runner retains one store instance for the completed hydrations of a
-    chunk and for a resumed unit's store work. The audit's fallback to the
-    Provider (ephemeral evidence out of scope, or a resumed unit with no
-    evidence at all) is a network edge like the hydration fetch and must
-    release that instance first: while the runner waits on the Provider,
-    another thread's writer gets the instance at once and a reader opens its
-    own, instead of waiting out the fetch behind the runner's hold. Checked
-    with a Provider that blocks in the fallback until this test has looked.
-    """
+    """Audit fallback and resumed units hold nothing across the provider."""
 
     from alphalattice.control.workspace_runtime.database import (
         live_workspace_connections,
@@ -1244,19 +1231,8 @@ def test_audit_fallback_and_resumed_units_hold_nothing_across_the_provider(
 def test_resumed_quality_eligible_unit_audits_through_the_provider_holding_nothing(
     tmp_path,
 ) -> None:
-    """The persisted recovery state, a fresh runner, the audit's network edge.
-
-    A unit whose audit fallback met a provider-wide failure stays
-    QUALITY_ELIGIBLE in the store while the run reports RUNNING; the exit
-    leaves no connection behind. A fresh runner (what a restart constructs)
-    resumes that unit alone -- the three completed units are not hydrated
-    again -- and its audit has no ephemeral evidence, so it reaches the
-    Provider: while it waits, another thread's reader opens its own
-    read-only instance and a writer proceeds, and nothing is tracked once
-    the run has completed. This is the runner's edge; the cancel that owns
-    the runner is Task Control's and is proved on the first-use route in
-    `tests/workspace_readiness/test_workspace_preparation.py`.
-    """
+    """A resumed quality-eligible unit releases its store instance while auditing through the
+    provider."""
 
     from alphalattice.control.workspace_runtime.database import (
         live_workspace_connections,

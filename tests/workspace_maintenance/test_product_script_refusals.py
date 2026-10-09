@@ -11,6 +11,7 @@ writes.py` holds the set.
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import re
@@ -77,10 +78,7 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
 def test_the_retrieval_environment_setup_answers_its_failure_in_words(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """regression (V539, RR5d): offline, uv stopped on a package its cache lacked and the setup
-    ended in a traceback; it now says which step failed and that the network setup, with the
-    person's permission, fetches it. uv missing is said too; the GPU environment's setup
-    answers the same way under its own name."""
+    """The retrieval environment setup answers its failure in words."""
 
     from scripts import create_gpu_environment as gpu
     from scripts import create_retrieval_environment as setup
@@ -372,7 +370,6 @@ def test_every_product_setup_script_words_an_unexpected_failure(
 ) -> None:
     """requirement: every setup entry in the structural set serves an unexpected failure's
     sanitized cause and way on, never a traceback or private message."""
-    import importlib
 
     setup = importlib.import_module(f"scripts.{script}")
 
@@ -491,12 +488,7 @@ def _setup_runs(setup: Any, script: str, tmp_path: Path) -> list[tuple[str, list
 def test_every_setup_refusal_claims_only_what_it_carries_and_its_way_on_fits_its_mode(
     script, kind, monkeypatch, capsys, tmp_path
 ) -> None:
-    """requirement (V590, TE12): whatever stops a setup entry, in each mode it runs in, its
-    refusal's words claim only what it carries -- every place in the answer they name is
-    there, filled -- and what it offers fits its mode: an offline run is offered no network
-    decision and no command that acquires or downloads. Over every setup entry, every failure
-    the setup refusals word, offline and network."""
-    import importlib
+    """Every setup refusal claims only what it carries and its way on fits its mode."""
 
     setup = importlib.import_module(f"scripts.{script}")
     monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
@@ -527,10 +519,7 @@ def test_every_setup_refusal_claims_only_what_it_carries_and_its_way_on_fits_its
 
 
 def test_every_setup_refusal_word_names_its_way_on_and_only_places_every_setup_carries() -> None:
-    """requirement (V590, TE12): the words every setup entry falls back on, the `setup.*`
-    family `setup_failure` codes, speak of the answer only by naming its places -- `causes`
-    and `next_commands` -- and each names `next_commands`, the way on; the class test above
-    proves every setup entry carries both whenever it prints them."""
+    """Every setup refusal word names its way on and only places every setup carries."""
 
     from alphalattice.interface import local_application
 

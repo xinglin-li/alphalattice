@@ -102,20 +102,7 @@ def test_an_adapter_that_misdescribes_its_own_estimate_is_refused(
     value: object,
     code: str,
 ) -> None:
-    """requirement: the Host checks the identity of what an adapter returned.
-
-    Deliberately narrow. The Host does not re-derive the mathematics -- no second
-    eigendecomposition, no PD tolerance, no conditioning rule -- because that
-    would put a copy of every method's science in a writer that is supposed to
-    know none of it.
-
-    What it cannot delegate is the adapter's claim about *which* numbers these
-    are. ``matrix_hash`` is what the chunk index records and what replay compares,
-    the formation session decides where the estimate lands on the axis, and the
-    environment decides which capability it is attributed to. An adapter that
-    misstates any of the three publishes a graph that verifies perfectly against
-    numbers nobody computed.
-    """
+    """An adapter that misdescribes its own estimate is refused."""
 
     authority, _requested = _bounded_authority(real_risk_workspace, count=3)
     input_binding, bounded = resolve_development_input_binding(

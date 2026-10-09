@@ -7,6 +7,7 @@ it is not another model fit or a claim about the admitted research corpus.
 """
 
 from dataclasses import replace
+from datetime import timedelta
 from types import SimpleNamespace
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
@@ -413,7 +414,6 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated):
         r for r in reviews if r["review_publication_hash"] == published["review_publication_hash"]
     )
     assert historical["book"] == {k: str(v) for k, v in c.selector.items()}
-    from datetime import timedelta
 
     c.service.review.clock = lambda: _NOW + timedelta(days=180)
     assert c.service.get("/api/evidence-cro/export?" + urlencode(export_selector)) == exported

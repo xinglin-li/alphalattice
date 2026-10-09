@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+import pytest
 
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -692,25 +693,47 @@ def _json(session: LocalPortfolioWebSession, path: str, **kwargs: Any) -> dict[s
     return json.loads(body)
 
 
+def run_node(
+    arguments: list[str] | None,
+    *,
+    missing: str = "Node.js development runtime required",
+    required: bool = False,
+    **kwargs: Any,
+) -> subprocess.CompletedProcess[Any] | None:
+    """Run one Node invocation with its caller's availability policy and process options."""
+    node = shutil.which("node")
+    if node is None:
+        if required:
+            raise AssertionError(missing)
+        pytest.skip(missing)
+    if arguments is None:
+        return None
+    return subprocess.run([node, *arguments], **kwargs)
+
+
 def _run_badge_browser(
     live: LocalPortfolioWebSession, out: Path, mode: str, ids: dict[str, str]
 ) -> None:
     """The BADGE owner records through one live built Workbench at 900 px."""
     root = Path(__file__).resolve().parents[2]
-    node = shutil.which("node")
-    assert node, "BADGE requires Node.js and the pinned Playwright browser runtime"
+    run_node(
+        None,
+        missing="BADGE requires Node.js and the pinned Playwright browser runtime",
+        required=True,
+    )
     out.mkdir(parents=True, exist_ok=True)
     receipt = out / "badge-records.json"
     receipt.write_text(json.dumps({**ids, "out": str(out)}), encoding="utf-8", newline="\n")
-    completed = subprocess.run(
+    completed = run_node(
         [
-            node,
             str(Path(__file__).with_name("workbench_badge.cjs")),
             live.url,
             live.launch_url,
             f"--mode={mode}",
             str(receipt),
         ],
+        missing="BADGE requires Node.js and the pinned Playwright browser runtime",
+        required=True,
         cwd=root,
         check=False,
         capture_output=True,

@@ -57,13 +57,7 @@ _SECTOR_REVISION = "a" * 64
 
 
 def test_the_one_session_publication_policy_did_not_move() -> None:
-    """requirement: admitting a second method must not rotate the first's identity.
-
-    Every seal already on disk carries the one-session policy hash, and the seal
-    verifier compares against what this build constructs. Widening the installed
-    policy in place -- another admitted id, another field, even a defaulted one --
-    would have invalidated all of them at once.
-    """
+    """Installing a second method preserves the sealed one-session publication policy identity."""
 
     policy = build_installed_execution_outcome_publication_policy()
     assert policy.admitted_recipe_ids == (ONE_SESSION_RECIPE_ID,)
@@ -86,12 +80,7 @@ def test_five_session_admission_is_a_second_policy_scoped_to_development() -> No
 
 
 def test_the_development_only_manifest_cannot_carry_a_sealed_chunk() -> None:
-    """requirement: a scope that says it holds no Holdout must hold none.
-
-    The frozen contract cannot express a five-session span and must not be
-    widened to; this successor can, and refuses the one thing that would make it
-    a Holdout writer in disguise.
-    """
+    """The development only manifest cannot carry a sealed chunk."""
 
     with pytest.raises(ValueError, match="carries a sealed chunk"):
         DevelopmentOnlyExecutionOutcomeManifest.model_validate(
@@ -136,13 +125,7 @@ def test_the_development_only_manifest_cannot_carry_a_sealed_chunk() -> None:
 def test_the_embargo_and_step_come_from_the_maturity_clock(
     maturity_lag: int, embargo: int, step: int
 ) -> None:
-    """requirement: the step must cover the embargo, or the exclusion means nothing.
-
-    A rolling step that did not cover the embargo would move the next validation
-    window straight over the sessions the embargo had just excluded. The frozen
-    geometry steps by its validation length, which is admissible only while the
-    embargo is zero -- so a development run steps by ``validation + embargo``.
-    """
+    """The embargo and step come from the maturity clock."""
 
     geometry = load_alpha_split_policy()
     policy = derive_alpha_development_split_policy(
@@ -171,11 +154,7 @@ def test_an_axis_too_short_for_the_embargo_is_refused_before_any_fit() -> None:
 
 
 def test_canonical_and_unbounded_are_distinct_installed_methods() -> None:
-    """requirement: two compositions must never share one identity.
-
-    Same estimator, same parameters, two target compositions with no lane. If the
-    methods collided, so would every candidate fitted to them.
-    """
+    """Canonical and unbounded are distinct installed methods."""
 
     catalog = installed_alpha_target_methods(
         sector_revision=_SECTOR_REVISION, execution_outcome_recipe_id=ONE_SESSION_RECIPE_ID
@@ -231,12 +210,7 @@ def _source_table(*, sessions: int = 3, listings: int = 12) -> tuple[pa.Table, d
 
 
 def test_the_unbounded_control_verifies_its_re_demeaning_is_idle() -> None:
-    """requirement: 'this step was unnecessary' must be checked, not assumed.
-
-    With nothing clipped the residual is already Sector-neutral, so demeaning it
-    again must move nothing. Running the step and requiring it to be idle turns
-    an assumption into a property.
-    """
+    """The unbounded control verifies its re demeaning is idle."""
 
     table, sectors = _source_table()
     recipe = build_unbounded_sensitivity_target_recipe(
@@ -308,12 +282,7 @@ def _arm(arm_id: str, *, role: str, outcome: str, split: str) -> AlphaComparison
 
 
 def test_the_comparison_program_refuses_a_pair_on_two_clocks() -> None:
-    """requirement: a pair on different clocks cannot isolate the bound.
-
-    The whole point of the pairing is that everything except the bounding step is
-    held fixed. Two arms on different holding spans differ in the horizon as
-    well, and the difference would be attributed to the bound.
-    """
+    """The comparison program refuses a pair on two clocks."""
 
     arms = (
         _arm(

@@ -461,11 +461,7 @@ def test_continuation_is_an_executable_product_operation_over_pending_scope(
 def test_a_cumulative_allowance_is_honest_and_a_continuation_survives_restart_and_tamper(
     tmp_path: Path,
 ) -> None:
-    """requirement: an exhausted cumulative allowance leaves an honest partial
-    result and refuses further sessions by name; other limits are another
-    request; an interruption before the commit boundary resumes after a
-    real restart without a second publication; a tampered source blocks
-    the session by name and the retried request reads the restored bytes."""
+    """A cumulative allowance is honest and a continuation survives restart and tamper."""
 
     workspace, report = build_workspace(tmp_path)
     authority = build_authority(tmp_path=tmp_path, report=report, extra_documents=_ten_k)

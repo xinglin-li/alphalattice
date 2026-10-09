@@ -45,13 +45,7 @@ DOCUMENT_TOPICS: dict[str, tuple[EvidenceTopic, ...]] = {
 def test_the_query_program_recalls_every_planted_claim_with_exact_attribution(
     tmp_path: Path,
 ) -> None:
-    """Which spans reach the analyst is a function of the generation and the program.
-
-    Eight topics planted across three issuers, one program run: every planted
-    sentence is in the packet, attributed to the issuer whose document carries
-    it, within the packet cap, and identically on a second run. This is the
-    offline evaluation the design promised in place of a model's own search.
-    """
+    """The query program recalls every planted claim with exact attribution."""
 
     documents = tuple(
         _recorded_document(
@@ -100,13 +94,7 @@ def test_the_query_program_recalls_every_planted_claim_with_exact_attribution(
 
 
 def test_one_index_ranks_a_claim_above_an_earlier_background_document(tmp_path: Path) -> None:
-    """The regression behind the single index.
-
-    The retired per-document components merged their hits by `(rank, document)`,
-    so a background document's best passage sat beside the claim document's best
-    passage regardless of score. One index over the whole generation ranks the
-    passage that states the claim first, whichever document it came from.
-    """
+    """One index ranks a claim above an earlier background document."""
 
     liquidity = EvidenceTopic.LIQUIDITY_GOING_CONCERN
     documents = (

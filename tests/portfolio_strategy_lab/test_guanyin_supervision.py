@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from uuid import uuid4
+
 
 def test_the_supervisor_opens_an_incident_the_task_read_names_and_the_recovery_center_acts(
     live,
 ) -> None:
-    """requirement (GY2, WK): the Supervisor finds a Task owed a recovery, the Task's read names
-    its open incident so a follower wakes, the Recovery Center performs only a remedy the Host
-    offers, through its existing operation, and records the attempt; the incident resolves once
-    the Task has ended."""
-
-    from uuid import uuid4
+    """The supervisor opens an incident the task read names and the recovery center acts."""
 
     from alphalattice.interface.local_application.portfolio_research import (
         PortfolioResearchOperationRequest,
@@ -73,8 +72,6 @@ def test_the_supervisor_opens_an_incident_the_task_read_names_and_the_recovery_c
 
 def test_a_succeeded_linked_successor_does_not_reopen_the_stopped_source_incident(live) -> None:
     """An explicit successful re-plan resolves incident attention without changing its source."""
-    from datetime import timedelta
-    from uuid import uuid4
 
     from alphalattice.control.task_control.contracts import TaskEvidence, TaskStageReceipt
     from alphalattice.interface.local_application.portfolio_research import (
@@ -193,14 +190,7 @@ def test_a_succeeded_linked_successor_does_not_reopen_the_stopped_source_inciden
 
 
 def test_a_remedys_receipt_answers_for_the_task_it_acted_on(tmp_path) -> None:
-    """regression (the user's review at 244900d8): the receipt nested the Task a recovery
-    resumed in `answer`, so its outcome read OK and `--wait` ended at once. A recovery or a
-    cancellation lifts the Task and its lifecycle, a refused one its code, so the receipt's
-    outcome is the Task's and its owner's; a re-plan leaves the Task as it was."""
-
-    from datetime import UTC, datetime
-    from types import SimpleNamespace
-    from uuid import uuid4
+    """A remedy's receipt answers for the task it acted on."""
 
     from alphalattice.control.product_host.composition.task_supervision import TaskSupervisor
     from alphalattice.interface.local_application.cli_contract import outcome_of

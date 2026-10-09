@@ -423,15 +423,7 @@ def test_registry_is_idempotent_and_persists_transport_degradation(tmp_path: Pat
 
 
 def test_registry_records_the_maintenance_scope_a_cycle_admitted_once(tmp_path: Path) -> None:
-    """requirement: a cycle's listing units are resolved by the run it admitted.
-
-    The coordinator records the maintenance run (its id, the manifest revision it
-    bound, the session) in the cycle's own event log when it admits the runner;
-    the same scope recorded again (every bounded run of the cycle) appends
-    nothing, a different one appends and is the one read back, and a cycle that
-    recorded none reads back None -- the readback then falls back to the cycle's
-    request, verified, never to today's manifest.
-    """
+    """Registry records the maintenance scope a cycle admitted once."""
 
     registry = DuckDbWorkspaceMaintenanceRegistry(
         tmp_path / "market-data.duckdb", gate=WorkspaceMutationGate()
@@ -634,14 +626,7 @@ def test_stale_candidate_membership_cannot_bypass_active_quarantine_child(
 def test_cycle_blocked_inside_quality_governance_resumes_it_when_run_again(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression: a quality block was resumed as an ordinary cycle.
-
-    A cycle that stopped inside quality governance (waiting for a decision,
-    pending review, or refused while binding the child the decision derived)
-    must govern again when it is run again. Market data is current by then,
-    and an ordinary cycle would take an older admission for the same revision
-    as clearance and build on the parent -- the decision silently dropped.
-    """
+    """Cycle blocked inside quality governance resumes it when run again."""
 
     manifest = build_quality_filtered_research_manifest(
         acquisition_manifest(),
@@ -1614,10 +1599,7 @@ def _baseline_request(manifest: UniverseManifest, *, knowledge_cutoff_at: dateti
 def test_baseline_qualification_is_sealed_at_the_assessment_instant(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A first-use cycle enters at t, its Feature build stamps the Sector at t+1, the
-    judgement runs at t+2: the boundary is sealed at the assessment instant (t+2), so
-    the observation is admitted; sealed at the cycle's entry time it was refused as if
-    from the future (2026-09-15, run 1 of the first-initialization batch)."""
+    """Baseline qualification is sealed at the assessment instant."""
 
     coordinator, manifest, seen = _baseline_qualification_fixture(
         tmp_path, monkeypatch, sector_observed_at=NOW + timedelta(minutes=1)
@@ -1791,14 +1773,7 @@ def test_daily_transport_workers_fetch_only_and_main_thread_persists(
 def test_run_releases_its_hold_around_the_provider_fetch_and_tells_the_caller(
     tmp_path: Path,
 ) -> None:
-    """requirement: nothing is retained while the Provider is awaited.
-
-    The runner retains the workspace instance for its bookkeeping before and
-    after the fetch, never across it: a reader on another thread opens the
-    file during the fetch without waiting, ``before_fetch`` runs once before
-    the first fetch and ``after_fetch`` once after the last, so a caller can
-    release its own hold for exactly that window and take it back afterwards.
-    """
+    """Run releases its hold around the provider fetch and tells the caller."""
 
     manifest, market_data, _, _ = _maintenance_workspace(
         tmp_path, eligible_listing_ids=("listing-aapl", "listing-msft")
@@ -2313,16 +2288,7 @@ def _listing_states(market_data: MarketDataRepository, maintenance_id: str):
 
 
 def test_granted_retry_survives_the_batch_boundary_and_a_restart(tmp_path: Path) -> None:
-    """counterexample: an unconsumed grant must not be lost once the unit is enqueued.
-
-    Two names have spent the operation's two attempts on a stale payload;
-    each carries one confirmed, elapsed wait. With a work budget of one
-    unit, the first batch runs the first name. The second name is then
-    pending past the budget: its grant is held on its row, so the next
-    batch -- under a fresh runner, the shape of a restart between enqueue
-    and attempt -- still runs it instead of marking it exhausted. Nothing
-    resets ``attempt_count``; the attempt itself consumes the grant.
-    """
+    """Granted retry survives the batch boundary and a restart."""
 
     market_data, provider, runner, maintenance_id = _two_exhausted_listings(tmp_path)
     wait = NOW + timedelta(minutes=7)
@@ -2432,15 +2398,7 @@ def test_a_consumed_grant_is_not_spent_again_and_a_new_wait_grants_once_more(
 def test_a_table_written_before_grants_reads_without_one_and_is_not_migrated_by_reading(
     tmp_path: Path,
 ) -> None:
-    """compatibility: the plan and the pages read old maintenance tables without writing.
-
-    A workspace whose listing table predates the grant columns (the shape
-    bootstrap wrote before them) reads back with its attempts and no
-    grant; reading adds no column. A row carrying only half a grant --
-    its receipt without its wait -- is no grant either: it cannot exempt
-    the unit from the attempt budget. Once the runner's own admission has
-    upgraded the table, a granted wait is held and spent as on a new one.
-    """
+    """A table written before grants reads without one and is not migrated by reading."""
 
     market_data, provider, runner, maintenance_id = _two_exhausted_listings(tmp_path)
     connection = market_data.database.connect(read_only=False)
@@ -3212,16 +3170,7 @@ def test_timed_wake_fires_without_a_front_desk_turn_and_stops() -> None:
 
 
 def test_set_scoped_quality_evidence_reads_match_the_per_listing_readers(tmp_path: Path) -> None:
-    """requirement: one governance pass reads the manifest once, listing evidence unchanged.
-
-    The coordinator judges every listing of the manifest from its newest
-    qualification, its raw close history through the target session and its
-    active actions under its current provider. The set-scoped readers must
-    return, per listing, exactly what the per-listing readers return -- the
-    newest of several admissions, the bars up to and not beyond the target,
-    the actions in their recorded order -- and omit a listing the per-listing
-    action reader refuses for lack of a provider mapping.
-    """
+    """Set scoped quality evidence reads match the per listing readers."""
 
     manifest, market_data, _, _ = _maintenance_workspace(
         tmp_path, eligible_listing_ids=("listing-aapl", "listing-msft")
@@ -3354,13 +3303,7 @@ def _restatement_bar(session: date, *, close: float) -> RawDailyBar:
 
 
 def test_bounded_restatement_observation_is_pure_and_content_addressed() -> None:
-    """Same content -> exact reuse; different content -> observed correction.
-
-    The observation claims nothing beyond what it saw: no mutation, no new
-    qualified identity, no downstream surface names. The null check and the
-    injected correction prove both directions, and an unbounded or duplicated
-    scope is refused rather than widened.
-    """
+    """Bounded restatement observation is pure and content addressed."""
 
     qualified = (
         _restatement_bar(date(2026, 7, 29), close=100.0),
@@ -3524,16 +3467,7 @@ def _qualified_state(market_data: MarketDataRepository) -> tuple[float, int, int
 
 
 def test_unauthorized_restatement_never_reaches_qualification(tmp_path: Path) -> None:
-    """Observing a correction is not permission to apply it.
-
-    The whole point of observing before the write is that the write can be
-    refused. Without escalation authority the qualified row keeps its content,
-    no ``bar_revision`` appears, the appended session is not admitted either --
-    the batch is refused whole -- and only failure facts are recorded, so no
-    downstream identity can have moved. Authorizing the listing is what turns
-    the observed correction into an explicit qualification with its own
-    revision trail.
-    """
+    """Unauthorized restatement never reaches qualification."""
 
     manifest, market_data, provider = _restatement_workspace(tmp_path)
     before_close, before_revisions, before_sessions = _qualified_state(market_data)
@@ -3585,14 +3519,7 @@ def test_unauthorized_restatement_never_reaches_qualification(tmp_path: Path) ->
 def test_maintenance_observes_restatement_before_explicit_qualification(
     tmp_path: Path,
 ) -> None:
-    """One changed historical row: observed pre-admission, revised on qualification.
-
-    The refresh carries the pre-admission observation in its change document --
-    the correction was known before any write -- while ``bar_revision`` and the
-    updated current row are the storage owner's explicit qualification acts.
-    The prior identity stays readable in the revision trail, the scoped content
-    identities differ, and nothing moved except through that explicit act.
-    """
+    """Maintenance observes restatement before explicit qualification."""
 
     manifest, market_data, provider = _restatement_workspace(tmp_path)
 
@@ -3714,12 +3641,7 @@ def _two_listings_one_session_due(
 def test_progress_counts_listings_without_reading_every_change_document(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """regression: each listing's progress read every unit's change document.
-
-    After every listing, the runner built the whole outcome to report three counts: all 473 rows
-    read and every change document parsed, 473 times a day. Progress now counts in the engine,
-    with the same numbers, and the units are read whole only where the outcome is returned.
-    """
+    """Progress counts listings without reading every change document."""
     manifest, market_data, provider, as_of = _two_listings_one_session_due(tmp_path)
     read_whole = market_data.current_universe_maintenance_listings
     reads: list[str] = []
@@ -3785,10 +3707,7 @@ def _maintenance_rows(market_data: MarketDataRepository) -> dict[str, list[tuple
 def test_a_listing_that_fails_inside_its_transaction_is_rolled_back_and_applied_again(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """recovery: a failure inside a listing's one transaction rolls its batch and
-    audit back whole; it then applies on separate commits, its attempt not counted again, and
-    the store holds what an unfaulted run writes (a dividend left behind would read as held).
-    """
+    """A listing that fails inside its transaction is rolled back and applied again."""
 
     def run(root: Path, *, fault: bool) -> dict[str, list[tuple[object, ...]]]:
         manifest, market_data, provider, as_of = _two_listings_one_session_due(root, dividend=True)

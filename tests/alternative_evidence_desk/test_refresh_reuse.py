@@ -131,13 +131,7 @@ def _assert_spans_anchor(
 def test_an_unchanged_refresh_reuses_sealed_derivations_and_survives_a_restart(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (Phase A5): the second request over the same filings
-    parses no body for its citations or its canonical documents, opens no
-    retrieval session, and seals its own receipt naming the one it stands
-    on, over the same spans; a new runtime over the sealed artifacts does
-    the same. The first request had parsed every body twice and run a
-    session. On the campaign copy these three derivations were about 83 s,
-    74 s and 96 s (warmed) of a 294-second unchanged refresh."""
+    """An unchanged refresh reuses sealed derivations and survives a restart."""
 
     extractions = _Extractions(monkeypatch)
     transport = _transport()
@@ -217,11 +211,7 @@ def test_an_unchanged_refresh_reuses_sealed_derivations_and_survives_a_restart(
 def test_a_changed_source_reuses_the_unchanged_derivations_and_selects_afresh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (Phase A5): one new filing is parsed once for its citation
-    and once for its canonical document while the unchanged bodies reuse
-    theirs; the document references differ, so no sealed selection applies
-    and a session runs. A receipt sealed under another selection policy is
-    not a commitment for this one."""
+    """A changed source reuses the unchanged derivations and selects afresh."""
 
     extractions = _Extractions(monkeypatch)
     transport = _transport()
@@ -286,12 +276,7 @@ def test_a_changed_source_reuses_the_unchanged_derivations_and_selects_afresh(
 def test_a_damaged_canonical_revision_is_extracted_afresh_from_verified_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (Phase A5): a sealed canonical text whose library blob no
-    longer verifies is not reused -- the refusal is counted and the document
-    is extracted again from its verified source bytes; the library then
-    refuses to publish over the damaged blob by its own integrity code, so
-    the refresh fails by name rather than carrying a reused text, and the
-    blob restored, the next refresh reuses every derivation again."""
+    """A damaged canonical revision is extracted afresh from verified bytes."""
 
     extractions = _Extractions(monkeypatch)
     transport = _transport()
@@ -368,13 +353,7 @@ def _shifted_span_set(
 def test_a_reused_selection_is_the_span_set_the_receipt_names(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (R1): a reuse stands on the span set the receipt names by
-    hash, read through the store's own reader. A substituted set that
-    carries the same handles, request and generation over other
-    source-valid ranges is not the one delivered (stored beside the
-    original it is ignored; stored under the original's name it refuses by
-    name, never recomputes silently); a receipt sealed before the binding
-    was recorded proves nothing and is computed again."""
+    """A reused selection is the span set the receipt names."""
 
     _Extractions(monkeypatch)
     transport = _transport()
@@ -459,16 +438,7 @@ def test_a_reused_selection_is_the_span_set_the_receipt_names(
 def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_index(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (record section Y): a refresh whose selection is
-    reused whole from a sealed receipt builds, materializes and proves no
-    index. `build_retrieval(reuse_for=request)` seals the generation record
-    the build would seal -- the same identity -- after proving the sealed
-    receipt, its span set, the record's lineage and the index's presence,
-    and the selection is the reuse the built path makes, without a session.
-    What still builds: an index absent from disk (restored as before), a
-    request under another policy hash, a changed corpus. A named span set
-    that is not the one delivered refuses by name at the build stage, never
-    as a miss; nothing reports the unopened index as verified."""
+    """An unchanged refresh reuses a sealed selection without building its index."""
 
     _Extractions(monkeypatch)
     transport = _transport()
@@ -568,12 +538,7 @@ def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_ind
 def test_a_fresh_index_holds_the_origin_whatever_the_scan_order(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scan: str
 ) -> None:
-    """Regression: a reuse seals a copy of the origin's receipt under
-    its own span set, so one selection key holds the origin and its copies.
-    A fresh index resolves to the origin in either scan order: the proof a
-    reuse reads -- and a tamper of it refused by name -- never depended on
-    how the receipt hashes happened to sort (the index test above failed
-    about one run in three while it did)."""
+    """A fresh index holds the origin whatever the scan order."""
 
     _Extractions(monkeypatch)
     transport = _transport()

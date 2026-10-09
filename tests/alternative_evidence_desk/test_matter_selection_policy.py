@@ -11,6 +11,7 @@ admitted, never run under the integrated selection instead."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -80,11 +81,7 @@ def _authority(
 
 
 def test_the_policy_is_a_contract_of_the_request_and_the_authority() -> None:
-    """requirement (4): the selection validates its families, the production
-    method reads the litigation family alone, a request carries it in its
-    identity (absent at the default so every earlier request hash stands),
-    the workspace manifest binds it into its authority hash and the live
-    policy carries it over."""
+    """The policy is a contract of the request and the authority."""
 
     with pytest.raises(ValueError, match="matter_families_unknown"):
         MatterSelectionPolicy(method=MATTER_SELECTION_CANDIDATE, families=("EVENTS",))
@@ -141,7 +138,6 @@ def test_the_policy_is_a_contract_of_the_request_and_the_authority() -> None:
     assert THREE_FAMILIES.selection_id == (
         "CANDIDATE_UNMET_NEEDS:LITIGATION,CORPORATE_EVENT,FINANCING"
     )
-    from datetime import UTC, datetime
 
     cutoff = datetime(2026, 9, 1, tzinfo=UTC)
     production = AdmittedEvidencePolicy(matter_selection=None).request(
@@ -221,11 +217,7 @@ def test_the_policy_is_a_contract_of_the_request_and_the_authority() -> None:
 def test_a_workspace_under_a_retired_selection_is_refused_by_name(
     tmp_path: Path, retired: MatterSelectionPolicy | None
 ) -> None:
-    """requirement (T5): a workspace still installed under the production
-    plan or the candidate allocation prepares, refreshes and continues
-    nothing. The preview names the retirement and the re-install step;
-    a prepare and a refresh are refused by name; no Task is admitted, and
-    nothing is run under the integrated selection in its place."""
+    """A workspace under a retired selection is refused by name."""
 
     workspace, report = build_workspace(tmp_path)
     service = start_service(workspace, _authority(tmp_path, report, retired), tmp_path)

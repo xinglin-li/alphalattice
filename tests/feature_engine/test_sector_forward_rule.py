@@ -226,10 +226,7 @@ def test_a_planted_reclassification_is_read_forward_and_never_moves_a_published_
 def test_a_store_sealed_before_the_forward_rule_reads_no_reclassification(
     tmp_path: Path,
 ) -> None:
-    """regression (LS1's acceptance): a research input's market-store copy sealed before
-    the forward rule lacks the columns the rule's writer adds when it opens a store, and the copy
-    is only read; its history reads every session in the current map, as a row written before
-    the rule does, instead of failing the work that reads it."""
+    """A store sealed before the forward rule reads no reclassification."""
 
     import duckdb
 

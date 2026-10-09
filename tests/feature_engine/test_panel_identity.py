@@ -320,15 +320,7 @@ def _rows(sessions, listings, *, offset: float = 0.0):
 def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
     tmp_path: Path,
 ) -> None:
-    """requirement: a new SPY session must not rewrite a closed year's partition.
-
-    Two builds share membership, sector map, catalog and policy and differ in
-    the SPY revision, so their Panel bindings differ. The second reuses the
-    first's closed-year partition under its origin binding, composes only the
-    year the new session lands in, records every origin, and its staging
-    document reads back the same. A base under another membership is not
-    compatible and offers no partition at all.
-    """
+    """A compatible base under a new binding reuses closed years by origin."""
 
     resolver = ArtifactResolver(tmp_path / "artifacts")
     owner = PanelArtifactCompositionOwner(resolver)
@@ -472,14 +464,7 @@ def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
 def test_a_partition_under_another_calendar_is_recomputed_not_reused(
     tmp_path: Path, held: tuple[date, ...], requested: tuple[date, ...]
 ) -> None:
-    """regression: a session replaced between the same endpoints is another calendar.
-
-    The base partition's manifest entry records endpoints and a row count,
-    and both calendars here share them. Judged on those alone the year was
-    reported reusable (or prefix-held) and the old partition sealed into the
-    new Panel with the wrong session. The owner must compare the admitted
-    axes: every session of the year is forced and the year composed anew.
-    """
+    """A partition under another calendar is recomputed not reused."""
 
     resolver = ArtifactResolver(tmp_path / "artifacts")
     owner = PanelArtifactCompositionOwner(resolver)
@@ -593,14 +578,7 @@ def test_a_reused_partition_that_no_longer_proves_its_identity_is_refused(
 def test_an_interrupted_composition_retried_under_the_same_binding_keeps_its_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: a retry after an interrupted publication never rewrites a partition.
-
-    The first attempt writes the 2025 partition and dies before 2026. The
-    retry, under the same binding (a same-day retry sees the same SPY
-    revision), names the 2025 file it already wrote -- validated, not
-    rewritten -- and writes only 2026. The interrupted attempt leaves no
-    partial file and no staging document.
-    """
+    """An interrupted composition retried under the same binding keeps its files."""
 
     resolver = ArtifactResolver(tmp_path / "artifacts")
     owner = PanelArtifactCompositionOwner(resolver)
@@ -665,14 +643,7 @@ def test_an_interrupted_composition_retried_under_the_same_binding_keeps_its_fil
 
 
 def test_reader_validates_each_chunk_under_the_binding_that_wrote_it(tmp_path: Path) -> None:
-    """requirement: the origin discriminator is the recorded rule, not a guess.
-
-    A chunk hashed under binding X validates from a manifest bound to X that
-    records no origin (every pre-reuse writer), and from a manifest bound to
-    Y that records X as the chunk's origin; a manifest bound to Y that records
-    nothing is refused, because the rule for an absent origin is the
-    snapshot's own binding.
-    """
+    """Reader validates each chunk under the binding that wrote it."""
 
     from alphalattice.foundation.feature_engine.panels.reader import (
         FeaturePanelReader,

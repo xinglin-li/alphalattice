@@ -14,7 +14,10 @@ answered from a bounded cache that never holds work that did not complete.
 from __future__ import annotations
 
 import hashlib
+import importlib
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -89,10 +92,8 @@ def test_the_retained_recipe_keeps_its_hashes() -> None:
 
 
 def test_the_threads_left_the_identity_and_a_spec_that_named_them_reads_back() -> None:
-    """requirement (the final close-out, F1): a spec names what decides a result,
-    never how many threads compute it; a spec sealed before F1 with its threads
-    parses with its own hash, states the recipe's spec without them, and its
-    encoder's canary is sealed under that context."""
+    """Execution threads stay outside model identity and historical specs that named them remain
+    readable."""
 
     spec = HybridIndexSpec.fixed_v2()
     assert not spec.names_execution
@@ -214,15 +215,7 @@ def test_a_missing_gpu_runtime_is_a_named_refusal_not_a_fallback() -> None:
 def test_an_unusable_runtime_is_named_in_the_capability_and_the_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: incompatible or lost hardware is explicit, for both GPU
-    recipe shapes.
-
-    The reranker-only GPU recipe verified its pack and reported READY while
-    the device was lost, failing at the first pair scored; and an unavailable
-    report said only that, not why. Now the torch reranker's verification
-    proves the runtime as the encoder's probe does, and the report carries the
-    probe's own words, which the Host's refusal repeats.
-    """
+    """An unusable runtime is named in the capability and the refusal."""
 
     from alphalattice.kernel.knowledge import _reranking as reranking
     from alphalattice.kernel.knowledge import hybrid
@@ -261,8 +254,6 @@ def test_the_installer_lets_the_stores_typed_refusal_through(
 ) -> None:
     """requirement: a cancelled, bad or tampered install is unselectable, by
     name -- the store's code reaches the person, not a generic setup failure."""
-
-    import json
 
     from scripts import materialize_evidence_cro_authority as setup
 
@@ -315,9 +306,6 @@ def test_a_session_whose_canary_moved_is_refused_by_name_with_its_threads(
     """requirement (the final close-out, F1): a cross-encoder session scores the
     sealed canary pair when it loads; the sealed raw score loads it, any other
     refuses by name with the threads it ran on."""
-
-    import importlib
-    from types import SimpleNamespace
 
     from alphalattice.kernel.knowledge import _reranking as reranking
 

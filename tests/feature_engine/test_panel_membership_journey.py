@@ -85,17 +85,7 @@ def _event(sequence: int, listing_id: str, kind: str, effective, manifest_revisi
 def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reused(
     tmp_path,
 ) -> None:
-    """requirement: the acceptance matrix, on the Feature service.
-
-    Day one: fourteen names, bootstrapped as the cohort at T0. Day two: the
-    fifteenth name enters at T1 with its whole price history; it has rows
-    from T1 only, its base Formula values exist for its history, every closed
-    year is reused and the current year is merged. Day three: one name leaves
-    at T2 and keeps every earlier row. A revision that admits the same names
-    for governance alone reuses every partition. A rebuild of the same request
-    is exact. The ragged snapshot freezes into a closure whose recipe records
-    the membership and rematerializes byte-exact.
-    """
+    """Members join and leave from their effective session and the rest is reused."""
 
     full = fixture_manifest()
     fourteen = build_quality_filtered_research_manifest(

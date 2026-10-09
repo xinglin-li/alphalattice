@@ -68,10 +68,7 @@ def _manifest(repository: Path, path: Path, files: list[str]) -> str:
 def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
     private: Path, tmp_path: Path
 ) -> None:
-    """requirement (RR2, the user, 2026-10-01): a new repository holds exactly the manifest's
-    files, byte for byte as the source commit holds them, in one commit whose author and
-    committer are the user; the internal history and the private files stay out; the
-    provenance names the source, every file's hash and the snapshot's commit."""
+    """A user-created snapshot holds every manifest file from one committed revision."""
 
     manifest = tmp_path / "manifest.json"
     source = _manifest(private, manifest, ["LICENSE", "src/tool.py"])

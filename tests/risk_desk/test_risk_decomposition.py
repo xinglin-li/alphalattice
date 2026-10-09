@@ -80,12 +80,7 @@ def _book() -> np.ndarray:
 
 
 def test_the_public_diagonal_is_exactly_the_conditional_volatility() -> None:
-    """The reconstruction identity, which is what makes it one surface.
-
-    ``g`` is derived so that ``diag((GB)F(GB)' + GEG)`` returns ``sigma^2``. If
-    it did not, the policy's scale and the report's structure would be two
-    numbers that happen to agree rather than two readings of one object.
-    """
+    """The public diagonal is exactly the conditional volatility."""
 
     surface = _surface()
     _, _, _, volatility = _blocks()
@@ -102,14 +97,7 @@ def test_a_rescaling_inconsistent_with_its_own_factor_block_is_refused() -> None
 
 
 def test_a_report_only_factor_change_leaves_the_allocation_identity_alone() -> None:
-    """The separation the two projections exist for.
-
-    Revising the factor covariance or the idiosyncratic block changes what a
-    report says and must rotate the attribution identity. It must not rotate the
-    allocation identity, because the policy consumes only the per-name lane and
-    that lane did not move -- otherwise every Risk report revision would look
-    like a new holdings input and invalidate a sealed ledger.
-    """
+    """A report only factor change leaves the allocation identity alone."""
 
     _, factor_covariance, idiosyncratic, _ = _blocks()
     base = _surface()
@@ -157,11 +145,7 @@ def test_the_allocation_projection_carries_scale_and_nothing_else() -> None:
 
 
 def test_the_book_variance_matches_the_dense_form_it_never_builds() -> None:
-    """Correctness of the O(nk + k^2) route, checked against the O(n^2) one.
-
-    The dense matrix is constructed here, in a test, precisely because the
-    product never constructs one.
-    """
+    """The book variance matches the dense form it never builds."""
 
     surface = _surface()
     scaled = surface.scaled_exposures
@@ -241,12 +225,8 @@ def test_the_recipe_states_its_semantics_and_is_tamper_evident() -> None:
 
 
 def test_the_surface_records_the_producer_it_could_not_have_estimated() -> None:
-    """This owner validates and projects; it installs no estimator.
-
-    The producer identity is carried so that a surface can always be traced to
-    whoever actually fitted it, which is the boundary that keeps a semantic
-    label from quietly becoming an implementation.
-    """
+    """A risk surface carries its actual producer's identity while its readback owner performs no
+    estimation."""
 
     assert _surface().producer_identity == "TEST_PRODUCER"
 
@@ -256,12 +236,7 @@ def test_two_surfaces_from_the_same_inputs_share_one_identity() -> None:
 
 
 def test_an_indefinite_factor_covariance_is_refused() -> None:
-    """Review finding: symmetry alone admitted a block with a negative eigenvalue.
-
-    An indefinite ``F`` gives some long-only book a negative variance, which then
-    either surfaces as nonsense or gets clamped to zero and reports a risky book
-    as riskless. It is refused at admission instead.
-    """
+    """An indefinite factor covariance is refused."""
 
     indefinite = np.array([[1.0, 2.0], [2.0, 1.0]])
     assert float(np.linalg.eigvalsh(indefinite).min()) < 0.0
@@ -280,11 +255,7 @@ def test_an_indefinite_factor_covariance_is_refused() -> None:
 
 
 def test_a_negative_book_variance_is_refused_rather_than_floored() -> None:
-    """Belt and braces behind PSD admission.
-
-    Flooring at zero would publish a riskless reading for a book that is not,
-    which is worse than an error because nothing downstream can tell.
-    """
+    """A negative book variance is refused rather than floored."""
 
     surface = _surface()
     broken = replace(surface, idiosyncratic_variance=np.full(NAMES, -1e6))
@@ -293,12 +264,7 @@ def test_a_negative_book_variance_is_refused_rather_than_floored() -> None:
 
 
 def test_the_surface_owns_its_bytes_and_freezes_them() -> None:
-    """Review finding: ``np.asarray`` kept the caller's buffer.
-
-    Mutating the array afterwards changed the surface while its content hash
-    stood still, which defeats immutability, tamper refusal and exact reuse at
-    once.
-    """
+    """The surface owns its bytes and freezes them."""
 
     exposures, factor_covariance, idiosyncratic, volatility = _blocks()
     mutable = exposures.copy()
@@ -332,12 +298,7 @@ def test_content_verification_catches_a_surface_its_hash_does_not_describe() -> 
 
 
 def test_the_frozen_arrays_cannot_be_thawed_by_their_holder() -> None:
-    """Review finding: a read-only array that owns its buffer can be reopened.
-
-    ``setflags(write=True)`` succeeds on an owning array. Surface arrays are now
-    backed ultimately by immutable ``bytes``: every ndarray in the ``.base``
-    chain is read-only, and the terminal buffer cannot be reopened.
-    """
+    """The frozen arrays cannot be thawed by their holder."""
 
     surface = _surface()
     for values in (
@@ -353,12 +314,7 @@ def test_the_frozen_arrays_cannot_be_thawed_by_their_holder() -> None:
 
 
 def test_a_replaced_rescaling_is_caught_by_readback() -> None:
-    """Review finding: ``rescaling`` sat outside the content hash.
-
-    Swapping it left every recorded hash valid while the predicted variances
-    became meaningless. It is now inside the identity, and readback also rebuilds
-    it from the factor and idiosyncratic blocks rather than trusting it.
-    """
+    """A replaced rescaling is caught by readback."""
 
     surface = _surface()
     forged = replace(surface, rescaling=np.full(NAMES, 9.0))
@@ -381,13 +337,7 @@ def test_readback_rebuilds_the_derived_rescaling_rather_than_trusting_it() -> No
 
 
 def test_the_freeze_cannot_be_undone_through_the_base_array() -> None:
-    """Review finding: a read-only view still exposes its owning array.
-
-    Thawing ``.base`` thaws the view with it, and ``verify_content`` only catches
-    that afterwards -- every Risk calculation between the mutation and the check
-    would already have consumed poisoned data. The arrays are backed by ``bytes``
-    so the chain terminates in an object with no flags to set.
-    """
+    """The freeze cannot be undone through the base array."""
 
     surface = _surface()
     values = surface.exposures

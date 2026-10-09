@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from uuid import UUID
 
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_workspace import (
@@ -20,15 +21,7 @@ from tests.researcher_methodology_surface.real_workspace import (
 
 
 def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path):
-    """A qualified listing without a provider sector is quarantined, not fatal.
-
-    The coordinator derives and activates a reduced child membership and answers
-    RUNNING; the preparation loop must rebind its request to that child instead
-    of re-presenting the admission ancestor, which the coordinator refuses as
-    ``membership_revision_mismatch`` (observed on the real 2026-09-11 build,
-    FISV). The child must then carry the Panel, Outcome and research input.
-    """
-    from uuid import UUID
+    """First use continues after recoverable sector exclusion."""
 
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository

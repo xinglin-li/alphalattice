@@ -51,7 +51,7 @@ function fixture(viewsSource = read('live-views')) {
       else throw Error('Unexpected fixture read: ' + url);
       return {ok: true, headers: {get: () => 'application/json'}, text: async () => JSON.stringify(value)};
     }};
-  vm.createContext(library.into(c, appDir));
+  library.context(c, appDir);
   for (const name of ['html', '../data/zh', 'i18n', 'icons', 'status', 'components']) vm.runInContext(read(name), c);
   // Chrome and grouping are presentation ports; each actual consumer and row/picker builder stays real.
   c.objectHead = (title, lede, action, state, tools, options = {}) => {

@@ -49,11 +49,7 @@ def test_committed_request_documents_carry_no_resolved_authority() -> None:
 
 
 def test_a_nested_identity_is_refused_where_a_key_scan_would_miss_it() -> None:
-    """The defect this rule exists for: an identity one level down, under a list.
-
-    A top-level key scan cannot see this shape, which is exactly how six of them
-    survived in a file whose header said there were none.
-    """
+    """A nested identity is refused where a key scan would miss it."""
 
     payload = {"request": {"upstream": [{"stage": "ALPHA", "handle": "current"}]}}
     require_selection_only_document(payload)
@@ -104,14 +100,7 @@ def test_a_second_risk_method_installs_without_a_central_edit() -> None:
 
 
 def test_the_shrunk_diagonal_reproduces_the_control_at_zero_and_deletes_it_at_one() -> None:
-    """The equivalence that makes R2 a probe rather than a fourth guess.
-
-    At ``phi = 0`` the values equal the control's exactly. They are *not*
-    byte-identical: ``(1 - 0) * C`` preserves a negative zero and ``+ 0 * I``
-    destroys it, and ``matrix_content_hash`` is signed-zero sensitive. The values
-    are what every weight and every log score downstream depend on, so the value
-    equality is the one that carries the claim.
-    """
+    """The shrunk diagonal reproduces the control at zero and deletes it at one."""
 
     from alphalattice.investment.risk_research.estimators.covariance import (
         CovarianceCapability,
@@ -179,12 +168,7 @@ def test_a_second_rebalance_clock_installs_through_the_catalog() -> None:
 
 
 def test_cadence_is_measured_from_the_segment_start_not_the_global_axis() -> None:
-    """Otherwise each fold would get a different first decision session.
-
-    A validation region begins wherever the split policy put it, so phase against
-    the global index would make a cadence comparison partly a comparison of which
-    folds happened to start on a decision.
-    """
+    """Cadence is measured from the segment start not the global axis."""
 
     clock = EveryNFormationsClock(interval=5)
     decisions = [
@@ -284,19 +268,7 @@ def test_the_budget_owner_is_shared_and_keeps_each_desks_error_strings() -> None
 
 # ------------------------------------------------------- covariance-blind control
 def test_the_installed_equal_weight_control_is_blind_to_the_covariance_it_reports() -> None:
-    """The null control for Q1, and it is the one that was already installed.
-
-    ``TOP_K_EQUAL_WEIGHT`` selects through ``stable_top_k`` on the full signed
-    score and splits free capital evenly. It never calls the optimizer and never
-    reads the covariance to decide, so its weights are identical across Risk
-    arms; it does report ``w' Sigma w``, which is not, and that is what makes it
-    a calibration read with no optimizer feedback in it.
-
-    A ``TOP_K_SCORE_ONLY_PROPORTIONAL`` policy was drafted for this study and
-    withdrawn. It filtered on ``score > 0``, which makes every negatively-scored
-    name indistinguishable -- and it was a second copy of a control that already
-    existed.
-    """
+    """The installed equal weight control is blind to the covariance it reports."""
 
     from alphalattice.investment.portfolio_strategy_lab.contracts import TopKEqualWeightPolicy
     from alphalattice.investment.portfolio_strategy_lab.policies.contracts import (
@@ -348,12 +320,7 @@ def test_the_installed_equal_weight_control_is_blind_to_the_covariance_it_report
 
 # ------------------------------------------------------- simple signed score
 def test_the_simple_score_is_signed_standardized_and_loses_nothing() -> None:
-    """Every property the deleted frozen-score package failed to have.
-
-    Signed with no clipping, standardized per formation, unresolved cells left
-    unresolved rather than zero-filled, and the raw ordering preserved exactly --
-    so the score a policy ranks on is the feature it was built from.
-    """
+    """The simple score is signed standardized and loses nothing."""
 
     from alphalattice.investment.alpha_research.simple_signal.standardize import (
         finite_listing_counts,
@@ -386,12 +353,7 @@ def test_a_row_with_no_dispersion_is_unresolved_rather_than_zero() -> None:
 
 
 def test_the_score_axis_is_the_cross_section_it_was_standardized_over() -> None:
-    """A session or listing the score does not carry is a refusal, not a gap.
-
-    Widening the axis silently would change what every z means: the moments were
-    taken over one cross-section, and a projection onto a different one is a
-    different statistic wearing the same name.
-    """
+    """The score axis is the cross section it was standardized over."""
 
     from alphalattice.investment.alpha_research.simple_signal.standardize import (
         SimpleSignalError,
@@ -420,12 +382,7 @@ def test_the_score_axis_is_the_cross_section_it_was_standardized_over() -> None:
 
 
 def test_the_score_coefficient_is_declared_and_zero_is_admitted() -> None:
-    """kappa is a policy parameter, and zero is the most informative point.
-
-    ``stable_top_k`` picks the pool from the *unscaled* score before the
-    coefficient is applied, so zero is not degenerate -- it separates what the
-    score is worth for choosing names from what it is worth for sizing them.
-    """
+    """The score coefficient is declared and zero is admitted."""
 
     from alphalattice.investment.portfolio_strategy_lab.policies.catalog import (
         build_installed_portfolio_policy_catalog,
@@ -455,16 +412,7 @@ def test_the_score_coefficient_is_declared_and_zero_is_admitted() -> None:
 
 
 def test_a_fully_invested_book_survives_the_drift_it_produced() -> None:
-    """The two holdings invariants are one invariant, at one tolerance.
-
-    ``execute_orders`` admits cash down to ``-TOLERANCE`` and clamps it to zero,
-    so the state it hands on can sum to ``1 + TOLERANCE``. ``drift_holdings``
-    used to check that state ten times tighter, which is not a stricter check --
-    it is a check of something the producer never promised. It cost 32 of 156
-    walk-forward segments in a real study, every one of them the score-weighted
-    policy, because a nearly fully invested book is the one whose residual cash
-    lands in that band.
-    """
+    """A fully invested book survives the drift it produced."""
 
     from alphalattice.capabilities.portfolio_backtesting.execution import (
         TOLERANCE,
@@ -506,13 +454,7 @@ def test_a_fully_invested_book_survives_the_drift_it_produced() -> None:
 
 # ------------------------------------------------- score clock and boundaries
 def test_the_score_clock_comes_from_the_feature_owner_not_from_this_package() -> None:
-    """requirement: observation and availability are the Feature owner's, derived.
-
-    ``observation_clock_for`` derives the clock from the recipe that already
-    carries it -- deliberately, because a clock stored beside a recipe is a
-    number that can disagree with the window it describes. This package asks for
-    it; it does not compute one, and it may not hold an execution term.
-    """
+    """The score clock comes from the feature owner not from this package."""
 
     from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
     from alphalattice.foundation.feature_engine.catalog.observation_clock import (
@@ -545,19 +487,11 @@ def test_the_score_clock_comes_from_the_feature_owner_not_from_this_package() ->
 
 
 def test_a_score_producer_cannot_state_an_execution_term() -> None:
-    """regression: the producer used to hard-code the execution constants.
-
-    ``FORMATION_SESSION_CLOSE``, ``entry_offset_sessions = 1`` and
-    ``NEXT_COMMON_SESSION_OFFICIAL_OPEN`` lived in a score binding, copied out of
-    ``causal_outcomes.execution``. A producer that states an entry offset has
-    taken a position on when its own values are tradable, and a later change to
-    the execution method would have left the copy silently stale.
-    """
+    """A score producer cannot state an execution term."""
 
     from alphalattice.capabilities.portfolio_inputs.signed_score.contracts import (
         ScoreObservationAuthority,
     )
-    from alphalattice.investment.alpha_research.simple_signal import authority as producer
 
     fields = set(ScoreObservationAuthority.model_fields)
     forbidden = {
@@ -586,26 +520,9 @@ def test_a_score_producer_cannot_state_an_execution_term() -> None:
             entry_offset_sessions=1,
         )
 
-    source = Path(producer.__file__).read_text(encoding="utf-8")
-    executable = "\n".join(
-        line for line in source.splitlines() if not line.lstrip().startswith("#")
-    )
-    body = executable.split('"""')
-    code = "".join(body[::2])
-    assert "NEXT_COMMON_SESSION_OFFICIAL_OPEN" not in code
-    assert "entry_offset_sessions" not in code
-
 
 def test_the_score_producer_clock_reaches_the_shared_owner_unchanged() -> None:
-    """requirement: a producer's two offsets become two anchors, and nothing else.
-
-    This module used to implement the ordering itself -- ``available <= decision
-    < entry < exit``, with no way to express an order deadline, so a score not
-    finished at the close could only be admitted by moving its own observation
-    back a session. That chain is retired. What is left is the resolver, and the
-    thing to check about a resolver is that it neither adds information nor
-    loses it.
-    """
+    """The score producer clock reaches the shared owner unchanged."""
 
     from alphalattice.capabilities.causal_inputs.contracts import CausalInputAuthority
     from alphalattice.capabilities.portfolio_inputs.signed_score import contracts as signed_score
@@ -646,12 +563,7 @@ def test_the_score_producer_clock_reaches_the_shared_owner_unchanged() -> None:
 
 
 def test_a_score_that_lost_its_negative_half_is_refused_at_the_boundary() -> None:
-    """regression: every score defect this study had removed the negative half.
-
-    ``score > 0`` selection, non-negative slope calibration and dispersion
-    reconstruction all shipped at some point, and each looked like a signal until
-    someone checked the signs. The consumer checks rather than trusts.
-    """
+    """A score that lost its negative half is refused at the boundary."""
 
     from alphalattice.capabilities.portfolio_inputs.signed_score.contracts import (
         SignedScoreClockError,

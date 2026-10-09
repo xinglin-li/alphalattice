@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import urllib.parse
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -313,15 +314,7 @@ def test_the_integrated_selection_flows_through_the_public_operations(tmp_path: 
 
 
 def test_the_first_release_reads_are_projections_of_the_sealed_evidence(tmp_path: Path) -> None:
-    """requirement (first-release integration T4; A2, A3, A4, A7, A10, A11):
-    the preview states the admitted bounds, the campaign balance read from
-    its ledger at that moment and how the named preparation reused sealed
-    work; the book ledger is the packets' own coverage cells, a page of
-    groups; beside the sealed dossier stand the Task that prepared each
-    answered receipt and every issuer's checks as the analysis reported
-    them; the section's citations and the export's verified spans read a
-    page at a time for one issuer or one group. The reads add no Task and
-    no write, and the published review stays current across them."""
+    """The first release reads are projections of the sealed evidence."""
 
     from alphalattice.control.product_host.composition.local_web_session import (
         _campaign_reader,
@@ -593,12 +586,7 @@ def test_the_first_release_reads_are_projections_of_the_sealed_evidence(tmp_path
 def test_a_published_reading_filters_the_exact_review_lineage_without_rewriting_export(
     tmp_path: Path,
 ) -> None:
-    """Regression: the Reading route filters a published review's exact passages.
-
-    A later preparation must not supply an older review's topic membership or cutoff.
-    The unfiltered immutable export stays byte-for-byte equal across every filtered read.
-    """
-    from dataclasses import replace
+    """A published reading filters the exact review lineage without rewriting export."""
 
     from alphalattice.evidence.alternative_evidence.analysis.read_model import time_view
 
@@ -755,12 +743,7 @@ def _every_issuer_filed(entities: tuple[str, ...]) -> tuple[RecordedEvidenceDocu
 
 
 def test_the_integrated_default_judges_first_and_states_its_gaps(tmp_path: Path) -> None:
-    """regression (record AD; the agent seam's S3): on the integrated default
-    every dossier records gaps, and the route used to stop at them
-    (`G-MISSING`) before any risk was judged. Now a supported, high-severity
-    risk on an exposed holding publishes the risk alert with the gaps stated
-    beside it, and an empty answer publishes "no major negative found in the
-    evidence read" with its coverage -- neither asks anyone to refresh."""
+    """The integrated default judges first and states its gaps."""
 
     workspace, report = build_workspace(tmp_path)
     authority = build_authority(

@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Literal
+from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
 import pytest
@@ -209,10 +212,7 @@ def _submission(**overrides: Any) -> dict[str, Any]:
 
 
 def test_a_bound_session_names_neither_its_goal_nor_its_hash(goal_app):
-    """regression (V391): AX13's agents typed a goal id or hash on 43 of 120 calls although
-    goal open had bound their session. A bound session's goal and head are the defaults: it
-    attaches, shows and submits naming neither; a request with no session and no id is refused
-    with words, not run against some goal."""
+    """A bound session names neither its goal nor its hash."""
 
     app = goal_app[0]
     taken = app.operate(
@@ -247,11 +247,7 @@ def test_a_bound_session_names_neither_its_goal_nor_its_hash(goal_app):
 
 
 def test_a_held_reference_declared_again_is_refused_with_its_way_on(goal_app):
-    """regression (V385): AX13 run 5's submission declared again the `trial` and `review` it had
-    attached and cited, and was refused `goal.reference_id_already_used` with no field, ids or
-    next request. The refusal names each entry and the held ids, and offers the submission
-    without the entries that only declared a held reference again, its citations kept; one
-    naming another result under a held id gets no offer, and an attach names its field too."""
+    """A held reference declared again is refused with its way on."""
 
     app, opened = goal_app[:2]
     held = _attach(app, opened)
@@ -306,15 +302,7 @@ def test_a_held_reference_declared_again_is_refused_with_its_way_on(goal_app):
 
 
 def test_a_revision_conflict_reads_the_goals_latest_revision_by_its_id() -> None:
-    """regression (V527, the user's review at b97f7d07): `goal revise --from old-goal.json`
-    after another session revised the goal was refused `goal.revision_conflict_read_latest`
-    with no words and no request: `goal show --from` the refusal lacked the goal, the old answer
-    read the stale revision, and the session's own goal may be another. The refusal says what
-    happened and offers the goal's latest revision by its id alone, never the stale hash.
-    AX-Dogfood2 met the same refusal when one session reused its own earlier completion form:
-    a revision conflict does not establish that another session changed the goal."""
-
-    from types import SimpleNamespace
+    """A revision conflict reads the goal's latest revision by its identity."""
 
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         goal_refusal,
@@ -333,10 +321,7 @@ def test_a_revision_conflict_reads_the_goals_latest_revision_by_its_id() -> None
 
 
 def test_the_goal_schema_offers_a_declaration_to_edit(goal_app):
-    """regression (V378): AX13's agent asked `goal schema --declaration goal.yaml` and was
-    sent to experiment and feature controls, which declare no goal; the schema's answer carries
-    the shortest declaration, valid as it stands, which the declaration loader writes and reads
-    back."""
+    """The goal schema offers a declaration to edit."""
 
     from alphalattice.interface.local_application.goals import GoalDeclaration
     from alphalattice.protocols.research_authoring.selection import (
@@ -565,11 +550,7 @@ def _bundle(app, goal, operation, status, bundle_reference, *, role="ALPHA"):
 
 
 def test_team_events_and_product_facts_are_filed_under_the_goal_their_session_holds(goal_app):
-    """requirement (GR2, OP13, FLOW-1): Team and the goal are one record. An event is filed
-    under the goal its session holds at receipt, and a replay under the goal of its first
-    receipt; the goal's conversation is what the product recorded of its Sessions' work; a
-    prepared bundle with no accepted answer is a reminder, never a reason to refuse completion.
-    The goal is the Host's word."""
+    """Team events and product facts are filed under the goal their session holds."""
 
     app, opened, _calls, _body, _tasks = goal_app
     _attach(app, opened)
@@ -1689,7 +1670,6 @@ def test_a_session_takes_a_goal_and_its_requests_are_recorded_under_it(
     assert len(opened["data"]["goal_prompt"]) <= 4000
     # The handoff's first command runs as written: it names the workspace every command needs,
     # quoted as the CLI quotes its commands (V492, the user's review).
-    import shlex
 
     take = opened["data"]["goal_prompt"].split("First run `", 1)[1].split("`", 1)[0]
     assert shlex.split(take) == [
@@ -1806,9 +1786,6 @@ def test_the_workbench_reaches_what_the_ui_pass_reads(live, tmp_path: Path):
 def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
     """The research case page keeps working over goals until the UI pass (U23)."""
 
-    from types import SimpleNamespace
-    from urllib.parse import parse_qs, urlsplit
-
     from alphalattice.interface.local_application.client import LocalResearchClient
     from tests.portfolio_strategy_lab.local_web_support import _json, _request
 
@@ -1854,12 +1831,7 @@ def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
 
 
 def test_an_open_goal_offers_its_completion_to_fill(goal_app):
-    """requirement (V419, V426; an outside review at 3fa785fd and 97b65a25): a completion
-    repeated what the Host holds, and once written could complete another goal: `goal show`
-    answers the open goal's completion to fill, a whole GOAL_SUBMIT request bound to the goal
-    and its revision, each slot by its id and the goal's references as the evidence to cite.
-    Left as it stands it is refused; a later revision refuses it; written, it completes its own
-    goal whatever goal the sending session holds."""
+    """An open goal offers its completion to fill."""
 
     import yaml
 
@@ -1909,10 +1881,7 @@ def test_an_open_goal_offers_its_completion_to_fill(goal_app):
 
 
 def test_a_closed_goal_refuses_with_its_standing_and_the_follow_up_start() -> None:
-    """regression (V437, AX14's finding): a second submit to a completed goal was refused
-    `goal.closed_open_a_follow_up` with no words and no way on; the refusal stays, and it names
-    the goal's standing (its show request, by the goal the request named) and where a follow-up
-    starts (the declaration template)."""
+    """A closed goal refuses with its standing and the follow up start."""
 
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         goal_refusal,
@@ -1937,10 +1906,7 @@ def test_a_closed_goal_refuses_with_its_standing_and_the_follow_up_start() -> No
 
 
 def test_an_open_goals_requests_leave_their_documents_to_give(goal_app, tmp_path) -> None:
-    """regression (V441, an outside review at bbb1b9e8): the offered submit, revise and resubmit
-    held their open fields as text placeholders, which the client binds, so a valid `goal submit
-    --from goal.json --file submission.yaml` was refused `bound_reference_override`; the open
-    fields are None, and the goal and its revision stay bound."""
+    """An open goal's requests leave their documents to give."""
 
     from alphalattice.interface.local_application import client
 

@@ -38,11 +38,7 @@ from tests.portfolio_strategy_lab.strategy_dates_support import date_host
 def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
     tmp_path, capsys, monkeypatch, view
 ):
-    """regression (V615): a genuine lost ledger is rebuilt from the owner's admitted
-    request. Recovery/status/readback preserve its declaration after preview loss. The CLI
-    saved-answer and offered-action routes reach the public planner with those exact values.
-    The planner port records only the declaration; this continuation test runs no studies.
-    """
+    """A ledger rebuilt preparation keeps its declaration in every way on."""
     workspace = tmp_path / "workspace"
     try:
         with date_host(workspace) as live:
@@ -196,10 +192,7 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
 def test_an_evidence_task_without_its_book_selector_names_the_choice_before_replan(
     tmp_path, capsys
 ):
-    """contract (V615/TE12): an issuer-only Task never supplies a default book in place
-    of an absent durable selector. Its unavailable action says what the record lacks and
-    gives a filled, usable history request without changing the stopped Task.
-    """
+    """An evidence task without its book selector names the choice before replan."""
     workspace = tmp_path / "workspace"
     try:
         with date_host(workspace) as live:

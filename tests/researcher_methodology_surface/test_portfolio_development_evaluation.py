@@ -169,14 +169,7 @@ def _catalog(adapter: object | None = None) -> PortfolioPolicyCatalog:
 
 
 def test_an_adapter_rewritten_under_a_stable_id_moves_its_binding() -> None:
-    """requirement: replacing an adapter's code must move its identity.
-
-    ``PortfolioPolicyCatalogBinding`` binds ``policy_id`` and ``solver_backed``
-    and nothing else, so an adapter could be rewritten completely -- different
-    objective, different weights -- while the catalog identity stood still. That
-    contract is left alone because frozen artifacts decode it; the adapter binding
-    is where content identity lives now.
-    """
+    """An adapter rewritten under a stable identity moves its binding."""
 
     original = _InverseVolatilityAdapter().describe_adapter_binding()
     rewritten = _SolverBackedInverseVolatilityAdapter().describe_adapter_binding()
@@ -229,14 +222,7 @@ def test_the_engine_never_learned_this_policy() -> None:
 
 
 def test_a_categorical_axis_admits_values_rather_than_converting_them() -> None:
-    """requirement: ``20.9`` is not the admitted choice ``20``.
-
-    ``admit`` used to call ``int(value)`` and then check membership, so a draw the
-    domain never contained was rounded into one that it did -- and the evidence
-    recorded the domain's own hash asserting the value came from it. Conversion
-    *is* repair, and repairing an inadmissible value is worse than refusing
-    because it succeeds.
-    """
+    """A categorical axis admits values rather than converting them."""
 
     axis = SearchAxis(name="top_k", kind="categorical", choices=(2, 3, 4))
     assert axis.admit(3) == 3

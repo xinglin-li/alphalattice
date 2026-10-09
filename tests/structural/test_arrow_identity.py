@@ -96,13 +96,7 @@ def _random_table(rng: random.Random, rows: int) -> pa.Table:
 
 @pytest.mark.parametrize("seed", [1, 2, 3, 4, 5])
 def test_row_and_value_hashes_equal_the_canonical_encoder(seed: int) -> None:
-    """requirement: the Arrow path states exactly the identity the encoder states.
-
-    Floats in every magnitude and the non-finite values, strings that need
-    escaping and one that does not, dates, booleans, two integer widths,
-    nulls in every column, an empty table and a chunked column: each hashed
-    from the columns and from ``to_pylist()`` must agree.
-    """
+    """Row and value hashes equal the canonical encoder."""
 
     rng = random.Random(seed)
     for rows in (0, 1, 2, 17, 500):
@@ -151,14 +145,7 @@ def _batched_row_encoder_hash(payload: dict[str, object], table: pa.Table, batch
 
 @pytest.mark.parametrize("seed", [3, 11])
 def test_the_three_chunk_encoders_state_one_identity(seed: int) -> None:
-    """requirement (the merge of the UI and backend branches, 2026-09-21): one chunk hash.
-
-    The general canonical encoder over ``to_pylist()``, the UI branch's batched
-    row encoder and the backend's Arrow-column encoder must agree on every
-    table the chunks are made of -- empty, one row, two chunks, nulls, the
-    special floats, escaped and non-ASCII strings, dates -- so the identities
-    sealed by either branch are the identities the merged owner verifies.
-    """
+    """The three chunk encoders state one identity."""
 
     rng = random.Random(seed)
     for rows in (0, 1, 7, 2_050):

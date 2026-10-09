@@ -74,19 +74,7 @@ class _SignStandardization:
 
 
 def test_a_third_standardization_runs_under_its_own_name() -> None:
-    """requirement: the method is *selected*, not disguised as an installed one.
-
-    This case used to subclass the sign standardization and set
-    ``standardization_id = RANK_GAUSS_STANDARDIZATION_ID`` so the policy's derived
-    routing key would reach it. That proved the catalog lookup worked and nothing
-    else: the surface it produced claimed to be rank-gauss while sign values came
-    out -- a method computing under another method's identity, which is the same
-    defect as an adapter running under someone else's numerical binding.
-
-    The routing key is a property derived from a closed four-lane enum, which is
-    why no policy could ever name a third method. A development recipe carries it
-    as a field instead, so ``CASE_STUDY_SIGN`` is selected by name.
-    """
+    """A third standardization runs under its own name."""
 
     policy = build_alpha_target_policy(
         lane=AlphaTargetLane.SECTOR_RESIDUAL_RANK_GAUSS,
@@ -131,13 +119,7 @@ def test_a_third_standardization_runs_under_its_own_name() -> None:
 
 
 def test_installed_catalog_exposes_exactly_the_real_standardizations() -> None:
-    """Three installed methods: two historical controls and the canonical one.
-
-    ``CROSS_SECTIONAL_STD_Z`` is installed separately rather than folded into the
-    MAD-based ``ROBUST_Z`` adapter. They divide by different scales, so reusing
-    the existing id would have made the canonical target indistinguishable from a
-    lane it does not equal.
-    """
+    """Installed catalog exposes exactly the real standardizations."""
 
     from alphalattice.investment.alpha_research.targets.standardization import (
         CROSS_SECTIONAL_STD_Z_STANDARDIZATION_ID,

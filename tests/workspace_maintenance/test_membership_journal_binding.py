@@ -112,15 +112,7 @@ def test_population_refusal_does_not_become_an_empty_diagnoser_retry(tmp_path):
 def test_bound_manifests_journal_only_real_membership_changes_after_the_bootstrap(
     tmp_path: Path,
 ) -> None:
-    """requirement: initialization once, then only actual changes, never backdated.
-
-    Before the bootstrap is recorded the manifest under construction may
-    change freely and the journal stays empty. The first Gateway-qualified
-    publication freezes the cohort and T0. From then on a manifest that
-    admits the same listings under a new revision writes nothing, an entry
-    is one event effective at the session it was decided for, and a change
-    effective before the journal's latest session is refused.
-    """
+    """Bound manifests journal only real membership changes after the bootstrap."""
 
     candidate = build_quality_filtered_research_manifest(
         acquisition_manifest(),
@@ -256,13 +248,7 @@ def test_bound_manifests_journal_only_real_membership_changes_after_the_bootstra
 
 
 def test_membership_invalidations_take_effect_at_the_session_not_history_start() -> None:
-    """A member joining or leaving reaches the Panel from the effective session on.
-
-    The entrant's base Formula values are planned over its whole history (its
-    windows need them) while the Panel sees them from the effective session
-    only -- also for a listing that was a member before and rejoins, whose
-    earlier rows stand.
-    """
+    """Membership invalidations take effect at the session not history start."""
 
     catalog = FeatureCatalog.load()
     plan = FeatureInvalidationTopology(catalog).plan(

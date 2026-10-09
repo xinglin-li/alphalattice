@@ -31,12 +31,7 @@ from alphalattice.investment.alpha_research.scores.product_recipe import (
 
 
 def test_the_pinned_point_is_admissible_by_the_installed_adapter() -> None:
-    """Every seed resolves into the adapter's own bounded parameter type.
-
-    ``DynamicPanelLightGBMParameters`` validates against declared bounds on
-    construction, so this failing would mean the frozen product point sits
-    outside the installed space.
-    """
+    """The pinned point is admissible by the installed adapter."""
 
     resolved = INSTALLED_ALPHA_PRODUCT_RECIPE.resolve_estimator_parameters()
     assert len(resolved) == 3
@@ -53,12 +48,7 @@ def test_the_resolved_point_builds_the_installed_recipe_envelope() -> None:
 
 
 def test_the_adapter_this_recipe_targets_is_already_installed() -> None:
-    """Gate 8A reuses an installed adapter; it does not add a second one.
-
-    The entry-gate record originally claimed this adapter was installed in no
-    catalog. It is installed here, and that correction is what stopped a
-    duplicate adapter being written.
-    """
+    """The adapter this recipe targets is already installed."""
 
     catalog = build_panel_model_catalog()
     assert DYNAMIC_PANEL_LIGHTGBM_ADAPTER_ID in catalog.adapter_ids
@@ -98,12 +88,7 @@ def test_the_refit_calendar_admits_only_its_own_quarters() -> None:
 
 
 def test_live_model_count_cannot_disagree_with_seeds_times_vintages() -> None:
-    """Twelve is derived, not asserted.
-
-    A recipe that states twelve while carrying two seeds and four vintages is the
-    failure this check exists for, and it is the kind of drift a Literal alone
-    would not catch.
-    """
+    """Live model count cannot disagree with seeds times vintages."""
 
     recipe = INSTALLED_ALPHA_PRODUCT_RECIPE
     assert recipe.live_model_count == len(recipe.seeds) * recipe.vintage_count
@@ -131,11 +116,7 @@ def test_identity_is_tamper_evident() -> None:
 
 
 def test_the_evidence_disposition_is_carried_not_upgraded() -> None:
-    """Citing a diagnostic package must not read as promoting it.
-
-    The support window also ends exactly at the evidence firewall date, which is
-    the property that keeps a recipe from quietly widening the admitted region.
-    """
+    """The evidence disposition is carried not upgraded."""
 
     recipe = INSTALLED_ALPHA_PRODUCT_RECIPE
     assert recipe.evidence_disposition == "DEVELOPMENT_DIAGNOSTIC_CANDIDATE_NOT_INSTALLED"

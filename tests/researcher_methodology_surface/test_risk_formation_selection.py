@@ -81,12 +81,7 @@ def test_bound_authority_publishes_exactly_the_declared_axis() -> None:
 
 
 def test_both_policies_agree_on_their_shared_trailing_formations() -> None:
-    """The numbers cannot differ because the axis does not differ.
-
-    ``build_development_covariance_surface`` iterates the selected sessions and
-    reads one window per session, so two policies that select the same sessions
-    feed the estimator identical inputs in identical order.
-    """
+    """Both policies agree on their shared trailing formations."""
 
     available = _available(1_264)
     eligible = eligible_formation_sessions(

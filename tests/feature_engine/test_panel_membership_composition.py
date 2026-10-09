@@ -149,16 +149,7 @@ def _manifest(composition: PreparedPanelComposition, *, spy_revision: str) -> di
 def test_membership_change_moves_only_the_sessions_from_its_effective_one(
     tmp_path: Path,
 ) -> None:
-    """requirement: entry at T1 recomputes T1 onward and reuses everything before.
-
-    Day one: three names on every session of two years. Day two: a fourth name
-    enters on the second session of year two under a new manifest and sector
-    revision. Year one is reused as the partition day one wrote; year two is
-    merged from day one's rows before the entry and freshly computed rows from
-    it, and the merged file's rows before the entry keep day one's identities.
-    A third build whose manifest changed for governance alone reuses both
-    years untouched.
-    """
+    """Membership change moves only the sessions from its effective one."""
 
     resolver = ArtifactResolver(tmp_path / "artifacts")
     owner = PanelArtifactCompositionOwner(resolver)

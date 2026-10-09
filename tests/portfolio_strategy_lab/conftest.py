@@ -21,11 +21,6 @@ def reader_zone_utc(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TZ", "UTC")
 
 
-@pytest.fixture(scope="session")
-def workbench_build() -> None:
-    """Compatibility mark: the tests' controller checks and builds before this session."""
-
-
 @pytest.fixture
 def live(tmp_path: Path) -> Iterator[LocalPortfolioWebSession]:
     """One booted product: session, application, dispatcher and loopback socket."""

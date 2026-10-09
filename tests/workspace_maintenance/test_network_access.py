@@ -69,10 +69,7 @@ def test_anything_but_a_version_one_mapping_with_a_boolean_reads_closed(
 
 
 def test_a_delegated_setting_holds_until_its_end_with_no_write(tmp_path: Path) -> None:
-    """regression (OP5, OP19; an outside review at 118f6378): a first-use goal's network
-    stayed open after its hours, since only a later write closed it. The delegation's setting
-    carries its end, and reads closed after it at every read, idle or not; the page reads who
-    set it."""
+    """A delegated setting holds until its end with no write."""
 
     end = datetime(2026, 10, 3, tzinfo=UTC)
     set_network_access(tmp_path, enabled=True, delegation="first-use-goal:g", until=end)

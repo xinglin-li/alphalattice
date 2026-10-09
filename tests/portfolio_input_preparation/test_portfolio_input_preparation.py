@@ -160,11 +160,7 @@ def test_decision_row_uses_only_formation_and_prior_sessions() -> None:
 
 
 def test_decision_eligibility_is_the_decision_row_status() -> None:
-    """The yes/no question answers exactly as the sealed row's status does.
-
-    Across the three outcomes the cell rule has: a complete causal history, a
-    history with one missing bar, and an unusable formation bar.
-    """
+    """Decision eligibility is the decision row status."""
 
     formation = date(2026, 8, 10)
     history = tuple(formation - timedelta(days=value) for value in reversed(range(20)))
@@ -327,14 +323,7 @@ def test_market_only_tradability_has_identical_outputs_to_the_risk_projection(
 def test_a_built_surface_states_every_row_as_the_cell_rule_states_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: the build seals a chunk at a time what the row rule states per cell.
-
-    Every published row -- statuses, reasons, ADV20, both identities -- must
-    equal ``_decision_row`` / ``_execution_row`` over the same bars, across the
-    shapes a source takes: a complete history, a bar missing inside the window,
-    a bar with no volume, and an execution session with no bar at all. Read
-    back from the chunk files, so the parquet content is what is compared.
-    """
+    """A built surface states every row as the cell rule states it."""
 
     import pyarrow.parquet as pq
 

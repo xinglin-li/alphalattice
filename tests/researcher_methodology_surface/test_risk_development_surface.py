@@ -86,14 +86,7 @@ def _sealed_recipe(**parameters: object) -> CovarianceRecipe:
 
 
 def test_the_declared_domain_admits_a_second_recipe_parameter() -> None:
-    """requirement: a single-point domain cannot prove the chain routes anything.
-
-    While every axis admitted one value, the authored recipe was byte-identical
-    to the recipe the builder constructed for itself. A builder that ignored the
-    author entirely produced the same numbers, so no test could tell a routed
-    recipe from an unrouted one. The second admissible value is what removes that
-    escape, and the default must stay put so published identity does not move.
-    """
+    """The declared domain admits a second recipe parameter."""
 
     axis = next(a for a in COVARIANCE_PARAMETER_DOMAIN.axes if a.name == "ewma_decay")
     assert len(axis.admissible) > 1
@@ -108,19 +101,7 @@ def test_an_authored_recipe_parameter_reaches_the_real_estimator(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """requirement (P0-1): the authored recipe controls the real numbers.
-
-    ``build_historical_covariance_surface`` used to call
-    ``default_covariance_recipe()`` itself, so YAML, catalog admission, the
-    parameter domain and the sealed Program decided nothing at all -- the
-    estimator ran the default whatever was authored. The single-point domain hid
-    it, because the two recipes were byte-identical.
-
-    This runs the same bounded build twice against the same real workspace,
-    changing one admissible parameter, and asserts the difference reaches the
-    published matrices. Comparing chunk matrix hashes is the point: identity
-    fields alone would still agree if the estimator quietly ran the default.
-    """
+    """An authored recipe parameter reaches the real estimator."""
 
     authority, requested = _bounded_authority(real_risk_workspace, count=4)
     input_binding, bounded = resolve_development_input_binding(
@@ -164,13 +145,7 @@ def test_a_recipe_that_disagrees_with_the_program_fails_before_any_estimate(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """requirement (P0-1): mismatch is refused, not silently resolved.
-
-    The executor is handed a Program sealed over the default recipe and a recipe
-    object carrying a different admissible value. Both are individually valid,
-    which is exactly why this has to be checked: the run would otherwise produce
-    real numbers under an identity that describes different ones.
-    """
+    """A recipe that disagrees with the program fails before any estimate."""
 
     authority, _requested = _bounded_authority(real_risk_workspace, count=3)
     input_binding, bounded = resolve_development_input_binding(
@@ -250,12 +225,7 @@ def _imported_modules(root: Path) -> tuple[tuple[str, str], ...]:
 
 
 def test_experiments_never_import_publication() -> None:
-    """Development execution has no authority to move a pointer.
-
-    Enforced in the import graph rather than left to convention: a development
-    executor that can reach the publication owner is one refactor away from
-    writing a current pointer.
-    """
+    """Development experiments cannot import their publication owner."""
 
     offenders = [
         where
@@ -266,18 +236,7 @@ def test_experiments_never_import_publication() -> None:
 
 
 def test_the_compiler_names_no_recipe_contract_adapter_or_family() -> None:
-    """requirement (-1): adding a method is a registration, not a compiler edit.
-
-    The compiler imported ``CovarianceRecipe`` to seal, reached the central
-    ``installed_parameter_domain`` table through the catalog, and routed on
-    ``COVARIANCE_RECIPE_SCHEMA_ID``. A second recipe schema therefore could not
-    enter the chain without editing this file, which is the opposite of what a
-    capability catalog is for.
-
-    Asserted on the import graph rather than on the text of one function,
-    because a name reachable by import is a name the compiler can start
-    branching on tomorrow.
-    """
+    """The compiler names no recipe contract adapter or family."""
 
     imported = {
         module for _where, module in _imported_modules(RISK_ROOT / "experiments" / "compiler.py")
@@ -299,12 +258,7 @@ def test_the_compiler_names_no_recipe_contract_adapter_or_family() -> None:
 
 
 def test_the_development_writer_names_no_estimator_implementation() -> None:
-    """The same claim for the module that actually runs the estimates.
-
-    ``development.py`` imported the covariance module too, for the same reason
-    and with the same consequence: every development surface recorded the
-    covariance environment regardless of which capability produced it.
-    """
+    """The development writer names no estimator implementation."""
 
     imported = {
         module for _where, module in _imported_modules(RISK_ROOT / "experiments" / "development.py")
@@ -317,12 +271,7 @@ def test_the_development_writer_names_no_estimator_implementation() -> None:
 
 
 def test_the_default_host_catalog_installs_only_real_product_capabilities() -> None:
-    """A case-study method must never be reachable from a production composition.
-
-    The installed set is now two real Risk methods -- the production control and
-    the fast/slow challenger -- and the claim under test is unchanged: the Host
-    names what it installs, and nothing a case study defines appears here.
-    """
+    """The default host catalog installs only real product capabilities."""
 
     from alphalattice.investment.risk_research.estimators.diagonal import (
         DIAGONAL_RECIPE_SCHEMA_ID,
@@ -358,18 +307,7 @@ def test_an_uninstalled_capability_handle_is_refused() -> None:
 
 
 def test_the_evidence_verifier_cannot_reach_anything_that_computes() -> None:
-    """requirement (-5): replay resolves a verifier and must stay unable to run.
-
-    The verifier now lives in the Risk Desk beside the executor, which is the
-    right owner -- the relationships between a surface, its diagnostics, its
-    dossier and its chunks are Risk methodology, not Host knowledge. But
-    proximity is the risk: an import of ``experiments.execution`` would put an
-    estimator one attribute access away from the one path that must never
-    compute, and replay would still look like replay.
-
-    Checked transitively rather than on the direct import list, because the
-    reachable set is what actually decides this.
-    """
+    """The evidence verifier cannot reach anything that computes."""
 
     reachable = _reachable_modules("alphalattice.investment.risk_research.experiments.verification")
     forbidden = {
@@ -398,12 +336,7 @@ def test_the_evidence_verifier_cannot_reach_anything_that_computes() -> None:
 
 
 def test_the_generic_program_layer_knows_no_desk() -> None:
-    """``control/research_program`` routes methodology it cannot name.
-
-    A generic layer that imports a Desk will eventually branch on one. Keeping
-    the dependency absent is what makes "adding a method changes nothing here"
-    a structural fact rather than a habit.
-    """
+    """The generic program layer knows no desk."""
 
     forbidden = (
         "risk_research",
@@ -425,12 +358,7 @@ def test_the_generic_program_layer_knows_no_desk() -> None:
 
 
 def test_changing_development_code_moves_the_program_identity() -> None:
-    """3: the development path's own bytes are part of Program identity.
-
-    The numerical closure covers the installed covariance adapter; it never
-    covered the compiler, executor, bounded window, or policy code -- all of
-    which decide what runs and how it is counted.
-    """
+    """Changing development code moves the program identity."""
 
     baseline = risk_development_source_closure_hash(PLAYPEN_ROOT)
     assert baseline == risk_development_source_closure_hash(PLAYPEN_ROOT)
@@ -454,14 +382,7 @@ def test_the_default_covariance_recipe_seal_does_not_move() -> None:
 
 
 def test_runtime_measurement_cannot_move_a_covariance_identity() -> None:
-    """What measures a run stays out of what decides a number.
-
-    ``process_metrics.py`` used to sit in the Risk numerical closure because a
-    surface writer recorded ``peak_rss_bytes`` in a diagnostic dossier, so a
-    telemetry edit rotated every Risk covariance identity without moving a value.
-    Regression, not coverage: putting it back, as an entry or through an import the
-    rule follows, would silently reintroduce that coupling.
-    """
+    """Runtime measurement cannot move a covariance identity."""
 
     entries = tuple(
         ".".join(Path(path).with_suffix("").parts[1:]) for path in RISK_NUMERICAL_SOURCE_PATHS
@@ -474,20 +395,7 @@ def test_runtime_measurement_cannot_move_a_covariance_identity() -> None:
 
 
 def test_every_declared_development_owner_actually_moves_the_identity(tmp_path: Path) -> None:
-    """A path in the list that nothing hashes would be decoration.
-
-    The list was written when the development path was four modules and then
-    stopped being audited while the path grew. By the time it was checked, the
-    modules that run every estimate, define what the evidence *is*, decide which
-    implementation resolution returns, and decide what a parameter domain admits
-    were all outside it -- any of them could have been rewritten while every
-    Program hash stood still.
-
-    Checked by editing a copy of each file in turn rather than by asserting the
-    list's contents, because the property is that the hash *moves*, not that a
-    string appears in a tuple. The edit is a statement: since R1 the closure is
-    by rule and a comment is not syntax, so a comment moves nothing.
-    """
+    """Every declared development owner actually moves the identity."""
 
     root = tmp_path / "playpen"
     for path in (*RISK_DEVELOPMENT_SOURCE_PATHS, "config/identity-roles.json"):
@@ -569,22 +477,7 @@ def test_a_graph_from_another_program_over_the_same_authority_is_refused(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """requirement: replay must bind the graph to the Program's *methodology*.
-
-    Two Programs over one resolved authority, differing only in the recipe they
-    selected, produce two graphs whose input bindings are byte-identical. Every
-    artifact is content-addressed, so each verifies against its own name; every
-    one of them is a real artifact of a real run. Root lineage passes, input
-    lineage passes.
-
-    So Program A could name Program B's surface, diagnostics and chunks and be
-    told its evidence verified -- reporting exact reuse of numbers it never
-    produced. Nothing in the graph itself is wrong; the claim about which Program
-    it belongs to is.
-
-    Both runs share one output workspace deliberately: the two graphs really do
-    coexist on disk, which is the situation a replay has to survive.
-    """
+    """A graph from another program over the same authority is refused."""
 
     authority, requested = _bounded_authority(real_risk_workspace, count=3)
     input_binding, bounded = resolve_development_input_binding(

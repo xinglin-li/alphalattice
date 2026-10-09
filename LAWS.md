@@ -697,7 +697,7 @@ each registered as its write (V264). *Held by:*
 `private-test: test_production_feature_writes_cannot_bypass_the_closure_coordinator`,
 `private-test: test_alpha_model_fits_cannot_bypass_the_host_owned_adapter`,
 `private-test: test_every_table_is_registered_and_written_by_its_owners`,
-`test: tests/workspace_readiness/test_workspace_manifest_writes.py::test_only_the_owner_writes_the_manifest`,
+`test: tests/structural/test_owner_source_shape.py::test_only_the_owner_writes_the_manifest`,
 `test: tests/workspace_readiness/test_workspace_manifest_writes.py::test_two_writers_through_the_one_write_keep_both_changes`,
 `test: tests/workspace_readiness/test_workspace_manifest_writes.py::test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding`.
 

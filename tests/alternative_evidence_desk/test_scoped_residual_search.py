@@ -30,10 +30,7 @@ def _two_filings() -> tuple[str, str]:
 
 
 def test_a_scoped_search_scores_and_returns_only_the_scoped_chunks(tmp_path: Path) -> None:
-    """requirement (6E): the scope holds before the channel limits and the
-    reranker: fewer pairs are scored than an unscoped search of the same
-    question, every hit lies inside a scoped range, and a scope over a
-    document that never mentions the question returns no hit from it."""
+    """A scoped search scores and returns only the scoped chunks."""
 
     legal, debt = _two_filings()
     runtime, request, _registry, _snapshot, document_set, generation = _open_recorded(

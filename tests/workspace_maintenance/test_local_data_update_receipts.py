@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from dataclasses import asdict, replace
 from datetime import date, timedelta
 
 import pytest
@@ -32,7 +33,6 @@ def audit_source(tmp_path_factory):
 
 
 def test_action_audit_reuse_does_not_order_equal_time_revisions_by_hash(audit_source, tmp_path):
-    from dataclasses import replace
 
     from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 
@@ -139,21 +139,7 @@ def test_action_audit_reuse_does_not_order_equal_time_revisions_by_hash(audit_so
 def test_child_rebinding_replaces_a_stale_bound_receipt_and_then_costs_nothing(
     audit_source, tmp_path, monkeypatch
 ):
-    """regression: a listing with any bound receipt was never rebound again.
-
-    The coordinator binds the parent's still-valid receipts to its working
-    child once per cycle. The cheap path skipped every listing that already
-    held a receipt for the session under the child, whatever that receipt
-    still proved: after a source correction the child's copy no longer
-    verified, the parent re-audited and held new valid evidence, and the
-    child could not take it -- its runner had to audit again. The candidate
-    rule is now content, not presence: a listing is re-judged when another
-    manifest holds same-session evidence the child does not hold a copy of,
-    by the complete reuse validator; a child that holds a copy of everything
-    is skipped without validation, and refused evidence stays refused.
-    """
-
-    from dataclasses import replace
+    """Child rebinding replaces a stale bound receipt and then costs nothing."""
 
     from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 
@@ -284,24 +270,7 @@ def test_child_rebinding_replaces_a_stale_bound_receipt_and_then_costs_nothing(
 def test_older_ancestor_receipt_that_proves_the_current_bytes_is_not_pruned_by_its_instant(
     audit_source, tmp_path, monkeypatch
 ):
-    """regression: a receipt's instant is not dominance over the current evidence.
-
-    The ancestor holds a full-history receipt over evidence A at t1 that the
-    child never held. The provider's adjusted series moves to B and the
-    ancestor's rolling audit at t2 seals B; the child binds that copy. The
-    series returns to A: the ancestor's rolling audit at t3 seals A over its
-    window (the only writer of the adjusted series is the audit, so the
-    return is sealed by a rolling receipt, not by silence), and the full
-    receipt of t1, still inside its TTL, proves the whole history again --
-    the complete validator says so on its own. The candidate rule pruned it
-    for being older than the child's newest copy, so the child held only
-    rolling evidence and its acquisition-budget question went unanswered:
-    a full-history audit over the network for evidence the workspace already
-    held. Pruning is now content and the validator's own static refusals
-    (freshness, completeness, policy), never the instant alone.
-    """
-
-    from dataclasses import replace
+    """Older ancestor receipt that proves the current bytes is not pruned by its instant."""
 
     workspace = tmp_path / "workspace"
     shutil.copytree(audit_source[0], workspace)
@@ -427,25 +396,7 @@ def test_older_ancestor_receipt_that_proves_the_current_bytes_is_not_pruned_by_i
 def test_a_later_full_audit_over_the_same_range_does_not_supersede_an_older_valid_one(
     audit_source, tmp_path, monkeypatch
 ):
-    """regression: a later receipt over the same range is not dominance either.
-
-    Same listing, provider, session and ancestor throughout. t1: a
-    full-history audit over evidence A, never held by the child. t2: a
-    full-history audit over B that differs from A only in the last 45
-    sessions -- the child binds that copy. t3: a rolling audit over the last
-    45 sessions restores A there, and no full audit follows. Raw bars,
-    actions and the mapping never move; t1 is inside its TTL. The complete
-    validator then accepts the t1 receipt and refuses the t2 one, and the
-    rolling t3 receipt answers no full-history question. The rule that a
-    later receipt of the same manifest over the same range supersedes an
-    older one pruned the t1 receipt -- the restoring audit sealed a receipt
-    over a narrower range, so "a return of the bytes seals a receipt at least
-    as new over that range" was false. Nothing about a receipt's instant or
-    range decides validity; only the validator does, and every unheld
-    candidate reaches it, with one evidence digest per range per call.
-    """
-
-    from dataclasses import replace
+    """A later full audit over the same range does not supersede an older valid one."""
 
     workspace = tmp_path / "workspace"
     shutil.copytree(audit_source[0], workspace)
@@ -582,20 +533,7 @@ def test_a_later_full_audit_over_the_same_range_does_not_supersede_an_older_vali
 
 
 def test_child_binding_carries_the_parent_receipt_in_its_recorded_scope(audit_source, tmp_path):
-    """regression: a daily rolling audit never satisfied the child binding.
-
-    A quality decision derives a child manifest during a daily update, whose
-    audit receipts cover a rolling window (the full history is audited only
-    when one is due). The child binding asked the acquisition-budget question
-    -- a full-history receipt as of today -- so every daily child refused with
-    ``derived_manifest_evidence_incomplete``. The binding now carries the
-    parent's receipt for that session in the scope the parent audited, after
-    that scope still verifies against today's bytes; the acquisition-budget
-    question itself is unchanged, and missing, drifted or expired evidence
-    still refuses without touching the child.
-    """
-
-    from dataclasses import replace
+    """Child binding carries the parent receipt in its recorded scope."""
 
     from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 
@@ -717,19 +655,7 @@ def test_child_binding_carries_the_parent_receipt_in_its_recorded_scope(audit_so
 
 
 def test_admission_diagnostic_covers_the_anchor_and_the_session_link(qualified, tmp_path):
-    """requirement: a clean rolling link must not hide a historical mismatch.
-
-    The daily audit is a rolling window chained to a full-history anchor
-    (``ActionAuditChainReceipt``: a rolling audit requires an anchor). A
-    listing's admission evidence declares its whole range, so its
-    adjusted-close diagnostic is judged over both audits: the anchor's
-    (the newest full-history receipt) and the session link's. Here the
-    anchor carries a mismatch on an old session that the clean rolling
-    link never sees; the store returns each receipt for its own question,
-    and the diagnostic the evaluator receives is the anchor's.
-    """
-
-    from dataclasses import replace
+    """Admission diagnostic covers the anchor and the session link."""
 
     from alphalattice.control.data_platform.maintenance.coordinator import (
         WorkspaceMaintenanceCoordinator,
@@ -819,7 +745,6 @@ def test_admission_diagnostic_covers_the_anchor_and_the_session_link(qualified, 
 
 
 def test_valuation_audit_permission_never_reenters_the_candidate_request(qualified, tmp_path):
-    from dataclasses import asdict
 
     from alphalattice.control.data_platform.maintenance.contracts import (
         WorkspaceDataChange,

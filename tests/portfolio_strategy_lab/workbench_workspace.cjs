@@ -35,7 +35,7 @@ const c={console,URLSearchParams,app:{page:'data'},ROUTES:{data:['','Data'],issu
   typedBtn:(a,b,v,cls,reason)=>`${a}:${b}:${v}:${reason}`,btn:()=>'',link:(l,page='',cls='',extra={})=>'LINK:'+l+'@'+page+(extra.row?'#row='+extra.row:''),table:()=>'',tr:()=>'',picker:(id,choices,o={})=>choices.map(ch=>{const [v,l]=Array.isArray(ch)?ch:[ch.value,ch.title];return '('+(v===o.selected?'*':'')+l+')';}).join(''),objectHead:(name,meta,actions)=>'H1:'+name+'|'+(meta||'')+'|'+(actions||'')};
 const renders=[],patches=[],toasts=[],prefs={},discovered=[],discovery={current:null};c.readPreference=k=>prefs[k];c.savePreference=(k,v)=>{prefs[k]=JSON.parse(JSON.stringify(v));};
 c.Data.readShared = (...args) => c.Data.read(...args);
-vm.createContext(library.into(c,root));vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);vm.runInContext(percentRule(root),c);vm.runInContext(runShapes(root),c);vm.runInContext(fs.readFileSync(path.join(root,'live-workarea.js'),'utf8')+fs.readFileSync(path.join(root,'live-workspace.js'),'utf8')+';globalThis.w=LiveWorkspace;globalThis.W=LiveWorkArea;',c);
+library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);vm.runInContext(percentRule(root),c);vm.runInContext(runShapes(root),c);vm.runInContext(fs.readFileSync(path.join(root,'live-workarea.js'),'utf8')+fs.readFileSync(path.join(root,'live-workspace.js'),'utf8')+';globalThis.w=LiveWorkspace;globalThis.W=LiveWorkArea;',c);
 const builderContext={...c,window:{},document:{documentElement:{}}};
 library.into(builderContext,root);
 vm.runInContext(fs.readFileSync(path.join(root,'components.js'),'utf8'),builderContext);
@@ -557,7 +557,7 @@ c.objectRow=publicBuilders.objectRow;
   w.observe();await new Promise(r=>setTimeout(r,20));markup=w.page();
   assert.ok(markup.includes('data-shown="prepare_data"') && markup.includes('Inspecting') && markup.includes('Return to current:workspace-stage::') && markup.includes('id="prepListingLog"'),'the held log stays shown when the owner advances, with the way back');
   assert.deepEqual(prefs.workScene,{task:TASK,folded:false,inspect:'prepare_data',follow:false});
-  const reloaded=vm.createContext({...c});vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8')+fs.readFileSync(path.join(root,'router.js'),'utf8')+fs.readFileSync(path.join(root,'live-workarea.js'),'utf8')+fs.readFileSync(path.join(root,'live-workspace.js'),'utf8')+';globalThis.w=LiveWorkspace;',reloaded); // a reload: the router and the page again, over the kept route and preference
+  const reloaded=library.context({...c});vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8')+fs.readFileSync(path.join(root,'router.js'),'utf8')+fs.readFileSync(path.join(root,'live-workarea.js'),'utf8')+fs.readFileSync(path.join(root,'live-workspace.js'),'utf8')+';globalThis.w=LiveWorkspace;',reloaded); // a reload: the router and the page again, over the kept route and preference
   reloaded.patchMain=()=>patches.push(c.app.page);reloaded.render=()=>renders.push(c.app.page);
   await reloaded.w.refresh('welcome');markup=reloaded.w.page();
   assert.ok(reloaded.w.area().follow===false && markup.includes('data-shown="prepare_data"') && markup.includes('Resume following'),'after a reload of the same Task the hold and the held stage are still there');

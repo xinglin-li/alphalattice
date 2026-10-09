@@ -52,11 +52,7 @@ def test_each_task_and_book_read_answers_its_published_model(
 
 
 def test_every_operation_publishes_its_answer() -> None:
-    """requirement (the outside review's F4): 12 of 150 operations published their
-    answer's model, so an agent learned the rest by reading one and an adapter could check
-    none. Every operation the Host answers publishes one, which `schema show` prints, each
-    field with what it means; every test that runs an operation holds its answer to it (the
-    root conftest)."""
+    """Every operation publishes its answer."""
 
     from alphalattice.interface.local_application.operations import OPERATIONS
 

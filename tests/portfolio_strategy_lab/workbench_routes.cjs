@@ -73,7 +73,7 @@ function makeContext({hash='#page=overview', body=null, catalog=[],historyRows=[
     viewW:()=>1100, viewH:()=>1000, toolsMenu(){},toggleRowMenu(){},experienceSettings(){},hideToast(){},closeDialog(){},notify(){},copyText(){},
     setHeld(){},toggleDisplayMenu(){},chooseDisplay(){},openCodeRef(){},download(){},reveal(){},
     ...library(appDir)};
-  vm.createContext(c);
+  library.context(c);
   // Match the product's dictionary-before-reader boot: I18N retains this object.
   // Loading a replacement dictionary afterwards silently tested English in zh mode.
   fixedScript('../data/zh.js').runInContext(c);c.window.ALPHA_ZH_READY=true;

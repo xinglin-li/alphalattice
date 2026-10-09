@@ -18,21 +18,7 @@ from tests.alpha_research.fixtures import registered_test_cards, synthetic_prepa
 
 
 def test_registered_ridge_weights_its_penalty_and_never_rewrites_the_panel() -> None:
-    """The installed objective penalizes each column by its own training variance.
-
-    An unweighted penalty over columns of different scale is not one penalty: the
-    effective ridge shrinkage on a column of standard deviation ``c`` is
-    ``alpha / c^2``, so the preprocessing lane -- not the Factor -- decided how
-    hard each column was regularized, across a forty-five-fold spread.
-
-    This supersedes the registered "ridge on the raw panel" numerics. What the
-    Feature Panel boundary actually forbids is the model rewriting feature
-    content, and that is what is guarded here: the adapter must leave its inputs
-    untouched. It happens that a variance-weighted penalty and a centering
-    scaler produce the same fitted function for an intercept-fitting linear
-    model, so equality with the scaler path is a mathematical identity rather
-    than evidence of a second preprocessing stage.
-    """
+    """Registered ridge weights its penalty and never rewrites the panel."""
     prepared = synthetic_prepared_arrays()
     adapter = RegularizedLinearAdapter()
     for card in registered_test_cards()[2:]:

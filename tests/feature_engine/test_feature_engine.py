@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -127,22 +128,11 @@ def test_current_feature_storage_preserves_exact_catalog_axis() -> None:
 
 
 def test_a_build_after_an_added_column_computes_it_and_carries_every_held_value(tmp_path) -> None:
-    """requirement (V92): a workspace whose store holds rows of the shipped catalog, then installs
-    one that only adds a formula factor, opens the added column's closure beside the held Panel,
-    and its build computes the column over the whole history while every held value stays as it
-    was; the column holds what its kernel computes. The Panel merges each held partition with the
-    added column: every held cell keeps the batch that measured it, the published origins name
-    the earlier catalog for those batches, and the artifact-only rematerializer reproduces every
-    chunk byte-exact from the closure."""
-
-    from dataclasses import replace
+    """A build after an added column computes it and carries every held value."""
 
     from alphalattice.foundation.feature_engine.contracts import FeatureInvalidation
     from alphalattice.foundation.feature_engine.inputs.closure_source import (
         FeatureClosureSourceRepository,
-    )
-    from alphalattice.foundation.feature_engine.panels.artifacts import (
-        PanelArtifactCompositionOwner,
     )
     from alphalattice.foundation.feature_engine.panels.closure import PanelClosurePublisher
     from alphalattice.foundation.feature_engine.panels.closure_source import (
@@ -361,11 +351,7 @@ def test_a_build_after_an_added_column_computes_it_and_carries_every_held_value(
 def test_an_interrupted_first_load_is_discarded_and_its_column_built_again(
     tmp_path, monkeypatch
 ) -> None:
-    """requirement (V92): an added column's first build writes its rows with no per-key
-    transition and moves its closure head to their digest once. A build interrupted before the
-    head moved leaves the first load pending: the catalog reports recovery pending and refuses
-    work, and the next build discards the column's rows, loads it again and completes it, the
-    rows the same as the interrupted attempt wrote."""
+    """An interrupted first load is discarded and its column built again."""
 
     from alphalattice.foundation.feature_engine.inputs.closure_source import (
         FeatureClosureSourceRepository,
@@ -600,11 +586,7 @@ def test_a_carried_availability_cell_is_recorded_as_an_upsert_records_it(tmp_pat
 
 
 def test_a_catalog_that_gains_a_factor_gains_its_column_and_the_earlier_rows_stay_its_own() -> None:
-    """regression (EX, found by the fork's V92 work, 2026-10-01): after a person activates a
-    formula factor, the store the workspace already holds must take the new catalog; it refused
-    with a binder error, since its table had no column for the factor, so the next data update
-    failed. A row the earlier catalog computed holds nothing in the new column and keeps naming
-    its own catalog."""
+    """A catalog that gains a factor gains its column and the earlier rows stay its own."""
 
     connection = duckdb.connect(":memory:")
     try:
@@ -673,10 +655,7 @@ def _catalog_with(catalog: FeatureCatalog, *factors: dict[str, object]) -> Featu
 
 
 def test_an_activated_catalog_is_layered_on_the_shipped_one() -> None:
-    """requirement (V92): a catalog that only adds factors to the shipped one is the shipped
-    catalog and one column catalog per added factor, each binding only what decides its own
-    values, so a second activation leaves the first column's identity where it was; a catalog
-    that changes anything else is its own base."""
+    """An activated catalog is layered on the shipped one."""
 
     shipped = FeatureCatalog.load()
     reversal = _formula_factor("formula_reversal_5", "close / lag(close, 5) - 1")
@@ -710,12 +689,7 @@ def test_an_activated_catalog_is_layered_on_the_shipped_one() -> None:
 
 
 def test_a_layered_catalog_reads_its_rows_composed_from_its_parts() -> None:
-    """requirement (V92): rows are keyed by the catalog that computed them too -- a table an
-    earlier release keyed by listing and session alone is re-keyed, every row kept -- and a
-    layered catalog owns no rows: its row is its parts' where every part holds one, each value
-    and cutoff its factor's part's and its identity ``layered_row_hash`` of theirs. A row an
-    earlier build stored under the layered catalog itself is not presented beside it and
-    refuses publication until retired."""
+    """A layered catalog reads its rows composed from its parts."""
 
     base, column, layered = "a" * 64, "c" * 64, "b" * 64
     connection = duckdb.connect(":memory:")
@@ -1054,11 +1028,7 @@ def test_vectorized_feature_block_has_bounded_local_contract() -> None:
 def test_amihud_averages_the_sessions_with_volume_and_a_zero_volume_bar_never_blanks_a_name() -> (
     None
 ):
-    """requirement (V517, Amihud 2002): the illiquidity ratio is the mean |return| per dollar
-    traded over the window's sessions with positive volume, given that at least 80% of the
-    window has one (17 of 21, 202 of 252). A zero-volume bar -- a real range reported with no
-    volume, or a flat placeholder -- is a session without the ratio, never an infinite one that
-    blanks the name for its whole window; a window without one is the plain mean, unchanged."""
+    """Amihud averages the sessions with volume and a zero volume bar never blanks a name."""
 
     dates = pd.bdate_range("2018-01-02", periods=700)
     close = 100.0 * np.cumprod(1.0 + np.random.default_rng(5).normal(0.0002, 0.01, len(dates)))
@@ -1124,7 +1094,6 @@ def test_amihud_averages_the_sessions_with_volume_and_a_zero_volume_bar_never_bl
 
 def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_path: Path) -> None:
     """A source absence is not an uncomputed row or a permanent membership exit."""
-    from dataclasses import replace
 
     from alphalattice.foundation.feature_engine.panels.closure import PanelClosurePublisher
     from alphalattice.foundation.feature_engine.panels.closure_source import (
@@ -1380,18 +1349,7 @@ def _clipping_evidence(resolver: ArtifactResolver, manifest_payload: dict[str, o
 def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_retention(
     tmp_path,
 ) -> None:
-    """requirement: a new session must not rewrite the closed years' partitions.
-
-    Day one builds and publishes the Panel through the penultimate fixture
-    session. Day two appends the last session under a new SPY revision: every
-    closed year is reused under its origin binding, only the current year is
-    composed, and the manifest records every origin. The reused rows are
-    identical to a from-scratch build of the same data, the folded clipping
-    evidence matches that build's counts, the mixed-origin snapshot reads,
-    freezes into a closure and rematerializes byte-exact, the residue owner
-    keeps the reused years' availability rows, and a correction reaching back
-    into a closed year recomposes exactly that year and the ones after it.
-    """
+    """Daily append reuses closed years and keeps provenance recovery and retention."""
 
     from alphalattice.foundation.feature_engine.panels.closure import PanelClosurePublisher
     from alphalattice.foundation.feature_engine.panels.closure_source import (
@@ -1756,10 +1714,7 @@ def test_feature_materialization_failure_keeps_bounded_diagnostics(tmp_path, mon
 
 
 def test_a_build_writes_the_same_bytes_whatever_its_workers(tmp_path) -> None:
-    """requirement (PF #1, W10, LAWS PA3): a build's listings compute in the Host's kept
-    workers and are written in listing order, so one worker and several write the same Feature
-    rows, cutoff sets, receipts, revisions, ineligibility runs and closure head. The count is an
-    execution parameter: recorded beside the build, in nothing it wrote."""
+    """A build writes the same bytes whatever its workers."""
 
     written: dict[int, tuple[str, ...]] = {}
     for workers in (1, 3):
@@ -1833,11 +1788,7 @@ def test_a_build_writes_the_same_bytes_whatever_its_workers(tmp_path) -> None:
 
 
 def test_a_panel_is_the_same_whatever_its_workers(tmp_path) -> None:
-    """requirement (PF #7b, W10, LAWS PA3): a build's Panel chunks compute in the Host's kept
-    workers and are staged, published and recorded in chunk order, so one worker and several
-    write the same Panel availability and chunk files and publish the same snapshot. The count
-    is an execution parameter: recorded beside the build, in nothing it wrote."""
-    from dataclasses import replace
+    """A panel is the same whatever its workers."""
 
     from alphalattice.foundation.market_data_ops.sources.manifest import ManifestListing
 
@@ -1961,10 +1912,7 @@ def test_panel_fails_closed_at_97_point_5_percent_coverage() -> None:
 def test_a_stale_panel_is_judged_by_feature_alone_and_its_projection_follows(
     tmp_path: Path,
 ) -> None:
-    """regression (V176): Market Data's bootstrap marked Panels SUPERSEDED by its own SQL, so
-    after a publication that failed once its binding moved the database read SUPERSEDED while
-    the projection research reads said ACTIVE; the bootstrap moves no lifecycle, and Feature's
-    one function moves the rows and the projection together."""
+    """A stale panel is judged by feature alone and its projection follows."""
 
     from alphalattice.foundation.feature_engine.publication.snapshots import (
         reconcile_feature_panel_lifecycles,
@@ -2007,22 +1955,11 @@ def test_a_stale_panel_is_judged_by_feature_alone_and_its_projection_follows(
 
 
 def test_an_activation_holds_the_base_and_retires_rows_outside_its_layer(tmp_path) -> None:
-    """regression (V398, found timing V92 on a real workspace, 2026-10-01): the store held rows
-    an earlier catalog computed for listings an earlier manifest held and a manifest transition
-    dropped; no build reaches them again, so after a person activated a formula factor every
-    publication refused (`feature_storage.row_catalog_identity_mismatch`). The build retires
-    every row a catalog outside its layer computed once each part holds the axis, and the Panel
-    publishes. The activation's layer (V92) holds the shipped catalog's rows as they were and
-    writes its column catalog's beside them."""
-
-    from dataclasses import replace
+    """An activation holds the base and retires rows outside its layer."""
 
     from alphalattice.foundation.feature_engine.contracts import FeatureInvalidation
     from alphalattice.foundation.feature_engine.inputs.closure_source import (
         FeatureClosureSourceRepository,
-    )
-    from alphalattice.foundation.feature_engine.panels.artifacts import (
-        PanelArtifactCompositionOwner,
     )
     from alphalattice.foundation.feature_engine.panels.feature_closure_coordinator import (
         FeatureLayerClosures,

@@ -96,15 +96,7 @@ def test_alpha_target_lanes_share_sector_treatment_and_preserve_economic_return(
 
 
 def test_extreme_outlier_is_clipped_in_the_fit_lane_and_never_in_the_raw_lanes() -> None:
-    """Preprocessing may move the fit lane; economic reality passes through untouched.
-
-    One listing's log return is replaced with an absurd +5.0. The compiled
-    ``raw_log_execution_return`` and ``simple_economic_return`` columns must be
-    byte-identical to their inputs -- the outlier included -- while the fit
-    lane's standardized value stays bounded because the winsor step clipped it.
-    The unclipped magnitude is recomputed here independently to show what the
-    bound actually prevented.
-    """
+    """Extreme outlier is clipped in the fit lane and never in the raw lanes."""
 
     source, sectors = _source()
     outlier_index = 4  # session 0, listing-04
@@ -313,19 +305,7 @@ _CANONICAL_SECTORS = {
 
 
 def test_canonical_target_bounds_the_residual_then_repairs_the_sector_mean() -> None:
-    """The golden for the composition the methodology actually specifies.
-
-    Three separate claims, because the composition has three places it could
-    silently be the old one: the bound must act on the *residual* rather than the
-    raw return, the second demeaning must restore a zero Sector mean that the
-    nonlinear bound destroyed, and the final scale must be an ordinary ``ddof=1``
-    standard deviation rather than a robust one.
-
-    The re-demeaned value is deliberately *not* required to remain inside the
-    five-MAD bound. Subtracting a Sector mean after clipping can push a value back
-    out, and constraining it would mean re-clipping -- which would leave a
-    non-zero Sector mean again.
-    """
+    """Canonical target bounds the residual then repairs the sector mean."""
 
     from alphalattice.investment.alpha_research.targets.canonical import (
         build_canonical_alpha_target_recipe,
@@ -621,13 +601,7 @@ def test_total_return_target_is_installed_with_whole_universe_not_sector_authori
 
 
 def test_dispersion_forecast_takes_its_lag_from_the_sealed_outcome_method() -> None:
-    """Lag 2 and lag 6 fall out of the seal; neither is a branch in this owner.
-
-    And the alignment is exact rather than approximately causal: the forecast at
-    formation ``T`` is the realized scale of formation ``T - L``, whose outcome
-    finished exactly at ``T``. One session earlier would be stale, one later
-    would be look-ahead, and both would produce a same-shaped surface.
-    """
+    """Dispersion forecast takes its lag from the sealed outcome method."""
 
     from alphalattice.investment.alpha_research.scaling.execution import (
         compile_cross_sectional_dispersion_forecast,

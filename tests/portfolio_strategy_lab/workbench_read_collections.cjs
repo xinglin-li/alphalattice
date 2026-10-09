@@ -41,7 +41,7 @@ function fixture(owners = {}, initial = '#page=history') {
     alertDialog() {}, openDialog() {}, btn: (label, action, value) => `<${action}:${value}>${label}`,
     btnAttrs: (label, action, value) => `<${action}:${value}>${label}`, icon: () => '',
     dayOf: value => String(value).slice(0, 10), when: value => String(value ?? ''), count: value => String(value),
-    objectHead: () => '', panel: (title, sub, body) => '<panel>' + title + body + '</panel>',
+    objectHead: library.stubs.empty, panel: (title, sub, body) => '<panel>' + title + body + '</panel>',
     objectRow: (row, options) => String(options.key), link: label => String(label), hashCell: id => String(id),
     table: (headers, rows) => {view.tables[headers[0].label] = rows; return '<table>' + rows.join('') + '</table>';},
     tr: cells => '<tr>' + cells.join('|') + '</tr>', pageOf: (rows, page) => ({shown: rows, page: page || 0, pages: 1}), pager: () => '',
@@ -59,7 +59,7 @@ function fixture(owners = {}, initial = '#page=history') {
       return {ok: reply.ok ?? true, status: reply.status ?? 200, headers: {get: () => 'application/json'}, text: async () => JSON.stringify(reply.value)};
     },
   };
-  vm.createContext(library.into(c, appDir));
+  library.context(c, appDir);
   vm.runInContext(library.readingSource(appDir), c);
   for (const name of ['status', 'data', 'router', 'live-goals', 'live-activity', 'live-team']) vm.runInContext(fs.readFileSync(path.join(appDir, name + '.js'), 'utf8'), c, {filename: name + '.js'});
   vm.runInContext('render=()=>{};patchMain=render;globalThis.D=Data;globalThis.G=LiveGoals;globalThis.A=LiveActivity;globalThis.T=LiveTeam;globalThis.go=navigate;', c);

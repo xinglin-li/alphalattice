@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import inspect
 import json
 from datetime import date, timedelta
 from pathlib import Path
@@ -438,15 +440,7 @@ def _canonical_materialization(
 
 
 def test_calibration_shrinkage_is_dimensionless() -> None:
-    """requirement: the slope is scale-free, and its return-unit successor is dimensionless.
-
-    The second half is the Stage 6 defect stated as a test. Stage 3 published a
-    slope in *return per unit predicted Z*, which asserts that one constant
-    inverts a standardization whose scale moves every session. The successor
-    calibrates ``dispersion * predicted_z`` instead, so the constant is
-    dimensionless -- and it refuses, before fitting, every same-shaped input that
-    is not the lane, the rows or the axis it claims to be.
-    """
+    """Calibration shrinkage is dimensionless."""
 
     sessions = tuple(date(2026, 1, 1) + timedelta(days=index) for index in range(8))
     scores = np.asarray([0.1, 0.2, -0.1, 0.3, 0.2, -0.2, 0.4, 0.1], dtype=np.float64)
@@ -485,7 +479,6 @@ def test_calibration_shrinkage_is_dimensionless() -> None:
     assert base.fold_states[0].slope == pytest.approx(scaled.fold_states[0].slope)
 
     # --- the return-unit successor ------------------------------------------
-    import dataclasses
 
     import pyarrow as pa
 
@@ -573,7 +566,6 @@ def test_calibration_shrinkage_is_dimensionless() -> None:
         unresolved_cell_count=0,
         predicted_z_values_hash="e" * 64,
     )
-    import inspect
 
     capability = installed_alpha_return_unit_capability()
     # Neither the writer nor the verifier accepts an installed capability. A
@@ -852,13 +844,7 @@ def _single_method_program(method_id: str = "RIDGE"):
 
 
 def test_inner_selection_rules_disagree_and_the_loss_rule_is_unchanged() -> None:
-    """The successor rule is a different rule, and the original still is itself.
-
-    A configuration that wins on loss can order worse than one that loses on it,
-    which is the whole reason the second rule exists; the first must nevertheless
-    keep choosing exactly what it chose before, or every sealed dossier stops
-    re-deriving.
-    """
+    """Inner selection rules disagree and the loss rule is unchanged."""
 
     program = _single_method_program()
     trials = tuple(value.trial_hash for value in program.ordered_trials)
@@ -893,12 +879,7 @@ def test_inner_selection_rules_disagree_and_the_loss_rule_is_unchanged() -> None
 
 
 def test_a_shrunk_constant_configuration_cannot_win_on_cheap_turnover() -> None:
-    """The turnover penalty can exceed the signal, so the floor has to bite.
-
-    A fit that stops at nothing turns over nothing, and without the
-    discrimination floor that alone would out-score a model that actually orders
-    the cross-section.
-    """
+    """A shrunk constant configuration cannot win on cheap turnover."""
 
     program = _single_method_program()
     trials = tuple(value.trial_hash for value in program.ordered_trials)
@@ -926,11 +907,7 @@ def test_a_shrunk_constant_configuration_cannot_win_on_cheap_turnover() -> None:
 
 
 def test_sealed_inner_selection_record_survives_the_new_members() -> None:
-    """A member added later must not move an identity sealed before it existed.
-
-    The artifact store re-derives identity from the serialized form, so the check
-    covers the dump as well as the model.
-    """
+    """Sealed inner selection record survives the new members."""
 
     legacy: dict[str, Any] = {
         "trial_hash": "1" * 64,
@@ -949,11 +926,7 @@ def test_sealed_inner_selection_record_survives_the_new_members() -> None:
 
 
 def test_regularized_lightgbm_grid_has_no_duplicate_configuration() -> None:
-    """Seventy-two plans over twenty-four genuinely distinct configurations.
-
-    The former grid crossed ``num_leaves`` with a ``max_depth`` that capped it,
-    so a quarter of its budget re-fitted the same model under a different label.
-    """
+    """Regularized LightGBM grid has no duplicate configuration."""
 
     program = _single_method_program(method_id="LIGHTGBM_REGULARIZED")
     trials = program.ordered_trials
@@ -1054,14 +1027,7 @@ def _regime_request() -> AlphaDevelopmentRequest:
 
 
 def test_only_the_tree_methods_are_offered_the_regime_context() -> None:
-    """requirement: a day-constant state reaches splits, never a coefficient.
-
-    On any session the state adds the same amount to every listing, so a linear
-    score's within-day ranking cannot move at all. Handing it to a linear method
-    would spend a coefficient proving that; handing it to a tree lets the model
-    read the Factors differently once the state crosses a threshold, which is
-    the thing a fixed coefficient vector cannot express.
-    """
+    """Only the tree methods are offered the regime context."""
 
     program, _ = _program(
         ("alpha_factor", "beta_factor"),
@@ -1144,11 +1110,7 @@ def _null_request() -> AlphaDevelopmentRequest:
 
 
 def test_the_null_control_contributes_its_whole_selection_grid() -> None:
-    """requirement: the control every fitted arm is measured against is installed.
-
-    It is a Program like any other, so a Campaign cannot quietly omit it and
-    then report which of two estimators won.
-    """
+    """The null control contributes its whole selection grid."""
 
     program, _ = _program(("alpha_factor", "beta_factor", "gamma_factor"), request=_null_request())
 

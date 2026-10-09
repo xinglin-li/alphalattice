@@ -126,10 +126,8 @@ def _written(root: Path) -> None:
 def test_a_model_is_scaffolded_checked_and_passes_once_it_fits_and_predicts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (EX): `model scaffold` writes the adapter, the declaration and the contract
-    test where G1's owner says; the contract names each unwritten step; once the agent writes
-    `fit` and `predict`, every check passes, and the route, domain and protocol are the
-    declaration's."""
+    """A model scaffold supplies a declaration and contract that pass once the adapter fits and
+    predicts."""
 
     root = _checkout(tmp_path)
     answer = scaffold_model(tmp_path / "declaration.yaml", root=root)
@@ -288,10 +286,7 @@ def test_model_review_names_one_unavailable_extension_and_keeps_healthy_packets(
 def test_a_person_activates_a_sandboxed_model_and_the_workspace_catalog_installs_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (EX): the review packet shows each model, installed or an agent's; an
-    activation needs a passing contract and a passed sandbox trial of the same identity, and
-    records it; the workspace's catalog and mandate then install the model after the installed
-    ones, and a deactivation removes it."""
+    """A person activates a sandboxed model and the workspace catalog installs it."""
 
     root = _checkout(tmp_path)
     scaffold_model(tmp_path / "declaration.yaml", root=root)
@@ -413,10 +408,7 @@ def test_a_sandbox_tries_an_agents_model_on_a_workspace_at_rest(
 def test_a_model_begins_from_the_declaration_its_contract_writes(
     tmp_path: Path, capsys: Any
 ) -> None:
-    """requirement (an outside review of the Skill and cards): a model's first step was
-    to guess a six-field declaration, refused as `model_declaration.invalid` alone. `model
-    scaffold --save-declaration` writes one to edit, which the scaffold takes as it stands; a
-    refused declaration names its fields; the sandbox's refusal names the flag it has."""
+    """A model begins from the declaration its contract writes."""
 
     from alphalattice.capabilities.alpha_modeling.declaration import read_declaration
     from alphalattice.interface.local_application import cli
@@ -462,10 +454,8 @@ def test_a_model_begins_from_the_declaration_its_contract_writes(
 def test_a_sandbox_trial_runs_the_model_it_names_whatever_study_declares_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression (an outside review at 3fa785fd): `model sandbox <model> --file <study>`
-    ran the file's own model and recorded the trial under <model>. The sandbox puts the model in
-    the declared study's place, refuses a study that names none, and records a trial only when
-    the study's readback names the model."""
+    """A sandbox trial substitutes the requested model into its declared study and records only
+    that model's verified readback."""
 
     from alphalattice.capabilities.alpha_modeling.catalog import (
         build_installed_alpha_model_catalog,

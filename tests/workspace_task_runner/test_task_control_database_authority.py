@@ -32,9 +32,6 @@ from alphalattice.control.workspace_runtime.mutation_gate import (
     WorkspaceMutationGate,
 )
 
-CASE_ROOT = Path(__file__).resolve().parent
-PLAYPEN_ROOT = CASE_ROOT.parents[1]
-
 
 def test_the_resolver_names_the_one_task_store() -> None:
     workspace = Path("/workspace")
@@ -163,40 +160,3 @@ def test_the_registry_accepts_the_resolved_store_and_no_other_file_appears(
         if path.suffix == ".duckdb"
     }
     assert created == {f"runtime/{TASK_CONTROL_DATABASE_FILENAME}"}
-
-
-def test_the_workspace_runtime_composes_the_canonical_store() -> None:
-    """The composition owner must resolve, not pass its market-data path.
-
-    Asserted on the source rather than by building a runtime, because building
-    one takes a real workspace, a writer lease and a universe manifest -- and the
-    fact under test is which path expression is written at those two call sites.
-    """
-
-    source = (
-        PLAYPEN_ROOT
-        / "src"
-        / "alphalattice"
-        / "control"
-        / "product_host"
-        / "composition"
-        / "workspace.py"
-    ).read_text(encoding="utf-8")
-    assert "DuckDbTaskControlRegistry(database.path" not in source
-    assert source.count("resolve_task_control_database(database.workspace)") == 2
-
-
-def test_no_production_site_spells_the_task_database_as_a_literal() -> None:
-    """Seventeen agreeing strings were what allowed one of them to disagree."""
-
-    owner = (
-        PLAYPEN_ROOT / "src" / "alphalattice" / "control" / "task_control" / "registry.py"
-    ).resolve()
-    offenders = [
-        path.relative_to(PLAYPEN_ROOT).as_posix()
-        for directory in ("src", "scripts")
-        for path in (PLAYPEN_ROOT / directory).rglob("*.py")
-        if path.resolve() != owner
-        and f'"{TASK_CONTROL_DATABASE_FILENAME}"' in path.read_text(encoding="utf-8")
-    ]
-    assert offenders == []

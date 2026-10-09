@@ -91,11 +91,7 @@ def _assert_guidance_links_resolve(
 
 
 def test_every_shipped_instruction_link_reaches_its_checkout_target() -> None:
-    """regression (V654, TE12): all shipped instructions reach real local owners.
-
-    Enumerate the class, including public pages, native cards, Skills, references
-    and Claude imports. Web links are not certified by this offline check.
-    """
+    """Every shipped instruction link reaches its checkout target."""
     from scripts.release.public_manifest import classify
 
     roots = {"AGENTS.md", "CLAUDE.md", "README.md"}
@@ -144,11 +140,7 @@ def test_the_console_entry_and_runtime_exceptions_are_explicit() -> None:
 
 
 def test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg() -> None:
-    """requirement: both public entries link one portable procedure with both launch forms.
-
-    The setup words live in the shipped Skill reference so configured projects retain them;
-    the same installation assertions apply there rather than requiring duplicate root prose.
-    """
+    """Both guides start with the editable leg and name the installed leg."""
     owner = ".agents/skills/alphalattice-research/references/operating.md"
     for name in ("AGENTS.md", "README.md"):
         assert f"({owner}#setup-and-launch)" in (ROOT / name).read_text(encoding="utf-8")

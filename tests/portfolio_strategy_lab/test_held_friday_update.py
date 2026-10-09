@@ -76,12 +76,7 @@ def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status)
 def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_need(
     tmp_path, evidence_roots, monkeypatch, capsys, record_property
 ):
-    """real installed fits and writers; synthetic Friday preparation on a QA copy.
-
-    The held history and Data membership are retained. One missing current Sector
-    observation, like Friday's new prices, is synthetic. This checks continuation and dates,
-    not the simulated provider's prices or a scientific performance claim.
-    """
+    """A held Friday runs offline on Saturday and a missing Monday names its need."""
     root = evidence_roots.require("ls1_daily_flows")
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     # Native HTTP clients do not necessarily use Python's socket.connect.

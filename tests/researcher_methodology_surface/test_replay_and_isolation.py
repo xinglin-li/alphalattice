@@ -251,15 +251,7 @@ def test_a_surface_whose_method_fields_were_edited_cannot_be_read_back(
     tampered_run: RiskDevelopmentRun,
     field: str,
 ) -> None:
-    """The surface answers for its own method, before replay compares anything.
-
-    These used to be free-standing strings copied onto the artifact, so a surface
-    could name a ``development_binding_hash`` that no combination of its other
-    fields would ever produce and nothing could tell. Embedding the Program
-    binding means reading the artifact re-derives the method identity from the
-    fields underneath it, so an edited field fails to parse rather than verifying
-    against itself.
-    """
+    """A surface whose method fields were edited cannot be read back."""
 
     target = _artifact_path(tampered_run, _SURFACES)
     payload = json.loads(target.read_text(encoding="utf-8"))
@@ -274,16 +266,7 @@ def test_a_surface_whose_method_fields_were_edited_cannot_be_read_back(
 def test_a_surface_paired_with_another_valid_diagnostics_is_refused(
     tampered_run: RiskDevelopmentRun,
 ) -> None:
-    """Both artifacts individually valid; the pairing is what is wrong.
-
-    Content addressing cannot catch this on its own. A diagnostics artifact
-    hashes to its own name whichever surface it describes, so a verifier that
-    only read artifacts back by hash would accept the pair.
-
-    The donor is built by re-sealing the run's real diagnostics over a different
-    epoch, which keeps it a genuinely valid artifact rather than a corrupt one --
-    the distinction the lineage check exists to make.
-    """
+    """A surface paired with another valid diagnostic artifact is refused."""
 
     diagnostics_path = _artifact_path(tampered_run, _DIAGNOSTICS)
     payload = json.loads(diagnostics_path.read_text(encoding="utf-8"))
@@ -352,11 +335,7 @@ def test_evidence_naming_a_different_input_binding_is_refused(
 
 
 def test_reordered_formation_sessions_are_refused(tampered_run: RiskDevelopmentRun) -> None:
-    """Same shape, same set, different order -- a different computation.
-
-    The covariance axis is positional, so a reordering that a set comparison
-    would call equal is not the run the binding describes.
-    """
+    """Reordered formation sessions are refused."""
 
     reversed_sessions = [
         value.isoformat() for value in reversed(tampered_run.evidence.formation_sessions)

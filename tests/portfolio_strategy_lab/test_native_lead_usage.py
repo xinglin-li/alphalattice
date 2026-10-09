@@ -315,9 +315,6 @@ def test_lead_workspace_mismatch_and_off_never_read_or_deliver(lead_scene, monke
     assert lead_readings(scene.nested, dict(os.environ), workspace=scene.workspace) == []
     owned = NativeResearchBinding.read(scene.project)
     assert owned is not None
-    assert read_session_usage(
-        scene.project, owned, publish=lambda _event: pytest.fail("OFF must not publish.")
-    ) == {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}
     assert (
         scene.order == []
         and scene.observer.read_external(ExternalActivityReadQuery())["items"] == []
@@ -815,18 +812,3 @@ def test_an_overbound_native_usage_scan_publishes_none_of_its_complete_prefix(
     assert "models" not in result
     assert _rows(scene, scene.parent if participant == "lead" else child) == []
     assert path.read_bytes() == original and SECRET not in json.dumps(result)
-
-
-def test_child_usage_off_keeps_no_usage_or_claimed_native_author(lead_scene):
-    """BEHAVIOUR: an OFF binding preserves privacy even when no native file can be located."""
-    scene = lead_scene
-    child, path = _own_child(scene)
-    value = json.loads(scene.binding_path.read_text("utf-8"))
-    scene.binding_path.write_text(json.dumps({**value, "usage": "OFF"}), encoding="utf-8")
-    scene.session.unlink()
-    path.unlink()
-    assert _read_owned_usage(scene, "child", child) == {
-        "status": "SKIPPED",
-        "reason": "native_bridge.usage_disabled",
-    }
-    assert scene.observer.read_external(ExternalActivityReadQuery())["items"] == []

@@ -2,6 +2,7 @@
 
 import json
 import os
+from dataclasses import asdict
 from pathlib import Path
 from uuid import uuid4
 
@@ -397,10 +398,7 @@ def _claude_child(config, agent, role, records):
 
 
 def test_the_host_reads_the_lead_and_the_children_its_own_session_records(tmp_path, monkeypatch):
-    """requirement (FLOW-1, AU): with no hook and no assignment, a reading opens the bound
-    Session's own file and the children its own directory records, each only when its sidecar
-    names this Session and a bound role; a child of another role is named, never read, and
-    fails nothing (STOPS-1: a lead's general helpers made every reading partial)."""
+    """The Host reads lead and child provenance from its own native session records."""
     config, project = _claude_project(tmp_path, monkeypatch)
     _write(config / "projects/p/lead-session.jsonl", _lead_records()[:-1])
     # The card pins claude-sonnet-5-5; the host ran an older model.
@@ -711,14 +709,7 @@ def test_a_lone_lead_is_read_by_its_own_command_under_its_binding(tmp_path, monk
 def test_a_codex_thread_names_its_spawn_in_its_first_record_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (V568, AU1): a Codex specialist runs in a thread of its own whose rollout
-    opens with its `session_meta`, naming the thread that spawned it. The one transcript reader
-    reads that first record alone and keeps the parent and role; it gives
-    nothing for a thread with no rollout, a top-level thread, a first record of another thread
-    or one past its bound, and never reads a turn."""
-
-    from dataclasses import asdict
-    from uuid import uuid4
+    """A Codex thread names its spawn in its first record alone."""
 
     from alphalattice.interface.local_application import native_usage
     from alphalattice.interface.local_application.native_usage import codex_thread_spawn

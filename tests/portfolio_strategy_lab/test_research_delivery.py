@@ -3,6 +3,7 @@
 from collections import Counter
 from copy import deepcopy
 from types import SimpleNamespace
+from typing import get_args
 from uuid import UUID
 
 import pytest
@@ -286,8 +287,6 @@ def test_each_explained_refusal_keeps_its_code_and_asks_only_operations_the_host
     """Binding plan B9: a refusal a person meets after an upgrade says what happened and what
     to request next; the code stays exact for an Agent, and a next request the Host would
     refuse would send the person from one refusal into another."""
-
-    from typing import get_args
 
     from alphalattice.capabilities.alpha_modeling.runtime.lightgbm_threads import (
         LightGBMThreadCanaryMismatch,

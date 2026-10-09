@@ -41,15 +41,7 @@ def test_a_search_root_is_required() -> None:
 
 
 def test_owner_rejection_is_not_reported_as_absence(tmp_path: Path) -> None:
-    """requirement: "its owner refused this" is not "this does not exist".
-
-    A `feature-panel` directory holding only Panels published before the
-    installed observation clock used to read as `RESOLVED` and then fail deep
-    inside preflight; reporting it as `MISSING` was the opposite error, because a
-    Panel published by another owner lives outside a Desk's own workspace and a
-    scoped search can never establish that it is absent. The two answers are now
-    distinct statuses, and the searched roots travel with the report.
-    """
+    """Owner rejection is not reported as absence."""
 
     workspace = _workspace(tmp_path / "ws", "feature-panel", "factor-research", "alpha-research")
     probes = {
@@ -75,16 +67,7 @@ def test_owner_rejection_is_not_reported_as_absence(tmp_path: Path) -> None:
 
 
 def test_the_two_factor_roots_are_probed_by_their_own_readers(tmp_path: Path) -> None:
-    """requirement: two locations that read different stores get different probes.
-
-    Both used to be accepted on "an artifacts directory holding a factor-research
-    store", which made them interchangeable. They are not: the Feature root also
-    has to serve the development methodology-surface reader, and the Sector root
-    is a `SectorContextStore` that need not hold a factor-research store at all.
-    A workspace that satisfied only the shared half reported `RESOLVED` and then
-    refused most of a minute into preflight, naming the baseline graph rather
-    than the root that was wrong.
-    """
+    """The two factor roots are probed by their own readers."""
 
     workspace = _workspace(tmp_path / "ws", "factor-research")
     artifacts = workspace / "artifacts"
@@ -121,13 +104,7 @@ def test_execution_outcomes_have_an_independent_owner_root(tmp_path: Path) -> No
 
 
 def test_a_named_location_is_still_decided_at_its_owner(tmp_path: Path) -> None:
-    """requirement: naming a path says where to look, never what is there.
-
-    An artifact published by another owner lives outside every root this Desk
-    would walk, so no scoped search reaches it -- naming it is the only way it
-    can be verified at all. Naming must therefore not become a way to assert
-    that a location is good.
-    """
+    """A named location is still decided at its owner."""
 
     named = _workspace(tmp_path / "elsewhere", "factor-research") / "artifacts"
 

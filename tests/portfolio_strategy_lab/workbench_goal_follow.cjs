@@ -75,7 +75,7 @@ function context(initial,{address='#page=overview&follow='+scope,typing=false,di
     requestAnimationFrame:fn=>{fn();return 1;},cancelAnimationFrame(){},queueMicrotask:fn=>Promise.resolve().then(fn),setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},
     MutationObserver:class{observe(){}disconnect(){}},ResizeObserver:class{observe(){}disconnect(){}},HTMLElement:class{},
     $:s=>nodes.get(s)||null,$$:()=>[],getSelection:()=>'',scrollTo(){},clone,...library(appDir)};
-  vm.createContext(c);script('../data/zh.js').runInContext(c);c.window.ALPHA_ZH_READY=true;
+  library.context(c);script('../data/zh.js').runInContext(c);c.window.ALPHA_ZH_READY=true;
   for(const file of files)script(file).runInContext(c);
   vm.runInContext('globalThis.probe={Data,app,LiveActivity,LiveTasks,LiveStudy,LiveReview,LiveViews,LiveWorkspace,LiveResearch,Inspect,Window,Geometry,Events,ACTIONS,PRODUCT_ACTIONS,dispatchAction,readRoute,hashParams};',c);
   const p=c.probe,shown={mode:null,by:null,body:'',opens:0,onClose:null};

@@ -17,11 +17,7 @@ from tests.researcher_methodology_surface.factor_web_support import (
 def test_portfolio_promotion_keeps_its_upstream_stop_and_exact_recovery(
     sampled_alpha_case, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys
 ):
-    """A real sample Portfolio promotes Alpha, then reads that Task's memory stop.
-
-    Its original Factor, sample Alpha and Portfolio run through their real owners;
-    only the public execution-resource sensor is short for the promotion attempt.
-    """
+    """Portfolio promotion keeps its upstream stop and exact recovery."""
     case, sampled = sampled_alpha_case
     root = case[0]
     with _session(root) as live:

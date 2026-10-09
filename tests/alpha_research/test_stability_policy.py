@@ -146,12 +146,7 @@ def test_training_mse_better_than_every_fold_passes() -> None:
 
 
 def test_median_cosine_baseline_excludes_the_scored_fold() -> None:
-    """The fold baseline must not be measured against a median containing it.
-
-    With the in-sample baseline every fold sits at cosine ~1 against a median it
-    helped define, so the out-of-sample current refit is compared against an
-    unreachable floor. Leave-one-out makes the reference spread real.
-    """
+    """Median cosine baseline excludes the scored fold."""
 
     generator = np.random.default_rng(11)
     development = _folds(generator)

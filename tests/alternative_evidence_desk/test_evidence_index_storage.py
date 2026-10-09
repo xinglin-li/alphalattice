@@ -15,11 +15,12 @@ and reproduce the committed digest.
 
 from __future__ import annotations
 
+import sqlite3
 import urllib.parse
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -494,12 +495,7 @@ def _used_bytes(workspace: Path) -> int:
 def test_evidence_writes_are_admitted_by_the_workspace_budget(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: a source set, canonical blobs, a vector payload and an
-    index are admitted by the same budget owner as every other managed write,
-    before they are placed; a refused build publishes no generation and leaves
-    no partial result; bytes the workspace already holds are not admitted
-    again; the explicit rebuild obeys the same rule; reading and reusing what
-    is already there is never refused for capacity."""
+    """Evidence writes are admitted by the workspace budget."""
 
     workspace, report = build_workspace(tmp_path)
     publish_research_workspace_manifest(workspace, _workspace_manifest("qa-gate-9c5-http"))
@@ -712,13 +708,7 @@ def test_evidence_writes_are_admitted_by_the_workspace_budget(
 def test_open_readers_and_unsealed_builds_hold_their_generation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: one lease registry protects a generation for as long as
-    anything in this process holds it -- a build from before its model runs
-    until its lease is registered, a built index until its session opens, a
-    session until it closes -- and a Task still owed its work protects the
-    generation it built. A hold taken after a plan stales the plan; one taken
-    after the plan was confirmed stops the cleanup at the target, journalled,
-    and the cleanup resumes once the hold ends."""
+    """Open readers and unsealed builds hold their generation."""
 
     workspace, report = build_workspace(tmp_path)
     publish_research_workspace_manifest(workspace, _workspace_manifest("qa-gate-9c5-http"))
@@ -874,14 +864,7 @@ def _vector_targets(plan: dict[str, Any]) -> list[str]:
 def test_an_unprovable_vector_reference_graph_refuses_vector_cleanup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (R2): a sealed generation whose vector composition cannot be
-    proved -- its sidecar missing, truncated, or naming the wrong blocks --
-    does not turn its surviving blocks into cleanup candidates: unknown
-    reachability is not unreachability. The vector cleanup is refused by
-    name with the recovery step; index cleanup continues; a genuine orphan
-    is cleanable again once the graph is proved; a plan made over a proved
-    graph is refused at confirmation if the graph broke meanwhile; an
-    interrupted approved cleanup resumes only through the same protection."""
+    """An unprovable vector reference graph refuses vector cleanup."""
 
     from alphalattice.kernel.knowledge.hybrid_contracts import (
         HybridVectorBlockSidecar,
@@ -1137,8 +1120,6 @@ def test_a_cleaned_legacy_index_offers_no_impossible_rebuild(tmp_path: Path) -> 
         / f"{generation.workspace_snapshot_hash}-{generation.index_spec_hash}.db"
     )
     database.parent.mkdir(parents=True, exist_ok=True)
-    import sqlite3
-    from uuid import uuid4
 
     from alphalattice.kernel.knowledge.hybrid_contracts import HybridV3KnowledgeIndexManifest
     from alphalattice.kernel.shared_kernel.domain.serialization import (

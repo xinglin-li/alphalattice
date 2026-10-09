@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
@@ -31,6 +30,7 @@ from alphalattice.interface.local_application.goals import FIRST_USE_HOURS
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
+from tests.portfolio_strategy_lab.local_web_support import run_node
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 SESSION = "00000000-0000-4000-8000-0000000000f1"
@@ -76,11 +76,7 @@ def _network(live: Any) -> bool:
 def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them(
     live: Any, tmp_path: Path
 ) -> None:
-    """requirement (V452, OP19; the user, 2026-10-01: the person gives one sentence and the
-    agent runs the first use, interruptible): without the goal the person's steps are refused;
-    under it the agent opens the network and confirms the preparation, each recorded as the
-    person's delegation, while a step it does not delegate stays the person's; a workspace has
-    one first use; the person ending the goal closes what its delegation opened."""
+    """A first use goal lets its agent take the first steps and ends with them."""
 
     plan = "a" * 64
     code, refused = _cli(live, "network", "set", "--enabled", "true")
@@ -365,16 +361,15 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
                 code, repeated = send(preview["next_requests"]["confirm"], session=OTHER_SESSION)
                 assert (code, repeated["status"]) == (0, "ALREADY_APPLIED")
                 assert repeated["receipt_hash"] == retained.receipt_hash
-        node = shutil.which("node")
-        assert node is not None, "The Workbench holder requires the installed Node runtime."
         app_dir = SCRIPT.parent.parent / "src/alphalattice/interface/local_application/assets"
-        subprocess.run(
+        run_node(
             [
-                node,
                 str(Path(__file__).with_name("workbench_workspace.cjs")),
                 str(app_dir / "workbench-source/js/app"),
                 "--blocked-preparation",
             ],
+            missing="The Workbench holder requires the installed Node runtime.",
+            required=True,
             input=json.dumps({**blocked_page, "decided": page}),
             text=True,
             check=True,

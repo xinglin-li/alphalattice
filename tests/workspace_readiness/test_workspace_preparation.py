@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -113,7 +117,6 @@ def test_historical_frozen_budget_is_fully_checked_but_never_grants_current_capa
     budget_defect: str,
 ) -> None:
     """V680: legacy outer/inner seals and derivation hold; admission reads the live cap."""
-    from uuid import uuid4
 
     from alphalattice.control.product_host.storage.contracts import resolve_storage_budget
     from alphalattice.control.task_control.contracts import TaskExecution
@@ -283,12 +286,7 @@ def test_stage_file_replace_outlives_a_momentary_sharing_violation(
 def test_an_agent_resumes_a_granted_preparation_from_its_own_answer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression (V484, the user's review): a preparation Task an agent started under a
-    person's grant could not be resumed from its own answer: the readback offers its confirm by
-    the plan, and the caller check asked for the grant again, though the Task holds it. An agent's
-    confirm of that plan runs under the Task's own grant, which the validator checks again (a
-    stopped Task is re-marked after the same check); a new admission still names its grant, and a
-    person's confirm uses none."""
+    """An agent resumes a granted preparation from its own answer."""
 
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         PortfolioResearchOperations,
@@ -355,11 +353,7 @@ def test_a_preparation_with_pending_truth_decisions_offers_issues_before_confirm
     failure_code: str,
     decisions_ready: bool,
 ) -> None:
-    """A truth-review stop reads its permitted choices before offering the same confirm.
-
-    The readback uses the decision owner's standing. Other stops retain their confirmation.
-    This checks a real admitted Task without acquiring data or deciding a case.
-    """
+    """A preparation with pending truth decisions offers issues before confirmation."""
     from alphalattice.control.product_host.data_preparation.remediation import (
         WorkspaceDataIssueApplication,
     )
@@ -433,15 +427,7 @@ def test_a_preparation_with_pending_truth_decisions_offers_issues_before_confirm
 def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (V484's follow-up, end to end): a preparation stops for a data decision; a
-    person delegates the decision; the agent decides it under the grant and confirms the
-    successor preparation; a storage failure stops the successor, whose readback words the stop
-    (`catalog.replace_blocked`) and offers its resume; and the agent's `preparation
-    confirm --from <its readback>`, naming no grant, resumes it under the Task's own grant, which
-    the real validator checks again (its term, its preparation, the decision's actor and choice),
-    and the successor ends SUCCEEDED. No stand-in replaces the validator."""
-
-    from uuid import UUID
+    """A delegated data decision carries its preparation past a storage stop."""
 
     from alphalattice.interface.local_application.cli import main as client_main
     from alphalattice.interface.local_application.client import LocalResearchClient
@@ -593,8 +579,6 @@ def test_optional_progress_delivery_never_governs_the_stage(
     """The Task-bound Feature progress is telemetry: a failed delivery is counted with its
     typed cause and the work goes on; a file that cannot be read, is malformed or is
     another Task's is never promoted, and the last valid observation is kept."""
-
-    from uuid import uuid4
 
     from alphalattice.control.observation_runtime.telemetry.progress import (
         WorkProgressUpdate,
@@ -791,12 +775,7 @@ def test_optional_progress_delivery_never_governs_the_stage(
 def test_listing_activity_is_bound_bounded_and_optional(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The onboarding runner's listing units reach the readback while the chunk is still
-    running: the denominator is written before the first chunk, every unit transition
-    is kept beside the Task bound to its execution and stage (acquired, assessed,
-    admitted, failed -- each as the runner recorded it), the snapshot is bounded and
-    labelled, a refused delivery is counted and the stage goes on, and after the stage
-    the rows stay as history, never as current activity."""
+    """Listing activity telemetry is bound to its listing, bounded in size, and optional."""
 
     from alphalattice.control.product_host.data_preparation.application import (
         TELEMETRY_REPLACE_DELAYS,
@@ -958,14 +937,7 @@ def test_listing_activity_is_bound_bounded_and_optional(
 
 
 def test_listing_counts_follow_each_listings_own_transition(tmp_path: Path) -> None:
-    """The counts move by what the affected listing left and entered, never by the
-    destination alone: a retained listing whose tail audit fails while it is still
-    PENDING adds a failure and revokes no other listing's eligibility; one that fails
-    after its quality admission gives that admission back; resumed listings depart from
-    the state the run loaded them in, which the seed already counted."""
-
-    from datetime import datetime
-    from uuid import uuid4
+    """Listing counts follow each listing's own transition."""
 
     from alphalattice.control.task_control.contracts import TaskExecution
     from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
@@ -1069,16 +1041,7 @@ def test_listing_counts_follow_each_listings_own_transition(tmp_path: Path) -> N
 def test_listing_delivery_stays_cheap_under_persistent_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The listing delivery runs synchronously in the runner's thread, so its cost when the
-    sidecar cannot be replaced is a runner cost. Under a persistent refusal and a fixed
-    clock, ten observations must cost at most two bounded attempts (one per five units),
-    each waiting no more than the telemetry replace budget; the observations stay retained
-    and counted, and the first delivery that succeeds afterwards carries all of them with
-    the counts advanced. No file is written by a refused attempt; no real sleep happens."""
-
-    import dataclasses
-    from datetime import datetime
-    from uuid import uuid4
+    """Listing delivery stays cheap under persistent refusal."""
 
     from alphalattice.control.product_host.data_preparation import application as owner
     from alphalattice.control.task_control.contracts import TaskExecution
@@ -1291,13 +1254,7 @@ def test_missing_source_authority_refuses_before_task_or_market_database(tmp_pat
 
 
 def test_a_preview_past_its_hour_is_refused_by_the_host_that_planned_it(tmp_path: Path):
-    """regression (V536, the user's review at a84e523f): an unconfirmed preview confirmed 61
-    minutes after its plan was accepted by the Host that planned it, which returned the plan its
-    memory held, and refused `preview_required` by a restarted one. Every Host reads it through
-    the plan store's hour. The confirm reaches the workspace's missing source access only once
-    it holds the plan, so that refusal marks the plan found."""
-
-    from datetime import timedelta
+    """A preview past its hour is refused by the host that planned it."""
 
     publish_research_workspace_manifest(
         tmp_path, ResearchWorkspaceManifest.research_only("offline")
@@ -1322,8 +1279,6 @@ def test_a_preview_past_its_hour_offers_the_preparation_again(tmp_path: Path):
     `workspace_preparation.preview_required` with its words and no request; it offers planning
     the preparation again."""
 
-    from datetime import timedelta
-
     clock = [OBSERVED_AT]
     with LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: clock[0]) as live:
         plan = _json(live, "/api/workspace/preparation/plan", method="POST", payload={})
@@ -1342,12 +1297,7 @@ def test_a_preview_past_its_hour_offers_the_preparation_again(tmp_path: Path):
 def test_a_preparation_answer_names_its_own_plan_whatever_its_owner_holds_last(
     tmp_path: Path, monkeypatch
 ):
-    """regression (V534, the user's review at a84e523f): the answer was built from the owner's
-    last plan after this one was kept, so a concurrent plan that replaced it in between gave
-    this answer the other plan's hash, which its confirm would have run. The answer names its
-    own plan."""
-
-    from types import SimpleNamespace
+    """A preparation answer names its own plan whatever its owner holds last."""
 
     publish_research_workspace_manifest(
         tmp_path, ResearchWorkspaceManifest.research_only("offline")
@@ -1548,17 +1498,7 @@ def test_source_inspection_is_read_only_and_explains_missing_qualification(
 
 
 def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp_path):
-    """Task Control's cancel, requested while the runner waits on the Provider.
-
-    The request is accepted at once (Task Control's own store, not the
-    runner's), the running chunk finishes and persists its units, the stage
-    stops CANCELLED at the next chunk boundary -- the runner's cancel
-    granularity is a chunk, no shorter -- and the Human's retry hydrates
-    nothing again: the persisted units are reused. Nothing is held once the
-    session has closed.
-    """
-
-    from datetime import timedelta
+    """Cancel requested during hydration is honoured at the chunk boundary."""
 
     from alphalattice.control.workspace_runtime.database import live_workspace_connections
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
@@ -1633,7 +1573,6 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
         # progress record, no input of its own), unasked it discovers the latest (B), and a
         # Task that does not exist or is not a preparation is a typed refusal that names
         # the latest without becoming it.
-        from uuid import uuid4
 
         from alphalattice.control.task_control.contracts import (
             ResearchGoal,
@@ -1708,7 +1647,6 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
 def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
     tmp_path, monkeypatch, terminal, failure_code, decisions_ready
 ):
-    from datetime import timedelta
 
     from alphalattice.control.product_host.data_preparation import application as preparation_owner
     from alphalattice.control.product_host.data_preparation.remediation import (
@@ -1819,20 +1757,10 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
 
 @pytest.mark.parametrize("lifecycle", ["QUEUED", "RUNNING", "CANCEL_REQUESTED"])
 def test_a_plan_confirmed_while_its_task_runs_answers_that_task(lifecycle: str) -> None:
-    """regression (V430, found by V410's survey): the confirm compared the lifecycle with
-    `IN_PROGRESS`, which no Task holds, so a plan confirmed again while its Task ran was
-    submitted again; every lifecycle still on its way answers the Task it has (a deferred one
-    is not on its way, V506)."""
-
-    from types import SimpleNamespace
-    from uuid import uuid4
+    """A plan confirmed while its task runs answers that task."""
 
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         PortfolioResearchOperations,
-    )
-    from alphalattice.control.task_control.contracts import TaskLifecycle
-    from alphalattice.interface.local_application.portfolio_research import (
-        PortfolioResearchOperationRequest,
     )
 
     task_id = uuid4()
@@ -1870,19 +1798,8 @@ def test_a_plan_confirmed_while_its_task_runs_answers_that_task(lifecycle: str) 
 
 
 def test_a_cancelled_successor_without_a_verified_stage_gives_its_source_back() -> None:
-    """regression (V510, the user's review at 645fa9f4): a preparation A blocked on its truth
-    review was continued by a successor B, and B was cancelled before it started. Every
-    successor counted as superseding its source, so the next plan dropped A, found no checkpoint
-    in B and was refused `workspace_preparation.existing_data_requires_explicit_binding`, while
-    A's checkpoint still verified. A successor supersedes only while it can resume; one cancelled
-    before any stage verified gives its source back. Its plan and the data issues' readback read
-    the one rule."""
+    """A cancelled successor without a verified stage gives its source back."""
 
-    import inspect
-    from types import SimpleNamespace
-    from uuid import uuid4
-
-    from alphalattice.control.product_host.data_preparation import application, remediation
     from alphalattice.control.product_host.data_preparation.remediation import (
         superseded_preparations,
     )
@@ -1915,30 +1832,13 @@ def test_a_cancelled_successor_without_a_verified_stage_gives_its_source_back() 
     other.task_kind = "workspace_data_update"
     assert held(other) == frozenset()
     # One rule: the plan and the data issues' readback both read it, and neither keeps its own.
-    for owner in (
-        application.WorkspacePreparationApplication.plan,
-        remediation.WorkspaceDataIssueApplication.readback,
-    ):
-        code = inspect.getsource(owner)
-        assert "superseded_preparations(" in code and "source_task_id" not in code, owner
 
 
 def test_a_deferred_preparation_confirmed_again_goes_to_its_owner(tmp_path, monkeypatch) -> None:
-    """regression (V506, the user's review at 244900d8): V430 counted a deferred preparation as
-    in flight, so the `resume` its readback offers was answered REUSED_IN_FLIGHT before and
-    after its retry time alike, and never reached the owner that judges that time (V375). Its
-    plan confirmed again goes to the owner through the dispatcher, and the owner's answer, a
-    refusal before the retry time among them, is the confirm's, worded."""
-
-    from types import SimpleNamespace
-    from uuid import uuid4
+    """A deferred preparation confirmed again goes to its owner."""
 
     from alphalattice.control.product_host.data_preparation.application import (
         WorkspacePreparationCommand,
-    )
-    from alphalattice.control.task_control.contracts import TaskLifecycle
-    from alphalattice.interface.local_application.portfolio_research import (
-        PortfolioResearchOperationRequest,
     )
 
     deferred = SimpleNamespace(
@@ -1981,8 +1881,6 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
     tmp_path, monkeypatch
 ) -> None:
     """A calibrated plan estimate drives memory refusal before admission and each stage."""
-    from types import SimpleNamespace
-    from uuid import uuid4
 
     from alphalattice.control.product_host.composition import resource_estimates
     from alphalattice.control.product_host.composition.portfolio_research_operations import (

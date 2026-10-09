@@ -361,12 +361,7 @@ def test_an_interrupted_finalization_resumes_without_repeating_a_step(
     expected_permits: int,
     expected_continuations: int,
 ) -> None:
-    """Rows 4 and 5: resume after the permit, and after the pending package.
-
-    The resumed adapter is a fresh object in a fresh attempt, so every count it
-    reports is work *this* attempt did. Zero permits and zero continuations on
-    the resumed run is the whole claim.
-    """
+    """An interrupted finalization resumes without repeating a step."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -871,14 +866,7 @@ def test_strong_replay_rederives_the_ledger_and_matches_by_identity(tmp_path: Pa
 
 
 def test_a_real_legacy_program_shape_loads_but_cannot_replay(tmp_path: Path) -> None:
-    """Row 10: refused before any recomputation, not after a failed comparison.
-
-    Built from a *serialized* predecessor Program rather than by patching the
-    live class. That distinction is the test: the point is that an artifact
-    written before the assembly existed still loads at the hash it was published
-    under, and that this is what makes it unreplayable -- not that a property can
-    be made to return `None`.
-    """
+    """A real legacy program shape loads but cannot replay."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -949,18 +937,7 @@ def test_a_real_legacy_program_shape_loads_but_cannot_replay(tmp_path: Path) -> 
 
 
 def test_a_sealed_output_that_does_not_follow_from_the_inputs_fails(tmp_path: Path) -> None:
-    """Row 12: a failed replay is distinguishable from a refused one.
-
-    Every child here is content-addressed, so a byte-level tamper does not
-    produce a mismatch -- it produces an artifact that will not open. The case
-    strong replay actually exists to catch is subtler and is the one built here:
-    a ledger that is perfectly self-consistent, loads at its own hash, and
-    records a turnover the sealed inputs do not produce.
-
-    Under the *correct* spec, because a different spec is a different question
-    and is refused before any work. And the failure localizes: the transition
-    still reruns, so the layers upstream of the altered number stay VERIFIED.
-    """
+    """A sealed output that does not follow from the inputs fails."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1024,14 +1001,7 @@ def test_a_sealed_output_that_does_not_follow_from_the_inputs_fails(tmp_path: Pa
 def test_a_replay_of_a_different_request_is_refused_before_any_work(
     tmp_path: Path, different: str
 ) -> None:
-    """A spec that is not the sealed one is a different question, not a failure.
-
-    Including the two the reviewer named: a study window or a report unit changes
-    nothing about the fills and everything about the report, so a replay under
-    one would rebuild a perfectly correct report for a question nobody asked and
-    then report the path broken. It is refused by name, and refused before a
-    single Backtesting transition runs.
-    """
+    """A replay of a different request is refused before any work."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1149,14 +1119,7 @@ def test_the_candidate_freezes_only_what_the_development_run_published(
 def test_the_protected_path_continues_the_frozen_state_rather_than_restarting(
     tmp_path: Path,
 ) -> None:
-    """The sealed book decides the first protected fill, or nothing was continued.
-
-    Two arms over the same fixture and the same policy. One opens on the frozen
-    terminal state; the other opens flat. If the continuation were a fresh run
-    with the sealed hash copied onto the result -- which is what it used to be --
-    the two would produce identical ledgers and this test could not tell them
-    apart.
-    """
+    """The protected path continues the frozen state rather than restarting."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1204,13 +1167,7 @@ def test_the_protected_path_continues_the_frozen_state_rather_than_restarting(
 def test_a_different_frozen_terminal_state_changes_the_first_protected_formation(
     tmp_path: Path,
 ) -> None:
-    """Move the sealed book, and the opening trade moves with it.
-
-    The sharper version of the test above: same axis, same policy, same
-    everything except the weights in the frozen boundary. A continuation that
-    reads its opening state cannot help but produce a different first turnover;
-    one that restarts cannot help but produce the same.
-    """
+    """A different frozen terminal state changes the first protected formation."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1276,13 +1233,7 @@ def test_a_different_frozen_terminal_state_changes_the_first_protected_formation
 
 
 def test_a_continuation_refuses_a_boundary_it_cannot_restore(tmp_path: Path) -> None:
-    """Missing state is a refusal, never a silent restart.
-
-    The failure mode this replaces was the quiet one: a continuation that could
-    not read its boundary would run flat and copy the sealed hash onto the
-    result, and every downstream check would pass on a path that continued
-    nothing.
-    """
+    """A continuation refuses a boundary it cannot restore."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1355,14 +1306,7 @@ def _public_inventory(store: PortfolioLedgerStore) -> set[str]:
 def test_a_pending_protected_result_is_absent_from_every_public_index(
     tmp_path: Path,
 ) -> None:
-    """Query the ordinary lookups, not just the absence of a handoff.
-
-    Before closure the protected result must be unreachable through every route
-    an ordinary reader has: by result, by report, by rendered page, by execution
-    ledger, and through the two request-shaped indices a later development
-    request would arrive on. Asserting "no handoff exists" would pass even if the
-    whole protected path were sitting in the public store.
-    """
+    """A pending protected result is absent from every public index."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1485,13 +1429,7 @@ def test_closure_is_what_moves_the_protected_artifacts_into_the_public_store(
 def test_the_gate_refuses_a_self_consistent_candidate_it_never_saw_frozen(
     tmp_path: Path,
 ) -> None:
-    """A candidate that validates is not a candidate that was frozen.
-
-    The forged candidate here is internally perfect: every hash checks out, the
-    state binds its own ledger, the identity recomputes. It is refused for the
-    only reason that matters -- nobody registered it before the permit was asked
-    for, so "frozen beforehand" would have meant "constructed a moment ago".
-    """
+    """The gate refuses a self consistent candidate it never saw frozen."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1579,13 +1517,7 @@ def test_the_gate_refuses_a_candidate_edited_after_it_was_registered(
 def test_recovery_preserves_every_identity_across_each_crash_window(
     tmp_path: Path, window: str
 ) -> None:
-    """Four injected interruptions, and not one repeated protected evaluation.
-
-    Each window is a real gap between doing something and recording it. The
-    guarantee under test is not "it finishes" but "it finishes as the *same*
-    finalization": same task, candidate, permit, package, receipt and handoff
-    identities, and exactly one walk of the protected book across both attempts.
-    """
+    """Recovery preserves every identity across each crash window."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1651,13 +1583,7 @@ def test_recovery_preserves_every_identity_across_each_crash_window(
 
 
 def test_a_committed_artifact_survives_a_lost_content_file(tmp_path: Path) -> None:
-    """The index entry carries the artifact, so a torn write heals forward.
-
-    This is the window between recording that something happened and writing the
-    file that says what it was. Because the entry carries the payload, recovery
-    republishes the identical artifact instead of concluding it never existed and
-    minting a second one with a new timestamp.
-    """
+    """A committed artifact survives a lost content file."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -2116,19 +2042,7 @@ def test_a_replay_without_its_sealed_opening_lane_fails_closed(tmp_path: Path) -
 def test_a_continued_segment_matches_the_uninterrupted_path_exactly(
     tmp_path: Path, prefix: int
 ) -> None:
-    """Splitting a path must not change it. Two prefixes, one aligned, one not.
-
-    Three tranches and eight formations. At `prefix=3` the next scheduled sleeve
-    is 0 and at `prefix=4` it is 1, so an implementation that resets the schedule
-    is wrong in a different way in each arm -- and is wrong at all only because
-    position zero means "this book has never traded".
-
-    Everything the suffix produced is compared: the reviewed sleeves, the target
-    books the policy asked for, the executed books, the turnovers, and the sealed
-    terminal boundary. The boundary is the sharpest of these, because its hash
-    covers both weight lanes, both cash balances and the schedule position at
-    once -- if any of them drifted, the two paths end at different identities.
-    """
+    """A continued segment matches the uninterrupted path exactly."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -2236,13 +2150,7 @@ def test_a_continued_segment_matches_the_uninterrupted_path_exactly(
 def test_the_first_continued_formation_does_not_restage_every_sleeve(
     tmp_path: Path, prefix: int
 ) -> None:
-    """The failure this closes, stated directly and measured on the policy.
-
-    A reset schedule reviews all three sleeves on the first continued formation
-    and therefore rebuilds the whole book; a resumed one reviews exactly the
-    sleeve that is next. Read off `due_sleeves` at both positions, and then off
-    the turnover the continued segment actually paid.
-    """
+    """The first continued formation does not restage every sleeve."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -2387,14 +2295,7 @@ def _serialize_legacy_path(
 
 
 def test_a_legacy_program_authorizes_no_reuse_on_any_route(tmp_path: Path) -> None:
-    """Four reuse routes, four refusals, and readback still open.
-
-    Reuse is not a performance detail here -- it is the claim that a stored
-    answer is the answer to the question being asked. A path that cannot name
-    the inputs its numbers came from cannot support that claim on any route, so
-    each one refuses under the same name rather than three of them refusing and
-    the fourth quietly returning a hit.
-    """
+    """A legacy program authorizes no reuse on any route."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -2670,16 +2571,7 @@ def _forged_package(permit, candidate, fixture, **overrides):  # type: ignore[no
 
 
 def test_a_package_naming_children_that_do_not_exist_is_refused(tmp_path: Path) -> None:
-    """The forgery this closes: every hash well-formed, nothing behind any of them.
-
-    The package validates its own identity, names the right permit, the right
-    candidate, the right frozen state and the right fixture. Before closure
-    opened the children, that was enough -- so a caller could mint a package out
-    of arbitrary hex and have the Gate seal a receipt over it.
-
-    And the permit is spent either way. A refused closure that left the
-    authorization intact would turn a forged package into a free retry.
-    """
+    """A package naming children that do not exist is refused."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -2703,12 +2595,7 @@ def test_a_package_naming_children_that_do_not_exist_is_refused(tmp_path: Path) 
 def test_a_package_borrowing_another_finalizations_children_is_refused(
     tmp_path: Path,
 ) -> None:
-    """Real artifacts, from the wrong run. Existence is not enough.
-
-    Every child here opens. They belong to a *different* finalization, so the
-    package's own claims and the result's descendants disagree -- which is
-    exactly the check that needs all four opened at once.
-    """
+    """A package borrowing another finalization's children is refused."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -2789,13 +2676,7 @@ def test_a_package_whose_children_do_not_refer_to_each_other_is_refused(
 
 
 def test_a_package_over_the_wrong_axis_is_refused(tmp_path: Path) -> None:
-    """The children are coherent and real; they describe another window.
-
-    The permit names an exact fixture -- these sessions, this listing axis, this
-    count. A protected run over a different axis is a different evaluation, and
-    the only place that can be caught is against the ledger the package points
-    at.
-    """
+    """A package over the wrong axis is refused."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -2898,14 +2779,7 @@ def _public_discovery_routes(wired: _Finalization, package) -> list[object]:  # 
     ],
 )
 def test_release_is_atomic_across_every_window(tmp_path: Path, window: str) -> None:
-    """Four crashes through the release, and one released result at the end.
-
-    The guarantee has two halves and both are read off the machine rather than
-    argued. Before the marker is committed, no ordinary public route reaches the
-    protected result -- not by identity, not through either reuse index. And
-    after recovery, the package, receipt, handoff and released result carry the
-    identities the first attempt produced, with the protected book walked once.
-    """
+    """Release is atomic across every window."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -3038,14 +2912,7 @@ def test_nothing_public_is_observable_before_the_release_marker(tmp_path: Path) 
 
 
 def test_finalization_layers_fail_on_another_finalizations_artifacts(tmp_path: Path) -> None:
-    """Valid artifacts, wrong run: every mismatched layer must fail.
-
-    Two complete finalizations in one workspace. Each artifact opens; each is
-    genuine. Cross them, and the package no longer describes the result being
-    read back, the receipt no longer closes the package in hand, and the handoff
-    no longer cites either -- which is the whole reason the three are checked
-    against each other rather than one at a time.
-    """
+    """Finalization layers fail on another finalization's artifacts."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -3122,13 +2989,7 @@ def test_finalization_layers_fail_on_another_finalizations_artifacts(tmp_path: P
 def test_a_continuation_under_another_configuration_does_no_protected_work(
     tmp_path: Path, label: str, overrides: dict[str, object]
 ) -> None:
-    """A protected run is permitted for one configuration, and only that one.
-
-    Cost, the study window, the report unit and every holdings control decide
-    what the protected numbers *are*. Running under a different one produces a
-    coherent package about a question nobody permitted -- so it is refused
-    before the axis is even resolved, and the counter proves no book was walked.
-    """
+    """A continuation under another configuration does no protected work."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -3172,17 +3033,7 @@ def test_a_continuation_in_another_workspace_does_no_protected_work(tmp_path: Pa
 def test_the_gate_refuses_a_coherent_package_from_another_configuration(
     tmp_path: Path,
 ) -> None:
-    """The Gate's own half: a package the runner never saw, and never would.
-
-    Everything here is real. A second development path is run under a *different*
-    cost, finalized on the permitted fixture through its own candidate, and its
-    protected package -- coherent, children present, axis correct -- is offered
-    for closure under the first candidate's permit.
-
-    The runner's refusal cannot catch this, because no runner was involved. The
-    Gate compares the configuration identities the inspection reports against the
-    candidate and the permit, and that is the only thing standing here.
-    """
+    """The gate refuses a coherent package from another configuration."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -3251,14 +3102,7 @@ def test_the_gate_refuses_a_coherent_package_from_another_configuration(
 def test_the_gate_refuses_a_program_whose_axis_disagrees_with_its_ledger(
     tmp_path: Path,
 ) -> None:
-    """The ledger matches the fixture; the Program says another window.
-
-    Two independent axis claims, and until both were read the second one could
-    say anything. Only the Program moves here: the real protected ledger is left
-    exactly as the run sealed it, so it still matches the permitted fixture and
-    every child still refers to every other. The forged Program recomputes to its
-    own hash and declares a window one session short.
-    """
+    """The gate refuses a program whose axis disagrees with its ledger."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -3463,14 +3307,7 @@ def _readback_with(wired: _Finalization, session, result_hash: str, package, rec
 def test_adopted_but_unreleased_artifacts_do_not_read_back_as_verified(
     tmp_path: Path,
 ) -> None:
-    """The window this closes: bytes in place, marker absent, hashes known.
-
-    A caller that already holds the package, receipt and handoff identities can
-    open all three the moment adoption finishes -- content addressing does not
-    care whether anything released them. Before the marker, none of the four
-    finalization layers may be VERIFIED, and the reason has to be the missing
-    release rather than a missing artifact.
-    """
+    """Adopted but unreleased artifacts do not read back as verified."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -3722,14 +3559,7 @@ def test_recovery_refuses_to_complete_without_the_release_marker(tmp_path: Path)
 
 
 def test_a_secondary_comparator_path_replays_every_layer(tmp_path: Path) -> None:
-    """`anchor_plus_spy` is an admitted control, so it is inside exact replay.
-
-    The secondary series is an input the run resolved from outside the path --
-    it cannot be rederived from fills any more than the eligible-universe anchor
-    can. So it is sealed as its own artifact and reopened, and what the replay
-    proves is that the comparison identity and the whole report projection follow
-    from it and from the rerun.
-    """
+    """A secondary comparator path replays every layer."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -4015,15 +3845,7 @@ def _publish_alpha_evidence(root: Path) -> tuple[str, AlphaProductRecipe, Path]:
 
 
 def test_upstream_layers_are_proved_by_opening_the_real_artifacts(tmp_path: Path) -> None:
-    """Four owners, four opens, and an arbitrary hash proves nothing.
-
-    The recipes are installed objects, so opening one means resolving the recipe
-    this build actually runs. The evidence manifest is a file whose sha256 the
-    reader recomputes before it will look at it. The Risk surface comes back out
-    of its own store and re-validates its own identity on load. In every case the
-    identity readback compares against the Program is the one the *artifact*
-    reported, never the one the caller asked for.
-    """
+    """Upstream layers are proved by opening the real artifacts."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -4098,11 +3920,7 @@ def test_upstream_layers_are_proved_by_opening_the_real_artifacts(tmp_path: Path
 
 
 def test_an_arbitrary_identity_cannot_be_opened(tmp_path: Path) -> None:
-    """No record, no receipt, no way in: the opener has to find an artifact.
-
-    `record()` is gone -- the opener has no write surface at all -- so this is
-    both a behavioural and a structural statement.
-    """
+    """An arbitrary identity cannot be opened."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from importlib import import_module
 from pathlib import Path
 
 import numpy as np
@@ -242,12 +243,7 @@ def test_risk_numerical_thread_policy_is_fixed_and_path_free() -> None:
 def test_the_live_estimate_runs_single_threaded_whatever_the_ambient_threads(
     monkeypatch: pytest.MonkeyPatch, module_name, function_name, parameters
 ) -> None:
-    """regression (INV FINDING 2026-10-08): each installed adapter's estimate enters the policy.
-
-    The policy existed and was tested, but no production path entered it: the live estimates
-    ran at the machine's default threads, and their eigen diagnostics' last bits moved with them.
-    """
-    from importlib import import_module
+    """The live estimate runs single threaded whatever the ambient threads."""
 
     from alphalattice.investment.risk_research.contracts import default_covariance_recipe
     from alphalattice.investment.risk_research.estimators.catalog import (

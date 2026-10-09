@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -189,7 +190,6 @@ def test_the_shared_pause_reserves_a_final_read(monkeypatch, cap, delay) -> None
 @pytest.mark.parametrize("arrives", [False, True])
 def test_the_host_status_poll_reads_at_its_cap(monkeypatch, cap, arrives) -> None:
     """The Host long poll already sleeps by remaining time and reads before timing out."""
-    from types import SimpleNamespace
 
     from alphalattice.control.product_host.composition import portfolio_research_operations as host
     from alphalattice.control.task_control.contracts import TaskLifecycle

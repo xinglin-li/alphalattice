@@ -16,9 +16,11 @@ import socket
 import sys
 import time
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from threading import Barrier, current_thread
 from typing import Any
 from uuid import UUID
 
@@ -140,8 +142,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
     tmp_path: Path, evidence_roots, monkeypatch, capsys, caplog
 ) -> None:
     """LS1/OW12: activation reuses sealed studies; updates publish positions until stopped."""
-    from concurrent.futures import ThreadPoolExecutor
-    from threading import Barrier, current_thread
 
     from alphalattice.interface.local_application.client import LocalResearchClient
 
@@ -643,12 +643,7 @@ def test_installed_book_controls_saves_the_flat_declaration_its_preview_reads(
 def test_installed_strategy_dates_follow_sealed_records_on_the_cli(
     tmp_path, capsys, monkeypatch, active, package, cutoff
 ):
-    """V589: both installed strategies expose source dates and the owner's exact start.
-
-    Synthetic sealed metadata, real Host and CLI; missing numerical payloads ensure a date
-    answer cannot load arrays or fit. Distinct component cutoffs prove the max and selection.
-    """
-    from datetime import date
+    """Installed strategy dates follow sealed records on the CLI."""
 
     from alphalattice.control.product_host.composition.entry import main as date_cli
     from tests.portfolio_strategy_lab.strategy_dates_support import date_host
@@ -720,7 +715,6 @@ def test_installed_strategy_dates_follow_sealed_records_on_the_cli(
         assert live.operations.activations.state(package)["strategy_dates"] == dates
         # The public owner is also the book readback's source. Equality is not after cutoff.
         day = date.fromisoformat(cutoff)
-        from datetime import timedelta
 
         book = live.operations.activations.dates(
             package,
@@ -913,12 +907,7 @@ def test_a_forward_book_before_data_end_names_actionable_and_in_sample_replay(
 def test_actionable_entry_is_strictly_after_activation_or_clock_on_the_cli(
     tmp_path, capsys, monkeypatch, active, clock, completed, actionable, entry_at
 ):
-    """V603: both packages use actual entry clocks, including holidays, early closes and DST.
-
-    The old V597 intraday expectation named an open already past; completion and provider
-    finality remain separate diagnostic facts, and cannot decide what the person can enter.
-    """
-    from datetime import datetime
+    """Actionable entry is strictly after activation or clock on the CLI."""
 
     from alphalattice.control.product_host.composition.entry import main as date_cli
     from tests.portfolio_strategy_lab.strategy_dates_support import date_host
@@ -1022,11 +1011,7 @@ def test_in_sample_replay_stops_before_the_corrected_actionable_entry(
 def test_friday_intraday_activation_names_mondays_entry_on_the_cli(
     tmp_path, capsys, monkeypatch, active
 ):
-    """Claude's V603 14:45 NOTE: exact sealed substitute for the UI-owned CE copy.
-
-    A later current clock also proves that ACTIVE uses its recorded activation; INACTIVE
-    uses that current clock. The UI line owns the subsequent real-copy CG page reading.
-    """
+    """Friday intraday activation names Monday's entry on the CLI."""
     from alphalattice.control.product_host.composition.entry import main as date_cli
     from tests.portfolio_strategy_lab.strategy_dates_support import date_host
 
@@ -1214,16 +1199,7 @@ def _forward_copy(
 def test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names(
     tmp_path: Path, evidence_roots, monkeypatch, capsys
 ) -> None:
-    """regression (V600, BLOCKING; DOC's RR5g-0 F7): an update stopped on the network was not
-    resumed by its door's way (a person allows it, then run the plan again): the run of the same
-    plan found the stopped Task and answered ADMITTED, BLOCKED and no code, a wait ended at once
-    and the queued command did nothing. Through the real CLI on a research installation, the stop
-    reproduced first -- the network closed, a plan whose data is not held, its run BLOCKED -- the
-    rerun is refused by that stop while the network stays closed and touches nothing; once a
-    person allows the network, the resume the stop's read offers takes up the same Task from the
-    stage it stopped in, and the wait follows it to its end. The data update's own door resumes
-    its stopped Task the same way. Offline throughout: the provider's module is absent, the
-    membership source refuses, and no socket leaves the machine."""
+    """An update stopped on the network resumes by the way its stop names."""
 
     # V620: reproduce the UX's operator-held stop first. Switch-off read controls below
     # use this copy's local provider guards; every read remains on the machine.
@@ -1376,14 +1352,7 @@ def test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names(
 def test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due(
     tmp_path: Path, evidence_roots, monkeypatch, capsys
 ) -> None:
-    """regression (V601, BLOCKING): a provider's deferral inside a research update's data stage
-    stopped the update BLOCKED with the deferral's own code, unworded, and its rerun answered it
-    as it stood, so after a provider's outage that day's positions could not be had. Through the
-    real CLI on a research installation, with a provider whose day is not final yet
-    (`data.daily_bar_not_final`): the update defers with its data stage's retry time, its read
-    saying when and offering the resume; a rerun before then is refused with that time and asks
-    nothing of the provider; once the time has passed, the resume takes up the same Task from the
-    stage it deferred in, which asks the provider again. Offline throughout."""
+    """An update the provider defers waits with it and resumes once due."""
 
     clock = [datetime(2026, 9, 14, 23, tzinfo=UTC)]
     provider = recording_provider(now=clock[0])
@@ -1560,17 +1529,7 @@ def test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session(
 def test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_on(
     tmp_path: Path, evidence_roots, monkeypatch, capsys
 ) -> None:
-    """regression (V604, BLOCKING; TE12): a plan made while an older update of the same strategy
-    waited was a newer one, its Task queued behind the deferral; a Task admitted meanwhile parked
-    there for good; and a deferral a person cancelled left the provider's deferral holding the
-    workspace's inputs, every next plan refused without words. Through the real CLI on a research
-    installation: with an update deferred, the next plan of its strategy answers it and its run
-    before the retry time is refused with that time, never a newer Task; a study verification the
-    person asks for meanwhile waits for the running place, owned and never parked, and runs once
-    the person cancels the deferral; the next plan is then refused, named by the inputs' state,
-    its way on a data update; that update, deferred in turn, is what the data door's next plan
-    answers; once the provider's bars are final its run settles the inputs, and Monday's update
-    publishes its positions. Offline throughout."""
+    """A plan answers the update that waits and a cancelled one leaves a way on."""
 
     clock = [datetime(2026, 9, 14, 23, tzinfo=UTC)]
     held: list[HeldDataProvider] = []
@@ -1835,11 +1794,7 @@ def test_current_performance_follows_exact_books_daily_publications_and_keeps_hi
 
 
 def test_activation_over_the_real_storage_cap_is_a_worded_http_refusal(tmp_path: Path) -> None:
-    """regression (V679, OP4): an installed book's real checkpoint write reached the storage
-    cap, whose named RuntimeError escaped activation as a Web 500 fingerprint. Sparse managed
-    bytes exceed the owner's genuine cap; the same real HTTP activation now keeps its code,
-    translated door words and storage ways on, without publishing a checkpoint or binding it.
-    """
+    """Activation over the real storage cap is a worded HTTP refusal."""
     from alphalattice.control.product_host.composition.research_workspace import (
         read_research_workspace_manifest,
     )

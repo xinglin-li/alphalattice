@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import math
 from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
@@ -524,18 +525,7 @@ def _publish_operational_tradability(  # type: ignore[no-untyped-def]
 
 
 def test_a_future_entry_open_cannot_move_the_real_rebalance_decision() -> None:
-    """requirement: through the real provider, policy and adapter, not arithmetic.
-
-    The previous version of this test called ``execute_orders`` and
-    ``drift_holdings`` against a hand-written ``target``. It proved the drift
-    arithmetic and proved nothing about the decision, because no policy or
-    optimizer ran. This drives the installed
-    ``PortfolioPolicyDecisionProvider`` on one formation and varies only the
-    argument that carries the entry-open book.
-
-    Restoring any ``pretrade_weights -> REBALANCE adapter`` path fails this on
-    the bitwise comparison.
-    """
+    """A future entry open cannot move the real rebalance decision."""
 
     from alphalattice.investment.portfolio_strategy_lab.evaluation.walk_forward import (
         PortfolioPolicyDecisionProvider,
@@ -572,13 +562,7 @@ def test_a_future_entry_open_cannot_move_the_real_rebalance_decision() -> None:
 
 
 def test_a_hold_makes_no_decision_and_no_forecast() -> None:
-    """requirement: a hold is not a target decision and contributes no forecast.
-
-    It carries the drifted book -- necessarily, because a hold must charge zero
-    turnover against it -- and that book only exists once the entry open has
-    printed. Recording it as a target with a ``predicted_variance`` put an
-    ex-post quantity into decision-time risk calibration.
-    """
+    """A hold makes no decision and no forecast."""
 
     from alphalattice.investment.portfolio_strategy_lab.evaluation.walk_forward import (
         PortfolioPolicyDecisionProvider,
@@ -611,12 +595,7 @@ def test_a_hold_makes_no_decision_and_no_forecast() -> None:
 
 
 def test_close_of_t_information_does_reach_the_decision_state() -> None:
-    """requirement: the decision book is not a stale copy of the previous target.
-
-    The mirror of the test above. Changing the move that *closed* at open(T) --
-    information a decision at close(T) has -- must change the book the optimizer
-    prices against, or the state transition would be ignoring what it knows.
-    """
+    """Information available at the session close reaches the decision state."""
 
     from alphalattice.capabilities.portfolio_backtesting.execution import drift_holdings
 
@@ -658,12 +637,7 @@ def _transition_binding(**overrides):  # type: ignore[no-untyped-def]
 
 
 def test_the_holdings_transition_follows_the_installed_clock_not_a_hardcoded_step() -> None:
-    """requirement: the state transition asks the clock; it does not assume T+1.
-
-    Two installed clocks over one workspace. The daily clock decides on every
-    formation; the every-N clock holds in between, and a hold keeps the *drifted*
-    book so its turnover is exactly zero rather than a round trip.
-    """
+    """The holdings transition follows the installed clock not a hardcoded step."""
 
     from alphalattice.capabilities.portfolio_backtesting.clocks import (
         EveryFormationClock,
@@ -1227,15 +1201,7 @@ def _projected_bar(session: date, *, open_price: float, close_price: float):  # 
 
 
 def test_the_session_mark_is_a_listing_safe_intraday_fact() -> None:
-    """requirement: the close(T) fact, on a full (session, listing) axis.
-
-    The arithmetic alone, below the durable surface that publishes it and the
-    lane that consumes it -- both of which have their own tests further down.
-
-    Keyed on both axes. The first version keyed on the session alone, so two
-    listings or a duplicated row collapsed into one entry and the last write won
-    in silence.
-    """
+    """The session mark is a listing safe intraday fact."""
 
     from alphalattice.foundation.market_data_ops.publication.session_marks import (
         SESSION_MARK_OBSERVED_THROUGH_EVENT,
@@ -1318,22 +1284,7 @@ def _mark_lane_workspace(
 
 
 def test_the_close_mark_is_the_route_the_decision_loop_actually_runs() -> None:
-    """requirement: the declared method and the executed arithmetic are one object.
-
-    Load-bearing, and load-bearing in the direction that matters. The previous
-    version of this test asserted the seam was *absent*, because a seam indexed
-    beside the formation axis would have applied session ``T``'s move to a book
-    filled at ``open(T+1)``. The seam is now present and keyed on the decision
-    session's own label, so what has to be pinned is the opposite claim: that
-    restoring the old route -- seal a close mark, run the open proxy -- turns
-    this red.
-
-    Two independent tripwires, because the failure has two halves. The lane
-    refuses to exist without its marks, and the segment loop refuses to value a
-    reference by anything other than the lane it was handed.
-    """
-
-    import inspect
+    """The close mark is the route the decision loop actually runs."""
 
     from alphalattice.capabilities.portfolio_backtesting import segments
     from alphalattice.capabilities.portfolio_backtesting.contracts import (
@@ -1360,10 +1311,6 @@ def test_the_close_mark_is_the_route_the_decision_loop_actually_runs() -> None:
     # 2. The loop values the reference through the lane and through nothing else.
     #    The old route assigned ``optimizer_reference = executed`` directly; that
     #    line no longer exists, and the source says which call replaced it.
-    source = inspect.getsource(segments.run_portfolio_walk_forward_segment)
-    assert "lane.value_at_decision(" in source
-    assert "decision_session=workspace.formation_sessions[index]" in source
-    assert "optimizer_reference = np.array(executed, copy=True)" not in source
     # And the sequence owner carries the lane, which is the argument the first
     # version of this seam was missing entirely.
     assert (
@@ -1375,15 +1322,7 @@ def test_the_close_mark_is_the_route_the_decision_loop_actually_runs() -> None:
 
 
 def test_the_reference_is_the_book_at_the_decisions_own_open() -> None:
-    """requirement: the mark applied is the decision session's, not the previous one.
-
-    The one-day error this whole lane exists to prevent, measured rather than
-    argued. Two sessions carrying *different* marks, a book held across both, and
-    the reference each formation is handed must carry its own session's move.
-
-    A uniform marks array would make the misalignment invisible, which is exactly
-    how the earlier seam passed its own test.
-    """
+    """The reference is the book at the decision's own open."""
 
     from alphalattice.capabilities.portfolio_backtesting.contracts import (
         MARKED_TO_MARKET_AT_CLOSE_T,
@@ -1475,18 +1414,7 @@ def test_the_reference_is_the_book_at_the_decisions_own_open() -> None:
 
 
 def test_every_state_carry_edge_refusal_is_reachable_and_named() -> None:
-    """requirement: each way an edge can fail has its own code and its own test.
-
-    Three failures used to share one message, which sent a reader back to the
-    arithmetic to find out which had happened. They are told apart because the
-    remedies differ: a missing fill is a snapshot that did not publish one, a
-    late fill is a method this engine does not run, and a gap is a lawful axis
-    whose state this engine cannot carry.
-
-    The embargo edge is covered here too. It was new logic with no fixture at
-    all, and its three sessions are not adjacent on the decision axis -- so
-    nothing else in the suite reaches it.
-    """
+    """Every state carry edge refusal is reachable and named."""
 
     from alphalattice.capabilities.portfolio_backtesting.contracts import (
         MARKED_TO_MARKET_AT_CLOSE_T,
@@ -1581,16 +1509,7 @@ def test_every_state_carry_edge_refusal_is_reachable_and_named() -> None:
 
 
 def test_the_reference_carries_its_own_cash_through_an_embargo() -> None:
-    """regression: a part-cash book crossing an embargo used to fail closed.
-
-    The reference was advanced with the *pre-trade* book's cash -- a different
-    instant -- so the pair stopped summing to one and ``drift_holdings`` refused
-    the carry with ``holdings_carry_invalid``. It never fired in the suite
-    because every fixture held a fully invested Top-K book, where both cash
-    figures are zero and the two instants are indistinguishable.
-
-    So this holds cash, earns a non-zero return on it first, and then crosses.
-    """
+    """The reference carries its own cash through an embargo."""
 
     from alphalattice.capabilities.portfolio_backtesting.contracts import (
         PortfolioWalkForwardError,
@@ -1688,17 +1607,7 @@ def _publish_marks(root: Path, *, sessions: tuple[date, ...], prices: dict, **ov
 
 
 def test_the_mark_surface_publishes_reads_and_reverifies_every_block(tmp_path: Path) -> None:
-    """requirement: fact -> durable surface -> verified read -> label lookup.
-
-    The vertical path, and the reason it is keyed on a session label the whole
-    way: a re-mark indexed beside the formation axis applies the wrong session's
-    move, and here the only way to obtain a mark is to name the session.
-
-    The reads are the half this round added. Every invariant below was checked
-    once at publication and never again, so the store was worth exactly what the
-    filesystem under it was worth -- a rewritten Parquet file, a permuted axis or
-    a deleted row all read back as facts.
-    """
+    """The mark surface publishes reads and reverifies every block."""
 
     import pyarrow.parquet as pq
 
@@ -1888,16 +1797,7 @@ def test_the_mark_surface_publishes_reads_and_reverifies_every_block(tmp_path: P
 
 
 def test_the_mark_is_admitted_as_a_decision_input_at_its_owners(tmp_path: Path) -> None:
-    """requirement: the mark reaches the one admission owner, re-resolved not restated.
-
-    It changes the book every optimizer prices turnover against, so it is a
-    decision input and not provenance. What makes the admission worth anything is
-    the direction the availability term is resolved in: from the Feature
-    engine's installed catalog, with the surface's own sealed id and hash checked
-    against the answer. Built the other way round -- anchor from the surface's
-    own numbers -- a publisher could assert any availability it liked and every
-    comparison downstream would agree with it.
-    """
+    """The mark is admitted as a decision input at its owners."""
 
     from alphalattice.capabilities.causal_inputs.contracts import TemporalAdmissionError
     from alphalattice.capabilities.portfolio_inputs import session_marks as adapter

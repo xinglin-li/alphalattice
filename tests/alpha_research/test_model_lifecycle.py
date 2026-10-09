@@ -1,7 +1,16 @@
 """Declared calendars, causal training, and immutable model renewal boundaries."""
 
+import os
+import pickle
+from collections import Counter
+from contextlib import contextmanager
+from dataclasses import replace
 from datetime import date, timedelta
+from hashlib import sha256
+from io import BytesIO
 from pathlib import Path
+from threading import Barrier, Lock, get_ident
+from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
 import pytest
@@ -149,10 +158,6 @@ def retained_lifecycle_admission(tmp_path):
 def test_admission_verifies_unique_arrays_in_parallel_after_serial_bindings(
     retained_lifecycle_admission, monkeypatch
 ):
-    from collections import Counter
-    from contextlib import contextmanager
-    from hashlib import sha256
-    from threading import Barrier, Lock, get_ident
 
     store, root, authority, observations = retained_lifecycle_admission
     snapshot = store.load_frozen_observation_snapshot(observations[0].observation_hash)
@@ -223,11 +228,6 @@ def test_admission_verifies_unique_arrays_in_parallel_after_serial_bindings(
 def test_admission_refuses_array_tamper_before_reading_initial_children(
     retained_lifecycle_admission, monkeypatch, damaged_source
 ):
-    import os
-    from collections import Counter
-    from contextlib import contextmanager
-    from hashlib import sha256
-    from threading import Barrier, Lock
 
     from alphalattice.investment.alpha_research.scores.model_renewal import AlphaImportedChild
 
@@ -325,8 +325,6 @@ def test_admission_refuses_array_tamper_before_reading_initial_children(
 def test_admission_decodes_every_npz_member_without_pickle(
     retained_lifecycle_admission,
 ):
-    from hashlib import sha256
-    from io import BytesIO
 
     store, root, authority, _ = retained_lifecycle_admission
     stream = BytesIO()
@@ -366,7 +364,6 @@ def test_admission_decodes_every_npz_member_without_pickle(
 
 @pytest.mark.parametrize("temporal", (False, True))
 def test_history_and_daily_features_are_identical_and_future_rows_are_inert(temporal):
-    from dataclasses import replace
 
     source = _source()
     if temporal:
@@ -416,7 +413,6 @@ def test_history_and_daily_features_are_identical_and_future_rows_are_inert(temp
 
 @pytest.mark.parametrize("temporal", (False, True))
 def test_maturity_and_budget_refuse_before_fit(tmp_path: Path, monkeypatch, temporal):
-    from dataclasses import replace
 
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     source = _source()
@@ -495,7 +491,6 @@ def test_maturity_and_budget_refuse_before_fit(tmp_path: Path, monkeypatch, temp
 def test_monthly_yaml_runs_and_replays_through_the_existing_workflow(
     tmp_path, monkeypatch, temporal
 ):
-    from dataclasses import replace
 
     from alphalattice.control.research_program.authoring.dispatcher import (
         ResearchExperimentDispatcher,
@@ -514,7 +509,6 @@ def test_monthly_yaml_runs_and_replays_through_the_existing_workflow(
     from alphalattice.investment.alpha_research.scores.model_renewal import (
         AlphaModelLifecycleAdmission,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from alphalattice.protocols.actor_execution.contracts import ActorKind
     from alphalattice.protocols.research_authoring.contracts import ResolvedResearchAuthority
 
@@ -615,8 +609,6 @@ alpha:
         denied_dispatcher.compile(document)
     # Every binary read from here on is counted, so the process's first read of an array --
     # the one that leaves its OS-backed proof -- is seen, not only the readbacks after it.
-    import os
-    from collections import Counter
 
     opened: Counter[Path] = Counter()
     open_file = Path.open
@@ -690,7 +682,6 @@ def test_legacy_panel_and_package_component_identities_do_not_rotate():
     from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
         ComponentPlanEntry,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from alphalattice.protocols.research_authoring.contracts import ResolvedResearchAuthority
 
     payload = {
@@ -722,7 +713,6 @@ def test_legacy_panel_and_package_component_identities_do_not_rotate():
 
 
 def test_formula_snapshot_roundtrip_is_bound_without_changing_legacy_shape(tmp_path):
-    from dataclasses import replace
 
     source = _source()
     store = AlphaCurrentArtifactStore(tmp_path)
@@ -921,8 +911,6 @@ def test_source_successor_keeps_old_period_and_cannot_reset_fit_permission(tmp_p
 
 @pytest.mark.parametrize("temporal", (False, True))
 def test_score_dispatch_uses_captured_formation_membership(tmp_path, monkeypatch, temporal):
-    from dataclasses import replace
-    from types import SimpleNamespace
 
     from alphalattice.control.product_host.composition.strategy_scoring import (
         STAGES,
@@ -975,7 +963,6 @@ def test_score_dispatch_uses_captured_formation_membership(tmp_path, monkeypatch
 
 
 def test_context_history_uses_each_dates_reference_not_the_latest_roster():
-    from types import MappingProxyType
 
     from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
         assemble_panel_context_arrays,
@@ -1040,7 +1027,6 @@ def test_context_history_uses_each_dates_reference_not_the_latest_roster():
     )
 
     def project(raw, reference, contexts):
-        import pickle
 
         from alphalattice.investment.alpha_research.experiments.panel_alpha_fold_execution import (
             PanelFeatureSourcePayload,
@@ -1111,7 +1097,6 @@ def test_context_history_uses_each_dates_reference_not_the_latest_roster():
 
 
 def test_legacy_score_identity_readback_does_not_reopen_model_authority(monkeypatch):
-    from types import SimpleNamespace
 
     from alphalattice.control.product_host.composition.strategy_scoring import (
         StrategyScoringApplication,

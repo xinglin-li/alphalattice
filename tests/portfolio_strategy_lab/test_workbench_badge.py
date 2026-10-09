@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
-import pytest
-
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.verification_sweep import SWEEP_TASK_KIND
 from alphalattice.control.task_control.contracts import (
@@ -22,21 +20,14 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, _run_badge_browser
+from tests.portfolio_strategy_lab.local_web_support import _json, _run_badge_browser, run_node
 from tests.workspace_task_runner.task_control_support import digest, task_contract
-
-pytestmark = pytest.mark.usefixtures("workbench_build")
 
 
 def test_real_task_records_drive_home_badges_and_grouped_history(
     live: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:
-    """One producer-to-consumer regression: canonical equal-clock admissions drive Home's
-    person decision count and Tasks/History's disclosed earlier stop; closing preserves the reason.
-
-    These are labelled QA Task Control checkpoints of the registered verification kind.
-    They execute no scientific adapter and publish no scientific result.
-    """
+    """Real task records drive home badges and grouped history."""
     assert live.session is not None
     registry = live.session.task_control_registry
     now = live.clock()
@@ -200,18 +191,15 @@ def test_real_task_records_drive_home_badges_and_grouped_history(
 
 def test_activity_task_merge_keeps_only_same_version_attention() -> None:
     """Sparse activity projections cannot ungroup a resolved stop or retain stale attention."""
-    import shutil
-    import subprocess
 
-    node = shutil.which("node")
-    assert node is not None, "BADGE requires the UI's Node.js development runtime"
     source = Path(__file__).resolve().parents[2] / (
         "src/alphalattice/interface/local_application/assets/workbench-source/js/app/data.js"
     )
     code = r"""
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+const library = require(process.argv[2]);
 const c = {window: {ALPHA_PRODUCT: true}, app: {}, URLSearchParams};
-vm.createContext(c);
+library.context(c);
 vm.runInContext(fs.readFileSync(process.argv[1], 'utf8') + ';globalThis.data=Data;', c);
 const D = c.data, sourceHash = 'a'.repeat(64), successorHash = 'b'.repeat(64);
 const source = {task_id: 'source', task_kind: 'workspace_preparation', lifecycle: 'BLOCKED',
@@ -260,4 +248,10 @@ assert.equal(D.taskSuccessor(D.taskOf('source')), null,
   'a changed successor version invalidates the relation');
 assert.equal(grouped().length, 2, 'successor identity remains exact after an activity merge');
 """
-    subprocess.run([node, "-e", code, str(source)], check=True, timeout=10)
+    run_node(
+        ["-e", code, str(source), str(Path(__file__).with_name("workbench_library.cjs"))],
+        missing="BADGE requires the UI's Node.js development runtime",
+        required=True,
+        check=True,
+        timeout=10,
+    )

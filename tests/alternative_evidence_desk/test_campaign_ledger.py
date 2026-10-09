@@ -78,12 +78,7 @@ def _lines(path: Path) -> list[dict[str, object]]:
 def test_a_resumed_campaign_spends_only_its_remainder_and_refuses_before_exceeding_it(
     tmp_path: Path,
 ) -> None:
-    """requirement (Phase A4): the campaign's totals and what it consumed --
-    attempts, decoded bytes, distinct bodies -- survive a process restart;
-    the process that resumes it receives only the remainder, continues
-    within it, and is refused before a request whose cap does not fit the
-    remainder is made. The admission line carries the declared totals and
-    another declaration under the same id is another campaign."""
+    """A resumed campaign spends only its remainder and refuses before exceeding it."""
 
     path = tmp_path / "qa-campaign.jsonl"
     served: list[str] = []
@@ -157,12 +152,7 @@ def test_a_resumed_campaign_spends_only_its_remainder_and_refuses_before_exceedi
 def test_an_unsettled_reservation_counts_at_its_cap_and_a_partial_transfer_at_what_was_read(
     tmp_path: Path,
 ) -> None:
-    """requirement (Phase A4, crash boundary): a reservation no process
-    settled -- the process died mid-transfer -- counts at the cap it
-    reserved when the campaign is resumed, never at zero; a transfer that
-    fails part-way is settled with the bytes actually read, the chunk that
-    crossed the cap included, and the counters report the overrun rather
-    than a clamped figure."""
+    """An unsettled reservation counts at its cap and a partial transfer at what was read."""
 
     path = tmp_path / "qa-campaign.jsonl"
     ledger = SecCampaignLedger.open(path, declaration=DECLARATION)
@@ -216,10 +206,7 @@ def test_an_unsettled_reservation_counts_at_its_cap_and_a_partial_transfer_at_wh
 
 
 def test_a_ledger_that_was_edited_or_cut_short_is_refused_by_name(tmp_path: Path) -> None:
-    """requirement (Phase A4): the ledger is the campaign's record, not a
-    counter a caller may set -- an edited line breaks the chain, a ledger
-    shorter than its head says is refused, and a line appended without the
-    head moved (the one crash window) is accepted and the head repaired."""
+    """A ledger that was edited or cut short is refused by name."""
 
     path = tmp_path / "qa-campaign.jsonl"
     head = tmp_path / "qa-campaign.jsonl.head"
@@ -292,11 +279,7 @@ def test_the_source_and_transport_take_the_campaign_bounds_from_its_ledger(
 def test_the_admission_opens_a_named_campaign_once_and_resumes_it_with_its_remainder(
     tmp_path: Path,
 ) -> None:
-    """requirement (Phase A4): a named campaign is admitted once with every
-    bound and the document cap, resumed by a later admission with the same
-    declaration, refused under another, and needs the official client; an
-    injected transport spends none of it and a denied environment opens no
-    record."""
+    """The admission opens a named campaign once and resumes it with its remainder."""
 
     workspace = tmp_path / "workspace"
     environment = {SEC_USER_AGENT_VARIABLE: USER_AGENT}
@@ -397,11 +380,7 @@ def test_the_admission_opens_a_named_campaign_once_and_resumes_it_with_its_remai
 
 
 def test_one_ledger_has_one_owner_and_a_stale_holder_cannot_append(tmp_path: Path) -> None:
-    """requirement (R2): two independently opened holders of one ledger must
-    not both spend its balance -- the second is refused before any request
-    could leave, while the first holds the campaign; released, the second
-    resumes with what the first spent. A line another writer appended
-    behind a holder's back refuses that holder's next append by name."""
+    """One ledger has one owner and a stale holder cannot append."""
 
     path = tmp_path / "qa-campaign.jsonl"
     served: list[str] = []
@@ -449,10 +428,7 @@ def test_one_ledger_has_one_owner_and_a_stale_holder_cannot_append(tmp_path: Pat
 def test_a_campaign_id_is_one_safe_path_component_or_nothing_is_created(
     tmp_path: Path,
 ) -> None:
-    """requirement (R3): a backslash, a drive, a separator, a parent or
-    hidden reference in the id is refused by the declaration and by the
-    ledger path before any file or directory exists; ordinary ids keep
-    working and a ledger written under one reopens."""
+    """A campaign identifier is one safe path component or nothing is created."""
 
     workspace = tmp_path / "workspace"
     for bad in (

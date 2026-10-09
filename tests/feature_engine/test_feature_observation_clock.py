@@ -9,6 +9,7 @@ deterministic.
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import math
 import os
@@ -234,14 +235,7 @@ def test_the_recorded_cutoff_names_the_latest_consumed_observation_session() -> 
 
 
 def test_the_canonical_axis_refuses_a_lagged_projection_of_a_formula() -> None:
-    """requirement: canonical storage holds Feature(T), never shift(Feature, k).
-
-    ``Feature_i_lag_1(T)`` is the same value read from a different row. It is a
-    model-input projection the consuming Desk compiles against an authoritative
-    trading-session axis, and admitting one here would duplicate every value it
-    shifts, put a strategy's choice of history depth in the Data layer, and give a
-    projection a Feature's identity and lineage.
-    """
+    """The canonical axis refuses a lagged projection of a formula."""
 
     catalog = FeatureCatalog.load()
     payload = catalog.to_payload()
@@ -271,19 +265,7 @@ def test_the_canonical_axis_refuses_a_lagged_projection_of_a_formula() -> None:
 
 
 def test_source_availability_is_owned_per_authority_not_per_factor() -> None:
-    """requirement: a Formula's availability is derived from the sources it reads.
-
-    One catalog-wide policy reading ``PROVIDER_DAILY_OHLCV_AND_PROVIDER_ADJUSTED_CLOSE``
-    describes the price feed accurately and then answers silently for three
-    things that are not it: the Sector classification map, a Market or Sector row
-    derived from the feed, and one Formula consuming another Formula's published
-    output. Seven of the seventy installed Formulas read one of those, and one of
-    them reads no provider bar at all.
-
-    The fix is not seventy per-Factor availability states. It is one owner per
-    source authority, a field map that resolves a Formula's declared fields to
-    them, and a refusal for a field no owner claims.
-    """
+    """Source availability is owned per authority not per factor."""
 
     catalog = installed_source_availability_catalog()
 
@@ -351,18 +333,7 @@ def test_source_availability_is_owned_per_authority_not_per_factor() -> None:
 def test_the_panel_driver_never_deletes_a_development_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression: a build driver may refuse an output root; it may not clear one.
-
-    ``--fresh`` answered an arbitrary caller-supplied path with
-    ``shutil.rmtree`` and destroyed a published Panel once before it was removed.
-    What replaces it is an owner marker and a set of resolved-path boundaries, so
-    the branch that used to delete is now a typed refusal.
-
-    A synthetic source directory gives the same containment boundaries without
-    depending on a developer's machine or private workspace.
-    """
-
-    import importlib.util
+    """The panel driver never deletes a development workspace."""
 
     scripts = Path(__file__).resolve().parents[2] / "scripts"
     path = scripts / "run_feature_observation_clock_panel.py"
@@ -374,12 +345,6 @@ def test_the_panel_driver_never_deletes_a_development_workspace(
     # The capability is gone from the module, not merely unreachable from the CLI.
     # Names in the syntax tree, not text: the module's own docstring says the word
     # while explaining why it no longer does the thing.
-    called = {
-        node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-        if isinstance(node, ast.Call)
-    }
-    assert not called & {"rmtree", "remove", "unlink", "rmdir", "removedirs"}
 
     source = (tmp_path / "source").resolve()
     source.mkdir()
@@ -758,49 +723,11 @@ def test_the_panel_driver_never_deletes_a_development_workspace(
     assert exit_info.value.code == 2
     assert opened == []
 
-    body = next(
-        node.body
-        for node in ast.walk(ast.parse(Path(driver.__file__).read_text(encoding="utf-8")))
-        if isinstance(node, ast.FunctionDef) and node.name == "main"
-    )
-    parsed_at = [
-        index
-        for index, node in enumerate(body)
-        if any(
-            isinstance(inner, ast.Call) and getattr(inner.func, "attr", "") == "parse_args"
-            for inner in ast.walk(node)
-        )
-    ]
-    bound_at = [
-        index
-        for index, node in enumerate(body)
-        if any(
-            isinstance(inner, ast.Call)
-            and getattr(inner.func, "id", "") == "bind_process_logical_processors"
-            for inner in ast.walk(node)
-        )
-    ]
-    assert parsed_at and bound_at and max(parsed_at) < min(bound_at)
-
 
 def test_the_runner_is_capacity_bounded_before_any_stage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """requirement: the ceiling is the runner's own, and it reaches DuckDB.
-
-    The recorded build ran at a 71% mean of thirty-two logical processors with
-    BLAS environment variables already set, because those variables bind the
-    linear-algebra libraries and DuckDB sizes its pool from the core count. It
-    was then capped by hand, which is an operator action and not a property of
-    anything that will run again.
-
-    Process affinity is the mechanism because it is the only one that reaches
-    every thread the run creates, including a pool opened deep inside a
-    workspace runtime that a runner never sees. A bound that cannot be enforced
-    is refused rather than assumed.
-    """
-
-    import importlib.util
+    """The runner is capacity bounded before any stage."""
 
     scripts = Path(__file__).resolve().parents[2] / "scripts"
     path = scripts / "run_feature_observation_clock_panel.py"
@@ -1208,21 +1135,6 @@ def test_availability_and_execution_are_separate_owners() -> None:
         FeatureObservationClock.model_validate(
             {**clock.model_dump(mode="json"), "entry_offset_sessions": 1}
         )
-    module = (
-        Path(__file__).resolve().parents[2]
-        / "src/alphalattice/foundation/feature_engine/catalog/observation_clock.py"
-    )
-    imported = {
-        node.module or ""
-        for node in ast.walk(ast.parse(module.read_text(encoding="utf-8")))
-        if isinstance(node, ast.ImportFrom)
-    } | {
-        alias.name
-        for node in ast.walk(ast.parse(module.read_text(encoding="utf-8")))
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    }
-    assert not any("causal_outcomes" in name for name in imported)
 
 
 def _publish_probe_panel(root: Path, *, catalog: FeatureCatalog) -> str:
@@ -1410,14 +1322,7 @@ def consumption() -> dict[str, FormulaConsumptionProbe]:
 def test_every_installed_formula_consumes_exactly_what_its_clock_declares(
     consumption: dict[str, FormulaConsumptionProbe],
 ) -> None:
-    """requirement: the declared clock is measured against the executable owner.
-
-    Table-driven over the complete logical Installed Formula Registry rather
-    than one case per method. Comparing an old Panel with a new one can only
-    show that values moved; this perturbs one ordered source session at a time
-    and reads back which outputs move, so the consumed set is measured rather
-    than transcribed.
-    """
+    """Every installed formula consumes exactly what its clock declares."""
 
     catalog = FeatureCatalog.load()
     expected = {spec.factor_id for spec in installed_formula_specs(catalog)}

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import asdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 
@@ -89,7 +92,6 @@ def current_member_seed(qualified_seed, tmp_path_factory):
 
 @pytest.mark.parametrize("target_current", [True, False])
 def test_recovery_lookup_validates_current_binding_only_for_the_selected_plan(target_current):
-    from types import SimpleNamespace
 
     from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdatePlan
     from alphalattice.control.product_host.storage.plan_previews import PreviewRegistry
@@ -156,7 +158,6 @@ def test_data_change_scope_never_turns_into_an_arbitrary_audit_grant():
 def test_data_change_confirmation_is_human_only_before_any_io():
     """requirement: a stock-list change's confirmation by any caller but the person is refused
     once its plan is read, before any session, Task or write."""
-    from types import SimpleNamespace
 
     owner = object.__new__(WorkspaceDataUpdateApplication)
     universe = SimpleNamespace(change=SimpleNamespace(action="UNIVERSE"))
@@ -238,8 +239,6 @@ def test_a_partial_membership_update_reopens_its_exact_approved_task(
     qualified, tmp_path, repair_source
 ):
     """A terminal source stop preserves approval and verified work across a real restart."""
-    from dataclasses import asdict
-    from uuid import UUID
 
     from alphalattice.control.data_platform.readiness import build_workspace_readiness
     from alphalattice.control.task_control.contracts import TaskLifecycle
@@ -644,20 +643,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
 def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_feature_work(
     qualified, tmp_path, monkeypatch
 ):
-    """requirement: bad data stops the day in governance, not after the Feature build.
-
-    Day one admits an entrant whose Sector is not observed yet (a Sector
-    quarantine, the other ten publish). Day two's plan rechecks the entrant
-    against the parent, which has no Sector evidence of its own; one prior
-    member's refresh comes back stale. The cycle used to build Features over
-    every listing and only then stop by ``data.listing_updates_incomplete``.
-    Now the existing governance runs first over the prior manifest's Sector
-    evidence: the stale member gets its case before any Feature work, with
-    the wait option and no exclusion whose Panel impact cannot be projected;
-    the day-one Panel stays the sealed input; the confirmed wait defers the
-    same Task with its retry time; after the Provider recovers the resumed
-    cycle refreshes only the stale member, builds, and admits the entrant.
-    """
+    """A stale member on the entrant recheck day is governed before any feature work."""
 
     from alphalattice.control.task_control.child import ChildCalls
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
@@ -881,19 +867,7 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
 def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
     qualified, tmp_path, monkeypatch, raw_admits, interrupted
 ):
-    """regression: a due raw retry hid a due Feature/Sector recheck.
-
-    Two entrants: one whose history is too short (a failed raw candidate,
-    retried a day later) and one whose provider reports no current Sector (a
-    Feature/Sector quarantine, rechecked a day later). The day both fall due
-    the plan carried only the raw retry and the run executed only that, so
-    the quarantined name was never re-diagnosed while the raw retry stayed
-    due -- every day, on a workspace with permanently short candidates. The
-    plan now carries both scopes, the run executes the Feature/Sector recheck
-    whatever the raw retry admitted (against the parent as it stands: the
-    merged one when the retry admitted, the planned one when it did not), and
-    a Task interrupted between the two still owes the recheck when it resumes.
-    """
+    """Due raw and feature rechecks are both planned and executed."""
 
     from alphalattice.control.data_platform.maintenance.coordinator import (
         WorkspaceMaintenanceCoordinator,
@@ -1054,16 +1028,7 @@ def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
 def test_a_sectorless_candidates_recheck_fetches_it_alone_and_builds_once(
     qualified, tmp_path, monkeypatch
 ):
-    """regression: a candidate's Sector recheck refreshed every member's Sector and built twice.
-
-    A candidate the provider reports with no current Sector is quarantined and rechecked the
-    next day. The recheck worked on the members plus the candidate, a membership no Sector
-    reference covers, so the build fetched every listing's Sector, found the candidate still
-    without one, quarantined it again and built the Features a second time over the members.
-    While the members' Sector revision is complete and current, the recheck now fetches the
-    candidate alone and builds once, and the members' reference keeps its revision and its
-    observation time. The candidate stays quarantined and is rechecked the day after.
-    """
+    """A sectorless candidate's recheck fetches that candidate alone and builds once."""
 
     from alphalattice.foundation.feature_engine.runtime.service import FeatureFoundationService
     from alphalattice.foundation.feature_engine.storage.repositories import (
@@ -1483,15 +1448,7 @@ def test_an_unknown_accumulated_listing_is_still_refused(current_member_seed, tm
 
 
 def test_the_data_stage_opens_the_market_store_once(qualified, tmp_path):
-    """regression: a daily update reopened the market store about 300 times.
-
-    Each maintenance cycle released its instance at every network edge and at its end, so the
-    engine re-read the file's metadata with a cold cache and checkpointed it at each close: 291
-    opens and 308 closes on a 473-name warm day, 100 in this data stage. The data stage and the
-    receipt's publication with its backup now each keep one writable instance from their first
-    read to their last write, and every unit inside, on any thread, attaches to it. The counts
-    are the stages' own span readouts.
-    """
+    """The data stage opens the market store once."""
     workspace = tmp_path / "daily"
     shutil.copytree(qualified, workspace)
     binding = bind_existing_data_workspace(workspace)

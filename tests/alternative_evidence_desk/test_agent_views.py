@@ -11,7 +11,6 @@ agents reading the same views. Controlled material only; no model, no network.
 
 from __future__ import annotations
 
-import ast
 import re
 from dataclasses import replace
 from datetime import timedelta
@@ -57,50 +56,6 @@ HEX64 = re.compile(r"\b[0-9a-f]{64}\b")
 CODEX_TOOL_OUTPUT_BYTES = 40_000
 """What Codex hands the model of one tool call's output: 10,000 tokens at four bytes a token,
 the middle of the rest cut (measured 2026-09-27)."""
-
-
-def test_every_specialist_bundle_slice_has_a_named_disposition() -> None:
-    """Every slice in the two renderers and packer has a named reading disposition."""
-    sources = {
-        "cro": "oversight/chief_risk_officer/decision/views.py",
-        "analyst": "evidence/alternative_evidence/analysis/views.py",
-        "packer": "protocols/actor_execution/bundles.py",
-    }
-    reviewed = {
-        ("cro", "_finding_lines", "finding.affected_entities[1:]"): "first issuer is the heading",
-        ("cro", "_index", "['F1', 'F2'][:max(1, min(2, len(dossier.findings)))]"): "answer example",
-        ("cro", "_index", "coverage.unavailable_reasons[:MAXIMUM_COVERAGE_LINES]"): "coverage file",
-        ("cro", "_index", "missing[:MAXIMUM_COVERAGE_LINES]"): "coverage file",
-        ("cro", "_index", "unreported[:MAXIMUM_UNREPORTED_NAMES]"): "coverage file",
-        ("analyst", "differing_words", "right[j1:j2]"): "complete differing words",
-        (
-            "analyst",
-            "differing_words",
-            "right[max(0, j1 - 2):j1]",
-        ): "context beside differing words",
-        (
-            "analyst",
-            "differing_words",
-            "list(places.values())[:MAXIMUM_DIFFERENCE_PLACES]",
-        ): "full excerpt below",
-        ("analyst", "_shingles", "words[index:index + 3]"): "similarity computation",
-        ("packer", "_fit", "word[:limit]"): "next piece below",
-        ("packer", "_fit", "word[limit:]"): "remaining pieces below",
-    }
-    found = set()
-
-    def visit(node: ast.AST, source: str, owner: str = "module") -> None:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            owner = node.name
-        if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):
-            found.add((source, owner, ast.unparse(node)))
-        for child in ast.iter_child_nodes(node):
-            visit(child, source, owner)
-
-    root = Path(__file__).resolve().parents[2] / "src/alphalattice"
-    for source, path in sources.items():
-        visit(ast.parse((root / path).read_text(encoding="utf-8")), source)
-    assert found == set(reviewed), (found - reviewed.keys(), reviewed.keys() - found)
 
 
 @pytest.mark.parametrize(
@@ -232,10 +187,8 @@ def _within_bounds(files: tuple[tuple[str, str], ...]) -> None:
 
 
 def test_files_are_packed_by_size_and_a_subject_splits_only_when_it_alone_exceeds() -> None:
-    """requirement (S2 packing rule): subjects fill a file in order; the next
-    file opens when one does not fit; only a subject larger than the bound is
-    split, between its blocks; the index names every file, what it covers and
-    its counts."""
+    """Subjects fill files within the size cap and split between blocks only when a subject alone
+    exceeds that cap."""
 
     line = "x" * 900
     per_file = BUNDLE_FILE_BYTES // (len(line) + 1)  # the 900-character lines a file holds

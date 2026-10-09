@@ -170,11 +170,7 @@ def test_the_policy_names_all_three_families_and_the_routing_table_covers_every_
 
 
 def test_a_delisting_notice_and_a_late_filing_notice_route_by_their_own_rules() -> None:
-    """requirement (Q3, rules v5): Item 3.01 -- a delisting notice or a failure
-    to meet a listing standard -- serves the corporate-action and listing topic
-    (under v4 the capital topic); the unregistered sales and the changes to
-    holders' rights of Items 3.02-3.03 still serve the capital topic; a
-    late-filing notice's parts, amended or not, serve the governance topic."""
+    """A delisting notice and a late filing notice route by their own rules."""
 
     def topics(heading: str, document_type: str) -> tuple[str, ...]:
         return tuple(
@@ -203,11 +199,7 @@ def test_a_delisting_notice_and_a_late_filing_notice_route_by_their_own_rules() 
 
 
 def test_a_late_filing_notice_is_delivered_in_the_governance_lane(tmp_path: Path) -> None:
-    """requirement (Q3): the packet read a filing's units only for a periodic
-    report or a current report, so a late-filing notice beside them had no unit
-    and only a residual search could meet it. Now the event family inventories
-    the notice: its two parts are the governance cell's unit needs, both
-    delivered, and the narrative is among the delivered spans."""
+    """A late filing notice is delivered in the governance lane."""
 
     request = _request(("AAPL",), selection=INTEGRATED)
     runtime = _runtime(tmp_path)
@@ -248,12 +240,7 @@ def test_a_late_filing_notice_is_delivered_in_the_governance_lane(tmp_path: Path
 
 
 def test_an_unstructured_document_is_every_topic_s_residual_scope() -> None:
-    """requirement (C, rules v2): a current report whose canonical text
-    carries no item heading has no shape to route by; its body joins every
-    topic's residual scope as an `unstructured document` region, so the
-    questions read it as the unconditional program did, and the cell says
-    why. The measured loss under v1: two former held-out cases in 8-K texts
-    without item headings, outside every routed range."""
+    """An unstructured document is every topic's residual scope."""
 
     text = "\n\n".join(
         (
@@ -299,22 +286,7 @@ def test_an_unstructured_document_is_every_topic_s_residual_scope() -> None:
 
 
 def test_an_inventoried_region_withdraws_only_the_topics_its_units_serve(tmp_path: Path) -> None:
-    """requirement (the shared-gap closeout, boundary A; rules v3): a
-    structural inventory replaces the residual search for the requirement
-    it supplies -- the topics the region's own units serve -- and for no
-    other topic routed to the same region. Four controls at the routing
-    owner over one book: (1) a recognized inventory that leaves relevant
-    residual prose (the litigation note: the legal topic covered by its
-    units, the product topic keeps the note in its residual scope); (2) a
-    region serving more than one topic (the debt note's units serve the
-    capital and the liquidity topics: withdrawn from both, kept by a topic
-    no unit there serves); (3) a valid structured route with pending
-    delivery (the legal cell: covered, its needs counted, no search spent);
-    (4) a genuinely satisfied requirement searched no second time (the
-    results item whose units serve the operations topic is withdrawn from
-    it while the topics its units do not serve keep it). Under v2 every
-    family's regions were subtracted from every topic's scope: the product
-    topic held none of the litigation note."""
+    """An inventoried region withdraws only the topics its units serve."""
 
     request = _request(("AAPL", "MSFT"), selection=INTEGRATED)
     runtime, document_set, generation = _open(tmp_path, request)
@@ -406,13 +378,7 @@ def test_an_inventoried_region_withdraws_only_the_topics_its_units_serve(tmp_pat
 def test_the_integrated_selection_seals_one_receipt_with_its_routing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (C, D, E, F): one discovery routes every (issuer, topic)
-    cell; the units are dealt under the topic lanes with the earlier
-    filing's exact repeats served by the later reading; the bank runs only
-    scoped questions, each with its scope and pairs recorded, none beyond
-    the pair budget; the receipt validates, reloads, reuses for another
-    request over the same content, is not reused by the candidate
-    selection, and continues as one chain that keeps the routing."""
+    """The integrated selection seals one receipt with its routing."""
 
     request = _request(("AAPL", "MSFT"), selection=INTEGRATED)
     runtime, document_set, generation = _open(tmp_path, request)
@@ -1009,14 +975,7 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
 
 
 def test_the_table_share_is_dealt_across_the_topics_that_have_tables() -> None:
-    """requirement (the shared-gap closeout, boundary B): the session's table
-    share is dealt topic-fair -- the topics in their declared order, each
-    taking the best-ranked table of its own queue, a table serving several
-    topics taken once and counted for all of them, a topic with no table
-    passed over, a table the boundary cannot render passed over by name --
-    and no priority follows from which family recognized the region.
-    Measured on the retained book under the former basis rank, one topic
-    held 2,467 routed tables and was dealt none."""
+    """The table share is dealt across the topics that have tables."""
 
     def need(document: str, ordinal: int, *topics: str, recency: int = 0) -> TableNeed:
         placeholder = TablePlaceholder(
@@ -1068,17 +1027,7 @@ def test_the_table_share_is_dealt_across_the_topics_that_have_tables() -> None:
 
 
 def test_the_residual_batch_is_dealt_by_issuer_topic_cell_and_the_rest_is_pending() -> None:
-    """requirement (the completeness assignment, W1.1; `RESIDUAL_SELECTION_RULES_ID`):
-    an issuer's sixteen are dealt in rounds over its cells in the topics'
-    declared order -- every cell's best before any cell's second, a cell
-    ordered by its questions' own ranks in rounds (v2: every question's
-    first, then every question's second; no score compared across
-    questions or cells) -- under the unchanged sixteen and 128; a
-    same-content repeat from the same filing is grouped, never dealt and
-    never pending; what the batch has no room for is returned per cell in
-    the cell's order; a ninth issuer past the packet cap keeps everything
-    pending. Measured on the retained book under the question-round rule:
-    ten development units and three cases returned and cut."""
+    """The residual batch is dealt by issuer topic cell and the rest is pending."""
 
     def hit(
         local: int, order: int, rank: int, issuer: str, doc: str, content: str, query: str
@@ -1187,11 +1136,7 @@ def test_the_residual_batch_is_dealt_by_issuer_topic_cell_and_the_rest_is_pendin
 
 
 def test_delivered_tables_follow_sealed_page_identities_not_a_prefix_of_the_needs() -> None:
-    """requirement (W1.2, the audit): after the topic-fair share the first N
-    table needs are not the N tables dealt; the chain's delivered tables and
-    the next pages are derived from the sealed page records -- a partial
-    page resumes at its next row, a page sealed without progress does not,
-    a delivered or refused table is never dealt again."""
+    """Delivered tables follow sealed page identities not a prefix of the needs."""
 
     from alphalattice.evidence.alternative_evidence.analysis.contracts import (
         TableViewRecord,
@@ -1202,7 +1147,6 @@ def test_delivered_tables_follow_sealed_page_identities_not_a_prefix_of_the_need
         TableNeed,
         TopicRouting,
     )
-    from alphalattice.evidence.alternative_evidence.documents.structure import DocumentStructure
     from alphalattice.evidence.alternative_evidence.retrieval.session import InspectedDocument
 
     def need(document: str, ordinal: int, *topics: str, rows: int = 3) -> TableNeed:
@@ -1324,17 +1268,7 @@ def test_delivered_tables_follow_sealed_page_identities_not_a_prefix_of_the_need
 
 
 def test_a_table_is_complete_only_when_its_declared_rows_are_proved_delivered() -> None:
-    """requirement (the first-release safety closeout, finding B): a table's
-    state is derived from its sealed pages and nothing else. Contiguous
-    pages from row 1 to the declared total, with no clipped row, are
-    COMPLETE; rows after the covered prefix, a gap between pages or a
-    clipped row leave it PARTIAL -- resumable at the row after the prefix,
-    or not resumable when the clipped row is all that remains; a page
-    sealed before pages carried rows is UNKNOWN_PROGRESS, never complete
-    and never resumed; a duplicate page adds no rows; a table whose
-    rendering declares no rows is complete on its one page. The routing's
-    gap lines and the read model's cell states name each kind, and the
-    continuation scope is PENDING only while something resumes."""
+    """A table is complete only when its declared rows are proved delivered."""
 
     from alphalattice.evidence.alternative_evidence.analysis.contracts import (
         IssuerTopicCellRecord,
@@ -1496,15 +1430,7 @@ def test_a_table_is_complete_only_when_its_declared_rows_are_proved_delivered() 
 def test_a_chain_reads_its_pending_candidates_and_table_pages_without_a_search(
     tmp_path: Path,
 ) -> None:
-    """requirement (W1.2, 5.3): a unit whose matter plan the first session
-    served whole still continues -- the sealed pending plan's residual
-    candidates are read at their ranges (series C) under the program's reads
-    with no query embedded and no pair scored, a table the first page left
-    in part resumes at its next row with its headings (series X02), the
-    delivered tables follow the sealed identities, the chain survives a
-    restart from the sealed artifacts, a candidate whose sealed passage the
-    source no longer holds is refused by name, and a chain with nothing
-    pending anywhere is refused by name."""
+    """A chain reads its pending candidates and table pages without a search."""
 
     html = original_html(rows=60)
     transport = SecScenarioTransport(
@@ -1737,14 +1663,7 @@ def test_a_chain_reads_its_pending_candidates_and_table_pages_without_a_search(
 def test_a_routed_table_is_delivered_as_a_view_inside_the_matter_allowance(
     tmp_path: Path,
 ) -> None:
-    """requirement (B, F): a live-acquired 10-K whose debt note holds a table
-    the canonical text did not carry: the routing places the table in the
-    liquidity (and capital) cells, the integrated selection issues its view
-    under the matter allowance's table share (series X) and reads it from
-    the retained original, the receipt lists the view among its delivered
-    spans, and the unit windows keep the rest of the allowance. The note's
-    second table has no heading row: the boundary refuses it by name, the
-    refusal is recorded as a representation gap and the share moves on."""
+    """A routed table is delivered as a view inside the matter allowance."""
 
     html = original_html(headless_table=True)
     transport = SecScenarioTransport(
@@ -1891,15 +1810,7 @@ def _liquidity_filing(paragraphs: int) -> str:
 def test_a_continuation_reads_the_frontier_and_skips_what_the_chain_has_covered(
     tmp_path: Path,
 ) -> None:
-    """requirement (the shared algorithm and cost initiative, A and B): a
-    10-K whose MD&A holds forty distinct liquidity paragraphs no inventory
-    reads makes the liquidity questions return more candidates than the
-    batch holds; every one of them is sealed in the frontier (past the six
-    a cell the earlier plan kept), a continuation reads them round by round
-    at their sealed ranges with no search, and a pending candidate whose
-    range the chain has since delivered through another channel is covered
-    by that span rather than read again. The chain's ledger counts sealed,
-    pending, read and covered apart."""
+    """A continuation reads the frontier and skips what the chain has covered."""
 
     from tests.alternative_evidence_desk.document_intelligence_support import _document_with_text
 
@@ -2099,18 +2010,7 @@ def _delivered(*items: tuple[str, int, int, str]) -> tuple[Any, ...]:
 
 
 def test_a_candidate_is_covered_only_when_its_whole_range_was_delivered() -> None:
-    """requirement (review finding R1, reproduced on `ae9bc093`: a candidate
-    [0, 100) was discharged as COVERED by a span holding [0, 80) under an
-    80% rule, and a table page's placeholder range counted as a cover):
-    COVERED means every character of the candidate's range was delivered
-    by the exact union of the same filing's unit windows, typed statements
-    and read candidates. A span holding most of the range is a partial
-    overlap -- the undelivered tail may hold the qualification or the
-    counter-statement -- and leaves the candidate pending, reported apart;
-    two spans jointly holding the range cover it and both are named; a gap
-    between them does not; a table page covers nothing; another filing's
-    span covers nothing; character offsets are the unit on both sides, so
-    a multibyte character counts once."""
+    """A candidate is covered only when its whole range was delivered."""
 
     from alphalattice.evidence.alternative_evidence.analysis.packet import (
         covering_span_handles,
@@ -2208,14 +2108,7 @@ def test_a_candidate_is_covered_only_when_its_whole_range_was_delivered() -> Non
 def test_a_retired_residual_policy_is_refused_by_name_and_never_dealt_as_the_default(
     tmp_path: Path,
 ) -> None:
-    """requirement (section X, C2): the two residual opt-ins of section V
-    (`allocation=CONTEXT_COMPLETE`, `residual_search=GAP_DIRECTED`) are
-    retired -- a request that carries one still seals and reads back with
-    its identity, and the runtime refuses it by name before a session
-    opens, for a first reading and for a continuation alike, never dealing
-    it under the default; a receipt dealt under a retired rule (its routing
-    names the retired rules id, or its queries hold a gap search) reads
-    back and is never the default's sealed selection."""
+    """A retired residual policy is refused by name and never dealt as the default."""
 
     default = _request(
         ("AAPL",),

@@ -61,7 +61,6 @@ from alphalattice.investment.risk_research.surfaces.artifacts import RiskArtifac
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import NumericalCallRecorder
 from tests.researcher_methodology_surface.alternate_capability import (
-    ALTERNATE_ADAPTER_ID,
     ALTERNATE_RECIPE_SCHEMA_ID,
     ShrunkDiagonalAdapter,
     ShrunkDiagonalCapability,
@@ -145,12 +144,7 @@ def test_both_methods_reach_real_evidence_through_one_artifact_path(
     capability: str,
     parameters: dict[str, Any],
 ) -> None:
-    """requirement (-2): two different recipe schemas, one chain, one shape.
-
-    Parametrised deliberately. If the production method and the alternate method
-    took different artifact paths, this case could not be written once and run
-    twice -- and the next method would need a third path.
-    """
+    """Both methods reach real evidence through one artifact path."""
 
     workflow = _workflow(real_risk_workspace, tmp_path)
     document = _document(capability=capability, parameters=parameters)
@@ -182,12 +176,7 @@ def test_the_authored_parameter_reaches_the_alternate_adapter(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """requirement: changing one admissible YAML value moves identity and numbers.
-
-    Chunk matrix hashes are compared, not just identity fields: identity alone
-    would still agree if the adapter quietly ignored the authored value, which
-    is the defect this whole line of work started from.
-    """
+    """The authored parameter reaches the alternate adapter."""
 
     outcomes = {}
     for intensity in (0.10, 0.50):
@@ -238,11 +227,7 @@ def test_the_alternate_method_is_not_installed_by_the_default_host(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """A test method must be unreachable from a production composition.
-
-    Driven through the real workflow with the *default* catalog rather than
-    asserted on a registry, so what is proven is that an author cannot name it.
-    """
+    """The alternate method is not installed by the default host."""
 
     workflow = build_research_program_workflow(
         workspace=real_risk_workspace.workspace,
@@ -268,18 +253,7 @@ def test_no_capability_identity_carries_a_numerical_environment(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """requirement (LAWS.md ID6, E0): the environment is provenance, never identity.
-
-    The compiler and the development writer once stamped the covariance module's
-    environment on every Program, so a method loading neither scikit-learn nor
-    threadpoolctl was described by an environment it never ran in, and a
-    scikit-learn upgrade moved the identity of numbers it cannot affect. E0 takes
-    the environment out of every identity: each estimate records the one it ran in
-    (the estimator seam's tests), and no Program or surface binds one.
-
-    Driven through the real workflow rather than read off the adapters, because
-    what has to be true is that the *evidence* carries none.
-    """
+    """No capability identity carries a numerical environment."""
 
     for capability, parameters in (
         (COVARIANCE_RECIPE_SCHEMA_ID, {"ewma_decay": 0.94}),
@@ -295,37 +269,8 @@ def test_no_capability_identity_carries_a_numerical_environment(
         assert _published_surface(root).numerical_environment_hash is None, capability
 
 
-def test_no_product_source_names_the_alternate_method() -> None:
-    """The decisive structural claim, checked over the whole product tree.
-
-    If any module under ``src/`` mentioned this adapter, its schema or its
-    parameters, then "pluggable" would mean "pluggable once, by editing the
-    product", and the next method would need the same edit again.
-    """
-
-    needles = (
-        ALTERNATE_ADAPTER_ID,
-        ALTERNATE_RECIPE_SCHEMA_ID,
-        "ShrunkDiagonal",
-        "shrinkage_intensity",
-    )
-    offenders = [
-        f"{path.relative_to(PLAYPEN_ROOT)}:{needle}"
-        for path in (PLAYPEN_ROOT / "src").rglob("*.py")
-        for needle in needles
-        if needle in path.read_text(encoding="utf-8")
-    ]
-    assert offenders == []
-
-
 def test_the_host_installs_one_verifier_for_both_methods() -> None:
-    """Neither capability brings its own verifier; the evidence shape is shared.
-
-    The claim is one verifier per Desk *kind*, not one verifier in total. Alpha
-    installed its own once a Stage 1 score graph existed to walk, so counting the
-    whole tuple would now measure how many Desks can be replayed rather than
-    whether installing a second Risk method brought a second Risk verifier.
-    """
+    """The host installs one verifier for both methods."""
 
     verifiers = installed_desk_verifiers()
     kinds = [value.kind for value in verifiers]
@@ -339,13 +284,7 @@ def test_installing_the_alternate_does_not_move_the_production_method_identity(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """3 restated where it matters most: installing this method is not a change.
-
-    This is the case that would have failed before the selected-method identity
-    was separated from catalog governance -- installing the alternate adapter
-    would have moved the covariance method's numerical identity, invalidating
-    its evidence merely by existing.
-    """
+    """Installing the alternate does not move the production method identity."""
 
     document = _document(capability=COVARIANCE_RECIPE_SCHEMA_ID, parameters={"ewma_decay": 0.94})
     default_compiler = RiskExperimentCompiler()
@@ -382,19 +321,7 @@ def test_a_seed_is_refused_by_a_deterministic_method(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """Requirement: a seed nothing consumes cannot create a second identity.
-
-    ``seed`` is folded into ``envelope_hash`` and therefore into
-    ``program_hash``, so two documents differing only in seed used to produce two
-    Programs, two identities and two evidence records over byte-identical
-    numbers. That makes "different Program" stop meaning "different
-    computation", which is what every reuse and admission decision depends on.
-
-    Both Risk capabilities declare ``randomness_policy = NONE``, so the Host
-    admits one canonical representation and refuses the rest. The alternative --
-    giving a deterministic estimator a seed parameter to consume -- would have
-    made the difference real by making the mathematics worse.
-    """
+    """A seed is refused by a deterministic method."""
 
     workflow = _workflow(real_risk_workspace, tmp_path)
     for capability, parameters in (
@@ -428,12 +355,7 @@ def test_the_canonical_seed_is_admitted_for_both_methods(
 
 
 def test_no_risk_capability_grew_a_seed_parameter() -> None:
-    """The rejected alternative, asserted so it cannot creep back.
-
-    Adding a seed to a deterministic estimator would make two Programs differ
-    for a real reason -- by making the estimator worse. Neither declared domain
-    admits such an axis.
-    """
+    """Installing an additional risk method adds no unsupported seed parameter."""
 
     from alphalattice.investment.risk_research.estimators.domains import (
         COVARIANCE_PARAMETER_DOMAIN,

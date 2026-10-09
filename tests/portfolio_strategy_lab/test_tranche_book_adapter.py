@@ -9,8 +9,12 @@ still looked plausible.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from dataclasses import replace
 from datetime import date, timedelta
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -212,13 +216,7 @@ def test_a_mu_rule_refuses_a_missing_curve_rather_than_trading_inverse_volatilit
     ["PARTIAL_BUCKET_SUPPORT", "INSUFFICIENT_MATURED_FORMATION_HISTORY"],
 )
 def test_a_partial_mu_curve_fails_closed(disposition: str) -> None:
-    """The frozen plan: a missing *or partial* mu surface fails closed.
-
-    The predecessor convention maps unsupported buckets to zero and trades on.
-    Carrying that here would let a mu.iv1 book trade an inverse-volatility tilt
-    over the buckets its curve could not support while still calling itself
-    mu.iv1, which is the substitution the plan names.
-    """
+    """A missing or partial expected-return curve fails closed."""
 
     with pytest.raises(TrancheBookError, match="tranche_curve_not_available"):
         decide_tranche_book(
@@ -252,11 +250,7 @@ def test_a_non_finite_bucket_mean_fails_closed() -> None:
 
 
 def test_a_book_that_cannot_meet_the_aggregate_cap_fails_closed() -> None:
-    """The control owner refuses a width that can never meet the 6% ceiling.
-
-    This is now a recipe admission refusal, not a runtime fallback.  Letting 15
-    through would make every default staging book unexecutable by arithmetic.
-    """
+    """A book that cannot meet the aggregate cap fails closed."""
 
     with pytest.raises(ValidationError):
         TrancheBookRecipe.create(top_k=15, tranches=3, exit_rank=30)
@@ -317,8 +311,6 @@ def test_the_adapter_binding_does_not_include_the_optimizer_source() -> None:
     """A closed-form adapter that bound the solver's bytes would be claiming a
     dependency it does not have, and would rotate whenever the solver changed."""
 
-    from pathlib import Path
-
     import alphalattice.investment.portfolio_strategy_lab.policies.tranche_book as module
     from alphalattice.investment.portfolio_strategy_lab.policies.buffered_equal_weight import (
         whole_book_hysteresis_selection,
@@ -355,13 +347,8 @@ def test_the_installed_default_recipe_is_the_frozen_tuple() -> None:
 
 
 def test_the_public_catalog_resolves_this_recipe_to_this_adapter() -> None:
-    """The installed-policy path, not a direct function call.
-
-    Review finding: the adapter existed but nothing could reach it through
-    ``PortfolioPolicyCatalog``, because the recipe carried no ``policy_id`` for
-    ``resolve`` to look up. A public book reachable only by calling its functions
-    directly is the parallel path the delivery plan refuses.
-    """
+    """The installed tranche recipe resolves through the public policy catalog to its declared
+    adapter."""
 
     from alphalattice.investment.portfolio_strategy_lab.policies.catalog import (
         build_public_portfolio_policy_catalog,
@@ -375,13 +362,7 @@ def test_the_public_catalog_resolves_this_recipe_to_this_adapter() -> None:
 
 
 def test_the_binding_declares_no_optimizer_and_states_its_semantics() -> None:
-    """Both fields default to the solver-backed answer if omitted.
-
-    Review finding: omitting them made a closed-form adapter report
-    ``requires_optimizer = True`` with no selection semantics at all -- a
-    misdeclaration that no behavioural test would have caught, because the
-    adapter never calls an optimizer either way.
-    """
+    """The binding declares no optimizer and states its semantics."""
 
     binding = TrancheBookAdapter().describe_adapter_binding()
     assert binding.requires_optimizer is False
@@ -397,10 +378,6 @@ def test_the_binding_declares_no_optimizer_and_states_its_semantics() -> None:
 
 
 def test_the_public_catalog_is_solver_free_in_a_fresh_interpreter() -> None:
-    import os
-    import subprocess
-    import sys
-    from pathlib import Path
 
     root = Path(__file__).resolve().parents[2]
     result = subprocess.run(
@@ -423,13 +400,7 @@ def test_the_public_catalog_is_solver_free_in_a_fresh_interpreter() -> None:
 
 
 def test_the_tranche_rules_never_read_a_covariance() -> None:
-    """The public path holds no matrix at any point.
-
-    Passing a full covariance and no projection must refuse rather than fall back
-    to its diagonal, because a diagonal taken from a matrix carries the numbers
-    without the identity: no projection hash to bind and no admitted lane to
-    check against.
-    """
+    """The tranche rules never read a covariance."""
 
     inputs = BoundPolicyDecisionInput(
         scores=np.random.default_rng(3).normal(size=LISTINGS),
@@ -500,12 +471,7 @@ def test_a_non_finite_or_non_positive_risk_lane_is_refused(volatility: np.ndarra
 
 
 def test_holdings_bind_the_projection_hash_and_a_report_only_change_does_not_move_them() -> None:
-    """The identity claim, end to end through the policy.
-
-    Revising the factor block rotates the surface and the attribution, and the
-    per-name lane does not move -- so the holdings this policy decided must not
-    move either, and must still name the lane they were decided against.
-    """
+    """Holdings bind the projection hash and a report only change does not move them."""
 
     base = _risk(factor_scale=1.0)
     revised = _risk(factor_scale=4.0)

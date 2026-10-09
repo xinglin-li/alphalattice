@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -25,10 +27,7 @@ INPUTS = {"inputs": [{"input_id": "us-core", "versions": [{"end": "2026-08-01"}]
 
 
 def test_a_plan_outlives_the_host_that_answered_it_until_it_expires(tmp_path) -> None:
-    """requirement (V525, S3): the plan store a restart reads again. A plan sealed under its
-    hash is runnable from a new registry over the same folder until it expires, then readable
-    but not runnable; a record that does not verify is never read; a single-plan owner's newer
-    plan removes the older one."""
+    """A plan outlives the host that answered it until it expires."""
 
     from pydantic import BaseModel, model_validator
 
@@ -159,12 +158,7 @@ def test_a_plan_previewed_and_not_run_waits_until_it_expires() -> None:
 def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
     tmp_path, monkeypatch, live
 ) -> None:
-    """UIFOLLOW seam: actual Goal attribution and canonical Task contracts reach the pending
-    operation; data cases follow issued source pairs and async CRO follows its sealed review key.
-    The CLI keeps each data case's actor consistent with the active first-use delegation.
-    Metadata fixtures stand in for read-only owners; no scientific result is invented.
-    """
-    from contextlib import nullcontext
+    """Retained goal requests reach only their exact pending decisions."""
 
     from alphalattice.control.product_host.composition.goals import GoalApplication
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
@@ -408,11 +402,7 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
 def test_current_attention_requires_a_successful_explicit_successor_of_this_version(
     stopped: TaskLifecycle, successor_state: TaskLifecycle
 ) -> None:
-    """P3a class: history, viewing, similarity and a preview do not resolve a stopped Task.
-
-    A confirmed same-kind successor resolves only the source version it actually replaces,
-    and only after its canonical record succeeds. This predicate supplies every owner read.
-    """
+    """Current attention requires a successful explicit successor of this version."""
     envelope, goal, plan = task_contract(salt="attention")
 
     def record(task_id, lifecycle, version=1) -> TaskRecord:
@@ -626,11 +616,7 @@ def test_a_rebuilt_ledger_task_holds_no_decision_and_keeps_its_stopped_record() 
     ],
 )
 def test_input_version_follows_only_the_task_that_published_current_data(changed) -> None:
-    """A published update's exact plan and after identities bind its input-version decision;
-    legacy, stale or unsealed current data never inherits the latest Task's Goal.
-    Read-only owner shapes stand in for the sealed receipt transport.
-    """
-    from copy import deepcopy
+    """Input version follows only the task that published current data."""
 
     task, goal = str(uuid4()), str(uuid4())
     current = {"data_through": "2026-08-03", "data_revision_hash": "d" * 64, "panel_hash": "f" * 64}

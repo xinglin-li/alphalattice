@@ -141,13 +141,7 @@ def test_an_authored_factor_document_reaches_real_deterministic_evidence(
     factor_outcomes: tuple[str, str],
     tmp_path: Path,
 ) -> None:
-    """`run` executes the real primitives and seals real screening evidence.
-
-    The inventory assertions belong here rather than in a case of their own:
-    "the axis binds code identity" and "that axis is what executed" are one
-    claim, and separating them would let the first pass while the executor ran
-    against something else.
-    """
+    """An authored factor document reaches real deterministic evidence."""
 
     workspace = real_risk_workspace
     workflow, inventory = _workflow(workspace, factor_outcomes, tmp_path)
@@ -203,19 +197,7 @@ def test_replay_walks_the_graph_and_reports_exact_reuse(
     factor_outcomes: tuple[str, str],
     tmp_path: Path,
 ) -> None:
-    """The Factor verifier is installed, so replay proves reuse instead of refusing.
-
-    This case used to assert the opposite, and the assertion was right at the
-    time: no verifier existed, so the workflow refused rather than reporting
-    ``REUSED_EXACT`` over a graph nobody had walked. An honest refusal was worth
-    more than a verifier that only re-read the file it had just written.
-
-    What replaces it is not a weaker claim. Replay resolves no executor, so the
-    zero call count is a fact about the path; and the verifier re-derives the
-    admitted ordered axis and the Desk Program identity through the compiler's
-    own functions, reads the deterministic child the receipt names, and
-    contradicts the graph with the authority the Host resolved fresh.
-    """
+    """Replay walks the graph and reports exact reuse."""
 
     workflow, inventory = _workflow(real_risk_workspace, factor_outcomes, tmp_path)
     document = _document(inventory)
@@ -243,16 +225,7 @@ def _entry(factor_id: str, *, methodology_hash: str) -> FactorInventoryEntry:
 
 
 def test_a_changed_factor_recipe_moves_its_methodology_identity() -> None:
-    """requirement: a rewrite under a stable id and a stable kernel is visible.
-
-    This is the defect the compiler recorded against itself and the previous
-    milestone only half closed. Binding the implementation hash caught a changed
-    *kernel*; it stood still when the window, the lag or the return convention
-    changed, which are rewrites that change every number the factor produces.
-
-    The kernel is deliberately held fixed across all three variants, so what is
-    being detected can only be the recipe.
-    """
+    """A changed factor recipe moves its methodology identity."""
 
     spec = overnight_return_factor_spec()
     kernel = "a" * 64
@@ -328,18 +301,7 @@ def test_the_selection_scopes_the_receipt_without_moving_the_statistics(
     factor_outcomes: tuple[str, str],
     tmp_path: Path,
 ) -> None:
-    """requirement: a selection changes what is reported, not the FDR universe.
-
-    Two runs over one Panel, differing only in which factors the document asks
-    about. The receipts differ -- the selection is real -- while the context axis
-    and therefore the hypothesis universe are identical, because narrowing the
-    multiple-testing denominator would move every significance verdict and make
-    this run's evidence incomparable with every other Factor result.
-
-    Both are asserted together on purpose. "The selection has an effect" and "the
-    selection did not change the statistics" are the two halves of one claim, and
-    either alone permits the defect the other rules out.
-    """
+    """The selection scopes the receipt without moving the statistics."""
 
     del factor_outcomes
     inventory = host_resolved_factor_inventory(
@@ -382,13 +344,7 @@ def test_a_receipt_is_verified_against_re_derived_authority(
     factor_outcomes: tuple[str, str],
     tmp_path: Path,
 ) -> None:
-    """requirement: the receipt is checked against the artifacts, not against itself.
-
-    A receipt seals its own contents, so a receipt that faithfully recorded the
-    *wrong* Program validates perfectly. Self-consistency is not authority, and
-    the tamper below is chosen to be internally valid: it is resealed, so its own
-    hash agrees, and only re-derivation can catch it.
-    """
+    """A receipt is verified against re derived authority."""
 
     del factor_outcomes
     handle, _selected, root = factor_development_checkpoint(
@@ -519,14 +475,7 @@ def test_malformed_handles_and_catalog_entries_fail_as_domain_errors() -> None:
 
 
 def test_a_legacy_panel_without_methodology_identity_is_readback_only() -> None:
-    """Refused by the new writer, and refused by name rather than defaulted.
-
-    Substituting the implementation hash would reinstate exactly the gap this
-    closes, and backfilling the field would mean a reader inventing identity for
-    an artifact somebody else sealed. The consequence is real and is recorded:
-    a workspace whose Panel predates this cannot run the new Factor path without
-    republishing, and only readback compatibility is claimed for it.
-    """
+    """A legacy panel without methodology identity is readback only."""
 
     legacy = {
         "safe_summary": {

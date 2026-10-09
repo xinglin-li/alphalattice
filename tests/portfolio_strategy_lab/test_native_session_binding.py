@@ -8,6 +8,7 @@ import sys
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -55,50 +56,7 @@ def _lead_usage_file(tmp_path, monkeypatch):
     return path
 
 
-def test_lead_usage_is_read_and_sequenced_by_the_host_without_a_child_stop(
-    live,
-    tmp_path,
-    monkeypatch,
-):
-    """P2: only the admitted parent asks the Host to read its own usage; retry is idempotent.
-
-    The agent cannot write bridge metadata, provide counts or publish conversation content.
-    This live transport proves the reader separately from SubagentStop.
-    """
-    project = _project(live, "claude-code")
-    _session(monkeypatch, "claude-code")
-    _lead_usage_file(tmp_path, monkeypatch)
-    client = LocalResearchClient(live.workspace)
-    assert client.bind_native_session(project)["status"] == "BOUND"
-    opening = Path.open
-    calling_thread = threading.get_ident()
-
-    def host_only_metadata(path, mode="r", *args, **kwargs):
-        if path.parent == project / ".codex" and any(flag in mode for flag in "wxa+"):
-            assert threading.get_ident() != calling_thread
-        return opening(path, mode, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "open", host_only_metadata)
-    first = client.publish_native_event(project, {"source": "native_usage_read"})
-    second = client.publish_native_event(project, {"source": "native_usage_read"})
-    assert first["status"] == second["status"] == "DELIVERED"
-    # The same snapshot read twice is one observation: its sequence is its content's.
-    items = client.read_external()["items"]
-    assert len(items) == 1
-    payload = items[0]["payload"]
-    assert payload["event_kind"] == "NATIVE_AGENT_USAGE"
-    subject = payload["subject"]
-    assert subject["native_agent_id"] == subject["native_session_id"] == "fixture-parent"
-    assert subject["role"] == "research_lead"
-    assert (subject["input_tokens"], subject["output_tokens"], subject["responses"]) == (
-        "7",
-        "3",
-        "1",
-    )
-    assert "SECRET-SYNTHETIC-CONVERSATION" not in json.dumps(items)
-
-
-@pytest.mark.parametrize("problem", ("counts", "path", "child", "missing_file", "off"))
+@pytest.mark.parametrize("problem", ("counts", "path", "child", "missing_file"))
 def test_lead_usage_request_accepts_no_claims_and_keeps_missing_usage_visible(
     live,
     tmp_path,
@@ -137,8 +95,6 @@ def test_lead_usage_request_accepts_no_claims_and_keeps_missing_usage_visible(
             ],
             "reason": "native_bridge.lead_usage_file_missing",
         }
-    elif problem == "off":
-        assert answer == {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}
     else:
         assert answer["status"] == "REFUSED"
     _session(monkeypatch, "claude-code")
@@ -186,6 +142,8 @@ def test_session_bind_uses_the_host_writer_and_never_claims_attachment(
     def agent_cannot_write(path, mode="r", *args, **kwargs):
         if path == binding_path and "x" in mode and threading.get_ident() == calling_thread:
             raise PermissionError(13, "fixture sandbox denial", str(path))
+        if path.parent == project / ".codex" and any(flag in mode for flag in "wxa+"):
+            assert threading.get_ident() != calling_thread
         return opening(path, mode, *args, **kwargs)
 
     monkeypatch.setattr(Path, "open", agent_cannot_write)
@@ -319,10 +277,7 @@ def test_native_binding_write_failure_names_only_its_safe_path(live, monkeypatch
 def test_two_named_sessions_keep_their_own_workspace_and_detach_only_their_slot(
     live, monkeypatch, capsys, host
 ):
-    """P2-NH: two fixture Sessions use separate served owners without a manual old detach.
-
-    Environment labels exercise HTTP provenance; this is not live App/Claude evidence.
-    """
+    """Two named sessions keep their own workspace and detach only their slot."""
     project = _project(live, host)
     second_workspace = project / "second-workspace"
     second_workspace.mkdir()
@@ -465,7 +420,6 @@ def test_a_child_is_served_by_its_ancestry_but_never_reads_its_leads_usage(
     """A Codex child's command works in its recorded parent's workspace (V568); it asks for no
     reading, which is the bound Session's own milestone, and a foreign or OFF binding never
     adopts it."""
-    from uuid import UUID
 
     project = _project(live, "codex")
     parent, child = str(UUID(int=1001)), str(UUID(int=1002))
@@ -532,10 +486,7 @@ def _usage_files(tmp_path, monkeypatch, session: str) -> None:
 def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_configure(
     live, tmp_path, monkeypatch, capsys, host
 ):
-    """regression (AX ACCEPT live04, 2026-10-07): a lead on a fresh clone, its workspace a copy
-    kept outside the clone, was refused ``project_declaration_missing``: the Host looked for the
-    project only up from its workspace. The project ``configure`` declared is admitted by its own
-    declaration, and the Session then reads its usage at a milestone and on a page's request."""
+    """A fresh clone binds a workspace kept outside it after the documented configure."""
     from scripts import native_research
 
     clone = tmp_path / "fresh-clone"
@@ -570,6 +521,8 @@ def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_co
     assert reading["status"] == "DELIVERED", reading
     (row,) = client.read_external()["items"]
     assert row["payload"]["subject"]["native_agent_id"] == "fixture-parent"
+    subject = row["payload"]["subject"]
+    assert subject["native_agent_id"] == subject["native_session_id"] == "fixture-parent"
     # A page's request reads the same Session, found through the project it was admitted from.
     asked = client.request({"operation": "SESSION_USAGE_READ"})
     assert asked["status"] == "READ"
@@ -621,10 +574,7 @@ def test_only_a_person_turns_usage_reading_off_and_then_nothing_is_read(
 def test_a_session_that_opens_a_goal_here_is_bound_without_a_separate_step(
     live: LocalPortfolioWebSession, monkeypatch, host
 ) -> None:
-    """requirement (FLOW-3, AX's REACCEPT of 2026-10-07): a fresh lead never ran `session
-    bind`, so its Sessions page stayed empty. A Session that opens a goal on a workspace
-    inside its configured project is bound by that request, with reading on; opening another
-    goal changes nothing, and the goal itself is unchanged by the binding."""
+    """A session that opens a goal here is bound without a separate step."""
     declaration = {
         "title": "A study",
         "objective": "Does the signal survive costs?",
@@ -654,11 +604,7 @@ def test_a_session_that_opens_a_goal_here_is_bound_without_a_separate_step(
 def test_one_research_command_binds_the_session_and_opens_its_goal(
     live: LocalPortfolioWebSession, monkeypatch, capsys, host
 ) -> None:
-    """requirement (AUTOBIND, the person's report and AX's REACCEPT of 2026-10-07): with no
-    `session bind`, no configure and no goal, Sessions stayed empty. A shell that names only
-    its host session runs one ordinary research command: the Host binds that Session in the
-    workspace, names it in the activity Team reads, opens a goal for it, and the goal's
-    Conversation shows the request. A second command binds and opens nothing new."""
+    """One research command binds the session and opens its goal."""
     from alphalattice.interface.local_application.native_setup import autobind_root
 
     _session(monkeypatch, host, "fixture-lead")

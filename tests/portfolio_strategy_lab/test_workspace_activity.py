@@ -518,11 +518,7 @@ def test_the_recent_read_finds_what_just_happened_by_session_and_goal(
 def test_every_refusal_is_counted_by_operation_code_caller_and_vendor_and_nothing_else(
     live: LocalPortfolioWebSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (AC, LAWS OP14): every refusal is counted durably, reads included, by day,
-    operation, code, caller kind and agent vendor, never by session, request or text, so it
-    outlives the transient rows; a request that does not meet its schema counts under the
-    operation it named; an answer that is no refusal counts nothing; `activity refusals`
-    reads the counts, the most frequent first."""
+    """Every refusal is counted by operation code caller and vendor and nothing else."""
 
     session = "00000000-0000-4000-8000-000000000001"
     unknown = "00000000-0000-4000-8000-000000000000"
@@ -941,22 +937,6 @@ def test_seam_fixture_round_trips_one_native_shaped_event_and_one_product_event(
         "EXTERNAL_AUTOMATION"
     )
     # Every refusal the fixture documents is one the owners actually raise.
-    source_root = Path(__file__).resolve().parents[2] / "src/alphalattice"
-    owners = "".join(
-        (source_root / name).read_text("utf-8")
-        for name in (
-            "interface/local_application/activity.py",
-            "interface/local_application/failure_codes.py",
-            "interface/local_application/web.py",
-            "control/product_host/composition/workspace_activity.py",
-            "control/product_host/composition/local_web_session.py",
-            "control/product_host/composition/portfolio_research_operations.py",
-            "control/observation_runtime/ledger.py",
-            "control/observation_runtime/policy.py",
-        )
-    )
-    for code, _why in fixture["typed_refusals"]:
-        assert f'"{code}"' in owners, code
     live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
 
 

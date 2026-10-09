@@ -63,7 +63,7 @@ c.savePreference=(k,v)=>{prefs[k]=JSON.parse(JSON.stringify(v));};
 // a history entry pushed with `location.href` keeps the address (the stub's href is empty); a hash sets it
 c.location={hash:'#page=data',href:''};c.history={pushState:(_a,_b,hash)=>{if(typeof hash==='string'&&hash.startsWith('#'))c.location.hash=hash;},replaceState:(_a,_b,hash)=>{if(typeof hash==='string'&&hash.startsWith('#'))c.location.hash=hash;}};
 c.Data.readShared = (...args) => c.Data.read(...args);
-vm.createContext(library.into(c,root));vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);vm.runInContext(percentRule(root),c);vm.runInContext(runShapes(root),c);
+library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);vm.runInContext(percentRule(root),c);vm.runInContext(runShapes(root),c);
 vm.runInContext(fs.readFileSync(path.join(root,'router.js'),'utf8'),c);
 c.render=()=>renders.push(c.app.page);c.patchMain=()=>patches.push(c.app.page);
 vm.runInContext(fs.readFileSync(path.join(root,'live-workarea.js'),'utf8')+fs.readFileSync(path.join(root,'live-workspace.js'),'utf8')+';globalThis.w=LiveWorkspace;',c);

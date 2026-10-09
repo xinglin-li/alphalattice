@@ -2,6 +2,8 @@
 and builds each answer from that plan alone."""
 
 import ast
+import inspect
+import json
 import re
 from pathlib import Path
 
@@ -17,15 +19,7 @@ SINGLE_PLAN_STORES = frozenset(
 
 
 def test_an_answer_and_its_run_read_their_own_plan_never_the_owners_last() -> None:
-    """Regression: an owner kept only its
-    last plan, so two score plans in one Host left the first answer's run refused
-    `strategy_score.plan_required`. Then the owners kept every plan by its hash, yet an input's
-    capture, a strategy's preparation, the score, the calibration and the data update still
-    built an answer from their last plan after keeping this one, so two concurrent plans could
-    answer the first with the second's hash; the research update read the data owner's last
-    plan; and the workspace preparation and the data update ran a plan their memory held past
-    the hour a restarted Host refused it at. No module reads another owner's last plan, and an
-    owner reads its own only to compare a new preparation plan with its prior one."""
+    """An answer and its run read their own admitted plan rather than the owner's latest plan."""
 
     reads: set[tuple[str, str]] = set()
     foreign: list[str] = []
@@ -50,13 +44,7 @@ def test_an_answer_and_its_run_read_their_own_plan_never_the_owners_last() -> No
 
 
 def test_every_plan_is_sealed_on_disk_until_it_expires() -> None:
-    """regression (S3, the user's review at d1ed8a25): a training plan saved by
-    `training plan --output training.json` died with a Host restart, refused
-    `model_training.preview_required`, since its owner kept plans in memory; the score, the
-    calibration, a strategy's preparation, an input's capture and the workspace preparation
-    did too, and a data update's maintenance plan. No owner keeps plans in a bare
-    mapping: each keeps them in the plan store, rooted in the workspace's `runtime/`, and only a
-    single-plan owner keeps its newest alone."""
+    """Every plan is sealed on disk until it expires."""
 
     # A plan an answer named is keyed by its hash; a tracker of running Tasks keyed by their id
     # (the evidence preparation's thread widths) holds no plan a reader sends again.
@@ -142,8 +130,6 @@ EXPIRY_WITHOUT_REPLAN = {
 def test_every_plan_expiry_refusal_offers_its_replan() -> None:
     """Every plan-expiry refusal has words and a re-plan offer, or names its exception's reason."""
 
-    import json
-
     raised = set()
     expiry = re.compile(r'"([a-z_]+\.(?:plan_required|preview_required|preview_expired))"')
     for path in SRC.rglob("*.py"):
@@ -164,8 +150,6 @@ def test_every_plan_expiry_refusal_offers_its_replan() -> None:
 
 def test_the_study_kinds_goal_summaries_are_pinned() -> None:
     """A study Task's goal summary stays byte-identical so stored goal and plan hashes read back."""
-
-    import inspect
 
     from alphalattice.control.product_host.composition import research_experiments
 

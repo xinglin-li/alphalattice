@@ -61,11 +61,7 @@ def test_the_catalog_installs_exactly_the_nine_admitted_controls() -> None:
 
 
 def test_the_catalog_is_derived_from_its_owners_not_transcribed() -> None:
-    """A range typed twice is a range that will eventually differ.
-
-    The holdings bounds must be the policy owner's, so that widening `top_k` in
-    `TrancheBookRecipe` cannot leave the public surface describing the old band.
-    """
+    """The catalog is derived from its owners not transcribed."""
 
     assert CATALOG.descriptor("top_k").min == Decimal(TOP_K_RANGE[0])
     assert CATALOG.descriptor("top_k").max == Decimal(TOP_K_RANGE[1])

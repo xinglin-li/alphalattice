@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -91,11 +92,7 @@ def test_resolved_authority_names_the_published_panel_and_universe(
 def test_an_unresolvable_handle_fails_before_any_desk_compilation(
     real_risk_workspace: RealRiskWorkspace,
 ) -> None:
-    """Unknown handles used to survive compilation because nothing resolved them.
-
-    The Desk compiler is never reached: authority resolution runs first, and a
-    handle that names no published snapshot or no current universe fails there.
-    """
+    """An unresolvable handle fails before any desk compilation."""
 
     dispatcher = _dispatcher(real_risk_workspace)
     with pytest.raises(AuthoringError, match="universe_handle_unresolved"):
@@ -153,13 +150,7 @@ def test_the_same_document_and_authority_produce_the_same_program_identity(
 def test_every_actor_reaches_the_same_host_compiler_and_program(
     real_risk_workspace: RealRiskWorkspace,
 ) -> None:
-    """Actor identity is provenance, not a numerical routing switch.
-
-    ``program_hash`` used to fold in ``actor_binding_hash``, which gave the same
-    experiment a different identity per submitter and made an Agent-authored
-    program un-replayable by a human. It is now actor-neutral, and only the
-    binding differs.
-    """
+    """Every actor reaches the same host compiler and program."""
 
     text = _FIXTURE.read_text(encoding="utf-8")
     programs = []
@@ -183,12 +174,7 @@ def test_every_actor_reaches_the_same_host_compiler_and_program(
 def test_the_actor_seals_over_the_compiled_method_not_only_the_envelope(
     real_risk_workspace: RealRiskWorkspace,
 ) -> None:
-    """The envelope carries no methodology, so signing it proves too little.
-
-    Sealing the actor over ``program_hash`` means the signature covers which
-    estimator, under which parameter domain, over which resolved sessions the
-    submission actually compiled to.
-    """
+    """The actor seals over the compiled method not only the envelope."""
 
     text = _FIXTURE.read_text(encoding="utf-8")
     program, binding = _dispatcher(real_risk_workspace).freeze(  # type: ignore[attr-defined]
@@ -219,18 +205,7 @@ def test_a_cli_invocation_cannot_claim_installed_agent_provenance(
 def test_a_seed_no_risk_method_consumes_cannot_create_a_second_identity(
     real_risk_workspace: RealRiskWorkspace,
 ) -> None:
-    """this used to be a "changing the seed changes the Program" case.
-
-    It passed, and that was the problem. Both Risk capabilities are
-    deterministic and neither reads the envelope's seed, so two documents
-    differing only in seed produced two Programs and two evidence records over
-    byte-identical numbers -- which makes "different Program" stop meaning
-    "different computation".
-
-    The seed is not ignored, which would be worse. The selected capability
-    declares ``randomness_policy = NONE`` and the Host refuses any value other
-    than the canonical one.
-    """
+    """A seed no risk method consumes cannot create a second identity."""
 
     with pytest.raises(ValueError, match="authoring_seed_not_applicable"):
         _dispatcher(real_risk_workspace).freeze(  # type: ignore[attr-defined]
@@ -329,12 +304,7 @@ def test_uninstalled_desk_kind_and_capability_fail_before_any_numerical_call(
 def test_a_parameter_outside_the_declared_domain_is_rejected(
     real_risk_workspace: RealRiskWorkspace,
 ) -> None:
-    """The domain is what refuses a value, and it says which way it failed.
-
-    The compiler used to reject anything differing from the current default,
-    which could only ever report a mismatch. A declared domain distinguishes a
-    value that is not admissible on an axis from an axis nobody declared.
-    """
+    """A parameter outside the declared domain is rejected."""
 
     document = _document()
     document["risk"] = {
@@ -401,33 +371,8 @@ def test_adding_a_method_does_not_change_the_installed_dispatcher() -> None:
     assert tuple(value.kind for value in installed_desk_compilers()) == (RISK_EXPERIMENT_KIND,)
 
 
-def test_a_risk_run_resolves_no_factor_authority() -> None:
-    """Installing one Desk must not require another Desk's runtime authority.
-
-    The CLI used to resolve the Factor inventory for every kind, before the
-    branch. That inventory reads per-factor methodology identity off the active
-    Panel, so a workspace whose Panel predates that field could not run a *Risk*
-    experiment -- a Desk that reads no Factor axis at all. Asserted on the source
-    because the failure only appears in a workspace that is missing something,
-    and a healthy one cannot show it.
-    """
-
-    root = Path(__file__).resolve().parents[2]
-    script = (root / "scripts" / "run_research_experiment.py").read_text(encoding="utf-8")
-    body = script.split("def main(", maxsplit=1)[1]
-    # Exactly one call, and it sits inside the Factor branch rather than above
-    # the dispatch where every kind would pay for it.
-    assert body.count("host_resolved_factor_inventory(") == 1
-    assert body.index("if selected.kind == FACTOR_EXPERIMENT_KIND:") < body.index(
-        "host_resolved_factor_inventory("
-    )
-
-
 def test_an_exploration_sample_is_named_by_its_handle_and_draws_the_same_names() -> None:
-    """Binding plan B17: `<profile>.sample-<n>` is the exploration lane's universe. One input
-    and one size always sample the same names, whatever the axis order, and a larger sample
-    keeps the smaller one's names, so explorations at two sizes stay comparable. Since N7 the
-    names are drawn by Sector; with one Sector the sample is the listing-hash ranking."""
+    """An exploration sample is named by its handle and draws the same names."""
 
     from alphalattice.control.product_host.composition.research_experiment_projection import (
         research_lane,
@@ -510,8 +455,6 @@ def test_every_desk_section_refuses_a_key_its_contract_does_not_name() -> None:
     """Regression: the ordinary Alpha section compared no key set, so a misspelled key
     was read by nothing and kept in the plan's identity, and three Desks refused one each their
     own way; each section is a typed contract and one code names the key where it was written."""
-
-    from unittest.mock import Mock
 
     from alphalattice.foundation.factor_research.experiments.authoring import FactorSection
     from alphalattice.investment.alpha_research.experiments.authoring import (

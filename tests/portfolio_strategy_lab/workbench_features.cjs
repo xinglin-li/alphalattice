@@ -70,7 +70,7 @@ const c={console,URLSearchParams,JSON,Object,Array,String,Number,Math,Promise,Er
   segBtn:(label,action,value)=>`<${action}:${value}>`,subjectChoice:(label,id)=>`<picker id="${id}">`,link:(label)=>String(label),pageWord:(p)=>p,
   objectHead:(name,meta,actions)=>`<h1>${name}</h1>${meta||''}${actions||''}`,stateLine:(s)=>`[${s}]`,emptyState:(s)=>'EMPTY('+s+')',
   skeleton:(shape)=>'SKELETON('+shape+')',sectionHead:(s)=>String(s),table:()=>'<table></table>',tr:()=>'<tr></tr>'};
-vm.createContext(library.into(c,root));
+library.context(c, root);
 vm.runInContext(read('live-features.js')+';globalThis.F=LiveFeatures;',c);
 const shown=()=>c.F.page(), here=()=>entries[at];
 

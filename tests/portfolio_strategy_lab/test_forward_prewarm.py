@@ -243,7 +243,6 @@ def test_failed_verification_leaves_foreground_readable_and_worker_wakeable(monk
     assert prewarm.last_error_code is None
 
 
-@pytest.mark.usefixtures("workbench_build")
 def test_service_authority_admits_only_retained_forward_reads(live, monkeypatch):
     """Exercise the real operation authority before synthetic retained read ports."""
     operations = live.operations

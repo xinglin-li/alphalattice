@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -20,7 +19,7 @@ import pytest
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, _request
+from tests.portfolio_strategy_lab.local_web_support import _json, _request, run_node
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 MODULES = (
@@ -121,14 +120,11 @@ def _words(markup: str) -> str:
 
 
 def _consumer(feed: dict[str, Any], tmp: Path, *selection: str) -> dict[str, Any]:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("Node.js development runtime required")
+    run_node(None)
     path = tmp / "pages.json"
     path.write_text(json.dumps(feed), encoding="utf-8")
-    result = subprocess.run(
+    result = run_node(
         [
-            node,
             str(Path(__file__).with_name("workbench_team_readback.cjs")),
             str(MODULES),
             str(path),

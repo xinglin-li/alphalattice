@@ -122,15 +122,7 @@ def _agent_execution() -> AgentExecutionBinding:
 
 
 def test_human_external_and_installed_actor_share_one_host_derived_submission() -> None:
-    """requirement: identical domain content, identical Host authority, distinct provenance.
-
-    All three actors hand the Host the same proposal and nothing else. The Host
-    derives the submission -- so its identity is the same by construction rather
-    than by three callers agreeing -- and derives the decision policy from its own
-    installed source, so all three receipts are judged under one policy. What
-    differs is the actor binding and therefore the receipt identity, which is what
-    provenance is for.
-    """
+    """Human, external, and installed actors share one Host-derived submission contract."""
 
     checkpoint = _checkpoint()
     proposal = _proposal(checkpoint)
@@ -169,13 +161,7 @@ def test_human_external_and_installed_actor_share_one_host_derived_submission() 
 
 
 def test_an_installed_agent_without_execution_evidence_is_refused() -> None:
-    """requirement: the Agent takes the same Host path and owes its provenance.
-
-    There is no Agent-only sealing route to fall back to, so an Installed Agent
-    submission without an ``AgentExecutionBinding`` has to fail on the one path
-    everybody uses. The mirror case matters as much: a Human carrying Agent
-    execution evidence is claiming a process it did not run.
-    """
+    """An installed agent without execution evidence is refused."""
 
     checkpoint = _checkpoint()
     common = {
@@ -199,14 +185,7 @@ def test_an_installed_agent_without_execution_evidence_is_refused() -> None:
 
 
 def test_a_submission_carrying_an_altered_research_input_is_refused() -> None:
-    """requirement: the authoritative input is recompiled, never accepted.
-
-    The adversary is not a malformed object. It is a submission that validates
-    against itself perfectly -- a real proposal, a real research input, a
-    correctly recomputed ``submission_hash`` -- whose input says something the
-    checkpoint does not imply. Under the old sealer this was authoritative,
-    because the same object was passed in as both the claim and the authority.
-    """
+    """A submission carrying an altered research input is refused."""
 
     checkpoint = _checkpoint()
     proposal = _proposal(checkpoint)
@@ -266,13 +245,7 @@ def test_a_submission_carrying_an_altered_research_input_is_refused() -> None:
 
 
 def test_a_proposal_that_acknowledges_no_limitations_is_refused() -> None:
-    """requirement: the required limitations bind every actor, not only the Agent.
-
-    They were declared inside the Agent adapter, which made them a property of
-    how one actor was prompted. A Human or an external automation could submit a
-    curation limited by nothing, and there was no independent statement to check
-    it against.
-    """
+    """A proposal that acknowledges no limitations is refused."""
 
     checkpoint = _checkpoint()
     with pytest.raises(FactorResearchDecisionAuthorityError, match="limitations_incomplete"):
@@ -286,15 +259,7 @@ def test_a_proposal_that_acknowledges_no_limitations_is_refused() -> None:
 
 
 def test_a_resealed_decision_naming_its_own_policy_is_refused() -> None:
-    """requirement: a policy identity supplied by the judged party is not a policy.
-
-    Everything in this receipt is internally correct: the submission is the one
-    the Host derives, the actor binding names it, and ``receipt_hash`` covers the
-    whole object including the substituted policy. Only re-deriving the policy
-    from the installed source contradicts it -- which is why the sealer stopped
-    taking it as an argument, and why the verifier recomputes it rather than
-    reading it back.
-    """
+    """A resealed decision naming its own policy is refused."""
 
     checkpoint = _checkpoint()
     honest = admit_factor_research_curation(
@@ -330,12 +295,7 @@ def test_a_resealed_decision_naming_its_own_policy_is_refused() -> None:
 
 
 def test_a_recorded_curation_reads_without_recompiling_or_current_admission(monkeypatch, tmp_path):
-    """requirement (LAWS.md OP6): a read reopens what was sealed and computes nothing.
-
-    A recorded readback took the decision's standing from the installed policy
-    and recompiled its dossier and research input on every read; it now reopens
-    the decision as sealed, while a writer and new work still re-derive it and
-    require the installed policy."""
+    """A recorded curation reads without recompiling or current admission."""
 
     from alphalattice.foundation.factor_research.experiments.development_evidence import (
         publish_factor_development_curation,
@@ -376,12 +336,7 @@ def test_a_recorded_curation_reads_without_recompiling_or_current_admission(monk
 
 
 def test_a_decision_about_another_review_binding_is_refused(tmp_path: Path) -> None:
-    """requirement: the dossier a decision answers is the checkpoint's, under this binding.
-
-    Same checkpoint, same proposal, a different Desk method binding: the dossier
-    differs, so the submission the Host admits differs, so the decision belongs to
-    a run this one is not.
-    """
+    """A decision about another review binding is refused."""
 
     checkpoint = _checkpoint()
     honest = admit_factor_research_curation(

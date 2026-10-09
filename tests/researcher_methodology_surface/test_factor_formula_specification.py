@@ -84,18 +84,7 @@ def test_first_valid_golden_survives_interleaved_listing_axis(recipe: FactorSpec
 
 
 def test_intraday_amplitude_is_the_absolute_intraday_move_on_a_second_session() -> None:
-    """regression: the boundary golden is degenerate, so pin the formula elsewhere.
-
-    `intraday_amplitude` is `|log(close/open)|`, and its first-valid-source golden
-    is one row long. The declared open series is `price * (1 + 0.002 * sin(index))`,
-    and `sin(0)` is zero, so on that single row open equals close and both
-    `intraday` and its amplitude are exactly zero. The boundary golden therefore
-    asserts `|0| == 0` and constrains nothing about the formula. Session index 1
-    is the first row where the two series separate, and 0.0016815274096384609 is
-    the value the expectation table carried before 2026-09-02, when it had been
-    transcribed from a two-row frame onto a one-row golden. It is kept here, at
-    the row it actually describes, so the number stays load-bearing.
-    """
+    """Intraday amplitude is the absolute intraday move on a second session."""
 
     recipe = next(
         value for value in extension_factor_specs() if value.factor_id == "intraday_amplitude"
@@ -130,19 +119,7 @@ def test_intraday_amplitude_is_the_absolute_intraday_move_on_a_second_session() 
 
 
 def test_the_corrected_amplitude_golden_rotates_only_the_validation_identity() -> None:
-    """requirement: the golden correction moved a contract identity, and it is pinned.
-
-    Correcting the stale expectation is not free. `specification_hash` covers
-    the golden examples, so it moved, and `FactorDevelopmentCapability` folds it
-    into `capability_hash`, which the admission receipt folds into
-    `receipt_hash`. All three rotated for this one candidate.
-
-    What did *not* move is the executable half. `implementation_hash` is derived
-    from the kernel, not from the expectation table, so it is unchanged, and so
-    are the values the formula produces. That is the whole claim: the
-    validation contract was corrected, the arithmetic was not touched, and this
-    test fails if either half of that stops being true.
-    """
+    """Correcting the intraday amplitude golden rotates only its validation identity."""
 
     specification = build_installed_factor_formula_specifications().resolve("intraday_amplitude")
     receipt = next(

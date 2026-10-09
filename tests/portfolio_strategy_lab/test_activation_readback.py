@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
 
 import pytest
@@ -21,7 +22,6 @@ def test_every_activation_surface_reads_the_exact_books_published_review(
     tmp_path, capsys, reviewed, monkeypatch
 ):
     """Activation surfaces read the exact book's published review without starting research work."""
-    from urllib.parse import parse_qs, urlsplit
 
     from alphalattice.interface.local_application.client import LocalResearchClient
     from tests.alternative_evidence_desk.review_http_support import build_authority

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import ast
-import inspect
 import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, replace
 from datetime import date, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
 import pyarrow as pa
@@ -374,7 +373,6 @@ def test_data_issue_readback_refuses_one_missing_case_manifest_without_hiding_he
 
 
 def test_human_raw_move_choice_is_consumed_as_a_caveat_not_source_truth(tmp_path):
-    from types import SimpleNamespace
 
     from alphalattice.control.data_platform.maintenance.coordinator import (
         WorkspaceMaintenanceCoordinator,
@@ -1429,16 +1427,7 @@ def test_evaluator_signs_the_anomaly_independently_of_the_window() -> None:
 
 
 def test_a_due_quarantine_is_continued_only_over_the_same_anomaly() -> None:
-    """requirement: recheck due is not automatic expiry, and not automatic renewal either.
-
-    The original decision is real and executed, the listing is the same
-    source, the anomaly is the same two observations with the same
-    explanation, nothing new was observed, the policy is the one decided
-    under, and the listing still fails: the quarantine is carried to the
-    next recheck under the original receipt, without a new decision. Every
-    other reading names why it is not, and the listing re-enters the
-    existing path.
-    """
+    """A due quarantine is continued only over the same anomaly."""
     gateway = FeatureInputGateway()
     day_one = _anomaly_evidence(closes=DAY_ONE)
     case, execution, quarantine = _quarantine_decision(
@@ -1618,15 +1607,7 @@ def test_a_due_quarantine_is_continued_only_over_the_same_anomaly() -> None:
 
 
 def test_persisted_continuation_reads_back_only_with_its_identity(tmp_path) -> None:
-    """regression: the persisted readback refuses a record without or against its identity.
-
-    The store keeps the continued row and its record; the data-issues
-    readback chains them. A stored record whose identity was removed or
-    emptied, one re-sealed over modified evidence, and a stored row that no
-    longer matches its record are each refused by name -- the reader never
-    signs what it reads. A quarantine row without a record (every row
-    written before continuation existed) still reads back.
-    """
+    """Persisted continuation reads back only with its identity."""
 
     from alphalattice.control.product_host.composition.application_session import (
         WorkspaceApplicationSession,
@@ -1746,13 +1727,7 @@ def test_persisted_continuation_reads_back_only_with_its_identity(tmp_path) -> N
 
 
 def test_partial_sector_evidence_governs_failures_only_and_invents_nothing() -> None:
-    """requirement: a manifest without complete Sector evidence is not admitted through it.
-
-    Listings declared without Sector evidence take no part in the sector
-    judgement, no case offers an exclusion whose Panel impact cannot be
-    projected, and with nothing to govern the Gateway refuses to admit
-    rather than admit blind.
-    """
+    """Partial sector evidence governs failures only and invents nothing."""
     manifest = _manifest(20)
     known = _sectors(manifest, size=5)
     unknown = frozenset(listing.listing_id for listing in manifest.listings[15:])
@@ -2109,14 +2084,6 @@ def test_feature_panel_reader_streams_projected_batches_and_supports_concurrent_
     )
     with pytest.raises(ValueError, match="requires an ACTIVE Feature Panel snapshot"):
         list(FeaturePanelReader(resolver).batches(request))
-    reader_tree = ast.parse(inspect.getsource(FeaturePanelReader))
-    assert not any(
-        isinstance(node, ast.Name) and node.id == "duckdb" for node in ast.walk(reader_tree)
-    )
-    assert not any(
-        isinstance(node, ast.Attribute) and node.attr == "to_table"
-        for node in ast.walk(reader_tree)
-    )
 
 
 def test_data_remediation_terminal_failure_receipt_is_durable_and_idempotent(
@@ -2164,7 +2131,6 @@ def test_data_remediation_terminal_failure_receipt_is_durable_and_idempotent(
 
 
 def test_admission_only_failure_is_bound_to_the_existing_workspace_cycle(tmp_path, monkeypatch):
-    from types import SimpleNamespace
 
     from alphalattice.control.data_platform.maintenance.contracts import (
         MaintenanceTrigger,
@@ -2172,9 +2138,6 @@ def test_admission_only_failure_is_bound_to_the_existing_workspace_cycle(tmp_pat
     )
     from alphalattice.control.data_platform.maintenance.coordinator import (
         WorkspaceMaintenanceCoordinator,
-    )
-    from alphalattice.control.data_platform.maintenance.registry import (
-        DuckDbWorkspaceMaintenanceRegistry,
     )
 
     manifest = _manifest(20)
@@ -2314,14 +2277,7 @@ def test_failure_receipt_without_explanation_keeps_its_identity_and_reads_back(t
     ],
 )
 def test_failure_receipt_reader_refuses_a_document_that_lost_its_shape(tamper, reason) -> None:
-    """regression (supervisor): a malformed sequence field read back as empty and verified.
-
-    ``read_document`` turned a missing or malformed sequence into ``()``
-    before the identity check, so a document tampered from ``[]`` to a
-    string, or stripped of a required list, still matched its original
-    hash. The reader now requires every sealed field with its recorded
-    shape and refuses anything else instead of repairing it.
-    """
+    """Failure receipt reader refuses a document that lost its shape."""
 
     values = {
         "maintenance_id": "m" * 64,
@@ -2344,7 +2300,6 @@ def test_failure_receipt_reader_refuses_a_document_that_lost_its_shape(tamper, r
 
 
 def test_materialized_qualification_is_scoped_and_requires_real_unavailability_evidence() -> None:
-    from dataclasses import replace
 
     from alphalattice.foundation.feature_engine.inputs.quality import qualify_materialized_features
     from alphalattice.foundation.feature_engine.storage.contracts import FeatureIneligibilityRun

@@ -8,7 +8,9 @@ responses -- no network, no scenario transport.
 from __future__ import annotations
 
 import json
+import tempfile
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
 import pytest
@@ -97,10 +99,7 @@ def _json(payload: object, status: int = 200) -> httpx.Response:
 
 
 def test_the_real_transport_admits_the_official_shard_path_and_nothing_wider() -> None:
-    """requirement (R1): discovery asks for `CIK##########-submissions-NNN.json`;
-    the real transport must serve that one shape and keep refusing every
-    other host, scheme, path, credential, query, fragment and redirect. On
-    the base the valid shard was refused as a non-official URL."""
+    """The real transport admits the official shard path and nothing wider."""
 
     seen: list[httpx.Request] = []
 
@@ -228,13 +227,7 @@ def _registry() -> SecIssuerRegistrySnapshot:
 
 
 def test_campaign_budgets_refuse_before_the_request_and_count_every_byte_read() -> None:
-    """requirement (section 4, sharpened by Phase A4): the campaign's hard
-    limits are enforced in the transport before a request is made -- an
-    exhausted attempt budget never reaches the wire, and the byte budget is
-    a reservation: a request whose cap does not fit the remainder is
-    refused before it is made rather than abandoned part-way. What is read
-    counts whether or not the transfer completes; a refusal consumes no
-    attempt and is never retried."""
+    """Campaign budgets refuse before the request and count every byte read."""
 
     served: list[str] = []
 
@@ -280,9 +273,6 @@ def test_the_body_resource_budget_refuses_a_new_body_before_any_request() -> Non
     """requirement (section 4): the source bounds distinct filing bodies; the
     body beyond the bound is refused by name before a request, and the
     refusal is the resource's outcome while its siblings stand."""
-
-    import tempfile
-    from pathlib import Path
 
     from tests.alternative_evidence_desk.incremental_acquisition_support import (
         EIGHT_K,

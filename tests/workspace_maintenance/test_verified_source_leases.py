@@ -32,6 +32,10 @@ from alphalattice.control.workspace_runtime.content_store import (
     verify_source_checks,
 )
 
+if os.name == "nt":
+    import msvcrt
+    from ctypes import wintypes
+
 
 def _reader(path: Path, payload: bytes = b"sealed"):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -691,8 +695,6 @@ def test_os_changes_reverify_and_refuse_even_with_restored_size_and_time(tmp_pat
         alternate = tmp_path / "replacement.bin"
         alternate.write_bytes(b"broken")
         if os.name == "nt":
-            from ctypes import wintypes
-
             kernel = ctypes.WinDLL("kernel32", use_last_error=True)
             kernel.ReplaceFileW.argtypes = [
                 wintypes.LPCWSTR,
@@ -751,9 +753,6 @@ def test_os_changes_reverify_and_refuse_even_with_restored_size_and_time(tmp_pat
             mapping[:] = b"broken"
             mapping.flush()
     elif change == "suppressed-write-time" and os.name == "nt":
-        import msvcrt
-        from ctypes import wintypes
-
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
         kernel.SetFileTime.argtypes = [
             wintypes.HANDLE,
@@ -844,7 +843,6 @@ def test_missing_or_failed_os_signal_forces_full_verification(tmp_path, monkeypa
     else:
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
         original_create = kernel.CreateFileW
-        from ctypes import wintypes
 
         original_create.argtypes = [
             wintypes.LPCWSTR,

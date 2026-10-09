@@ -60,13 +60,7 @@ def fresh_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspa
 def test_panel_is_admitted_through_the_feature_input_gateway(
     fresh_workspace: RealRiskWorkspace,
 ) -> None:
-    """Without an admission the Panel is unreadable by Factor and Risk.
-
-    A freshly initialized workspace used to be unable to obtain one at all: the
-    first cycle skipped governance for want of an active Panel, and every later
-    cycle found market data already current. The disclosure is the observable
-    end of that fix.
-    """
+    """Panel is admitted through the feature input gateway."""
 
     store = MarketDataRepository(fresh_workspace.workspace)
     panel_state = PanelStateRepository(store.database, market_data=store)
@@ -83,12 +77,7 @@ def test_panel_is_admitted_through_the_feature_input_gateway(
 def test_closure_ledger_answers_for_the_activated_sector_revision(
     fresh_workspace: RealRiskWorkspace,
 ) -> None:
-    """Quality governance rebinds the sector revision onto its child manifest.
-
-    The revision is bound to manifest identity, so rebinding activates one the
-    ledger has never seen. Publishing the map first is what keeps the recovery
-    binding resolvable; without it the Panel cannot be published at all.
-    """
+    """Closure ledger answers for the activated sector revision."""
 
     store = MarketDataRepository(fresh_workspace.workspace)
     feature_state = FeatureStateRepository(store.database, market_data=store)
@@ -113,12 +102,7 @@ def test_closure_ledger_answers_for_the_activated_sector_revision(
 def test_closure_opened_at_genesis_and_never_claimed_admission(
     fresh_workspace: RealRiskWorkspace,
 ) -> None:
-    """A greenfield workspace opens a genesis root, not an admitted one.
-
-    The two roots are separate contracts on purpose: a genesis root structurally
-    cannot answer for a Panel snapshot or a retention assessment, so it must
-    never be mistaken for admitted history.
-    """
+    """The closure ledger opens at genesis without claiming feature admission."""
 
     ledger = FeatureClosureLedger(
         PanelClosureArtifactStore(ArtifactResolver(fresh_workspace.artifact_root))
@@ -206,14 +190,7 @@ def _envelope(
 def test_the_host_admits_a_successor_panel_only_after_its_observation_close(
     fresh_workspace: RealRiskWorkspace,
 ) -> None:
-    """requirement: the Host compares a typed decision event with source availability.
-
-    The envelope already requires ``as_of >= end``, so the resolver's old
-    ``min(end, as_of)`` bound was always ``end`` and availability never removed
-    anything however early in the day the decision was taken. A phase is what
-    makes the comparison real: a daily Feature for session ``T`` exists only
-    after ``close(T)``.
-    """
+    """The host admits a successor panel only after its observation close."""
 
     from alphalattice.control.product_host.research_authoring.authority import (
         WorkspaceResearchAuthorityResolver,
@@ -244,15 +221,7 @@ def test_the_host_admits_a_successor_panel_only_after_its_observation_close(
 def test_the_host_refuses_a_panel_without_feature_clock_authority(
     fresh_workspace: RealRiskWorkspace, tmp_path
 ) -> None:
-    """requirement: the verifier runs on the real route, before any Desk or numerical call.
-
-    The Panel is republished into a private artifact root with its per-Formula
-    observation identities removed -- exactly the shape every pre-successor Panel
-    has. It stays readable under its own stored identity and must not resolve.
-    """
-
-    import json
-    import shutil
+    """The host refuses a panel without feature clock authority."""
 
     from alphalattice.control.product_host.research_authoring.authority import (
         WorkspaceResearchAuthorityResolver,
@@ -296,13 +265,7 @@ def test_the_host_refuses_a_panel_without_feature_clock_authority(
 def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities(
     fresh_workspace: RealRiskWorkspace, tmp_path: Path
 ) -> None:
-    """requirement: the cache hands every consumer the build's identities, through product readers.
-
-    The module's workspace was built fresh in this process; the golden copy for
-    the same key is a restore. Their manifest, panel, surface and sector map
-    must agree, no half-built directory or lock may remain, and the key must
-    move with the universe it was built for.
-    """
+    """A second consumer restores the golden workspace with the same identities."""
 
     again = build_real_risk_workspace(tmp_path / "again")
     assert again.workspace != fresh_workspace.workspace
@@ -337,13 +300,7 @@ def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identitie
 def test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired(
     fresh_workspace: RealRiskWorkspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: a complete golden whose identities do not match is a refusal, never a rebuild.
-
-    The sidecar is what makes a golden complete, and it is bound to its key; a
-    complete golden whose build environment, manifest, panel or sector state
-    disagree with the consumer is corrupt or foreign, and silently rebuilding
-    it would hide that.
-    """
+    """A golden that disagrees with its sidecar is refused not repaired."""
 
     key = _golden_key(fresh_workspace.feature_catalog, fresh_workspace.feature_kernels, SYMBOLS)
     private_root = tmp_path / "goldens"

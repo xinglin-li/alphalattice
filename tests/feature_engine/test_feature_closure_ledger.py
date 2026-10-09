@@ -4,8 +4,9 @@ import hashlib
 import json
 import os
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -316,9 +317,6 @@ def _fixture(tmp_path):
 
 
 def test_verified_feature_source_window_reuses_exact_inputs_and_invalidates_other_writes(tmp_path):
-    from dataclasses import replace
-    from datetime import timedelta
-    from types import SimpleNamespace
 
     from alphalattice.foundation.feature_engine.panels.materialization_identity import (
         feature_source_values_hash,
@@ -722,14 +720,7 @@ def test_blocked_phase_one_snapshot_cannot_be_admitted_as_catalog_root(tmp_path)
 def test_republishing_an_unchanged_sector_activation_leaves_its_pointer_alone(
     tmp_path, monkeypatch
 ) -> None:
-    """Every one-listing update cycle rebinds the same sector evidence.
-
-    The pointer is content the ledger already holds, so republishing it must
-    not replace the file: each needless replace is one more instant in which a
-    momentary Windows sharing violation can stop the Task (observed once on the
-    2026-09-12 QA build as ``feature_closure.sector_map_capture_failed``). A
-    changed pointer is still replaced.
-    """
+    """Republishing an unchanged sector activation leaves its pointer alone."""
 
     catalog, _store, _artifact_store, ledger, _coordinator = _fixture(tmp_path)
     root = ledger.root_for_head(ledger.require_head(catalog.binding.catalog_hash))
@@ -775,16 +766,7 @@ def test_republishing_an_unchanged_sector_activation_leaves_its_pointer_alone(
 def test_changed_pointer_outlives_a_transient_sharing_violation_and_refuses_a_lasting_one(
     tmp_path, monkeypatch
 ) -> None:
-    """requirement: a changed pointer is published atomically or not at all.
-
-    Controlled fault injection on the replace itself: a sharing violation that
-    clears is outlived within the durable bound and the pointer is read back
-    through the ledger's own reader before success; one that lasts is raised
-    as the kernel's typed conflict with the previous pointer untouched and no
-    staged file left behind; a readback that does not match what was written
-    is refused and never retried; and the next legitimate attempt converges
-    without republishing content the store already holds.
-    """
+    """Changed pointer outlives a transient sharing violation and refuses a lasting one."""
 
     from alphalattice.kernel.shared_kernel import persistence
     from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError

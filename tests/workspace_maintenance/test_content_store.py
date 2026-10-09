@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Barrier
 from typing import ClassVar, Literal
 
 import numpy as np
@@ -134,8 +137,6 @@ def test_a_verified_model_is_shared_inside_a_request_and_reused_only_when_enable
 
 
 def test_concurrent_model_read_scopes_keep_request_maps_isolated(tmp_path: Path):
-    from concurrent.futures import ThreadPoolExecutor
-    from threading import Barrier
 
     _FrozenReadRecord.validation_calls = 0
     store, identity, _path = _published_read_record(tmp_path)
@@ -294,8 +295,6 @@ def test_a_shared_file_is_replaced_through_a_reader_holding_it_open(tmp_path: Pa
     """regression (overlapping trial reads): on Windows a replace fails while
     another handle reads the file, and a Host's concurrent requests hold one as they read a
     trial record or the verification ledger; the replace waits out the read and lands."""
-
-    import threading
 
     from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 

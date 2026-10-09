@@ -156,12 +156,7 @@ def _admit(
 
 
 def test_availability_before_observation_is_refused_though_offsets_agree() -> None:
-    """The hole offsets cannot see: both anchors are offset zero.
-
-    An input that observed the close and claims to be available at that session's
-    *open* is impossible, and a contract comparing ``offset_sessions`` finds
-    nothing wrong with it.
-    """
+    """Availability before observation is refused though offsets agree."""
 
     forged = _authority(source_available=_fact(0, "OFFICIAL_OPEN"))
     assert (
@@ -188,13 +183,7 @@ def test_readiness_before_its_own_source_is_refused() -> None:
 
 
 def test_a_post_close_source_availability_is_expressible_and_admitted() -> None:
-    """Availability is not limited to the two exchange events.
-
-    A vendor that lands its file ninety minutes after the close is neither an
-    ``OFFICIAL_CLOSE`` fact nor a reason to lag a Formula by a session. It is an
-    installed source policy, it says so in its basis, and it is admitted because
-    the strategy has all night.
-    """
+    """A post close source availability is expressible and admitted."""
 
     late = _authority(
         source_available=AnchoredInstantPolicy.create(
@@ -212,13 +201,7 @@ def test_a_post_close_source_availability_is_expressible_and_admitted() -> None:
 
 
 def test_the_two_reported_minutes_are_named_for_where_they_start() -> None:
-    """Staleness starts at the observation; room starts at readiness.
-
-    These were one word once, printed side by side in a matrix where they began
-    at different instants -- a covariance observed at ``open(T)`` reported 1,019
-    minutes of "slack" while the distance from that observation to the deadline
-    is 1,410.
-    """
+    """The two reported minutes are named for where they start."""
 
     risk = _authority(
         input_id="risk",
@@ -293,16 +276,7 @@ def test_a_schedule_must_be_installed_and_must_match_its_recipe() -> None:
 def test_the_same_resolver_handles_a_second_installed_binding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Extensibility through the production route, not through a fixture.
-
-    A second strategy is installed -- a different method, a different deadline
-    policy -- and the *same* resolver produces it. The contracts can also express
-    a close-auction or intraday clock and this build cannot install one: the
-    frozen execution recipe requires ``entry_offset_sessions >= 1``, so an entry
-    at the formation's own close has no recipe to bind. That is a recipe schema
-    extension, and calling the schema's reach production support would be exactly
-    the fixture-versus-route confusion this test exists to avoid.
-    """
+    """The same resolver handles a second installed binding."""
 
     monkeypatch.setitem(
         INSTALLED_ORDER_SUBMISSION_POLICIES,
@@ -411,13 +385,7 @@ def test_a_snapshot_whose_rows_disagree_about_one_instant_is_refused() -> None:
 
 
 def test_nothing_hardcodes_a_utc_wall_clock() -> None:
-    """Winter time moves every instant, and the relations survive it.
-
-    New York is UTC-4 in summer and UTC-5 in winter, so a build that wrote
-    ``13:30Z``/``20:00Z`` anywhere would disagree with the exchange for four
-    months of every year. The same authority and schedule resolved against a
-    later clock produce later instants and identical relations.
-    """
+    """Nothing hardcodes a UTC wall clock."""
 
     winter = _clocks(open_hour=14, close_hour=21)
     summer_result, winter_result = _admit(_authority()), _admit(_authority(), clocks=winter)
@@ -485,15 +453,7 @@ def test_a_score_shifted_one_session_and_fully_re_sealed_is_refused() -> None:
 
 
 def test_a_substituted_surface_hash_needs_the_producer_owner_to_refuse_it() -> None:
-    """A re-sealed authority verifies against itself; only the owner can refuse it.
-
-    Recorded as a requirement rather than asserted as a pass. Admission checks
-    *relations*, and a producer that swaps ``surface_hash`` while keeping its
-    clock produces a perfectly valid authority whose hash is correct for what it
-    says. What refuses it is a verifier re-deriving the authority at the
-    producing owner -- which is why ``owner_identity_hash`` must bind the
-    methodology closure that decided the numbers and not a label.
-    """
+    """A substituted surface hash needs the producer owner to refuse it."""
 
     honest = _authority(input_id="score", input_kind="RAW_SCORE")
     swapped = _authority(input_id="score", input_kind="RAW_SCORE", surface_hash="c" * 64)
