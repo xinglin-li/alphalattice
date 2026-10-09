@@ -161,6 +161,7 @@ function input() {
 const viewBook = () => Data.subject()?.task_id || '';
 const viewSession = () => Data.subject()?.session || '';
 const openTaskCount = () => Data.actionableTasks().length;
+const runningTaskCount = () => Data.tasks().filter((x) => stateMoving(x.lifecycle)).length;
 
 function currentContext() {
   if (LiveStudy.pages.has(app.page))return {page:app.page,workspace:Data.workspace(),study:LiveStudy.context(),claim:'SAVED_RESEARCH_NOT_CURRENT_AUTHORITY'};
