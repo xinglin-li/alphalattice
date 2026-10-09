@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -83,3 +84,94 @@ def test_a_delegated_setting_holds_until_its_end_with_no_write(tmp_path: Path) -
     set_network_access(tmp_path, enabled=True)
     assert network_access(tmp_path, environment={}, now=end + timedelta(days=9)).allowed
     assert "set_by" not in network_access(tmp_path, environment={}).body()
+
+
+@pytest.mark.parametrize("state", ["operator", "run", "closed", "open", "default", "unlocated"])
+def test_every_network_way_on_reads_the_effective_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    """Network advice follows the effective owner and cannot lift an operator or run hold."""
+
+    import alphalattice.interface.local_application as local_application
+    from alphalattice.control.product_host.composition.plain_refusals import explain
+    from alphalattice.control.workspace_runtime.network_access import set_network_access
+    from alphalattice.interface.local_application.cli_contract import (
+        NETWORK_ACCESS_REFUSALS,
+        refusal_words,
+        worded_refusal,
+    )
+    from alphalattice.kernel.shared_kernel.environment import held_offline
+
+    table = json.loads(Path(local_application.__file__).with_name("refusal_words.json").read_text())
+    network_codes = {
+        code
+        for code, words in table.items()
+        if words["next_action"] == "ASK_A_PERSON_TO_ALLOW_NETWORK_ACCESS"
+    }
+    assert (
+        network_codes | {"evidence_review.workspace_network_not_allowed"} == NETWORK_ACCESS_REFUSALS
+    )
+    assert {
+        code for code, words in table.items() if "network set" in words["detail"]
+    } <= NETWORK_ACCESS_REFUSALS
+    monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
+    if state not in {"default", "unlocated"}:
+        set_network_access(tmp_path, enabled=state != "closed")
+    if state == "operator":
+        monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
+    workspace = None if state == "unlocated" else tmp_path
+    with held_offline() if state == "run" else nullcontext():
+        for base in NETWORK_ACCESS_REFUSALS:
+            code = base + (":2026-09-11,DATA" if base.startswith("research_update.") else "")
+            owner = explain(code, workspace=workspace)
+            fresh = worded_refusal(
+                {
+                    "status": "REFUSED",
+                    "failure_code": code,
+                    "detail": owner["detail"],
+                    "network_access": {"decided_by": "WORKSPACE_CONTROL", "network_allowed": False},
+                    "next_requests": {
+                        "set": {"operation": "NETWORK_ACCESS_SET", "network_enabled": True}
+                    },
+                },
+                workspace=workspace,
+            )
+            assert fresh["next_action"] == refusal_words(code, workspace=workspace)["next_action"]
+            assert fresh["next_requests"] == {"network": {"operation": "NETWORK_ACCESS"}}
+            if state in {"operator", "run"}:
+                access = fresh["network_access"]
+                assert access["decided_by"] == (
+                    "OPERATOR_OFFLINE_SWITCH" if state == "operator" else "RUN_HELD_OFFLINE"
+                )
+                assert not access["network_allowed"] and not access["next_requests"]
+                assert "network set" not in fresh["detail"]
+                assert (
+                    "ALPHALATTICE_NETWORK_DISABLED=1" in fresh["detail"]
+                    if state == "operator"
+                    else fresh["detail"]
+                )
+                if state == "operator":
+                    assert fresh["detail"]
+                else:
+                    assert fresh["next_action"] == "WAIT_FOR_THE_OFFLINE_RUN_TO_FINISH"
+            elif state in {"closed", "default"}:
+                assert (
+                    "set the workspace control"
+                    if base == "evidence_review.workspace_network_not_allowed"
+                    else "network set"
+                ) in fresh["detail"]
+                assert fresh["network_access"]["next_requests"]["set"]["network_enabled"]
+            elif state == "open":
+                assert fresh["network_access"]["network_allowed"]
+                assert fresh["next_action"] == "RETRY_THE_REFUSED_STEP"
+                assert fresh["detail"]
+                assert "network set" not in fresh["detail"]
+            else:
+                # No located control: a read is actionable without claiming its state.
+                assert fresh["next_action"] == "READ_NETWORK_ACCESS"
+                assert "network show" in fresh["detail"] and "network set" not in fresh["detail"]
+                assert "network_access" not in refusal_words(code)
+                assert "network_access" not in fresh
+            if base.startswith("research_update."):
+                assert "2026-09-11" in fresh["detail"]
+                assert "2026-09-11,DATA" not in fresh["detail"]

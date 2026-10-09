@@ -359,3 +359,31 @@ def test_each_explained_refusal_keeps_its_code_and_asks_only_operations_the_host
     assert panel["next_action"] == "DATA_UPDATE_READBACK"
     assert panel["next_requests"] == {"show": {"operation": "DATA_UPDATE_READBACK"}}
     assert plain_refusals.explain("an.unlisted_code") == {}
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "strategy_book.strategy_package_required",
+        "local_application.strategy_package_not_installed:NOT_AN_INSTALLED_PACKAGE",
+        "research_workspace.strategy_not_installed",
+    ],
+)
+def test_every_book_selector_refusal_has_door_words_and_owner_context(code) -> None:
+    """Selector refusals keep door keys and bound controls for each installed choice."""
+    from alphalattice.control.product_host.composition.plain_refusals import explain
+    from alphalattice.interface.local_application.cli_contract import refusal_words, request_problem
+
+    words = refusal_words(code)
+    assert set(words) == {"detail", "next_action"} and all(words.values())
+    packages = ("INSTALLED_A", "INSTALLED_B")
+    answer = explain(code, installed_packages=packages)
+    assert answer["detail"] and answer["next_action"]
+    for request in answer["next_requests"].values():
+        assert request_problem(request) is None
+    if code != "research_workspace.strategy_not_installed":
+        assert answer["next_requests"] == {
+            f"controls:{package}": {"operation": "CONTROLS", "strategy_package_id": package}
+            for package in packages
+        }
+        assert all(package in answer["detail"] for package in packages)

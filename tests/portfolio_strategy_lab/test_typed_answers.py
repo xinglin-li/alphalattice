@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
+from alphalattice.interface.local_application import answers
 from alphalattice.interface.local_application.answers import ANSWERS
 from alphalattice.interface.local_application.cli import schema
+from alphalattice.interface.local_application.cli_contract import TASK_STATE_FIELDS
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
@@ -66,3 +69,36 @@ def test_every_operation_publishes_its_answer() -> None:
             if not field.get("description")
         ]
         assert not undescribed, (operation, undescribed)
+
+
+def test_every_answer_that_names_a_book_for_review_offers_that_review() -> None:
+    """Every answer that names a book for review offers that review."""
+    rows = json.loads(Path(answers.__file__).with_name("answers.json").read_text("utf-8"))
+    naming = {
+        operation
+        for operation, answer in rows.items()
+        if any(field["name"] == "review_selector" for field in answer["fields"])
+    }
+    assert {"EVIDENCE_SELECT", "RESEARCH_UPDATE_READBACK", "PORTFOLIO_UPDATE_READBACK"} <= naming
+    assert not sorted(
+        operation
+        for operation in naming
+        if not any(field["name"] == "next_requests" for field in rows[operation]["fields"])
+    )
+
+
+def test_every_answer_lifecycle_field_names_a_task_state_or_its_distinct_role():
+    """Answer lifecycle fields name a Task state or an explicitly distinct role."""
+    not_a_task_state = {
+        "lifecycle_research": "a study's kind, a model lifecycle's research",
+        "model_lifecycle": "a model's place in its lifecycle",
+        "component_lifecycles": "each component's model lifecycle",
+    }
+    rows = json.loads(Path(answers.__file__).with_name("answers.json").read_text("utf-8"))
+    named = {
+        str(field["name"])
+        for row in rows.values()
+        for field in row["fields"]
+        if "lifecycle" in str(field["name"])
+    }
+    assert named - set(TASK_STATE_FIELDS) == set(not_a_task_state)

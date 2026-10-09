@@ -225,7 +225,7 @@ use. *Held by:*
 `test: tests/alpha_research/test_model_extension.py::test_a_person_activates_a_sandboxed_model_and_the_workspace_catalog_installs_it`,
 `test: tests/alpha_research/test_model_extension.py::test_a_sandbox_tries_an_agents_model_on_a_workspace_at_rest`,
 `test: tests/alpha_research/test_model_contract.py::test_an_installed_model_passes_its_contract`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_model_is_activated_by_a_person_only`.
+`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_operation_only_a_person_completes_is_marked_so`.
 
 **OW12. A strategy runs forward by a person's activation of its reviewed book.** An installed
 research strategy's book replays history until a person activates a completed run of it over its
@@ -241,7 +241,7 @@ moved since it ran is refused, and activating a new run of it is the re-bind (V4
 stops it (`STRATEGY_DEACTIVATE`), and its history stays readable; past its horizon, a newer book
 is activated. *Why:* a frozen strategy's live scores are a first-release must (the maintainer,
 2026-10-02). *Held by:*
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_strategy_runs_forward_by_a_persons_activation_only`,
+`test: tests/portfolio_strategy_lab/test_activation_readback.py::test_an_absent_or_inactive_book_keeps_its_selected_way_on`; `test: tests/portfolio_strategy_lab/test_activation_readback.py::test_every_activation_surface_reads_the_exact_books_published_review`; `test: tests/portfolio_strategy_lab/test_strategy_activation.py::test_installed_strategy_dates_follow_sealed_records_on_the_cli`,
 `test: tests/portfolio_strategy_lab/test_portfolio_decision_updates.py::test_a_persons_activation_names_its_time_and_book_and_a_qa_admission_neither`,
 `test: tests/portfolio_strategy_lab/test_portfolio_decision_updates.py::test_a_calibrated_input_is_admitted_only_with_its_axis_activation`,
 `test: tests/workspace_readiness/test_workspace_manifest_writes.py::test_a_research_installation_holds_a_persons_activation`,
@@ -275,8 +275,8 @@ writes, `operations.json`, with the standard library, so a command costs a proce
 the product's models (K1); a stale table is refused, and a text naming a command or flag the CLI
 lacks is refused. The older client and its verbs are retired (2026-10-01,
 A4). *Held by:* `gate: operation-registry`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_command_a_text_names_is_one_the_cli_has`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_the_grammar_reads_files_stdin_and_operands_as_gnu_does`.
+`test: tests/structural/test_documented_commands.py::test_a_command_a_text_names_is_one_the_cli_has`,
+`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_saved_declaration_reads_from_stdin_and_names_its_context`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_the_option_terminator_keeps_the_following_id_as_an_operand`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_exclusive_read_selectors_are_refused_before_a_request_is_sent`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_choices_require_the_saved_answer_they_fill`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_declaration_and_choices_never_give_one_field_twice`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_command_schema_names_both_admitted_declaration_forms`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_shared_read_schema_names_each_alternative_selector`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_saved_answer_from_stdin_selects_its_read_operation`.
 
 **OP3. One answer envelope, exit by outcome.** Every command prints one envelope and exits 0 OK,
 1 INVALID_INPUT, 2 REFUSED, 3 PENDING or 4 NO_HOST; `--output` holds the owner's full answer whatever its
@@ -291,9 +291,9 @@ the one envelope (V261), and `--wait --output` saves the admission before it wai
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_answer_is_one_envelope_and_exits_by_its_outcome`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_compact_answer_shows_references_short_and_they_can_be_sent_so`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_compact_answer_holds_its_next_requests_to_the_read`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_list_next_answers_in_the_one_envelope`,
+`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_compact_answer_holds_its_next_requests_to_the_read`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_answer_is_one_envelope_and_exits_by_its_outcome`,
 `test: tests/portfolio_strategy_lab/test_status_follow.py::test_an_interrupted_wait_keeps_the_admitted_task_in_its_output`,
-`test: tests/portfolio_strategy_lab/test_local_web_product.py::test_a_short_reference_is_read_back_as_the_one_value_it_begins`.
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_short_reference_is_read_back_as_the_one_value_it_begins`.
 
 **OP4. A refusal is a code with words and a way on.** A refusal carries its owner's stable code, words a
 person can act on, and the next request the owner accepts; never exception text or a path. Its words
@@ -312,14 +312,14 @@ answer check every test's operations pass refuses a refusal without words or a w
 untyped failure; a registered code no test reaches is worded only where its owner or the table
 words it. A document that fails its contract is answered in one located shape at every operation: the owner's code, the fields by path, each field's reason and the contract's words, never a value (`failure_codes.located_failure`, V248). *Held by:*
 `test: tests/portfolio_strategy_lab/test_research_delivery.py::test_each_explained_refusal_keeps_its_code_and_asks_only_operations_the_host_accepts`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_contract_failure_answers_one_located_shape`,
+`test: tests/portfolio_strategy_lab/test_failure_codes.py::test_a_contract_failure_answers_one_located_shape`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_refusal_leaves_with_words_and_a_way_on`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_door_whose_way_on_reruns_a_plan_resumes_its_stopped_task`,
 `test: tests/portfolio_strategy_lab/test_local_web_product.py::test_every_web_handler_preserves_every_typed_owner_exception`,
 `test: tests/portfolio_strategy_lab/test_local_web_product.py::test_activation_keeps_typed_refusals_through_its_owner_and_observer`,
 `test: tests/portfolio_strategy_lab/test_local_web_product.py::test_a_raised_owner_refusal_keeps_its_transport_and_observer_code`,
 `test: tests/portfolio_strategy_lab/test_local_web_product.py::test_a_genuine_fault_stays_a_fault_at_every_web_owner_entry`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_explicit_owner_code_survives_validation_without_its_private_detail`.
+`test: tests/portfolio_strategy_lab/test_failure_codes.py::test_a_contract_failure_answers_one_located_shape`.
 V679's observer regression checks the discovered typed cases through one observed operation;
 it does not establish every route and observer combination.
 
@@ -343,7 +343,7 @@ item leaves the others readable and names its own refusal with OP4's usable way 
 whole collection (V633). Display readers of the registry's Task collection isolate an unreadable
 canonical record; complete and control scans still refuse it, rather than treating the readable
 subset as complete authority (V661). *Held by:* `U0` for sealed readback;
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_each_registered_collection_read_checks_item_refusal_routes`
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_each_registered_collection_read_checks_item_refusal_routes`
 for every registered collection's answer contract;
 `test: tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_foundation_seal_consumption_readback_and_refusals`
 for Foundation's missing-Task, item isolation, identical readback/export and usable controls;
@@ -503,9 +503,9 @@ not read again from themselves; named at the operation door first, the reference
 export's hash, a measured packet's bytes and an export's equality with its read (V449);
 `study show --from` a saved read of a past day read the latest one (V454).
 *Held by:* the answer check every test's operations pass (`request_problem`, the self-read, V449),
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_offered_request_is_one_the_host_accepts_as_it_stands`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_read_names_what_it_read_and_reads_again_from_itself`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_read_reads_its_whole_selection_again_from_its_answer`.
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_an_offered_request_is_one_the_host_accepts_as_it_stands`,
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_every_read_reads_its_whole_selection_again_from_its_answer`; `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_read_alias_preserves_its_field_map_and_explicit_selection`,
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_every_read_reads_its_whole_selection_again_from_its_answer`.
 
 **OP16. A printed command is read back as the request it came from, in the context it ran in.**
 The CLI's reading of a command line (`request_of`) is the printer's inverse for every operation,
@@ -516,14 +516,14 @@ prints keeps the context its call ran in (its view, its language, its goal: `_ke
 answer saved as JSON or as YAML reads back alike through `--from`. *Why:* 436 of 1,925 printed
 requests misread, Windows PowerShell 5.1 stripping every printed JSON argument's quotes, a
 bundle's submit command dropping its `--goal` (V449). *Held by:*
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_printed_command_reads_back_as_the_request_it_came_from`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_command_printed_for_powershell_sends_the_request_it_came_from`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_bundle_submit_command_keeps_the_goal_it_was_prepared_under`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_answer_saved_as_json_or_yaml_reads_back_alike`.
+`test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_every_printed_command_reads_back_as_the_request_it_came_from`,
+`test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_a_command_printed_for_powershell_sends_the_request_it_came_from`,
+`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_next_command_keeps_the_context_its_answer_came_in`,
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_an_answer_saved_as_json_or_yaml_reads_back_alike`.
 Every executable command offered in refusal words or an answer template must also parse with
 the real CLI; a printer round trip alone does not hold those independently authored commands
 (V687, V692). *Held by:*
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_refusal_and_answer_template_command_parses`,
+`test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_every_refusal_and_answer_template_command_parses`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_the_canary_door_operator_command_parses_through_the_real_cli`.
 The census walks the refusal and answer catalogs, client refusals, schemas and generated offers;
 its prose extraction recognizes registered command heads. *Not yet held:* that extraction does
@@ -536,7 +536,7 @@ goal (V391); a file naming no target the operation needs is refused, never read 
 a flag naming another target than the file is refused, never preferred. Any other reference the
 file names fills what the flags leave, a flag giving one winning. *Why:* `goal abandon --from
 goal-a.json` closed the session's own goal (V449, an outside review). *Held by:*
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_command_from_a_saved_answer_acts_on_what_the_file_names`.
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_request_a_listed_item_offers_is_followed`.
 
 **OP18. Every state has its exit.** Every Task state has one CLI outcome (pending, refused or
 done), read wherever an answer names it (`lifecycle`, `task_lifecycle` beside an answer's own
@@ -547,10 +547,10 @@ offers naming one). *Why:* a goal waiter missed BLOCKED (V440); a
 trial whose step needed recovery read RUNNING and a wait ran on (V449); a data update's reuse
 answered no Task to read (V449); a data update's wait ended at once, its Task's state named
 `task_lifecycle` (V455). *Held by:*
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_task_state_has_one_cli_outcome`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_task_state_is_read_wherever_an_answer_names_it`,
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_catalog_of_refused_controls_is_an_answer`,
+`test: tests/portfolio_strategy_lab/test_typed_answers.py::test_every_answer_lifecycle_field_names_a_task_state_or_its_distinct_role`,
 `test: tests/portfolio_strategy_lab/test_status_follow.py::test_a_wait_on_a_trial_ends_when_a_step_needs_its_recovery`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_reuse_names_what_holds_its_work`,
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_catalog_of_refused_controls_is_an_answer`,
 the answer check every test's operations pass (`exit_problem`).
 
 **OP19. A first use is the agent's, by the person's one sentence.** A goal of kind `FIRST_USE`,
@@ -656,7 +656,7 @@ An over-cap refusal offers an accepted cap-setting or cleanup action (V680). His
 retain their sealed budget and exact readback. *Held by:*
 `test: tests/workspace_maintenance/test_current_state_storage.py::test_storage_cap_counts_managed_models_panels_and_artifacts_and_follows_the_operator`,
 `test: tests/workspace_maintenance/test_current_state_storage.py::test_cleanup_plan_checks_old_cap_receipts_and_new_plans_exclude_execution_capacity`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_storage_cap_is_one_operator_setting_through_the_real_cli_and_http`,
+`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_storage_cap_is_one_operator_setting_through_the_real_cli`; `test: tests/portfolio_strategy_lab/test_local_web_service.py::test_a_route_that_writes_takes_the_write_check`,
 `test: tests/workspace_readiness/test_workspace_preparation.py::test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap`,
 `test: tests/unified_observation/test_unified_observation.py::test_an_open_observation_ledger_follows_the_workspace_cap_without_reidentifying_records`.
 
@@ -837,7 +837,7 @@ owner's models, never from a copy; a role card, a Skill or a document points to 
 restating a field. A schema's hash binds its structure (the types, constraints, required fields,
 defaults and definitions), never its prose, so a description is free to change. *Why:* an agent reads
 the contract before it writes a document, and a meaning written in two places drifts. *Held by:*
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_answer_is_read_in_parts`, which reads
+`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_unknown_operation_is_answered_with_the_nearest_names`, which reads
 an answer's parts from the owner's own models;
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_field_schema_prints_is_described`;
 `test: tests/structural/test_source_identity.py::test_a_schema_hash_binds_the_structure_and_never_the_prose`,
@@ -913,7 +913,7 @@ paths, but do not enumerate every possible installation path (V678). *Held by:*
 `test: tests/portfolio_strategy_lab/test_portfolio_decision_updates.py::test_daily_performance_reads_only_realized_outcomes_and_pins_the_issued_prefix`,
 `test: tests/portfolio_strategy_lab/test_portfolio_decision_updates.py::test_daily_performance_names_absence_instead_of_annualizing_an_invalid_axis`,
 `test: tests/portfolio_strategy_lab/test_strategy_activation.py::test_current_performance_follows_exact_books_daily_publications_and_keeps_history_fixed`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_the_installed_report_names_every_absent_performance_metric`,
+`test: tests/portfolio_strategy_lab/test_activation_readback.py::test_every_activation_surface_reads_the_exact_books_published_review`; `test: tests/portfolio_strategy_lab/test_portfolio_decision_updates.py::test_daily_performance_reads_only_realized_outcomes_and_pins_the_issued_prefix`; `test: tests/portfolio_strategy_lab/test_portfolio_decision_updates.py::test_daily_performance_names_absence_instead_of_annualizing_an_invalid_axis`,
 `test: tests/alternative_evidence_desk/test_portfolio_review_decision.py::test_a_holding_that_filed_nothing_is_counted_apart_and_never_as_no_risk`;
 the other claim limits by review.
 
@@ -1008,12 +1008,12 @@ stands, each refusal with words and a way on). An observed check holds only what
 enumerate where the table allows. *Why:* nine outside reviews in one day each found new instances
 of the same seams; the sweep found 436 of 1,925 printed requests misread and Windows PowerShell
 5.1 stripping every printed JSON argument's quotes, which no test had met (V449). *Held by:*
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_printed_command_reads_back_as_the_request_it_came_from`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_command_printed_for_powershell_sends_the_request_it_came_from`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_answer_saved_as_json_or_yaml_reads_back_alike`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_offered_request_is_one_the_host_accepts_as_it_stands`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_task_state_has_one_cli_outcome`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_command_from_a_saved_answer_acts_on_what_the_file_names`,
+`test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_every_printed_command_reads_back_as_the_request_it_came_from`,
+`test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_a_command_printed_for_powershell_sends_the_request_it_came_from`,
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_an_answer_saved_as_json_or_yaml_reads_back_alike`,
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_an_offered_request_is_one_the_host_accepts_as_it_stands`,
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_catalog_of_refused_controls_is_an_answer`,
+`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_request_a_listed_item_offers_is_followed`,
 the answer check in `tests/conftest.py` (V410, V449).
 
 **TE13. Test temporary roots stay outside the checkout.** The resolved pytest base temporary root,

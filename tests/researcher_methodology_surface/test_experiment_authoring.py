@@ -12,12 +12,15 @@ Program could look admissible while pointing at data that does not exist.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+import yaml
 
+from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_authoring import (
     build_research_experiment_dispatcher,
     installed_desk_compilers,
@@ -26,6 +29,11 @@ from alphalattice.control.research_program.authoring.document import load_author
 from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
+from alphalattice.protocols.research_authoring.selection import (
+    dump_declaration,
+    load_safe_yaml_document,
+)
+from tests.portfolio_strategy_lab.local_web_support import _json, _manifest, _resolved, _Resolver
 from tests.researcher_methodology_surface.real_workspace import RealRiskWorkspace
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "risk_covariance_development.yaml"
@@ -517,3 +525,66 @@ def test_every_desk_section_refuses_a_key_its_contract_does_not_name() -> None:
         with pytest.raises(AuthoringError) as refused:
             refuse_unknown_section_keys(document, contract, place=place)
         assert str(refused.value) == f"research_authoring.section_key_unknown:{place}.{extra}"
+
+
+# Additional imports for tests/researcher_methodology_surface/test_experiment_authoring.py.
+
+
+@pytest.fixture(scope="module")
+def authoring_read_host(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[LocalPortfolioWebSession]:
+    """The declaration read door serves one synthetic workspace without scientific mutation."""
+    workspace = tmp_path_factory.mktemp("authoring-read")
+    host = LocalPortfolioWebSession(
+        workspace=workspace,
+        workspace_manifest=_manifest("qa-authoring-read"),
+        resolver=_Resolver(_resolved()),
+    )
+    host.start()
+    try:
+        yield host
+    finally:
+        host.stop()
+
+
+def test_the_declaration_dialect_reads_yaml_core_scalars_and_keeps_dates() -> None:
+    """Declaration YAML follows core scalar rules, keeps dates and round-trips unchanged."""
+
+    text = "a: yes\nb: on\nc: 010\nd: 0x1A\ne: 0o17\nf: true\ng: 1e-10\nh: 2024-03-01\ni: 1_000\n"
+    read = load_safe_yaml_document(text)
+    assert read == {
+        "a": "yes",
+        "b": "on",
+        "c": 10,
+        "d": 26,
+        "e": 15,
+        "f": True,
+        "g": 1e-10,
+        "h": date(2024, 3, 1),
+        "i": "1_000",
+    }
+    assert load_safe_yaml_document(dump_declaration(read)) == read
+    kept = {"v": "010", "w": "true", "x": "1e-10"}
+    assert load_safe_yaml_document(dump_declaration(kept)) == kept
+
+
+def test_a_duplicate_declaration_key_is_refused_at_its_location() -> None:
+    """A declaration key written twice is refused at its source location."""
+    with pytest.raises(yaml.constructor.ConstructorError, match="twice"):
+        load_safe_yaml_document("a: 1\nb: 2\na: 3\n")
+
+
+def test_a_declaration_that_does_not_parse_is_located_on_every_entry(
+    authoring_read_host: LocalPortfolioWebSession,
+) -> None:
+    """The real Host's declaration refusal names its parser's line and column."""
+
+    body = _json(
+        authoring_read_host,
+        "/api/experiments/plan",
+        method="POST",
+        payload={"experiment_yaml": "experiment:\n  kind: [factor\n"},
+    )
+    assert body["failure_code"] == "research_authoring.document_unparsable"
+    assert body["document_location"] == {"line": 3, "column": 1}

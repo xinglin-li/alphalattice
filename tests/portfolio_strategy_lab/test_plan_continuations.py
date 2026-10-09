@@ -639,3 +639,44 @@ def test_a_full_training_plan_keeps_its_hash_and_a_light_one_names_its_lifecycle
     assert (
         model_training.ModelTrainingInputPlan.model_validate(light.model_dump(mode="json")) == light
     )
+
+
+def test_recovery_provenance_is_paired_typed_and_worded() -> None:
+    """A recovery request retains its source pair or refuses it by its own code."""
+
+    from alphalattice.interface.local_application.cli_contract import refusal_words
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+        PortfolioResearchRequestDocument,
+    )
+
+    source = UUID(int=83)
+    context = {"recovery_task_id": str(source), "recovery_task_hash": "a" * 64}
+    document = PortfolioResearchRequestDocument.model_validate(
+        {"operation": "WORKSPACE_PREPARE_PLAN", **context}
+    )
+    request = document.to_operation_request()
+    assert request.recovery_task_id == source and request.recovery_task_hash == "a" * 64
+    assert (
+        PortfolioResearchRequestDocument(operation="WORKSPACE_PREPARE_PLAN").recovery_task_id
+        is None
+    )
+    for field in context:
+        with pytest.raises(ValueError, match=r"portfolio_research\.recovery_context_pair_required"):
+            PortfolioResearchRequestDocument.model_validate(
+                {"operation": "WORKSPACE_PREPARE_PLAN", field: context[field]}
+            )
+    with pytest.raises(ValueError, match=r"portfolio_research\.recovery_task_id_invalid"):
+        PortfolioResearchOperationRequest(
+            operation="WORKSPACE_PREPARE_PLAN",
+            recovery_task_id="not-a-task",
+            recovery_task_hash="a" * 64,
+        )  # type: ignore[arg-type]
+    for code in (
+        "portfolio_research.recovery_context_pair_required",
+        "portfolio_research.recovery_task_id_invalid",
+        "portfolio_research.recovery_request_not_offered",
+    ):
+        words = refusal_words(code)
+        assert "recovery" in words["detail"]
+        assert words["next_action"] == "READ_THE_TASK_AND_CONFIRM_AGAIN"

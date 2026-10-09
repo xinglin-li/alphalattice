@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import json
 from urllib.parse import parse_qs, urlsplit
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import numpy as np
 import pytest
 
+from alphalattice.capabilities.portfolio_backtesting.metrics import evaluate_net_simple_return_path
 from alphalattice.interface.local_application.cli import main
 from tests.portfolio_strategy_lab.activation_review_support import (
     PACKAGE,
     activation_cli,
     publish_activation_review,
 )
+from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.portfolio_strategy_lab.local_web_support import _json
 
 
@@ -98,6 +101,43 @@ def test_every_activation_surface_reads_the_exact_books_published_review(
         )
         assert positioned["review_standing"] == standing
         assert positioned["selected_window_metrics"] == raw["selected_window_metrics"]
+        body = positioned
+        store = live.service.application.ledger
+        execution = store.load_execution(book.report.execution_ledger_hash)
+        economics = store.load_economics(book.report.economic_ledger_hash)
+        net = np.asarray(
+            [
+                economics.net_simple_returns[i]
+                for i, session in enumerate(execution.formation_sessions)
+                if book.report.window_guard.selected_start
+                <= session
+                <= book.report.window_guard.selected_end
+            ],
+            dtype=np.float64,
+        )
+        expected = evaluate_net_simple_return_path(net_simple_returns=net)
+        absences = body["selected_window_metric_absences"]
+        benchmark_absences = {
+            "information_ratio",
+            "benchmark_relative_return",
+            "beta",
+            "tracking_error",
+            "zero_cash_jensen_alpha",
+        }
+        assert set(absences) == benchmark_absences | (
+            {"sortino"} if not np.isfinite(expected.sortino) else set()
+        )
+        assert all(
+            set(absences[name]) == {"status", "reason", "detail"}
+            and absences[name]["status"] == "UNAVAILABLE"
+            and absences[name]["reason"] == "NOT_RECORDED_IN_DECLARED_PATH_REPORT"
+            and absences[name]["detail"]
+            for name in benchmark_absences
+        )
+        if not np.isfinite(expected.sortino):
+            assert absences["sortino"]["reason"] == "ZERO_DOWNSIDE_DEVIATION"
+        assert raw["selected_window_metric_absences"] == absences
+
         offered = activation_cli(live, capsys, "strategy-book", "controls", "--package", PACKAGE)[
             "activation"
         ]
@@ -169,6 +209,24 @@ def test_every_activation_surface_reads_the_exact_books_published_review(
         assert panel["standing"] == raw["standing"]
         assert panel["review_standing"] == standing
         assert panel["metricAbsences"] == raw["selected_window_metric_absences"]
+        for alias, name in (
+            ("annual", "annualized_return"),
+            ("vol", "annualized_volatility"),
+            ("drawdown", "maximum_drawdown"),
+            ("sharpe", "sharpe"),
+            ("sortino", "sortino"),
+        ):
+            if name not in body["selected_window_metrics"]:
+                assert panel["metrics"][alias] is None
+        for alias in (
+            "informationRatio",
+            "benchmarkRelative",
+            "beta",
+            "trackingError",
+            "jensenAlpha",
+        ):
+            assert panel["metrics"][alias] is None
+
         assert (
             len(live.session.task_control_registry.tasks()),
             live.review.artifacts.write_count,
@@ -233,3 +291,23 @@ def test_every_activation_surface_reads_the_exact_books_published_review(
         historical_report = activation_cli(live, capsys, "result", "show", result_hash)
         assert historical_report["review_standing"] == standing
         assert historical_report["standing"]["activation"] == "ACTIVE"
+
+
+def test_an_absent_or_inactive_book_keeps_its_selected_way_on(live):
+    """An absent or inactive book keeps the selected package in its way on."""
+    absent = _json(live, "/api/strategy/activate", method="POST", payload={"task_id": str(uuid4())})
+    assert absent["status"] == "REFUSED", absent
+    assert absent["failure_code"] == "strategy_activation.book_task_absent"
+    assert absent["detail"] and absent["next_requests"] == {"books": {"operation": "CONTROLS"}}
+    idle = _json(
+        live,
+        "/api/strategy/deactivate",
+        method="POST",
+        payload={"strategy_package_id": "RETURN_G6_MU_ONLY"},
+    )
+    assert idle["status"] == "REFUSED" and idle["failure_code"] == "strategy_activation.not_active"
+    package = {"operation": "CONTROLS", "strategy_package_id": "RETURN_G6_MU_ONLY"}
+    assert idle["next_requests"] == {"books": package}
+    code, scored, _ = _cli(live.workspace, "score", "plan", "--package", "RETURN_G6_MU_ONLY")
+    assert code == 2 and scored["next_requests"]["books"] == package, scored
+    assert "--package RETURN_G6_MU_ONLY" in scored["next_commands"]["books"]

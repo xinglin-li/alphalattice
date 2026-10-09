@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shlex
 import sys
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID
+from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.interface.local_application import cli
+from alphalattice.interface.local_application.cli_contract import client_refusal
 from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
@@ -26,6 +30,7 @@ from alphalattice.interface.local_application.native_setup import (
     declare_project,
     files_unavailable,
 )
+from tests.portfolio_strategy_lab.cli_support import _agent_project, _session_cli
 from tests.portfolio_strategy_lab.local_web_support import _json, _manifest, _resolved, _Resolver
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -665,3 +670,164 @@ def test_a_session_bound_by_a_read_names_the_goal_its_first_request_opens(
     ]
     assert [fact.get("reference") for fact in facts] == [None, f"case:{held['goal_hash']}"]
     assert facts[1]["goal_id"] == goal["goal_id"]
+
+
+# Additional imports for test_native_session_binding.py.
+
+
+def test_a_workspace_left_out_is_the_bound_sessions_and_any_other_is_refused_in_words(
+    live: LocalPortfolioWebSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Workspace selection uses this session's binding or answers the named absence."""
+
+    project = _agent_project(tmp_path, project=live.workspace.parent)
+    workspace = live.workspace
+    monkeypatch.chdir(project / "notes" / "deep")
+    run = _session_cli(monkeypatch, capsys)
+    lead, other = str(uuid4()), str(uuid4())
+    code, body = run("task", "list", session=lead)
+    assert (code, body["failure_code"]) == (1, "local_client.workspace_unbound")
+    assert ["alphalattice", "--workspace", "<dir>", "session", "bind"] in [
+        shlex.split(command) for command in re.findall(r"`([^`]+)`", body["detail"])
+    ]
+    assert body["detail"] == client_refusal("local_client.workspace_unbound").detail
+    assert body["next_action"] == client_refusal("local_client.workspace_unbound").next_action
+    code, body = run("--workspace", str(workspace), "session", "bind", session=None)
+    assert (code, body["failure_code"]) == (1, "local_client.session_unnamed")
+    assert not (project / ".codex" / BINDING_NAME).exists()
+    code, body = run("--workspace", str(workspace), "session", "bind", session=lead)
+    assert (code, body["data"]["status"]) == (0, "BOUND")
+    assert "foreground_attachment" not in body["data"], "no hook asks to attach"
+    assert (body["data"]["project"], body["data"]["session_id"]) == (str(project), lead)
+    code, body = run("task", "list", session=other)
+    assert (code, body["failure_code"]) == (1, "local_client.workspace_unbound")
+    assert "alphalattice --workspace <dir>" in body["detail"]
+    assert body["detail"] == client_refusal("local_client.workspace_unbound").detail
+    assert body["next_action"] == client_refusal("local_client.workspace_unbound").next_action
+    code, body = run("--workspace", str(workspace), "session", "bind", session=other)
+    assert (code, body["data"]["status"]) == (0, "BOUND")
+    code, body = run("task", "list", session=other)
+    assert body["outcome"] == "OK", body
+    assert body["context"]["workspace"] == str(workspace.resolve())
+    assert body["context"]["workspace_from"] == "BINDING"
+    code, body = run("task", "list", session=None)
+    assert (code, body["failure_code"]) == (1, "local_client.workspace_unbound")
+    # The bound session's own served workspace, from below the project.
+    code, body = run("task", "list", session=lead)
+    assert body["outcome"] == "OK", body
+    assert body["context"]["workspace"] == str(workspace.resolve())
+    assert body["context"]["workspace_from"] == "BINDING"
+    code, body = run("--workspace", str(tmp_path), "task", "list", session=lead)
+    assert body["context"]["workspace_from"] == "OPTION"
+    assert body["context"]["workspace"] == str(tmp_path.resolve())
+
+
+def test_a_bound_session_is_printed_its_commands_clean_and_any_other_the_full_form(
+    live: LocalPortfolioWebSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Every printed command is clean for a bound session and explicit for any other session."""
+
+    project = _agent_project(tmp_path, project=live.workspace.parent)
+    monkeypatch.chdir(project)
+    run = _session_cli(monkeypatch, capsys)
+    lead = str(uuid4())
+    named = ("--workspace", str(live.workspace))
+    assert run(*named, "session", "bind", session=lead)[0] == 0
+
+    def printed(body: dict[str, Any]) -> list[str]:
+        found: list[str] = []
+        pending: list[object] = [body]
+        while pending:
+            value = pending.pop()
+            if isinstance(value, dict):
+                pending.extend(value.values())
+            elif isinstance(value, list):
+                pending.extend(value)
+            elif isinstance(value, str) and value.startswith("alphalattice "):
+                found.append(value)
+        return found
+
+    # An unknown Task is refused with its next requests, each printed as a command.
+    asked = ("task", "show", str(uuid4()))
+    for line in (asked, (*named, *asked)):
+        code, body = run(*line, session=lead)
+        assert code == 2, body
+        commands = printed(body)
+        assert commands and all("--workspace" not in command for command in commands), commands
+        assert "--workspace" not in json.dumps(body)
+    for session in (str(uuid4()), None):
+        code, body = run(*named, *asked, session=session)
+        commands = printed(body)
+        assert commands and all(
+            command.startswith(f"alphalattice --workspace {live.workspace.resolve()}")
+            or command.startswith(f'alphalattice --workspace "{live.workspace.resolve()}"')
+            or command.startswith(f"alphalattice --workspace '{live.workspace.resolve()}'")
+            for command in commands
+        ), commands
+
+
+def test_session_unbind_removes_this_projects_binding_for_its_session_or_the_person(
+    live: LocalPortfolioWebSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Unbinding affects only this project's selected session and never an outer project."""
+
+    project = _agent_project(tmp_path, project=live.workspace.parent)
+    workspace = live.workspace
+    monkeypatch.chdir(project / "notes" / "deep")
+    run = _session_cli(monkeypatch, capsys)
+    first, second = str(uuid4()), str(uuid4())
+    bind = ("--workspace", str(workspace), "session", "bind")
+    assert run(*bind, session=first)[0] == 0
+    before = (project / ".codex" / BINDING_NAME).read_bytes()
+    code, body = run("session", "unbind", session=second)
+    assert (code, body["failure_code"]) == (
+        2,
+        "local_client.session_unbind_refused:native_bridge.session_mismatch",
+    )
+    assert "other Sessions' bindings stay" in body["detail"]
+    words = client_refusal("local_client.session_unbind_refused:native_bridge.session_mismatch")
+    assert body["detail"] == words.detail
+    assert body["next_action"] == words.next_action
+    assert ["alphalattice", "--workspace", "<dir>", "session", "bind"] in [
+        shlex.split(command) for command in re.findall(r"`([^`]+)`", body["detail"])
+    ]
+    assert run(*bind, session=second)[0] == 0
+    assert (project / ".codex" / BINDING_NAME).read_bytes() == before
+    code, body = run("session", "unbind", session=None)
+    assert (code, body["failure_code"]) == (
+        2,
+        "local_client.session_unbind_refused:native_bridge.binding_ambiguous",
+    )
+    assert "alphalattice session unbind" in body["detail"]
+    assert body["next_action"] == "RESOLVE_THE_NAMED_CAUSE_THEN_UNBIND"
+    code, body = run("session", "unbind", session=second)
+    assert (code, body["data"]["status"], body["data"]["session_id"]) == (0, "DETACHED", second)
+    assert (project / ".codex" / BINDING_NAME).read_bytes() == before
+    code, body = run("session", "unbind", session=second)
+    assert (code, body["failure_code"]) == (
+        2,
+        "local_client.session_unbind_refused:native_bridge.session_mismatch",
+    )
+    code, body = run("session", "unbind", session=first)
+    assert (code, body["data"]["status"], body["data"]["session_id"]) == (0, "DETACHED", first)
+    assert run("session", "unbind", session=first)[1]["data"]["status"] == "NOT_BOUND"
+    assert run(*bind, session=second)[0] == 0
+    code, body = run("session", "unbind", session=None)
+    assert (code, body["data"]["status"], body["data"]["session_id"]) == (0, "DETACHED", second)
+    assert not (project / ".codex" / BINDING_NAME).exists()
+    # An inner project's unbind, by the person, never reaches the outer project's binding.
+    assert run(*bind, session=first)[0] == 0
+    inner = _agent_project(project / "notes")
+    monkeypatch.chdir(inner)
+    code, body = run("session", "unbind", session=None)
+    assert (code, body["data"]["status"], body["data"]["project"]) == (0, "NOT_BOUND", str(inner))
+    assert (project / ".codex" / BINDING_NAME).exists()

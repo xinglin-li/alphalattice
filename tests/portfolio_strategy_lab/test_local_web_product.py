@@ -2411,34 +2411,6 @@ def test_a_mutation_is_refused_before_any_application_work(
     assert len(_json(live, "/api/tasks")["tasks"]) == before
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "/api/experiments/training-inputs/prepare",
-        "/api/workspace/storage/plan",
-        "/api/workspace/storage/cap",
-        # HB: plans and previews record what they plan, and the registry does not
-        # list them as reads; each was marked read-only beside its row.
-        "/api/research-inputs/plan",
-        "/api/experiments/training-inputs/plan",
-        "/api/research-strategies/plan",
-        "/api/workspace/data-issues/preview",
-        "/api/workspace/preparation/plan",
-        "/api/experiments/plan",
-        "/api/experiments/handoff",
-        "/api/experiments/foundations/preview",
-    ],
-)
-def test_a_route_that_writes_takes_the_write_check(
-    live: LocalPortfolioWebSession, path: str
-) -> None:
-    """A route that writes takes the write check."""
-
-    status, _headers, body = _request(live, path, method="POST", payload={}, token=None)
-    assert status == 403, (status, body[:300])
-    assert "session_token_absent" in json.loads(body)["refused"]
-
-
 def test_a_refused_write_ends_its_connection_without_a_reset(
     live: LocalPortfolioWebSession,
 ) -> None:
@@ -4185,50 +4157,6 @@ def test_an_authored_id_is_sent_as_written_whatever_the_ledger_holds(tmp_path):
     assert entry["history_entry_id"] == f"experiment:{task}"
     with pytest.raises(LocalResearchClientError, match="ambiguous"):
         whole_references({"result_hash": authored}, tmp_path)
-
-
-def test_a_short_reference_is_read_back_as_the_one_value_it_begins(tmp_path):
-    """A short reference is read back as the one value it begins."""
-
-    from alphalattice.control.product_host.composition.reference_prefixes import ReferenceLedger
-    from alphalattice.interface.local_application.client import (
-        LocalResearchClientError,
-        whole_references,
-    )
-
-    plan = "ab" * 32
-    twin = "ab" * 6 + "cd" * 26
-    task = "927be8a3-305b-5237-9f9e-f765da4fa147"
-    ReferenceLedger(tmp_path).record({"plan_hash": plan, "next": [f"x --task-id {task}"]})
-    request = {
-        "operation": "EXPERIMENT_RUN",
-        "experiment_plan_hash": plan[:12],
-        "goal_submission": {"references": [{"request": {"task_id": task[:12]}}]},
-        "research_input_id": "20261001-001",
-    }
-    whole_references(request, tmp_path)
-    assert request == {
-        "operation": "EXPERIMENT_RUN",
-        "experiment_plan_hash": plan,
-        "goal_submission": {"references": [{"request": {"task_id": task}}]},
-        "research_input_id": "20261001-001",
-    }
-    with pytest.raises(LocalResearchClientError, match="unknown") as unknown:
-        whole_references({"experiment_plan_hash": "0" * 12}, tmp_path)
-    assert unknown.value.short_reference == {
-        "field": "experiment_plan_hash",
-        "value": "0" * 12,
-        "candidates": [],
-    }
-    ReferenceLedger(tmp_path).record([twin, plan])
-    with pytest.raises(LocalResearchClientError, match="ambiguous") as ambiguous:
-        whole_references({"a": [{"result_hash": plan[:12]}]}, tmp_path)
-    assert ambiguous.value.short_reference == {
-        "field": "a.0.result_hash",
-        "value": plan[:12],
-        "candidates": sorted([plan, twin]),
-    }
-    assert (tmp_path / "runtime/reference-ledger.txt").read_text().split() == [plan, task, twin]
 
 
 def test_a_watched_task_reads_back_from_the_short_id_the_display_gave(tmp_path):

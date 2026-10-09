@@ -41,8 +41,32 @@ def test_an_installed_strategy_is_served_by_the_running_host_without_a_restart(
     package_id = BROAD_FEATURE_PACKAGE.strategy_id
     with live:
         assert not live.operations.installed()
-        before = _cli(live, capsys, "strategy-book", "controls", "--package", package_id)
-        assert before["failure_code"] == "research_workspace.strategy_not_installed", before
+        file = tmp_path / "book.json"
+        file.write_text("{}", encoding="utf-8")
+        for action in ("controls", "preview", "run"):
+            code = main(
+                [
+                    "--workspace",
+                    str(live.workspace),
+                    "--view",
+                    "full",
+                    "strategy-book",
+                    action,
+                    *([] if action == "controls" else ["--file", str(file)]),
+                ],
+                serve=lambda _: 99,
+            )
+            before = json.loads(capsys.readouterr().out)
+            assert (code, before["failure_code"]) == (
+                2,
+                "research_workspace.strategy_not_installed",
+            )
+            assert before["failure_code"] == "research_workspace.strategy_not_installed", before
+            assert before["detail"]
+            assert before["data"]["next_action"] == "PREPARE_AND_INSTALL_A_RESEARCH_STRATEGY"
+            assert before["next_requests"]["strategies"] == {
+                "operation": "RESEARCH_STRATEGY_CONTROLS"
+            }
         relative = f"artifacts/research-strategy-inputs/p/portfolio-strategy-lab/{CATEGORY}/a.json"
         (live.workspace / relative).parent.mkdir(parents=True)
         (live.workspace / relative).write_text("{}", encoding="utf-8")
