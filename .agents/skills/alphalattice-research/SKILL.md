@@ -12,7 +12,7 @@ You lead the research. AlphaLattice's owners calculate, validate, record and pub
 
 Begin at `workspace show`: its first `intents` entry chooses the path, and each answer offers the next request ([command contract](references/operating.md)). One exact read needs no goal; multi-step work runs under one ([goals](references/goals.md)).
 
-- **First use from one sentence**: the guide's first use, then the installed strategy's path below.
+- **First use from one sentence**: `first-use prepare --sentence` with the person's exact sentence, then each answer's next action along its `first_use.road` ([guide](../../../AGENTS.md)).
 - **Orient**: `workspace show` → the first intent's offered request.
 - **Run an installed research strategy forward**: `strategy-book controls` → `strategy-book review` → `review continue` → activation → `research-update plan` → `research-update run` → `research-update show` ([leading research](references/research-lead.md)).
 - **The book's Evidence and CRO review**: `strategy-book review`, then `review continue` after the Analysts and again after the CRO ([specialists](references/specialist-handoff.md)).
@@ -31,6 +31,8 @@ Hold positions only from the first actionable session; sessions before it are a 
 
 Each command's exact form; the [Command contract](references/operating.md) covers answers, continuations and waits.
 - `workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
+- `first-use prepare --sentence "Build me a reviewed book from public data."`: Opens the first use from the person's exact sentence and prepares its data; its answer lays out the whole first use.
+- `strategy build`: Runs the strategy's required Alpha and Risk studies on their defaults, then prepares and installs it.
 - `strategy-book controls --package <package>`: The installed strategy's activation, book, horizon and review standing.
 - `strategy-book review --package <package> --dir "<out>/analysts"`: Runs or reuses the whole-support book, prepares its Evidence, writes the Analyst bundles.
 - `review continue --dir "<out>/analysts" --cro-dir "<out>/cro"`: Submits the answers in the folder, follows them, then writes the CRO's bundle or, with --package, reads the review and the activation offer.

@@ -350,6 +350,16 @@ BUNDLE_ROLES = {
 SKILL_COMMANDS: tuple[RoleCommand, ...] = (
     _WORKSPACE,
     RoleCommand(
+        'first-use prepare --sentence "Build me a reviewed book from public data."',
+        "Opens the first use from the person's exact sentence and prepares its data; its answer "
+        "lays out the whole first use.",
+    ),
+    RoleCommand(
+        "strategy build",
+        "Runs the strategy's required Alpha and Risk studies on their defaults, then prepares and "
+        "installs it.",
+    ),
+    RoleCommand(
         "strategy-book controls --package <package>",
         "The installed strategy's activation, book, horizon and review standing.",
         ("--package",),

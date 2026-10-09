@@ -70,6 +70,12 @@ CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     ("schema", "show"): "A command's request schema (each branch of a two-operation command), "
     "its answer's and a YAML template.",
     ("activity", "wait"): "Wait, with no timer, for a Task or a goal's work to end or need you.",
+    ("first-use", "prepare"): "Open the first use from the person's sentence and prepare its "
+    "data under its delegation, following each Task to its end; the answer lays out the whole "
+    "first use. The first stop is the answer.",
+    ("strategy", "build"): "Run the research strategy's required Alpha and Risk studies on the "
+    "workspace's one input with their defaults, one at a time, then prepare and install the "
+    "strategy, following each Task to its end; the first stop is the answer.",
     ("strategy-book", "review"): "Run or reuse an installed strategy's whole-support book, "
     "prepare its Evidence and write every Analyst bundle, following each Task to its end; "
     "the first stop is the answer.",
@@ -91,7 +97,9 @@ CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
 }
 """The client's own commands, answered by the client itself, as `serve` and `request` are; every
 other command is an operation of the registry (V266, OP1)."""
-"""The client's own commands beside the operations: what the Host serves that is not one."""
+
+AGENT_VERBS: Final = {verb.words: name for name, verb in client.AGENT_VERBS.items()}
+"""The client's agent verbs by their words, each with the name its `run` knows it by."""
 
 OFFLINE_COMMANDS: Final = frozenset(
     {
@@ -297,6 +305,14 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             help="With --task: also return as the Task verifies each stage (STAGE_VERIFIED), a "
             "coverage run's unit among them.",
         )
+    elif (noun, verb) == ("first-use", "prepare"):
+        child.add_argument(
+            "--sentence",
+            dest="objective",
+            required=True,
+            help="The person's exact sentence, the first use's objective; the same sentence "
+            "again reuses its goal.",
+        )
     elif (noun, verb) == ("strategy-book", "review"):
         child.add_argument(
             "--package",
@@ -310,18 +326,6 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             type=Path,
             required=True,
             help="A folder for the Analyst bundles; each unit's is a new folder inside it.",
-        )
-        child.add_argument(
-            "--max-wait",
-            type=float,
-            help="The only timer, for a command run under a cap; omit it to follow each Task.",
-        )
-        child.add_argument(
-            "--notify",
-            choices=("codex-queue",),
-            help="At the first running Task, register its wake with the Host for this Codex "
-            "thread (CODEX_THREAD_ID) and return; the wake names this command to run again, "
-            "which reuses each finished step.",
         )
     elif (noun, verb) == ("review", "continue"):
         child.add_argument(
@@ -341,18 +345,6 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             "--package",
             dest="strategy_package_id",
             help="After the CRO's answer: the installed strategy whose activation offer to read.",
-        )
-        child.add_argument(
-            "--max-wait",
-            type=float,
-            help="The only timer, for a command run under a cap; omit it to follow each Task.",
-        )
-        child.add_argument(
-            "--notify",
-            choices=("codex-queue",),
-            help="At the first running Task, register its wake with the Host for this Codex "
-            "thread (CODEX_THREAD_ID) and return; the wake names this command to run again, "
-            "which reuses each finished step.",
         )
     elif (noun, verb) == ("model", "scaffold"):
         given = child.add_mutually_exclusive_group(required=True)
@@ -403,6 +395,19 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             dest="backup_root",
             type=Path,
             help="The backup root, when not ALPHALATTICE_BACKUP_ROOT or the default.",
+        )
+    if (noun, verb) in AGENT_VERBS:
+        child.add_argument(
+            "--max-wait",
+            type=float,
+            help="The only timer, for a command run under a cap; omit it to follow each Task.",
+        )
+        child.add_argument(
+            "--notify",
+            choices=("codex-queue",),
+            help="At the first running Task, register its wake with the Host for this Codex "
+            "thread (CODEX_THREAD_ID) and return; the wake names this command to run again, "
+            "which reuses each finished step.",
         )
 
 
@@ -674,25 +679,12 @@ def _field_help(name: str, required: set[str] | frozenset[str]) -> str | None:
 
 
 def _client_fields(args: argparse.Namespace) -> dict[str, Any]:
-    """The client's own waiter or book review, in the fields the research client's `run`
+    """The client's own waiter or agent verb, in the fields the research client's `run`
     reads."""
-    if args.client_command == ("review", "continue"):
-        return {
-            "command": "review-continue",
-            "bundle_root": args.bundle_root,
-            "cro_root": args.cro_root,
-            "strategy_package_id": args.strategy_package_id,
-            "max_wait": args.max_wait,
-            "notify": args.notify,
-        }
-    if args.client_command == ("strategy-book", "review"):
-        return {
-            "command": "book-review",
-            "strategy_package_id": args.strategy_package_id,
-            "bundle_root": args.bundle_root,
-            "max_wait": args.max_wait,
-            "notify": args.notify,
-        }
+    if args.client_command in AGENT_VERBS:
+        name = AGENT_VERBS[args.client_command]
+        fields = (*(field for _flag, field in client.AGENT_VERBS[name].fields), "max_wait")
+        return {"command": name, **{field: getattr(args, field) for field in (*fields, "notify")}}
     return {
         "command": "activity-wait",
         "task_id": args.task_id,

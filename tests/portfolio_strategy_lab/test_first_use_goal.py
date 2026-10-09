@@ -318,6 +318,9 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         code, preview = send(issues["next_requests"][choice])
         assert preview["confirmation"] == "FIRST_USE_DELEGATION", preview
         assert preview["executors"]["delegated_confirmation"] == delegation
+        # The list already offers that confirm: the agent needs no preview to decide.
+        confirm = issues["next_requests"][choice.replace("preview:", "confirm:", 1)]
+        assert confirm == preview["next_requests"]["confirm"]
 
         # Another agent, outside the goal, may not decide it.
         code, refused = send(preview["next_requests"]["confirm"], session=OTHER_SESSION)

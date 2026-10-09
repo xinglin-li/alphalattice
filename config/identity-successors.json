@@ -11866,6 +11866,13 @@
    "successor": "3d87c7d6907fc5a7e07d26eaca52e4deaa1928e65a37ba239962ff3b21fe3f87",
    "change": "A Risk recovery carries its support range and formation history (2026-10-09)",
    "reason": "The strategy controls name the Risk history a book's decomposition needs and count a Risk study as covering only with enough history, so the first Risk study is the right one; no value moves."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "3d87c7d6907fc5a7e07d26eaca52e4deaa1928e65a37ba239962ff3b21fe3f87",
+   "successor": "6795836b3da658306d4705a57ba0c1be324e54227b350b17aece35e7aa72742d",
+   "change": "A first use runs from one sentence and a strategy builds in one command (2026-10-09)",
+   "reason": "The strategy controls fill the plan's declaration once its parents are determined and list each covering Risk study once; the preparation computes nothing new and no value moves."
   }
  ]
 }

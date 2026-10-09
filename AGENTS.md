@@ -44,26 +44,29 @@ its first research request opens a goal when it holds none; commands then omit
 
 ## Run the first use from the person's sentence
 
-Open the workspace's one `FIRST_USE` goal with the person's exact sentence and
-the criterion that completes it, then plan the preparation:
-
-```yaml
-title: First use
-kind: FIRST_USE
-objective: "Build me a reviewed book from public data."
-criteria: [{criterion_id: book, text: "A reviewed book stands for the person."}]
-```
+Start it with the person's exact sentence:
 
 ```powershell
-alphalattice goal open --file "<out>/first-use.yaml" --output "<out>/first-use-open.json"
-alphalattice preparation plan --output "<out>/preparation.json"
+alphalattice first-use prepare --sentence "Build me a reviewed book from public data." --output "<out>/first-use.json"
 ```
 
-Then follow the plan's `next_action`. An admitted plan with an offered confirm is
-confirmed: send its offered request. The network setting and the offline switch
-matter only when an answer refuses for them, and that refusal names its step;
-take it under the goal's delegation. Never restart the Host or serve a second
-one for network access, and never ask the person to.
+It opens the workspace's one `FIRST_USE` goal, prepares the data under the goal's
+delegation and follows each Task. Its answer's `first_use.road` is the whole first
+use, one command per step, and each answer names its next action. Its
+`ask_now` is what only the person decides that the first use will need: ask for it
+at once, in one line. A stop names its way on: decide each data issue with its
+offered `confirm`, or take the refused step under the delegation, then run the same
+command again. The network setting and the offline switch matter only when an
+answer refuses for them. Never restart the Host or serve a second one for network
+access, and never ask the person to.
+
+On Claude Code, run every `--wait`, `activity wait` and agent verb (`first-use
+prepare`, `strategy build`, `strategy-book review`, `review continue`) with the
+Bash tool's `run_in_background`, then act on its completion notice; never read its
+output or check its Task before the notice. On Codex, add `--notify codex-queue`:
+at its first running Task the command registers the Host's wake and returns, and
+you end your turn; the wake names the command to run again, which reuses what is
+done and goes on.
 
 While the goal is open, for 24 hours from opening, it delegates to you: opening
 the preparation's network, confirming the preparation and its resumes, deciding
@@ -73,9 +76,9 @@ they deactivate the book in one click on **Portfolio**. Accepted submission,
 abandonment or expiry ends the delegation and closes the network it opened. The
 `FIRST_USE` declaration is never revised.
 
-The answers then lead through the research strategy's controls, its required
-whole-support Alpha and Risk studies, installation, the whole-support book, its
-Evidence and CRO review and its activation offer. Reuse completed studies.
+`strategy build` then runs the research strategy's required whole-support Alpha
+and Risk studies and installs it, reusing completed studies; the book, its
+Evidence and CRO review and its activation offer follow on the road.
 Training prepares the light lifecycle by default, one seed of each model
 vintage, as its answers' `model_lifecycle` says; tell the person so. When they
 ask for the full one, plan it by name with `training plan --input <input-id>
@@ -103,10 +106,7 @@ The first runs or reuses the whole-support book and writes every Analyst bundle;
 start one Evidence Analyst per bundle. The second submits their answers and
 writes the CRO's bundle; the third publishes the review and reads the activation
 offer. Each stops at the first answer that needs another step; follow its
-`next_action`. On Claude Code, run them in the background. On Codex, add
-`--notify codex-queue`: at its first running Task the command registers the
-Host's wake and returns, and you end your turn; the wake names the command to
-run again, which reuses what is done and goes on.
+`next_action`. Wait for each as the first use says.
 
 ## Run an installed strategy forward
 

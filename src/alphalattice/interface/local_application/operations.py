@@ -1185,6 +1185,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
             ("workspace", "The workspace: its inputs, recent studies and Tasks, what flows need."),
             ("session", "An agent session's binding to its workspace: bind, unbind, usage."),
             ("goal", "A goal an agent works for: open or take it, note it, submit it."),
+            ("first-use", "The first use from the person's sentence: its goal and its data."),
             ("task", "A Task, the work a command started: show it, wait on it, cancel it."),
             ("activity", "The activity feed, and a wait on a Task or a goal."),
             ("decision", "Everything waiting on a person, each with its request."),

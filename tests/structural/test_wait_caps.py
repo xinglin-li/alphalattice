@@ -42,14 +42,12 @@ def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:
         "_wait_for_goal",
         "_wait",
         "_chain",
-        "_rerun",
     }, capped
     assert sleeps == {"_sleep_before_read"}, sleeps
     # A Codex wake is sent by the Host from the Task's journal, never by the client. An agent
     # verb's chain (AGENT-TIME verbs 2 and 3) takes one deadline from its cap in `_chain` and
     # waits only through `_follow`, in its `followed` method, reviewed with the deadline owners.
-    # `_rerun` writes the cap into the verb's re-run command for its wake and waits nothing.
-    for name in capped - {"_sleep_before_read", "_wait", "_chain", "_rerun"}:
+    for name in capped - {"_sleep_before_read", "_wait", "_chain"}:
         assert "_sleep_before_read" in calls[name], name
         if name != "_read_through_restarts":
             assert "_read_through_restarts" in calls[name], name

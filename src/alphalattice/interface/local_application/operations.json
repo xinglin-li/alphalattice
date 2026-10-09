@@ -2318,6 +2318,10 @@
      "A goal an agent works for: open or take it, note it, submit it."
     ],
     [
+     "first-use",
+     "The first use from the person's sentence: its goal and its data."
+    ],
+    [
      "task",
      "A Task, the work a command started: show it, wait on it, cancel it."
     ],

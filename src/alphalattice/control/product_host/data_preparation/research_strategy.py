@@ -289,8 +289,8 @@ class ResearchStrategyPreparation:
         """Project installed preparation declarations and exact completed parent selections.
 
         Returns:
-            Required component set, completed Alpha/Risk task choices and an explicit authored PLAN
-            request; no Portfolio is run.
+            Required component set, completed Alpha/Risk task choices and the PLAN request, its
+            declaration filled once its parents are determined; no Portfolio is run.
         """
         rows = self.list_experiments()["experiments"]
         completed = [
@@ -330,6 +330,24 @@ class ResearchStrategyPreparation:
                 except (KeyError, OSError, ValueError):
                     continue
             covering.append(risk)
+        # One completed study per component and one covering Risk study, on one input, are the
+        # plan's only possible parents.
+        parents = [[row for row in alphas if row["component_recipe_id"] == c] for c in required]
+        declaration = (
+            {
+                "input_binding_hash": covering[0].get("input_binding_hash"),
+                "alpha_task_ids": [rows[0]["task_id"] for rows in parents],
+                "risk_task_id": covering[0]["task_id"],
+            }
+            if windows
+            and len(covering) == 1
+            and all(len(rows) == 1 for rows in parents)
+            and len(
+                {row.get("input_binding_hash") for rows in [*parents, covering] for row in rows}
+            )
+            == 1
+            else None
+        )
         return {
             "status": "AVAILABLE",
             "declaration_schema": FrozenPortfolioPreparationRequest.model_json_schema(),
@@ -341,11 +359,12 @@ class ResearchStrategyPreparation:
             # The window the Risk study's `experiment.sessions` must cover, per calibrated Alpha
             # study; empty until one completes (V533, FLOW-3).
             "risk_windows": windows,
-            # The declaration is the reader's to write (V136).
+            # The declaration is filled when its parents are determined, else the reader's to
+            # write (V136).
             "next_requests": {
                 **self._component_routes(missing, input_binding_hash),
                 **({} if covering else {"risk": self._risk_route(input_binding_hash)}),
-                "plan": {"operation": "RESEARCH_STRATEGY_PLAN", "experiment_document": None},
+                "plan": {"operation": "RESEARCH_STRATEGY_PLAN", "experiment_document": declaration},
             },
             "claim": (
                 "Select exact completed parents on the same input; "
@@ -950,8 +969,8 @@ class ResearchStrategyPreparation:
             task_id: Exact succeeded preparation task.
 
         Returns:
-            Exact reused or newly installed authority, package identities and required service
-            restart.
+            Exact reused or newly installed authority, its package identities and each package's
+            book controls, which the running Host serves at once.
 
         Raises:
             ValueError: Cleanup, completion, full outcomes, parent promotion or exact
@@ -976,6 +995,23 @@ class ResearchStrategyPreparation:
                 .as_posix()
             )
             binding = ResearchWorkspaceArtifact(artifact_key=ARTIFACT_KEY, relative_path=relative)
+            # Validate installation before the atomic manifest publication.
+            packages = install_frozen_strategies(
+                artifacts={ARTIFACT_KEY: self.session.workspace / relative}
+            )
+            served = {
+                "strategy_package_ids": [v.package.strategy_id for v in packages],
+                "next_action": "READ_THE_PACKAGE_CONTROLS",
+                # The running Host serves the package at once: each package's whole-support
+                # book, the book whose review its activation reads.
+                "next_requests": {
+                    f"books:{v.package.strategy_id}": {
+                        "operation": "CONTROLS",
+                        "strategy_package_id": v.package.strategy_id,
+                    }
+                    for v in packages
+                },
+            }
             current = read_research_workspace_manifest(self.session.workspace)
             if (
                 current.strategy_installation == "NON_DEFAULT_RESEARCH"
@@ -985,6 +1021,7 @@ class ResearchStrategyPreparation:
                 return {
                     "status": "REUSED_EXACT",
                     "authority_hash": authority.authority_hash,
+                    **served,
                 }
             if (
                 current.strategy_installation not in {"NOT_INSTALLED", "NON_DEFAULT_RESEARCH"}
@@ -1006,10 +1043,6 @@ class ResearchStrategyPreparation:
                 strategy_artifacts=(binding,), strategy_installation="NON_DEFAULT_RESEARCH"
             )
             updated = ResearchWorkspaceManifest.create(**values)
-            # Validate installation before the atomic manifest publication.
-            packages = install_frozen_strategies(
-                artifacts={ARTIFACT_KEY: self.session.workspace / relative}
-            )
 
             def install(now: ResearchWorkspaceManifest) -> ResearchWorkspaceManifest:
                 # The gate is held since `current` was read, so it is the manifest the
@@ -1027,20 +1060,10 @@ class ResearchStrategyPreparation:
                 "status": "INSTALLED_NON_DEFAULT_RESEARCH",
                 "authority_hash": authority.authority_hash,
                 "workspace_manifest_hash": updated.manifest_hash,
-                "strategy_package_ids": [v.package.strategy_id for v in packages],
                 "default_strategy_package_id": None,
                 "current_scoring_installed": False,
                 "previous_non_default_authority_hash": previous_non_default,
-                "next_action": "READ_THE_PACKAGE_CONTROLS",
-                # The running Host serves the package at once: each package's whole-support
-                # book, the book whose review its activation reads.
-                "next_requests": {
-                    f"books:{v.package.strategy_id}": {
-                        "operation": "CONTROLS",
-                        "strategy_package_id": v.package.strategy_id,
-                    }
-                    for v in packages
-                },
+                **served,
             }
 
 

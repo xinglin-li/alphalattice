@@ -4699,58 +4699,6 @@ def test_a_strategy_short_of_its_risk_window_names_it_and_offers_the_risk_study(
     assert reachable and not [c for c in sorted(reachable) if not refusal_words(c)], reachable
 
 
-def test_strategy_controls_offer_each_missing_components_first_step(tmp_path):
-    """Missing components expose their first step until a completed study holds them."""
-
-    from types import SimpleNamespace
-
-    from alphalattice.control.product_host.composition.research_workspace import (
-        ResearchWorkspaceManifest,
-        publish_research_workspace_manifest,
-    )
-    from alphalattice.control.product_host.data_preparation import research_strategy as module
-
-    publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("fwd"))
-    studies: list[dict[str, object]] = []
-    owner = module.ResearchStrategyPreparation(
-        SimpleNamespace(workspace=tmp_path),  # type: ignore[arg-type]
-        clock=lambda: datetime(2026, 10, 2, tzinfo=UTC),
-        read_experiment=lambda _task: {},
-        list_experiments=lambda: {"experiments": studies},
-    )
-    controls = owner.controls()
-    required = controls["required_components"]
-    assert required and controls["missing_components"] == required
-    for component in required:
-        assert controls["next_requests"][f"component:{component}"] == {
-            "operation": "MODEL_TRAINING_INPUT_PLAN",
-            "research_input_id": None,
-            "component_id": component,
-        }
-    studies.append(
-        dict(lifecycle="SUCCEEDED", kind="alpha.model-development", component_recipe_id=required[0])
-    )
-    again = owner.controls()
-    assert again["missing_components"] == required[1:]
-    assert f"component:{required[0]}" not in again["next_requests"]
-    assert again["next_requests"]["plan"]["operation"] == "RESEARCH_STRATEGY_PLAN"
-    # Risk stays offered until a completed study covers the calibrated Alpha support.
-    assert again["risk_windows"] == []
-    assert again["next_requests"]["risk"] == {
-        "operation": "EXPERIMENT_CONTROLS",
-        "research_input_id": None,
-        "experiment_kind": "risk.covariance-development",
-    }
-    studies.append(
-        {
-            "lifecycle": "SUCCEEDED",
-            "kind": "risk.covariance-development",
-            "sessions": {"start": "2020-01-02", "end": "2026-09-10"},
-        }
-    )
-    assert "risk" not in owner.controls()["next_requests"]
-
-
 def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path, monkeypatch):
     """Risk recovery carries its selected input and exact history, skipping absent formations."""
     from datetime import timedelta

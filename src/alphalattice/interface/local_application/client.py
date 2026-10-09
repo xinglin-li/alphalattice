@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Final, Literal, Self
+from typing import Any, Final, Literal, NamedTuple, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from alphalattice.interface.local_application.cli_contract import (
@@ -31,6 +31,7 @@ from alphalattice.interface.local_application.cli_contract import (
     WORKSPACE_HEADER,
     Outcome,
     agent_provenance_headers,
+    agent_session,
     choices,
     client_refusal,
     command,
@@ -2067,11 +2068,24 @@ def _entry_of(client: LocalResearchClient) -> tuple[str, ...]:
     return entry(client.workspace, _kept_options(client))
 
 
-_FOLLOW_RETURNS = (
-    "when the Task ends, needs a decision or recovery, or is deferred; let your shell wait or "
-    "run this in the background, and do not poll it"
-)
-"""What a follow tells the agent at its start (AGENT-TIME R1)."""
+_FOLLOW_RETURNS = "when the Task ends, needs a decision or recovery, or is deferred; "
+"""What a follow tells the agent at its start (AGENT-TIME R1), before its host's way to wait."""
+
+_HOST_WAITS: Final = {
+    "claude-code": "on Claude Code, run this command with the Bash tool's run_in_background and "
+    "act on its completion notice; never read its output or check its Task before the notice",
+    "codex": "on Codex, register the wake with --notify codex-queue (activity wait --task, or an "
+    "agent verb) and end your turn; the Host's queued line wakes you",
+}
+"""Each agent host's own way to wait, by the vendor `agent_session` names."""
+
+
+def _follow_returns() -> str:
+    """When a follow returns and how this host waits for it, never by polling."""
+    session = agent_session(os.environ)
+    way = _HOST_WAITS.get(session[0]) if session else None
+    way = way or "let your shell wait or run this in the background"
+    return f"{_FOLLOW_RETURNS}{way}, and do not poll it"
 
 
 def _follow(
@@ -2149,7 +2163,9 @@ def _follow(
     held = int(body.get("verified_stage_count") or 0)
     # Said once, as the follow begins: this call is the wait, and the agent's own tool should
     # not return and poll (AGENT-TIME R1: AX's agents re-checked running waits 104 times).
-    print(json.dumps({"follow": document, "returns": _FOLLOW_RETURNS}), file=sys.stderr, flush=True)
+    print(
+        json.dumps({"follow": document, "returns": _follow_returns()}), file=sys.stderr, flush=True
+    )
     delay, last, current = 0.25, None, body
     # An incident open when the follow began is not news; a new one wakes it (GY2, WK).
     known = (body.get("incident") or {}).get("key")
@@ -2439,18 +2455,14 @@ def _rerun(args: argparse.Namespace) -> list[str]:
     """This agent verb's own command line, to send again when its wake comes: the same
     controls and `--notify`, its `--output` moved to the next free `<name>.wake<n>` path so
     that no saved answer is overwritten."""
-    book = args.command == "book-review"
-    line = ["strategy-book", "review"] if book else ["review", "continue"]
-    for flag, value in (
-        ("--package", args.strategy_package_id),
-        ("--dir", Path(args.bundle_root).resolve()),
-        ("--cro-dir", None if book or args.cro_root is None else Path(args.cro_root).resolve()),
-        ("--max-wait", args.max_wait),
-        ("--notify", args.notify),
-        ("--output", _next_output(args.output) if args.output else None),
-    ):
+    verb = AGENT_VERBS[args.command]
+    line = list(verb.words)
+    for flag, name in (*verb.fields, ("--max-wait", "max_wait"), ("--notify", "notify")):
+        value = getattr(args, name, None)
         if value is not None:
-            line += [flag, str(value)]
+            line += [flag, str(Path(value).resolve() if isinstance(value, Path) else value)]
+    if args.output:
+        line += ["--output", str(_next_output(args.output))]
     return line
 
 
@@ -2684,6 +2696,287 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
     }
 
 
+_FIRST_USE: Final = {
+    "title": "First use",
+    "kind": "FIRST_USE",
+    "criteria": [{"criterion_id": "book", "text": "A reviewed book stands for the person."}],
+}
+"""The first use's declaration beside the person's sentence, as the guide writes it."""
+
+_BOOK_REVIEW: Final = (
+    "strategy-book",
+    "review",
+    "--package",
+    "<package>",
+    "--dir",
+    "<out>/analysts",
+)
+"""The book review's command, its package filled once it is known."""
+
+_FIRST_USE_ROAD: Final = (
+    (
+        "prepare",
+        ("first-use", "prepare", "--sentence", "<sentence>"),
+        "Opens the first use and prepares its data; its data issues are yours to decide.",
+    ),
+    (
+        "strategy",
+        ("strategy", "build"),
+        "Runs the strategy's required Alpha and Risk studies on their defaults and installs it.",
+    ),
+    (
+        "book",
+        _BOOK_REVIEW,
+        "Runs the whole-support book and writes each Analyst's bundle; start one Evidence "
+        "Analyst per bundle.",
+    ),
+    (
+        "review",
+        ("review", "continue", "--dir", "<out>/analysts", "--cro-dir", "<out>/cro"),
+        "Submits the Analysts' answers and writes the CRO's bundle; start the CRO.",
+    ),
+    (
+        "publish",
+        ("review", "continue", "--dir", "<out>/cro", "--package", "<package>"),
+        "Publishes the review and reads the activation offer: once the book is REVIEWED, its "
+        "activation and then its offered update are yours under the first use.",
+    ),
+)
+"""The whole first use in order: each step's command and what it leaves to the agent."""
+
+_FIRST_USE_ASK_NOW: Final = (
+    "Unless this workspace's Evidence is set up already, the book's review needs the person's "
+    "consent to acquire SEC filings from the official endpoints, their contact in "
+    "SEC_USER_AGENT and the retrieval model's download. Ask for it now, in one line, so the "
+    "review never waits for it.",
+)
+"""What only the person decides that the first use will need, asked at its start."""
+
+_NOT_RECORDED: Final = (
+    "This workspace was prepared before, so its first use came then: this sentence is not "
+    "recorded as a goal, and no step is delegated under it."
+)
+"""What a first use asked of an already prepared workspace says of its sentence."""
+
+
+def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
+    """`first-use prepare`: the first use opened from the person's sentence and its data
+    prepared under its delegation, in one call, its answer the plan of the whole first use.
+
+    It opens the workspace's FIRST_USE goal with the sentence (the same sentence again reuses
+    it), resumes a preparation stopped on data issues once every decision is confirmed, else
+    plans the preparation, confirms it and follows its Task. The first answer that stops it is
+    the answer: data issues to decide, each option's confirm offered; a refused or waiting
+    decision; a network refusal with its request; any refusal. Every answer carries
+    ``first_use.road``, the whole first use as its commands, and ``ask_now``, what only the
+    person decides that it will need.
+    """
+    chain = _chain(client, args, "first_use")
+    answer, note = _prepared(chain, str(args.objective))
+    prefix = _entry_of(client)
+    road = [
+        {"step": step, "command": join([*prefix, *words], shell()), "does": does}
+        for step, words, does in _FIRST_USE_ROAD
+    ]
+    answer[chain.name] = {
+        **answer.get(chain.name, {"steps": chain.steps}),
+        "road": road,
+        "ask_now": list(_FIRST_USE_ASK_NOW),
+        **({"sentence": note} if note else {}),
+    }
+    if answer.get("status") == "ALREADY_PREPARED":
+        answer.update(next_action="BUILD_THE_STRATEGY", next_command=road[1]["command"])
+    return answer
+
+
+def _prepared(chain: _Chain, sentence: str) -> tuple[dict[str, Any], str | None]:
+    """The first use's goal and its prepared data: the plan that says ALREADY_PREPARED, or the
+    first answer that stops on the way; beside it, what became of the sentence if it was not
+    recorded."""
+    opened = chain.send(
+        "goal",
+        {"operation": "GOAL_OPEN", "goal_declaration": {**_FIRST_USE, "objective": sentence}},
+    )
+    note = None
+    if opened.get("goal_id"):
+        chain.client.goal = str(opened["goal_id"])
+    elif opened.get("failure_code") == "goal.first_use_after_preparation":
+        note = _NOT_RECORDED
+    else:
+        return chain.stop("goal", opened), None
+    issues = chain.send("issues", {"operation": "DATA_ISSUES"})
+    resumes = [
+        request
+        for name, request in (issues.get("next_requests") or {}).items()
+        if name.startswith("continue:") and request.get("operation") == "WORKSPACE_PREPARE_PLAN"
+    ]
+    # A stopped preparation resumes once every decision is confirmed; an open, refused or
+    # waiting one, or two stopped preparations, are the agent's to judge.
+    decided = all(
+        issue.get("status") == "CONFIRMED_PENDING_REVALIDATION"
+        for issue in issues.get("issues", [])
+    )
+    if resumes and (len(resumes) > 1 or not decided):
+        return chain.stop("issues", issues), note
+    plan = chain.send("plan", resumes[0] if resumes else {"operation": "WORKSPACE_PREPARE_PLAN"})
+    if plan.get("status") == "ALREADY_PREPARED":
+        return plan, note
+    confirm = chain.offered(plan, "confirm")
+    if confirm is None and outcome_of(plan) != "PENDING":
+        return chain.stop("plan", plan), note
+    started = plan if confirm is None else chain.send("confirm", confirm)
+    if (ended := chain.followed("preparation", started)) is not None:
+        if "data.truth_review_required" in {
+            ended.get("failure_code"),
+            ended.get("latest_failure_code"),
+        }:
+            return chain.stop("issues", chain.send("issues", {"operation": "DATA_ISSUES"})), note
+        return ended, note
+    prepared = chain.send("prepared", {"operation": "WORKSPACE_PREPARE_PLAN"})
+    if prepared.get("status") != "ALREADY_PREPARED":
+        return chain.stop("prepared", prepared), note
+    return prepared, note
+
+
+_ROUNDS: Final = 4
+"""The strategy controls read at most this often: training, the Alpha studies, the Risk study
+once its window is known, and the plan."""
+
+
+def _build_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
+    """`strategy build`: the research strategy's required studies run on their defaults, and the
+    strategy prepared and installed from them, in one call.
+
+    Each round reads the strategy controls and takes every step they offer in turn, each
+    started and followed to its end: training and the strategy's preparation are admitted
+    only beside no unfinished Task, and the Host runs one Task at a time. The rounds are the
+    missing components' training inputs, then each component's Alpha study, then, once a
+    calibrated study names its window, the Risk study, each planned from its own template. Then
+    the strategy's plan from the declaration the controls fill, its preparation and its
+    installation. Finished steps are reused. The first answer that stops it is the answer, the
+    studies started so far beside it; an agent that would choose a model, a window or a parent
+    sends the steps itself.
+    """
+    chain = _chain(client, args, "strategy_build")
+    studies: list[dict[str, Any]] = []
+    answer = _built(chain, studies)
+    if chain.name in answer:
+        answer[chain.name]["studies"] = studies
+    return answer
+
+
+def _built(chain: _Chain, studies: list[dict[str, Any]]) -> dict[str, Any]:
+    """The rounds, the plan, the preparation and the installation; `studies` records each study
+    as it starts."""
+    controls: dict[str, Any] = {}
+    for _round in range(_ROUNDS):
+        controls = chain.send("controls", {"operation": "RESEARCH_STRATEGY_CONTROLS"})
+        routes = [
+            request
+            for name, request in (controls.get("next_requests") or {}).items()
+            if name.startswith("component:") or (name == "risk" and controls.get("risk_windows"))
+        ]
+        if not routes:
+            break
+        for route in routes:
+            started = _started(chain, route, studies, controls.get("risk_windows") or [])
+            if chain.name in started:
+                return started
+            if (ended := chain.followed("task", started)) is not None:
+                return ended
+    else:
+        return chain.stop("controls", controls)
+    plan_request = chain.offered(controls, "plan")
+    if plan_request is None:
+        return chain.stop("controls", controls)
+    plan = chain.send("strategy_plan", plan_request)
+    prepare = chain.offered(plan, "prepare")
+    if prepare is None:
+        return chain.stop("strategy_plan", plan)
+    prepared = chain.send("strategy", prepare)
+    if (ended := chain.followed("strategy", prepared)) is not None:
+        return ended
+    # A reused preparation answers as its readback; a new one offers the readback to send.
+    readback = prepared
+    if chain.offered(prepared, "install_non_default") is None and (
+        read := chain.offered(prepared, "readback")
+    ):
+        readback = chain.send("strategy_readback", read)
+    install = chain.offered(readback, "install_non_default")
+    if install is None:
+        return chain.stop("strategy_readback", readback)
+    installed = chain.send("install", install)
+    packages = installed.get("strategy_package_ids") or []
+    if outcome_of(installed) != "OK" or not packages:
+        return chain.stop("install", installed)
+    prefix = _entry_of(chain.client)
+    # The installation may serve several packages; each one's book review is the agent's to choose.
+    return {
+        "status": "STRATEGY_INSTALLED",
+        "strategy_package_ids": packages,
+        "authority_hash": installed.get("authority_hash"),
+        "studies": studies,
+        "steps": chain.steps,
+        "next_action": "REVIEW_THE_BOOK",
+        "next_commands": {
+            package: join(
+                [*prefix, *(package if w == "<package>" else w for w in _BOOK_REVIEW)], shell()
+            )
+            for package in packages
+        },
+        "next_requests": installed.get("next_requests") or {},
+    }
+
+
+def _started(
+    chain: _Chain,
+    route: dict[str, Any],
+    studies: list[dict[str, Any]],
+    windows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """One offered step planned and started; a stop carries the chain's name. A Risk study's
+    sessions cover the windows the strategy controls name, from each one's formation history."""
+    if route["operation"] == "MODEL_TRAINING_INPUT_PLAN":
+        planned = chain.send("training_plan", route)
+        prepare = chain.offered(planned, "prepare")
+        return chain.send("training", prepare) if prepare else chain.stop("training", planned)
+    drafted = chain.send("study_controls", route)
+    template = drafted.get("template")
+    if not isinstance(template, dict):
+        return chain.stop("study_controls", drafted)
+    if "component_id" not in route and windows:
+        sessions = template["experiment"]["sessions"]
+        starts = [(w.get("formation_history") or {}).get("start") or w["start"] for w in windows]
+        sessions["start"] = min(starts)
+        sessions["end"] = max(sessions["end"], *(w["end"] for w in windows))
+    planned = chain.send(
+        "study_plan",
+        {
+            "operation": "EXPERIMENT_PLAN",
+            "research_input_id": drafted.get("research_input_id") or drafted.get("input_id"),
+            "input_binding_hash": drafted.get("input_binding_hash"),
+            "experiment_document": template,
+        },
+    )
+    run = chain.offered(planned, "run")
+    if run is None:
+        return chain.stop("study_plan", planned)
+    started = chain.send("study", run)
+    task = started.get("task_id") or started.get("publication_task_id")
+    if any(study["task_id"] == task for study in studies):
+        return started  # a study an earlier round started, reused
+    studies.append(
+        {
+            "kind": template["experiment"]["kind"],
+            "component_id": route.get("component_id"),
+            "sessions": template["experiment"].get("sessions"),
+            "model_lifecycle": drafted.get("model_lifecycle"),
+            "task_id": task,
+        }
+    )
+    return started
+
+
 def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
     """`activity wait`: one waiter, one subscription, one line when its event comes (WK)."""
     if (args.task_id is None) == (args.goal_id is None):
@@ -2744,6 +3037,32 @@ def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, An
                     ),
                 }
     return body
+
+
+class _Verb(NamedTuple):
+    """An agent verb: its words, its own arguments by flag and the steps it takes."""
+
+    words: tuple[str, str]
+    fields: tuple[tuple[str, str], ...]
+    steps: Callable[[LocalResearchClient, argparse.Namespace], dict[str, Any]]
+
+
+AGENT_VERBS: Final[dict[str, _Verb]] = {
+    "first-use": _Verb(("first-use", "prepare"), (("--sentence", "objective"),), _first_use_steps),
+    "strategy-build": _Verb(("strategy", "build"), (), _build_steps),
+    "book-review": _Verb(
+        ("strategy-book", "review"),
+        (("--package", "strategy_package_id"), ("--dir", "bundle_root")),
+        _review_steps,
+    ),
+    "review-continue": _Verb(
+        ("review", "continue"),
+        (("--dir", "bundle_root"), ("--cro-dir", "cro_root"), ("--package", "strategy_package_id")),
+        _continue_steps,
+    ),
+}
+"""The client's agent verbs by the name the CLI gives each; its words, flags and re-run line
+come from here alone."""
 
 
 def run(
@@ -2870,10 +3189,8 @@ def run(
             document = document_override()
         if args.command == "activity-wait":
             body = _wait(client, args)
-        elif args.command == "book-review":
-            body = _review_steps(client, args)
-        elif args.command == "review-continue":
-            body = _continue_steps(client, args)
+        elif args.command in AGENT_VERBS:
+            body = AGENT_VERBS[args.command].steps(client, args)
         else:
             if document_override is None:
                 document = _next_request(args)

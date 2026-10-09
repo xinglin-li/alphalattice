@@ -90,10 +90,13 @@ blocked or cancelled work exits `REFUSED`; completed non-refused work exits `OK`
 A deferred Task offers its retry time and resume. After disconnect or timeout,
 read the existing Task before resubmitting.
 
-On Codex, `strategy-book review` and `review continue` accept
-`--notify codex-queue` to return at the first running Task while the Host keeps
-its notification; a notice names the continuation when the Task ends, needs a
-decision or is deferred, and delivery failures appear in Task activity.
+The agent verbs `first-use prepare`, `strategy build`, `strategy-book review` and
+`review continue` follow each Task they start to its end. On Claude Code, run a
+wait or an agent verb in the background (the Bash tool's `run_in_background`)
+and act on its completion notice. On Codex, they accept `--notify codex-queue` to
+return at the first running Task while the Host keeps its notification; a notice
+names the continuation when the Task ends, needs a decision or is deferred, and
+delivery failures appear in Task activity.
 
 With `--wait --output`, admission is saved first and replaced by the final
 answer; save failure does not undo admission. Request documents are limited to

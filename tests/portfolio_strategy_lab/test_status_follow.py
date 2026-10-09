@@ -66,7 +66,9 @@ def test_a_waiting_status_answers_when_the_task_moves_on_or_its_wait_ends() -> N
     assert time.monotonic() - begun < 0.05
 
 
-def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys) -> None:
+def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "session-1")
+    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     task_id = str(uuid4())
     sent: list[dict[str, Any]] = []
     answers = iter(
@@ -89,9 +91,10 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys) -> None:
     assert final["lifecycle"] == "SUCCEEDED" and final["admission"] == admitted
     assert all(d["operation"] == "STATUS" and 0 < d["wait_seconds"] <= 20 for d in sent)
     assert len(sent) == 2 and time.monotonic() - begun < 0.2
-    # Its first line tells the agent this call is the wait (AGENT-TIME R1).
+    # Its first line tells the agent this call is the wait, and its host's way to wait for it.
     first = json.loads(capsys.readouterr().err.splitlines()[0])
     assert first["follow"]["operation"] == "STATUS" and "do not poll" in first["returns"]
+    assert "run_in_background" in first["returns"]
 
 
 @pytest.mark.parametrize(
@@ -1145,3 +1148,250 @@ def test_review_continue_publishes_the_cros_review_and_reads_the_activation_offe
     assert answer["evidence"]["state"] == "ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW"
     assert answer["activation"]["review_holdings"] == {"positions": []}
     assert answer["next_requests"] == {"activate": {"operation": "STRATEGY_ACTIVATE"}}
+
+
+class _FirstUseHost:
+    """A Host answering a first use's goal, data issues and preparation as their owners do;
+    ``stopped`` holds the statuses of a stopped preparation's data issues."""
+
+    def __init__(self, workspace: Path, *, stopped: tuple[str, ...] = (), prepared: bool = False):
+        self.workspace, self.goal, self.prepared = workspace, None, prepared
+        self.stopped, self.resumes = list(stopped), 1
+        self.sent: list[dict[str, Any]] = []
+
+    def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
+        self.sent.append(document)
+        match document["operation"]:
+            case "GOAL_OPEN" if self.prepared:
+                return {"status": "REFUSED", "failure_code": "goal.first_use_after_preparation"}
+            case "GOAL_OPEN":
+                return {"status": "OPENED", "goal_id": "g-1"}
+            case "DATA_ISSUES":
+                resume = {"operation": "WORKSPACE_PREPARE_PLAN"}
+                offers = {
+                    f"continue:t-{n}": {**resume, "recovery_task_id": f"t-{n}"}
+                    for n in range(1, self.resumes + 1)
+                    if self.stopped
+                }
+                confirm = {"confirm:c1:retain": {"operation": "DATA_ISSUE_CONFIRM"}}
+                return {
+                    "issues": [{"status": status} for status in self.stopped],
+                    "next_requests": {**offers, **confirm},
+                }
+            case "WORKSPACE_PREPARE_PLAN" if self.prepared:
+                return {"status": "ALREADY_PREPARED", "inputs": [{"input_id": "in-1"}]}
+            case "WORKSPACE_PREPARE_PLAN":
+                recovery = {k: v for k, v in document.items() if k.startswith("recovery_")}
+                confirm = {"operation": "WORKSPACE_PREPARE_CONFIRM", "preparation_plan_hash": "p"}
+                return {"status": "PLANNED", "next_requests": {"confirm": {**confirm, **recovery}}}
+            case "WORKSPACE_PREPARE_CONFIRM":
+                task = "t-resumed" if self.stopped else "t-1"
+                return {"status": "ADMITTED", "task_id": task, "lifecycle": "QUEUED"}
+            case "STATUS" if document["task_id"] == "t-1":
+                self.stopped = ["AWAITING_CHOICE"]
+                return {"lifecycle": "BLOCKED", "latest_failure_code": "data.truth_review_required"}
+            case "STATUS":
+                self.prepared = True
+                return {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", **document}
+        raise AssertionError(document)
+
+
+def _first_use(host: _FirstUseHost) -> dict[str, Any]:
+    args = SimpleNamespace(objective="Build me a book.", max_wait=None, notify=None, output=None)
+    return client_module._first_use_steps(host, args)  # type: ignore[arg-type]
+
+
+def test_a_first_use_opens_its_goal_from_the_sentence_and_stops_at_its_data_issues(
+    tmp_path: Path,
+) -> None:
+    """requirement (fewer agent steps): one call opens the goal from the person's sentence,
+    prepares, and stops where the preparation needs data decisions, each confirm offered."""
+    host = _FirstUseHost(tmp_path / "workspace")
+    stopped = _first_use(host)
+
+    assert host.sent[0]["goal_declaration"]["objective"] == "Build me a book."
+    assert host.goal == "g-1" and stopped["first_use"]["stopped_at"] == "issues"
+    assert "confirm:c1:retain" in stopped["next_requests"]
+
+
+@pytest.mark.parametrize(
+    ("stopped", "resumes", "resumed"),
+    [
+        (("CONFIRMED_PENDING_REVALIDATION",) * 2, 1, True),
+        (("CONFIRMED_PENDING_REVALIDATION", "OPTION_REFUSED"), 1, False),
+        (("WAITING_FOR_RETRY",), 1, False),
+        (("CONFIRMED_PENDING_REVALIDATION",), 2, False),
+    ],
+)
+def test_a_first_use_resumes_its_stopped_preparation_only_once_every_decision_is_confirmed(
+    tmp_path: Path, stopped: tuple[str, ...], resumes: int, resumed: bool
+) -> None:
+    """requirement (fewer agent steps): the same call again resumes the stopped preparation
+    through its recovery link once every decision is confirmed; a refused or waiting decision,
+    or two stopped preparations, stop with the issues for the agent."""
+    host = _FirstUseHost(tmp_path / "workspace", stopped=stopped)
+    host.resumes = resumes
+    answer = _first_use(host)
+
+    confirms = [d for d in host.sent if d["operation"] == "WORKSPACE_PREPARE_CONFIRM"]
+    assert [d.get("recovery_task_id") for d in confirms] == (["t-1"] if resumed else [])
+    assert (answer.get("status") == "ALREADY_PREPARED") is resumed
+    assert (answer["first_use"].get("stopped_at") == "issues") is not resumed
+
+
+def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_record(
+    tmp_path: Path,
+) -> None:
+    """requirement (plan first): every answer carries each later step's command and what only
+    the person decides; on a prepared workspace it names its sentence as not recorded."""
+    answer = _first_use(_FirstUseHost(tmp_path / "workspace", prepared=True))
+
+    road = answer["first_use"]["road"]
+    assert [step["step"] for step in road] == ["prepare", "strategy", "book", "review", "publish"]
+    assert answer["next_action"] == "BUILD_THE_STRATEGY"
+    assert answer["next_command"] == road[1]["command"]
+    assert "SEC_USER_AGENT" in answer["first_use"]["ask_now"][0]
+    assert "not recorded" in answer["first_use"]["sentence"]
+
+
+WINDOW = {"start": "2022-07-01", "end": "2026-09-03", "formation_history": {"start": "2021-06-30"}}
+"""The window a calibrated study names, with the history a Risk study needs before it."""
+LAST = {"start": "2026-08-07", "end": "2026-09-04"}
+"""A Risk template's default: the last formations only."""
+
+
+class _BuildHost:
+    """A Host answering a strategy's controls, training, studies and installation, admitting
+    each as its owner does: training and the strategy's preparation only beside no unfinished
+    Task, a study whenever."""
+
+    def __init__(self, workspace: Path, *, risk_template: bool = True, covers: bool = True):
+        self.workspace, self.goal, self.risk_template = workspace, None, risk_template
+        self.covers = covers
+        self.done: set[str] = set()
+        self.unfinished: set[str] = set()
+
+    def controls(self) -> dict[str, Any]:
+        trained = {"t-train-G2", "t-train-G6"} <= self.done
+        alphas = {"t-alpha-G2", "t-alpha-G6"} <= self.done
+        covered = "t-risk" in self.done and self.covers
+        step = "EXPERIMENT_CONTROLS" if trained else "MODEL_TRAINING_INPUT_PLAN"
+        routes = {} if alphas else {f"component:{c}": c for c in ("G2", "G6")}
+        plan = {"alpha_task_ids": ["t-alpha-G2", "t-alpha-G6"], "risk_task_id": "t-risk"}
+        return {
+            "risk_windows": [WINDOW] if alphas else [],
+            "next_requests": {
+                **{name: {"operation": step, "component_id": c} for name, c in routes.items()},
+                **({} if covered else {"risk": {"operation": "EXPERIMENT_CONTROLS"}}),
+                "plan": {
+                    "operation": "RESEARCH_STRATEGY_PLAN",
+                    "experiment_document": plan if covered else None,
+                },
+            },
+        }
+
+    def admit(self, task: str, *, exclusive: bool) -> dict[str, Any]:
+        if task in self.done:
+            return {"status": "REUSED_EXACT", "task_id": None, "publication_task_id": task}
+        if exclusive and self.unfinished:
+            return {"status": "REFUSED", "failure_code": "finish_or_recover_existing_task"}
+        self.unfinished.add(task)
+        return {"status": "ADMITTED", "task_id": task}
+
+    def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
+        operation = document["operation"]
+        offered = {
+            "MODEL_TRAINING_INPUT_PLAN": ("prepare", "MODEL_TRAINING_INPUT_PREPARE"),
+            "EXPERIMENT_PLAN": ("run", "EXPERIMENT_RUN"),
+            "RESEARCH_STRATEGY_PLAN": ("prepare", "RESEARCH_STRATEGY_PREPARE"),
+        }
+        match operation:
+            case "RESEARCH_STRATEGY_CONTROLS":
+                return self.controls()
+            case _ if operation in offered:
+                name, next_operation = offered[operation]
+                of = document.get("component_id") or document.get("experiment_document")
+                request = {"operation": next_operation, "experiment_plan_hash": "p", "of": of}
+                return {"status": "PLANNED", "next_requests": {name: request}}
+            case "MODEL_TRAINING_INPUT_PREPARE":
+                return self.admit(f"t-train-{document['of']}", exclusive=True)
+            case "EXPERIMENT_CONTROLS" if "component_id" not in document and not self.risk_template:
+                return {"status": "REFUSED", "failure_code": "risk_research.insufficient_history"}
+            case "EXPERIMENT_CONTROLS":
+                component = document.get("component_id")
+                return {
+                    "status": "READY",
+                    "input_id": "in-1",
+                    "template": {"experiment": {"kind": component or "risk", "sessions": LAST}},
+                    "model_lifecycle": "LIGHT" if component else None,
+                }
+            case "EXPERIMENT_RUN":
+                kind = document["of"]["experiment"]["kind"]
+                task = "t-risk" if kind == "risk" else f"t-alpha-{kind}"
+                return self.admit(task, exclusive=False)
+            case "STATUS":
+                self.unfinished.discard(document["task_id"])
+                self.done.add(document["task_id"])
+                return {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", **document}
+            case "RESEARCH_STRATEGY_PREPARE":
+                read = {"operation": "RESEARCH_STRATEGY_READBACK", "task_id": "t-strategy"}
+                return {
+                    **self.admit("t-strategy", exclusive=True),
+                    "next_requests": {"readback": read},
+                }
+            case "RESEARCH_STRATEGY_READBACK":
+                install = {"operation": "RESEARCH_STRATEGY_INSTALL", "task_id": "t-strategy"}
+                return {"status": "SUCCEEDED", "next_requests": {"install_non_default": install}}
+            case "RESEARCH_STRATEGY_INSTALL":
+                packages = ["BAL", "G6"]
+                return {
+                    "status": "INSTALLED_NON_DEFAULT_RESEARCH",
+                    "strategy_package_ids": packages,
+                }
+        raise AssertionError(document)
+
+
+def _build(host: _BuildHost) -> dict[str, Any]:
+    args = SimpleNamespace(max_wait=None, notify=None, output=None)
+    return client_module._build_steps(host, args)  # type: ignore[arg-type]
+
+
+def test_a_strategy_build_takes_each_offered_step_as_its_owner_admits_it_and_installs(
+    tmp_path: Path,
+) -> None:
+    """requirement (fewer agent steps): one call trains, runs the Alpha and then the Risk study,
+    each admitted beside no unfinished Task as training's owner requires, then plans from the
+    filled declaration, prepares and installs, naming the book review next."""
+    answer = _build(_BuildHost(tmp_path / "workspace"))
+
+    assert answer["status"] == "STRATEGY_INSTALLED"
+    assert [s["task_id"] for s in answer["studies"]] == ["t-alpha-G2", "t-alpha-G6", "t-risk"]
+    assert answer["studies"][0]["model_lifecycle"] == "LIGHT"
+    # The Risk study covers the named window from its formation history, not the default.
+    assert answer["studies"][2]["sessions"] == {"start": "2021-06-30", "end": "2026-09-04"}
+    # Each installed package's book review is offered; the agent chooses.
+    assert answer["next_action"] == "REVIEW_THE_BOOK" and set(answer["next_commands"]) == {
+        "BAL",
+        "G6",
+    }
+
+
+@pytest.mark.parametrize(
+    ("risk_template", "covers", "stopped_at", "risk"),
+    [(False, True, "study_controls", []), (True, False, "controls", [("t-risk", None)])],
+)
+def test_a_stopped_strategy_build_names_each_study_it_started_once(
+    tmp_path: Path, risk_template: bool, covers: bool, stopped_at: str, risk: list[Any]
+) -> None:
+    """requirement (the guide's model disclosure): where a build stops, its answer keeps each
+    study it started once, with its model lifecycle, for the agent to tell the person."""
+    host = _BuildHost(tmp_path / "workspace", risk_template=risk_template, covers=covers)
+    answer = _build(host)
+
+    assert answer["strategy_build"]["stopped_at"] == stopped_at
+    studies = answer["strategy_build"]["studies"]
+    assert [(s["task_id"], s["model_lifecycle"]) for s in studies] == [
+        ("t-alpha-G2", "LIGHT"),
+        ("t-alpha-G6", "LIGHT"),
+        *risk,
+    ]

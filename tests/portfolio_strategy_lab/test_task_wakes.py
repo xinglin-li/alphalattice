@@ -287,7 +287,16 @@ def test_a_goal_wake_is_refused_and_offers_each_unfinished_task_its_own(
     assert codex.calls() == []
 
 
-@pytest.mark.parametrize("verb", ["strategy-book review", "review continue"])
+_VERB_ARGUMENTS = {
+    "strategy-book review": ("--package", "installed-book"),
+    "review continue": (),
+    "first-use prepare": ("--sentence", "Build me a book."),
+    "strategy build": (),
+}
+"""Each agent verb's own arguments beside its folder, where it takes one."""
+
+
+@pytest.mark.parametrize("verb", sorted(_VERB_ARGUMENTS))
 def test_an_agent_verb_registers_its_running_task_and_its_rerun_keeps_every_answer(
     live, codex, tmp_path, monkeypatch, capsys, verb
 ) -> None:
@@ -298,13 +307,26 @@ def test_an_agent_verb_registers_its_running_task_and_its_rerun_keeps_every_answ
     task = _task(live, "verb")
     monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
     original = LocalResearchClient.request
+    running = {"status": "ADMITTED", "task_id": str(task.task_id), "lifecycle": "RUNNING"}
+    planned = {"operation": "WORKSPACE_PREPARE_CONFIRM", "preparation_plan_hash": "p"}
+    trained = {"operation": "MODEL_TRAINING_INPUT_PREPARE", "experiment_plan_hash": "p"}
+    route = {"operation": "MODEL_TRAINING_INPUT_PLAN", "component_id": "G2"}
+    answers = {
+        "CONTROLS": {"status": "CONTROLS", "template": {}},
+        "RUN": running,
+        "AGENT_ANSWER_SUBMIT": {**running, "status": "ACCEPTED"},
+        "GOAL_OPEN": {"status": "REFUSED", "failure_code": "goal.first_use_after_preparation"},
+        "DATA_ISSUES": {"issues": []},
+        "WORKSPACE_PREPARE_PLAN": {"status": "PLANNED", "next_requests": {"confirm": planned}},
+        "WORKSPACE_PREPARE_CONFIRM": running,
+        "RESEARCH_STRATEGY_CONTROLS": {"next_requests": {"component:G2": route}},
+        "MODEL_TRAINING_INPUT_PLAN": {"status": "PLANNED", "next_requests": {"prepare": trained}},
+        "MODEL_TRAINING_INPUT_PREPARE": running,
+    }
 
     def request(client, document=None, **options):  # type: ignore[no-untyped-def]
-        if document and document["operation"] == "CONTROLS":
-            return {"status": "CONTROLS", "template": {}}
-        if document and document["operation"] in {"RUN", "AGENT_ANSWER_SUBMIT"}:
-            status = "ADMITTED" if document["operation"] == "RUN" else "ACCEPTED"
-            return {"status": status, "task_id": str(task.task_id), "lifecycle": "RUNNING"}
+        if document and document["operation"] in answers:
+            return answers[document["operation"]]
         return original(client, document, **options)
 
     monkeypatch.setattr(LocalResearchClient, "request", request)
@@ -315,8 +337,9 @@ def test_an_agent_verb_registers_its_running_task_and_its_rerun_keeps_every_answ
     line = [
         *("--workspace", str(live.workspace), "--view", "full", "--lang", "zh"),
         *verb.split(),
-        *("--dir", str(folder), "--notify", "codex-queue", "--output", str(output)),
-        *(["--package", "installed-book"] if verb == "strategy-book review" else []),
+        *(("--dir", str(folder)) if verb.endswith(("review", "continue")) else ()),
+        *_VERB_ARGUMENTS[verb],
+        *("--notify", "codex-queue", "--max-wait", "900", "--output", str(output)),
     ]
     answer = _cli(line, capsys)["data"]
     assert answer["status"] == "WAKE_REGISTERED" and answer["task_id"] == str(task.task_id)
@@ -324,7 +347,7 @@ def test_an_agent_verb_registers_its_running_task_and_its_rerun_keeps_every_answ
     (wake,) = live.session.task_control_registry.wake_registrations(task.task_id)
     rerun = shlex.split(wake["read_command"])[len(command_prefix()) :]
     assert rerun[rerun.index("--output") + 1] == str(tmp_path.resolve() / "receipt.wake1.json")
-    assert {"--lang", "zh", "--notify", "codex-queue", *verb.split()} <= set(rerun)
+    assert {"--lang", "zh", "--notify", "codex-queue", "--max-wait", *verb.split()} <= set(rerun)
 
     _cli(rerun, capsys)  # the real parser takes the Host's command back
     assert output.read_bytes() == saved

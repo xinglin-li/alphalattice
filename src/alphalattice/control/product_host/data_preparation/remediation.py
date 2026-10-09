@@ -542,6 +542,12 @@ class WorkspaceDataIssueApplication:
                         next_requests[f"preview:{case.case_token}:{option.option_id}"] = (
                             _choice_request("DATA_ISSUE_PREVIEW", case, option)
                         )
+                        if delegated_by is not None:
+                            # The first use's agent decides each case itself: its confirm is
+                            # offered beside the preview, which only shows what it applies.
+                            next_requests[f"confirm:{case.case_token}:{option.option_id}"] = (
+                                _choice_request("DATA_ISSUE_CONFIRM", case, option)
+                            )
                         for task in () if delegated_by is not None else tasks:
                             if (
                                 task.task_kind == "workspace_preparation"
