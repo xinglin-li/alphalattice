@@ -619,7 +619,9 @@ def internal_id_ratchet(
     }
 
 
-def validate_internal_id_history(repo: Path, source: str) -> None:
+def validate_internal_id_history(
+    repo: Path, source: str, admissions_from: str | None = None
+) -> None:
     """Validate the first landing against its source, then keep the policy lower-only."""
     if source.startswith("-"):
         raise ValueError("a revision cannot be an option")
@@ -643,7 +645,19 @@ def validate_internal_id_history(repo: Path, source: str) -> None:
     source_policy = policy_at(source)
     if source_policy is None:
         raise ValueError("the source has no frozen internal-label policy")
-    admissions = source_policy.get("history_admissions", {})
+    # a later reviewed policy (develop's) may admit an earlier commit's exact rows by name; a
+    # commit's own policy never widens its own history beyond what it names
+    admitting = source_policy
+    if admissions_from is not None:
+        later = subprocess.run(
+            ["git", "rev-parse", "--verify", "-q", f"{admissions_from}^{{commit}}"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        admitting = (policy_at(later) if later else None) or source_policy
+    admissions = admitting.get("history_admissions", {})
     commits = subprocess.check_output(
         ["git", "log", "--full-history", "--format=%H", source, "--", INTERNAL_ID_BASELINE],
         cwd=repo,
@@ -1296,7 +1310,7 @@ def main() -> int:
     args = parser.parse_args()
     sha, blobs, modes = read_tree(args.repo, args.source)
     if INTERNAL_ID_BASELINE in blobs:
-        validate_internal_id_history(args.repo, sha)
+        validate_internal_id_history(args.repo, sha, admissions_from="develop")
     manifest, audit = generate(sha, blobs, modes)
     if args.verification_json:
         audit["standalone"] = json.loads(args.verification_json.read_text(encoding="utf-8"))[

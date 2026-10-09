@@ -317,6 +317,10 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(tmp_path, sy
         source = _git("commit-tree", _git("write-tree"), "-p", source, "-m", "Admission")
         if accepted:
             validate_internal_id_history(tmp_path, source)
+            # a later policy admits the earlier commit by name; the commit alone still refuses
+            validate_internal_id_history(tmp_path, candidate, admissions_from=source)
+            with pytest.raises(ValueError, match="allowance increased"):
+                validate_internal_id_history(tmp_path, candidate)
         else:
             with pytest.raises(ValueError, match="allowance increased"):
                 validate_internal_id_history(tmp_path, source)
