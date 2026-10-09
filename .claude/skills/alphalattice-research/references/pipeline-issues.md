@@ -5,6 +5,8 @@ Use this when preparation or an update stops for data review. Start from the exa
 
 ## Read the decision
 
+For a request to stay offline or clean workspace storage, use the [request index](intents.md) and the exact control or cleanup plan, rather than changing a study or deleting files yourself.
+
 - `decision list` shows each pending step and whom it `waits_on`: the `PERSON`, or you (`AGENT`) to take and disclose. For `INPUT_VERSION`, keep the research on its current input and tell the person newer data can become a new input version, and relay their yes if they want it.
 - `issue list` lists the cases; read each whole case: its evidence, prior decisions, options, consequences and `next_requests`. A listed option is not proof it applies now.
 - A large raw move proves neither corruption nor a real event. Tell a raw move, invalid adjusted prices, missing sessions and an identity mismatch apart, and never invent a corporate action. For a quarantine or exclusion, state the retained history and effective population; never filter to improve results.

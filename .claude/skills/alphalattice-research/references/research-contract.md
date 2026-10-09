@@ -3,6 +3,8 @@ Date: 2026-10-03
 
 Owner results set the claims:
 
+For a requested window, universe, model or clock change, the [request index](intents.md) distinguishes admitted declaration fields from fixed installed choices; never turn a missing choice into a source edit.
+
 - Data, Feature and Outcome preparation produce an explicit input revision. New source data never changes an experiment's sealed input.
 - Factor findings plus explicit curation can produce a non-current Foundation. Alpha and Risk are upstream peers; Portfolio consumes what its recipe declares.
 - A Risk report linked to an equal-weight book is report-only. A Portfolio declaration naming a completed Risk study on the same input sizes by it: `iv1` and `iv2` use per-name volatility; a catalog `portfolio.policy` uses its declared covariance construction (equal weight, minimum variance, score/risk/cost or sector deviation).

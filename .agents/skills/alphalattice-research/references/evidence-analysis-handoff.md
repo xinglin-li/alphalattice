@@ -11,6 +11,8 @@ Read current Evidence's `continuation_scope` and remaining allowance. Continue t
 
 ## First source package
 
+For a wider filing budget, the [request index](intents.md) names the consent control; preflight its totals and bytes, then relay the person's decision before acquisition.
+
 If `evidence preview` reports no suitable package, the running Host installs one as a Task (environment, model, acquisition, index, publish), with an admitted input and the workspace's pinned semantic pack; nothing is stopped:
 
 ```text

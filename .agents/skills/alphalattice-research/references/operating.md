@@ -82,4 +82,6 @@ A wait is one call, never a poll. `--wait` and `activity wait` follow a Task unt
 
 ## Studies and features
 
+For execution capacity, daily automation or JSON/YAML conversion, use the [request index](intents.md); these are separate from the study's numerical method.
+
 Continue a saved study with `study draft --from "<out>/run.json" --save-declaration "<out>/next.yaml" --output "<out>/draft.json"`, edit the YAML and plan it from the draft; an omitted binding keeps the origin input. A formula feature is one `CREATE` with a `formula`, an explicit `preprocessing_recipe` and a `reason`, trialled against a completed Alpha study from Factor on the same input; a refusal lists eligible studies. Nothing activates by default.

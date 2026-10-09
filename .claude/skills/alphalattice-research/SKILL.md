@@ -65,6 +65,7 @@ Each command's exact form; the [Command contract](references/operating.md) cover
 
 ## Further reading
 
+- [Requests and capability routes](references/intents.md): the person's intent, admitted declaration fields, costs and unsupported choices.
 - [Operating the CLI](references/operating.md), [goals](references/goals.md), [pipeline issues](references/pipeline-issues.md), [leading research](references/research-lead.md)
 - [Specialists](references/specialist-handoff.md), [Evidence preparation](references/evidence-analysis-handoff.md), [CRO review](references/cro-handoff.md), [native sessions](references/native-visibility.md)
 - [Research contract](references/research-contract.md) and [delivery](references/research-delivery.md)
