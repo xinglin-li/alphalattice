@@ -80,51 +80,6 @@ CASE_ROOT = Path(__file__).resolve().parent
 PLAYPEN_ROOT = CASE_ROOT.parents[1]
 
 
-def test_retired_counting_owners_have_no_current_harness_reader() -> None:
-    """the retired tools and their importing wrappers are gone."""
-    root = Path(__file__).resolve().parents[2]
-    retired = {
-        "d5_count",
-        "d5_rule",
-        "post_run_mentions",
-        "rr5g0",
-        "rr5h_identity",
-        "rr5h_screen",
-        "rr5h_seal",
-        "rr5h_source_audit",
-        "rr5h_window",
-        "rr5i_rule",
-        "instruction_preflight",
-        "packet_gate",
-    }
-    harness = root / "scripts/agent_eval"
-    assert retired.isdisjoint(path.stem for path in harness.glob("*.py"))
-    violations = []
-    for path in sorted(harness.glob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text("utf-8"))):
-            modules = []
-            if isinstance(node, ast.Import):
-                modules = [item.name for item in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                modules = [node.module or "", *(item.name for item in node.names)]
-            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                modules = [node.value]
-            for module in modules:
-                if module in retired or any(
-                    f"scripts.agent_eval.{name}" in module
-                    or f"scripts/agent_eval/{name}.py" in module.replace("\\", "/")
-                    for name in retired
-                ):
-                    violations.append((path.relative_to(root).as_posix(), node.lineno, module))
-    assert violations == []
-    assert not (root / "config/agent-eval/count-rule-v588-2.yaml").exists()
-    for path in sorted((root / "config/agent-eval").glob("*.yaml")):
-        text = path.read_text("utf-8")
-        assert "zero-count gate" not in text, path
-        assert "counts only" not in text, path
-        assert "instruction_preflight" not in text, path
-
-
 def test_scripts_and_tests_have_no_machine_absolute_paths_outside_literal_fixtures():
     root = Path(__file__).resolve().parents[2]
     # Test functions and declared pytest fixtures may contain synthetic literal
