@@ -65,7 +65,7 @@ def test_source_caps_hold_growth_by_qualified_function_and_spare_existing_debt()
     assert not problems(path, branch(21), branch(20))
     nested = "    def inner():\n" + "        if ready:\n            pass\n" * 21
     assert not problems(path, branch(19) + nested, branch(20) + nested)
-    for generated in shape.GENERATED:
+    for generated in shape.GENERATED | shape.WORD_CATALOGS:
         assert not problems(generated, big, big + "\u754c")
     assert problems(shape.ASSETS + "workbench-source/js/app/new.js", big, big + "\u754c")
 

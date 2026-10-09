@@ -30,6 +30,16 @@ GENERATED = frozenset(
     ASSETS + "workbench" + suffix
     for suffix in (".html", ".css", ".js", ".zh.js", "-prelude.js", "-manifest.json")
 )
+# word catalogs are data: every new word needs its Chinese key, so a size ratchet would block every
+# feature; the dead-key censuses hold their growth instead
+LOCAL = "src/alphalattice/interface/local_application/"
+WORD_CATALOGS = frozenset(
+    {
+        LOCAL + "refusal_words.json",
+        LOCAL + "answers.json",
+        LOCAL + "assets/workbench-source/js/data/zh.js",
+    }
+)
 CONTROL_OWNER = "src/alphalattice/kernel/shared_kernel/environment.py"
 WRITE = re.compile(
     r'\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM|MERGE\s+INTO)\s+([\w."`]+)',
@@ -311,7 +321,8 @@ def problems(path: str, old: str | None, new: str) -> list[str]:
     if path.startswith("src/"):
         found = []
         size = len(new.encode("utf-8", errors="surrogateescape"))
-        if size > CAP_BYTES and size > len((old or "").encode("utf-8", errors="surrogateescape")):
+        grew = size > len((old or "").encode("utf-8", errors="surrogateescape"))
+        if size > CAP_BYTES and grew and path not in WORD_CATALOGS:
             found.append(f"{path}:1: source size {size} > {CAP_BYTES}; split at its owner")
         if path.endswith(".py"):
             before, after = _tree(old or ""), _tree(new)
