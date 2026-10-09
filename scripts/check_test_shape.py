@@ -1,8 +1,9 @@
 """Refuse a staged test change that breaks the writing rules in tests/README.md.
 
 Checked on what the change adds, so a test is held to the rules when it is edited:
-a test file over 100 KB that grows, source text read outside tests/structural, a sleep
-of a second or more, and a test docstring that grows past three lines.
+a test file over 100 KB that grows, source text read outside tests/structural, a
+whole-sentence pin outside tests/structural, a sleep of a second or more, and a test
+docstring that grows past three lines.
 """
 
 from __future__ import annotations
@@ -16,6 +17,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CAP_BYTES = 100 * 1024
 SLEEP = re.compile(r"\bsleep\(\s*(\d+(?:\.\d+)?)\s*\)")
+# a literal of five or more words that an assert or an includes() checks: a sentence pin
+PIN = re.compile(r"""(?:\bincludes\(\s*|\bassert\s+)(['"`])([^'"`\n]{0,400})\1""")
 
 
 def _docstring_lines(text: str) -> dict[str, int]:
@@ -37,10 +40,18 @@ def problems(path: str, old: str | None, new: str) -> list[str]:
     size = len(new.encode("utf-8"))
     if size > CAP_BYTES and size > len((old or "").encode("utf-8")):
         found.append(f"{path}: grows to {size // 1024} KB; a test file stays under 100 KB (rule 9)")
+    # a line only re-indented is kept, not added
+    before = {line.strip() for line in (old or "").splitlines()}
+    added = [line for line in new.splitlines() if line.strip() not in before]
+    if not path.startswith("tests/structural/"):
+        for line in added:
+            pin = PIN.search(line)
+            if pin and len(pin.group(2).split()) >= 5:
+                found.append(
+                    f"{path}: pins '{pin.group(2)[:40]}'; check its key and facts (rule 4)"
+                )
     if not path.endswith(".py"):
         return found
-    before = set((old or "").splitlines())
-    added = [line for line in new.splitlines() if line not in before]
     if not path.startswith("tests/structural/") and any("inspect.getsource(" in x for x in added):
         found.append(f"{path}: reads source text; test the behaviour at the owner's seam (rule 3)")
     for line in added:

@@ -44,8 +44,8 @@ rewritten.
 
 A test is kept only while it holds a requirement nothing else holds. The fast
 guard (`scripts/check_test_shape.py`, run by `scripts/check_playpen.py --staged
---fast`) refuses rules 3, 7 and 9 and the docstring bound in rule 1 on what a change
-adds; review holds the rest.
+--fast`) refuses rules 3, 7 and 9, a sentence pin of five or more words (rule 4)
+and the docstring bound in rule 1 on what a change adds; review holds the rest.
 
 1. A test holds one requirement: a behaviour a user or a consumer relies on, a
    regression, a tamper or recovery case, or a boundary nothing else covers. Its
