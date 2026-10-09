@@ -49,11 +49,13 @@ adds; review holds the rest.
 
 1. A test holds one requirement: a behaviour a user or a consumer relies on, a
    regression, a tamper or recovery case, or a boundary nothing else covers. Its
-   docstring states that requirement in one sentence, at most three lines; the
-   reasoning belongs in the change's record.
+   docstring states that requirement in one sentence, at most three lines, in
+   words rather than internal card or ledger ids; the reasoning belongs in the
+   change's record.
 2. Before writing one, search for a test of the same requirement and extend or
    replace it. A requirement is tested once, in its owner's suite, not again in
-   another file or another harness.
+   another file or another harness. A fix extends the test that should have
+   caught the defect; only a new requirement gets a new test.
 3. Test at the owner's seam: drive the producer's real output through the real
    consumer. Only `tests/structural` reads source text; elsewhere a test does not
    call `inspect.getsource` or test a private helper whose owner's public call
@@ -81,8 +83,8 @@ adds; review holds the rest.
 
 ## Running tests
 
-1. While working, run the nodes you changed or that fail, with one worker, plus a
-   test file you changed. Never a directory or the whole suite.
+1. While working, run the nodes you changed or that fail, with one or two
+   workers, plus a test file you changed. Never a directory or the whole suite.
 2. Every affected file runs whole once, in the integration set before a merge;
    its `--durations` report is the test timing. No separate timing run.
 3. A passing test is not rerun unchanged. After a fix, rerun the failed node; the
