@@ -297,9 +297,19 @@ def run_sandbox(
             "verdict": "PASSED" if record.passed else "FAILED",
             "record": record.model_dump(mode="json"),
             "copy": str(copy) if keep else None,
-            "next_action": "ASK_THE_PERSON_TO_ACTIVATE_IT"
+            "next_action": "MODEL_EXTENSIONS"
             if record.passed
             else "READ_THE_COPY_WITH_KEEP_AND_CORRECT_THE_MODEL",
+            **(
+                {
+                    "detail": (
+                        "Read `model list` for this model's review packet, then ask the person "
+                        "to activate it."
+                    )
+                }
+                if record.passed
+                else {}
+            ),
         }
     finally:
         lease.close()

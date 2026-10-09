@@ -37,7 +37,7 @@ checkout, for example:
 
 ```powershell
 $env:ALPHALATTICE_NETWORK_DISABLED = '1'
-uv run python -m pytest tests/portfolio_strategy_lab/test_local_web_product.py -n auto -m "not real_evidence" --basetemp "$env:TEMP/alphalattice-public-tests"
+uv run python -m pytest tests/portfolio_strategy_lab/test_local_web_service.py tests/portfolio_strategy_lab/test_local_web_client.py tests/portfolio_strategy_lab/test_research_flow_answers.py -n auto -m "not real_evidence" --basetemp "$env:TEMP/alphalattice-public-tests"
 ```
 
 Full and real-evidence gates require the maintainer's private checkout and

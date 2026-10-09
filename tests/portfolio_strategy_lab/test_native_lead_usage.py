@@ -22,10 +22,10 @@ from alphalattice.interface.local_application.activity import (
     ExternalActivityReadQuery,
 )
 from alphalattice.interface.local_application.cli_contract import RequestProvenance
+from alphalattice.interface.local_application.client import lead_readings
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
     NativeResearchBinding,
-    lead_readings,
     read_session_usage,
 )
 from alphalattice.interface.local_application.native_setup import declare_project

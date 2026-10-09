@@ -52,6 +52,17 @@ class Command:
 
 
 GRAMMAR: Final[dict[str, Command]] = {
+    "PORTFOLIO_READBACK": Command(
+        "portfolio",
+        "show",
+        "Reads one exact book's saved report or latest Forward composite.",
+        "task_id",
+    ),
+    "EXPERIMENT_DECLARATION_CONVERT": Command(
+        "declaration",
+        "convert",
+        "Converts a declaration between JSON and YAML; admits no plan or Task.",
+    ),
     "ACTIVITY_LIST": Command(
         "activity",
         "list",
@@ -180,6 +191,23 @@ GRAMMAR: Final[dict[str, Command]] = {
         "declare",
         "Records an event this client declares about its own work in the activity feed.",
     ),
+    "COMMITTEE_OPEN": Command(
+        "committee",
+        "open",
+        "Opens the investment committee on a date's published positions, or reads the one "
+        "open; writes each member's bundle into a new directory with its commands.",
+    ),
+    "COMMITTEE_SUBMIT": Command(
+        "committee",
+        "submit",
+        "Sends one member's message to the committee's floor, checked by its rules.",
+    ),
+    "COMMITTEE_READ": Command(
+        "committee",
+        "show",
+        "Shows the committee's floor: its stage, members, tension points and the messages a "
+        "member has not seen.",
+    ),
     "WAKE_REGISTER": Command(
         "activity",
         "notify",
@@ -248,6 +276,12 @@ GRAMMAR: Final[dict[str, Command]] = {
         "run",
         "Prepares a book's evidence packets as a Task: acquires, reads and seals sources; no "
         "findings.",
+    ),
+    "EVIDENCE_INSTALL": Command(
+        "evidence",
+        "install",
+        "Installs an Evidence source package in the running Host as a Task: its environment, "
+        "model, acquisition, index and publication; served at once.",
     ),
     "EVIDENCE_PREVIEW": Command(
         "evidence",
@@ -618,23 +652,35 @@ GRAMMAR: Final[dict[str, Command]] = {
     "MODEL_TRAINING_INPUT_PLAN": Command(
         "training",
         "plan",
-        "Plans model-training inputs for a component on a research input; no model is fit.",
+        "Plans model inputs for a component on a research input; "
+        "fitting and validation follow in the Alpha study.",
     ),
     "MODEL_TRAINING_INPUT_PREPARE": Command(
         "training",
         "run",
-        "Prepares a planned component's training inputs as a Task, or reuses them.",
+        "Prepares planned model inputs as a Task, or reuses them; no model is fit or validated.",
     ),
     "MODEL_TRAINING_INPUT_READBACK": Command(
         "training",
         "show",
-        "Shows a training-input Task and the prepared sources and support it published.",
+        "Shows the model-input preparation Task, sources and support; "
+        "fitting and validation are later Alpha study work.",
     ),
     "NETWORK_ACCESS": Command(
         "network", "show", "Shows whether this workspace may reach the network and what decided it."
     ),
     "NETWORK_ACCESS_SET": Command(
         "network", "set", "Turns this workspace's network access on or off."
+    ),
+    "EVIDENCE_CONSENT": Command(
+        "evidence-consent",
+        "show",
+        "Shows the consent to official SEC acquisition and the budget it admits.",
+    ),
+    "EVIDENCE_CONSENT_SET": Command(
+        "evidence-consent",
+        "set",
+        "Sets the consent to official SEC acquisition: documents per issuer, in all, and bytes.",
     ),
     "OPERATION_LIST": Command(
         "operation",
@@ -948,6 +994,7 @@ PRIMARY: Final[tuple[str, ...]] = (
     "analysis_answer",
     "review_answer",
     "event",
+    "committee_message",
 )
 """The document fields `--file <path>` reads, in order: a command reading several takes the
 first it allows (a study's declaration as its YAML text)."""
@@ -961,6 +1008,9 @@ FLAGS: Final[dict[str, str]] = {
     "automation_package_ids": "packages",
     "backup_generations_kept": "keep",
     "bundle_directory": "dir",
+    "committee_key": "key",
+    "committee_role": "role",
+    "committee_seen": "seen",
     "calibration_plan_hash": "plan",
     "candidate_hash": "candidate",
     "candidate_id": "candidate",
@@ -1021,6 +1071,10 @@ FLAGS: Final[dict[str, str]] = {
     "left_task_id": "left",
     "model_id": "model",
     "network_enabled": "enabled",
+    "evidence_documents_per_issuer": "per-issuer",
+    "evidence_total_documents": "documents",
+    "evidence_total_bytes": "bytes",
+    "evidence_setup": "setup",
     "observed_through": "through",
     "origin_task_id": "origin",
     "person_confirmation": "person-said",
@@ -1199,6 +1253,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
         "Studies: Factor, then Alpha; Risk beside them",
         (
             ("study", "A Factor, Alpha or Risk study: controls, plan, run, show, compare."),
+            ("declaration", "A declaration converted between JSON and YAML before planning."),
             ("curation", "A Factor study's curation: which factors go on."),
             ("foundation", "A curated Factor study sealed as an Alpha's foundation."),
             ("handoff", "The Alpha declaration a curated Factor study hands on."),
@@ -1213,6 +1268,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
         "Portfolio",
         (
             ("book", "A Portfolio book: its draft from a candidate, its delivery report."),
+            ("portfolio", "One book's saved report and latest retained Forward view."),
             ("risk-link", "The Risk reports linked to a Portfolio book."),
             ("strategy", "A strategy prepared from promoted Alpha and Risk studies."),
             ("strategy-book", "An installed strategy's book: controls, preview, run."),
@@ -1224,8 +1280,10 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
         "Evidence and CRO",
         (
             ("evidence", "A book's evidence: its preview, sources, ledger and packets."),
+            ("evidence-consent", "The consent to official SEC acquisition and its budget."),
             ("review", "A CRO review of a book: request, dossier, findings, answer."),
             ("bundle", "A specialist's prepared bundle and the answer to it."),
+            ("committee", "The investment committee on a date's published positions."),
         ),
     ),
     (
@@ -1287,6 +1345,12 @@ ALTERNATIVES: Final[dict[str, tuple[tuple[str, ...], ...]]] = {
     # The plan reads one declaration, its YAML text or its object, and refuses both or none
     # (`research_experiment.one_document_required`).
     "EXPERIMENT_PLAN": (("experiment_yaml",), ("experiment_document",)),
+    "EXPERIMENT_DECLARATION_CONVERT": (("experiment_yaml",), ("experiment_document",)),
+    # A delivery reports a study's book or a date's published positions.
+    "EXPERIMENT_DELIVERY_EXPORT": (
+        ("task_id", "experiment_receipt_hash", "portfolio_session"),
+        ("update_task_id", "update_publication_hash", "position_basis"),
+    ),
 }
 """The requests whose owner takes exactly one of several field groups, which `schema show` states
 as its `oneOf` (V409, the review's F4). The gate holds each group to the request's own fields."""

@@ -584,6 +584,11 @@ def explain(
             ),
             "next_requests": {},
         }
+    if base == "research_update.model_epoch_unavailable":
+        return {
+            **refusal_words(code),
+            "next_requests": {"books": {"operation": "CONTROLS"}},
+        }
     if base == "strategy_score.formation_or_model_epoch_unavailable":
         said = dict(part.split("=", 1) for part in subject.split(",") if "=" in part)
         epoch = said.get("epoch", "").replace("..", " to ")

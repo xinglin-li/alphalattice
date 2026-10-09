@@ -14,14 +14,16 @@ links (`encoder`, `reranker`; NTFS junctions on Windows, symlinks elsewhere)
 pointing at the store's packs, so one physical copy serves every workspace
 and the workspace manifest still names a confined path.
 
-The store's location is the user's: `ALPHALATTICE_MODEL_STORE`, else the
-platform's application-data directory. Downloading is a separate, admitted
+The store's location is the user's: `ALPHALATTICE_MODEL_STORE`, else the store
+packs were last installed into (remembered beside the platform's application-data
+directory), else that directory. Downloading is a separate, admitted
 step (`fetch`): this module verifies, it never reaches the network itself.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -199,11 +201,37 @@ def writable_store(store: Path) -> Path:
     return store
 
 
+STORE_POINTER = "store.json"
+"""In the platform's directory: the store packs were last installed into, when it lies elsewhere."""
+
+
 def default_store_root() -> Path:
-    """`ALPHALATTICE_MODEL_STORE`, else the platform's application-data directory."""
+    """`ALPHALATTICE_MODEL_STORE`, else the store last installed into, else the platform's."""
     override = os.environ.get("ALPHALATTICE_MODEL_STORE", "").strip()
     if override:
         return Path(override)
+    platform = _platform_store_root()
+    try:
+        remembered = Path(json.loads((platform / STORE_POINTER).read_text("utf-8"))["store"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return platform
+    return remembered if remembered.is_dir() else platform
+
+
+def remember_store(store: Path) -> None:
+    """Remember the store packs were installed into, so a process without the variable finds it."""
+    platform = _platform_store_root()
+    pointer = platform / STORE_POINTER
+    if store.resolve() == platform.resolve():
+        pointer.unlink(missing_ok=True)
+        return
+    platform.mkdir(parents=True, exist_ok=True)
+    staged = pointer.with_suffix(".tmp")
+    staged.write_text(json.dumps({"store": str(store.resolve())}), encoding="utf-8")
+    os.replace(staged, pointer)
+
+
+def _platform_store_root() -> Path:
     if os.name == "nt":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / "AlphaLattice" / "models"

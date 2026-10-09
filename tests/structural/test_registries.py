@@ -73,6 +73,11 @@ def test_the_tests_ratchet_refuses_an_entry_its_base_did_not_hold() -> None:
         "test-private: tests/test_a.py::import _kept",
         "test-private: tests/test_c.py::import _new",
     ]
+    single = {"tests/test_a.py::import _kept": 1}
+    assert private_test_growth(single, {"tests/test_c.py::import _kept": 1}) == []
+    duplicated = private_test_growth(single, {**single, "tests/test_c.py::import _kept": 1})
+    assert duplicated and all("::import _kept is registered 2" in line for line in duplicated)
+    assert private_test_growth(single, {"tests/test_c.py::import _new": 1})
 
 
 def test_a_format_that_names_no_reader_or_a_missing_one_is_refused(tmp_path: Path) -> None:

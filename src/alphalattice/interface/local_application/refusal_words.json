@@ -95,6 +95,10 @@
   "detail": "This specialist's bundle takes the exact assigned Task's `task_id`. Nothing was prepared; give that Task id to your lead.",
   "next_action": "TELL_YOUR_LEAD"
  },
+ "local_client.request_invalid": {
+  "detail": "The request is not one the Host accepts as written; its `location`, when present, names the part. Correct it as `schema show <operation>` states its fields, or as the offer that printed it, and send it again.",
+  "next_action": "CORRECT_THE_REQUEST"
+ },
  "native_bridge.accepted_answer_not_recorded": {
   "detail": "The answer is accepted, but its Team exchange could not be recorded. Retry the same accepted answer from its original bound session.",
   "next_action": "RETRY_FROM_THE_ORIGINAL_SESSION"
@@ -136,7 +140,7 @@
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "alternative_evidence.acquisition_deadline_exceeded": {
-  "detail": "This unit's official acquisition ran past the window its request was admitted for, so it stopped; the filings it fetched are kept for the next attempt. Preview and prepare again, which opens a new window, or restart an idle Host you own with a longer `--sec-acquisition-window-seconds`.",
+  "detail": "This unit's official acquisition ran past the window its request was admitted for, so it stopped; the filings it fetched are kept for the next attempt. Preview and prepare again, which opens a new window.",
   "next_action": "PREVIEW_AND_PREPARE_AGAIN"
  },
  "alternative_evidence.answer_problems": {
@@ -180,8 +184,8 @@
   "next_action": "SEND_THE_PACKETS_CONTINUATION_REQUEST"
  },
  "alternative_evidence.live_source_missing": {
-  "detail": "This unit was planned under official SEC acquisition, and this Host was served without it, so it could not read its filings. Ask the person to serve the Host with `--sec-network-consent`, or preview again, which plans under the recorded package this Host reads.",
-  "next_action": "SERVE_WITH_OFFICIAL_ACQUISITION_OR_PREVIEW_AGAIN"
+  "detail": "This unit was planned under official SEC acquisition, and the workspace no longer admits it, so its filings could not be read. Ask the person to give the consent (`evidence-consent set`) and open the workspace's network, or preview again, which plans under the recorded package.",
+  "next_action": "GIVE_THE_SOURCE_CONSENT_OR_PREVIEW_AGAIN"
  },
  "alternative_evidence.matter_selection_policy_retired": {
   "detail": "The packet was prepared under a matter selection this build retired.",
@@ -271,6 +275,38 @@
   "detail": "A data decision is needed before this Task can continue: the data owner found an unexplained move and asks for a permitted response, which the agent takes under the first use's delegation or asks the person for in one line.",
   "next_action": "DATA_ISSUES"
  },
+ "evidence_review.budget_exceeds_consent": {
+  "detail": "The declared acquisition bound is above what this workspace's consent to official SEC acquisition admits. Lower it, or have the person widen the consent (`evidence-consent set`).",
+  "next_action": "CORRECT_THE_BOUND_OR_ASK_THE_PERSON"
+ },
+ "evidence_review.consent_beyond_delegation": {
+  "detail": "A first use's delegation gives official SEC acquisition only within the default budget (at most three documents per issuer, within the product's totals) and never past a consent the person gave. More is the person's decision: ask the person in one line and, on a clear yes, send this again with `--person-said` and `--asked`.",
+  "next_action": "ASK_THE_PERSON_FOR_A_WIDER_SEC_BUDGET"
+ },
+ "evidence_review.consent_budget_invalid": {
+  "detail": "A consent to official SEC acquisition names 3 to 20 documents per issuer, a document total no smaller than that, and a positive byte total.",
+  "next_action": "CORRECT_THE_CONSENT_AND_SEND_AGAIN"
+ },
+ "evidence_review.consent_human_only": {
+  "detail": "Official SEC acquisition and the consent to it are the person's; a first use's agent takes them only within the default budget, under its goal. Otherwise ask the person in one line and, on a clear yes, send this again with `--person-said` and `--asked`.",
+  "next_action": "ASK_THE_PERSON_FOR_SEC_SOURCE_CONSENT"
+ },
+ "evidence_review.source_admission_waits_for_evidence_task": {
+  "detail": "The workspace's source consent, network or contact changed while an Evidence Task runs on the source it had; nothing new was prepared. Ask again once that Task ends.",
+  "next_action": "WAIT_FOR_THE_RUNNING_EVIDENCE_TASK"
+ },
+ "evidence_review.source_admission_failed": {
+  "detail": "The official SEC source could not be admitted under the workspace's consent, so the recorded package stays in use; the next Evidence read tries again.",
+  "next_action": "READ_THE_EVIDENCE_PREVIEW_AGAIN"
+ },
+ "evidence_review.install_failed": {
+  "detail": "The Evidence install failed in a way its owner did not name; its incident is logged. Read the install Task, then install again.",
+  "next_action": "INSTALL_AGAIN"
+ },
+ "evidence_review.retrieval_environment_not_loaded": {
+  "detail": "This Host runs without the retrieval environment, so it cannot serve an Evidence package. Create the environment, then restart the idle Host once; it runs in it from then on.",
+  "next_action": "CREATE_THE_RETRIEVAL_ENVIRONMENT_AND_RESTART_ONCE"
+ },
  "evidence_review.explicit_sec_network_consent_required": {
   "detail": "SEC acquisition was not explicitly consented to by this command. Run preflight, then add --network-consent only with the person's permission; the workspace network control must also allow acquisition.",
   "next_action": "PREFLIGHT_AND_GIVE_EXPLICIT_SEC_CONSENT"
@@ -287,9 +323,9 @@
   "detail": "A preflight checks a source before it is installed -- an official acquisition's setup, or a recorded import's records -- and a rebind reads no source, so it has none. Run the rebind without --preflight: it seals a package beside the installed one and binds it only with --install.",
   "next_action": "RUN_THE_REBIND_WITHOUT_PREFLIGHT"
  },
- "evidence_review.sec_user_agent_required": {
-  "detail": "SEC acquisition needs the operator's contact in SEC_USER_AGENT. Configure it locally, then run preflight; the contact value is never printed in this refusal.",
-  "next_action": "CONFIGURE_SEC_CONTACT_AND_PREFLIGHT"
+ "evidence_review.sec_contact_not_configured": {
+  "detail": "This build carries no SEC contact, so it cannot name itself to the SEC as fair access requires. That is the build's configuration, for its maintainer to complete; the person is never asked for a name or an address. The Evidence review stays on its recorded package.",
+  "next_action": "REPORT_THE_BUILD_TO_ITS_MAINTAINER"
  },
  "evidence_review.source_file_unavailable": {
   "detail": "The recorded import could not read a source file under its {subject} option: `location` names that option, the file relative to it and what the option should hold, and `causes` the sanitized OS cause. Correct the option, then run the import's own check in `next_commands`, which installs nothing; where one directory below the given root holds the named source set, the check is offered there.",
@@ -747,6 +783,10 @@
   "detail": "The research update needs {subject}. This workspace's closed network does not allow data-provider access; a person allows it (`network set`), then run the saved plan again.",
   "next_action": "ASK_A_PERSON_TO_ALLOW_NETWORK_ACCESS"
  },
+ "research_update.model_epoch_unavailable": {
+  "detail": "The requested update date is outside the active models' admitted range, or the update needs formations they do not support. Read this strategy's controls for its model dates; plan a date within its admitted range, or run and activate a new book with the required model support.",
+  "next_action": "READ_STRATEGY_CONTROLS_AND_PLAN_WITH_MODEL_SUPPORT"
+ },
  "research_update.publication_not_bound_to_task": {
   "detail": "The publication named is not one this research update published, so it was not read; name a publication its readback lists.",
   "next_action": "NAME_A_PUBLICATION_THE_TASK_LISTS"
@@ -852,7 +892,7 @@
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "storage.managed_capacity_exceeded": {
-  "detail": "Managed storage exceeds the workspace cap. Raise the cap in Settings (`storage set --cap-bytes <bytes>`) or plan a cleanup (`storage plan`) for a person to confirm.",
+  "detail": "Managed storage exceeds the workspace cap. Raise the cap (`storage set --cap-bytes <bytes>`) or preview a cleanup (`storage plan`) for the person to confirm.",
   "next_action": "RAISE_THE_CAP_OR_PLAN_A_CLEANUP"
  },
  "strategy_activation.refused": {
@@ -1012,7 +1052,7 @@
   "next_action": "SET_THE_STORAGE_CAP"
  },
  "storage.cap_setting_unreadable": {
-  "detail": "The workspace storage cap setting could not be read. Set it again through Settings or `storage set --cap-bytes auto`; retained records stay intact.",
+  "detail": "The workspace storage cap setting could not be read. Set it again (`storage set --cap-bytes auto`); retained records stay intact.",
   "next_action": "SET_THE_STORAGE_CAP"
  },
  "alternative_evidence.table_view_correspondence_unproved": {
@@ -1104,7 +1144,7 @@
   "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_UPDATE"
  },
  "workbench.performance_selection_invalid": {
-  "detail": "This performance selection is not supported. Choose the saved report, or the latest forward performance (`research-update show --package <package>`).",
+  "detail": "This performance selection is not supported. Read the saved report (`portfolio show <task-id>`) or the latest forward performance (`portfolio show <task-id> --performance latest`).",
   "next_action": "CHOOSE_REPORT_OR_LATEST_PERFORMANCE"
  },
  "native_bridge.event_invalid": {
@@ -1438,5 +1478,41 @@
  "first_use.date_outside_calendar": {
   "detail": "The first use's date is one the exchange calendars do not plan, so no update was planned for it, and the activation stands. Plan the update with `research-update plan --package <package>`.",
   "next_action": "PLAN_THE_UPDATE_AGAIN"
+ },
+ "committee.not_open": {
+  "detail": "No committee is open on this update; open it with `committee open --update <task>`.",
+  "next_action": "OPEN_THE_COMMITTEE"
+ },
+ "committee.publication_required": {
+  "detail": "This update published no positions, so there is nothing for a committee to argue. Follow the update to its publication first.",
+  "next_action": "FOLLOW_THE_UPDATE_TO_ITS_PUBLICATION"
+ },
+ "committee.refused": {
+  "detail": "The committee could not take this request.",
+  "next_action": "READ_THE_FLOOR"
+ },
+ "activity.event_channel_reserved": {
+  "detail": "That channel is the committee's own; a client's event cannot take it.",
+  "next_action": "DECLARE_ON_YOUR_OWN_CHANNEL"
+ },
+ "research_delivery.subject_required": {
+  "detail": "A delivery names its subject: a study's book (its Task, receipt and session) or a date's published positions (its update, publication and basis).",
+  "next_action": "NAME_THE_DELIVERY_SUBJECT"
+ },
+ "research_delivery.update_subject_mismatch": {
+  "detail": "The update's publication is not the one named, or its basis is missing; send the review selector its readback offers.",
+  "next_action": "SEND_THE_OFFERED_SELECTOR"
+ },
+ "committee.message_refused": {
+  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias. Read the floor with `committee show`.",
+  "next_action": "READ_THE_FLOOR"
+ },
+ "committee.session_required": {
+  "detail": "A committee is opened from an agent session, whose goal holds its floor; open it from the lead's own session.",
+  "next_action": "OPEN_IT_FROM_THE_LEADS_SESSION"
+ },
+ "model_training.finish_or_recover_existing_task": {
+  "detail": "An unfinished Task ({subject}) prevents preparing model training inputs. Read or wait for that Task before preparing the inputs.",
+  "next_action": "READ_OR_WAIT_FOR_THE_EXISTING_TASK"
  }
 }

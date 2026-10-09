@@ -77,7 +77,7 @@ function context(initial,{address='#page=overview&follow='+scope,typing=false,di
     $:s=>nodes.get(s)||null,$$:()=>[],getSelection:()=>'',scrollTo(){},clone,...library(appDir)};
   library.context(c);script('../data/zh.js').runInContext(c);c.window.ALPHA_ZH_READY=true;
   for(const file of files)script(file).runInContext(c);
-  vm.runInContext('globalThis.probe={Data,app,LiveActivity,LiveTasks,LiveStudy,LiveReview,LiveViews,LiveWorkspace,LiveResearch,Inspect,Window,Geometry,Events,ACTIONS,PRODUCT_ACTIONS,dispatchAction,readRoute,hashParams};',c);
+  vm.runInContext('globalThis.probe={Data,app,LiveActivity,LiveTasks,LiveStudy,LiveReview,LiveViews,LiveWorkspace,LiveResearch,Inspect,Window,Geometry,Events,ACTIONS,PRODUCT_ACTIONS,dispatchAction,readRoute,hashParams,t,codeWords,stageOf,durationOf};',c);
   const p=c.probe,shown={mode:null,by:null,body:'',opens:0,onClose:null};
   // Presentation primitives only. All route mechanics, readers and wanted boundaries stay real.
   c.render=()=>{renders.push(p.app.page);};c.patchMain=()=>{};c.preserveSurface=()=>({});c.restoreSurface=()=>{};c.notify=m=>toasts.push(m);c.closeDialog=()=>{dialog.open=false;};c.hideToast=()=>{};
@@ -121,9 +121,25 @@ async function check(name,fn){await fn();checks.push(name);}
     for(const [key,value]of Object.entries(fixture.book))assert.equal(JSON.parse(q(ctx).get('review_selector'))[key],value);
     assert.ok(ctx.requests.some(v=>v.startsWith('/api/evidence-cro?')),'the actual review consumer read its pinned publication');followed(ctx);
   });
-  await check('manual navigation pauses the same scope and Follow again resumes',async()=>{
-    const ctx=context(phase('factor'));await ctx.connect();await until(()=>ctx.p.app.page==='factor','Factor opened');await settle();
-    await manual(ctx);ctx.feed('factor');await settle();assert.equal(ctx.p.app.page,'history');
+  await check('paused following retains moving rows and closing preserves the recorded Task',async()=>{
+    const ctx=context(phase('running'));await ctx.connect();await until(()=>ctx.shown.by?.[1]===fixture.factor,'progress opened');
+    await manual(ctx);ctx.feed('running');await settle();assert.equal(ctx.p.app.page,'history');
+    const {t,durationOf}=ctx.p,rows=[],verbs=[];
+    ctx.c.runRow=(run,options)=>{rows.push({run,options});return '';};ctx.c.btn=(word,action,value)=>{verbs.push({word,action,value});return '';};
+    assert.equal(ctx.p.LiveActivity.followWord(),t('Following paused'));assert.notEqual(ctx.p.LiveActivity.followWord(),t('Following latest'));
+    ctx.p.LiveTasks.currentGroup();await settle();rows.length=verbs.length=0;ctx.p.LiveTasks.currentGroup();
+    const owner=ctx.p.Data.tasks().find(v=>v.task_id===fixture.factor),recordedDuration=durationOf(owner);
+    assert.deepEqual(rows.map(v=>v.run.id),[fixture.factor]);assert.equal(rows[0].run.current,owner.current_stage);assert.equal(rows[0].run.state,owner.lifecycle);assert.equal(durationOf(rows[0].run.object),recordedDuration);
+    assert.equal(rows[0].options.pinned,true);assert.ok(!verbs.some(v=>v.action==='activity-follow-again'));
+    assert.ok(!String(ctx.p.LiveActivity.section()).includes('data-action="activity-follow-again"'));
+    await ctx.p.dispatchAction('task',fixture.factor);await settle();assert.equal(ctx.shown.by?.[1],fixture.factor);
+    ctx.p.LiveTasks.close();assert.equal(ctx.shown.mode,null);assert.equal(ctx.p.LiveTasks.selected(),null);assert.equal(ctx.p.Data.tasks().find(v=>v.task_id===fixture.factor).lifecycle,owner.lifecycle);
+    rows.length=0;ctx.c.Date=class extends Date{static now(){return 9999999999999;}};ctx.p.LiveTasks.currentGroup();
+    assert.deepEqual(rows.map(v=>v.run.id),[fixture.factor]);assert.equal(durationOf(rows[0].run.object),recordedDuration);
+    await ctx.p.dispatchAction('task',fixture.factor);await settle();assert.equal(ctx.shown.by?.[1],fixture.factor);
+    const address=ctx.c.location.hash,badGoal=clone(phase('factor').narrative);badGoal.goal.goal_id='not-the-followed-goal';ctx.setNarrative(badGoal);
+    ctx.checkpoint('factor');ctx.feed('factor');await settle();assert.equal(ctx.c.location.hash,address);assert.ok(String(ctx.p.LiveActivity.section()).includes('goal.not_found'));assert.equal(ctx.toasts.filter(v=>v==='goal.not_found').length,1);
+    ctx.feed('factor');await settle();assert.equal(ctx.toasts.filter(v=>v==='goal.not_found').length,1);ctx.setNarrative(null);ctx.feed('factor');await settle();assert.ok(!String(ctx.p.LiveActivity.section()).includes('goal.not_found'));rows.length=0;ctx.p.LiveTasks.currentGroup();assert.deepEqual(rows,[]);
     await ctx.p.dispatchAction('activity-follow-again','');await until(()=>ctx.p.app.page==='factor','Follow again opens the same Goal result');followed(ctx);assert.ok(!q(ctx).has('follow_paused'));
   });
   await check('a late result cannot move a manually chosen page',async()=>{

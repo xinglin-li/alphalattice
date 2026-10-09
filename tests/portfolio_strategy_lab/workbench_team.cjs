@@ -1,5 +1,4 @@
-// Read the real Team consumer, preserving declarations, native provenance and owner receipts
-// as separate records. No HTTP, model or data work.
+// Team declarations, native provenance and owner receipts stay separate.
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const library=require('./workbench_library.cjs'); // the library's constants and the scripts' parameters, from the source (Q2)
 const finish=library.guard('workbench_team');
@@ -60,12 +59,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
 (async()=>{
   const {A,TM}=c;
   const S1='sess-parent-1',S2='sess-parent-2';
-  // 1. One session: assignment, start hook, a truncated answer with a reference, an objection, a
-  //    product refusal on that reference, a second answer on another reference, the admission,
-  //    the Task Control transition and the owner-verified artifact, the PM response and a stop
-  //    hook. Then a redelivered identical event, a conflicting event under the same declared id,
-  //    an unknown kind, an event outside any session, a message with no agent id, and a message
-  //    whose reference is ordinary text.
+  // One session: native claims, product receipts, duplicates and unknown events stay distinct.
   const long='x'.repeat(500);
   A.absorbPage(page('TAIL',[
     message(S1,S1,'research_lead','assignment','Screen the retained factor universe on the July input and report what survives.',{recipient:'child-analyst'}),
@@ -135,9 +129,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(html.includes('G6 <span class="muted">· not a qualified product reference</span>'),'ordinary text is shown as a declaration');
   assert.ok(html.includes('EXPERIMENT_RUN · product refusal')&&html.includes('research_experiment.preview_required'),'the refusal is its own observation');
   assert.ok(html.includes('EXPERIMENT_RUN · product admission')&&html.includes('ResearchExecutionEvidence · owner-verified artifact')&&html.includes('research_experiment · Task Control fact'));
-  // the inspector's evidence (the workroom's product card repeats the last facts as rows, round 16)
-  // the product evidence log, past the workroom (whose product card repeats the last facts as rows and,
-  // since round 24b, follows the inspector in the side column)
+  // Inspect the product facts independently of their workroom copy.
   const inspected=html.split('id="teamProductFacts"')[1].split('</section>')[0]; // C4: Observations is one column, its list one section
   assert.ok(inspected.indexOf('product refusal')<inspected.indexOf('product admission')&&inspected.indexOf('product admission')<inspected.indexOf('owner-verified artifact'),'recorded order');
   assert.equal((inspected.match(/owner-verified artifact/g)||[]).length,1,'only the compatible artifact verification reads as owner-verified');
@@ -162,11 +154,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   TM.select(S1);TM.showActor('child-cro');assert.equal(hash.value.includes('actor=child-cro'),true);
   html=readScene();assert.ok(html.includes('Objection'));assert.ok(!html.includes(' · Question'),'other participants\' messages are filtered');assert.ok(html.includes('<strong>Main PM</strong><span class="team-mention" tabindex="0" data-tip="child-cro">→ @CRO</span><span class="team-kind">· PM response'));
   TM.showActor('');html=readScene();assert.ok(html.includes(' · Question'));TM.select('');
-  // 4. Discovery, preview readback and verification are three answers. A hash nobody indexes is
-  //    unresolved and can still be asked from the research owner (a preview state, not a
-  //    verification); a Task the workbench lists is discovered, not verified, until its owner's
-  //    readback answers for that exact Task; a History hit is discovered, and only the report
-  //    readback verifies it; a foreign string is a declaration and is never fetched.
+  // Discovery and preview are not verification; only the exact owner's readback verifies.
   TM.select(S1);await TM.resolve(P1);assert.ok(reads.some(p=>p.includes('/api/research-history')));
   assert.equal(TM.resolved().get(P1).level,'unresolved');html=readScene();assert.ok(html.includes('[metadata:unresolved]')&&html.includes('<team-verify:'+P1+'>'));
   previewStatus='EXPIRED';await TM.verify(P1);assert.equal(TM.resolved().get(P1).level,'preview');
@@ -212,10 +200,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const verified=TM.resolved().get(RESULT);assert.equal(verified.level,'verified');assert.equal(verified.failure,null);assert.equal(JSON.stringify(verified.open),JSON.stringify(['history-open','result:'+RESULT]));
   html=readScene();assert.ok(html.includes('[verified:verified by Portfolio result]')&&!html.includes('<team-verify:'+RESULT+'>')&&!html.includes('owner readback failed'));
   assert.equal(TM.resolved().has('result:'+RESULT),false,'still one row: the display reference');
-  // Installed versus authored Portfolio: an installed replay Task is verified through the Portfolio
-  // owner's index and the REPORT of that exact result, which must name the Task; its reader is the
-  // saved result entry. A listed Task without a result stays discovered. The authored-experiment
-  // route is never asked for either.
+  // Installed replay verifies through its exact Portfolio report, never the experiment owner.
   results=[{result_hash:RESULT2,report_hash:'q'.repeat(64),program_hash:'p'.repeat(64),task_id:INSTALLED,completed_at:'2026-09-14T12:00:00Z'}];
   reportBody=(asked)=>({result_hash:asked,report_hash:'q'.repeat(64),originating_task_id:asked===RESULT2?INSTALLED:'x',used_by_task_ids:[asked===RESULT2?INSTALLED:'x']});
   await TM.resolve(INSTALLED);assert.equal(TM.resolved().get(INSTALLED).target.taskKind,'portfolio_public_development_replay');
@@ -231,16 +216,13 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const before=reads.length;await TM.resolve('https://example.invalid/report.html');assert.equal(reads.length,before,'a foreign reference is never fetched or opened');
   assert.equal(TM.resolved().get('https://example.invalid/report.html').level,'declaration');
   TM.select('');assert.equal(TM.qualify('G6'),null);assert.equal(JSON.stringify(TM.productReferences(op('EXPERIMENT_RUN','RETURNED',{experiment_plan_hash:P2,research_input_id:'factor-development',note:'G6'},{status:'ADMITTED'}))),JSON.stringify([P2]),'typed extraction ignores ordinary text and non-identity fields');
-  // 5. A second session with the same role names is another scene; selection travels in the hash
-  //    and survives repaint; an activity row offers the scene of its own session.
+  // Session identity and hash selection survive repaint.
   const S3='sess-parent-3';
   A.absorbPage(page('CONTINUED',[message(S3,S3,'research_lead','assignment','Another PM conversation.',{recipient:'child-analyst-2'}),hook(S3,'child-analyst-2','alternative_analyst','SubagentStart','turn-9')]));
   const three=TM.scene();assert.equal(three.sessions.length,3);assert.equal(three.sessions[0].id,S3,'newest session first');
-  // the places round (law 123): the Sessions list is where a session is chosen -- every retained
-  // session is its row, the shown one marked; the conversation shows the one chosen, no picker
+  // The Sessions list chooses the conversation; each retained session remains listed.
   const sessionsHtml=()=>{const was=c.app.page;c.app.page='team-sessions';const h=TM.section();c.app.page=was;return h;};
-  // the lobby (law 136): a session awaiting the Main PM is in the open group, a recorded one in the
-  // folded group, whose head opens it -- the viewer's fold, kept
+  // Awaiting sessions stay open; the viewer's recorded-session fold persists.
   html=sessionsHtml();assert.ok(html.includes('<page:team:'+S1+'>')&&!html.includes('<page:team:'+S3+'>')&&!html.includes('[shown]'),'the session awaiting the Main PM is open, the recorded one folded, none marked until one is chosen: '+html.slice(0,2400));
   c.Lobby.fold('sessions:recorded');html=sessionsHtml();assert.ok(html.includes('<page:team:'+S1+'>')&&html.includes('<page:team:'+S3+'>')&&prefs.get('lobby.sessions').folded.recorded===false,'the recorded group opens and stays open');
   TM.select(S3);html=sessionsHtml();assert.ok(/ROW\(Another PM conversation\|/.test(html)&&!html.includes('[shown]'),'a session is named by its title (F4: its first sentence where no rule of the verb table holds); the lobby marks none -- none is open while it is shown (the user, 2026-09-24: back from a session, its row stayed selected): '+html.slice(0,600));
@@ -289,7 +271,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.equal(routed.app.page,'team');assert.equal(routed.location.hash,'#page=team&team=exact-session&actor=exact-actor&event=exact-event');
   const priorRead=c.Data.read;let returnedCase=P1;
   // A case reference verifies through the owner's saved-revision read, never the evidence readback.
-  c.Data.read=async p=>{if(p.startsWith('/api/goals/show?'))throw Error('team must not verify a goal through the evidence readback');return p.startsWith('/api/goals/narrative?')?{goal_hash:returnedCase,evidence_verification:'NOT_PERFORMED'}:priorRead(p);};
+  c.Data.read=async p=>{if(p.startsWith('/api/goals/show?'))throw Error('unexpected evidence readback');return p.startsWith('/api/goals/narrative?')?{goal_hash:returnedCase,goal:{goal_hash:returnedCase,goal_id:'11111111-1111-4111-8111-111111111111'},evidence_verification:'NOT_PERFORMED'}:priorRead(p);};
   await TM.resolve('case:'+P1);await TM.verify('case:'+P1);
   assert.equal(TM.resolved().get('case:'+P1).target.kind,'case');
   assert.deepEqual(Array.from(TM.resolved().get('case:'+P1).open),['goal-open',P1]);
@@ -348,53 +330,39 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   html=TM.section();
   assert.ok(html.includes('1 Task completion · 1 owner-verified result')&&html.includes('just-verified')&&html.includes('id="teamProductFacts"'),'the compatible owner verification is the verified arrival, said on the workroom and shown on the evidence view');
   TM.markSeen();html=TM.section();assert.ok(!html.includes('Task completion')&&!html.includes('owner-verified result'),'mark seen clears both counts');
-  // 10. The question: a research case is the session's only by the Main PM's own declaration; the
-  //     Case owner verifies the revision's text, never that association; several PM-declared cases
-  //     are an explicit choice; a member's case is related; without a case the PM assignment stands.
-  const S5='sess-parent-5',H1='3'.repeat(64),H2='4'.repeat(64),C1='case:'+H1,C2='case:'+H2;
-  const narratives={[H1]:{title:'Sector-neutral refit',question:'Does the sector-neutral lane survive the causal folds?'},[H2]:{title:'Turnover budget',question:'Is the book within its turnover budget at the August holdings date?'}};
-  const narrativeReads=[];
-  c.Data.read=async p=>{
-    if(p.startsWith('/api/goals/show?'))throw Error('team must not verify a goal through the evidence readback');
-    if(p.startsWith('/api/goals/narrative?')){const h=new URLSearchParams(p.split('?')[1]).get('goal_hash');narrativeReads.push(h);const d=narratives[h];
-      // the owner's narrative as it answers: the saved revision, evidence not re-verified
-      return {status:'GOAL_NARRATIVE',goal_id:'11111111-1111-4111-8111-111111111111',goal_hash:h,goal:{goal_id:'11111111-1111-4111-8111-111111111111',goal_hash:h,revision:1,parent_hash:null,state:'OPEN',declaration:{title:d.title,objective:d.question,kind:'RESEARCH',scope:'The July research input.',constraints:[],criteria:[{criterion_id:'c1',text:'development IC net of cost'}],deliverables:[],budget:null,research:{purpose:'NEW_RESEARCH',comparison_design:'Causal folds.',required_stages:['FACTOR_FOUNDATION','ALPHA']},parent_goal_id:null},statements:[],references:[]},statement_context:{},head_hash:h,outcome:'QUESTION_OPEN',open_choices:[],references:[],evidence_verification:'NOT_PERFORMED',claim:'Saved revision identity is verified; references are as recorded and not re-verified against their owners. GOAL_SHOW verifies them.'};}
-    return priorRead(p);};
-  A.absorbPage(page('CONTINUED',[
-    message(S5,S5,'research_lead','assignment','Refit on the July input.',{recipient:'a5',reference:C1,message_id:'as-5'}),
-    message(S5,'a5','alternative_analyst','answer','Also relevant: the turnover case.',{recipient:S5,reference:C2,message_id:'an-5'}),
-  ]));
-  hash.value='#page=team&team='+S5;html=TM.section();
-  assert.ok(html.includes('data-question="case-declared"')&&html.includes('Refit on the July input.')&&html.includes('<span class="mono">'+H1.slice(0,8)+'</span>'),'one PM-declared case is the candidate: the assignment of the Main PM is its question, the reference a property until verified (round 93)');
-  assert.ok(html.includes('declared by Main PM · Goal not yet resolved · <span class="mono">'));
-  assert.ok(html.includes('Related case references declared by members, not the session\'s question')&&html.includes('Alternative Analyst · <span class="run-ref"><span class="run-ref-kind">Goal</span><span class="mono">'+H2.slice(0,8)+'</span>'),'the member\'s case is related, never the question');
-  await TM.resolve(C1);await TM.verify(C1);
-  assert.deepEqual(narrativeReads,[H1],'the owner\'s narrative is read for the declared case');
-  html=TM.section();
-  assert.ok(html.includes('data-question="case-verified"')&&html.includes('<h1 id="teamSceneHeading">Sector-neutral refit</h1>')&&html.includes('<p class="team-question-text">Does the sector-neutral lane survive the causal folds?</p>'),'once the revision is verified the owner’s title names the session and its question is the body (F4, laws 134 and 137)');
-  assert.ok(html.includes('[verified:Goal revision verified by its owner] <span class="muted">association declared by Main PM · not verified</span>'),'the revision is verified; the association stays a declaration');
-  assert.ok(!html.includes('bound research case'),'no binding is claimed');
-  await TM.resolve(C2);await TM.verify(C2);html=TM.section();
-  assert.ok(html.includes('<h1 id="teamSceneHeading">Sector-neutral refit')&&!html.includes('<h1 id="teamSceneHeading">Turnover budget'),'a verified member-declared case is still not the question');
-  A.absorbPage(page('CONTINUED',[message(S5,S5,'research_lead','question','Also decide the turnover case.',{recipient:'a5',reference:C2,message_id:'q-5'})]));
-  html=TM.section();
-  assert.ok(html.includes('data-question="choice"')&&html.includes('<h1 id="teamSceneHeading">2 goals declared by Main PM</h1>')&&html.includes('<span class="muted">explicit choice required · none chosen by order or recency</span>'),'two PM-declared cases are an explicit choice');
-  assert.ok(!html.includes('<h1 id="teamSceneHeading">Sector-neutral refit')&&!html.includes('<h1 id="teamSceneHeading">Turnover budget'),'neither question is chosen by order');
-  assert.equal((html.match(/<team-question:case:/g)||[]).length,2,'each candidate offers the choice');
-  let sum=TM.summary();assert.equal(sum.session,S5);assert.equal(sum.question.kind,'choice');assert.equal(sum.question.text,'2 goals declared by Main PM');
-  TM.chooseQuestion(C2);html=TM.section();
-  assert.ok(html.includes('data-question="case-verified"')&&html.includes('<h1 id="teamSceneHeading">Turnover budget</h1>')&&html.includes('<p class="team-question-text">Is the book within its turnover budget at the August holdings date?</p>')&&html.includes('[ready:chosen]')&&html.includes('<team-question:'+C1+'>'),'the reader\'s choice shows that case, the other stays offered');
-  sum=TM.summary();assert.equal(sum.question.kind,'case-verified');assert.equal(sum.question.text,'Is the book within its turnover budget at the August holdings date?');
-  assert.equal(TM.questionSource(sum.question),'[verified:Goal revision verified by its owner] <span class="muted">association declared by Main PM · not verified</span>','the Overview says the same words');
+  // Goal revisions, reader choice and attributed participants share the rendered owner facts.
+  const S5='sess-parent-5',H1='3'.repeat(64),H2='4'.repeat(64),H3='6'.repeat(64),H4='8'.repeat(64),refitCase='case:'+H1,turnoverCase='case:'+H2,G1='11111111-1111-4111-8111-111111111111',G2='22222222-2222-4222-8222-222222222222';
+  const narratives={[H1]:{id:G1,revision:1,title:'Sector-neutral refit',question:'Sector question'},[H2]:{id:G2,revision:1,title:'Turnover budget',question:'Turnover question'},[H3]:{id:G1,revision:2,title:'Corrected refit',question:'Corrected question'}},narrativeReads=[],folds=[],was5={factsRef:c.factsRef,t:c.t};
+  c.factsRef=(key,body)=>{folds.push({key,body});return 'FOLD('+key+')';};c.t=(key,args)=>was5.t(key==='Goal {ref}'?'GOALREF({ref})':key,args);
+  c.Data.read=async p=>{if(p.startsWith('/api/goals/show?'))throw Error('unexpected evidence readback');
+    if(!p.startsWith('/api/goals/narrative?'))return priorRead(p);const h=new URLSearchParams(p.split('?')[1]).get('goal_hash'),d=narratives[h];narrativeReads.push(h);
+    if(!d)throw Error('goal.revision_unknown');return {status:'GOAL_NARRATIVE',goal_id:d.id,goal_hash:h,goal:{goal_id:d.id,goal_hash:h,revision:d.revision,declaration:{title:d.title,objective:d.question}},evidence_verification:'NOT_PERFORMED'};};
+  const attributed=(row,goal=G1)=>{row.payload.subject.goal_id=goal;return row;},bound=(ref)=>{const row=attributed(message(S5,S5,'research_lead','session_bound','Fixture binding',{reference:ref}));row.payload.subject.input_channel='PRODUCT_OPERATION';return row;};
+  const oldMember=attributed(message(S5,'old-member','alphalattice_cro','answer','Earlier workspace answer'),G2),usageOnly=attributed(external('NATIVE_AGENT_USAGE',{native_session_id:S5,native_agent_id:'old-member',role:'alphalattice_cro',model:'fixture-model',input_channel:'CODEX_SESSION_FILE',last_at:'2026-09-30T12:00:00Z'},'Fixture session-wide usage'));
+  A.absorbPage(page('CONTINUED',[oldMember,usageOnly,bound(refitCase)]));hash.value='#page=team&team='+S5;c.app.page='team';TM.refresh();TM.section();await new Promise(r=>setImmediate(r));let sum=TM.summary();html=TM.section();
+  assert.equal(sum.question.title,narratives[H1].title);assert.equal(sum.question.goalId,G1);assert.equal(sum.participants,1);assert.ok(html.includes(narratives[H1].title));
+  assert.deepEqual(narrativeReads,[H1]);assert.ok(TM.recordOf(S5).includes(oldMember.payload.summary));
+  A.absorbPage(page('CONTINUED',[bound('case:'+H3)]));TM.refresh();await new Promise(r=>setImmediate(r));sum=TM.summary();html=TM.section();const head5=()=>TM.section().split('</header>')[0];
+  assert.equal(sum.question.title,narratives[H3].title);assert.equal(sum.question.goalId,G1);assert.equal(sum.question.choice,false);assert.equal(sum.question.groups.length,1);
+  assert.ok(head5().includes(narratives[H3].title)&&!head5().includes(H1.slice(0,8)));assert.ok(folds.some(f=>f.key===c.t('{n} earlier revision',{n:1})&&f.body.includes(H1.slice(0,8))));
+  const currentMember=attributed(message(S5,'current-member','alphalattice_alpha','answer','Current Goal answer',{reference:turnoverCase}));A.absorbPage(page('CONTINUED',[currentMember]));await TM.resolve(turnoverCase);await TM.verify(turnoverCase);sum=TM.summary();
+  assert.equal(sum.participants,2);assert.equal(sum.question.title,narratives[H3].title);assert.ok(head5().includes('FACT('+c.t('Participants')+'=2)'));
+  A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Second Goal',{reference:turnoverCase}))]));sum=TM.summary();html=TM.section();
+  assert.equal(sum.question.kind,'choice');assert.equal(sum.question.count,2);assert.equal(sum.question.text,c.t('{n} goals declared by Main PM',{n:2}));assert.ok(head5().includes(narratives[H2].title));
+  TM.chooseQuestion(turnoverCase);sum=TM.summary();assert.equal(sum.question.goalId,G2);assert.equal(sum.question.title,narratives[H2].title);assert.ok(TM.section().includes(narratives[H2].question));
+  A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Unread Goal',{reference:'case:'+H4}))]));TM.refresh();assert.equal(TM.summary().question.ref,turnoverCase);await new Promise(r=>setImmediate(r));
+  assert.equal(TM.resolved().get('case:'+H4).failure,'goal.revision_unknown');assert.equal(TM.summary().question.ref,turnoverCase);const readCount5=narrativeReads.length;TM.section();TM.summary();assert.equal(narrativeReads.length,readCount5);
+  TM.chooseQuestion('case:'+H4);sum=TM.summary();assert.equal(sum.question.kind,'case-declared');assert.equal(sum.question.text,c.t('Goal {ref}',{ref:H4.slice(0,c.SHORT.hash)}));
+  TM.chooseQuestion('');assert.equal(TM.summary().question.text,c.t('Choose a Goal reference'));Object.assign(c,was5);
   const S6='sess-parent-6';
   A.absorbPage(page('CONTINUED',[
     message(S6,S6,'research_lead','assignment','Screen the August universe.',{recipient:'a6',message_id:'as-6a'}),
     message(S6,S6,'research_lead','assignment','Then build the book.',{recipient:'p6',message_id:'as-6b'}),
-    message(S6,'a6','alternative_analyst','answer','This is the case I mean.',{recipient:S6,reference:C1,message_id:'an-6'}),
+    message(S6,'a6','alternative_analyst','answer','This is the case I mean.',{recipient:S6,reference:refitCase,message_id:'an-6'}),
   ]));
-  hash.value='#page=team&team='+S6;html=TM.section();
-  assert.ok(html.includes('data-question="assignment"')&&html.includes('<h1 id="teamSceneHeading">August screening</h1>')&&html.includes('<span class="muted">first of 2 assignments declared by Main PM · not a bound goal</span>'),'without a PM-declared case the PM assignment is the declared question, said to be the first of two');
-  assert.ok(html.includes('Related case references declared by members')&&!html.includes('<h1 id="teamSceneHeading">Sector-neutral refit'),'a member\'s verified case never becomes the question');
+  hash.value='#page=team&team='+S6;TM.section();sum=TM.summary();
+  assert.equal(sum.question.kind,'assignment');assert.equal(sum.question.text,'Screen the August universe.');assert.equal(sum.question.count,2);
+  assert.equal(sum.question.related[0].ref,refitCase);
   // 11. A global entry through the production routeUrl returns to the retained selection; explicit
   //     keys override it; "Choose a session" gives it up (Sessions, law 123); a selection the window dropped stays
   //     visibly unavailable, and the Overview says so instead of showing the newest.

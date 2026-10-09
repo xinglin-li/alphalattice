@@ -489,7 +489,8 @@ class GoalApplication:
         """When a first-use goal's delegation ends: its hours from its opening (V452)."""
         return goal.intent_registered_at + timedelta(hours=FIRST_USE_HOURS)
 
-    def _first_use_open(self, goal: Goal) -> bool:
+    def first_use_open(self, goal: Goal) -> bool:
+        """Whether a first-use goal still delegates: open, and within its hours."""
         return (
             goal.declaration.kind == "FIRST_USE"
             and goal.state == "OPEN"
@@ -501,7 +502,7 @@ class GoalApplication:
         return {
             "steps": sorted(FIRST_USE_STEPS),
             "ends_at": self.delegation_ends(goal).isoformat(),
-            "active": self._first_use_open(goal),
+            "active": self.first_use_open(goal),
         }
 
     def delegation(self, goal: Goal, operation: str, caller: str) -> str | None:
@@ -518,7 +519,7 @@ class GoalApplication:
         Returns:
             The delegation's name, or None when the step is not delegated.
         """
-        if caller == "HUMAN" or operation not in FIRST_USE_STEPS or not self._first_use_open(goal):
+        if caller == "HUMAN" or operation not in FIRST_USE_STEPS or not self.first_use_open(goal):
             return None
         if operation == "DATA_ISSUE_CONFIRM" and not self._own_preparation_stopped(goal):
             return None
@@ -554,7 +555,7 @@ class GoalApplication:
         Returns:
             True when its delegation's last network step opened it and the goal is over.
         """
-        if goal.declaration.kind != "FIRST_USE" or self._first_use_open(goal):
+        if goal.declaration.kind != "FIRST_USE" or self.first_use_open(goal):
             return False
         opened = False
         for entry in self.store.attributed(goal.goal_id):

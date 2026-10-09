@@ -189,6 +189,7 @@ def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypa
         "alphalattice_portfolio",
         "alphalattice_evidence_analyst",
         "alphalattice_cro",
+        "alphalattice_maintainer",
     }
     assert set(entry._roles("claude-code")) == set(roles)
     config = tomllib.loads((ROOT / ".codex/config.toml").read_text())
@@ -388,6 +389,7 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
         "alphalattice_portfolio",
         "alphalattice_evidence_analyst",
         "alphalattice_cro",
+        "alphalattice_maintainer",
     }
     assert run("configure", "--host", "claude-code")[1]["status"] == "LOCAL_DECLARATIONS_VALIDATED"
     assert (project / ".claude/settings.json").read_bytes() == settings

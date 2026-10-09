@@ -34,13 +34,16 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, Self, cast
 from uuid import UUID
 
-from pydantic import ValidationError
+from pydantic import Field, TypeAdapter, ValidationError, model_validator
 
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
+)
+from alphalattice.control.product_host.composition.evidence_review_workspace import (
+    on_official_source,
 )
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import (
@@ -76,10 +79,13 @@ from alphalattice.evidence.alternative_evidence.analysis.submissions import (
 from alphalattice.evidence.alternative_evidence.contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
     AlternativeEvidenceAdmission,
+    AlternativeEvidenceContract,
     AlternativeEvidenceMode,
     AlternativeEvidenceRequest,
     SecIssuerRegistrySnapshot,
     matter_selection_retired,
+    seal_contract,
+    validate_contract_identity,
 )
 from alphalattice.evidence.alternative_evidence.publication.analysis import (
     AlternativeEvidenceAnalysisPublicationService,
@@ -94,6 +100,7 @@ from alphalattice.evidence.alternative_evidence.publication.contracts import (
 )
 from alphalattice.evidence.alternative_evidence.runtime.coverage import (
     COVERAGE_RUN_PURPOSE,
+    UNIT_LIMIT,
     AlternativeEvidenceCoverageRun,
     LogicalSourceCounts,
     coverage_intent_hash,
@@ -121,6 +128,13 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     alternative_evidence_document_task_contract,
     coverage_run_task_contract,
 )
+from alphalattice.evidence.alternative_evidence.sources.admission import (
+    DEFAULT_SOURCE_CONSENT,
+    OfficialSourceAdmission,
+    acquisition_scope,
+    evidence_source_consent,
+    official_source_state,
+)
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.dispatcher import (
     CommandAdmission,
@@ -134,6 +148,7 @@ from alphalattice.interface.local_application.evidence_cro import (
     EvidenceSelectionLabel,
     book_projection,
 )
+from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.investment.portfolio_strategy_lab.application.finalization import (
     ValidatedPortfolioHandoff,
 )
@@ -143,6 +158,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
+from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid_contracts import (
     ENCODER_RUNTIME_TORCH_CUDA,
     RECIPE_MINILM_CPU,
@@ -158,6 +174,7 @@ from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     PortfolioEvidenceReviewInputs,
     SealedBook,
     assessment_schema_hash,
+    book_listing_count,
     carried_reading_admitted,
     compile_portfolio_coverage_dossier,
     compile_portfolio_review_dossier,
@@ -329,27 +346,30 @@ def evidence_setup(
     windows = os.name == "nt"
     python = ".venv/Scripts/python.exe" if windows else ".venv/bin/python"
     retrieval = ".venv-retrieval/Scripts/python.exe" if windows else ".venv-retrieval/bin/python"
-    script = f'{retrieval} scripts/materialize_evidence_cro_authority.py --workspace "{workspace}"'
     installed = not (resolve_playpen_root(Path(__file__)) / "pyproject.toml").is_file()
     if installed:
         from alphalattice.interface.local_application.cli_contract import join, shell
 
         python = join([sys.executable], shell())
         retrieval = python
-        script = (
-            f"{python} -m alphalattice.control.product_host.composition.evidence_authority_setup"
-            f' --workspace "{workspace}"'
-        )
+    # The running Host installs a package as a Task (its setup script is the path with no Host).
+    host = f'{" ".join(command_prefix())} --workspace "{workspace}" evidence install --setup='
     if rebind:
         return {
             "authority": {
-                "install": f"{script} --rebind-installed --matter-selection "
-                "INTEGRATED_TOPIC_ROUTING --install",
-                "before": "Stop the Host first: the installation takes the workspace's lease.",
+                "install": f'{host}"--rebind-installed --matter-selection '
+                'INTEGRATED_TOPIC_ROUTING --install"',
+                "before": "The running Host installs it as a Task; nothing is stopped.",
             }
         }
+    store, packs = model_store.default_store_root(), model_store.RECIPE_PACKS[RECIPE_MINILM_CPU]
     pack: dict[str, object] = {
         "recipe": RECIPE_MINILM_CPU,
+        # Where the packs are read from, whether they are there and what a download takes;
+        # the setup verifies them by hash.
+        "store": str(store),
+        "present": all(model_store.pack_directory(store, value).is_dir() for value in packs),
+        "download_bytes": sum(value.approximate_bytes for value in packs),
         "check": f"{retrieval} scripts/install_retrieval_pack.py --status",
         "install": f"{retrieval} scripts/install_retrieval_pack.py --install "
         f"{RECIPE_MINILM_CPU} --network",
@@ -388,11 +408,11 @@ def evidence_setup(
     return {
         "pack": pack,
         "authority": {
-            "check": f"{script} {scope} --preflight",
-            "install": f"{script} {scope} --network-consent --install",
+            "check": f'{host}"{scope} --preflight"',
+            "install": f'{host}"{scope} --network-consent --install"',
             "choose": choose,
-            "before": "Stop the Host first: the installation takes the workspace's lease. The "
-            "acquisition reads your contact from SEC_USER_AGENT in its environment.",
+            "before": "The running Host installs it as a Task; nothing is stopped. The "
+            "acquisition names itself to the SEC by the product's own contact.",
         },
     }
 
@@ -406,44 +426,82 @@ PACKAGE_RULE = (
 """What a recorded package can review (V546, V547): said wherever a package is offered or met."""
 
 
+_CONSENT_TO_GIVE = frozenset(
+    {"evidence_review.explicit_sec_network_consent_required", "evidence_review.network_disabled"}
+)
+"""Admission refusals the source ways already state: the consent to give, the network to open."""
+
+
+_INSTALLED_AUTHORITY = (
+    "artifacts",
+    "evidence_publications",
+    "review_publications",
+    "registry",
+    "listing_authority",
+    "handoff",
+    "evidence_task_adapter",
+    "evidence_policy",
+    "recorded_policy",
+    "review_actor",
+    "model_authority_admitted",
+    "selected_analysis_publication_hash",
+    "official_source",
+)
+"""What an installed package gives the review (`adopt`); its runtime state is its own."""
+
+
 def source_ways(
     workspace: Path,
     *,
     entities: tuple[str, ...] | None,
     book: BookSelector | None,
     for_refusal: bool = False,
+    refusal: str | None = None,
+    delegation: str | None = None,
 ) -> dict[str, object]:
     """The lawful ways on when the recorded package holds too few sources (V541, V546).
 
-    Official SEC acquisition first, the person's decision: the Host served with their consent
-    reads every holding's filing index at one cutoff, names those that filed nothing in the
-    window and fetches the rest, so every unit stands at that cutoff and the book is reviewed
-    whole. A recorded package is offered only where one covers every unit's issuers, a book of
-    one unit (`PACKAGE_RULE`).
+    Official SEC acquisition first, the person's decision: with their consent and the network
+    open, the running Host reads every holding's filing index at one cutoff, names those that
+    filed nothing in the window and fetches the rest, so every unit stands at that cutoff and
+    the book is reviewed whole. A recorded package is offered only where one covers every unit's
+    issuers, a book of one unit (`PACKAGE_RULE`).
 
     Args:
         workspace: The workspace's folder.
         entities: Every issuer of the book, when one package covers them all; else None.
         book: The book, whose research input the package names when a study authored it.
         for_refusal: Whether official acquisition has actually been refused for network access.
+        refusal: Why the official source is not admitted though consented, said first.
+        delegation: Network authority validated by the first-use owner.
 
     Returns:
-        The ``official`` serve command with what it needs first, the package rule, and the
+        The ``official`` consent command with what it needs first, the package rule, and the
         ``package`` steps with the issuers filled where one package covers the book.
     """
-    # The person's own restart, in their shell: it names the workspace on either leg (V568, V429).
+    # The person's own consent, in their shell: it names the workspace on either leg (V568, V429).
     ways: dict[str, object] = {
         "official": {
-            "serve": f'{" ".join(command_prefix())} --workspace "{workspace}" serve '
-            "--sec-network-consent",
-            "before": str(network_access(workspace).body(for_refusal=for_refusal)["detail"]) + " "
+            "command": f'{" ".join(command_prefix())} --workspace "{workspace}" evidence-consent '
+            f"set --per-issuer {DEFAULT_SOURCE_CONSENT.documents_per_issuer}",
+            "before": str(
+                network_access(workspace).body(for_refusal=for_refusal, delegation=delegation)[
+                    "detail"
+                ]
+            )
+            + " "
             "The person's decision: their consent to acquire SEC filings from the "
-            "official endpoints, their contact in SEC_USER_AGENT and the workspace's network "
-            "open. Restart only an idle Host you started; then preview and prepare again, which "
-            "reads every unit at one cutoff.",
+            "official endpoints, within the budget it names, and the workspace's network open; "
+            "the product names itself to the SEC by its own contact. Both take effect at once, "
+            "with no restart; then preview and prepare again, which reads every unit at one "
+            "cutoff.",
         },
         "package_rule": PACKAGE_RULE,
     }
+    if refusal is not None:
+        official = cast(dict[str, object], ways["official"])
+        official["refusal_code"] = refusal
+        official["before"] = f"{refusal_words(refusal).get('detail', refusal)} {official['before']}"
     if entities is None:
         return ways
     setup = evidence_setup(workspace, authored=_authored(book))
@@ -835,6 +893,7 @@ def agent_answer_result(
     if body.get("status") == "CORRECT" and isinstance(answer, dict):
         return {
             "status": "CORRECT",
+            "answer_status": "CORRECT",
             "agent_role": role,
             **(
                 {"recorded_agent": answer["recorded_agent"]}
@@ -854,14 +913,22 @@ def agent_answer_result(
         dropped = list(cast(list[object], answer.get("dropped", [])))
         accepted = len(cast(list[object], answer["accepted_items"]))
         task = body.get("task_id") or body.get("publication_task_id")
-        message = (
-            "The Host accepted your answer."
+        lifecycle = body.get("lifecycle")
+        lead = (
+            "The Host accepted your answer. "
             if verdict == "ACCEPTED"
             else f"The Host kept the {accepted} acceptable item(s) of your answer and dropped "
-            f"{len(dropped)}, listed under 'dropped'; no more answers are read for this bundle."
+            f"{len(dropped)}, listed under 'dropped'; no more answers are read for this bundle. "
         )
+        task_clause = (
+            f"Task {task} is {lifecycle}. The outcome follows the Task state. "
+            if task and isinstance(lifecycle, str)
+            else ""
+        )
+        message = lead + task_clause + "Stop here and return the receipt to your lead."
         return {
             "status": verdict,
+            "answer_status": verdict,
             "agent_role": role,
             **(
                 {"recorded_agent": answer["recorded_agent"]}
@@ -881,7 +948,7 @@ def agent_answer_result(
                 if isinstance(body.get("lifecycle"), str)
                 else {}
             ),
-            "message": message + " Stop here and return the receipt to your lead.",
+            "message": message,
             **({"dropped": dropped} if dropped else {}),
             "receipt": {
                 "agent_role": role,
@@ -911,6 +978,7 @@ def agent_answer_result(
         }
     return {
         "status": "REFUSED",
+        "answer_status": "REFUSED",
         "agent_role": role,
         "failure_code": body.get("failure_code") or disposition or "agent_bundle.not_admitted",
         "message": str(
@@ -960,6 +1028,8 @@ class AlternativeEvidenceRefreshCommand:
     submitted_analysis: SubmittedEvidenceAnalysis | None = None
     continuation: EvidenceContinuation | None = None
     run: AlternativeEvidenceCoverageRun | None = None
+    subject: BookSelector | None = None
+    subject_explicit: bool = True
     _task_id: UUID | None = field(default=None, init=False, repr=False)
 
     @property
@@ -981,12 +1051,17 @@ class AlternativeEvidenceRefreshCommand:
             PortfolioEvidenceReviewError: Required adapter, contract or prepared review is absent.
         """
         envelope, goal, plan = self.contract()
+        now = self.application.clock()
         record = self.application.session.task_control_registry.admit(
             input_envelope=envelope,
             goal=goal,
             plan=plan,
-            observed_at=self.application.clock(),
+            observed_at=now,
         ).record
+        if self.subject is not None:
+            self.application.record_task_admission(
+                record.task_id, self.subject, now=now, explicit=self.subject_explicit
+            )
         self._task_id = record.task_id
         return CommandAdmission(task_id=record.task_id, lifecycle=record.lifecycle.value)
 
@@ -1136,6 +1211,26 @@ an analysis is published at or after its cutoff, so one published before now les
 has expired, and a reader of current analyses reads no older record (Z2)."""
 
 
+class EvidenceTaskAdmission(AlternativeEvidenceContract):
+    """The book admitted onto reusable issuer work, outside its computation identity."""
+
+    task_id: UUID
+    admitted_at: datetime
+    selector: dict[str, str]
+    selection: Literal["EXPLICIT", "DEFAULT"]
+    admission_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def validate_admission(self) -> Self:
+        if self.selector.keys() - BookSelector.__dataclass_fields__.keys():
+            raise ValueError("alternative_evidence.artifact_tampered")
+        TypeAdapter(BookSelector).validate_python(self.selector)
+        if self.admitted_at.tzinfo is None:
+            raise ValueError("alternative_evidence.artifact_tampered")
+        validate_contract_identity(self, "admission_hash")
+        return self
+
+
 @dataclass
 class EvidenceReviewApplication:
     """The Product Host owner for the whole cross-Desk route."""
@@ -1145,6 +1240,96 @@ class EvidenceReviewApplication:
         from alphalattice.control.product_host.composition.plain_refusals import refused
 
         return refused("evidence_review.replan_book_selection_required")
+
+    def record_task_admission(
+        self, task_id: UUID, selector: BookSelector, *, now: datetime, explicit: bool
+    ) -> None:
+        """Keep each admission's book beside the reusable Evidence computation."""
+        record = seal_contract(
+            EvidenceTaskAdmission,
+            "admission_hash",
+            task_id=task_id,
+            admitted_at=now,
+            selector=selector.request_fields(),
+            selection="EXPLICIT" if explicit else "DEFAULT",
+        )
+        self.session.task_control_registry.record_admission_subject(
+            task_id, record.model_dump(mode="json"), observed_at=now
+        )
+
+    def task_subject(self, task: TaskRecord) -> dict[str, object]:
+        """Read admitted books and independent grouping from this Task's owner."""
+        from alphalattice.control.product_host.composition.plain_refusals import refused
+
+        scope: dict[str, object] = {}
+        context: dict[str, str] = {}
+        subjects: list[dict[str, object]] = []
+        if task.task_kind == AlternativeEvidenceDocumentTaskAdapter.task_kind:
+            for document in self.session.task_control_registry.admission_subjects(task.task_id):
+                record = EvidenceTaskAdmission.model_validate(document)
+                subjects.append(
+                    {
+                        "operation": "EVIDENCE_CRO",
+                        **record.selector,
+                        "admitted_at": record.admitted_at.isoformat(),
+                        "selection": record.selection,
+                    }
+                )
+            adapter = self.evidence_task_adapter
+            run = adapter.run_of(task) if adapter else None
+            if run is not None and adapter is not None:
+                context["evidence_as_of"] = run.evidence_as_of.isoformat()
+                scope = {
+                    "run_hash": run.run_hash,
+                    "units_total": len(run.units),
+                    "issuers_total": len(run.covered_entity_ids),
+                    "issuers_nothing_filed": len(run.nothing_filed),
+                    "issuers_carried": len(run.carried),
+                    "evidence_as_of": run.evidence_as_of.isoformat(),
+                    "packing_rules_id": run.packing_rules_id,
+                    "failed_unit_ids": [
+                        unit
+                        for unit, state in adapter.unit_states(task).items()
+                        if state["failure_code"] is not None
+                    ],
+                }
+            elif task.input.payload.get("request"):
+                request = AlternativeEvidenceRequest.model_validate(task.input.payload["request"])
+                context["evidence_as_of"] = request.evidence_as_of.isoformat()
+        elif task.task_kind == CRO_REVIEW_COMMAND:
+            if dossier_hash := task.input.payload.get("dossier_hash"):
+                dossier = self.artifacts.load(
+                    "cro-review-dossiers", str(dossier_hash), PortfolioReviewDossier
+                )
+                selector = self._selector_for_dossier(dossier)
+                subjects.append(
+                    {
+                        "operation": "EVIDENCE_CRO",
+                        **selector.request_fields(),
+                        "admitted_at": task.admitted_at.isoformat(),
+                    }
+                )
+                context["evidence_as_of"] = dossier.evidence_as_of.isoformat()
+                if dossier.update_subject is not None:
+                    context["date"] = dossier.update_subject.formation_session
+        else:
+            return {}
+        unique = {}
+        for item in subjects:
+            fields = {
+                key: value for key, value in item.items() if key not in {"admitted_at", "selection"}
+            }
+            unique[canonical_hash(fields)] = fields
+        body: dict[str, object] = {"subjects": subjects}
+        if len(unique) == 1:
+            body["next_requests"] = {"subject": next(iter(unique.values()))}
+        elif not subjects:
+            body["subject_refusal"] = refused("evidence_review.replan_book_selection_required")
+        if scope:
+            body["current_scope"] = scope
+        if context:
+            body["subject_context"] = context
+        return body
 
     replans = (
         TaskReplan(
@@ -1194,6 +1379,19 @@ class EvidenceReviewApplication:
     campaign_summary: Callable[[], dict[str, object]] | None = None
     network_access: NetworkAccess | None = None
     """The official source's admission reading; runtime data, never a run binding."""
+    official_source: Callable[[], OfficialSourceAdmission] | None = None
+    """The Host's runtime admission of the official SEC source (`refresh_source`); None keeps
+    the source it was given (`use_source`)."""
+    recorded_policy: AdmittedEvidencePolicy | None = None
+    """The installed package's policy, which a live admission widens to the official source."""
+    _source_state: object = field(default=None, init=False, repr=False)
+    _source_admission: OfficialSourceAdmission | None = field(default=None, init=False, repr=False)
+    _source_failure: str | None = field(default=None, init=False, repr=False)
+    _source_turn: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    """Held by a running Evidence Task and by a re-admission, so neither closes the other's
+    source."""
+    network_delegation: Callable[[str], str | None] = lambda _caller: None
+    """Validated authority supplied by the goal owner; never inferred from source consent."""
     _unit_obligation_cache: dict[
         tuple[str, datetime],
         dict[tuple[str, ...], tuple[str, AlternativeEvidenceResearchObligation]],
@@ -1211,6 +1409,100 @@ class EvidenceReviewApplication:
     _answer_turns_lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False
     )
+
+    def use_source(self, admission: OfficialSourceAdmission) -> None:
+        """Put the Evidence adapter and policy on the admitted source's branch."""
+        with self._source_turn:
+            self._use_source(admission)
+
+    def _use_source(self, admission: OfficialSourceAdmission | None) -> None:
+        adapter = self.evidence_task_adapter
+        if adapter is None or self.recorded_policy is None:
+            return
+        # The resources and the policy change together, under the source turn; a request read
+        # across the change binds neither and is refused at its run by the moved binding.
+        adapter.resources, self.evidence_policy = (
+            (replace(adapter.resources, live_source=None), self.recorded_policy)
+            if admission is None
+            else on_official_source(adapter.resources, self.recorded_policy, admission)
+        )
+        self.network_access = None if admission is None else admission.network_access
+        ledger = None if admission is None else admission.campaign_ledger
+        self.campaign_summary = None if ledger is None else ledger.summary
+
+    def refresh_source(self) -> bool:
+        """Admit the official SEC source again when what it depends on changed; no restart.
+
+        It depends on the workspace's consent, its network control and the product's contact.
+        While an Evidence Task runs it keeps its source and this answers False: a preparation
+        then refuses by name rather than run on the old one, and the next read re-admits.
+        """
+        if self.official_source is None:
+            return True
+        state = official_source_state(self.workspace)
+        if state == self._source_state:
+            return True
+        if not self._source_turn.acquire(blocking=False):
+            return False
+        try:
+            # The previous source's campaign ownership goes before the next admission takes it.
+            self.close_source(held=True)
+            try:
+                admission = self.official_source()
+            except (ValueError, OSError, RuntimeError) as error:
+                # The package stays recorded, the refusal is said, and the next read tries again.
+                self._use_source(None)
+                self._source_failure = public_failure(
+                    error, "evidence_review.source_admission_failed"
+                )
+                return True
+            self._use_source(admission)
+            self._source_state, self._source_admission = state, admission
+            self._source_failure = None
+        finally:
+            self._source_turn.release()
+        return True
+
+    def _source_pending(self) -> ReviewOutcome:
+        code = "evidence_review.source_admission_waits_for_evidence_task"
+        return ReviewOutcome(
+            disposition="REFUSED_SOURCE_ADMISSION_PENDING",
+            detail=str(refusal_words(code)["detail"]),
+            failure_code=code,
+        )
+
+    def source_refusal(self) -> str | None:
+        """Why the official source is not admitted, when it is not the consent still to give."""
+        if self._source_failure is not None:
+            return self._source_failure
+        admission = self._source_admission
+        refusal = None if admission is None else admission.refusal_code
+        return None if refusal in _CONSENT_TO_GIVE else refusal
+
+    def adopt(self, installed: EvidenceReviewApplication) -> None:
+        """Take a package just installed in place, so every holder of this review reads it.
+
+        Under the source turn, so no Evidence Task runs on the package it replaces meanwhile;
+        one dictionary update swaps every field at once, so no reader sees a mix of the two.
+        """
+        with self._source_turn:
+            self.close_source(held=True)
+            vars(self).update(
+                {name: getattr(installed, name) for name in _INSTALLED_AUTHORITY},
+                _unit_obligation_cache={},
+                _sealed_export=None,
+            )
+        self.refresh_source()
+
+    def close_source(self, *, held: bool = False) -> None:
+        """Close the source `refresh_source` admitted, with its campaign's ownership."""
+        if not held:
+            with self._source_turn:
+                self.close_source(held=True)
+            return
+        admission, self._source_admission, self._source_state = self._source_admission, None, None
+        if admission is not None and admission.source is not None:
+            admission.source.close()
 
     def __post_init__(self) -> None:
         # Each review keeps its day as it is published, so a book's review is
@@ -1379,9 +1671,12 @@ class EvidenceReviewApplication:
         return ResolvedCoverage(resolved=resolved, run=run, prepare_only=prepare_only)
 
     def _source_acquisition_refusal(
-        self, *, evidence_as_of: datetime | None = None
+        self, *, evidence_as_of: datetime | None = None, caller: str = "HUMAN"
     ) -> ReviewOutcome | None:
-        """Project the admitted source's network hold using its owner's words."""
+        """Project the admitted source's network hold using its owner's words.
+
+        Delegation changes the offered control action; both effective permissions still hold.
+        """
         if self.network_access is None:
             return None
         current = network_access(self.workspace)
@@ -1390,15 +1685,18 @@ class EvidenceReviewApplication:
         from alphalattice.control.product_host.composition.plain_refusals import refused
 
         words = refused("evidence_review.workspace_network_not_allowed")
-        ways = source_ways(self.workspace, entities=None, book=None, for_refusal=True)
+        delegation = self.network_delegation(caller)
+        ways = source_ways(
+            self.workspace, entities=None, book=None, for_refusal=True, delegation=delegation
+        )
         official = cast(dict[str, object], ways["official"])
         return ReviewOutcome(
             disposition="REFUSED_NETWORK_ACCESS",
             detail=str(official["before"]),
             failure_code=words["failure_code"],
             evidence_as_of=evidence_as_of,
-            network_access=current.body(for_refusal=True),
-            source_network_access=self.network_access.body(for_refusal=True),
+            network_access=current.body(for_refusal=True, delegation=delegation),
+            source_network_access=self.network_access.body(for_refusal=True, delegation=delegation),
             source_ways=ways,
             next_requests={"network": {"operation": "NETWORK_ACCESS"}},
         )
@@ -1905,12 +2203,23 @@ class EvidenceReviewApplication:
             return "EXPLICIT_OLDER_CURRENT_SELECTION"
         return "EXPLICIT_CURRENT_SELECTION"
 
-    def preview_evidence(self, selector: BookSelector | None = None) -> dict[str, object]:
+    def preview_evidence(
+        self, selector: BookSelector | None = None, *, caller: str = "HUMAN"
+    ) -> dict[str, object]:
         """Explain source preparation independently of optional managed inference."""
+        self.refresh_source()
         chosen = self._review_selector(selector)
         if isinstance(chosen, ReviewOutcome):
             missing = chosen.disposition == "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY"
             book = self.default_selector(selector)
+            scope: dict[str, object] = {}
+            if missing and book is not None:
+                try:
+                    listings = book_listing_count(self._open_book(self.inputs(), book))
+                except (PortfolioEvidenceReviewError, TaskNotFoundError):
+                    pass
+                else:
+                    scope = {"acquisition_scope": self._acquisition_scope(listings)}
             return {
                 "status": "EVIDENCE_PREREQUISITES_MISSING",
                 "failure_code": chosen.disposition,
@@ -1934,6 +2243,7 @@ class EvidenceReviewApplication:
                         )
                     }
                 ),
+                **scope,
                 "claim": "No Task, acquisition or model work performed.",
             }
         adapter = self.evidence_task_adapter
@@ -2053,7 +2363,10 @@ class EvidenceReviewApplication:
                     self.workspace,
                     entities=run.units[0].ordered_entity_ids if len(run.units) == 1 else None,
                     book=chosen,
+                    refusal=self.source_refusal(),
+                    delegation=self.network_delegation(caller),
                 ),
+                "acquisition_scope": self._acquisition_scope(len(scope.ordered_entity_ids)),
             }
             if not source_ready:
                 # The book cannot be reviewed under these sources: said, with its ways on.
@@ -2061,7 +2374,9 @@ class EvidenceReviewApplication:
                     "failure_code": "alternative_evidence.book_sources_short",
                     "next_action": "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE",
                 }
-        network_refusal = self._source_acquisition_refusal(evidence_as_of=run.evidence_as_of)
+        network_refusal = self._source_acquisition_refusal(
+            evidence_as_of=run.evidence_as_of, caller=caller
+        )
         if network_refusal is not None:
             envelope, _goal, _plan = coverage_run_task_contract(run=run, prepare_only=True)
             reusable = (
@@ -2147,6 +2462,12 @@ class EvidenceReviewApplication:
             ),
         }
 
+    def _acquisition_scope(self, issuers: int) -> dict[str, object]:
+        """What official acquisition of a book's issuers takes under the workspace's consent."""
+        return acquisition_scope(
+            issuers, evidence_source_consent(self.workspace), issuers_per_unit=UNIT_LIMIT
+        )
+
     def _packing_view(
         self, run: AlternativeEvidenceCoverageRun, scope: PortfolioIssuerScope
     ) -> dict[str, object]:
@@ -2187,6 +2508,7 @@ class EvidenceReviewApplication:
         evidence_as_of: datetime | None = None,
         prepare_only: bool = False,
         preparation_binding_hash: str | None = None,
+        caller: str = "HUMAN",
     ) -> ReviewOutcome:
         """`Refresh evidence`, all the way through: book, scope, request, Task.
 
@@ -2198,6 +2520,8 @@ class EvidenceReviewApplication:
         (scope, source package, policy or permission moved) is refused by the
         part that moved.
         """
+        if not self.refresh_source():
+            return self._source_pending()
         chosen = self.default_selector(selector)
         if chosen is None:
             return ReviewOutcome(
@@ -2250,7 +2574,9 @@ class EvidenceReviewApplication:
                 read_inventory=True,
             )
         except PortfolioEvidenceReviewError as error:
-            refusal = self._source_acquisition_refusal(evidence_as_of=evidence_as_of or now)
+            refusal = self._source_acquisition_refusal(
+                evidence_as_of=evidence_as_of or now, caller=caller
+            )
             if refusal is None or str(error) != refusal.failure_code:
                 raise
             return refusal
@@ -2265,6 +2591,8 @@ class EvidenceReviewApplication:
             preview=preview,
             now=now,
             selector=chosen,
+            caller=caller,
+            explicit=selector is not None,
         )
 
     def _refresh_in_flight(
@@ -2315,6 +2643,8 @@ class EvidenceReviewApplication:
         preview: dict[str, str],
         now: datetime,
         selector: BookSelector,
+        explicit: bool,
+        caller: str = "HUMAN",
     ) -> ReviewOutcome:
         """Admit a book's run, or reuse its completion.
 
@@ -2349,6 +2679,7 @@ class EvidenceReviewApplication:
         if coverage.prepare_only:
             completed = adapter.completed_run(run, now=now)
             if completed is not None:
+                self.record_task_admission(completed.task_id, selector, now=now, explicit=explicit)
                 return ReviewOutcome(
                     disposition="REUSED_EXACT",
                     detail=f"This preparation of {len(run.units)} units is already complete; "
@@ -2380,13 +2711,21 @@ class EvidenceReviewApplication:
         )
         in_flight = self._refresh_in_flight(coverage, identity=envelope.input_hash)
         if in_flight is not None:
+            if in_flight.task_id is not None:
+                self.record_task_admission(in_flight.task_id, selector, now=now, explicit=explicit)
             return in_flight
-        network_refusal = self._source_acquisition_refusal(evidence_as_of=run.evidence_as_of)
+        network_refusal = self._source_acquisition_refusal(
+            evidence_as_of=run.evidence_as_of, caller=caller
+        )
         if network_refusal is not None:
             return network_refusal
         adapter.admit_run(run)
         command = AlternativeEvidenceRefreshCommand(
-            application=self, run=run, prepare_only=coverage.prepare_only
+            application=self,
+            run=run,
+            prepare_only=coverage.prepare_only,
+            subject=selector,
+            subject_explicit=explicit,
         )
         submitted = _submitted(dispatcher.submit(command))
         return replace(submitted, evidence_as_of=run.evidence_as_of)
@@ -2418,6 +2757,8 @@ class EvidenceReviewApplication:
         the input is the identity. A delivery part of a packet is never this
         request.
         """
+        if not self.refresh_source():
+            return self._source_pending()
         chosen = self._review_selector(selector)
         if isinstance(chosen, ReviewOutcome):
             return chosen
@@ -2551,6 +2892,8 @@ class EvidenceReviewApplication:
             obligation=authority.obligation,
             request=request,
             admission=authority.admission,
+            subject=chosen,
+            subject_explicit=selector is not None,
             continuation=EvidenceContinuation(
                 prepared_task_id=task_id,
                 prepared_unit_id=unit_id,
@@ -2563,6 +2906,9 @@ class EvidenceReviewApplication:
         envelope, _goal, plan = command.contract()
         completed = self._completed_task(envelope.input_hash, plan.plan_hash)
         if completed is not None:
+            self.record_task_admission(
+                completed.task_id, chosen, now=self.clock(), explicit=selector is not None
+            )
             return ReviewOutcome(
                 disposition="REUSED_EXACT",
                 detail="This continuation already completed; its packet is the successor of "
@@ -2724,6 +3070,8 @@ class EvidenceReviewApplication:
                 command.prepare_only = False
                 command.continuation = None
                 command.submitted_analysis = submitted
+                command.subject = chosen
+                command.subject_explicit = selector is not None
             else:
                 # One unit's answer is admitted as the request, question and
                 # admission that unit was prepared under, so the same answer to
@@ -2736,10 +3084,15 @@ class EvidenceReviewApplication:
                     admission=authority.admission,
                     prepare_only=False,
                     submitted_analysis=submitted,
+                    subject=chosen,
+                    subject_explicit=selector is not None,
                 )
             envelope, _, plan = command.contract()
             published = self._completed_task(envelope.input_hash, plan.plan_hash)
             if published is not None:
+                self.record_task_admission(
+                    published.task_id, chosen, now=self.clock(), explicit=selector is not None
+                )
                 publication = adapter.published_analysis(published.task_id, now=self.clock())
                 return {
                     "disposition": "REUSED_EXACT",
@@ -2790,10 +3143,11 @@ class EvidenceReviewApplication:
         Raises:
             PortfolioEvidenceReviewError: Evidence task adapter is absent.
         """
-        adapter = self.evidence_task_adapter
-        if adapter is None:
-            raise PortfolioEvidenceReviewError("product_host.evidence_review_adapter_absent")
-        self._run(adapter, task_id=task_id, expected_task_hash=expected_task_hash)
+        with self._source_turn:
+            adapter = self.evidence_task_adapter
+            if adapter is None:
+                raise PortfolioEvidenceReviewError("product_host.evidence_review_adapter_absent")
+            self._run(adapter, task_id=task_id, expected_task_hash=expected_task_hash)
 
     # ----------------------------------------------------------------- review
 
@@ -4431,13 +4785,18 @@ class EvidenceReviewApplication:
 
     def _admission_view(self) -> dict[str, object]:
         """The bounds every preparation of this host runs under, as admitted:
-        the per-document cap and the acquisition window a request carries
-        from its cutoff. Stated before any request; never raised after a
-        refusal."""
+        the documents per issuer (the workspace's consent, for official
+        acquisition), the per-document cap and the acquisition window a
+        request carries from its cutoff. Stated before any request; never
+        raised after a refusal."""
 
+        policy = self.evidence_policy.source_policy
+        refusal = self.source_refusal()
         return {
-            "maximum_document_bytes": self.evidence_policy.source_policy.maximum_document_bytes,
+            "maximum_documents_per_issuer": policy.maximum_documents_per_issuer,
+            "maximum_document_bytes": policy.maximum_document_bytes,
             "acquisition_window_seconds": self.evidence_policy.acquisition_window_seconds,
+            **({} if refusal is None else {"source_refusal": refusal}),
         }
 
     def _campaign_view(self) -> dict[str, object] | None:

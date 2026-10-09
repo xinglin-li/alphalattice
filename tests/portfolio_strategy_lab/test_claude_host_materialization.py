@@ -33,6 +33,7 @@ def test_each_role_card_becomes_one_subagent_with_its_sandbox_tools(materialize)
         "alphalattice_data",
         "alphalattice_evidence_analyst",
         "alphalattice_factor",
+        "alphalattice_maintainer",
         "alphalattice_portfolio",
         "alphalattice_risk",
     }
@@ -57,6 +58,7 @@ def test_each_role_card_becomes_one_subagent_with_its_sandbox_tools(materialize)
         assert tools == ({"Read", "Write"} if evidence else stage)
         assert (fields["model"], fields["effort"]) == ("haiku", "high")
         assert body.strip().endswith(card["developer_instructions"].strip())
+        assert f"`.alphalattice/user/cards/{name}.md`" in card["developer_instructions"]
         assert "\r" not in text
 
 
@@ -67,12 +69,18 @@ def _sections(card: Path) -> dict[str, str]:
     return {part.split("\n", 1)[0]: part for part in text.split("\n\n")}
 
 
+def _specialists(materialize) -> list[Path]:
+    """The research specialists' cards; the experience maintainer keeps the person's layer."""
+    named = set(materialize.ROLE_COMMANDS) | set(materialize.BUNDLE_ROLES)
+    return [ROOT / ".codex" / "agents" / f"{name}.toml" for name in sorted(named)]
+
+
 def test_each_card_says_its_place_on_the_skills_paths(materialize):
     """Each card says its place on the skills paths."""
 
     skill = (ROOT / ".agents/skills/alphalattice-research/SKILL.md").read_text(encoding="utf-8")
     paths = set(re.findall(r"^- \*\*(.+?)\*\*", skill, flags=re.MULTILINE))
-    for card in sorted((ROOT / ".codex" / "agents").glob("alphalattice_*.toml")):
+    for card in _specialists(materialize):
         sections = _sections(card)
         place = " ".join(sections["# Place"].split())
         names = re.findall(r'"([^"]+)"', place.split(". ", 1)[0])
@@ -98,11 +106,12 @@ def test_each_card_carries_its_capability_and_graph(materialize):
     contract_link = (
         "[Command contract](../../.agents/skills/alphalattice-research/references/operating.md)"
     )
-    for card in sorted((ROOT / ".codex" / "agents").glob("alphalattice_*.toml")):
+    for card in _specialists(materialize):
         sections = _sections(card)
         bundle = card.stem in materialize.BUNDLE_ROLES
         middle = "# Bundle" if bundle else "# CLI"
-        assert list(sections) == ["# Role", "# Place", middle, "# Method", "# Boundaries"]
+        heads = ["# Role", "# Place", middle, "# Method", "# Boundaries", "# Local method"]
+        assert list(sections) == heads
         block = sections[middle]
         assert block == materialize.command_block(card.stem), card.name
         assert "\nGraph (" in block, card.name
@@ -176,12 +185,25 @@ def test_both_default_hosts_register_no_product_hooks(materialize):
 
 
 def test_skill_copy_is_byte_exact(materialize):
-    source = materialize.SKILL_SOURCE
-    copy = ROOT / ".claude" / "skills" / materialize.SKILL_NAME
+    source, copy = materialize.SKILLS, ROOT / ".claude" / "skills"
     files = sorted(p.relative_to(source) for p in source.rglob("*") if p.is_file())
-    assert (copy / "SKILL.md").is_file() and len(files) >= 2
+    skills = {relative.parts[0] for relative in files}
+    assert skills == {"alphalattice-research", "alphalattice-maintenance"}
     for relative in files:
         assert (copy / relative).read_bytes() == (source / relative).read_bytes()
+
+
+def test_every_shipped_guide_reads_the_persons_user_layer():
+    """requirement (the user layer): the guide, its Claude import and each Skill read the
+    person's own file beside them, which no release writes."""
+    claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "@.alphalattice/user/memory/MEMORY.md" in claude
+    assert "@.alphalattice/user/guide.md" in claude
+    first = (ROOT / "AGENTS.md").read_text(encoding="utf-8").split("\n\n")[1]  # its first step
+    assert ".alphalattice/user/memory/MEMORY.md" in first and "Get-Content" in first
+    for skill in (ROOT / ".agents" / "skills").iterdir():
+        text = (skill / "SKILL.md").read_text(encoding="utf-8")
+        assert f"`.alphalattice/user/skills/{skill.name}.md`" in text
 
 
 def test_settings_merge_keeps_unrelated_keys_and_removes_only_product_matcher(materialize):

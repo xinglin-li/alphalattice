@@ -554,6 +554,22 @@ def _open_experiment_book(
     )
 
 
+def book_listing_count(book: SealedBook) -> int:
+    """How many listings the book's review maps, the rows `project_portfolio_exposure` keeps.
+
+    It needs no listing authority, so a scope is said before any source package exists.
+    """
+    if book.experiment_positions is not None:
+        return len(book.experiment_positions)
+    if book.update_positions is not None:
+        facts = book.update_positions
+        before = facts.preceding or tuple(0.0 for _ in facts.weights)
+        rows = zip(facts.weights, before, strict=True)
+        return sum(ending > 0 or prior > 0 for ending, prior in rows)
+    assert book.report is not None
+    return len(book.report.window_end_book.positions)
+
+
 def project_portfolio_exposure(
     inputs: PortfolioEvidenceReviewInputs, book: SealedBook
 ) -> PortfolioExposureProjection:
@@ -1718,6 +1734,7 @@ __all__ = [
     "SealedBook",
     "assessment_schema",
     "assessment_schema_hash",
+    "book_listing_count",
     "compile_portfolio_coverage_dossier",
     "compile_portfolio_review_dossier",
     "compile_portfolio_scope",

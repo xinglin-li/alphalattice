@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import queue
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal, Protocol
@@ -166,6 +166,31 @@ class CommandSubmission:
     def admitted(self) -> bool:
         """Whether Task Control admitted the submitted command."""
         return self.disposition == "ADMITTED"
+
+    def answer(self, *, next_requests: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Project admission facts and a named blocking Task's read/wait requests."""
+        body: dict[str, object] = {
+            "status": self.disposition,
+            "task_id": str(self.task_id) if self.task_id else None,
+            "lifecycle": self.lifecycle,
+            "failure_code": self.refusal_detail,
+        }
+        if next_requests is not None:
+            body["next_requests"] = dict(next_requests)
+        code, _, blocked = (self.refusal_detail or "").partition(":")
+        if self.task_id is None and code.endswith(".finish_or_recover_existing_task") and blocked:
+            try:
+                task = str(UUID(blocked))
+            except ValueError:
+                return body
+            body.update(
+                blocking_task_id=task,
+                next_requests={
+                    "read": {"operation": "STATUS", "task_id": task},
+                    "wait": {"operation": "STATUS", "task_id": task, "wait_seconds": 20},
+                },
+            )
+        return body
 
 
 _SETTLED_LIFECYCLES = frozenset(

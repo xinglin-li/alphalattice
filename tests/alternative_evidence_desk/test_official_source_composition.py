@@ -16,6 +16,7 @@ from collections import Counter
 from dataclasses import replace
 from dataclasses import replace as moved
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -29,6 +30,7 @@ from alphalattice.control.product_host.composition.evidence_review_bundles impor
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     admit_evidence_review_workspace,
     live_evidence_policy,
+    on_official_source,
 )
 from alphalattice.control.workspace_runtime.network_access import set_network_access
 from alphalattice.evidence.alternative_evidence.contracts import (
@@ -38,7 +40,15 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceSourcePolicy,
 )
 from alphalattice.evidence.alternative_evidence.runtime.policy import AdmittedEvidencePolicy
-from alphalattice.evidence.alternative_evidence.sources.admission import admit_official_source
+from alphalattice.evidence.alternative_evidence.sources import admission
+from alphalattice.evidence.alternative_evidence.sources.admission import (
+    DEFAULT_SOURCE_CONSENT,
+    admit_official_source,
+    admit_workspace_source,
+    evidence_source_consent,
+    record_evidence_source_consent,
+    sec_user_agent,
+)
 from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     HttpxSecOfficialTransport,
     SecEdgarSource,
@@ -108,7 +118,7 @@ def _scenario() -> SecScenarioTransport:
 
 
 def test_the_official_source_is_admitted_only_by_consent_in_an_open_environment(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The official source is admitted only by consent in an open environment."""
 
@@ -132,9 +142,22 @@ def test_the_official_source_is_admitted_only_by_consent_in_an_open_environment(
     assert closed.source.network_call_count == 1  # type: ignore[union-attr]
 
     set_network_access(tmp_path, enabled=True)
-    unnamed = admit_official_source(network_consent=True, workspace_root=tmp_path, environment={})
-    assert unnamed.source is None
-    assert unnamed.refusal_code == "evidence_review.sec_user_agent_required"
+    # The product names itself by its own contact; the person names none.
+    assert sec_user_agent({}) == "AlphaLattice alphalattice.project@gmail.com"
+    assert sec_user_agent({"SEC_USER_AGENT": "QA qa@example.com"}) == "QA qa@example.com"
+    product = admit_official_source(network_consent=True, workspace_root=tmp_path, environment={})
+    assert product.transport_origin == "OFFICIAL_HTTP" and product.refusal_code is None
+    product.source._transport.close()  # type: ignore[union-attr]
+    # A build without its contact refuses as its own configuration; the person names none.
+    with monkeypatch.context() as unconfigured:
+        unconfigured.setattr(admission, "SEC_CONTACT", "absent-contact.json")
+        bare = admit_official_source(network_consent=True, workspace_root=tmp_path, environment={})
+    assert bare.source is None and bare.refusal_code == "evidence_review.sec_contact_not_configured"
+    # A consent record that does not read grants nothing, and says so.
+    (tmp_path / admission.CONSENT).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / admission.CONSENT).write_text("{", encoding="utf-8")
+    assert evidence_source_consent(tmp_path).actor == "UNREADABLE"
+    assert admit_workspace_source(tmp_path, {}).source is None
 
     official = admit_official_source(
         network_consent=True,
@@ -153,75 +176,50 @@ def test_the_official_source_is_admitted_only_by_consent_in_an_open_environment(
     assert injected.network_access is None
 
 
-def test_the_workspace_admission_takes_the_live_branch_only_with_an_admitted_source(
-    tmp_path: Path,
-) -> None:
-    """The workspace admission takes the live branch only with an admitted source."""
-
+def test_the_package_takes_the_live_branch_only_with_an_admitted_source(tmp_path: Path) -> None:
+    """The package takes the live branch only with an admitted source."""
     binding, _registry_path = _package(tmp_path)
     recorded = admit_evidence_review_workspace(
         workspace=tmp_path,
         binding=binding,
         semantic_capability_reader=lambda _runtime: CAPABILITY_HASH,
-        official_source=admit_official_source(network_consent=False),
     )
     try:
-        assert recorded.resources.live_source is None
-        # The package was installed under the production plan (written
-        # absent): the policy carries it as installed, and the Host refuses
-        # new work under it by name with the re-install step.
-        assert recorded.evidence_policy == AdmittedEvidencePolicy(
-            admit_model_review=False, matter_selection=None
+        resources, policy = recorded.resources, recorded.evidence_policy
+        assert resources.live_source is None
+        # Installed under the production plan (written absent): the Host refuses new work under
+        # it by name with the re-install step.
+        assert policy == AdmittedEvidencePolicy(admit_model_review=False, matter_selection=None)
+        refused = on_official_source(
+            resources, policy, admit_official_source(network_consent=False)
         )
-    finally:
-        recorded.runtime.close()
-
-    transport = _scenario()
-    live = admit_evidence_review_workspace(
-        workspace=tmp_path,
-        binding=binding,
-        semantic_capability_reader=lambda _runtime: CAPABILITY_HASH,
-        official_source=admit_official_source(network_consent=True, transport=transport),
-    )
-    try:
-        assert isinstance(live.resources.live_source, SecEdgarSource)
-        policy = live.evidence_policy
-        assert policy.mode is AlternativeEvidenceMode.LIVE_OFFICIAL
-        assert policy.evidence_classes == (AlternativeEvidenceClass.SEC_FILING,)
-        assert policy.network_consent and policy.admit_live_official
-        assert policy.admit_model_review is False, "consent to the source is not a model"
-        # The recorded policy's, with a short unit delivered whole (W4).
-        assert policy.source_policy == AlternativeEvidenceSourcePolicy(
+        assert refused == (resources, policy)
+        transport = _scenario()
+        admitted = admit_official_source(network_consent=True, transport=transport)
+        live_resources, live = on_official_source(resources, policy, admitted)
+        assert isinstance(live_resources.live_source, SecEdgarSource)
+        assert live.mode is AlternativeEvidenceMode.LIVE_OFFICIAL
+        assert live.evidence_classes == (AlternativeEvidenceClass.SEC_FILING,)
+        assert live.network_consent and live.admit_live_official
+        assert live.admit_model_review is False, "consent to the source is not a model"
+        # A short unit delivered whole (W4); the documents per issuer the default consent admits.
+        assert live.source_policy == AlternativeEvidenceSourcePolicy(
             **{
                 **AdmittedEvidencePolicy().source_policy.model_dump(mode="python"),
                 "whole_filing_bytes": WHOLE_FILING_BYTES,
+                "maximum_documents_per_issuer": 3,
             }
         )
         assert transport.calls == [], "admission performs no acquisition"
-        # The recorded package stays admitted beside the live source: the
-        # registry and listing authority are the same verified ones.
-        assert live.registry == recorded.registry
-        assert live.resources.recorded_documents == recorded.resources.recorded_documents
+        denied = admit_official_source(
+            network_consent=True, environment={"ALPHALATTICE_NETWORK_DISABLED": "1"}
+        )
+        held_resources, held = on_official_source(resources, policy, denied)
+        assert held == live and held_resources.binding_hash == live_resources.binding_hash
+        assert held_resources.live_source is not None
+        assert held_resources.live_source.network_call_count == 0
     finally:
-        live.runtime.close()
-
-    denied_source = admit_official_source(
-        network_consent=True, environment={"ALPHALATTICE_NETWORK_DISABLED": "1"}
-    )
-    held = admit_evidence_review_workspace(
-        workspace=tmp_path,
-        binding=binding,
-        semantic_capability_reader=lambda _runtime: CAPABILITY_HASH,
-        official_source=denied_source,
-    )
-    try:
-        assert held.network_access == denied_source.network_access
-        assert held.evidence_policy == live.evidence_policy
-        assert held.resources.binding_hash == live.resources.binding_hash
-        assert held.resources.live_source is not None
-        assert held.resources.live_source.network_call_count == 0
-    finally:
-        held.runtime.close()
+        recorded.runtime.close()
 
 
 def test_the_public_operation_prepares_live_reuses_bodies_and_joins_a_refresh_in_flight(
@@ -558,13 +556,8 @@ def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
         network_consent=True, environment={"ALPHALATTICE_NETWORK_DISABLED": "1"}
     )
     assert denied.transport_origin == "DENIED" and denied.source is not None
-    offline = replace(
-        recorded,
-        evidence_resources=replace(recorded.evidence_resources, live_source=denied.source),
-        evidence_policy=live_evidence_policy(recorded.evidence_policy),
-        network_access=denied.network_access,
-    )
-    service = start_service(workspace, offline, tmp_path, clock=lambda: now[0])
+    service = start_service(workspace, recorded, tmp_path, clock=lambda: now[0])
+    service.review.use_source(denied)
     try:
         query = f"result_hash={service.result_hash()}"
         again = service.get("/api/evidence/preview?" + query)
@@ -608,7 +601,7 @@ def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
         assert "task_id" not in fresh
         assert fresh["network_access"] == access
         assert fresh["detail"] == "The command gave SEC consent. " + str(access["detail"])
-        assert "Restart only an idle Host" in fresh["source_ways"]["official"]["before"]
+        assert "with no restart" in fresh["source_ways"]["official"]["before"]
         assert service.registry.tasks() == tasks_before
         refused = denied.source._transport.refused  # type: ignore[attr-defined]
         assert refused == [], "the refused preparation performs no source work"
@@ -618,57 +611,45 @@ def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
         service.session.stop()
 
 
-def test_a_denied_source_requires_an_idle_restart_after_the_control_opens(
+def test_the_running_host_admits_the_source_once_the_consent_and_the_network_allow(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (P4): opening the control cannot replace a denied transport;
-    its refusal reports the current control and the existing idle-restart recovery."""
+    """requirement: the person's consent and the workspace's network take effect in the running
+    Host with no restart; the Host releases the last source's campaign at stop."""
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
     workspace, report = build_workspace(tmp_path)
     recorded = build_authority(tmp_path=tmp_path, report=report, model_authority_admitted=False)
-    assert recorded.evidence_resources is not None
-    denied = admit_official_source(network_consent=True, workspace_root=workspace, environment={})
-    assert denied.source is not None and denied.network_access is not None
-    assert denied.network_access.decided_by == "DEFAULT"
-    authority = replace(
-        recorded,
-        evidence_resources=replace(recorded.evidence_resources, live_source=denied.source),
-        evidence_policy=live_evidence_policy(recorded.evidence_policy),
-        network_access=denied.network_access,
-    )
-    service = start_service(workspace, authority, tmp_path, clock=lambda: _NOW)
+    service = start_service(workspace, recorded, tmp_path, clock=lambda: _NOW)
+    review = service.review
+    review.official_source = partial(admit_workspace_source, workspace, {})
     try:
         query = f"result_hash={service.result_hash()}"
+        service.get("/api/evidence/preview?" + query)
+        assert review.evidence_task_adapter.resources.live_source is None, "no consent yet"
+        record_evidence_source_consent(workspace, replace(DEFAULT_SOURCE_CONSENT, actor="HUMAN"))
         closed = service.get("/api/evidence/preview?" + query)
-        assert closed["network_access"]["network_allowed"] is False
+        denied = review.evidence_task_adapter.resources.live_source
+        assert denied is not None and closed["network_access"]["network_allowed"] is False
+        assert "with no restart" in closed["source_ways"]["official"]["before"]
         set_network_access(workspace, enabled=True)
         opened = service.get("/api/evidence/preview?" + query)
-        assert opened["status"] == "EVIDENCE_PREREQUISITES_MISSING"
-        assert opened["network_access"]["network_allowed"] is True
-        assert opened["network_access"]["decided_by"] == "WORKSPACE_CONTROL"
-        assert opened["source_network_access"]["network_allowed"] is False
-        assert opened["source_network_access"]["decided_by"] == "DEFAULT"
-        assert "prepare" not in opened["next_requests"]
-        assert "No workspace control is set" not in opened["detail"]
-        assert "Restart only an idle Host" in opened["source_ways"]["official"]["before"]
-        tasks_before = service.registry.tasks()
-        refused = service.post(
-            "/api/evidence/prepare",
-            {
-                "result_hash": service.result_hash(),
-                "evidence_as_of": opened["evidence_as_of"],
-                "preparation_binding_hash": opened["preparation_binding_hash"],
-            },
-        )
-        assert refused["disposition"] == "REFUSED_NETWORK_ACCESS"
-        assert refused["failure_code"] == "evidence_review.workspace_network_not_allowed"
-        assert refused["network_access"] == opened["network_access"]
-        assert refused["detail"] == opened["source_ways"]["official"]["before"]
-        assert refused["next_action"] == "READ_NETWORK_ACCESS"
-        assert service.registry.tasks() == tasks_before
-        assert denied.source.network_call_count == 0
+        assert opened["status"] == "EVIDENCE_PREPARATION_READY"
+        assert review.evidence_policy.mode is AlternativeEvidenceMode.LIVE_OFFICIAL
+        source = review.evidence_task_adapter.resources.live_source
+        assert source is not denied and source.network_capable and source.network_call_count == 0
+        wider = replace(DEFAULT_SOURCE_CONSENT, actor="HUMAN", documents_per_issuer=4)
+        record_evidence_source_consent(workspace, wider)
+        service.get("/api/evidence/preview?" + query)
+        assert source._transport.closed, "the source a new consent replaces is closed"  # type: ignore[attr-defined]
+        with monkeypatch.context() as unconfigured:
+            unconfigured.setattr(admission, "SEC_CONTACT", "absent-contact.json")
+            bare = service.get("/api/evidence/preview?" + query)["admission"]
+        assert bare["source_refusal"] == "evidence_review.sec_contact_not_configured"
     finally:
         service.session.stop()
+    admitted = admit_workspace_source(workspace, {}).campaign_ledger
+    assert admitted is not None and admitted.held, "the campaign was released at stop"
+    admitted.close()
 
 
 def test_a_real_source_reads_the_closed_control_before_any_new_acquisition(
@@ -700,13 +681,8 @@ def test_a_real_source_reads_the_closed_control_before_any_new_acquisition(
         assert source.network_capable
         recorded = build_authority(tmp_path=tmp_path, report=report, model_authority_admitted=False)
         assert recorded.evidence_resources is not None
-        authority = replace(
-            recorded,
-            evidence_resources=replace(recorded.evidence_resources, live_source=source),
-            evidence_policy=live_evidence_policy(recorded.evidence_policy),
-            network_access=admission.network_access,
-        )
-        service = start_service(workspace, authority, tmp_path, clock=lambda: _NOW)
+        service = start_service(workspace, recorded, tmp_path, clock=lambda: _NOW)
+        service.review.use_source(replace(admission, source=source))
         try:
             query = f"result_hash={service.result_hash()}"
             ready = service.get("/api/evidence/preview?" + query)
@@ -762,13 +738,8 @@ def test_a_failed_live_run_is_not_retried_with_a_denied_source(tmp_path: Path) -
         network_consent=True, environment={"ALPHALATTICE_NETWORK_DISABLED": "1"}
     )
     assert denied.source is not None
-    offline = replace(
-        recorded,
-        evidence_resources=replace(recorded.evidence_resources, live_source=denied.source),
-        evidence_policy=live_evidence_policy(recorded.evidence_policy),
-        network_access=denied.network_access,
-    )
-    service = start_service(workspace, offline, tmp_path, clock=lambda: _NOW)
+    service = start_service(workspace, recorded, tmp_path, clock=lambda: _NOW)
+    service.review.use_source(denied)
     try:
         tasks_before = service.registry.tasks()
         refused = service.post("/api/evidence/prepare", request)

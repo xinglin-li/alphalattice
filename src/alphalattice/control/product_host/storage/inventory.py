@@ -187,7 +187,7 @@ def _admit(capacity: StorageCapacity, additional_bytes: int) -> None:
         raise StorageInventoryError(
             "storage.managed_capacity_exceeded",
             "Managed storage exceeds the workspace cap. "
-            "Raise the cap in Settings or plan a cleanup.",
+            "Raise the cap (`storage set --cap-bytes <bytes>`) or plan a cleanup (`storage plan`).",
         )
     if capacity.free_disk_bytes < additional_bytes + RECOVERY_HEADROOM_BYTES:
         raise StorageInventoryError(

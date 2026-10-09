@@ -120,8 +120,8 @@ FORWARD_HORIZON: Final = timedelta(days=330)
 calendar plans a year past the clock, and a schedule reads two weeks past its last formation.
 Past it the research update refuses the epoch, and a person activates a newer book."""
 REVIEW_HOLDINGS_WORDS: Final = (
-    "These are the reviewed book's last sealed holdings and the sessions they were decided and "
-    "entered: the review's last holdings, not the next positions. Activation is reversible, and "
+    "These are the book's last sealed holdings and the sessions they were decided and entered. "
+    "Its review standing is stated separately. Activation is reversible, and "
     "deactivating keeps its history. The first forward update after activation publishes the "
     "positions for the first actionable session."
 )
@@ -1507,7 +1507,7 @@ class StrategyActivation:
         return state
 
     def _review_holdings(self, book: _Book) -> dict[str, object]:
-        """The reviewed book's last sealed holdings, read where activation reads them (A2).
+        """The book's last sealed holdings, read where activation reads them (A2).
 
         Its run's sealed final weights and cash, by listing, with the formation that decided
         them and the session they were entered. Nothing is computed: the next positions come
@@ -1527,7 +1527,7 @@ class StrategyActivation:
             key=lambda row: (-abs(row[1]), row[0]),
         )
         return {
-            "claim": "REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS",
+            "claim": "BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS",
             "detail": REVIEW_HOLDINGS_WORDS,
             "book_task_id": str(book.task_id),
             "formation_session": last.isoformat(),

@@ -90,12 +90,12 @@ const LiveWorkArea = (() => {
 
   /* ---- shells ---- */
   function logRail(latest, state, reading=true) {
-    return html`<section class="ui-log-rail prep-log-rail" aria-label="${t('Latest unit and reading state')}"><div><span>${latest.label}</span><strong class="${state.stale ? 'is-stale' : ''}">${latest.value}</strong></div><div><span>${t('Reading')}</span><strong>${reading ? (A.follow ? t('Following latest') : t('Reading held')) : t('Following latest')}</strong></div></section>`;
+    return html`<section class="ui-log-rail prep-log-rail" aria-label="${t('Latest unit and reading state')}"><div><span>${latest.label}</span><strong class="${state.stale ? 'is-stale' : ''}">${latest.value}</strong></div>${reading ? html`<div><span>${t('Reading')}</span><strong>${A.follow ? t('Following latest') : t('Reading held')}</strong></div>` : ''}</section>`;
   }
   /* The scene's log is the one log (round 72): the shell from `runLog`, the follow control as its
    * tool, the scene's own rows as its lines. */
   function logShell(spec, {label, title, caption, history, moving, rows, empty, status, rail, controls=true}) {
-    const control=controls ? html`<button type="button" class="text-btn" data-action="workspace-follow" aria-pressed="${!A.follow}" aria-label="${A.follow ? t('Hold the current reading position') : t('Resume following new units')}">${A.follow ? t('Hold reading') : t('Resume following')}</button>` : '';
+    const control=controls && stateMoving(spec.view()?.lifecycle) ? html`<button type="button" class="text-btn" data-action="workspace-follow" aria-pressed="${!A.follow}" aria-label="${A.follow ? t('Hold the current reading position') : t('Resume following new units')}">${A.follow ? t('Hold reading') : t('Resume following')}</button>` : '';
     // R14 (WD4): a log that no longer moves is its work's record -- folded to its title and status line, its units a
     // press away (a blocked update's 60 units were 800 words of the first screen); a moving one is read live
     const fold=Boolean(history) && !moving;
@@ -120,12 +120,12 @@ const LiveWorkArea = (() => {
    * the current one shows its retained record and offers the way back. */
   function stageBody(spec, b, v, state, shown, current, moving) {
     const index=v.stages.findIndex(s=>s.stage_id===shown), step=spec.steps[index], s=v.stages[index];
-    const inspecting=shown!==current;
+    const inspecting=!v.parallel && shown!==current;
     const w=inspecting ? null : spec.work(b,v,state,shown);
-    const life=v.lifecycle, since=v.status.running_since, observed=Date.parse(v.observed_at);
-    const ended=!stateMoving(life), until=ended ? Date.parse(v.status.last_activity_at) : observed;
-    const elapsed=since ? clockText((until-Date.parse(since))/1000) : null, age=readAge(state), live=v.liveness, stale=state.stale;
-    const kicker=inspecting ? html`<p class="fv-kicker prep-kicker"><span>${t('Inspecting')} · ${t('stage {i} of {n}',{i:index+1,n:v.stages.length})} · ${codeWords(s?.lifecycle || 'PENDING')}</span>${typedBtn(t('Return to current'),'workspace-stage','','button compact','')}</p>` : html`<p class="fv-kicker prep-kicker"><span>${t(v.status.current_stage ? 'Current stage' : v.stages.every(x=>x.lifecycle==='VERIFIED') ? 'Last stage' : 'Stopped at')} · ${t('stage {i} of {n}',{i:index+1,n:v.stages.length})}${v.status.current_stage ? '' : html` · ${codeWords(s?.lifecycle || 'PENDING')}`}</span></p>`;
+    const life=v.lifecycle, since=v.status.running_since, ended=!stateMoving(life);
+    const span=v.status.timing?.running_seconds;
+    const elapsed=since && Number.isFinite(span) && span>=0 ? clockText(span) : null, age=readAge(state), live=v.liveness, stale=state.stale;
+    const kicker=v.parallel ? html`<p class="fv-kicker prep-kicker"><span>${t('Stage totals across parallel groups')}</span></p>` : inspecting ? html`<p class="fv-kicker prep-kicker"><span>${t('Inspecting')} · ${t('stage {i} of {n}',{i:index+1,n:v.stages.length})} · ${codeWords(s?.lifecycle || 'PENDING')}</span>${typedBtn(t('Return to current'),'workspace-stage','','button compact','')}</p>` : html`<p class="fv-kicker prep-kicker"><span>${t(!ended && v.status.current_stage ? 'Current stage' : life==='SUCCEEDED' && v.stages.every(x=>x.lifecycle==='VERIFIED') ? 'Last stage' : 'Stopped at')} · ${t('stage {i} of {n}',{i:index+1,n:v.stages.length})}${!ended && v.status.current_stage ? '' : html` · ${codeWords(s?.lifecycle || 'PENDING')}`}</span></p>`;
     const heading=html`<div class="prep-stage-heading"><span class="feature-icon stage-icon" data-moving="${moving && !inspecting}" aria-hidden="true">${icon('task')}</span><div class="prep-activity-copy"><h2 id="prepStageTitle">${step ? t(step[1]) : shown ? codeWords(shown) : t('No stage reported')}${infoMark(t(spec.lines[shown] || spec.fallbackLine))}</h2></div></div>`;
     let quantity;
     if(inspecting) {
@@ -136,21 +136,25 @@ const LiveWorkArea = (() => {
       const wait=w.wait ? html`<p class="prep-wait">${icon('clock')}<span>${t('Waiting until {time} before the next attempt (the owner\'s retry time).',{time:when(w.wait)})}</span></p>` : ''; // N6 (law 133): the reader's clock, never the owner's raw instant
       quantity=html`<div class="prep-activity-count">${w.count}</div>${bar}<p class="tp-caption">${w.detail}</p>${wait}`;
     }
-    // The three clocks are wall-clock facts from recorded instants (the Task's start, the last
-    // heartbeat, this page's read); between reads they tick on the page, never as progress.
+    // Elapsed is the owner's recorded span. Only the ages of the heartbeat and this page's read tick; neither changes Task progress.
     const readAt=state.readAt || Date.now();
     // Under an outage no clock ticks: whether the Task still runs is not known, and a moving
     // elapsed time would say it does.
-    const elapsedValue=elapsed===null ? '' : html`<span data-tick="elapsed" data-since="${since}"${ended || stale ? '' : ' data-live="true"'}>${elapsed}</span>`;
+    const elapsedValue=elapsed===null ? '' : elapsed;
     const workerValue=['OBSERVED','NOT_RECENT'].includes(live.status) ? html`<span data-tick="worker" data-base="${Math.round(live.age_seconds)}" data-read="${readAt}"${stale ? '' : ' data-live="true"'}>${t('{n} s',{n:Math.round(live.age_seconds)})}</span>` : blank('stat');
     const readValue=html`<span data-tick="read" data-read="${readAt}"${stale ? '' : ' data-live="true"'}>${t('{n} s ago',{n:age})}</span>`; // the read's age, said as one (the user's phase 6 reading)
     const facts=html`<div class="stat-strip prep-strip" aria-label="${t(spec.factsLabel)}">${stat(t('Verified stages'),html`${v.verified_stage_count} / ${v.total_stage_count}`,t('verified by Task Control · not elapsed time'))}${stat(t('Elapsed'),elapsedValue,!since ? t('the Task has not started running') : ended ? t('from its start to its last recorded activity') : t('since the Task started running'))}${stat(t('Worker'),workerValue,stale ? t('at the last successful read · not re-read since {time}',{time:sinceWhen(state)}) : live.status==='OBSERVED' ? t('since the last heartbeat · observable') : live.status==='NOT_RECENT' ? t('since the last heartbeat · not recent') : live.status==='NOT_OBSERVED' ? t('no heartbeat recorded yet · liveness unknown') : t('not executing · lifecycle decides'))}${stat(t('Last read'),readValue,stale ? t('since the last successful read · {n}',{n:countText(stale.failures,'{n} failed read','{n} failed reads')}) : t('since this page read the owners'))}</div>`;
     return html`<section class="fv-main prep-main" id="prepStageBody" data-shown="${shown}" data-inspecting="${inspecting}">${kicker}${heading}${quantity}${facts}</section>`;
   }
   function foldedSummary(spec, b, v, state, current, moving) {
+    if(v.parallel)return stateLine(v.status,{next:''});
     const index=v.stages.findIndex(s=>s.stage_id===current), step=spec.steps[index], w=stateMoving(v.lifecycle) ? spec.work(b,v,state,current) : null;
     const [tone]=LiveTasks.standing(v);
     return html`<span class="prep-summary"><strong>${t('stage {i} of {n}',{i:index+1,n:v.stages.length})} · ${step ? t(step[1]) : current || ''}</strong>${w?.bar ? html` · <span class="prep-summary-count">${w.bar[0].toLocaleString('en-US')} / ${w.bar[1].toLocaleString('en-US')}</span>` : ''} · <span class="prep-summary-status" data-live="${moving}">${codeWords(v.stages[index]?.lifecycle || v.lifecycle)}</span>${tone==='attention' ? html` · <span class="prep-summary-attention" role="status">${icon('warning')}${t('needs attention')}</span>` : ''}</span>`;
+  }
+  function parallelFacts(spec,p) {
+    const scope=p.scope, packing=scope?.packing_rules_id ? t('The run packs holdings from its admitted source counts. Holdings with nothing new and carried readings are outside these groups; the preview is an estimate.') : '';
+    return html`<section class="execution-record panel-body" data-parallel-groups="${p.total}"><div class="stat-strip">${stat(t('Done'),html`${p.done} / ${p.total}`)}${stat(t('Running'),p.running)}${stat(t('Waiting'),p.waiting)}${stat(t('Blocked'),p.blocked)}${stat(t('Failed'),p.failed)}${scope ? html`${stat(t('Issuers'),scope.issuers_total)}${stat(t('Nothing filed'),scope.issuers_nothing_filed)}${stat(t('Carried'),scope.issuers_carried)}` : ''}</div>${packing ? html`<p class="caption">${packing}</p>` : ''}${factsRef(t('Each group'),spec.parallelTable(p.groups))}</section>`;
   }
   function workArea(spec, b, v, state) {
     const area=areaFor(spec, v.task_id), current=shownStageOf(v);
@@ -160,7 +164,7 @@ const LiveWorkArea = (() => {
     const shown=area.inspect && area.inspect!==current && v.stages.some(s=>s.stage_id===area.inspect) ? area.inspect : current;
     const moving=v.lifecycle==='RUNNING' && v.liveness.status==='OBSERVED' && !state.stale;
     const head=html`<header class="prep-area-head"><div class="prep-area-title">${icon('task')}<span>${t(spec.title)}</span>${area.folded ? foldedSummary(spec,b,v,state,current,moving) : ''}</div><button type="button" class="text-btn prep-fold" data-action="workspace-fold" aria-expanded="${!area.folded}" aria-controls="prepAreaBody">${icon(area.folded ? 'chevron' : 'close')}${area.folded ? t('Expand') : t('Collapse')}</button></header>`;
-    const body=area.folded ? '' : html`${rail(spec,v,shown,current,moving)}<div class="fv-body prep-body" id="prepAreaBody">${stageBody(spec,b,v,state,shown,current,moving)}${spec.aside(b,v,state,shown,shown===current) || stageRecord(spec,v,shown)}</div>`;
+    const body=area.folded ? '' : html`${v.parallel ? parallelFacts(spec,v.parallel) : ''}${rail(spec,v,shown,v.parallel ? '' : current,moving)}<div class="fv-body prep-body" id="prepAreaBody">${stageBody(spec,b,v,state,shown,current,moving)}${spec.aside(b,v,state,shown,shown===current) || stageRecord(spec,v,shown)}</div>`;
     return html`<section class="fv-surface prep-area" data-box="workspace" data-scene="${spec.key}" data-folded="${area.folded}" data-shown="${shown}" data-moving="${moving}">${head}${body}</section>`;
   }
 
@@ -252,16 +256,13 @@ const LiveWorkArea = (() => {
     A.arrived.clear();
     if(A.accent) { const done=document.querySelector('.lab-work-done > .note-line, .data-update-row > .list-row'); if(done){done.classList.add('done-accent');A.accent=false;} } // N6: the one line a finished Task became, lit once
   }
-  /* Between reads the three clocks tick from their recorded instants: elapsed since the Task's
-   * start (while it runs), seconds since the last heartbeat, seconds since this page's read.
-   * Wall-clock facts, not progress; a hidden page does not tick, a read repaints them. */
+  /* Only reading ages tick between owner answers. The Task's elapsed span never extrapolates. */
   function tick() {
     if(typeof document==='undefined' || document.hidden) return;
     const now=Date.now();
     for(const el of document.querySelectorAll('[data-tick][data-live="true"]')) {
       const kind=el.dataset.tick;
-      if(kind==='elapsed') { const since=Date.parse(el.dataset.since); if(Number.isFinite(since)) el.textContent=clockText((now-since)/1000); }
-      else if(kind==='worker') { const read=Number(el.dataset.read), base=Number(el.dataset.base); if(Number.isFinite(read) && Number.isFinite(base)) el.textContent=t('{n} s',{n:base+Math.max(0,Math.round((now-read)/1000))}); }
+      if(kind==='worker') { const read=Number(el.dataset.read), base=Number(el.dataset.base); if(Number.isFinite(read) && Number.isFinite(base)) el.textContent=t('{n} s',{n:base+Math.max(0,Math.round((now-read)/1000))}); }
       else if(kind==='read') { const read=Number(el.dataset.read); if(Number.isFinite(read)) el.textContent=t('{n} s ago',{n:Math.max(0,Math.round((now-read)/1000))}); }
     }
   }

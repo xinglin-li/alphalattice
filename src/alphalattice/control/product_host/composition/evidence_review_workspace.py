@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Literal, Self, cast
 from urllib.parse import urlparse
@@ -24,7 +24,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceError,
     ResearchWorkspaceEvidenceReview,
 )
-from alphalattice.control.workspace_runtime.network_access import NetworkAccess
 from alphalattice.evidence.alternative_evidence.contracts import (
     WHOLE_FILING_BYTES,
     AlternativeEvidenceClass,
@@ -56,7 +55,10 @@ if TYPE_CHECKING:
     from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
         PortfolioReviewActor,
     )
-from alphalattice.evidence.alternative_evidence.sources.admission import OfficialSourceAdmission
+from alphalattice.evidence.alternative_evidence.sources.admission import (
+    DEFAULT_SOURCE_CONSENT,
+    OfficialSourceAdmission,
+)
 
 EVIDENCE_REVIEW_MANIFEST_SCHEMA = "evidence-review-workspace-authority"
 _HASH = r"^[0-9a-f]{64}$"
@@ -334,8 +336,6 @@ class AdmittedEvidenceReviewWorkspace:
     evidence_policy: AdmittedEvidencePolicy
     review_actor: PortfolioReviewActor | None
     """Always absent since AG2: a review's answer comes from an agent through the seam."""
-    network_access: NetworkAccess | None = None
-    """The source admission's process permission, outside the resource binding."""
 
     @property
     def model_authority_admitted(self) -> bool:
@@ -351,11 +351,12 @@ def live_evidence_policy(
     *,
     maximum_document_bytes: int | None = None,
     acquisition_window_seconds: int | None = None,
+    maximum_documents_per_issuer: int = DEFAULT_SOURCE_CONSENT.documents_per_issuer,
 ) -> AdmittedEvidencePolicy:
     """Bind explicit official-source acquisition controls to the recorded evidence policy.
 
-    The recorded policy widened to the official source: the same document
-    budget, the SEC filing class, live acquisition under recorded consent,
+    The recorded policy widened to the official source: the documents per issuer the
+    workspace's consent admits, the SEC filing class, live acquisition under recorded consent,
     the per-document cap the operator declared (the recorded policy's when
     none was) and the acquisition window the operator declared (likewise),
     a short unit delivered whole (W4); TTL and temporal eligibility are the
@@ -367,6 +368,7 @@ def live_evidence_policy(
         **{
             **recorded.source_policy.model_dump(mode="python"),
             "whole_filing_bytes": WHOLE_FILING_BYTES,
+            "maximum_documents_per_issuer": maximum_documents_per_issuer,
             **(
                 {}
                 if maximum_document_bytes is None
@@ -397,7 +399,6 @@ def admit_evidence_review_workspace(
     workspace: Path,
     binding: ResearchWorkspaceEvidenceReview,
     semantic_capability_reader: SemanticCapabilityReader | None = None,
-    official_source: OfficialSourceAdmission | None = None,
 ) -> AdmittedEvidenceReviewWorkspace:
     """Compose one verified local Evidence review package.
 
@@ -406,10 +407,8 @@ def admit_evidence_review_workspace(
     (`protocols/actor_execution`), so no model is admitted here and `model_authority_admitted`
     is false: the Evidence and CRO section offers each agent its bundle (AG2).
 
-    An admitted official source (`official_source.admitted`) puts the same composition on the
-    live branch: the source becomes the Task resources' live source and the policy asks for SEC
-    filings under LIVE_OFFICIAL with the consent recorded. Without one, or with a refused
-    admission, the recorded package and its offline policy are what is composed.
+    The recorded package and its offline policy; the Host puts them on the live branch when it
+    admits the official source (`on_official_source`).
     """
     verified = verify_evidence_review_workspace(
         workspace=workspace,
@@ -418,10 +417,6 @@ def admit_evidence_review_workspace(
     )
     manifest = verified.manifest
     runtime = verified.runtime
-    live_source = None if official_source is None else official_source.source
-    policy = AdmittedEvidencePolicy(
-        admit_model_review=False, matter_selection=manifest.matter_selection
-    )
     return AdmittedEvidenceReviewWorkspace(
         authority_hash=manifest.authority_hash,
         registry=verified.registry,
@@ -430,23 +425,36 @@ def admit_evidence_review_workspace(
         resources=AlternativeEvidenceDocumentTaskResources(
             recorded_registry=verified.registry,
             recorded_documents=verified.documents.documents,
-            live_source=live_source,
+            live_source=None,
             analysis_actor=None,
             minimum_entity_coverage=manifest.minimum_entity_coverage,
             admitted_authority_hash=manifest.authority_hash,
             recorded_document_bundle_hash=verified.documents.bundle_hash,
         ),
-        evidence_policy=(
-            policy
-            if official_source is None or live_source is None
-            else live_evidence_policy(
-                policy,
-                maximum_document_bytes=official_source.maximum_document_bytes,
-                acquisition_window_seconds=official_source.acquisition_window_seconds,
-            )
+        evidence_policy=AdmittedEvidencePolicy(
+            admit_model_review=False, matter_selection=manifest.matter_selection
         ),
         review_actor=None,
-        network_access=None if official_source is None else official_source.network_access,
+    )
+
+
+def on_official_source(
+    resources: AlternativeEvidenceDocumentTaskResources,
+    recorded: AdmittedEvidencePolicy,
+    official_source: OfficialSourceAdmission,
+) -> tuple[AlternativeEvidenceDocumentTaskResources, AdmittedEvidencePolicy]:
+    """The recorded package's resources and policy on the official source's branch.
+
+    An admitted source becomes the Task resources' live source and the policy asks for SEC
+    filings under LIVE_OFFICIAL within its bounds; without one, the package stays recorded.
+    """
+    if official_source.source is None:
+        return replace(resources, live_source=None), recorded
+    return replace(resources, live_source=official_source.source), live_evidence_policy(
+        recorded,
+        maximum_document_bytes=official_source.maximum_document_bytes,
+        acquisition_window_seconds=official_source.acquisition_window_seconds,
+        maximum_documents_per_issuer=official_source.maximum_documents_per_issuer,
     )
 
 
@@ -582,5 +590,6 @@ __all__ = [
     "VerifiedEvidenceReviewWorkspace",
     "admit_evidence_review_workspace",
     "live_evidence_policy",
+    "on_official_source",
     "verify_evidence_review_workspace",
 ]

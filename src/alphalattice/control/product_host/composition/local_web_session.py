@@ -20,11 +20,12 @@ import os
 import secrets
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from functools import partial
 from http import HTTPStatus
 from pathlib import Path
 from threading import Event, Lock
-from typing import Any, Final, Literal, cast, get_args
+from typing import Any, Final, cast, get_args
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -36,7 +37,9 @@ from alphalattice.control.product_host.composition.application_session import (
 )
 from alphalattice.control.product_host.composition.decision_advancement import (
     DecisionAdvancementCommand,
-    DecisionAdvancementPlan,
+)
+from alphalattice.control.product_host.composition.evidence_authority_setup import (
+    EvidenceInstallCommand,
 )
 from alphalattice.control.product_host.composition.evidence_review_application import (
     EvidenceReviewApplication,
@@ -80,11 +83,13 @@ from alphalattice.control.product_host.composition.research_experiments import (
     ResearchExperimentCommand,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
+    ResearchWorkspaceEvidenceReview,
     ResearchWorkspaceManifest,
     ResearchWorkspaceManifestHolder,
     admit_research_workspace,
     initialize_research_workspace,
     manifest_fields_hash,
+    read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.strategy_calibration import (
     TASK_KIND as CALIBRATION_TASK_KIND,
@@ -134,7 +139,6 @@ from alphalattice.control.task_control.registry import (
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReader
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
-from alphalattice.control.workspace_runtime.network_access import NetworkAccess
 from alphalattice.evidence.alternative_evidence.contracts import SecIssuerRegistrySnapshot
 from alphalattice.evidence.alternative_evidence.publication.analysis import (
     AlternativeEvidenceAnalysisPublicationService,
@@ -150,7 +154,10 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     AlternativeEvidenceDocumentTaskAdapter,
     AlternativeEvidenceDocumentTaskResources,
 )
-from alphalattice.evidence.alternative_evidence.sources.admission import OfficialSourceAdmission
+from alphalattice.evidence.alternative_evidence.sources.admission import (
+    OfficialSourceAdmission,
+    admit_workspace_source,
+)
 from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
 from alphalattice.interface.local_application.activity import (
     READ_OPERATIONS,
@@ -420,11 +427,6 @@ class EvidenceReviewAuthority:
     review_actor: PortfolioReviewActor | None = None
     model_authority_admitted: bool = True
     """False when the workspace verified but no Provider credential is admitted."""
-    campaign_summary: Callable[[], dict[str, object]] | None = None
-    """Reads the live source's campaign balance from its ledger now; None
-    without a named campaign."""
-    network_access: NetworkAccess | None = None
-    """The official source's process permission, outside every resource binding."""
 
     selected_analysis_publication_hash: str | None = None
 
@@ -760,9 +762,9 @@ class LocalPortfolioWebSession:
     ) -> LocalPortfolioWebSession:
         """Ordinary composition: one path in, verified manifest and catalog out.
 
-        `official_source` is the operator's admitted SEC source, if any: the
-        workspace's Evidence/CRO package is then composed on its live branch
-        (`admit_evidence_review_workspace`), the recorded package otherwise.
+        The official SEC source is admitted at runtime from the workspace's consent, its network
+        control and the product's contact (`admit_workspace_source`), with no restart.
+        `official_source` replaces that admission with a fixed one, a rehearsal's own.
         """
         initialize_research_workspace(workspace)
         admitted = admit_research_workspace(workspace)
@@ -804,22 +806,7 @@ class LocalPortfolioWebSession:
         if self._workspace_review_authority and self.review_authority is None:
             binding = self.workspace_manifest.evidence_review
             assert binding is not None
-            admitted_review = admit_evidence_review_workspace(
-                workspace=self.workspace, binding=binding, official_source=self._official_source
-            )
-            self.review_authority = EvidenceReviewAuthority(
-                registry=admitted_review.registry,
-                listing_authority=admitted_review.listing_authority,
-                artifacts=admitted_review.runtime.artifacts,
-                evidence_publications=admitted_review.runtime.publications,
-                evidence_runtime=admitted_review.runtime,
-                evidence_resources=admitted_review.resources,
-                evidence_policy=admitted_review.evidence_policy,
-                review_actor=admitted_review.review_actor,
-                model_authority_admitted=admitted_review.model_authority_admitted,
-                campaign_summary=_campaign_reader(self._official_source),
-                network_access=admitted_review.network_access,
-            )
+            self.review_authority = self._workspace_authority(binding)
         session = WorkspaceApplicationSession.acquire(self.workspace).__enter__()
         self.session = session
         # The one holder of the workspace manifest every application reads; the operations
@@ -868,15 +855,12 @@ class LocalPortfolioWebSession:
             clock=self.clock,
         )
         self.dispatcher.start()
-        self.review = build_evidence_review_application(
-            workspace=self.workspace,
-            workspace_id=self.workspace_id,
-            session=session,
-            application=self.application,
-            finalization_store=None if self.resolver is None else finalization.store,
-            authority=self.review_authority,
-            clock=self.clock,
+        self.review = self._review_application(
+            session, None if self.resolver is None else finalization.store
         )
+        if self._workspace_review_authority and self._official_source is not None:
+            self.review.use_source(self._official_source)
+        self.review.refresh_source()
         self.operations = PortfolioResearchOperations(
             service=self.service,
             dispatcher=self.dispatcher,
@@ -888,6 +872,7 @@ class LocalPortfolioWebSession:
             recover_task=self.resume,
             recoverable_task_kinds=self.recoverable_task_kinds,
             resume_refusal=self.resume_refusal,
+            install_review=self.serve_installed_review,
             heartbeats=TaskHeartbeatReader(
                 session.runtime_path,
                 *([self.review.runner_runtime_path()] if self.review is not None else []),
@@ -1041,6 +1026,68 @@ class LocalPortfolioWebSession:
         """
         return frozenset(self._recovery_commands(owed_only=False))
 
+    def _workspace_authority(
+        self, binding: ResearchWorkspaceEvidenceReview
+    ) -> EvidenceReviewAuthority:
+        """The workspace's recorded package; the review admits the official source at runtime."""
+        admitted = admit_evidence_review_workspace(workspace=self.workspace, binding=binding)
+        return EvidenceReviewAuthority(
+            registry=admitted.registry,
+            listing_authority=admitted.listing_authority,
+            artifacts=admitted.runtime.artifacts,
+            evidence_publications=admitted.runtime.publications,
+            evidence_runtime=admitted.runtime,
+            evidence_resources=admitted.resources,
+            evidence_policy=admitted.evidence_policy,
+            review_actor=admitted.review_actor,
+            model_authority_admitted=admitted.model_authority_admitted,
+        )
+
+    def _review_application(
+        self,
+        session: WorkspaceApplicationSession,
+        finalization_store: PortfolioFinalizationStore | None,
+    ) -> EvidenceReviewApplication:
+        return build_evidence_review_application(
+            workspace=self.workspace,
+            workspace_id=self.workspace_id,
+            session=session,
+            application=self.application,
+            finalization_store=finalization_store,
+            authority=self.review_authority,
+            official_source=(
+                partial(admit_workspace_source, self.workspace)
+                if self._workspace_review_authority and self._official_source is None
+                else None
+            ),
+            clock=self.clock,
+        )
+
+    def serve_installed_review(self) -> AlternativeEvidenceDocumentIntelligenceRuntime | None:
+        """Serve the Evidence package an install Task just bound, in place, with no restart.
+
+        The review keeps its object and swaps the package in at once (`adopt`), so every holder
+        reads it; the runtime it replaces is answered, for the caller to close once the storage
+        reads the new one. A swap that fails leaves the review as it was.
+        """
+        binding = read_research_workspace_manifest(self.workspace).evidence_review
+        if binding is None or self.session is None or self.review is None:
+            raise ValueError("evidence_review.install_failed")
+        held = self.review_authority, self._workspace_review_authority
+        authority = self._workspace_authority(binding)
+        self.review_authority, self._workspace_review_authority = authority, True
+        try:
+            self.review.adopt(self._review_application(self.session, self.review.finalization))
+        except BaseException:
+            self.review_authority, self._workspace_review_authority = held
+            if authority.evidence_runtime is not None:
+                authority.evidence_runtime.close()
+            raise
+        if self._official_source is not None:
+            self.review.use_source(self._official_source)
+        replaced = held[0] if held[1] else None
+        return None if replaced is None else replaced.evidence_runtime
+
     def _recovery_commands(self, *, owed_only: bool = True) -> dict[str, LocalApplicationCommand]:
         commands: dict[str, LocalApplicationCommand] = {}
         if self.operations is not None:
@@ -1058,6 +1105,8 @@ class LocalPortfolioWebSession:
             commands[feature_command.command_kind] = feature_command
             sweep_command = StudyVerificationSweepCommand(self.operations.sweep)
             commands[sweep_command.command_kind] = sweep_command
+            install_command = EvidenceInstallCommand(self.operations.evidence_install)
+            commands[install_command.command_kind] = install_command
         if self.operations is not None and self.operations.research_updates is not None:
             advancement_command = DecisionAdvancementCommand(self.operations.research_updates)
             commands[advancement_command.command_kind] = advancement_command
@@ -1160,6 +1209,8 @@ class LocalPortfolioWebSession:
         ):
             self.review_authority.evidence_runtime.close()
             self.review_authority = None
+        if self.review is not None:
+            self.review.close_source()
         if self.session is not None:
             if self.client_connection is not None:
                 remove_client_connection(self.client_connection)
@@ -1232,6 +1283,7 @@ def build_evidence_review_application(
     application: PortfolioResearchApplication | None,
     finalization_store: PortfolioFinalizationStore | None,
     authority: EvidenceReviewAuthority | None = None,
+    official_source: Callable[[], OfficialSourceAdmission] | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> EvidenceReviewApplication:
     """The one review owner this service holds.
@@ -1292,24 +1344,14 @@ def build_evidence_review_application(
         selected_analysis_publication_hash=(
             authority.selected_analysis_publication_hash if authority is not None else None
         ),
-        campaign_summary=authority.campaign_summary if authority is not None else None,
-        network_access=authority.network_access if authority is not None else None,
+        official_source=official_source,
+        recorded_policy=authority.evidence_policy if authority is not None else None,
         clock=clock,
     )
 
 
-def _campaign_reader(
-    admission: OfficialSourceAdmission | None,
-) -> Callable[[], dict[str, object]] | None:
-    """A reader of the admitted campaign's balance from its ledger, or none."""
-
-    ledger = None if admission is None else admission.campaign_ledger
-    if ledger is None:
-        return None
-    return lambda: dict(ledger.summary())
-
-
 OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
+    ("POST", "/api/experiments/declaration", "EXPERIMENT_DECLARATION_CONVERT"),
     ("GET", "/api/evidence/preview", "EVIDENCE_PREVIEW"),
     ("POST", "/api/evidence/prepare", "EVIDENCE_PREPARE"),
     ("GET", "/api/evidence/packet", "EVIDENCE_PACKET"),
@@ -1332,6 +1374,9 @@ OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("GET", "/api/decisions", "PENDING_DECISIONS"),
     ("GET", "/api/activity/refusals", "ACTIVITY_REFUSALS"),
     ("POST", "/api/workspace/network", "NETWORK_ACCESS_SET"),
+    ("GET", "/api/evidence/consent", "EVIDENCE_CONSENT"),
+    ("POST", "/api/evidence/consent", "EVIDENCE_CONSENT_SET"),
+    ("POST", "/api/evidence/install", "EVIDENCE_INSTALL"),
     ("GET", "/api/experiments/compare", "EXPERIMENT_COMPARE"),
     ("GET", "/api/experiments/alpha-compare", "EXPERIMENT_ALPHA_COMPARE"),
     ("POST", "/api/experiments/risk-link", "EXPERIMENT_LINK_RISK"),
@@ -1442,6 +1487,7 @@ Host routes and the session answer names (U13, OW10), so a page turns a next req
 route without a map of its own."""
 
 HANDLED_OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
+    ("GET", "/api/workbench/portfolio", "PORTFOLIO_READBACK"),
     ("POST", "/api/data-update/plan", "DATA_UPDATE_PLAN"),
     ("POST", "/api/data-update/confirm", "DATA_CHANGE_CONFIRM"),
     ("POST", "/api/data-update/run", "DATA_UPDATE_RUN"),
@@ -1470,302 +1516,39 @@ _HANDLED_ROUTE: Final[dict[str, tuple[str, str]]] = {
 }
 
 
-def forward_update_read_requests(
-    operations: PortfolioResearchOperations,
-    *,
-    source_book_task_id: UUID,
-    strategy_package_id: str,
-) -> tuple[PortfolioResearchOperationRequest, ...]:
-    """Select the latest retained task of each update kind for this exact source book.
-
-    Args:
-        operations: The installed operation owners and their shared task registry.
-        source_book_task_id: Historical book selected by the page.
-        strategy_package_id: Package the selected historical result recorded.
-
-    Returns:
-        Exact task readbacks whose verified checkpoint names this book and package.
-    """
-    if operations.updates is None:
-        return ()
-    result: list[PortfolioResearchOperationRequest] = []
-    tasks = tuple(reversed(operations.workspace_session.task_control_registry.tasks()))
-    for operation, owner, kind in (
-        (
-            "RESEARCH_UPDATE_READBACK",
-            operations.research_updates,
-            None if operations.research_updates is None else operations.research_updates.task_kind,
-        ),
-        ("PORTFOLIO_UPDATE_READBACK", operations.updates, PORTFOLIO_UPDATE_TASK_KIND),
-    ):
-        if owner is None:
-            continue
-        for task in tasks:
-            if task.task_kind != kind:
-                continue
-            plan = owner._plan_of(task, current=False)
-            package = (
-                plan.package_id
-                if isinstance(plan, DecisionAdvancementPlan)
-                else plan.strategy_package_id
-            )
-            if package != strategy_package_id:
-                continue
-            checkpoint = operations.updates.store.load_decision_checkpoint(plan.checkpoint_hash)
-            if (
-                checkpoint.book_task_id == source_book_task_id
-                and checkpoint.package.strategy_id == strategy_package_id
-            ):
-                result.append(
-                    PortfolioResearchOperationRequest(
-                        operation=cast(
-                            Literal["RESEARCH_UPDATE_READBACK", "PORTFOLIO_UPDATE_READBACK"],
-                            operation,
-                        ),
-                        task_id=task.task_id,
-                        strategy_package_id=strategy_package_id,
-                    )
-                )
-                break
-    return tuple(result)
-
-
-@verified_model_read_scope(reuse_verified=True)
-@verified_lifecycle_admissions()
 def read_workbench_portfolio(
     operations: PortfolioResearchOperations,
     query: Mapping[str, list[str]],
     *,
     caller: OperationCaller = "HUMAN",
 ) -> dict[str, Any]:
-    """Read one exact book and its retained Forward publications for any local consumer.
-
-    Args:
-        operations: The installed read owners and workspace session.
-        query: Exact book, optional saved session and Forward selection.
-        caller: The foreground or service caller performing this read.
-
-    Returns:
-        The verified book projection or its owner's refusal.
-    """
-
-    def execute(request: PortfolioResearchOperationRequest) -> dict[str, Any]:
-        body = (
-            operations.execute(request)
-            if caller == "HUMAN"
-            else operations.execute(request, caller=caller)
-        )
-        if caller == "SERVICE_AUTOMATION" and (returned_status(body) or "").startswith("REFUSED"):
-            # A background refusal must not complete a successful warming cycle,
-            # including one from a nested retained update readback.
-            raise LocalWebError(safe_failure_code(refusal_code(body)) or FAILURE_DETAIL_WITHHELD)
-        return body
-
-    from alphalattice.interface.local_application.workbench_projection import (
-        forward_holdings_view,
-        portfolio_view,
-    )
-
+    """Translate the browser's exact selectors into the shared Portfolio read."""
     if set(query) - {"task_id", "portfolio_session", "performance", "scope"}:
         raise LocalWebError("workbench.query_field_unknown")
-    performance = _optional(query, "performance")
-    if performance is not None and performance != "latest":
-        raise LocalWebError("workbench.performance_selection_invalid")
-    scope = _optional(query, "scope")
-    if scope is not None and (scope != "holdings" or performance == "latest"):
-        raise LocalWebError("local_web.query_parameter_invalid:scope")
-
-    def with_forward_performance(view: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
-        # A historical date selection changes only its saved positions. The client
-        # keeps the same exact book's previously read rolling report; a full refresh
-        # still verifies new daily publications and updates the report.
-        if scope == "holdings":
-            return view
-        if body.get("reading_kind") != "INSTALLED_RESULT":
-            if performance != "latest":
-                return view
-            return {
-                **view,
-                "forward_performance": {"status": "NO_INSTALLED_STRATEGY", "available": False},
-                "forward_holdings": {"status": "NO_INSTALLED_STRATEGY", "available": False},
-            }
-        package = cast(dict[str, str], body["spec"])["strategy_package_id"]
-        updates = [
-            execute(request)
-            for request in forward_update_read_requests(
-                operations, source_book_task_id=task_id, strategy_package_id=package
-            )
-        ]
-        realized = [
-            cast(dict[str, Any], update["realized_performance"])
-            for update in updates
-            if update.get("strategy_package_id") == package
-            and isinstance(update.get("realized_performance"), dict)
-            and cast(dict[str, Any], update["realized_performance"]).get("source_book_task_id")
-            == str(task_id)
-        ]
-        if not realized:
-            if performance != "latest":
-                return view
-            return {
-                **view,
-                "forward_performance": {
-                    "status": "NO_REALIZED_FORWARD_PUBLICATION",
-                    "available": False,
-                },
-                "forward_holdings": {
-                    "status": "NO_RECORDED_FORWARD_HOLDINGS",
-                    "available": False,
-                },
-            }
-        latest = max(
-            realized,
-            key=lambda row: (
-                row["observed_through"],
-                row["published_at"],
-                row["publication_hash"],
-            ),
-        )
-        # The book's exact quoted cost selects an already sealed return lane.
-        # A quote outside the two recorded lanes remains explicitly unavailable.
-        from alphalattice.capabilities.portfolio_backtesting.contracts import (
-            PortfolioPerSideCostAssumption,
-        )
-
-        cost = PortfolioPerSideCostAssumption.from_bps_per_side(
-            cast(dict[str, str], body["spec"])["cost_bps_per_side"]
-        )
-        lane = str(cost.cost_bps_per_side.normalize())
-        selected = latest["cost_lanes"].get(lane)
-        update = next(row for row in updates if row.get("realized_performance") == latest)
-        from alphalattice.control.product_host.composition.rolling_portfolio_report import (
-            read_rolling_report,
-        )
-        from alphalattice.investment.portfolio_strategy_lab.application import (
-            decision_updates,
-        )
-
-        assert operations.application is not None and operations.updates is not None
-        publication = operations.updates.store.content.load_model(
-            category="decision-updates",
-            content_hash=update["publication"]["content_hash"],
-            model=decision_updates.PortfolioUpdatePublication,
-            identity_field="content_hash",
-        )
-        checkpoint = operations.updates.store.load_decision_checkpoint(
-            publication.input_checkpoint_hash or publication.checkpoint_hash
-        )
-        history = tuple(
-            operations.updates.store.content.load_model(
-                category="decision-updates",
-                content_hash=row["content_hash"],
-                model=decision_updates.PortfolioUpdatePublication,
-                identity_field="content_hash",
-            )
-            for row in update["history"]
-        )
-        from alphalattice.control.product_host.composition.portfolio_result_context import (
-            saved_portfolio_sectors,
-        )
-
-        assert manifest is not None
-        program = operations.application.ledger.load_program(manifest.program_hash)
-        sectors = saved_portfolio_sectors(
-            workspace=operations.application.workspace,
-            manifest=operations.workspace_manifest,
-            program=program,
-            session=publication.pending_proposal.schedule.formation_session
-            if publication.pending_proposal is not None
-            else publication.book.schedule.formation_session,
-        )
-        rolling = read_rolling_report(
-            application=operations.application, checkpoint=checkpoint, publications=history
-        )
-        # Benchmark values exist only for the base report's own recorded axis.
-        # A new daily result never manufactures a benchmark observation.
-        base_rows = {row["date"]: row for row in view.get("series", [])}
-        for row in cast(list[dict[str, Any]], rolling["curve"]):
-            base = base_rows.get(row["formation_session"], {})
-            row["benchmark"] = base.get("benchmark")
-            row["benchmarkDaily"] = base.get("benchmarkDaily")
-        view = {
-            **view,
-            "rolling_performance": rolling,
-            "forward_holdings": forward_holdings_view(
-                checkpoint=checkpoint,
-                publication=publication,
-                history=history,
-                source_book_task_id=str(task_id),
-                strategy_package_id=package,
-                reading_task_id=update["task_id"],
-                publication_is_previous=update.get("publication_is_previous", False),
-                sectors=sectors,
-            ),
-        }
-        if performance != "latest":
-            return view
-        return {
-            **view,
-            "forward_performance": (
-                {
-                    "status": "RECORDED_REALIZED_FORWARD_WINDOW",
-                    "available": True,
-                    "reading_task_id": update["task_id"],
-                    "publication_is_previous": update.get("publication_is_previous", False),
-                    **selected,
-                }
-                if selected is not None
-                else {
-                    "status": "COST_LANE_NOT_RECORDED",
-                    "available": False,
-                    "cost_bps_per_side": lane,
-                }
-            ),
-        }
-
     task = _optional(query, "task_id")
     if task is None:
         raise LocalWebError("workbench.task_id_required")
-    task_id = UUID(task)
-    manifest = (
-        operations.application.pipeline.find_for_task(task_id)
-        if operations.application is not None
-        else None
+    performance = _optional(query, "performance")
+    if performance not in {None, "latest"}:
+        raise LocalWebError("workbench.performance_selection_invalid")
+    scope = _optional(query, "scope")
+    if scope not in {None, "holdings"}:
+        raise LocalWebError("local_web.query_parameter_invalid:scope")
+    request = PortfolioResearchOperationRequest(
+        operation="PORTFOLIO_READBACK",
+        task_id=UUID(task),
+        portfolio_session=_optional(query, "portfolio_session"),
+        performance="latest" if performance == "latest" else None,
+        portfolio_scope="holdings" if scope == "holdings" else None,
     )
-    if manifest is not None:
-        selected = _optional(query, "portfolio_session")
-        if selected is None:
-            # The exact result's recorded report end, never today's date or
-            # a newest result. The manifest's verified report supplies its
-            # end, so the complete REPORT is requested only once.
-            assert operations.application is not None
-            saved = operations.application.ledger.load_report(manifest.report_hash)
-            selected = saved.window_guard.selected_end.isoformat()
-        body = execute(
-            PortfolioResearchOperationRequest(
-                operation="REPORT",
-                result_hash=manifest.result_hash,
-                portfolio_session=selected,
-            )
-        )
-        if body.get("status") == "REFUSED":
-            return body
-        if body.get("originating_task_id") != task:
-            raise LocalWebError("portfolio_application.result_readback_mismatch")
-        return with_forward_performance(portfolio_view(body), body)
-    body = execute(
-        PortfolioResearchOperationRequest(
-            operation="EXPERIMENT_READBACK",
-            task_id=task_id,
-            portfolio_session=_optional(query, "portfolio_session"),
-        )
+    body = (
+        operations.execute(request)
+        if caller == "HUMAN"
+        else operations.execute(request, caller=caller)
     )
-    if body.get("status") == "REFUSED":
-        return body
-    return with_forward_performance(
-        portfolio_view(body, sectors=_book_sectors(operations.workspace_session.workspace, body)),
-        body,
-    )
+    if caller == "SERVICE_AUTOMATION" and (returned_status(body) or "").startswith("REFUSED"):
+        raise LocalWebError(safe_failure_code(refusal_code(body)) or FAILURE_DETAIL_WITHHELD)
+    return body
 
 
 def build_local_web_application(
@@ -2349,29 +2132,6 @@ def build_local_web_application(
 
         return handle
 
-    @web.route("POST", "/api/experiments/declaration")
-    def _declaration(query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
-        import json
-
-        import yaml  # type: ignore[import-untyped]
-
-        from alphalattice.control.research_program.authoring.document import load_authoring_document
-
-        if query or set(payload) not in ({"experiment_document"}, {"experiment_yaml"}):
-            raise LocalWebError("research_experiment.one_document_required")
-        text = payload.get("experiment_yaml")
-        if "experiment_document" in payload:
-            text = json.dumps(payload["experiment_document"], allow_nan=False)
-        if not isinstance(text, str):
-            raise LocalWebError("research_authoring.document_unparsable")
-        document = dict(load_authoring_document(text))
-        return {
-            "status": "DECLARATION_PARSED",
-            "document": document,
-            "yaml": yaml.safe_dump(document, sort_keys=False),
-            "notice": "FORMAT_ONLY_PLAN_REQUIRED",
-        }
-
     # A route's write check follows its operation in the registry, never a flag written
     # beside it (HB, V184): a POST whose operation is not one of the registry's reads
     # takes it. A GET never writes.
@@ -2658,80 +2418,6 @@ def _task_read_response(body: dict[str, object]) -> object:
             "application/json; charset=utf-8",
         )
     return body
-
-
-_SECTOR_CACHE: dict[tuple[str, str, str], dict[str, Any]] = {}
-
-
-def _book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
-    """The sector each listing of a saved book was classified with by the book's own execution.
-
-    Resolved exactly as the Portfolio handoff resolved it when the book ran: the sealed
-    research input's own source workspace, its universe manifest at the book's revision, the
-    Panel manifest of the book's snapshot, and the Feature state's Sector classification for
-    the book's listing axis, as it stood at the session shown (the Sector in force there,
-    V346). A sealed input never changes, so the answer is kept per book source and session.
-    Absent, with the owner's reason, when any hop fails; nothing is guessed.
-    """
-    from alphalattice.control.product_host.research_authoring.execution import (
-        _sector_by_listing_id,
-    )
-    from alphalattice.control.product_host.research_authoring.factor_inputs import (
-        factor_input_paths,
-    )
-    from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-    from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-
-    source = body.get("portfolio_source") or {}
-    binding, snapshot = source.get("input_binding_hash"), source.get("panel_snapshot_hash")
-    revision, listings = source.get("universe_revision"), source.get("ordered_listing_ids")
-    if not all(isinstance(v, str) for v in (binding, snapshot, revision)) or not isinstance(
-        listings, list
-    ):
-        return {
-            "status": "UNAVAILABLE",
-            "reason": "workbench.portfolio_source_incomplete",
-            "by_listing": {},
-        }
-    shown = (body.get("position") or {}).get("session")
-    key = (str(binding), str(snapshot), str(shown))
-    cached = _SECTOR_CACHE.get(key)
-    if cached is not None:
-        return cached
-    try:
-        source_workspace, artifact_root = factor_input_paths(workspace, str(binding))
-        manifest = MarketDataRepository(source_workspace).load_universe_manifest_revision(
-            str(revision)
-        )
-        resolver = ArtifactResolver(artifact_root)
-        panel_manifest = resolver.load_feature_panel_manifest(
-            resolver.feature_panel_manifest_uri(str(snapshot))
-        )
-        labels, coverage_hash = _sector_by_listing_id(
-            workspace=source_workspace,
-            market_profile_id=manifest.profile.market_profile_id,
-            panel_manifest=panel_manifest,
-            listing_ids=tuple(str(v) for v in listings),
-        )
-    except Exception as error:
-        reason = owner_failure_code(error)
-        if reason is None and not isinstance(error, (ValueError, OSError, KeyError, TypeError)):
-            raise
-        reason = reason or "workbench.book_sectors_unavailable"
-        return {"status": "UNAVAILABLE", "reason": reason, "by_listing": {}}
-    value = {
-        "status": "BOOK_EXECUTION",
-        "sector_revision": str(
-            (panel_manifest.get("safe_summary") or {}).get("lineage", {}).get("sector_revision")
-            or ""
-        ),
-        "coverage_hash": coverage_hash,
-        "by_listing": (
-            labels.at(date.fromisoformat(shown)) if isinstance(shown, str) else dict(labels)
-        ),
-    }
-    _SECTOR_CACHE[key] = value
-    return value
 
 
 def _wait_seconds(values: list[str] | None) -> float | None:

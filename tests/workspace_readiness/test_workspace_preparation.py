@@ -791,12 +791,11 @@ def test_listing_activity_is_bound_bounded_and_optional(
     seen: dict[tuple[str, ...], dict[str, Any]] = {}
     sidecar_path: list[Path] = []
     refused: list[int] = []
+    observed = [OBSERVED_AT]
     real_replace = os.replace
 
     def refuse_second_sidecar_write(source, destination):
-        # The second delivery of the listing snapshot (at the tenth transition) is refused
-        # for good, through the whole telemetry retry; the unit that caused it is not
-        # slowed, and the chunk-boundary delivery carries its rows as well.
+        # Refuse the tenth transition's telemetry retry; the chunk still carries its rows.
         if sidecar_path and Path(destination) == sidecar_path[0]:
             refused.append(1)
             if 2 <= len(refused) <= 2 + len(TELEMETRY_REPLACE_DELAYS):
@@ -808,7 +807,7 @@ def test_listing_activity_is_bound_bounded_and_optional(
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         app = WorkspacePreparationApplication(
             session,
-            clock=lambda: OBSERVED_AT,
+            clock=lambda: observed[0],
             provider=provider,
             source_loader=_source_loader_for(symbols),
         )
@@ -818,10 +817,8 @@ def test_listing_activity_is_bound_bounded_and_optional(
         sidecar_path.append(app._path(task.task_id, "listing-activity"))
 
         def observe_from_the_network_edge(symbols_requested, **kwargs):
-            # Read the owners as the page would, while the runner is still inside its
-            # first chunk: the denominator is already there, the earlier units too. (The
-            # fixture's adjusted-close read goes through this same fetch; the first read
-            # of each symbol is the one kept.)
+            # Read during the chunk, retaining the first read of each symbol.
+            observed[0] += timedelta(milliseconds=100)
             seen.setdefault(tuple(symbols_requested), app.readback())
             if symbols_requested == ("FAIL",):
                 raise ProviderFetchError("data.provider_fetch_failed", "fixture", retryable=False)
@@ -830,8 +827,7 @@ def test_listing_activity_is_bound_bounded_and_optional(
         provider.fetch_daily = observe_from_the_network_edge  # type: ignore[method-assign]
         app.execute(task.task_id)
 
-        # Before the first unit: the captured denominator, nothing hydrated, no snapshot
-        # yet (the delivery counters say so).
+        # The initial denominator precedes the first hydration and activity delivery.
         first = seen[("AAA",)]
         assert first["progress"] == {
             "task_id": str(task.task_id),
@@ -842,6 +838,11 @@ def test_listing_activity_is_bound_bounded_and_optional(
             "raw_ready": 0,
             "quality_eligible": 0,
             "failed": 0,
+            "exclusion_counts": {
+                "acquisition_failure": 0,
+                "history_ineligible": 0,
+                "quality_rejection": 0,
+            },
             "retry_after_at": None,
             "content_hash": first["progress"]["content_hash"],
         }
@@ -855,13 +856,14 @@ def test_listing_activity_is_bound_bounded_and_optional(
                 "last_delivered_at": None,
             },
         }
-        # At the fourth unit (three listings done, 9 transitions observed): the snapshot
-        # is BOUND to this execution and stage inside the still-running chunk. Its one
-        # delivery so far (at the fifth transition) carries five rows and the counts at
-        # that boundary -- two listings with raw bars while the chunk record still says
-        # none: the headline advances within the chunk, the durable record waits for the
-        # chunk. The four transitions after it wait for the next delivery.
+        # The fifth transition advances activity while the durable chunk count stays zero.
         during = seen[("FAIL",)]["listing_activity"]
+        work_timing = seen[("FAIL",)]["activity_timing"]
+        sampled, worked = (
+            datetime.fromisoformat(work_timing[key]) for key in ("sampled_at", "last_work_at")
+        )
+        assert sampled > worked > OBSERVED_AT
+        assert worked == max(datetime.fromisoformat(row["noted_at"]) for row in during["rows"])
         assert during["availability"] == "BOUND"
         assert during["stage"] == "prepare_data"
         assert during["execution_id"] == str(
@@ -875,14 +877,19 @@ def test_listing_activity_is_bound_bounded_and_optional(
             "quality_eligible": 2,
             "feature_ready": 1,
             "failed": 0,
+            "exclusion_counts": {
+                "acquisition_failure": 0,
+                "history_ineligible": 0,
+                "quality_rejection": 0,
+            },
         }
         assert seen[("FAIL",)]["progress"]["raw_ready"] == 0, "the chunk record waits"
         assert all(r["noted_at"] and r["observed_at"] for r in during["rows"])
 
-        # After the stage: every transition as the runner recorded it, in order, with its
-        # origin; the failed unit with its code and no origin; retained as history.
+        # Completed stage activity remains history, with each transition's origin and cause.
         after = app.readback()
         activity = after["listing_activity"]
+        assert after["activity_timing"]["last_work_at"] is None
         assert activity["availability"] == "NOT_CURRENT"
         assert (activity["observed"], activity["retained"], activity["dropped"]) == (10, 10, 0)
         rows = activity["rows"]
@@ -901,11 +908,11 @@ def test_listing_activity_is_bound_bounded_and_optional(
         assert rows[0]["raw_through"] is not None and rows[0]["observed_at"].startswith("2026-")
         assert rows[-1]["failure_code"] == "data.provider_fetch_failed"
         assert all(len(r["listing_id"]) > 8 for r in rows), "the exact listing, not only a symbol"
-        assert activity["age_seconds"] == 0.0
-        # The second delivery (at the tenth transition) was refused through the telemetry
-        # budget and counted; the chunk boundary delivered all ten rows with the counts the
-        # runner itself reported for the chunk: three listings with raw bars, three
-        # eligible and admitted, one failed, kept apart.
+        assert (
+            activity["age_seconds"]
+            == (observed[0] - datetime.fromisoformat(activity["written_at"])).total_seconds()
+        )
+        # The chunk reconciles all ten rows after the refused telemetry delivery.
         assert (activity["delivery"]["attempts"], activity["delivery"]["delivered"]) == (3, 2)
         assert activity["delivery"]["failures"] == 1
         assert activity["delivery"]["last_failure"]["target"] == "LISTING_ACTIVITY"
@@ -916,6 +923,11 @@ def test_listing_activity_is_bound_bounded_and_optional(
             "quality_eligible": 3,
             "feature_ready": 3,
             "failed": 1,
+            "exclusion_counts": {
+                "acquisition_failure": 1,
+                "history_ineligible": 0,
+                "quality_rejection": 0,
+            },
         }
 
         # A malformed snapshot is a typed invalid read beside the last valid one; the
@@ -979,11 +991,18 @@ def test_listing_counts_follow_each_listings_own_transition(tmp_path: Path) -> N
             quality_eligible=2,
             feature_ready=1,
             failed=0,
+            exclusion_counts={
+                "acquisition_failure": 0,
+                "history_ineligible": 0,
+                "quality_rejection": 0,
+            },
         )
         delivery = app._bound_listing_observer(task, execution, "prepare_data", seed)
         at = datetime.fromisoformat("2026-08-02T06:30:00+00:00")
 
-        def announce(symbol: str, state: str, run_start: str, origin: str | None) -> None:
+        def announce(
+            symbol: str, state: str, run_start: str, origin: str | None, reasons=()
+        ) -> None:
             delivery.observe(
                 ListingUnitObservation(
                     listing_id=symbol.lower() + "-listing",
@@ -992,6 +1011,7 @@ def test_listing_counts_follow_each_listings_own_transition(tmp_path: Path) -> N
                     observed_at=at,
                     run_start_state=run_start,
                     origin=origin,
+                    reasons=reasons,
                     failure_code="data.retained_action_evidence_not_reusable"
                     if state == "AUDIT_FAILED"
                     else None,
@@ -1015,11 +1035,16 @@ def test_listing_counts_follow_each_listings_own_transition(tmp_path: Path) -> N
         assert counts() == (4, 3, 1, 1)
         announce("Z", "AUDIT_FAILED", "PENDING", None)
         assert counts() == (4, 2, 1, 2)
-        # Resumed work departs from the state the run loaded it in: W's raw bars were in the
-        # seed and stay counted when the quality gate rejects it; V's eligibility was in the
-        # seed and is unchanged when it is admitted for Features.
-        announce("W", "QUALITY_INELIGIBLE", "RAW_READY", "LOCAL")
+        # W retains its seeded raw count; V retains eligibility through Feature admission.
+        announce(
+            "W", "QUALITY_INELIGIBLE", "RAW_READY", "LOCAL", ("insufficient_research_history",)
+        )
         assert counts() == (4, 2, 1, 3)
+        assert delivery.counts["exclusion_counts"] == {
+            "acquisition_failure": 0,
+            "history_ineligible": 1,
+            "quality_rejection": 2,
+        }
         announce("V", "FEATURE_READY", "QUALITY_ELIGIBLE", "LOCAL")
         assert counts() == (4, 2, 2, 3)
         assert delivery.counts["candidates"] == 6
@@ -1032,6 +1057,11 @@ def test_listing_counts_follow_each_listings_own_transition(tmp_path: Path) -> N
             quality_eligible=2,
             feature_ready=2,
             failed=3,
+            exclusion_counts={
+                "acquisition_failure": 0,
+                "history_ineligible": 1,
+                "quality_rejection": 2,
+            },
         )
         delivery.flush(boundary)
         assert app.readback()["listing_activity"]["counts"] == delivery.counts
@@ -1104,6 +1134,7 @@ def test_listing_delivery_stays_cheap_under_persistent_refusal(
             "quality_eligible": 1,
             "feature_ready": 1,
             "failed": 0,
+            "exclusion_counts": None,
         }, "seeded from the retained progress, not from zero"
         at = datetime.fromisoformat("2026-08-02T06:30:00+00:00")
         units = [
@@ -1130,8 +1161,7 @@ def test_listing_delivery_stays_cheap_under_persistent_refusal(
                     failure_code="data.x" if state.endswith("FAILED") else None,
                 )
             )
-        # Two attempts (at the fifth and tenth unit), each within the telemetry budget; every
-        # observation retained and counted; nothing written.
+        # Both bounded attempts retain observations despite refusing the write.
         assert delivery.delivery["attempts"] == 2
         assert delivery.delivery["failures"] == 2
         assert delivery.delivery["delivered"] == 0
@@ -1145,9 +1175,9 @@ def test_listing_delivery_stays_cheap_under_persistent_refusal(
             "quality_eligible": 1 + 2 - 1,
             "feature_ready": 1 + 1,
             "failed": 0 + 3,
+            "exclusion_counts": None,
         }, "raw availability, quality and failures are advanced separately"
-        # The refusal lifts: the chunk-boundary delivery carries all retained work, and the
-        # runner's own counts at that boundary reconcile the replayed ones.
+        # The successful chunk boundary reconciles retained work with the runner's counts.
         refusing[0] = False
         boundary = CurrentUniverseOnboardingOutcome(
             onboarding_id="o",
@@ -1648,6 +1678,7 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
     tmp_path, monkeypatch, terminal, failure_code, decisions_ready
 ):
 
+    from alphalattice.control.product_host.composition.resource_estimates import gate_for
     from alphalattice.control.product_host.data_preparation import application as preparation_owner
     from alphalattice.control.product_host.data_preparation.remediation import (
         WorkspaceDataIssueApplication,
@@ -1736,6 +1767,24 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
             str(task.task_id) if terminal == "CANCELLED" else None
         )
         assert proposed["target_session"] == original["target_session"]
+        work = proposed["recovery_work"]
+        assert work["reused_stages"] == work["retained_verified_stages"] == ["freeze_sources"]
+        assert work["remaining_stages"] == [
+            "prepare_data",
+            "prepare_features",
+            "publish_inputs",
+            "verify_inputs",
+        ]
+        assert work["sources_may_be_accessed"] == ["yfinance"]
+        assert proposed["candidate_count"] == 2
+        gate_for(tmp_path).plan_answered("WORKSPACE_PREPARE_PLAN", proposed)
+        estimate = proposed["resource_estimate"]
+        assert (estimate["wall_seconds"], estimate["wall_status"], estimate["elapsed_scope"]) == (
+            None,
+            "UNKNOWN",
+            "REMAINING_WORK",
+        )
+        assert estimate["memory_scope"] == "FULL_TASK_CONSERVATIVE"
         resumed = retry.confirm(proposed["plan_hash"], caller="HUMAN")
         assert (
             resumed.task_id != task.task_id
@@ -1917,6 +1966,16 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
         estimate = plan["resource_estimate"]
         assert estimate["label"] == "ESTIMATE" and estimate["peak_memory_bytes"] > 0
         assert estimate["wall_seconds"] > 0 and estimate["cpu_cores"] >= 1
+        assert (estimate["cpu_budget"], estimate["cpu_selection"], estimate["cpu_scope"]) == (
+            "auto",
+            "RUN_START",
+            "EXECUTION_ONLY",
+        )
+        assert datetime.fromisoformat(estimate["cpu_sampled_at"]).utcoffset().total_seconds() == 0
+        assert estimate["basis_details"]["reference_units"] == 520
+        assert estimate["basis_details"]["reference_wall_seconds"] == 390
+        assert estimate["basis_details"]["plan_units"] is None
+        assert estimate["basis_details"]["size_basis"] == "CALIBRATION_REFERENCE_SIZE"
         confirm = PortfolioResearchOperationRequest(
             operation="WORKSPACE_PREPARE_CONFIRM", preparation_plan_hash=plan["plan_hash"]
         )
@@ -1969,7 +2028,9 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
                 )
                 gate.plan_answered("EXPERIMENT_PLAN", alpha)
                 assert alpha["resource_estimate"]["wall_seconds"] == expected
-                assert "1.5 cores" in alpha["resource_estimate"]["basis"]
+                assert alpha["resource_estimate"]["cpu_budget"] == budget
+                assert alpha["plan_hash"] == component
+                assert alpha["resource_estimate"]["basis_details"]["cpu_scaling_cap"] == 1.5
             assert alpha["resource_estimate"]["peak_memory_bytes"] == int(3.3 * 2**30)
             alpha["execution_preview"]["model_adapter_id"] = "regularized_linear"
             gate.plan_answered("EXPERIMENT_PLAN", alpha)

@@ -164,6 +164,7 @@ src/alphalattice/control/product_host/composition/research_history.py
 src/alphalattice/control/product_host/composition/upgrade_overview.py
 src/alphalattice/control/product_host/composition/feature_trials.py
 src/alphalattice/control/product_host/composition/plain_refusals.py
+src/alphalattice/control/product_host/composition/committee.py
 src/alphalattice/control/product_host/composition/result_standing.py
 src/alphalattice/control/product_host/composition/research_prerequisites.py
 src/alphalattice/control/product_host/composition/pending_decisions.py

@@ -29,7 +29,7 @@ STRICT_READERS = {
     COMPOSITION + "local_web_session.py": ("LocalPortfolioWebSession", "_recovery_commands"),
     COMPOSITION + "portfolio_research_operations.py": (
         "PortfolioResearchOperations",
-        "sweep_if_due _execute _workspace_operation _strategy_task "
+        "_tasks_wait _execute _workspace_operation _strategy_task "
         "_automation_answer upgrade cpu_budget _install",
     ),
     COMPOSITION + "portfolio_updates.py": (
@@ -74,7 +74,7 @@ STRICT_READERS = {
         "WorkspaceDataUpdateApplication",
         # DUPD: select the exact retained Human approval/journal only from complete authority.
         "_approved_plans _waiting confirm.approve receipt_task "
-        "readback reusable prepare admit _step plan",
+        "readback reusable prepare admit _step plan _audit_parent _supplemented",
     ),
     "control/product_host/storage/input_references.py": ("ResearchInputStorage", "_references"),
     "control/task_control/registry.py": (
@@ -133,7 +133,9 @@ def _expected_readers():
                 expected[path, scope, action] += 1
     expected[COMPOSITION + "portfolio_research_operations.py", "reused_read", "tasks"] = 1
     # Prewarm selects the latest exact source-book update from complete canonical authority.
-    expected[COMPOSITION + "local_web_session.py", "forward_update_read_requests", "tasks"] = 1
+    expected[
+        COMPOSITION + "portfolio_result_context.py", "forward_update_read_requests", "tasks"
+    ] = 1
     expected[
         "control/product_host/maintenance/data_update.py",
         "bind_existing_data_workspace",

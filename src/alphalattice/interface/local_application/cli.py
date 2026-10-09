@@ -70,6 +70,8 @@ CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     ("schema", "show"): "A command's request schema (each branch of a two-operation command), "
     "its answer's and a YAML template.",
     ("activity", "wait"): "Wait, with no timer, for a Task or a goal's work to end or need you.",
+    ("committee", "wait"): "Wait, as one committee member, for what its floor addresses to it: "
+    "the revealed stances, a challenge, a reply or ruling on its message, or the close.",
     ("first-use", "prepare"): "Open the first use from the person's sentence and named date "
     "and prepare its data under its delegation, following each Task to its end; the answer "
     "echoes the date's sessions and lays out the whole first use. The first stop is the answer.",
@@ -305,6 +307,30 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             help="With --task: also return as the Task verifies each stage (STAGE_VERIFIED), a "
             "coverage run's unit among them.",
         )
+    elif (noun, verb) == ("committee", "wait"):
+        child.add_argument(
+            "--update", dest="update_task_id", required=True, help="The date's update Task."
+        )
+        child.add_argument(
+            "--role",
+            dest="committee_role",
+            required=True,
+            help="The member this wait is for: PM, ALPHA, RISK or CRO.",
+        )
+        child.add_argument(
+            "--key",
+            dest="committee_key",
+            required=True,
+            help="That member's key: a specialist's is in its bundle, the PM's in the open's "
+            "answer.",
+        )
+        child.add_argument(
+            "--seen",
+            dest="committee_seen",
+            type=int,
+            default=0,
+            help="The last floor message this member has seen, by number (its answer's `seen`).",
+        )
     elif (noun, verb) == ("first-use", "prepare"):
         child.add_argument(
             "--sentence",
@@ -452,13 +478,6 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
     start.add_argument("--stop-on-stdin", action="store_true")
     start.add_argument("--no-browser", action="store_true")
     start.add_argument("--port", type=int, default=0)
-    start.add_argument("--sec-network-consent", action="store_true")
-    start.add_argument("--sec-max-document-bytes", type=int, default=None)
-    start.add_argument("--sec-acquisition-window-seconds", type=int, default=None)
-    start.add_argument("--sec-max-total-attempts", type=int, default=None)
-    start.add_argument("--sec-max-total-response-bytes", type=int, default=None)
-    start.add_argument("--sec-max-body-resources", type=int, default=None)
-    start.add_argument("--sec-campaign-id", default=None)
     whole = nouns.add_parser(
         "request",
         description="Send one whole request document, or one next request of a saved answer.",
@@ -1573,20 +1592,6 @@ def _command(
                 str(args.port),
                 *(["--no-browser"] if args.no_browser else []),
                 *(["--stop-on-stdin"] if args.stop_on_stdin else []),
-                *(["--sec-network-consent"] if args.sec_network_consent else []),
-                *[
-                    argument
-                    for field in (
-                        "sec_max_document_bytes",
-                        "sec_acquisition_window_seconds",
-                        "sec_max_total_attempts",
-                        "sec_max_total_response_bytes",
-                        "sec_max_body_resources",
-                        "sec_campaign_id",
-                    )
-                    if (value := getattr(args, field)) is not None
-                    for argument in ("--" + field.replace("_", "-"), str(value))
-                ],
             ]
         )
     common = {
@@ -1866,13 +1871,13 @@ def _read_lead(
         return
     if after and (answer is None or answer.get("status") != "GOAL_TAKEN"):
         return
-    from alphalattice.interface.local_application.native_bridge import lead_readings
-
     try:
         named_goal = answer.get("goal_id") if after and answer is not None else goal
         if named_goal is None and operation == "GOAL_SUBMIT":
             named_goal = document.get("goal_id")
-        receipts = lead_readings(Path.cwd(), os.environ, workspace=workspace, goal=named_goal)
+        receipts = client.lead_readings(
+            Path.cwd(), os.environ, workspace=workspace, goal=named_goal
+        )
     except Exception as error:
         receipts = [
             {

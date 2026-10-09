@@ -46,11 +46,14 @@ class NetworkAccess:
     set_by: dict[str, str] | None = None
     """The delegation that set the control and its end, when a person's goal set it."""
 
-    def body(self, *, for_refusal: bool = False) -> dict[str, object]:
+    def body(
+        self, *, for_refusal: bool = False, delegation: str | None = None
+    ) -> dict[str, object]:
         """Render effective permission and the available typed workspace-control action.
 
         Args:
             for_refusal: Whether a network-dependent step has actually been refused.
+            delegation: Active authority validated by the calling first-use owner.
 
         Returns:
             Network-access read model; held-offline decisions expose no set request.
@@ -70,11 +73,17 @@ class NetworkAccess:
             "WORKSPACE_CONTROL": "This workspace's network control decides.",
             "DEFAULT": "No workspace control is set, so the network stays off.",
         }
+        delegated = delegation is not None and self.decided_by in {"DEFAULT", "WORKSPACE_CONTROL"}
         return {
             "status": "NETWORK_ACCESS",
             "network_allowed": self.allowed,
             "decided_by": self.decided_by,
-            "detail": words[self.decided_by],
+            "detail": (
+                "The first-use goal delegates the network decision to its agent "
+                "for the goal's hours."
+                if delegated and not self.allowed
+                else words[self.decided_by]
+            ),
             "next_action": (
                 "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
                 if self.decided_by == "OPERATOR_OFFLINE_SWITCH" and for_refusal
@@ -84,6 +93,8 @@ class NetworkAccess:
                 if self.decided_by == "RUN_HELD_OFFLINE"
                 else "RETRY_THE_REFUSED_STEP"
                 if self.allowed
+                else "SET_NETWORK_UNDER_FIRST_USE_DELEGATION"
+                if delegated
                 else "ASK_A_PERSON_TO_ALLOW_NETWORK_ACCESS"
             ),
             "next_requests": {
@@ -95,6 +106,7 @@ class NetworkAccess:
             if self.decided_by not in {"OPERATOR_OFFLINE_SWITCH", "RUN_HELD_OFFLINE"}
             else {},
             **({"set_by": self.set_by} if self.set_by else {}),
+            **({"delegation": delegation} if delegated else {}),
         }
 
 

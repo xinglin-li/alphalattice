@@ -1,10 +1,28 @@
 # AlphaLattice: guide for your research agent
 Date: 2026-10-08
 
+**Your first step in every session, before any answer:** run `Get-Content
+.alphalattice/user/memory/MEMORY.md, .alphalattice/user/guide.md` (or `cat` them),
+then read each memory the request touches. They are the person's own layer (below)
+and may change what you do; a missing file means there is none yet. Claude Code
+has already imported the two, so it skips the command.
+
 AlphaLattice computes and records local quantitative research. You state the
 question, follow the product's answers and explain the evidence to the person.
 The answers lead: each one's `next_action` and `next_requests` decide your next
 step, and a nested part's own hint describes only that part.
+
+## Read the person's layer
+
+`.alphalattice/user/` holds this person's tuning of the checkout: memories, a local
+guide, and method for each card and Skill. No release contains or writes it. Read
+its index and guide first, as above, and `agent-notes/INDEX.md` in a workspace you
+continue. They refine this
+guide and never widen what it permits; a memory is background, so verify what it
+names before acting on it. With the alphalattice-maintenance Skill, start the
+experience maintainer at a goal's end, on the person's correction, and after a
+critical handoff once the date's positions are published; back the layer up before
+upgrading the checkout.
 
 ## Change the checkout
 
@@ -62,10 +80,10 @@ the person decides that the first use will need: ask for it at once, in one line
 
 The road: data, the strategy's models and Risk, its whole-support book (the
 numerical check), activation with the date's update in the same act, then Evidence
-and the CRO on that date's published positions. The historical book's own review
-runs only when someone asks for it. A stop names its way on: decide each data issue
-with its offered `confirm`, or take the refused step under the delegation, then run
-the same command again. The network setting and the offline switch matter only
+and the CRO on that date's published positions, the committee and its report.
+The historical book's own review runs only when someone asks for it. A stop names
+its way on: decide each data issue with its offered `confirm`, or take the refused
+step under the delegation, then run the same command again. The network setting and the offline switch matter only
 when an answer refuses for them. Never restart the Host or serve a second one for
 network access, and never ask the person to.
 
@@ -121,6 +139,37 @@ instead, when someone asks for that. The second submits their answers and writes
 the CRO's bundle; the third publishes the review. Each stops at the first answer
 that needs another step; follow its `next_action`. Wait for each as the first use
 says.
+
+## Convene the committee
+
+```powershell
+alphalattice committee open --update <task>
+alphalattice bundle prepare --role ALPHA --task <task> --dir "<out>/committee/alpha"
+```
+
+On a date's published positions, you, the PM, convene the investment committee
+with Alpha, Risk and the CRO. `committee open` offers each specialist's bundle: its
+view of the date's positions and its `submit` and `wait` on the floor. Prepare the
+three (ALPHA, RISK, CRO), then in one turn start them as general subagents, each
+prompt its card's text and its bundle's path, and submit your own stance after
+reading `committee show --update <task>`. The open's answer gives your PM key
+(`pm_key`), and your session's later open gives it again: pass it as `--key` with
+`--role PM`, and keep it out of every file a specialist reads; each specialist's
+key is in its own bundle. Each specialist
+moves itself: it submits, then waits for what is addressed to it. Keep `committee
+wait --update <task> --role PM --key <pm-key>` running in the background and rule
+each challenge as it arrives (ADOPT, REJECT or FOR_THE_PERSON), then give the
+verdict. The stances are blind until all four are in, each specialist has three
+challenges or replies after its stance, and the floor closes at its time box
+whoever is silent. Messages name holdings, points and messages by alias and type
+no other digit. The committee changes no number. Ask the person
+about each item it hands them in one line, and relay their words as a
+PERSON_ANSWER. Then export the report from the closed floor:
+
+```powershell
+alphalattice committee show --update <task> --output "<out>/committee/floor.json"
+alphalattice request --from "<out>/committee/floor.json" --action report
+```
 
 ## Run an installed strategy forward
 

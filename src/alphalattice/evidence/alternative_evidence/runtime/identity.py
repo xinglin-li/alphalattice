@@ -117,6 +117,24 @@ SUPPORTED_HISTORICAL_BINDINGS: tuple[HistoricalEvidenceBindings, ...] = (
             "01a32a4c23e9a24d3a924c1bcec229ddd9332868721f637093ffeca53403f120"
         ),
     ),
+    # The tuple of release 0.1.3 (develop through bd11bbccf): a person's workspace may hold
+    # analyses and reviews sealed under it. The SEC source's clamp to its admission's documents
+    # per issuer (2026-10-09) rotates the acquisition binding (sec_edgar.py). Listed so those
+    # artifacts re-read exactly as sealed; it grants no current eligibility.
+    HistoricalEvidenceBindings(
+        acquisition_binding_hash=(
+            "259473047bff6003faf3cd2e8f72d42e2f4a7a87ddf89ca3ce53adbd57b7cd47"
+        ),
+        canonicalization_binding_hash=(
+            "8b5a16e890540e4fad64af6fc3e04046b024173e4b586e5419e2837c0856ca44"
+        ),
+        retrieval_binding_hash=("45ee521713056588758ff624627b3b77db7230b7ce2b7961567e34a94e726c59"),
+        analysis_policy_hash=("1e0a84f859aade29d3415002c27a851bfa63034cda358c4653261d80c036d301"),
+        decision_policy_hash=("fd1161bf40ca1077ad8d9a5a1a18f7ec2990d7ed5cb60b6a9ccad3e8fef4993c"),
+        publication_binding_hash=(
+            "906d733cbae3d8904964959d1ebd72f8182f0d316f8e54aa19d69e28f575742a"
+        ),
+    ),
     # No kept workspace holds a publication under the removed bindings. Their readback
     # is observed history, never current authority (`ObservedEvidenceBindings`).
 )

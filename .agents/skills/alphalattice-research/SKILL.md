@@ -6,7 +6,7 @@ description: Conduct quantitative research in an AlphaLattice workspace through 
 # AlphaLattice Research
 Date: 2026-10-08
 
-You lead the research. AlphaLattice's owners calculate, validate, record and publish; you choose the question, follow each answer's `next_action` and `next_requests`, seek judgment and explain what the evidence supports. The [research-agent guide](../../../AGENTS.md) covers setup, the first use and what only a person decides; a specialist gives judgment, never product authority.
+You lead the research. AlphaLattice's owners calculate, validate, record and publish; you choose the question, follow each answer's `next_action` and `next_requests`, seek judgment and explain what the evidence supports. The [research-agent guide](../../../AGENTS.md) covers setup, the first use and what only a person decides; a specialist gives judgment, never product authority. If `.alphalattice/user/skills/alphalattice-research.md` exists, read it too: the person's additions to this Skill.
 
 ## Shortest paths
 
@@ -16,6 +16,7 @@ Begin at the person's own target (a date's positions, a named request), else at 
 - **Orient**: `workspace show` → the first intent's offered request.
 - **Run an installed research strategy forward**: `strategy-book controls` → activation, which admits its update → `research-update show` → `strategy-book review --update` → `review continue` ([leading research](references/research-lead.md)).
 - **Evidence and CRO review of a date's positions**: `strategy-book review --update`, then `review continue` after the Analysts and again after the CRO; without `--update`, of the whole-support book when asked ([specialists](references/specialist-handoff.md)).
+- **The committee on a date's positions**: `committee open --update` → `bundle prepare` for Alpha, Risk and the CRO → start them → your stance with the open's `pm_key` → `committee wait --role PM --key`, rulings and the verdict → `committee show` → its offered report ([guide](../../../AGENTS.md)).
 - **A Factor study**: `study controls` → `study plan` → `study run` → `study show`.
 - **An Alpha study from a Factor study**: the Factor study's offered curation, then the handoff it offers → `study plan` → `study run`.
 - **A Risk study**: `study controls --kind risk.covariance-development` → `study plan` → `study run`.
@@ -36,6 +37,10 @@ Each command's exact form; the [Command contract](references/operating.md) cover
 - `strategy-book controls --package <package>`: The installed strategy's activation, book, horizon and review standing.
 - `strategy-book review --package <package> --dir "<out>/analysts"`: Runs or reuses the whole-support book, prepares its Evidence, writes the Analyst bundles.
 - `review continue --dir "<out>/analysts" --cro-dir "<out>/cro"`: Submits the answers in the folder, follows them, then writes the CRO's bundle or, with --package, reads the review and the activation offer.
+- `committee open --update <task>`: Opens the committee on a date's positions; offers each specialist's bundle.
+- `bundle prepare --role ALPHA --task <task> --dir "<out>/committee/alpha"`: A specialist's bundle; on a date's update, its view of the positions and the floor.
+- `committee wait --update <task> --role PM --key <key>`: Waits, as one member, for what the floor addresses to it, or its close.
+- `committee show --update <task> --output "<out>/committee/floor.json"`: The floor: its stage, members, tension points, messages and, once closed, the report.
 - `research-update plan --package <package> --output "<out>/research-update-plan.json"`: Plans the strategy's next sessions and offers `run`.
 - `research-update run --from "<out>/research-update-plan.json" --wait`: Runs the saved plan, or resumes or reuses the same update.
 - `research-update show --task <task>`: The update's published positions, their dates and claim.

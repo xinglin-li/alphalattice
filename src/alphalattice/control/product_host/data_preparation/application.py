@@ -8,10 +8,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from alphalattice.control.data_platform.delegation import DataIssueDelegation
 from alphalattice.control.data_platform.maintenance.contracts import (
@@ -106,6 +106,7 @@ from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import 
     CurrentUniverseOnboardingStatus,
     DataTargetSessionLag,
     ListingUnitObservation,
+    listing_outcome_category,
 )
 from alphalattice.foundation.market_data_ops.sources.providers import (
     MarketDataProvider,
@@ -196,6 +197,7 @@ class ListingActivityCounts(BaseModel):  # type: ignore[misc]
     quality_eligible: int = Field(ge=0)
     feature_ready: int = Field(ge=0)
     failed: int = Field(ge=0)
+    exclusion_counts: dict[str, Annotated[int, Field(ge=0)]] | None = None
 
 
 class ListingActivitySnapshot(BaseModel):  # type: ignore[misc]
@@ -280,6 +282,7 @@ class _ListingActivityDelivery:
         self.rows: deque[dict[str, Any]] = deque(maxlen=self.RETAIN)
         self.counts = self._counts_of(seed)
         self.states: dict[str, str] = {}  # the last state announced per listing, this execution
+        self.categories: dict[str, str | None] = {}
         self.observed = 0
         self.sequence = 0
         self.pending = 0
@@ -289,13 +292,14 @@ class _ListingActivityDelivery:
         self.written_at = now
 
     @staticmethod
-    def _counts_of(outcome: CurrentUniverseOnboardingOutcome) -> dict[str, int]:
+    def _counts_of(outcome: CurrentUniverseOnboardingOutcome) -> dict[str, Any]:
         return {
             "candidates": outcome.candidates,
             "raw_ready": outcome.raw_ready,
             "quality_eligible": outcome.quality_eligible,
             "feature_ready": outcome.feature_ready,
             "failed": outcome.failed,
+            "exclusion_counts": dict(outcome.exclusion_counts) or None,
         }
 
     _QUALITY = frozenset({"QUALITY_ELIGIBLE", "FEATURE_READY"})
@@ -317,6 +321,13 @@ class _ListingActivityDelivery:
         counts["quality_eligible"] += int(state in self._QUALITY) - int(prior in self._QUALITY)
         counts["feature_ready"] += int(state == "FEATURE_READY") - int(prior == "FEATURE_READY")
         counts["failed"] += int(state in self._FAILED) - int(prior in self._FAILED)
+        category = listing_outcome_category(state, observation.reasons, observation.failure_code)
+        previous = self.categories.get(observation.listing_id)
+        if (exclusions := counts["exclusion_counts"]) is not None:
+            for kind, change in ((previous, -1), (category, 1)):
+                if kind is not None and kind.lower() in exclusions:
+                    exclusions[kind.lower()] += change
+        self.categories[observation.listing_id] = category
 
     def observe(self, observation: ListingUnitObservation) -> None:
         now = self.owner.clock()
@@ -544,6 +555,18 @@ class WorkspacePreparationApplication:
         """Whether a preparation Task was ever admitted: one count, no record read."""
         return bool(self.session.task_control_registry.has_tasks(TASK_KIND))
 
+    def task_subject(self, task: TaskRecord) -> dict[str, object]:
+        """Read the admitted date from this owner's canonical Task, without delegation IO."""
+        from alphalattice.control.product_host.composition.plain_refusals import refused
+
+        try:
+            if task.task_kind != TASK_KIND:
+                raise ValueError("workspace_preparation.task_not_admitted")
+            plan = WorkspacePreparationPlan.model_validate(task.input.payload["plan"])
+        except (KeyError, ValidationError):
+            return {"subject_refusal": refused("workspace_preparation.task_not_admitted")}
+        return {"subject_context": {"date": plan.target_session.isoformat()}}
+
     def readback(self, task_id: UUID | None = None) -> dict[str, Any]:
         """Read the selected preparation task and its exact retained verified input state.
 
@@ -699,16 +722,39 @@ class WorkspacePreparationApplication:
                 "NO_DATA_API_KEY",
                 "NO_FOUNDATION_OR_STRATEGY_ACTIVATION",
             ],
-            "progress": self._load(latest.task_id, "progress", optional=True) if latest else None,
-            "work_progress": self.telemetry.work_progress(latest) if latest else None,
-            "listing_activity": self._listing_activity(latest) if latest else None,
+            **self.activity_readback(latest),
         }
 
-    def plan(self) -> dict[str, Any]:
+    def activity_readback(self, task: TaskRecord | None) -> dict[str, Any]:
+        """Read task-bound work once, keeping its sample and actual work clocks separate."""
+        work = self.telemetry.work_progress(task) if task else None
+        listings = self._listing_activity(task) if task else None
+        instants = []
+        if work and work["availability"] == "BOUND":
+            instants.append(self.telemetry.instant(work["updated_at"]))
+        if listings and listings["availability"] == "BOUND":
+            instants.extend(self.telemetry.instant(row["noted_at"]) for row in listings["rows"])
+        return {
+            "progress": self._load(task.task_id, "progress", optional=True) if task else None,
+            "work_progress": work,
+            "listing_activity": listings,
+            "activity_timing": {
+                "stage": task.active_work_item_id,
+                "sampled_at": self.clock().isoformat(),
+                "last_work_at": max(instants).isoformat() if instants else None,
+            }
+            if task
+            else None,
+        }
+
+    def plan(self, *, network_delegation: str | None = None) -> dict[str, Any]:
         """Preview preparation or exact checkpoint recovery without acquiring new sources.
 
         Qualified local inputs are reused without download. Unfinished tasks retain their authority;
         a blocked or cancelled predecessor is resumed only within its exact scope.
+
+        Args:
+            network_delegation: Active first-use authority validated by the Host.
 
         Returns:
             Existing preparation state or explicit confirmation preview with source-access refusal,
@@ -805,8 +851,34 @@ class WorkspacePreparationApplication:
         # answer is built from this plan and resume alone (V534).
         self.last_plan = plan
         captured_source = None
+        recovery_work = None
+        candidate_count = None
         if resume is not None:
-            _previous, captured_source = self._predecessor(plan)
+            previous, captured_source = self._predecessor(plan)
+            candidate_count = len(
+                bootstrap_from_candidate_manifest_document(
+                    captured_source["candidate"]
+                ).candidate_symbols
+            )
+            retained = [
+                item.stage_id
+                for item in self.session.task_control_registry.work_items(previous.task_id)
+                if item.lifecycle.value == "VERIFIED"
+                and self._load(previous.task_id, item.stage_id, optional=True) is not None
+            ]
+            reused = [stage for stage in retained if stage == STAGES[0]]
+            recovery_work = {
+                "retained_verified_stages": retained,
+                "reused_stages": reused,
+                "remaining_stages": [stage for stage in STAGES if stage not in reused],
+                "local_units": "REVALIDATE_AND_REUSE_COMPLETED_UNITS",
+                "sources_may_be_accessed": ["yfinance"],
+                "network_requests": "UNKNOWN_UNTIL_EXECUTION",
+                "detail": (
+                    "Captured sources are reused; completed local units are revalidated and "
+                    "reused; missing units may access yfinance again. Remaining time is unknown."
+                ),
+            }
         try:
             if plan.existing_inputs is None:
                 self._sources_allowed()
@@ -822,7 +894,9 @@ class WorkspacePreparationApplication:
             {}
             if access_failure is None
             else {
-                "network_access": network_access(self.session.workspace).body(for_refusal=True),
+                "network_access": network_access(self.session.workspace).body(
+                    for_refusal=True, delegation=network_delegation
+                ),
                 "workspace_path": str(self.session.workspace),
             }
         )
@@ -843,6 +917,7 @@ class WorkspacePreparationApplication:
             and self.session.task_control_registry.task(resume).lifecycle is TaskLifecycle.CANCELLED
             else None,
             "predecessor_task_id": str(resume) if resume else None,
+            "recovery_work": recovery_work,
             "target_session": str(plan.target_session),
             "initial_history_years": 10 if plan.existing_inputs is None else None,
             "source_mode": "REUSE_CAPTURED_SOURCES_REVALIDATE_LOCAL_STATE"
@@ -850,8 +925,10 @@ class WorkspacePreparationApplication:
             else "ACQUIRE_APPROVED_SOURCES"
             if plan.existing_inputs is None
             else "REUSE_QUALIFIED_LOCAL_DATA_NO_DOWNLOAD",
-            "candidate_count": None,
-            "candidate_count_basis": "KNOWN_AFTER_SOURCE_CAPTURE",
+            "candidate_count": candidate_count,
+            "candidate_count_basis": "VERIFIED_SOURCE_CHECKPOINT"
+            if captured_source is not None
+            else "KNOWN_AFTER_SOURCE_CAPTURE",
             "universe": "current S&P 500 union NASDAQ-100 union DJIA",
             "quality": {"maximum_missing_ratio": 0.02, "maximum_consecutive_missing_sessions": 20},
             "sources": [
@@ -1045,14 +1122,16 @@ class WorkspacePreparationApplication:
             if plan.existing_inputs is None:
                 self._sources_allowed()
             self._require(plan)
-            if any(
-                t.lifecycle not in {TaskLifecycle.SUCCEEDED, TaskLifecycle.CANCELLED}
-                and t.task_id != plan.predecessor_task_id
-                and str(t.task_id)
-                not in {v.input.payload.get("source_task_id") for v in self.tasks()}
-                for t in self.session.task_control_registry.tasks()
-            ):
-                raise ValueError("workspace_preparation.finish_or_recover_existing_task")
+            for t in self.session.task_control_registry.tasks():
+                if (
+                    t.lifecycle not in {TaskLifecycle.SUCCEEDED, TaskLifecycle.CANCELLED}
+                    and t.task_id != plan.predecessor_task_id
+                    and str(t.task_id)
+                    not in {v.input.payload.get("source_task_id") for v in self.tasks()}
+                ):
+                    raise ValueError(
+                        f"workspace_preparation.finish_or_recover_existing_task:{t.task_id}"
+                    )
             approved_at = self.clock()
             if (
                 resume is None
@@ -1338,6 +1417,7 @@ class WorkspacePreparationApplication:
             "raw_ready": outcome.raw_ready,
             "quality_eligible": outcome.quality_eligible,
             "failed": outcome.failed,
+            "exclusion_counts": dict(outcome.exclusion_counts) or None,
             "retry_after_at": (
                 outcome.retry_after_at.isoformat() if outcome.retry_after_at else None
             ),

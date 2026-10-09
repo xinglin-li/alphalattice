@@ -317,10 +317,10 @@ words it. A document that fails its contract is answered in one located shape at
 `test: tests/portfolio_strategy_lab/test_failure_codes.py::test_a_contract_failure_answers_one_located_shape`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_refusal_leaves_with_words_and_a_way_on`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_door_whose_way_on_reruns_a_plan_resumes_its_stopped_task`,
-`test: tests/portfolio_strategy_lab/test_local_web_product.py::test_every_web_handler_preserves_every_typed_owner_exception`,
-`test: tests/portfolio_strategy_lab/test_local_web_product.py::test_activation_keeps_typed_refusals_through_its_owner_and_observer`,
-`test: tests/portfolio_strategy_lab/test_local_web_product.py::test_a_raised_owner_refusal_keeps_its_transport_and_observer_code`,
-`test: tests/portfolio_strategy_lab/test_local_web_product.py::test_a_genuine_fault_stays_a_fault_at_every_web_owner_entry`,
+`test: tests/portfolio_strategy_lab/test_local_web_service.py::test_every_web_handler_preserves_every_typed_owner_exception`,
+`test: tests/portfolio_strategy_lab/test_local_web_service.py::test_every_web_handler_preserves_every_typed_owner_exception`,
+`test: tests/portfolio_strategy_lab/test_local_web_service.py::test_every_web_handler_preserves_every_typed_owner_exception`,
+`test: tests/portfolio_strategy_lab/test_local_web_service.py::test_a_genuine_fault_stays_a_fault_at_every_web_owner_entry`,
 `test: tests/portfolio_strategy_lab/test_failure_codes.py::test_a_contract_failure_answers_one_located_shape`.
 V679's observer regression checks the discovered typed cases through one observed operation;
 it does not establish every route and observer combination.
@@ -349,7 +349,7 @@ subset as complete authority (V661). *Held by:* `U0` for sealed readback;
 for every registered collection's answer contract;
 `test: tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_foundation_seal_consumption_readback_and_refusals`
 for Foundation's missing-Task, item isolation, identical readback/export and usable controls;
-`test: tests/portfolio_strategy_lab/test_local_web_product.py::test_task_record_collections_keep_readable_rows_and_offer_named_authority_routes`
+`test: tests/portfolio_strategy_lab/test_local_web_service.py::test_task_record_collections_keep_readable_rows_and_offer_named_authority_routes`
 for unreadable Task records in six display readers and strict complete/control scans;
 the Result, History, Feature, Goal and Activity owner regressions for representative runtime
 isolation, and owner review for the remaining registered readers. The registry-wide check uses
@@ -383,7 +383,7 @@ stays the JSON envelope (OP3); a template or draft comes back as YAML to edit. A
 that adds or changes an operation keeps all of this, and its help names the `@<file>` form. *Why:* a
 recipe holds too much for flags, and a file a person can read, comment and keep beside the command is
 the interface both a person and an agent use well. *Held by:*
-`test: tests/portfolio_strategy_lab/test_local_web_product.py::test_cli_document_reader_keeps_utf8_and_byte_limits_for_files_and_stdin`,
+`test: tests/portfolio_strategy_lab/test_local_web_client.py::test_cli_document_reader_keeps_utf8_and_byte_limits_for_files_and_stdin`,
 `test: tests/researcher_methodology_surface/test_experiment_authoring.py::test_yaml_compiles_to_an_immutable_program_with_exact_sessions`.
 
 **OP10. A specialist reads what the Host prepared.** A specialist agent (the Analyst, the CRO, any role
@@ -442,8 +442,8 @@ plan does not foresee (V702); a storage read whose exact binding directory is ab
 both after the release. *Why:* the Host exists to help the agent complete the task, not to record that it was wrong
 (the maintainer, 2026-09-26); an agent assembled "done" from separate answers and found each entry's
 prerequisites by help and refusals (AX10, AX11). *Held by:*
-`test: tests/portfolio_strategy_lab/test_local_web_product.py::test_every_result_states_one_standing_from_its_owners_marks`,
-`test: tests/portfolio_strategy_lab/test_local_web_product.py::test_each_flow_names_its_prerequisites_and_the_way_on`,
+`test: tests/portfolio_strategy_lab/test_research_flow_answers.py::test_every_result_states_one_standing_from_its_owners_marks`,
+`test: tests/portfolio_strategy_lab/test_research_flow_answers.py::test_each_flow_names_its_prerequisites_and_the_way_on`,
 `test: tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_controls_and_a_missing_prerequisite_name_the_flows_way_on`;
 the bounded correction by review.
 
@@ -594,7 +594,7 @@ cookie/header, rather than accepting another Host's token from the same browser 
 The cookie's path remains `/`; the isolation is by name and token, not browser cookie port
 semantics. An explicit client's legacy shared-name cookie still requires that Host's current
 token. *Held by:*
-`test: tests/portfolio_strategy_lab/test_local_web_product.py::test_browser_session_cookies_are_port_scoped_and_restart_replaces_only_its_own`.
+`test: tests/portfolio_strategy_lab/test_local_web_service.py::test_browser_session_cookies_are_port_scoped_and_restart_replaces_only_its_own`.
 
 **OP22. What using the product teaches ships where the person's agent reads it.** The research Skill's
 references carry what an agent should know to use the product, the operating guide among them (launch,
@@ -624,6 +624,28 @@ and a step that needs the person's click is likely a defect; a person-only step 
 then continued. *Held by:*
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_persons_yes_relayed_whole_completes_their_decision_once`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_operation_only_a_person_completes_is_marked_so`.
+
+**OP24. The committee argues a date's positions and changes no number.** On a date's published
+positions the lead, as the PM, convenes the Alpha, Risk and CRO specialists on one floor per
+update (`committee`). The Host prepares each member's bundle and the tension points from the
+publication and its Evidence. Each member speaks and reads as itself by a key the Host mints, a
+specialist's in its bundle and the PM's to the session that opened the floor, and a message
+types no digit but an alias's, save the person's own relayed words. The first round is blind until all four stances are in or its time
+box ends; then challenges, replies and the PM's rulings move by event, each specialist capped,
+until the PM's verdict or the floor's time box closes it, and a silent member reads as not
+addressed. Each message the floor reveals is a row of the lead's goal conversation, on a channel
+no client may take. The sealed positions stand: the closed floor becomes the delivery's
+commentary, attributed to the committee's floor, a standing CRO dissent kept verbatim, and what the PM
+hands to the person is asked in one line (OP23). *Why:* the maintainer, 2026-10-09: a person who
+asks for a date's positions wants a report whose reasons they can follow, and the materials each
+agent needs already exist. *Held by:*
+`test: tests/portfolio_strategy_lab/test_committee.py::test_the_stances_stay_blind_until_all_four_are_in`,
+`test: tests/portfolio_strategy_lab/test_committee.py::test_a_member_speaks_only_with_its_own_key`,
+`test: tests/portfolio_strategy_lab/test_committee.py::test_a_specialist_speaks_three_times_after_its_stance_and_only_the_pm_rules`,
+`test: tests/portfolio_strategy_lab/test_committee.py::test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words`,
+`test: tests/portfolio_strategy_lab/test_committee.py::test_a_silent_member_reads_not_addressed_when_the_time_boxes_end`,
+`test: tests/portfolio_strategy_lab/test_committee.py::test_a_dates_delivery_carries_the_closed_floor_as_its_commentary`,
+`test: tests/portfolio_strategy_lab/test_committee.py::test_a_roles_bundle_carries_its_view_of_a_dates_positions`.
 
 ## PA. Parameters
 

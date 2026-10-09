@@ -41,7 +41,7 @@ Read `research-update show` for the Task the run returned. Each decision forms a
 - `CONDITIONAL_ESTIMATE` (`status` `PROPOSAL_PUBLISHED`): weights marked at the formation close for a conditional entry at the next open, not an execution target.
 - `OBSERVED_RESEARCH_ENTRY`: the entry settled on that open's daily bar, with cost lanes of 5 and 10 basis points a side; no venue fill is verified.
 
-Quote the publication's `claim` with its `risk_status` and `cro_status`. They are the publication's own, sealed when it published, and stay `NOT_EVALUATED` / `NOT_REVIEWED`; a later Evidence and CRO review of that publication is a separate record with its own standing and date, and you cite both. Before activation, the controls answer's `activation.review_holdings` are the reviewed book's last holdings (`REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS`); the product computes no preview, so run no update and build no book to make one. Activation is reversible and deactivation keeps history.
+Quote the publication's `claim` with its `risk_status` and `cro_status`. They are the publication's own, sealed when it published, and stay `NOT_EVALUATED` / `NOT_REVIEWED`; a later Evidence and CRO review of that publication is a separate record with its own standing and date, and you cite both. Before activation, the controls answer's `activation.review_holdings` are the book's last sealed holdings (`BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS`); read its `review_standing` separately. The product computes no preview, so run no update and build no book to make one. Activation is reversible and deactivation keeps history.
 
 ## Where the first reviewed positions stand
 

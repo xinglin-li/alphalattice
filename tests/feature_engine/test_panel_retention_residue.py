@@ -5,11 +5,13 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import duckdb
+import pytest
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.panels.retention_residue import (
     PanelRetentionResidueOwner,
 )
+from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 NOW = datetime(2026, 8, 7, 15, 0, tzinfo=UTC)
@@ -167,3 +169,21 @@ def _seed_database(
         )
     finally:
         connection.close()
+
+
+@pytest.mark.parametrize("store", ("absent", "corrupt"))
+def test_retention_decision_discovery_is_empty_only_before_a_store_exists(
+    tmp_path: Path, store
+) -> None:
+    "regression: optional first-use discovery never hides an existing unreadable store."
+    import duckdb
+
+    panel = PanelStateRepository(tmp_path / "workspace")
+    assert not panel.path.exists()
+    if store == "absent":
+        assert panel.feature_input_raw_retention_decisions() == ()
+        assert not panel.path.exists()
+    else:
+        panel.path.write_bytes(b"synthetic invalid database")
+        with pytest.raises(duckdb.IOException):
+            panel.feature_input_raw_retention_decisions()

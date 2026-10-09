@@ -37,7 +37,8 @@ from u0_probe import _copy
 
 
 @pytest.mark.parametrize("status", ("BLOCKED", "DEFERRED", "PROPOSAL_PUBLISHED"))
-def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status):
+@pytest.mark.parametrize("broken", (False, True))
+def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status, broken):
     """adding the previous publication's review must keep the stop's way on."""
     from alphalattice.control.product_host.composition import portfolio_research_operations as ops
 
@@ -54,15 +55,32 @@ def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status)
         "network": {"operation": "NETWORK_ACCESS"},
         "resume": {"operation": "RESEARCH_UPDATE_RUN", "update_plan_hash": "b" * 64},
     }
+    later = {"operation": "EVIDENCE_CRO_EXPORT", "review_publication_hash": "c" * 64}
+    selectors = []
+    standing = {
+        "status": "REVIEWED",
+        "cro": {"review_state": "PARTIAL"},
+        "next_requests": {"review": later},
+    }
+    failure = "product_host.evidence_review_export_subject_mismatch"
+
+    def review_standing(_self, selector):
+        selectors.append(selector)
+        if broken:
+            raise ops.PortfolioEvidenceReviewError(failure)
+        return standing
+
+    monkeypatch.setattr(ops.EvidenceReviewDelivery, "review_standing", review_standing)
     answer = ops._position_rows(
         {
             "status": status,
-            "task_id": "fixture-update",
+            "task_id": str(UUID(int=8)),
             "publication": {},
             "history": [],
             "listing_labels": {"fixture-listing": "Fixture"},
             "next_requests": kept,
-        }
+        },
+        review=SimpleNamespace(),
     )
     assert answer["status"] == status
     assert all(answer["next_requests"][key] == value for key, value in kept.items())
@@ -70,6 +88,15 @@ def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status)
         "operation": "EVIDENCE_PREVIEW",
         **answer["review_selector"],
     }
+    assert len(answer["position_rows"]) == 1
+    if broken:
+        assert answer["review_standing"]["status"] == "UNREADABLE"
+        assert answer["review_standing"]["failure_code"] == failure
+        assert "published_review" not in answer["next_requests"]
+    else:
+        assert answer["review_standing"] == standing
+        assert answer["next_requests"]["published_review"] == later
+    assert selectors[0].request_fields() == answer["review_selector"]
 
 
 @pytest.mark.real_evidence

@@ -9,9 +9,9 @@ const ID = '00000000-0000-0000-0000-000000000001', OTHER = '00000000-0000-0000-0
 const START = timing.RUNNING.started_at, END = timing.last_activity_at;
 class BrowserDate extends Date {static now() {return Date.parse('2027-02-01T12:00:00Z');}}
 const words = markup => String(markup).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-const task = (extra = {}) => ({task_id: ID, task_kind: 'research_experiment', goal_summary: 'Labelled Task duration fixture', lifecycle: 'RUNNING', running_since: START, last_activity_at: END, current_stage: '', verified_stage_count: 0, total_stage_count: 0, ...extra});
+const task = (extra = {}) => ({task_id: ID, task_kind: 'research_experiment', goal_summary: 'Labelled Task duration fixture', lifecycle: 'RUNNING', running_since: START, last_activity_at: END, current_stage: 'prepare_data', verified_stage_count: 0, total_stage_count: 0, ...extra});
 
-function fixture({statusSource = read('status'), dataSource = read('data'), tasksSource = read('live-tasks'), statusId = ID, span = timing.RUNNING.running_seconds, recordSpan} = {}) {
+function fixture({statusSource = read('status'), dataSource = read('data'), tasksSource = read('live-tasks'), statusId = ID, statusStage = 'prepare_data', span = timing.RUNNING.running_seconds, recordSpan} = {}) {
   const requests = [], rows = [], route = new URLSearchParams({page: 'history'});
   let inspector = null;
   const record = task(recordSpan === undefined ? {} : {running_seconds: recordSpan});
@@ -36,7 +36,7 @@ function fixture({statusSource = read('status'), dataSource = read('data'), task
       requests.push(url); const q = new URL(url, 'http://fixture'); let value;
       if (q.pathname === '/api/tasks') value = {tasks: [record]};
       else if (q.pathname === '/api/tasks/recovery') value = view;
-      else if (q.pathname === '/api/status') value = {task_id: statusId, lifecycle: 'RUNNING', verified_stage_count: 0, timing: {...timing.RUNNING, running_seconds: span}};
+      else if (q.pathname === '/api/status') value = {task_id: statusId, lifecycle: 'RUNNING', current_stage: statusStage, verified_stage_count: 0, timing: {...timing.RUNNING, running_seconds: span}, activity_timing: {stage: 'prepare_data', last_work_at: timing.RUNNING.sampled_at}};
       else if (q.pathname === '/api/tasks/incidents') value = {incidents: []};
       else throw Error('Unexpected duration fixture read: ' + url);
       return {ok: true, headers: {get: () => 'application/json'}, text: async () => JSON.stringify(value)};
@@ -68,6 +68,9 @@ async function collectionOwnerSpans() {
     else assert.ok(!markup.includes('class="state-time"'), 'absent, negative or malformed owner span leaves the duration empty');
   }
   for (const lifecycle of ['RUNNING', 'CANCEL_REQUESTED', 'QUEUED']) assert.ok(words(f.c.line(task({lifecycle, running_seconds: 125}))).includes('2 min'));
+  const deferred = task({lifecycle:'DEFERRED', running_seconds:timing.DEFERRED.running_seconds});
+  assert.equal(timing.DEFERRED.running_seconds, 45);
+  assert.ok(words(f.c.line(deferred)).includes('45 s'));
   for (const extra of [{}, {running_since: ''}, {last_activity_at: ''}, {last_activity_at: 'invalid'}, {last_activity_at: '2026-07-01T00:00:00Z'}]) {
     const markup = String(f.c.line(task({lifecycle: 'SUCCEEDED', running_seconds: 9000, ...extra})));
     if (!Object.keys(extra).length) assert.ok(words(markup).includes('45 s'), 'ended duration uses the owner start and last activity');
@@ -90,6 +93,11 @@ async function collectionOwnerSpans() {
 async function selectedTaskStatus() {
   const f = fixture(); await f.c.T.open(ID);
   assert.ok(summary(f).includes('2 min'), summary(f)); assert.ok(logSummary(f).includes('Worked for 2 min'), f.body());
+  for (const key of ['Stage updated', 'Stage duration', 'Latest actual work']) assert.ok(words(f.body()).includes(key), key);
+  const receiptValue = key => words(f.body().match(new RegExp('<dt>'+key+'</dt><dd[^>]*>([^]*?)</dd>'))[1]);
+  assert.equal(receiptValue('Stage updated'), f.c.when(timing.RUNNING.stages[0].updated_at));
+  assert.equal(receiptValue('Latest actual work'), f.c.when(timing.RUNNING.sampled_at));
+  assert.notEqual(receiptValue('Latest actual work'), receiptValue('Stage updated'), 'separate owner clocks');
   const paths = f.requests.map(url => new URL(url, 'http://fixture'));
   assert.deepEqual(paths.map(q => q.pathname).sort(), ['/api/status', '/api/status', '/api/tasks', '/api/tasks/incidents', '/api/tasks/recovery'].sort(), 'duration reuses the existing STATUS and follow reads');
   assert.equal(paths.filter(q => q.pathname === '/api/status' && !q.searchParams.has('wait_seconds')).length, 1);
@@ -97,6 +105,9 @@ async function selectedTaskStatus() {
   const other = fixture({statusId: OTHER, span: 840, recordSpan: 60}); await other.c.T.open(ID);
   assert.ok(summary(other).includes('1 min') && !summary(other).includes('14 min'), 'another Task STATUS cannot supply this Task summary');
   assert.ok(logSummary(other).includes('Worked for 1 min'), 'the log follows the same exact-id guard');
+  assert.ok(!words(other.body()).includes('Latest actual work'), 'task binding');
+  const moved = fixture({statusStage: 'prepare_features'}); await moved.c.T.open(ID);
+  assert.ok(!words(moved.body()).includes('Stage updated') && !words(moved.body()).includes('Latest actual work'), 'stage binding');
   for (const span of [null, -1, '125']) {
     const absent = fixture({span}); await absent.c.T.open(ID);
     assert.ok(!absent.body().match(/<p class="run-summary">[\s\S]*?class="state-time"[\s\S]*?<\/p>/), 'invalid STATUS elapsed span leaves the summary empty');

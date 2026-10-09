@@ -120,6 +120,46 @@ class PersonConfirmation(BaseModel):  # type: ignore[misc]
     """For the person's next yes to a decision already made: the nonce its refusal named."""
 
 
+class CommitteeMessage(BaseModel):  # type: ignore[misc]
+    """One message a committee member sends to its floor (`committee submit`)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["STANCE", "CHALLENGE", "REPLY", "RULING", "VERDICT", "PERSON_ANSWER"]
+    """STANCE (the blind first round), CHALLENGE, REPLY; the PM's RULING, VERDICT and the
+    person's answer to an item the PM handed them (PERSON_ANSWER)."""
+    text: str = Field(min_length=1, max_length=4000)
+    """Its words; a holding or tension point is named by its alias (H3, T2), never a number."""
+    targets: tuple[str, ...] = Field(default=(), max_length=16)
+    """The tension points (T1), holdings (H3) or messages (M4) it is about."""
+    reply_to: str | None = Field(default=None, pattern=r"^M[0-9]{1,4}$")
+    """The message it answers: a REPLY's, a RULING's challenge, a PERSON_ANSWER's item."""
+    positions: dict[str, Literal["SUPPORT", "OBJECT", "RESERVE"]] = Field(
+        default_factory=dict, max_length=32
+    )
+    """A stance's position on each tension point it takes."""
+    outcome: (
+        Literal["ADOPT", "REJECT", "FOR_THE_PERSON", "PROCEED", "PROCEED_WITH_NOTES"] | None
+    ) = None
+    """A RULING's (ADOPT, REJECT, FOR_THE_PERSON) or the VERDICT's (PROCEED,
+    PROCEED_WITH_NOTES, FOR_THE_PERSON)."""
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def shaped_by_kind(self) -> Self:
+        """A ruling and the verdict name an outcome of their own.
+
+        A reply, a ruling and the person's answer name the message they answer; no other
+        message takes either.
+        """
+        outcomes = {
+            "RULING": {"ADOPT", "REJECT", "FOR_THE_PERSON"},
+            "VERDICT": {"PROCEED", "PROCEED_WITH_NOTES", "FOR_THE_PERSON"},
+        }.get(self.kind, {None})
+        answers = self.kind in {"REPLY", "RULING", "PERSON_ANSWER"}
+        if self.outcome not in outcomes or (self.reply_to is not None) != answers:
+            raise ValueError("committee.message_refused:SHAPE")
+        return self
+
+
 type PortfolioResearchOperation = Literal[
     "GOAL_SCHEMA",
     "GOAL_LIST",
@@ -177,6 +217,7 @@ type PortfolioResearchOperation = Literal[
     "STORAGE_PIN",
     "STORAGE_EVIDENCE_REBUILD",
     "EXPERIMENT_CONTROLS",
+    "EXPERIMENT_DECLARATION_CONVERT",
     "EXPERIMENT_LINK_RISK",
     "EXPERIMENT_RISK_LINKS",
     "EXPERIMENT_RISK_EXPORT",
@@ -214,6 +255,9 @@ type PortfolioResearchOperation = Literal[
     "UPGRADE_ACKNOWLEDGE",
     "NETWORK_ACCESS",
     "NETWORK_ACCESS_SET",
+    "EVIDENCE_CONSENT",
+    "EVIDENCE_CONSENT_SET",
+    "EVIDENCE_INSTALL",
     "PENDING_DECISIONS",
     "ACTIVITY_REFUSALS",
     "CANCEL",
@@ -258,6 +302,7 @@ type PortfolioResearchOperation = Literal[
     "PORTFOLIO_UPDATE_PLAN",
     "PORTFOLIO_UPDATE_RUN",
     "PORTFOLIO_UPDATE_READBACK",
+    "PORTFOLIO_READBACK",
     "RESEARCH_UPDATE_PLAN",
     "RESEARCH_UPDATE_RUN",
     "RESEARCH_UPDATE_READBACK",
@@ -281,6 +326,9 @@ type PortfolioResearchOperation = Literal[
     "MODEL_DEACTIVATE",
     "STRATEGY_ACTIVATE",
     "STRATEGY_DEACTIVATE",
+    "COMMITTEE_OPEN",
+    "COMMITTEE_SUBMIT",
+    "COMMITTEE_READ",
 ]
 
 _RECOVERY_CONTEXT_OPERATIONS = frozenset(
@@ -319,6 +367,8 @@ _RECOVERY_CONTEXT_OPERATIONS = frozenset(
 PERSON_ONLY: Final[frozenset[str]] = frozenset(
     {
         "NETWORK_ACCESS_SET",
+        "EVIDENCE_CONSENT_SET",
+        "EVIDENCE_INSTALL",
         "USAGE_READING_SET",
         "STORAGE_CONFIRM",
         "STORAGE_PIN",
@@ -353,6 +403,8 @@ unconditionally person-only (person-stops row 49).
 FIRST_USE_STEPS: Final[frozenset[str]] = frozenset(
     {
         "NETWORK_ACCESS_SET",
+        "EVIDENCE_CONSENT_SET",
+        "EVIDENCE_INSTALL",
         "WORKSPACE_PREPARE_CONFIRM",
         "DATA_ISSUE_CONFIRM",
         "DATA_CHANGE_CONFIRM",
@@ -360,13 +412,14 @@ FIRST_USE_STEPS: Final[frozenset[str]] = frozenset(
     }
 )
 """The person's steps a first-use goal delegates to the agent that runs it (OP19):
-opening the network for the first preparation, confirming that preparation and its resumes,
+opening the network for the first preparation, SEC source consent within the default budget,
+confirming that preparation and its resumes,
 deciding its data issues, confirming its membership changes, and activating its book, which the
 person deactivates in one click. A deactivation, a model's
 or Feature's activation, a storage decision, an automation, a revocation and anything paid stay a
 person's."""
 
-PERSON_DECISIONS: Final[frozenset[str]] = PERSON_ONLY | FIRST_USE_STEPS | {"EVIDENCE_CONSENT_SET"}
+PERSON_DECISIONS: Final[frozenset[str]] = PERSON_ONLY | FIRST_USE_STEPS
 """The person's decisions an agent sends with the person's yes, asked in one line
 (`person_confirmation`): each person-only operation, and each first-use step outside its goal's
 delegation. A paid action or a real order never joins it."""
@@ -425,6 +478,8 @@ class PortfolioResearchOperationRequest:
     foundation_admission_hash: str | None = None
     candidate_id: str | None = None
     portfolio_session: str | None = None
+    performance: Literal["latest"] | None = None
+    portfolio_scope: Literal["holdings"] | None = None
     spec: dict[str, object] | None = None
     strategy_package_id: str | None = None
     component_id: str | None = None
@@ -528,6 +583,10 @@ class PortfolioResearchOperationRequest:
     formation_session: str | None = None
     automation_enabled: bool | None = None
     network_enabled: bool | None = None
+    evidence_documents_per_issuer: int | None = None
+    evidence_total_documents: int | None = None
+    evidence_total_bytes: int | None = None
+    evidence_setup: str | None = None
     usage_reading_enabled: bool | None = None
     automation_package_ids: tuple[str, ...] | None = None
     upgrade_set_hash: str | None = None
@@ -557,6 +616,10 @@ class PortfolioResearchOperationRequest:
     backup_generations_kept: int | None = None
     person_confirmation: PersonConfirmation | None = None
     """The person's yes this request relays, on one of their decisions (`PERSON_DECISIONS`)."""
+    committee_role: Literal["PM", "ALPHA", "RISK", "CRO"] | None = None
+    committee_key: str | None = None
+    committee_message: CommitteeMessage | None = None
+    committee_seen: int | None = None
 
     def __post_init__(self) -> None:
         """Validate operation fields and normalize delivery commentary."""
@@ -585,6 +648,12 @@ class PortfolioResearchOperationRequest:
                     else ResearchDeliveryCommentary.model_validate(value)
                     for value in self.delivery_commentary
                 ),
+            )
+        if self.committee_message is not None and not isinstance(
+            self.committee_message, CommitteeMessage
+        ):
+            object.__setattr__(
+                self, "committee_message", CommitteeMessage.model_validate(self.committee_message)
             )
         if self.person_confirmation is not None and not isinstance(
             self.person_confirmation, PersonConfirmation
@@ -860,12 +929,16 @@ class PortfolioResearchOperationRequest:
                 ),
             ),
             "EXPERIMENT_DELIVERY_EXPORT": (
-                frozenset({"task_id", "experiment_receipt_hash", "portfolio_session"}),
+                # A study's book or a date's published positions (`ALTERNATIVES`).
+                frozenset(),
                 frozenset(
                     {
                         "task_id",
                         "experiment_receipt_hash",
                         "portfolio_session",
+                        "update_task_id",
+                        "update_publication_hash",
+                        "position_basis",
                         "left_task_id",
                         "right_task_id",
                         "risk_report_hash",
@@ -922,6 +995,18 @@ class PortfolioResearchOperationRequest:
             "PENDING_DECISIONS": (frozenset(), frozenset()),
             "ACTIVITY_REFUSALS": (frozenset(), frozenset({"view_last_days"})),
             "NETWORK_ACCESS_SET": (frozenset({"network_enabled"}), frozenset({"network_enabled"})),
+            "EVIDENCE_CONSENT": (frozenset(), frozenset()),
+            "EVIDENCE_INSTALL": (frozenset({"evidence_setup"}), frozenset({"evidence_setup"})),
+            "EVIDENCE_CONSENT_SET": (
+                frozenset({"evidence_documents_per_issuer"}),
+                frozenset(
+                    {
+                        "evidence_documents_per_issuer",
+                        "evidence_total_documents",
+                        "evidence_total_bytes",
+                    }
+                ),
+            ),
             "WORKSPACE_PREPARE_READBACK": (frozenset(), frozenset({"task_id"})),
             "WORKSPACE_PREPARE_PLAN": (frozenset(), frozenset()),
             "WORKSPACE_PREPARE_CONFIRM": (
@@ -1110,6 +1195,19 @@ class PortfolioResearchOperationRequest:
             "ACTIVITY_LIST": (frozenset(), frozenset({"after", "limit", "watch"})),
             "ACTIVITY_RECENT": (frozenset(), frozenset({"limit"})),
             "EVENT_DECLARE": (frozenset({"event"}), frozenset({"event"})),
+            "COMMITTEE_OPEN": (frozenset({"update_task_id"}), frozenset({"update_task_id"})),
+            "COMMITTEE_SUBMIT": (
+                frozenset(
+                    {"update_task_id", "committee_role", "committee_key", "committee_message"}
+                ),
+                frozenset(
+                    {"update_task_id", "committee_role", "committee_key", "committee_message"}
+                ),
+            ),
+            "COMMITTEE_READ": (
+                frozenset({"update_task_id"}),
+                frozenset({"update_task_id", "committee_role", "committee_key", "committee_seen"}),
+            ),
             "WAKE_REGISTER": (
                 frozenset({"task_id", "wake_thread", "wake_read"}),
                 frozenset({"task_id", "wake_thread", "wake_read"}),
@@ -1198,6 +1296,14 @@ class PortfolioResearchOperationRequest:
             "CANCEL": (frozenset({"task_id"}), frozenset({"task_id", "expected_task_hash"})),
             "RESULTS": (frozenset(), frozenset({"task_id"})),
             "REPORT": (frozenset({"result_hash"}), frozenset({"result_hash", "portfolio_session"})),
+            "PORTFOLIO_READBACK": (
+                frozenset({"task_id"}),
+                frozenset({"task_id", "portfolio_session", "performance", "portfolio_scope"}),
+            ),
+            "EXPERIMENT_DECLARATION_CONVERT": (
+                frozenset(),
+                frozenset({"experiment_document", "experiment_yaml"}),
+            ),
             "COMPARE": (
                 frozenset({"left_result_hash", "right_result_hash"}),
                 frozenset({"left_result_hash", "right_result_hash"}),
@@ -1544,6 +1650,11 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     portfolio_session: str | None = None
     """The session a dated view reads, as YYYY-MM-DD; for a book, names the book with the other
     book fields, as a book's offered requests fill them."""
+    performance: Literal["latest"] | None = None
+    """`latest` reads this exact book's latest retained Forward composite;
+    omitted reads its saved report."""
+    portfolio_scope: Literal["holdings"] | None = None
+    """`holdings` reads only this saved date's positions, without its Forward report."""
     spec: dict[str, object] | None = None
     """The Portfolio book's controls (`strategy-book controls` lists them); those left out keep
     their defaults."""
@@ -1691,6 +1802,15 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """true lets the daily research update run by itself; false stops it."""
     network_enabled: bool | None = Field(default=None, strict=True)
     """true lets this workspace reach the network; false keeps it offline."""
+    evidence_documents_per_issuer: int | None = Field(default=None, strict=True)
+    """The SEC filings official acquisition may take per issuer; the default budget is three."""
+    evidence_total_documents: int | None = Field(default=None, strict=True)
+    """The SEC filings official acquisition may take in all; the default budget's when absent."""
+    evidence_total_bytes: int | None = Field(default=None, strict=True)
+    """The bytes official acquisition may read in all; the default budget's when absent."""
+    evidence_setup: str | None = Field(default=None, min_length=1, max_length=4096)
+    """The Evidence setup's options, as its script takes them, for the running Host to install
+    (`--acquire-sec --entities AAPL --network-consent --install`)."""
     usage_reading_enabled: bool | None = Field(default=None, strict=True)
     """true lets the Host read the bound agent Sessions' own files for usage; false reads
     nothing."""
@@ -1733,6 +1853,15 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """`auto`, or how many Tasks may wait behind the running one."""
     backup_generations_kept: int | None = Field(default=None, ge=1, le=100, strict=True)
     """How many backup generations to keep: seven unless a request keeps another count."""
+    committee_role: Literal["PM", "ALPHA", "RISK", "CRO"] | None = None
+    """The committee member this request speaks or reads for: the PM (the lead), ALPHA, RISK
+    or CRO."""
+    committee_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    """That member's key: a specialist's is in its bundle, the PM's in its own open's answer."""
+    committee_message: CommitteeMessage | None = None
+    """One committee message, as its YAML or JSON file."""
+    committee_seen: int | None = Field(default=None, ge=0, le=9999, strict=True)
+    """The last floor message the reader has seen, by its number (M4 is 4)."""
     person_confirmation: PersonConfirmation | None = None
     """The person's yes to this decision, asked in one line and relayed whole: `--person-said`
     their words and `--asked` your question, which the client binds to this request. Only a

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from hashlib import sha256
 from pathlib import Path
+from threading import Timer
 from typing import Any, Final, Literal, NamedTuple, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
@@ -44,6 +45,7 @@ from alphalattice.interface.local_application.cli_contract import (
     outcome_of,
     shell,
     task_state,
+    worded,
 )
 from alphalattice.interface.local_application.goals import target_sessions
 
@@ -380,6 +382,37 @@ class LocalResearchClient:
         port = urlsplit(connection.url).port
         wait = self.timeout if timeout is None else max(0.1, min(self.timeout, timeout))
         exchange = http.client.HTTPConnection("127.0.0.1", port, timeout=wait)
+        operation = str((document or {}).get("operation", ""))
+        progress = None
+        if operation in {"PLAN", "RUN", "EXPERIMENT_PROMOTE"} or operation.endswith(
+            ("_PLAN", "_RUN", "_CONFIRM")
+        ):
+            try:
+                started = time.perf_counter()
+                detail = worded(
+                    "Validating the study declaration, input bindings and retained evidence."
+                    if operation.startswith("EXPERIMENT_")
+                    else "Validating the request and its owner's prerequisites."
+                )
+                progress = Timer(
+                    5.0,
+                    lambda: print(
+                        json.dumps(
+                            {
+                                "operation": operation,
+                                "status": "VALIDATING",
+                                "detail": detail,
+                                "elapsed_seconds": round(time.perf_counter() - started, 3),
+                            }
+                        ),
+                        file=sys.stderr,
+                        flush=True,
+                    ),
+                )
+                progress.daemon = True
+                progress.start()
+            except (RuntimeError, OSError):
+                progress = None
         try:
             exchange.request("GET" if data is None else "POST", path, body=data, headers=headers)
             response = exchange.getresponse()
@@ -393,6 +426,9 @@ class LocalResearchClient:
                 "local_client.connection_lost_task_may_still_run"
             ) from error
         finally:
+            if progress is not None:
+                progress.cancel()
+                progress.join()
             exchange.close()
         if expect_html and status_code < 300:
             if response.headers.get_content_type() != "text/html":
@@ -598,6 +634,62 @@ _STDIN_BYTES = 4 * 1024 * 1024 + 1
 _STDIN_READ: list[tuple[object, bytes]] = []
 """Standard input as read, by its stream: a command that reads its `-` document twice (to
 choose its operation, then to continue from it) reads the same bytes (V401)."""
+
+
+def lead_readings(
+    project: Path,
+    environ: Mapping[str, str],
+    *,
+    workspace: Path | None = None,
+    goal: str | None = None,
+) -> list[dict[str, object]]:
+    """Ask the Host to read the bound Session's usage at a milestone.
+
+    A goal's take and submission and an answer's submission are the milestones a command
+    names; the Host reads there, for the bound Session and the children its own files record,
+    never where the binding turned reading off, and never in the request's way.
+
+    Args:
+        project: The project whose binding names the session.
+        environ: The command's environment, naming the session it runs in.
+        workspace: The command's workspace; another workspace receives no reading.
+        goal: The command's named Goal; the Host resolves it using normal provenance.
+
+    Returns:
+        The Host's aggregate receipt; none when reading is off or this is not its lead.
+    """
+    from alphalattice.interface.local_application.native_bridge import (
+        NativeBridgeError,
+        NativeResearchBinding,
+    )
+
+    session = agent_session(environ)
+    if session is None:
+        return []
+    try:
+        found = NativeResearchBinding.find(project, session=session)
+    except NativeBridgeError as error:
+        # This host has no lead in the nearest configured project. Optional readings
+        # skip it; public binding requests retain the strict project refusal.
+        if str(error) == "native_bridge.project_mismatch":
+            return []
+        raise
+    if found is None:
+        return []
+    project, binding = found
+    if binding.usage == "OFF":
+        return []
+    # The session as every reader of it reads it: an agent inside another names none.
+    if agent_session(environ) != (binding.host, binding.session_id):
+        return []
+    if workspace is not None and workspace.resolve() != binding.workspace.resolve():
+        return [{"status": "UNAVAILABLE", "reason": "native_bridge.workspace_mismatch"}]
+
+    return [
+        LocalResearchClient(binding.workspace, timeout=2.0, goal=goal).publish_native_event(
+            project, {"source": "native_usage_read"}
+        )
+    ]
 
 
 def _stdin() -> bytes:
@@ -1600,6 +1692,8 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
     pending: deque[tuple[Any, str, int, Any, str | int]] = deque()
     important = {
         "status",
+        "answer_status",
+        "task_lifecycle",
         "lifecycle",
         "disposition",
         "evidence_verification",
@@ -1624,6 +1718,10 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
         "data_quality",
         "execution_preview",
         "progress",
+        "stage_timing",
+        "stage_updated_at",
+        "activity_timing",
+        "work_progress",
         "execution_intent",
         "execution_numerical_call_count",
         "declaration_changes",
@@ -2601,7 +2699,7 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
     one filed). Each accepted answer's publication is followed to its end. After the Analysts,
     the book's Evidence offers its dossier and the dossier the CRO's bundle, written into
     ``--cro-dir``. After the CRO, the answer is Evidence's state and, given ``--package``, that
-    strategy's activation offer with its reviewed holdings.
+    strategy's activation offer with its last sealed book holdings.
     """
     folders = _answer_folders(Path(args.bundle_root).resolve())
     if not folders:
@@ -2766,14 +2864,27 @@ _FIRST_USE_ROAD: Final = (
         ("review", "continue", "--dir", "<out>/cro"),
         "Publishes the review of the date's positions.",
     ),
+    (
+        "committee",
+        ("committee", "open", "--update", "<update-task>"),
+        "Opens the committee on the date's positions: prepare the bundles it offers, start "
+        "Alpha, Risk and the CRO, submit your stance, wait as the PM and rule; the verdict "
+        "closes it.",
+    ),
+    (
+        "report",
+        ("request", "--from", "<out>/committee/floor.json", "--action", "report"),
+        "Exports the report from the closed floor (`committee show --output`): the date's "
+        "positions, their review and the committee's record.",
+    ),
 )
 """The whole first use in order: each step's command and what it leaves to the agent."""
 
 _FIRST_USE_ASK_NOW: Final = (
     "Unless this workspace's Evidence is set up already, the review of the date's positions "
-    "fetches recent SEC filings within the default budget under the first use's delegation, "
-    "and needs the retrieval model's download, which is the person's. Ask for that now, in one "
-    "line, so the review never waits for it.",
+    "acquires recent SEC filings within the default budget under the first use's delegation, "
+    "and downloads the retrieval model at the size its setup states. Say so in one line now, "
+    "and ask only if the person wants a wider budget, so the review never waits.",
 )
 """What only the person decides that the first use will need, asked at its start."""
 
@@ -3106,6 +3217,31 @@ def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, An
     return body
 
 
+def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
+    """Wait for what the committee's floor addresses to this member (`for_you`): the revealed
+    stances, a challenge for the PM, a reply or ruling on its own message, or the close.
+
+    Each member moves itself; the lead relays nothing between them.
+    """
+    document = {
+        "operation": "COMMITTEE_READ",
+        "update_task_id": str(args.update_task_id),
+        "committee_role": args.committee_role,
+        "committee_key": args.committee_key,
+        "committee_seen": int(args.committee_seen or 0),
+    }
+    deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
+    delay = 1.0
+    while True:
+        body = client.request(document)
+        if outcome_of(body) != "OK" or body.get("for_you") or body.get("stage") == "CLOSED":
+            return body
+        if deadline is not None and time.monotonic() >= deadline:
+            return {**body, "wait_status": "MAX_WAIT_REACHED"}
+        time.sleep(delay)
+        delay = min(delay * 1.5, 10.0)
+
+
 class _Verb(NamedTuple):
     """An agent verb: its words, its own arguments by flag and the steps it takes."""
 
@@ -3129,6 +3265,16 @@ AGENT_VERBS: Final[dict[str, _Verb]] = {
             ("--update", "update_task_id"),
         ),
         _review_steps,
+    ),
+    "committee-wait": _Verb(
+        ("committee", "wait"),
+        (
+            ("--update", "update_task_id"),
+            ("--role", "committee_role"),
+            ("--key", "committee_key"),
+            ("--seen", "committee_seen"),
+        ),
+        lambda client, args: _committee_wait(client, args),
     ),
     "review-continue": _Verb(
         ("review", "continue"),

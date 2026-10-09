@@ -351,12 +351,8 @@ class ResearchFeatureBuildApplication:
                 )
             return self.readback(task.task_id)
         sent = dispatcher.submit(ResearchFeatureBuildCommand(self, payload))
-        return {
-            "status": sent.disposition,
-            "task_id": str(sent.task_id) if sent.task_id else None,
-            "lifecycle": sent.lifecycle,
-            "failure_code": sent.refusal_detail,
-            "next_requests": {
+        return sent.answer(
+            next_requests={
                 "readback": {
                     "operation": "FEATURE_CATALOG_BUILD_READBACK",
                     "task_id": str(sent.task_id),
@@ -364,7 +360,7 @@ class ResearchFeatureBuildApplication:
             }
             if sent.task_id
             else {},
-        }
+        )
 
     def admit(self, payload: dict[str, Any]) -> CommandAdmission:
         """Require current build scope and exclusive task ownership under the mutation gate.
@@ -382,12 +378,15 @@ class ResearchFeatureBuildApplication:
             self._require(payload)
             require_no_pending_cleanup(self.session.workspace)
             registry = self.session.task_control_registry
-            if any(
-                t.lifecycle
-                not in {TaskLifecycle.SUCCEEDED, TaskLifecycle.CANCELLED, TaskLifecycle.BLOCKED}
-                for t in registry.tasks()
-            ):
-                raise ValueError("feature_research.finish_or_recover_existing_task")
+            for t in registry.tasks():
+                if t.lifecycle not in {
+                    TaskLifecycle.SUCCEEDED,
+                    TaskLifecycle.CANCELLED,
+                    TaskLifecycle.BLOCKED,
+                }:
+                    raise ValueError(
+                        f"feature_research.finish_or_recover_existing_task:{t.task_id}"
+                    )
             envelope, goal, workflow = _contract(payload)
             task = registry.admit(
                 input_envelope=envelope, goal=goal, plan=workflow, observed_at=self.clock()

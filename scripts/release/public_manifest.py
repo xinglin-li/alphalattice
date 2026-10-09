@@ -45,8 +45,12 @@ RULES = [
             ".claude/projects/**",
             "**/artifacts/**",
             "playpen-board/**",
+            ".alphalattice/user/**",
         ],
-        "reason": "Workspace, QA, session and board state belong to their private owners.",
+        "reason": (
+            "Workspace, QA, session and board state belong to their private owners; the user "
+            "layer is the person's own, and no release contains it."
+        ),
     },
     {
         "rule": "PRIVATE_AGREEMENT",
@@ -133,6 +137,7 @@ RULES = [
             "tests/operation_suite/**",
             "tests/alpha_research/test_alpha_product_replay.py",
             "tests/alpha_research/test_live_closure_entry_points.py",
+            "tests/alternative_evidence_desk/test_evidence_review_route.py",
             "tests/alternative_evidence_desk/test_retrieval_product_acceptance.py",
             "tests/feature_engine/test_feature_closure_genesis.py",
             "tests/feature_engine/test_panel_runtime_authority.py",
@@ -188,6 +193,9 @@ RULES = [
             "the private checkout retains its coverage."
         ),
         "path_reasons": {
+            "tests/alternative_evidence_desk/test_evidence_review_route.py": (
+                "runs the private Review publication harness for exact admitted Task subjects"
+            ),
             "tests/portfolio_strategy_lab/test_team_scene_producers.py": (
                 "runs the private UI QA Team scene producers"
             ),
@@ -632,8 +640,10 @@ def validate_internal_id_history(repo: Path, source: str) -> None:
             cache[commit] = json.loads(result.stdout) if result.returncode == 0 else None
         return cache[commit]
 
-    if policy_at(source) is None:
+    source_policy = policy_at(source)
+    if source_policy is None:
         raise ValueError("the source has no frozen internal-label policy")
+    admissions = source_policy.get("history_admissions", {})
     commits = subprocess.check_output(
         ["git", "log", "--full-history", "--format=%H", source, "--", INTERNAL_ID_BASELINE],
         cwd=repo,
@@ -705,6 +715,11 @@ def validate_internal_id_history(repo: Path, source: str) -> None:
                             )
                         if count <= anchor_counts[key][label]:
                             continue
+                    admitted = admissions.get(commit, {})
+                    if parent == admitted.get("parent") and count == admitted.get(
+                        "occurrences", {}
+                    ).get(owner, {}).get(label):
+                        continue
                     raise ValueError(f"the frozen internal-label allowance increased at {commit}")
 
 

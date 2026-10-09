@@ -291,8 +291,11 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated):
     ), body
     assert body["next_action"] == "NAME_ONE_BOOK" and body["detail"]
     assert len(service.registry.tasks()) == initial
-    assert service.post("/api/evidence-refresh", c.selector)["disposition"] == "ADMITTED"
+    refreshed = service.post("/api/evidence-refresh", c.selector)
+    assert refreshed["disposition"] == "ADMITTED"
     service.drain()
+    recovery = service.get("/api/tasks/recovery?task_id=" + refreshed["task_id"])
+    assert recovery["next_requests"]["subject"] == {"operation": "EVIDENCE_CRO", **c.selector}
     assert service.post("/api/cro-review", c.selector)["disposition"] == "ADMITTED"
     service.drain()
     published = service.get("/api/evidence-cro?" + urlencode(c.selector))

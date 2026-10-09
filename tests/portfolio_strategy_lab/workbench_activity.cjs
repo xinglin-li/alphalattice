@@ -22,7 +22,7 @@ const c={Window:{renderTop(){}},console,URLSearchParams,Date,Number,Math,Set,Map
   setTimeout:(fn,ms)=>{timers.push(ms);return timers.length;},clearTimeout(){},
   Data:{read:async(p)=>{reads.push(p);if(gate)await gate;const next=pages.shift();if(next instanceof Error)throw next;if(!next)throw Error('probe: no page scripted for '+p);return next;},mergeTasks:(v)=>{merged.push(...v);for(const x of v){const i=knownTasks.findIndex(k=>k.task_id===x.task_id);if(i>=0)knownTasks[i]=x;else knownTasks.push(x);}},
     history:()=>history,refreshHistory:async()=>{if(historyGate)await historyGate;history=[{id:'result:9f9f9f9f00000000'},...extraHistory];},openEntry:(id)=>opened.push(id),tasks:()=>knownTasks},
-  LiveTasks:{paintActivity(){},select:(id)=>selected.push('select:'+id),openResult:async(id,wanted=()=>true)=>{if(openGate)await openGate;if(!wanted())return false;opened.push('experiment:'+id);}},
+  LiveTasks:{paintActivity(){},open:(id)=>selected.push('open:'+id),openResult:async(id,wanted=()=>true)=>{if(openGate)await openGate;if(!wanted())return false;opened.push('experiment:'+id);}},
   LiveViews:{taskDock(){},savedObjectLink:(label,entry)=>label+':'+entry,nameOf:(v)=>({name:'Study '+v.task_id})},
   navigate:()=>{throw Error('activity must never navigate');},link:(label,page)=>`<a href="#page=${page}">${label}</a>`,joinMarkup:(items,separator=' · ')=>items.join(separator),openDialog:(a,b)=>dialogs.push(b),
   notify:(m,vars,act=null)=>{said.push({vars,act});toasts.push(m.replace(/\{(\w+)\}/g,(_,k)=>String(vars?.[k]??'')));},
@@ -31,6 +31,7 @@ const c={Window:{renderTop(){}},console,URLSearchParams,Date,Number,Math,Set,Map
   groupHead:(label,count)=>'GROUP('+label+':'+count+')',listFoot:()=>'',objectRow:(s={},x)=>'ROW('+[s.lead,s.name,s.why,...(((x&&x.props)||[]).filter(Boolean).map(p=>Array.isArray(p)?p[1]:p)),x&&x.time,s.to?`<${s.to.action}:${s.to.value}>`:'',x&&x.actions].filter(Boolean).join('|')+')'+((x&&x.under)||'')};
 const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes (round 72)');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
 c.Data.readShared = (...args) => c.Data.read(...args);
+const routes=library.hostRoutes();c.Data.posts=operation=>routes[operation]?.method==='POST';
 c.LiveGoals={observe:()=>{goalObservations++;}};
 library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);vm.runInContext(percentRule(root),c);vm.runInContext(runShapes(root),c);vm.runInContext(fs.readFileSync(path.join(root,'live-activity.js'),'utf8')+';globalThis.A=LiveActivity;',c);
 (async()=>{

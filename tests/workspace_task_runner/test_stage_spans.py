@@ -186,14 +186,20 @@ def test_each_stage_phase_keeps_its_spans_and_its_timing_reads_them_back(tmp_pat
         ("publish_result", "verify"),
     ]
     record, items = registry.task_with_work_items(task.task_id)
-    timing = task_timing(record, items, now=now + timedelta(seconds=2), spans=kept)
+    timing = task_timing(
+        record, items, now=now + timedelta(seconds=2), spans=kept, selected_stage="resolve_inputs"
+    )
+    assert timing["sampled_at"] == (now + timedelta(seconds=2)).isoformat()
     stages = {stage["stage_id"]: stage for stage in timing["stages"]}  # type: ignore[union-attr]
+    assert timing["selected_stage"] is stages["resolve_inputs"]
+    assert all(stages[item.stage_id]["updated_at"] == item.updated_at.isoformat() for item in items)
     first = stages["resolve_inputs"]["phases"]
     assert [phase["phase"] for phase in first] == ["execute", "verify"]
     assert ("compute", "resolve_inputs", "host") in _rows(first[0])
     assert ("verify", "fixture", "host") in _rows(first[1])
     assert all(phase["execution_id"] for phase in first)
-    plain = task_timing(record, items, now=now + timedelta(seconds=2))
+    plain = task_timing(record, items, now=now + timedelta(seconds=2), selected_stage="absent")
+    assert plain["selected_stage"] is None
     assert all(stage["phases"] == [] for stage in plain["stages"])  # type: ignore[union-attr]
 
 

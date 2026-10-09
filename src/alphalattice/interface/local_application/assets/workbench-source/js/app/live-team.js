@@ -43,6 +43,7 @@ const LiveTeam = (() => {
       X.epoch = body.epoch || epoch; X.more = Boolean(body.more); X.oldest = body.oldest ?? null; X.keep = EXTERNAL_KEEP; X.error = '';
     }, (e) => { X.error = String(e?.message || e); X.epoch = epoch; }).finally(() => {
       X.fetching = null; X.read = true; S.paintKey = '';
+      refresh();
       if (onTeam()) paint(); else if (typeof patchMain === 'function') patchMain(); // the Home's team rows read the same scene
     });
   }
@@ -107,16 +108,29 @@ const LiveTeam = (() => {
     return found;
   }
   /* ---- the scene, derived from the retained feed ---- */
-  function scene() {
+  function scene(fullRecord = false) {
     const sessions = new Map(), unknown = [];
+    const external = externalItems(), scopes = new Map(), contributors = new Map();
+    for (const item of external) {
+      const sub = item.payload?.subject || {}, id = sub.native_session_id;
+      if (sub.message_kind === 'session_bound' && sub.input_channel === 'PRODUCT_OPERATION' && sub.native_agent_id === id && UUID.test(sub.goal_id || '')) scopes.set(id, sub.goal_id);
+      if (['hook', 'message'].includes(KINDS[item.payload?.event_kind]) && sub.goal_id && sub.native_agent_id) {
+        const key = id + ':' + sub.goal_id;
+        if (!contributors.has(key)) contributors.set(key, new Set());
+        contributors.get(key).add(sub.native_agent_id);
+      }
+    }
     const session = (id) => { if (!sessions.has(id)) sessions.set(id, {id, participants: new Map(), entries: new Map(), byEvent: new Map(), references: new Set(), producers: new Set(), facts: [], unknownKinds: [], goals: new Set(), last: 0}); return sessions.get(id); };
     const participant = (s, id, role) => { if (!s.participants.has(id)) s.participants.set(id, {id, roles: new Set(), messages: [], hooks: [], usage: new Map(), pins: null, last: 0}); const p = s.participants.get(id); if (role) p.roles.add(role); return p; };
-    for (const item of externalItems()) {
+    for (const item of external) {
       const p = item.payload || {}, sub = p.subject || {};
       if (!p.event_kind) { unknown.push({item, reason: 'payload not retained'}); continue; }
       const kind = KINDS[p.event_kind], sid = sub.native_session_id || '';
+      const scope = scopes.get(sid);
+      if (!fullRecord && scope && (sub.goal_id !== scope || (kind === 'usage' && !contributors.get(sid + ':' + scope)?.has(sub.native_agent_id)))) continue;
       if (!kind) { (sid ? session(sid).unknownKinds : unknown).push({item, reason: 'unknown event kind'}); continue; }
       const s = session(sid);
+      s.goalScope = scope || '';
       s.producers.add(p.producer_id + ':' + short(p.producer_session, SHORT.hash));
       if (sub.goal_id) s.goals.add(sub.goal_id); // U25: since GR2 a row's subject names the goal the Host filed it under
       if (kind === 'usage') { // U31: what an agent had run and spent, by model; its latest reading counts, never a sum of readings
@@ -292,8 +306,8 @@ const LiveTeam = (() => {
       // The owner's exact readback of the saved revision. Its evidence references are
       // re-verified when the case is opened, not here.
       const body=await Data.read('/api/goals/narrative?'+new URLSearchParams({goal_hash:target.ref}));
-      if(body.goal_hash!==target.ref)return keep('discovered','Goal',t('The owner answered for another goal.'),{open:null});
-      return keep('verified','Goal',t('Goal revision verified; its evidence is re-verified on opening; a note is not scientific approval.'),{open:['goal-open',target.ref],question:body.goal?.declaration?.objective || '',title:body.goal?.declaration?.title || ''});
+      if(body.goal_hash!==target.ref || body.goal?.goal_hash!==target.ref || !UUID.test(body.goal?.goal_id || ''))return keep('discovered','Goal',t('The owner answered for another goal.'),{open:null});
+      return keep('verified','Goal',t('Goal revision verified; its evidence is re-verified on opening; a note is not scientific approval.'),{open:['goal-open',target.ref],question:body.goal.declaration?.objective || '',title:body.goal.declaration?.title || '',goalId:body.goal.goal_id,revision:body.goal.revision});
     }
     if (target.kind === 'result') {
       const report = await Data.read('/api/report?' + new URLSearchParams({result_hash: target.ref}));
@@ -534,24 +548,8 @@ const LiveTeam = (() => {
     }
   }
   const kindWords = (e) => acceptedAnswer(e) ? t('Accepted answer') : e.kind === 'message' ? t((e.messageKind ? MESSAGE_KINDS[e.messageKind] : ['Message kind not declared'])[0]) : t('Host input');
-  /* What the team is researching, decided once for the Team page and the Overview alike.
-   *
-   * A research case belongs to the session only by the established Main PM's own declaration
-   * (a message of the foreground PM naming `case:<hash>`): the Case owner verifies the saved
-   * revision's identity and text, never its association with this native session, so a verified
-   * question is still shown as a declared link. One PM-declared case is the candidate; several
-   * are an explicit choice the reader makes (`team-question`), none is chosen by order, recency
-   * or wording. A case another member names is a related reference, listed as such. Without a
-   * PM-declared case the Main PM's own assignment text is the declared question (the first of
-   * several is said to be the first). Absent metadata stays absent. */
-  /* A session's title (F4; the F0 decision 2: rules only, no model). The assignment's first word,
-   * through the verb table, names the work; the head of its object -- the first capitalised word of
-   * the phrase the verb takes, `the Alpha candidate` -> `Alpha` -- stands before it; the first
-   * `on (the) ...` / `for (the) ...` phrase, to a comma, a stop, a semicolon or an `and`, follows:
-   * `Alpha refit · July research input`. Every word is the owner's (law 17): the table only turns a
-   * verb into its work's noun. Where the first word is no verb of the table, the first sentence, to
-   * a comma, a stop, a colon or a line break, on one line, cut at `session-title-chars`. A title is one line
-   * (rows of unequal height saw-tooth a list); the whole text is the conversation's first entry. */
+  /* Goal identity and revision come only from the exact owner read; PM association stays declared.
+   * Other Goals require the reader's choice. Assignment titles use the owner's words. */
   const WORK = {refit: 'refit', backtest: 'backtest', screen: 'screening', scan: 'screening', analyze: 'analysis', analyse: 'analysis', review: 'review', compare: 'comparison', 're-read': 're-reading', reread: 're-reading', rerun: 're-run', 're-run': 're-run', evaluate: 'evaluation', estimate: 'estimate', explain: 'explanation', test: 'test'};
   const clip = (s, n) => (s.length <= n ? s : s.slice(0, n - 1).trimEnd() + '…');
   function sessionTitle(text) {
@@ -567,22 +565,34 @@ const LiveTeam = (() => {
   }
   // the name a session reads by: the case's own title where its owner verified one, else the rule's
   const titleOf = (q) => (q.kind === 'none' ? t('No research question is declared') : q.kind === 'choice' ? q.text : q.title || sessionTitle(q.text) || t('Untitled session'));
+  function referencesOf(entries) {
+    const groups = new Map();
+    for (const e of entries.filter(e => e.qualified)) {
+      const key = e.qualified.kind === 'case' ? S.resolved.get(e.reference)?.goalId || e.qualified.ref : e.qualified.ref;
+      if (!groups.has(key)) groups.set(key, []);
+      const group = groups.get(key);
+      if (!group.some(was => was.qualified.ref === e.qualified.ref)) group.push(e);
+    }
+    return [...groups.values()].map(group => group.sort((a, b) => Number(S.resolved.get(b.reference)?.revision || 0) - Number(S.resolved.get(a.reference)?.revision || 0)));
+  }
+  const revisionRefs = (group, read) => html`${read(group[0])}${group.length > 1 ? factsRef(countText(group.length - 1, '{n} earlier revision', '{n} earlier revisions'), html`${group.slice(1).map(e => html`<p>${read(e)}</p>`)}`) : ''}`;
   function questionOf(s, all) {
     const lead = [...s.participants.values()].find((p) => isLead(p, s)) || null;
     const distinct = (list) => [...new Map(list.map((e) => [e.qualified.ref, e])).values()];
     const cases = all.filter((e) => e.kind === 'message' && e.qualified?.kind === 'case');
     const declared = lead ? distinct(cases.filter((e) => e.actor === lead.id)) : [];
+    const groups = referencesOf(declared);
     const related = distinct(cases.filter((e) => !lead || e.actor !== lead.id)).filter((e) => !declared.some((d) => d.qualified.ref === e.qualified.ref)).map((e) => ({ref: e.reference, actor: actorName(s, e.actor), by: e.actor}));
     const chosen = S.question.get(s.id) || '';
-    const candidate = declared.length === 1 ? declared[0] : declared.find((e) => e.reference === chosen) || null;
+    const candidate = declared.find(e => e.reference === chosen) || (groups.length === 1 ? groups[0][0] : null);
     const assignments = lead ? all.filter((e) => e.messageKind === 'assignment' && e.actor === lead.id) : [];
-    const base = {related, declared: declared.map((e) => e.reference), lead: Boolean(lead)};
+    const base = {related, declared: declared.map((e) => e.reference), groups, lead: Boolean(lead)};
     if (candidate) {
       const outcome = S.resolved.get(candidate.reference) || null;
-      if (outcome?.level === 'verified' && outcome.question) return {...base, kind: 'case-verified', text: outcome.question, title: outcome.title || '', ref: candidate.reference, choice: declared.length > 1};
-      return {...base, kind: 'case-declared', text: assignments.length ? assignments[0].text : t('Untitled session'), ref: candidate.reference, resolved: Boolean(outcome), choice: declared.length > 1}; // round 93 (rule 2): the declared question is the Main PM's assignment; the case reference is a property
+      if (outcome?.level === 'verified') return {...base, kind: 'case-verified', text: outcome.question, title: outcome.title || '', ref: candidate.reference, goalId: outcome.goalId, choice: groups.length > 1};
+      return {...base, kind: 'case-declared', text: assignments.length ? assignments[0].text : t('Goal {ref}', {ref: short(candidate.reference.slice(5), SHORT.hash)}), ref: candidate.reference, resolved: Boolean(outcome), choice: groups.length > 1};
     }
-    if (declared.length > 1) return {...base, kind: 'choice', text: t('{n} goals declared by Main PM', {n: declared.length}), count: declared.length};
+    if (groups.length > 1) return {...base, kind: 'choice', text: declared.every(e => S.resolved.get(e.reference)?.goalId) ? t('{n} goals declared by Main PM', {n: groups.length}) : t('Choose a Goal reference'), count: groups.length};
     if (assignments.length) return {...base, kind: 'assignment', text: assignments[0].text, count: assignments.length};
     return {...base, kind: 'none', text: ''};
   }
@@ -594,16 +604,12 @@ const LiveTeam = (() => {
     if (q.kind === 'assignment') return html`<span class="muted">${t(q.count > 1 ? 'first of {n} assignments declared by Main PM · not a bound goal' : 'declared by Main PM · not a bound goal', {n: q.count})}</span>`;
     return '';
   }
-  /* The question's own facts (N5): where it came from, the declared case reference, the explicit
-   * choice among several PM-declared cases, the members' related references -- the Properties
-   * box's first part. The page's title is the session's name (F4, law 134); a verified case's
-   * question, the owner's long text, stands here as its body (law 137) -- an assignment's is the
-   * conversation's first entry. */
+  /* The owner question and the declared references, with earlier revisions disclosed. */
   function questionFacts(s, all) {
     const q = questionOf(s, all);
-    const choice = q.kind === 'choice' || q.choice ? html`<ul class="team-question-choice">${q.declared.map((ref) => html`<li>${ref === q.ref ? stateLine('ready', {word: t('chosen')}) : btn(t('Show this case'), 'team-question', ref, 'text-btn')} ${referenceLine(ref)}</li>`)}</ul>` : '';
+    const choice = q.kind === 'choice' || q.choice ? html`<ul class="team-question-choice">${q.groups.map(group => html`<li>${revisionRefs(group, e => html`${e.reference === q.ref ? stateLine('ready', {word: t('chosen')}) : btn(t('Show this case'), 'team-question', e.reference, 'text-btn')} ${referenceLine(e.reference)}`)}</li>`)}</ul>` : '';
     const related = q.related.length ? html`<p class="caption team-question-related">${t('Related case references declared by members, not the session\'s question')}: ${q.related.map((r) => html`<span>${r.actor} · ${referenceLine(r.ref)}</span>`)}</p>` : '';
-    return html`<div class="team-question-card" data-question="${q.kind}">${q.kind === 'case-verified' && q.text ? html`<p class="team-question-text">${q.text}</p>` : ''}${q.kind !== 'none' ? html`<p class="team-question-source">${questionSource(q)}</p>${q.ref && !q.choice ? html`<p class="team-question-ref">${referenceLine(q.ref)}</p>` : ''}${choice}` : html`<p class="team-question-source">${t('A Main PM declaration of a research case or an assignment would name it; nothing is inferred from the messages.')}</p>`}${related}</div>`;
+    return html`<div class="team-question-card panel-body" data-question="${q.kind}">${q.kind === 'case-verified' && q.text ? html`<p class="team-question-text">${q.text}</p>` : ''}${q.kind !== 'none' ? html`<p class="team-question-source">${questionSource(q)}</p>${q.ref && !q.choice ? html`<p class="team-question-ref flow">${referenceLine(q.ref)}</p>` : ''}${choice}` : html`<p class="team-question-source">${t('A Main PM declaration of a research case or an assignment would name it; nothing is inferred from the messages.')}</p>`}${related}</div>`;
   }
   /* One glyph per role family, so a member is recognised before its words are read. */
   const ROLE_ICONS = {research_lead: 'user', alphalattice_data: 'data', alphalattice_factor: 'grid', alphalattice_alpha: 'lab', alphalattice_risk: 'partial', alphalattice_portfolio: 'portfolio', alphalattice_evidence_analyst: 'file', alternative_analyst: 'file', alphalattice_cro: 'review', independent_cro: 'review'};
@@ -748,15 +754,15 @@ const LiveTeam = (() => {
     const sameDay = a.split(' ').slice(0, -1).join(' ') === b.split(' ').slice(0, -1).join(' ');
     const span = !a ? '' : a === b ? a : `${a} → ${sameDay ? b.split(' ').at(-1) : b}`;
     // the second Team review (2026-09-24): the references the exchanges declare, each the way to the exchange that first declared it -- declared, not produced (law 17); an objection naming one and an owner's verification are said where recorded
-    const first = new Map(); for (const e of stated) if (e.qualified && !first.has(e.qualified.ref)) first.set(e.qualified.ref, e);
-    const references = [...first].map(([ref, e]) => {
+    const references = referencesOf(stated).map(group => revisionRefs(group, e => {
+      const ref = e.qualified.ref, owner = S.resolved.get(e.reference);
       const objected = stated.some((x) => x.messageKind === 'objection' && x.qualified?.ref === ref), verified = S.resolved.get(e.reference)?.level === 'verified';
       const word = [objected ? t('objected') : '', verified ? t('verified by its owner') : ''].filter(Boolean).join(' · ');
-      return btn(html`${e.qualified.kind === 'task' ? t('Task') : e.qualified.kind === 'case' ? t('Goal') : t('Reference')} <span class="mono">${short(String(ref).split(':').at(-1), SHORT.id)}</span>${word ? html` <span class="muted">· ${word}</span>` : ''}`, 'team-reveal', e.id, 'text-btn team-reference');
-    });
+      return btn(html`${owner?.title ? html`<span class="owner-text">${owner.title}</span>` : e.qualified.kind === 'task' ? t('Task') : e.qualified.kind === 'case' ? t('Goal') : t('Reference')} <span class="mono">${short(String(ref).split(':').at(-1), SHORT.id)}</span>${owner?.revision ? html` · ${t('revision {n}', {n: owner.revision})}` : ''}${word ? html` <span class="muted">· ${word}</span>` : ''}`, 'team-reveal', e.id, 'text-btn team-reference');
+    }));
     const goals = [...s.goals].map((id) => link(html`${t('Goal')} <span class="mono">${short(id, SHORT.id)}</span>`, 'goal', 'text-btn', {goal: id}));
     // U51: the models and tokens are the Participants folder's, by member and model, the session's totals at its foot
-    return [[t('Lead'), lead ? actorName(s, lead.id) : html`<span class="muted">${t('no main PM declared')}</span>`], ...(span ? [[t('Span'), span]] : []), ...(goals.length ? [[t('Goals'), html`${goals}`]] : []), ...(q.kind !== 'none' ? [[t('Question'), questionSource(q)]] : []), ...(references.length ? [[t('Declared references'), html`${references}`]] : [])];
+    return [[t('Lead'), lead ? actorName(s, lead.id) : html`<span class="muted">${t('no main PM declared')}</span>`], ...(span ? [[t('Span'), span]] : []), ...(goals.length ? [[t('Goals'), html`${goals}`]] : []), ...(s.goalScope ? [[t('Participants'), hint(s.participants.size, t('Only contributions attributed to this Goal count as participation; session-wide usage alone does not.'))]] : []), ...(q.kind !== 'none' ? [[t('Question'), questionSource(q)]] : []), ...(references.length ? [[t('Declared references'), html`${references}`]] : [])];
   }
   /* The thread's product lines (C4 item 1): what the members' work made the product record -- never a
    * person's Local Web reads of the session's references (the owner records `caller HUMAN`), nor what was
@@ -790,7 +796,7 @@ const LiveTeam = (() => {
   /* The record of one session (round 67): every retained exchange in recorded order, as the
    * thread renders them — a run log, never a conversation. */
   function recordOf(sessionId) {
-    const s = scene().sessions.find((v) => v.id === sessionId);
+    const s = scene(true).sessions.find((v) => v.id === sessionId);
     if (!s) return html`<p class="caption">${t('Selected session not retained')}</p>`;
     const entries = entriesOf(s).filter((e) => !e.replayOf);
     return html`<ol class="team-record">${entries.map((e) => exchange(s, e, false))}</ol>`;
@@ -1144,8 +1150,9 @@ const LiveTeam = (() => {
     while(S.factNew.size > 100) { const id = S.factNew.values().next().value; S.factNew.delete(id); S.factVerified.delete(id); }
   }
   function refresh() {
-    if (!onTeam()) { S.answerDetail = null; S.usageAsked = false; return; }
-    if (!S.usageAsked) { S.usageAsked = true; LiveActivity.readSessionUsage?.(); }
+    if (!onTeam()) { S.answerDetail = null; S.usageAsked = false; if (app.page !== 'overview') return; }
+    if (onTeam() && !S.usageAsked) { S.usageAsked = true; LiveActivity.readSessionUsage?.(); }
+    for (const s of scene().sessions) for (const ref of questionOf(s, entriesOf(s)).declared) if (!S.resolved.has(ref) && !S.busy.has(ref)) void resolve(ref).then(() => verify(ref));
     const a = LiveActivity.state(), usage = LiveActivity.nativeUsageState?.();
     const key = [a.epoch, a.cursor, a.watermark, a.error, a.stale, a.disposition, usage?.status, usage?.reason].join('|');
     if (key !== S.paintKey) { S.paintKey = key; paint(); }

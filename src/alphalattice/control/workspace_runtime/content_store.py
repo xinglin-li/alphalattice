@@ -86,7 +86,7 @@ _VERIFIED_SOURCE_ISSUER_LOCK = Lock()
 _VERIFIED_ARRAY_PROCESS_CACHE_HITS = 0
 _VERIFIED_ARRAY_PROCESS_CACHE_MISSES = 0
 _VERIFIED_ARRAY_PROCESS_CACHE_EVICTIONS = 0
-_VERIFIED_PROOF_CACHE_LIMIT = 128
+_VERIFIED_PROOF_CACHE_LIMIT = 4096
 _VERIFIED_PROOF_SCOPE: ContextVar[set[tuple[object, ...]] | None] = ContextVar(
     "content_store_verified_proofs", default=None
 )
@@ -693,7 +693,7 @@ def verified_request_proof(identity: tuple[object, ...], check: Callable[[], Non
 
     Owners must fully read/hash the current sources before calling, and bind the key to
     their namespace, resolved paths, same-read file identities and content commitments.
-    Failed checks are never remembered. The separate 128-entry proof LRU cannot be evicted
+    Failed checks are never remembered. The separate 4,096-entry proof LRU cannot be evicted
     by large decoded arrays; across-request use still requires the outer read's opt-in.
     """
     scope = _VERIFIED_PROOF_SCOPE.get()

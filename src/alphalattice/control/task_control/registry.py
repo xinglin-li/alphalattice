@@ -65,6 +65,7 @@ _TERMINAL_TASKS = frozenset(
     {TaskLifecycle.SUCCEEDED, TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED}
 )
 _RECOVERY_LINK_EVENT = "task.recovery_link"
+_ADMISSION_SUBJECT_EVENT = "task.admission_subject"
 _RECOVERY_LINK_STOPPED = frozenset(
     {TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED, TaskLifecycle.RECOVERY_REQUIRED}
 )
@@ -2036,6 +2037,61 @@ class DuckDbTaskControlRegistry:
                 ) from error
             links.append(link)
         return tuple(links)
+
+    def record_admission_subject(
+        self, task_id: UUID, document: dict[str, Any], *, observed_at: datetime
+    ) -> None:
+        """Keep an owner's sealed admission subject beside its canonical Task."""
+        encoded = self._json(document)
+        self._db_time(observed_at)
+        if document.get("task_id") != str(task_id) or self._db_time(
+            datetime.fromisoformat(document["admitted_at"])
+        ) != self._db_time(observed_at):
+            raise TaskControlDatabaseAuthorityError("task_control.database_authority_unreadable")
+
+        def operation(connection):  # type: ignore[no-untyped-def]
+            self._task_row(connection, task_id)
+            if connection.execute(
+                "SELECT 1 FROM workspace_task_event "
+                "WHERE task_id = ? AND kind = ? AND details_json = ?",
+                [str(task_id), _ADMISSION_SUBJECT_EVENT, encoded],
+            ).fetchone():
+                return
+            self._event(
+                connection,
+                task_id=task_id,
+                execution_id=None,
+                kind=_ADMISSION_SUBJECT_EVENT,
+                details=json.loads(encoded),
+                observed_at=observed_at,
+            )
+
+        self._write(operation, control_only=True)
+
+    def admission_subjects(self, task_id: UUID) -> tuple[dict[str, Any], ...]:
+        """Read this Task's admission documents; the kind owner verifies their seals."""
+        rows = self._read(
+            lambda connection: connection.execute(
+                "SELECT details_json, recorded_at FROM workspace_task_event "
+                "WHERE task_id = ? AND kind = ? ORDER BY recorded_at, sequence",
+                [str(task_id), _ADMISSION_SUBJECT_EVENT],
+            ).fetchall()
+        )
+        subjects: list[dict[str, Any]] = []
+        for document, recorded_at in rows:
+            try:
+                subject = json.loads(document)
+                if (
+                    subject["task_id"] != str(task_id)
+                    or self._db_time(datetime.fromisoformat(subject["admitted_at"])) != recorded_at
+                ):
+                    raise ValueError("admission subject differs from its journal row")
+            except (KeyError, TypeError, ValueError) as error:
+                raise TaskControlDatabaseAuthorityError(
+                    "task_control.database_authority_unreadable"
+                ) from error
+            subjects.append(subject)
+        return tuple(subjects)
 
     def recovery_links(self, task_id: UUID | None = None) -> tuple[TaskRecoveryLink, ...]:
         """Read sealed recovery provenance from the existing Task event journal.

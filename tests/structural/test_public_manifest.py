@@ -57,6 +57,7 @@ from release.public_manifest import (
         (".env.production", "PRIVATE", "PRIVATE_CREDENTIAL"),
         (".claude/projects/one/session.json", "PRIVATE", "PRIVATE_STATE"),
         ("workspaces/one/record.json", "PRIVATE", "PRIVATE_STATE"),
+        (".alphalattice/user/memory/MEMORY.md", "PRIVATE", "PRIVATE_STATE"),
         ("implemented-plans/round.md", "PRIVATE", "PRIVATE_RECORD"),
         ("experience/one.md", "PRIVATE", "PRIVATE_RECORD"),
         ("product-design/execution-plans/plan.md", "PRIVATE", "PRIVATE_RECORD"),
@@ -278,8 +279,7 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(tmp_path, sy
     _git, commit = synthetic_history
     with pytest.raises(ValueError, match="no frozen internal-label policy"):
         validate_internal_id_history(tmp_path, "HEAD")
-    label = "V" + "901"
-    owner = "src/demo.py"
+    owner, label = "src/demo.py", "V" + "901"
     policy = {
         "cards": ["UI", "IS", "LEAD", "SYNTHETIC-CARD"],
         "lines": [],
@@ -303,6 +303,25 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(tmp_path, sy
     commit("Increase synthetic allowance")
     with pytest.raises(ValueError, match="allowance increased"):
         validate_internal_id_history(tmp_path, "HEAD")
+    source = candidate = _git("rev-parse", "HEAD")
+    parent = _git("rev-parse", "HEAD^")
+    for named_parent, allowed, accepted in (
+        (parent, {owner: {label: 1}}, True),
+        ("0" * 40, {owner: {label: 1}}, False),
+        (parent, {owner: {label: 2}}, False),
+        (parent, {"src/unlisted.py": {label: 1}}, False),
+    ):
+        policy["history_admissions"] = {candidate: {"parent": named_parent, "occurrences": allowed}}
+        baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
+        _git("add", "--all")
+        source = _git("commit-tree", _git("write-tree"), "-p", source, "-m", "Admission")
+        if accepted:
+            validate_internal_id_history(tmp_path, source)
+        else:
+            with pytest.raises(ValueError, match="allowance increased"):
+                validate_internal_id_history(tmp_path, source)
+    policy.pop("history_admissions")
+    baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
     (tmp_path / "README.md").write_text("Unrelated change\n", encoding="utf-8", newline="\n")
     commit("Change an unrelated file")
     with pytest.raises(ValueError, match="allowance increased"):
@@ -434,6 +453,7 @@ def test_workbench_verification_needs_the_private_ui_qa_kit(path):
 @pytest.mark.parametrize(
     ("path", "reason"),
     [
+        ("tests/alternative_evidence_desk/test_evidence_review_route.py", None),
         (
             "tests/portfolio_strategy_lab/test_ui_qa_launch_session.py",
             "imports the private UI QA launch-session owner and executes its private drivers",
@@ -462,4 +482,7 @@ def test_workbench_verification_needs_the_private_ui_qa_kit(path):
 )
 def test_private_browser_dependencies_keep_their_callers_private(path, reason):
     """A candidate's private browser inputs cannot be omitted under public verification."""
-    assert classify(path, {path}, {path}, {path}) == ("PRIVATE", "PRIVATE_TEST", reason)
+    found = classify(path, {path}, {path}, {path})
+    assert found[:2] == ("PRIVATE", "PRIVATE_TEST") and found[2]
+    if reason is not None:
+        assert found[2] == reason

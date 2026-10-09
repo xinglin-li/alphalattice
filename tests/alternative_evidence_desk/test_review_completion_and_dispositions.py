@@ -144,6 +144,19 @@ def test_a_quiet_issuer_is_checked_and_a_sourceless_issuer_is_not_counted_as_rev
         section = service.evidence_cro()
         assert section["state"] == "REVIEW_PUBLISHED"
         assert section["review_state"] == "PARTIAL"
+        words = section["explanation"]
+        assert words.startswith("PARTIAL.")
+        assert "In scope: 100.000%" in words
+        assert f"read: {section['coverage']['reviewed_ending_weight']}" in words
+        assert "nothing filed: not recorded" in words and "unread: not recorded" in words
+        assert "book positions" in words and "denominator" in words
+        assert "read +" in words and "unread =" in words
+        assert "in scope contains" in words and "legacy dossier" in words
+        pinned = service.evidence_cro(review_publication_hash=section["review_publication_hash"])
+        assert pinned["explanation"].startswith("PARTIAL.")
+        assert "In scope: not recorded" in pinned["explanation"]
+        assert f"read: {section['coverage']['reviewed_ending_weight']}" in pinned["explanation"]
+        assert "denominator" in pinned["explanation"] and pinned["claim_limits"]
         view = service.review.review_publications.read(section["review_publication_hash"])
         conclusions = {
             value.entity_id: value.conclusion for value in view.recommendation.issuer_conclusions

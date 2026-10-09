@@ -297,15 +297,18 @@ class EvidenceCroProjector:
                 if reading
                 else None,
                 available_actions=(),
-                explanation=(
+                claim_limits=(
+                    *projected.claim_limits,
                     "Exact historical review; no current eligibility or new work is granted. "
-                    "Detailed position-scope breakdown was not sealed in this record."
-                    + (
-                        ""
+                    "Detailed position-scope breakdown was not sealed in this record.",
+                    *(
+                        ()
                         if historical_view.under_installed_policy
-                        else " It was sealed under an earlier CRO review policy; it reads as "
-                        "recorded."
-                    )
+                        else (
+                            "It was sealed under an earlier CRO review policy; "
+                            "it reads as recorded.",
+                        )
+                    ),
                 ),
                 next_requests={
                     "export": bound("EVIDENCE_CRO_EXPORT", review_publication_hash=publication_hash)

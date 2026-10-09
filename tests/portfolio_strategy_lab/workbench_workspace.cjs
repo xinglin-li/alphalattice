@@ -1,9 +1,6 @@
-// Workspace page/state/confirmation contract, and the preparation scene over the owners' bodies
-// (shaped after real recordings); no filesystem mutation, HTTP, model or data work.
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const library=require('./workbench_library.cjs'); // the library's constants and the scripts' parameters, from the source (Q2)
 const finish=library.guard('workbench_workspace');
-// the shared percentage and reading helpers as components.js defines them (by their markers)
 const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes (round 72)');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
 const percentRule=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- percentages for reading');const b=src.indexOf('const pctFraction');const e=src.indexOf('\n',b);return src.slice(a,e+1)+';globalThis.pctNumber=pctNumber;globalThis.pctText=pctText;globalThis.pctFraction=pctFraction;globalThis.short=short;globalThis.mono=mono;globalThis.roundDecimalText=roundDecimalText;globalThis.CODE_WORDS=CODE_WORDS;globalThis.codeWords=codeWords;globalThis.coded=coded;globalThis.methodWords=methodWords;globalThis.countText=countText;globalThis.pluralText=pluralText;globalThis.pluralText=pluralText;globalThis.whenText=whenText;';};
 const root=process.argv[2],reads=[],posts=[],tasks=[],drafts=[];
@@ -128,12 +125,10 @@ c.objectRow=publicBuilders.objectRow;
     }
   }
   await w.refresh();assert.equal(posts.length,0);assert.ok(w.page().includes('2026-08-03'));
-  // The Data figures carry their own inert Facts resource, without a separate page-stack child.
   {
     const update=bodies['/api/data-update'],issues=bodies['/api/workspace/data-issues'],
       storage=bodies['/api/workspace/storage'],figureTile=c.figureTile,measureStrip=c.measureStrip;
     const ownerStrip=publicBuilders.measureStrip,tiles=[],strips=[];
-    // A public readback carrier keeps its body and identity without another painted surface.
     const body='<section class="panel">Recorded section</section>';
     for(const kind of ['box','section','field']) {
       const carrier=String(publicBuilders.stackSlot('recordedSlot',body,kind));
@@ -208,13 +203,9 @@ c.objectRow=publicBuilders.objectRow;
   assert.equal(modal,null,'late preview must not revive dismissed confirmation');
   await w.preview('update');const before=posts.length,readsBeforeRun=reads.length;await Promise.all([w.commit(),w.commit()]);
   assert.deepEqual(posts.slice(before).map(v=>v[0]),['/api/data-update/confirm','/api/data-update/run']);
-  // the admitted update is this page's scene: the page reads the owner again for it; nothing opens the Task Center
   assert.deepEqual(tasks,[],'the update scene is the data page, not the Task Center');assert.ok(reads.slice(readsBeforeRun).includes('/api/data-update'),'the page re-reads the update owner after admission');
   failed='/api/data-update/confirm';await w.preview('update');const blocked=posts.length;await w.commit();failed=null;
   assert.deepEqual(posts.slice(blocked).map(v=>v[0]),['/api/data-update/confirm'],'failed approval must not run data work');
-  // a refused preview is answered (the user, 2026-09-24: 点prepare workspace, 什么也没发生): a toast; the page's
-  // notice says why. (No page render here: a scene page read before router.js loads leaves vm's lookup of
-  // hashParams cached as absent, and the later preparation scene would lose its Task.)
   failed='/api/data-update/plan';await w.preview('update');failed=null;
   assert.equal(toasts.at(-1),'Action refused','the refused press is answered');
   c.app.page='issues';await w.refresh();w.changed('case','quarantine');await w.preview('issue','case');
@@ -222,7 +213,6 @@ c.objectRow=publicBuilders.objectRow;
   assert.deepEqual(posts.at(-1),['/api/workspace/data-issues/preview',payload]);
   w.changed('case','');const cancelled=posts.length;await w.commit();assert.equal(posts.length,cancelled);
   w.changed('case','quarantine');await w.preview('issue','case');await w.commit();assert.deepEqual(posts.at(-1),['/api/workspace/data-issues/confirm',payload]);
-  // the owner names each request; one naming an operation off the client's fixed routes is refused before anything is sent
   const issues=bodies['/api/workspace/data-issues'],offered=issues.next_requests;
   issues.next_requests={'preview:case:quarantine':{...offered['preview:case:quarantine'],operation:'DATA_UPDATE_RUN'}};await w.refresh();
   const foreign=posts.length;w.changed('case','quarantine');await w.preview('issue','case');assert.equal(posts.length,foreign,'a request off the fixed routes is refused locally');
@@ -236,7 +226,6 @@ c.objectRow=publicBuilders.objectRow;
   c.app.page='storage';bodies['/api/workspace/storage/plan'].targets={};await w.preview('cleanup');
   assert.ok(w.page().includes('No eligible files to clean. Nothing was removed.'));const noTargets=posts.length;await w.commit();assert.equal(posts.length,noTargets);
   assert.ok(!posts.some(([p])=>p.includes('/experiments/run')));
-  // Quick Open uses navigate()/pushState rather than a hashchange event.
   c.Data.live=true;c.LiveWorkspace=w;c.Navigation={close(){}};c.hideToast=()=>{};c.scrollTo=()=>{};
   c.THEMES=[];c.location={hash:'',href:''};c.history={pushState:(_a,_b,hash)=>{if(typeof hash==='string')c.location.hash=hash;},replaceState:(_a,_b,hash)=>{if(typeof hash==='string')c.location.hash=hash;}};
   vm.runInContext(fs.readFileSync(path.join(root,'router.js'),'utf8'),c);
@@ -245,14 +234,13 @@ c.objectRow=publicBuilders.objectRow;
   c.navigate('inputs');c.navigate('data');await w.commit();
   assert.equal(posts.length,navigated,'programmatic navigation must also invalidate confirmation');
 
-  // ---- the preparation scene: readback + recovery view -> one page, read-only, patched in place ----
   c.patchMain=()=>patches.push(c.app.page);c.render=()=>renders.push(c.app.page); // the router probe above installed the real ones
   const TASK='1d8ea0bf-f50e-4e65-974c-9552b3851430';
   const view=(lifecycle,stage,extra={})=>({task_id:TASK,task_kind:'workspace_preparation',lifecycle,operation_running:false,cancellation:lifecycle==='CANCELLED'?'ACKNOWLEDGED':'NOT_REQUESTED',stop:null,worker_failure:null,
     liveness:{status:['RUNNING','CANCEL_REQUESTED'].includes(lifecycle)?'OBSERVED':'NOT_APPLICABLE',telemetry:'OPERATIONAL',age_seconds:0.7,signal_sequence:3},verified_stage_count:['freeze_sources','prepare_data','prepare_features','publish_inputs','verify_inputs'].indexOf(stage),total_stage_count:5,
     stages:['freeze_sources','prepare_data','prepare_features','publish_inputs','verify_inputs'].map((id,i,all)=>({stage_id:id,lifecycle:i<all.indexOf(stage)?'VERIFIED':id===stage?(lifecycle==='RUNNING'?'IN_PROGRESS':lifecycle==='CANCELLED'?'CANCELLED':lifecycle==='BLOCKED'?'BLOCKED':'PENDING'):'PENDING',evidence:i<all.indexOf(stage)?['ref']:[],evidence_count:i<all.indexOf(stage)?1:0})),
     artifact_refs:[],actions:[{action:'CANCEL',operation:'CANCEL',available:lifecycle==='RUNNING',reason:'r'},{action:'RECOVER',operation:'RECOVER',available:lifecycle==='RECOVERY_REQUIRED',reason:'not interrupted'},{action:'REPLAN',operation:'WORKSPACE_PREPARE_PLAN',available:true,reason:'r'}],
-    status:{task_id:TASK,lifecycle,current_stage:stage,verified_stage_count:1,total_stage_count:5,running_since:'2026-09-15T21:07:24+00:00',last_activity_at:'2026-09-15T21:10:21+00:00'},task_record_hash:'a'.repeat(64),observed_at:'2026-09-15T21:17:02+00:00',...extra});
+    status:{task_id:TASK,lifecycle,current_stage:stage,verified_stage_count:1,total_stage_count:5,running_since:'2026-09-15T21:07:24+00:00',last_activity_at:'2026-09-15T21:10:21+00:00',timing:{running_seconds:578}},task_record_hash:'a'.repeat(64),observed_at:'2026-09-15T21:17:02+00:00',...extra});
   const readback=(status,extra={})=>({status,source_mode:'ACQUIRE_DECLARED_SOURCES_AFTER_CONFIRMATION',next_action:status==='INITIALIZATION_REQUIRED'?'WORKSPACE_PREPARE_PLAN':null,execution_binding_changed:false,task_id:null,plan_hash:null,failure_code:null,inputs:[],profile:'us-current-index-research',sources:['yfinance','SP500: https://example.test/sp500'],limits:['CURRENT_UNIVERSE_RESEARCH_ONLY','NO_DATA_API_KEY','NO_FOUNDATION_OR_STRATEGY_ACTIVATION'],progress:null,work_progress:null,...extra});
   const page=async()=>{await w.refresh('welcome');return w.page();};
   c.app.page='welcome';
@@ -263,43 +251,49 @@ c.objectRow=publicBuilders.objectRow;
   await w.refresh('welcome');let renamed=w.page();
   assert.ok(w.prepareRefused()&&renamed.includes('This release cannot open this workspace')&&renamed.includes('it holds `dynamic_panel_v1`')&&!renamed.includes('restore its manifest')&&!renamed.includes('newer one'),'renamed: the door words, a new workspace: '+renamed.slice(renamed.indexOf('This release'),renamed.indexOf('This release')+400));
   c.Data.read=firstRead;
-  // unprepared: the scope, the sources, no Task; reading posts nothing
   bodies['/api/workspace/preparation']=readback('INITIALIZATION_REQUIRED');
   const unpreparedPosts=posts.length,unpreparedReads=reads.length;
   let markup=await page();
   assert.ok(markup.includes('Before preparation') && markup.includes('No data API key is requested or stored.') && markup.includes('https://example.test/sp500'),'the unprepared scene is the Home\'s first-use section: the facts, the sources and the missing key');
   assert.ok(markup.includes('run-steps') && !markup.includes('data-state='),'the plain stage roster (the one step list) before a Task exists');
   assert.equal(posts.length,unpreparedPosts);assert.deepEqual(reads.slice(unpreparedReads),['/api/workspace/preparation'],'one readback, no recovery view without a Task');
-  // An externally completed preparation is discovered from its projection, without reload.
   {
-    const originalTasks=c.Data.tasks,originalHash=c.location.hash,empty=bodies['/api/workspace/preparation'],coldReads=reads.length,coldPosts=posts.length;
+    const originalTasks=c.Data.tasks,originalSuccessor=c.Data.taskSuccessor,originalRead=c.Data.read,originalHash=c.location.hash,empty=bodies['/api/workspace/preparation'],coldReads=reads.length,coldPosts=posts.length;
     c.app.page='overview';c.location.hash='#page=overview&task='+TASK;w.observe();await new Promise(r=>setImmediate(r));
-    c.Data.tasks=()=>[{task_id:'research',task_kind:'research_experiment',lifecycle:'SUCCEEDED'}];
-    w.observe();await new Promise(r=>setImmediate(r));
-    assert.equal(reads.length,coldReads,'no preparation read without a preparation projection');
-    const completed=view('SUCCEEDED','verify_inputs',{verified_stage_count:5});
-    c.Data.tasks=()=>[completed];
-    bodies['/api/workspace/preparation']=readback('SUCCEEDED',{task_id:TASK,inputs:[{input_id:'family',binding_hash:'binding'}]});
-    bodies['/api/tasks/recovery']=completed;
-    c.app.page='history';w.observe();await new Promise(r=>setImmediate(r));
-    assert.equal(reads.length,coldReads,'the initial Home is not read from another page');
+    c.Data.tasks=()=>[{task_id:'research',task_kind:'research_experiment',lifecycle:'SUCCEEDED'}];w.observe();await new Promise(r=>setImmediate(r));
+    assert.equal(reads.length,coldReads);
+    const earlier=view('BLOCKED','prepare_data'),NEXT='2d8ea0bf-f50e-4e65-974c-9552b3851430',current=view('SUCCEEDED','verify_inputs',{task_id:NEXT,verified_stage_count:5,status:{task_id:NEXT,lifecycle:'SUCCEEDED'}});
+    c.Data.tasks=()=>[earlier];bodies['/api/workspace/preparation']=readback('BLOCKED',{task_id:TASK});bodies['/api/tasks/recovery']=earlier;
+    c.app.page='history';w.observe();await new Promise(r=>setImmediate(r));assert.equal(reads.length,coldReads);
     c.app.page='overview';w.observe();w.observe();await new Promise(r=>setImmediate(r));
-    assert.deepEqual(reads.slice(coldReads),['/api/workspace/preparation','/api/tasks/recovery?task_id='+TASK],'one current owner read discovers the external Task and reads its exact recovery view');
-    assert.equal(discovery.current.task_id,TASK);assert.equal(discovery.current.inputs.length,1);
-    const address=new URLSearchParams(c.location.hash.slice(1));
-    assert.equal(address.get('page'),'overview');assert.equal(address.get('task'),TASK);assert.equal(address.get('preparation'),TASK,'the owner-discovered Task is pinned without changing Home or its inspector');
-    assert.equal(String(w.firstUse()),'','the verified input removes the initial preparation scene from Home');
-    w.observe();await new Promise(r=>setImmediate(r));
-    assert.equal(reads.length,coldReads+2,'a verified completion is not polled again');
-    assert.equal(posts.length,coldPosts,'discovery posts no PLAN, confirmation or other mutation');
-    c.Data.tasks=originalTasks;c.location.hash=originalHash;c.app.page='welcome';bodies['/api/workspace/preparation']=empty;
-    await w.refresh('welcome');
+    assert.deepEqual(reads.slice(coldReads),['/api/workspace/preparation','/api/tasks/recovery?task_id='+TASK]);assert.equal(discovery.current.task_id,TASK);
+    let address=new URLSearchParams(c.location.hash.slice(1));assert.equal(address.get('page'),'overview');assert.equal(address.get('task'),TASK);assert.equal(address.get('preparation'),null);
+    const authoritative=readback('SUCCEEDED',{task_id:NEXT,latest_task_id:NEXT,inputs:[{input_id:'family',binding_hash:'binding'}]});
+    c.Data.tasks=()=>[earlier,current];c.Data.taskSuccessor=row=>row.task_id===TASK ? {successor_task_id:NEXT} : null;bodies['/api/workspace/preparation']=authoritative;
+    c.Data.read=async path=>path==='/api/tasks/recovery?task_id='+NEXT ? (reads.push(path),current) : originalRead(path);
+    w.observe();await new Promise(r=>setImmediate(r));assert.equal(discovery.current.task_id,NEXT);assert.equal(discovery.current.inputs.length,1);assert.equal(String(w.firstUse()),'');
+    const settledReads=reads.length;w.observe();await new Promise(r=>setImmediate(r));assert.equal(reads.length,settledReads);
+    const historical=readback('BLOCKED',{task_id:TASK,selected:true,latest_task_id:NEXT,superseded_by_task_id:NEXT});
+    c.Data.read=async path=>path==='/api/workspace/preparation?task_id='+TASK ? (reads.push(path),historical) : path==='/api/tasks/recovery?task_id='+NEXT ? (reads.push(path),current) : originalRead(path);
+    c.location.hash='#page=overview&preparation='+TASK;w.firstUse();await new Promise(r=>setImmediate(r));const kept=w.page();
+    assert.ok(kept.includes(c.t('Historical Task'))&&kept.includes(c.t('Continued by Task {task}',{task:NEXT.slice(0,8)})));assert.equal(new URLSearchParams(c.location.hash.slice(1)).get('preparation'),TASK);assert.equal(discovery.current.task_id,NEXT);
+    const historicalReads=reads.length;w.observe();await new Promise(r=>setImmediate(r));assert.equal(reads.length,historicalReads);
+    c.location.hash='#page=overview';w.firstUse();await new Promise(r=>setImmediate(r));assert.equal(discovery.current.task_id,NEXT);assert.equal(String(w.firstUse()),'');assert.equal(new URLSearchParams(c.location.hash.slice(1)).get('preparation'),null);
+    assert.equal(posts.length,coldPosts);
+    c.Data.tasks=originalTasks;c.Data.taskSuccessor=originalSuccessor;c.Data.read=originalRead;c.location.hash=originalHash;c.app.page='welcome';bodies['/api/workspace/preparation']=empty;await w.refresh('welcome');
   }
-  // preview: the owner's plan is offered with its scope; a dismissed preview stays and is re-offered without a second PLAN
   bodies['/api/workspace/preparation/plan']={status:'CONFIRMATION_REQUIRED',confirmation_available:true,plan_hash:'plan-1',target_session:'2026-07-31',initial_history_years:10,source_mode:'ACQUIRE_APPROVED_SOURCES',candidate_count:null,candidate_count_basis:'KNOWN_AFTER_SOURCE_CAPTURE',universe:'current S&P 500 union NASDAQ-100 union DJIA',quality:{maximum_missing_ratio:0.02,maximum_consecutive_missing_sessions:20},sources:['yfinance'],next_action:'WORKSPACE_PREPARE_CONFIRM',limits:[]};
+  const fresh=bodies['/api/workspace/preparation/plan'];
+  fresh.resource_estimate={cpu_budget:'auto',cpu_cores:11,cpu_sampled_at:'2026-07-31T12:00:00+00:00',cpu_selection:'RUN_START',cpu_detail:'The CPU budget affects scheduling; resources are chosen when the Task starts.',wall_seconds:390,wall_status:'ESTIMATED',elapsed_scope:'FULL_TASK',peak_memory_bytes:5368709120};
   modal=null;await w.preview('prepare');
   assert.deepEqual(posts.at(-1),['/api/workspace/preparation/plan',{}]);
   assert.ok(modal.content.includes('2026-07-31') && modal.content.includes('New work') && modal.content.includes('not known at this preview') && modal.content.includes('plan-1'),'the confirmation names the scope, reuse versus new work and the storage estimate honestly');
+  assert.ok(modal.content.includes('CPU budget') && modal.content.includes('Auto') && modal.content.includes('11 cores') && modal.content.includes('Load sampled') && modal.content.includes('CPU scheduling') && modal.content.includes('Estimated run time'));
+  bodies['/api/workspace/preparation/plan']={...fresh,source_mode:'REUSE_CAPTURED_SOURCES_REVALIDATE_LOCAL_STATE',predecessor_task_id:'kept-task',resource_estimate:{...fresh.resource_estimate,wall_seconds:null,wall_status:'UNKNOWN',elapsed_scope:'REMAINING_WORK',memory_scope:'FULL_TASK_CONSERVATIVE'},recovery_work:{reused_stages:['freeze_sources'],remaining_stages:['prepare_data','prepare_features','publish_inputs','verify_inputs'],sources_may_be_accessed:['yfinance']}};
+  await w.preview('prepare');
+  assert.ok(modal.content.includes('Not estimated') && !modal.content.includes('Estimated run time') && modal.content.includes('Full task estimate'));
+  assert.ok(modal.content.includes('Reused stages') && modal.content.includes('Freeze sources') && modal.content.includes('Remaining stages') && modal.content.includes('Prepare market data') && modal.content.includes('yfinance'));
+  bodies['/api/workspace/preparation/plan']=fresh;await w.preview('prepare');
   w.dismissConfirmation();markup=w.page();
   assert.ok(markup.includes('Preparation scope · preview') && markup.includes('Confirm preparation:workspace-preview:reoffer'),'the retained preview stays on the page with its own confirm');
   modal=null;const plans=posts.length;await w.preview('reoffer');assert.equal(posts.length,plans,'re-offering the retained preview plans nothing again');assert.ok(modal.content.includes('plan-1'));
@@ -337,7 +331,6 @@ c.objectRow=publicBuilders.objectRow;
   assert.ok(!delegated(false,EARLIER,'OPERATOR_OFFLINE_SWITCH').includes('first use'),'the operator switch decides first');
   bodies['/api/workspace/preparation/plan']=confirmable;modal=null;await w.preview('prepare');assert.ok(modal?.content.includes('plan-1'),'an allowed preview offers its confirmation again');
   const explicitPlans=posts.filter(([p])=>p==='/api/workspace/preparation/plan').length; // every PLAN so far was a press
-  // confirm: one POST; the page becomes the Task's scene (readback + recovery view), not the drawer
   bodies['/api/workspace/preparation/confirm']={status:'ADMITTED',task_id:TASK,lifecycle:'QUEUED'};
   bodies['/api/workspace/preparation']=readback('RUNNING',{task_id:TASK,plan_hash:'plan-1',progress:{phase:'prepare_data',candidates:120,raw_ready:25,quality_eligible:25,failed:0,retry_after_at:null}});
   bodies['/api/tasks/recovery']=view('RUNNING','prepare_data');
@@ -350,7 +343,6 @@ c.objectRow=publicBuilders.objectRow;
   assert.ok(!markup.includes('run-steps'),'the plain roster is not drawn beside the rail');
   assert.ok(markup.includes('Request cancel:task-cancel:'+TASK+':'),'cancel is offered while the Task moves');
   assert.ok(!markup.includes('Preparation scope · preview'),'an admitted preview is not shown as pending');
-  // the finer count of the Feature stage is shown only when bound to this Task and stage
   bodies['/api/workspace/preparation']=readback('RUNNING',{task_id:TASK,plan_hash:'plan-1',progress:{phase:'prepare_features',status:'PREPARING_FEATURE_CLOSURE'},work_progress:{availability:'BOUND',stage:'prepare_features',execution_id:'e1',age_seconds:1.3,stage_id:'base_feature_materialization',status:'RUNNING',completed_units:63,total_units:120,unit_name:'listings',current_item:'6f5cd63e-8230',counters:{},failure_code:null}});
   bodies['/api/tasks/recovery']=view('RUNNING','prepare_features');
   await w.refresh('welcome');markup=w.page();
@@ -361,16 +353,12 @@ c.objectRow=publicBuilders.objectRow;
   bodies['/api/workspace/preparation'].work_progress={...bodies['/api/workspace/preparation'].work_progress,availability:'NOT_CURRENT'};
   await w.refresh('welcome');markup=w.page();
   assert.ok(markup.includes('No finer count is reported for this step') && !markup.includes('/ 120 listings'),'an unbound observation is not shown as the current step');
-  // the scene's re-read on the activity cadence: reads only, patched in place; nothing elsewhere or once the Task has stopped
   const observed=reads.length,paintsBefore=patches.length,rendersBefore=renders.length;
   w.observe();await new Promise(r=>setTimeout(r,20));
   assert.deepEqual(reads.slice(observed),['/api/workspace/preparation?task_id='+TASK,'/api/tasks/recovery?task_id='+TASK],'one readback (of the pinned Task) and one recovery view per observation');
   assert.equal(patches.length,paintsBefore+1,'the observed scene is patched in place');assert.equal(renders.length,rendersBefore,'not fully rendered');
   assert.equal(posts.filter(([p])=>p==='/api/workspace/preparation/plan').length,explicitPlans,'no PLAN in the polling path');
   c.app.page='history';const away=reads.length;w.observe();await new Promise(r=>setTimeout(r,20));assert.equal(reads.length,away,'nothing is read for the scene from another page');c.app.page='welcome';
-  // transport loss after a valid RUNNING answer: the last observation stays, named as such; no
-  // fresh-progress signal, no heartbeat claimed as current, the outage is the page's own fact;
-  // a successful read recovers, and no Task lifecycle is changed by the browser's clock
   bodies['/api/workspace/preparation']=readback('RUNNING',{task_id:TASK,plan_hash:'plan-1',progress:{phase:'prepare_data',candidates:120,raw_ready:50,quality_eligible:50,failed:0,retry_after_at:null}});
   bodies['/api/tasks/recovery']=view('RUNNING','prepare_data');
   await w.refresh('welcome');markup=w.page();
@@ -387,8 +375,6 @@ c.objectRow=publicBuilders.objectRow;
   c.Data.read=realRead;w.observe();await new Promise(r=>setTimeout(r,20));markup=w.page();
   assert.ok(markup.includes('data-live="true"') && !markup.includes('data-disconnected'),'a successful read recovers the live scene');
   assert.equal(posts.filter(([p])=>p==='/api/cancel'||p==='/api/recover').length,0,'no Task lifecycle is touched by the reader');
-  // the person's own Refresh (the actual action, not the cadence) failing after a valid answer
-  // has the same meaning: `quiet` chose how the page is drawn, not whether the facts are current
   c.Data.read=async p=>{reads.push(p);throw Error('TypeError: Failed to fetch');};
   await w.refresh('welcome');markup=w.page();
   assert.ok(markup.includes('data-disconnected="true"') && !markup.includes('data-live="true"') && !markup.includes('data-moving="true"'),'a failed manual refresh marks the retained scene stale');
@@ -397,26 +383,19 @@ c.objectRow=publicBuilders.objectRow;
   c.Data.read=realRead;await w.refresh('welcome');markup=w.page();
   assert.ok(markup.includes('data-live="true"') && !markup.includes('data-disconnected'),'a successful manual read recovers the live scene');
   assert.equal(posts.filter(([p])=>p==='/api/cancel'||p==='/api/recover').length,0,'no Task lifecycle is touched by a manual read either');
-  // interrupted: the owner's resume is the one offered action; stopped by its owner: retry under the same plan or the data issues
   bodies['/api/workspace/preparation']=readback('RECOVERY_REQUIRED',{task_id:TASK,plan_hash:'plan-1',failure_code:'TASK_EXECUTION_INTERRUPTED'});
   bodies['/api/tasks/recovery']=view('RECOVERY_REQUIRED','publish_inputs',{stop:{code:'TASK_EXECUTION_INTERRUPTED',stage_id:'publish_inputs',detail:'The worker stopped before the current stage was verified.',recoverable:true}});
   await w.refresh('welcome');markup=w.page();
   assert.ok(markup.includes('Resume this Task:task-recovery:'+TASK+':') && !markup.includes('Request cancel:'),'an interrupted Task offers the owner\'s resume and nothing to cancel');
-  // a resume confirmed in the Task Center moves the Task before this scene has read it again: the
-  // projection the activity feed keeps says so, and the scene re-reads once on the cadence
   const idle=reads.length;w.observe();await new Promise(r=>setTimeout(r,20));assert.equal(reads.length,idle,'a stopped Task is not re-read while nothing says it moved');
   c.Data.tasks=()=>[{task_id:TASK,lifecycle:'RUNNING',verified_stage_count:3,total_stage_count:5}];
   w.observe();await new Promise(r=>setTimeout(r,20));assert.equal(reads.length,idle+2,'a moving projection re-reads the scene');c.Data.tasks=()=>[];
-  // a resumed Task that already finished between two reads: the projection disagrees with the
-  // view without moving, and the scene still re-reads (it was left on "interrupted" once)
   bodies['/api/workspace/preparation']=readback('SUCCEEDED',{task_id:TASK,plan_hash:'plan-1',inputs:[{input_id:'family',binding_hash:'binding'}]});
   bodies['/api/tasks/recovery']=view('SUCCEEDED','verify_inputs',{verified_stage_count:5,artifact_refs:['playpen://x']});
   c.Data.tasks=()=>[{task_id:TASK,lifecycle:'SUCCEEDED',verified_stage_count:5,total_stage_count:5}];
   const settled=reads.length;w.observe();await new Promise(r=>setTimeout(r,20));
   assert.equal(reads.length,settled+2,'a projection that disagrees with the view re-reads the scene');
   assert.ok(!w.page().includes('prep-area') && discovery.current.inputs.length===1,'and the completion is reached: the Home is the Home');c.Data.tasks=()=>[];
-  // ---- the work area: real listing units bound to the execution, follow / hold, inspection
-  // held across re-reads, one collapse, the choices kept per exact Task; no post from any of it
   const unit=(symbol,state,at,extra={})=>({listing_id:symbol.toLowerCase()+'-0000-listing',symbol,state,observed_at:at,origin:state==='RAW_READY'?'ACQUIRED':state==='RAW_FAILED'?null:'LOCAL',raw_through:state==='RAW_READY'?'2026-09-15':null,failure_code:state==='RAW_FAILED'?'data.provider_fetch_failed':null,reasons:[],tail_acquired:false,...extra});
   const activity=(rows,extra={})=>({availability:'BOUND',stage:'prepare_data',execution_id:'e1',sequence:1,observed:rows.length,retained:rows.length,dropped:0,written_at:'2026-09-15T21:07:30+00:00',age_seconds:0.4,rows,...extra});
   const firstRows=[unit('AAA','RAW_READY','2026-09-15T21:07:29+00:00'),unit('AAA','QUALITY_ELIGIBLE','2026-09-15T21:07:29+00:00'),unit('AAA','FEATURE_READY','2026-09-15T21:07:29+00:00'),unit('BBB','RAW_FAILED','2026-09-15T21:07:30+00:00')];
@@ -431,8 +410,9 @@ c.objectRow=publicBuilders.objectRow;
     }
     Object.assign(c,prior);
   }
-  bodies['/api/workspace/preparation']=readback('RUNNING',{task_id:TASK,plan_hash:'plan-1',progress:{phase:'prepare_data',candidates:4,raw_ready:0,quality_eligible:0,failed:0,retry_after_at:null},listing_activity:activity(firstRows)});
+  bodies['/api/workspace/preparation']=readback('RUNNING',{task_id:TASK,plan_hash:'plan-1',progress:{phase:'prepare_data',candidates:4,raw_ready:0,quality_eligible:0,failed:0,retry_after_at:null,exclusion_counts:{acquisition_failure:1,quality_rejection:2,history_ineligible:3}},listing_activity:activity(firstRows),activity_timing:{stage:'prepare_data',sampled_at:'2026-09-15T21:17:02+00:00',last_work_at:'2026-09-15T21:07:30+00:00'}});
   bodies['/api/tasks/recovery']=view('RUNNING','prepare_data');
+  bodies['/api/tasks/recovery'].status.timing={stages:[{stage_id:'prepare_data',updated_at:'2026-09-15T21:07:24+00:00',seconds:578}]};
   const lifecyclePosts=()=>posts.filter(([p])=>p==='/api/cancel'||p==='/api/recover'||p.endsWith('/confirm')||p.endsWith('/plan')).length;
   const postsBeforeArea=lifecyclePosts();
   await w.refresh('welcome');markup=w.page();
@@ -442,12 +422,21 @@ c.objectRow=publicBuilders.objectRow;
   assert.ok(markup.includes('prep-unit attention') && markup.includes('failed · <span class="coded" data-tip="data.provider_fetch_failed">'),'the refused unit is shown as recorded, its code in words with the code on hover (N6, law 80)');
   assert.ok(markup.includes('4 of 4 units of this execution retained in the snapshot') && !markup.includes('not retained'),'the snapshot is labelled with its bounds');
   assert.equal(w.area().rows,2,'rows are folded per listing');assert.equal(w.area().arrived,0,'the first paint of an execution announces nothing');
-  // more units on a live read: only the new listing is an arrival; a listing seen before is not
+  for(const key of ['Stage updated','Stage duration','Latest actual work','1 acquisition failures','2 data quality rejections','3 listings ineligible'])assert.ok(markup.includes(key),key);
+  const clocks=markup.match(/<p class="tp-caption">([^]*?Stage updated[^]*?)<\/p>/)?.[1] || '';
+  const actualTime=bodies['/api/workspace/preparation'].activity_timing,stageTime=bodies['/api/tasks/recovery'].status.timing.stages[0];
+  assert.ok(clocks.includes('Stage updated · '+c.when(stageTime.updated_at)) && clocks.includes('Latest actual work · '+c.when(actualTime.last_work_at)) && !clocks.includes(c.when(actualTime.sampled_at)),'work and stage clocks');
+  const measured=bodies['/api/workspace/preparation'].progress.exclusion_counts;
+  bodies['/api/workspace/preparation'].progress.exclusion_counts=null;
+  bodies['/api/workspace/preparation'].activity_timing.stage='prepare_features';
+  await w.refresh('welcome','',true);markup=w.page();
+  assert.ok(markup.includes('Exclusion categories not reported') && !markup.includes('0 acquisition failures') && !markup.includes('Latest actual work'),'unknown and stage binding');
+  bodies['/api/workspace/preparation'].progress.exclusion_counts=measured;
+  bodies['/api/workspace/preparation'].activity_timing.stage='prepare_data';
   bodies['/api/workspace/preparation'].listing_activity=activity([...firstRows,unit('CCC','RAW_READY','2026-09-15T21:07:33+00:00'),unit('CCC','QUALITY_ELIGIBLE','2026-09-15T21:07:33+00:00')],{sequence:2,observed:7,retained:6,dropped:1});
   w.observe();await new Promise(r=>setTimeout(r,20));markup=w.page();
   assert.equal(w.area().rows,3);assert.equal(w.area().arrived,1,'the newly seen listing is the one arrival');
   assert.ok(markup.includes('6 of 7 units of this execution retained in the snapshot · 1 earlier units not retained'),'retention gaps are disclosed, never reconstructed');
-  // a read that fails keeps the rows and announces nothing on the read that recovers
   c.Data.read=async p=>{reads.push(p);throw Error('TypeError: Failed to fetch');};
   w.observe();await new Promise(r=>setTimeout(r,20));markup=w.page();
   assert.ok(markup.includes('data-listing-key="ccc-0000-listing"') && markup.includes('last successful read') && markup.includes('data-disconnected="true"'),'rows are kept through an outage and labelled as the last successful read');
@@ -455,12 +444,8 @@ c.objectRow=publicBuilders.objectRow;
   bodies['/api/workspace/preparation'].listing_activity=activity([...firstRows,unit('CCC','RAW_READY','2026-09-15T21:07:33+00:00'),unit('CCC','QUALITY_ELIGIBLE','2026-09-15T21:07:33+00:00'),unit('DDD','RAW_READY','2026-09-15T21:07:36+00:00')],{sequence:3,observed:8,retained:7,dropped:1});
   w.observe();await new Promise(r=>setTimeout(r,20));
   assert.equal(w.area().rows,4);assert.equal(w.area().arrived,1,'the read that recovers from an outage is a baseline: the earlier arrival is still pending its paint, the new row is not announced');
-  // hold / follow is the reader's choice; the rail shows it
   w.follow();markup=w.page();assert.ok(markup.includes('Resume following') && markup.includes('Reading held') && w.area().follow===false,'reading is held on request');
   w.follow();assert.ok(w.page().includes('Hold reading') && w.area().follow===true,'and following resumes');
-  // the reader's scroll versus the page's own: the position this module set or last saw is not
-  // the reader's movement when a repaint restores it (nor when the restoration clamps to a shorter
-  // log); any other position is the reader's, however soon after a paint, and carries the intent
   const W=c.W;const log={scrollTop:0,clientHeight:450,scrollHeight:2250};
   W.A.logTop=null;log.scrollTop=1800;W.heldByScroll(log);assert.ok(W.A.follow===true && W.A.logTop===1800,'the first observed position at the end keeps following');
   W.heldByScroll(log);assert.ok(W.A.follow===true,'a restoration to the known end changes nothing');
@@ -473,7 +458,6 @@ c.objectRow=publicBuilders.objectRow;
   assert.ok(W.A.follow===true && log.scrollTop===2250 && W.A.logTop===2250,'resuming by the button moves the log to the end as this module\'s own move');
   log.scrollTop=1800;W.heldByScroll(log);assert.ok(W.A.follow===true && W.A.logTop===1800,'the clamped end the browser reports for that move is not the reader either');
   assert.ok(w.page().includes('Hold reading') && w.area().follow===true);
-  // inspecting an earlier stage holds it across a re-read and offers the way back; it runs nothing
   w.inspect('freeze_sources');markup=w.page();
   assert.ok(markup.includes('data-shown="freeze_sources"') && markup.includes('Inspecting') && markup.includes('Return to current:workspace-stage::') && markup.includes('data-inspecting="true"'),'the inspected stage is shown, held, with the way back');
   assert.ok(markup.includes('Verified by Task Control; its record is kept with 1 evidence reference. Inspecting it runs nothing.'),'the retained record of the inspected stage');
@@ -481,13 +465,9 @@ c.objectRow=publicBuilders.objectRow;
   w.observe();await new Promise(r=>setTimeout(r,20));assert.ok(w.page().includes('data-shown="freeze_sources"'),'a re-read does not pull the reader away');
   w.inspect('');assert.ok(w.page().includes('data-shown="prepare_data"') && w.page().includes('Current stage'),'return to current follows again');
   w.inspect('prepare_data');assert.equal(w.area().inspect,null,'selecting the current stage is following it');
-  // folding leaves a compact summary with the stage, the count and the status; a reload of the
-  // same Task keeps it; another Task starts expanded and following
   w.fold();markup=w.page();
   assert.ok(markup.includes('data-folded="true"') && markup.includes('class="prep-summary"') && markup.includes('stage 2 of 5') && markup.includes('0 / 4') && !markup.includes('id="prepListingLog"'),'folded: the summary, not the body');
   assert.deepEqual(prefs.workScene,{task:TASK,folded:true,inspect:null,follow:true});
-  // the discovered Task was pinned in the route: a latest B answering a bare read never
-  // replaces it here (the read asks for A by id); B is shown only when chosen (the route)
   assert.equal(c.location.hash,'#preparation='+TASK,'the discovered preparation is pinned in place');
   const OTHER='0000000-other-task';
   const readbackB=readback('RUNNING',{task_id:OTHER,plan_hash:'plan-2',progress:{phase:'prepare_data',candidates:4,raw_ready:0,quality_eligible:0,failed:0,retry_after_at:null}});
@@ -510,7 +490,6 @@ c.objectRow=publicBuilders.objectRow;
   bodies['/api/tasks/recovery']=view('RUNNING','prepare_features');
   await w.refresh('welcome');assert.ok(w.page().includes('data-folded="true"') && w.area().task===TASK,'the same Task returns folded, as chosen');
   w.fold();
-  // a refused selection is said so, with the way to the current preparation; nothing else read
   c.location.hash='#page=welcome&preparation=no-such-task';
   c.Data.read=readByTask();
   await w.refresh('welcome');markup=w.page();
@@ -522,7 +501,6 @@ c.objectRow=publicBuilders.objectRow;
   assert.equal(reads[beforeReturn],'/api/workspace/preparation?task_id='+TASK,'the chosen Task is read by the page entry after a refusal, once');
   assert.ok(w.page().includes('prep-area') && w.page().includes('data-shown="prepare_features"') && w.scene().body.task_id===TASK,'A again, exactly, through the page entry');
   assert.equal(reads.slice(beforeReturn).filter(v=>v.startsWith('/api/workspace/preparation')).length,1,'one read per choice');
-  // B chosen, then A chosen while B is still being read: the late answer for B is discarded
   let releaseB;const gateB=new Promise(r=>{releaseB=r;});
   c.Data.read=readByTask({'/api/workspace/preparation':async id=>{if(id===OTHER){await gateB;return readbackB;}return byTask[id];}});
   c.location.hash='#page=welcome&preparation='+OTHER;markup=w.page();await settle(5);
@@ -531,8 +509,6 @@ c.objectRow=publicBuilders.objectRow;
   assert.ok(w.area().task===TASK && w.scene().body.task_id===TASK,'A is read and shown');
   releaseB();await settle();
   assert.ok(w.area().task===TASK && w.scene().body.task_id===TASK && w.page().includes('data-shown="prepare_features"') && !w.scene().loading,'the late answer for B did not replace the chosen A');
-  // B chosen while A is shown and the owners do not answer: the failure is B's, said as such;
-  // A's facts are not kept on the page marked as B's last observation
   c.Data.read=readByTask({'/api/workspace/preparation':async id=>{if(id===OTHER) throw Error('TypeError: Failed to fetch');return byTask[id];}});
   c.location.hash='#page=welcome&preparation='+OTHER;w.page();await settle();
   markup=w.page();
@@ -540,14 +516,10 @@ c.objectRow=publicBuilders.objectRow;
   c.location.hash='#page=welcome&preparation='+TASK;w.page();await settle();
   assert.ok(w.scene().body.task_id===TASK && w.page().includes('prep-area') && !w.page().includes('Failed to fetch'),'and A reads normally again');
   c.Data.read=realRead;
-  // the earlier stage's rows are history once the stage moved on: shown on inspection, said so
   w.inspect('prepare_data');markup=w.page();
   assert.ok(markup.includes('data-history="true"') && markup.includes('retained history, not current work') && markup.includes('Last retained unit'),'retained rows of an earlier stage are history, never current work');
   assert.ok(/<details class="run-log reveal-details prep-log" data-moving="false">/.test(markup) && markup.includes('run-log-fold'),'a log that no longer moves is folded to its one line, its units a press away (R14): '+(markup.match(/<(details|section) class="run-log[^>]*>/) || [''])[0]);
   w.inspect('');
-  // reading held on the data log while the owner advances: the data stage stays shown as an
-  // inspection with the way back, the hold survives a reload of the same Task, and returning
-  // to current follows the stage again without touching the hold
   bodies['/api/workspace/preparation']=readback('RUNNING',{task_id:TASK,plan_hash:'plan-1',progress:{phase:'prepare_data',candidates:4,raw_ready:0,quality_eligible:0,failed:0,retry_after_at:null},listing_activity:activity(firstRows)});
   byTask[TASK]=bodies['/api/workspace/preparation'];bodies['/api/tasks/recovery']=view('RUNNING','prepare_data');
   await w.refresh('welcome');w.follow();assert.equal(w.area().follow,false);
@@ -568,29 +540,27 @@ c.objectRow=publicBuilders.objectRow;
   w.inspect('');await w.refresh('welcome');w.observe();await settle();
   assert.ok(w.page().includes('data-shown="prepare_features"') && w.area().inspect===null,'the same in the page that observed the transition');
   w.follow();
-  // workspace discovery is the latest Task's story: with B verified as the latest, reading the
-  // cancelled A on request changes nothing that other pages say about the workspace
   const readbackDone={...readback('SUCCEEDED',{task_id:OTHER,plan_hash:'plan-2',inputs:[{input_id:'family',binding_hash:'binding'}]}),selected:false,latest_task_id:OTHER};
   const readbackOld={...readback('CANCELLED',{task_id:TASK,plan_hash:'plan-1',failure_code:'TASK_CANCELLED_AT_SAFE_CHECKPOINT'}),selected:true,latest_task_id:OTHER};
   byTask[TASK]=readbackOld;byTask[OTHER]={...readbackDone,selected:true};viewByTask[OTHER]={...view('SUCCEEDED','verify_inputs'),task_id:OTHER};viewByTask[TASK]=view('CANCELLED','prepare_data');
   bodies['/api/workspace/preparation']=readbackDone;c.Data.read=readByTask();discovered.length=0;
   c.location.hash='#page=welcome';await w.refresh('welcome');
   assert.deepEqual(discovered,[OTHER],'a bare read discovers the latest');
-  assert.equal(c.location.hash,'#page=welcome&preparation='+OTHER,'and pins it');
+  assert.equal(new URLSearchParams(c.location.hash.slice(1)).has('preparation'),false);assert.equal(c.Data.preparation().task_id,OTHER);
   c.location.hash='#page=welcome&preparation='+TASK;w.page();await settle();
   markup=w.page();
   assert.ok(markup.includes('Cancelled') && markup.includes('data-shown="prepare_data"') && w.scene().body.task_id===TASK,'the cancelled A is shown exactly, at the stage it stopped');
-  assert.deepEqual(discovered,[OTHER],'reading a historical Task on request is not a workspace-state update');
+  assert.ok(markup.includes(c.t('Stopped at'))&&!markup.includes(c.t('Current stage'))&&!markup.includes(c.t('Following latest')));
+  assert.deepEqual(discovered,[OTHER,OTHER]);assert.equal(c.Data.preparation().task_id,OTHER);
   c.app.page='history';assert.equal(String(w.notice()),'','the workspace is still prepared (B) on other pages');c.app.page='welcome';
   c.location.hash='#page=welcome&preparation='+OTHER;w.page();await settle();
-  assert.deepEqual(discovered,[OTHER,OTHER],'the latest read on request is the workspace\'s story too');
+  assert.deepEqual(discovered,[OTHER,OTHER,OTHER]);assert.equal(c.Data.preparation().task_id,OTHER);
   assert.equal(lifecyclePosts(),postsBeforeArea,'inspection is read-only');
   delete viewByTask[TASK];c.location.hash='#page=welcome&preparation='+TASK;c.Data.read=realRead;
   assert.equal(lifecyclePosts(),postsBeforeArea,'no reading, folding, inspection or following posts anything');
   bodies['/api/workspace/preparation']=readback('RECOVERY_REQUIRED',{task_id:TASK,plan_hash:'plan-1',failure_code:'TASK_EXECUTION_INTERRUPTED'});
   bodies['/api/tasks/recovery']=view('RECOVERY_REQUIRED','publish_inputs',{stop:{code:'TASK_EXECUTION_INTERRUPTED',stage_id:'publish_inputs',detail:'The worker stopped before the current stage was verified.',recoverable:true}});
   await w.refresh('welcome');
-  // Pending truth review follows the preparation owner's read request before any mutation.
   const pendingTruth=(extra={})=>readback('BLOCKED',{task_id:TASK,plan_hash:'plan-1',failure_code:'data.truth_review_required',execution_binding_changed:false,next_action:'DATA_ISSUES',confirmation_available:false,next_requests:{issues:{operation:'DATA_ISSUES'}},...extra});
   bodies['/api/workspace/preparation']=pendingTruth({execution_binding_changed:true});
   bodies['/api/tasks/recovery']=view('BLOCKED','prepare_features',{stop:{code:'data.truth_review_required',stage_id:'prepare_features',detail:'Listings need a data decision.',recoverable:false}});
@@ -601,10 +571,11 @@ c.objectRow=publicBuilders.objectRow;
   assert.equal(modal,null,'a stale continue press opens no confirmation when the owner withholds it');
   assert.equal(posts.length,beforeContinuation,'a stale continue press mutates nothing');
   assert.ok(w.page().includes('Preview the preparation first.'),'the withheld continuation answers in the existing words');
-  bodies['/api/workspace/preparation']=pendingTruth({superseded_by_task_id:OTHER,next_action:'WORKSPACE_PREPARE_READBACK',next_requests:{successor:{operation:'WORKSPACE_PREPARE_READBACK',task_id:OTHER}}});
+  bodies['/api/workspace/preparation']=pendingTruth({selected:true,latest_task_id:OTHER,superseded_by_task_id:OTHER,next_action:'WORKSPACE_PREPARE_READBACK',next_requests:{successor:{operation:'WORKSPACE_PREPARE_READBACK',task_id:OTHER}}});
+  const linked=[],normalLink=c.link;c.link=(...args)=>{linked.push(args);return normalLink(...args);};
   await w.refresh('welcome');markup=w.page();
-  assert.ok(markup.includes('Inspect successor Task:workspace-task:'+OTHER) && !markup.includes('Retry this Task'),'the owner\'s successor remains the way on for a historical stopped Task');
-  // A recorded decision restores only the exact confirmation the owner offers.
+  c.link=normalLink;assert.ok(linked.some(args=>args[1]==='overview'&&args[3]?.preparation===OTHER));
+  assert.ok(markup.includes(c.t('Historical Task'))&&!markup.includes(c.t('Inspect successor Task'))&&!markup.includes(c.t('Retry this Task')));
   bodies['/api/workspace/preparation']=readback('BLOCKED',{task_id:TASK,plan_hash:'plan-1',failure_code:'data.truth_review_required',execution_binding_changed:false,confirmation_available:null,next_requests:{confirm:{operation:'WORKSPACE_PREPARE_CONFIRM',preparation_plan_hash:'plan-1'}}});
   await w.refresh('welcome');markup=w.page();
   assert.ok(markup.includes('Blocked') && markup.includes('Retry this Task:workspace-preview:continue-preparation:') && markup.includes('LINK:Data issues') && !markup.includes('Resume this Task:task-recovery'),'a stopped Task retries only after the owner offers its confirm');
@@ -640,15 +611,12 @@ c.objectRow=publicBuilders.objectRow;
   await w.refresh('welcome');markup=w.page();
   assert.ok(markup.includes('Cancelled') && markup.includes('Preview preparation:workspace-preview:prepare') && markup.includes('from its start to its last recorded activity'),'a cancelled Task offers a new preview; its elapsed time stops at its last activity');
   const stopped=reads.length;w.observe();await new Promise(r=>setTimeout(r,20));assert.equal(reads.length,stopped,'a stopped Task is not re-read on the cadence');
-  // completed: the exact input and the one next step, which edits a draft and runs nothing
-  // (the input owner's listing read earlier on the inputs page names this version)
   bodies['/api/workspace/preparation']=readback('SUCCEEDED',{task_id:TASK,plan_hash:'plan-1',inputs:[{input_id:'family',binding_hash:'binding'}]});
   bodies['/api/tasks/recovery']=view('SUCCEEDED','verify_inputs',{verified_stage_count:5,artifact_refs:['playpen://x']});
   await w.refresh('welcome');markup=w.page();
   assert.ok(!markup.includes('prep-area') && !markup.includes('Request cancel:'),'the completion leaves the Home the Home; the verified input is the Inputs page\'s');
   const draftPosts=posts.length;await w.selectInput(JSON.stringify(['family','binding']));
   assert.deepEqual(drafts.at(-1),JSON.stringify(['family','binding']));assert.equal(posts.length,draftPosts,'selecting the input into a draft posts nothing');
-  // the entry notice names the workspace's state from the session context and the Task projection
   c.Data.preparation=()=>readback('INITIALIZATION_REQUIRED');c.app.page='history';
   assert.ok(String(w.notice()).includes('not prepared for research yet') && String(w.notice()).includes('LINK:Prepare workspace'));
   c.Data.preparation=()=>readback('RUNNING',{task_id:TASK});c.Data.tasks=()=>[{task_id:TASK,lifecycle:'RUNNING',verified_stage_count:1,total_stage_count:5}];
@@ -685,7 +653,6 @@ c.objectRow=publicBuilders.objectRow;
     await w.preview('pin-index',JSON.stringify(['1111aaaa2222bbbb3333cccc','PIN']));
     bodies['/api/workspace/storage/pin']={status:'PINNED'};await w.commit();
     assert.deepEqual(posts.at(-1),['/api/workspace/storage/pin',{input_binding_hash:'1111aaaa2222bbbb3333cccc',input_pinned:true}],'a pin names the index through the owner\'s pin route');
-    // while an approved cleanup awaits recovery the Host offers no index action, and the rows offer none
     bodies['/api/workspace/storage']={...bodies['/api/workspace/storage'],pending_cleanup:['p'.repeat(64)],status:'RECOVERY_REQUIRED',evidence:{...evidence,indexes:evidence.indexes.map(ix=>({...ix,available_actions:[]}))}};
     c.table=(headers,rows)=>'<table>'+(Array.isArray(rows) ? rows.join('') : String(rows))+'</table>';c.tr=(cells)=>'<tr>'+cells.map(x=>String(x ?? '')).join(' | ')+'</tr>';
     await w.refresh();page=String(w.page()).replace(/\s+/g,' ');c.table=tableStub;c.tr=trStub;
@@ -737,7 +704,6 @@ c.objectRow=publicBuilders.objectRow;
     assert.deepEqual(posts.at(-1),['/api/workspace/backup',{}],'the confirmation sends the one backup request, the kept count the owner\'s');
     page=String(w.page()).replace(/\s+/g,' ');
     assert.ok(page.includes('Backed up as generation')&&page.includes('cccccccccccc'),'the answer is said in place, and the new generation listed: '+page.slice(0,400));
-    // a refused read holds the button with its reason and says the refusal
     const read=c.Data.read;c.Data.read=async(p)=>{if(p==='/api/workspace/backup')throw Error('research_workspace.manifest_unreadable: no manifest');return read(p);};
     await w.refresh();await new Promise(r=>setImmediate(r));c.Data.read=read;
     page=String(w.page()).replace(/\s+/g,' ');
@@ -765,7 +731,6 @@ c.objectRow=publicBuilders.objectRow;
   finish();
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
-// data issue count names current cases apart from retained decisions.
 {
 const library=require('./workbench_library.cjs'),complete=library.guard("data_issue_count_names_current_cases_apart_from_retained_decisions");
 const _appDir=require('node:path').resolve(process.argv[2]),_project=require('node:path').resolve(__dirname,'../..');

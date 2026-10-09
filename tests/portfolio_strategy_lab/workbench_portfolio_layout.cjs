@@ -38,6 +38,7 @@ const c = {
   badge:()=>'', codeWords:(value)=>value, link:()=>'',
   LiveViews:{bookWords:()=>'',bookTools:()=>'',researchTiming:()=>'',portfolioDetails:()=>'<div>Diagnostics</div>',metricAbsence:()=>null},
   LiveActivation:{ensure:()=>{},panel:()=>''},
+  LiveTasks:{currentGroup:()=>''},
   Data,
   displayState:(_name)=>({order:'listing-asc',group:'none',props:{}}), setDisplay:()=>{}, displayOptions:()=>'',
   searchBar:()=>'<div class="search"></div>', detailSplit:(body)=>body,

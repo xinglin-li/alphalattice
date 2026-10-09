@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
+from secrets import token_hex
 from threading import RLock
 from uuid import UUID
 
@@ -236,6 +237,23 @@ class GoalStore:
             if record.get("nonce") == nonce:
                 return record
         return None
+
+    def committee(self, task: str, goal_id: UUID | None = None) -> dict[str, str] | None:
+        """The goal whose ledger holds an update's committee floor, and the floor's key seed.
+
+        Given `goal_id`, it is kept for the update unless one already is. The seed stays here,
+        outside every goal record, so no read returns it.
+        """
+        path = self.content.root / "committees" / f"{UUID(task)}.json"
+        if goal_id is not None:
+            with self.lock:
+                if not path.is_file():
+                    record = {"goal_id": str(goal_id), "seed": token_hex(32)}
+                    self.content.atomic_write(path, json.dumps(record, sort_keys=True).encode())
+        if not path.is_file():
+            return None
+        held: dict[str, str] = json.loads(path.read_bytes())
+        return held
 
     def attribute(self, goal_id: UUID, entry: Mapping[str, object]) -> None:
         """Keep one request or event a goal's work made: one immutable file each.

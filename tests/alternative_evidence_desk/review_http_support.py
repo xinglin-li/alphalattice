@@ -6,7 +6,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
 
@@ -240,6 +240,29 @@ def start_service(
     )
     session.start()
     return _Service(session, tmp_path)
+
+
+def _service(
+    tmp_path: Path,
+    workspace: Path,
+    report,
+    *,
+    with_runtime: bool,
+    with_actor: bool,
+    model_authority_admitted: bool = True,
+) -> Iterator[_Service]:
+    authority = build_authority(
+        tmp_path=tmp_path,
+        report=report,
+        with_runtime=with_runtime,
+        with_actor=with_actor,
+        model_authority_admitted=model_authority_admitted,
+    )
+    service = start_service(workspace, authority, tmp_path)
+    try:
+        yield service
+    finally:
+        service.session.stop()
 
 
 def _raise_interruption(*args: object, **kwargs: object) -> object:

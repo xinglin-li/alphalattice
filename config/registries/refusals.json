@@ -6,6 +6,9 @@
 "activity.cursor_invalid": {
 "owner": "activity"
 },
+"activity.event_channel_reserved": {
+"owner": "activity"
+},
 "activity.event_correlation_invalid": {
 "owner": "activity"
 },
@@ -4332,6 +4335,21 @@
 "cli.not_an_operation_command": {
 "owner": "cli"
 },
+"committee.message_refused": {
+"owner": "committee"
+},
+"committee.not_open": {
+"owner": "committee"
+},
+"committee.publication_required": {
+"owner": "committee"
+},
+"committee.refused": {
+"owner": "committee"
+},
+"committee.session_required": {
+"owner": "committee"
+},
 "content_store.artifact_missing": {
 "owner": "content_store"
 },
@@ -4593,6 +4611,9 @@
 "evidence_review.authority_identity_invalid": {
 "owner": "evidence_review"
 },
+"evidence_review.budget_exceeds_consent": {
+"owner": "evidence_review"
+},
 "evidence_review.campaign_budget_invalid": {
 "owner": "evidence_review"
 },
@@ -4612,6 +4633,15 @@
 "owner": "evidence_review"
 },
 "evidence_review.choose_sec_acquisition_or_source_artifacts": {
+"owner": "evidence_review"
+},
+"evidence_review.consent_beyond_delegation": {
+"owner": "evidence_review"
+},
+"evidence_review.consent_budget_invalid": {
+"owner": "evidence_review"
+},
+"evidence_review.consent_human_only": {
 "owner": "evidence_review"
 },
 "evidence_review.deepseek_base_url_invalid": {
@@ -4639,6 +4669,9 @@
 "owner": "evidence_review"
 },
 "evidence_review.immutable_package_conflict": {
+"owner": "evidence_review"
+},
+"evidence_review.install_failed": {
 "owner": "evidence_review"
 },
 "evidence_review.installed_matter_selection_retired": {
@@ -4701,10 +4734,13 @@
 "evidence_review.research_input_selection_required": {
 "owner": "evidence_review"
 },
+"evidence_review.retrieval_environment_not_loaded": {
+"owner": "evidence_review"
+},
 "evidence_review.retrieval_recipe_unsupported": {
 "owner": "evidence_review"
 },
-"evidence_review.sec_user_agent_required": {
+"evidence_review.sec_contact_not_configured": {
 "owner": "evidence_review"
 },
 "evidence_review.semantic_capability_invalid": {
@@ -4714,6 +4750,12 @@
 "owner": "evidence_review"
 },
 "evidence_review.semantic_model_outside_workspace": {
+"owner": "evidence_review"
+},
+"evidence_review.source_admission_failed": {
+"owner": "evidence_review"
+},
+"evidence_review.source_admission_waits_for_evidence_task": {
 "owner": "evidence_review"
 },
 "evidence_review.source_file_unavailable": {
@@ -10471,6 +10513,12 @@
 "owner": "research_delivery"
 },
 "research_delivery.review_runtime_unavailable": {
+"owner": "research_delivery"
+},
+"research_delivery.subject_required": {
+"owner": "research_delivery"
+},
+"research_delivery.update_subject_mismatch": {
 "owner": "research_delivery"
 },
 "research_experiment.actor_program_mismatch": {

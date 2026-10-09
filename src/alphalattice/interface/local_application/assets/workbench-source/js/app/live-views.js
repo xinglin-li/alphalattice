@@ -366,9 +366,13 @@ const LiveViews = (() => {
     return items;
   }
   /* What is running: the moving Tasks with their stage, and the newest retained team session. */
-  function runningRows() {
+  function runningRows(tasksOnly=false) {
     const prep = Data.preparation();
-    const rows = Data.runsOf('task').filter((r) => stateMoving(r.state)).map((r) => runRow(r, {pinned: true, until: r.id === prep?.task_id ? prep.progress?.retry_after_at || null : null, word: r.id === prep?.task_id && stateMoving(r.state) ? t('Preparing the workspace') : undefined, columns: ['id', 'kind', 'stage', 'verified'], props: ['', codeWords(r.kind), '', html`${count(r.verified[0])} / ${count(r.verified[1])} ${t('verified')}`]})); // the run slot table (round 90): id · kind · stage · verified
+    const rows = Data.runsOf('task').filter((r) => stateMoving(r.state)).slice(0,LOBBY.shown).map((r) => {
+      const subject=LiveTasks.subjectContext?.(r.id);
+      return runRow(subject?.name ? {...r,name:subject.name,markup:null} : r, {pinned:true,until:r.id===prep?.task_id ? prep.progress?.retry_after_at || null : null,word:r.id===prep?.task_id ? t('Preparing the workspace') : undefined,columns:['id','kind','date','verified'],props:['',codeWords(r.kind),subject?.date || '',html`${count(r.verified[0])} / ${count(r.verified[1])} ${t('verified')}`]});
+    });
+    if(tasksOnly)return rows;
     // U70 (V452, OP19): the person's first use, run by their agent -- the Host's FIRST_USE item while its delegation holds: the
     // steps it took as theirs, the hours left, its goal the way (where its one Stop is)
     for (const d of (Data.decisions() || []).filter((x) => x.kind === 'FIRST_USE')) {
@@ -389,6 +393,10 @@ const LiveViews = (() => {
     const reveal = rest.length ? html`<details class="reveal-details home-more"><summary>${countText(rest.length, 'Show {n} more', 'Show {n} more')}</summary><div class="${cls}">${rest}</div></details>` : '';
     return rows.length ? html`${groupHead(title, total)}${note}<div class="${cls}">${rows.slice(0, shown)}</div>${more}${reveal}` : ''; // N6 (law 81): an empty group is not drawn
   };
+  const runningGroup=(tasksOnly=false)=>{
+    const total=Data.tasks().filter(v=>stateMoving(v.lifecycle)).length, rows=runningRows(tasksOnly);
+    return group(t('Running'),rows,'card-list lines slotted',total+rows.length-Math.min(total,LOBBY.shown),total>LOBBY.shown ? link(t('All Tasks'),'tasks','text-btn') : '');
+  };
   /* U74: Home keeps WD4's first screen at any count -- the first decisions in the Host's order, the rest folded behind
    * one way that counts them (a person can pile up a dozen). */
   const HOME_DECISIONS = 5;
@@ -397,16 +405,16 @@ const LiveViews = (() => {
   /* The Home's groups (N6): what needs a decision, what runs, what was recorded -- each only when
    * it holds something; a Home with nothing in any shows the one empty state and its way. */
   function homeGroups(unprepared) {
-    const decide = decisionRows(), running = runningRows(), forward = LiveActivation.forwardRows(), recent = Data.recent(8).map((r) => recordRow(r)), closure = LiveTasks.unrecoverableActions();
-    if (!decide.length && !running.length && !forward.length && !recent.length && !closure) return emptyState(t('No saved research yet.'), unprepared ? '' : link(t('New experiment'), 'lab', 'button primary'), 'page-empty');
+    const decide = decisionRows(), running = runningGroup(), forward = LiveActivation.forwardRows(), recent = Data.recent(8).map((r) => recordRow(r)), closure = LiveTasks.unrecoverableActions();
+    if (!decide.length && !String(running).trim() && !forward.length && !recent.length && !closure) return emptyState(t('No saved research yet.'), unprepared ? '' : link(t('New experiment'), 'lab', 'button primary'), 'page-empty');
     // V593 (U81): what runs forward, after what runs now (LiveActivation reads it from its owners)
-    return html`${decisionGroup(decide)}${closure}${group(t('Running'), running)}${group(t('Running forward'), forward)}${group(t('Recently recorded'), recent, undefined, recent.length, '', '', LOBBY.shown)}`;
+    return html`${decisionGroup(decide)}${closure}${stackSlot('homeRunning',running)}${group(t('Running forward'), forward)}${group(t('Recently recorded'), recent, undefined, recent.length, '', '', LOBBY.shown)}`;
   }
   function overview() {
     const prep = Data.preparation(), unprepared = Boolean(prep) && !prep.inputs?.length;
     const f = resumeFacts(prep, unprepared);
     const meta = html`<span>${icon('task')}${countText(openTaskCount(), '{n} Task needs a decision', '{n} Tasks need a decision')}</span><span>${icon('lock')}${t('Local workspace')}</span>`;
-    return html`${objectHead(Data.workspace(), meta, html`${f.secondary}${f.primary}`, f.state, HOME_TOOLS(), {object: true, facts: homeChips().filter(Boolean)})}${unprepared ? html`<section class="first-use" aria-label="${t('First use')}">${LiveWorkspace.firstUse()}</section>` : ''}<section class="home-groups" aria-label="${t('Home')}">${homeGroups(unprepared)}</section>`;
+    return html`${objectHead(Data.workspace(), meta, html`${f.secondary}${f.primary}`, f.state, HOME_TOOLS(), {object: true, facts: homeChips().filter(Boolean)})}${unprepared || LiveWorkspace.selectedTask('welcome') ? html`<section class="first-use" aria-label="${t('First use')}">${LiveWorkspace.firstUse()}</section>` : ''}<section class="home-groups" aria-label="${t('Home')}">${homeGroups(unprepared)}</section>`;
   }
   function tasks() {
     return LiveTasks.page();
@@ -745,5 +753,5 @@ const LiveViews = (() => {
     apply(document.body);
   }
   return {temporalRow, temporalAll, page, existing, studyLobby, savedObjectLink, studyRow, workspaceDialog, workspacePopover, holdingDetail, bookTools, portfolioDetails, bookFactsSections, collaborationRows, comparePage, proofBody, chartData, quickEntries, bind, researchTiming,
-    studyFacts, bookWords, metricAbsence, declaredFromReadback, cutoffText, inputState, shortRef, openerWords: (kind) => t(KIND_OPENERS[kind] || 'Open saved object'), recordRow, taskSuccessor, taskStopFacts, taskAttentionFacts, governanceBody, nameOf, truthOf, waiting, needs, dataNeeds, runningRows, decisionRow, decisionRows, decisionGroup, reviewWay, realizationWords};
+    studyFacts, bookWords, metricAbsence, declaredFromReadback, cutoffText, inputState, shortRef, openerWords: (kind) => t(KIND_OPENERS[kind] || 'Open saved object'), recordRow, taskSuccessor, taskStopFacts, taskAttentionFacts, governanceBody, nameOf, truthOf, waiting, needs, dataNeeds, runningRows, runningGroup, decisionRow, decisionRows, decisionGroup, reviewWay, realizationWords};
 })();

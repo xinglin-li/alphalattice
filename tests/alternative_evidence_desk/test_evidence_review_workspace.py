@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import json
 import os
@@ -48,6 +49,204 @@ def installer_universe(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     chosen: dict[str, str] = {}
     monkeypatch.setattr(setup, "_universe_listing_ids", lambda _workspace: chosen)
     return chosen
+
+
+def _bound(tmp_path: Path) -> Any:
+    """A workspace whose manifest binds a fixture Evidence package: that binding."""
+    from alphalattice.control.product_host.composition.research_workspace import (
+        publish_research_workspace_manifest,
+    )
+
+    binding, _ = _package(tmp_path)
+    publish_research_workspace_manifest(
+        tmp_path,
+        ResearchWorkspaceManifest.create(
+            workspace_id="install-task",
+            default_strategy_package_id="fixture-package",
+            default_score_source_mode="HISTORICAL_ARRAY_REPLAY",
+            strategy_artifacts=(),
+        ).with_bindings(evidence_review=binding),
+    )
+    return binding
+
+
+def _install(
+    tmp_path: Path, *, served: list[bool], during: Any = None, runs: int = 1
+) -> tuple[Any, str, str]:
+    """Run one install Task of an SEC acquisition in a workspace session `runs` times (a recovery
+    after the first): its record, and the bound package's path before and after."""
+    from scripts import materialize_evidence_cro_authority as setup
+
+    from alphalattice.control.product_host.composition.application_session import (
+        WorkspaceApplicationSession,
+    )
+    from alphalattice.control.product_host.composition.research_workspace import (
+        read_research_workspace_manifest,
+    )
+
+    binding = _bound(tmp_path)
+    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        install = setup.EvidenceInstall(
+            session=session, clock=lambda: datetime.now(UTC), installed=lambda: served.append(True)
+        )
+        admitted = install.admit(
+            [
+                *("--semantic-model", str(tmp_path / "authority/semantic-model")),
+                *("--acquire-sec", "--entities", "AAPL"),
+                *("--evidence-as-of", "2026-08-12T00:00:00+00:00"),
+                *("--network-consent", "--install"),
+            ]
+        )
+        if during is not None:
+            during(session, admitted.task_id)
+        for run in range(runs):
+            # A run before the last is the one that stopped mid-stage (`runs`).
+            with contextlib.suppress(KeyError) if run < runs - 1 else contextlib.nullcontext():
+                install.execute(admitted.task_id)
+        bound = read_research_workspace_manifest(tmp_path).evidence_review
+        assert bound is not None
+        return (
+            session.task_control_registry.task(admitted.task_id),
+            binding.relative_path,
+            bound.relative_path,
+        )
+
+
+@pytest.fixture
+def acquisition(monkeypatch: pytest.MonkeyPatch, installer_universe: dict[str, str]) -> Any:
+    """An SEC acquisition the install can run offline, its probes counted: the fixture transport."""
+    from scripts import materialize_evidence_cro_authority as setup
+
+    from alphalattice.control.workspace_runtime.network_access import network_access
+    from tests.alternative_evidence_desk.sec_fixture_transport import SecFixtureTransport
+
+    installer_universe.update({"AAPL": "US-AAPL"})
+    transport = SecFixtureTransport()
+    transport.probes = []
+    monkeypatch.setattr(
+        setup,
+        "probe_hybrid_retrieval_capabilities",
+        lambda *_: (
+            transport.probes.append(1)
+            or SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH)
+        ),
+    )
+    monkeypatch.setattr(setup, "HttpxSecOfficialTransport", lambda **_: nullcontext(transport))
+    monkeypatch.setattr(
+        setup, "network_access", lambda workspace: network_access(workspace, environment={})
+    )
+    found = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name, *rest: object() if name == "fastembed" else found(name, *rest),
+    )
+    return transport
+
+
+def test_the_running_host_installs_a_package_as_a_task_of_five_stages(tmp_path, acquisition):
+    """requirement: an install runs in the Host's own session as a Task whose five stages
+    verify; it binds the package and asks the Host to serve it."""
+    from alphalattice.control.workspace_runtime.network_access import set_network_access
+
+    set_network_access(tmp_path, enabled=True)
+    served: list[bool] = []
+    task, before, after = _install(tmp_path, served=served)
+    assert task.lifecycle.value == "SUCCEEDED", task.failure_code
+    assert served == [True] and len(acquisition.calls) == 3
+    assert after != before and after.startswith("authority/evidence-cro/")
+
+
+def test_a_recovered_install_runs_only_the_stage_it_stopped_in(tmp_path, acquisition, monkeypatch):
+    """recovery: an install stopped in its index stage resumes there: the model is not probed
+    again and nothing is acquired twice."""
+    from scripts import materialize_evidence_cro_authority as setup
+
+    from alphalattice.control.workspace_runtime.network_access import set_network_access
+
+    set_network_access(tmp_path, enabled=True)
+    whole = setup.canonicalize_source_documents
+    stops = [KeyError("a process that stopped mid-stage")]
+
+    def once(*args: Any) -> Any:
+        if stops:
+            raise stops.pop()
+        return whole(*args)
+
+    monkeypatch.setattr(setup, "canonicalize_source_documents", once)
+    task, before, after = _install(tmp_path, served=[], runs=2)
+    assert task.lifecycle.value == "SUCCEEDED", task.failure_code
+    assert len(acquisition.probes) == 1 and len(acquisition.calls) == 3 and after != before
+
+
+def test_a_cancelled_install_binds_nothing(tmp_path, acquisition, monkeypatch):
+    """requirement: a cancel stops an install before its publication, and the package bound
+    before it stays bound."""
+    from scripts import materialize_evidence_cro_authority as setup
+
+    from alphalattice.control.workspace_runtime.network_access import set_network_access
+
+    set_network_access(tmp_path, enabled=True)
+    whole = setup.canonicalize_source_documents
+    asked: list[Any] = []
+
+    def cancelling(*args: Any) -> Any:
+        session, task_id = asked[0]
+        registry = session.task_control_registry
+        registry.request_cancel(
+            task_id=task_id,
+            expected_task_hash=registry.task(task_id).record_hash,
+            observed_at=datetime.now(UTC),
+        )
+        return whole(*args)
+
+    monkeypatch.setattr(setup, "canonicalize_source_documents", cancelling)
+    served: list[bool] = []
+    task, before, after = _install(
+        tmp_path, served=served, during=lambda session, task_id: asked.append((session, task_id))
+    )
+    assert task.lifecycle.value == "CANCELLED" and served == [] and after == before
+
+
+def test_an_installed_package_is_served_before_the_runtime_it_replaced_closes(tmp_path):
+    """requirement: the review takes the new package first, the storage then reads it, the
+    replaced runtime closes, and the manifest is held last."""
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
+
+    _bound(tmp_path)
+    order: list[str] = []
+
+    def review() -> Any:
+        order.append("review")
+        return SimpleNamespace(close=lambda: order.append("close"))
+
+    host = SimpleNamespace(
+        install_review=review,
+        storage=SimpleNamespace(evidence=None),
+        _evidence_storage_binding=lambda: order.append("storage"),
+        _bind_evidence_storage_admission=lambda: order.append("admission"),
+        _hold_activation=lambda manifest: order.append(manifest.evidence_review.relative_path),
+        workspace_session=SimpleNamespace(workspace=tmp_path),
+    )
+    PortfolioResearchOperations._evidence_installed(host)  # type: ignore[arg-type]
+    assert order[:4] == ["review", "storage", "admission", "close"] and len(order) == 5
+
+
+def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(tmp_path, monkeypatch):
+    """requirement: a Host without the retrieval runtime cannot serve a package, so its
+    install blocks at its first stage by name and the package bound before stays bound."""
+    found = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name, *rest: None if name == "fastembed" else found(name, *rest),
+    )
+    served: list[bool] = []
+    task, before, after = _install(tmp_path, served=served)
+    assert task.lifecycle.value == "BLOCKED" and served == [] and after == before
+    assert task.failure_code == "evidence_review.retrieval_environment_not_loaded"
 
 
 def test_source_setup_preflights_acquires_and_preserves_prior_authority(
@@ -110,7 +309,7 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
     args.entities = ["AAPL"]
     assert setup.materialize(args)["accession_scopes"] == {"AAPL": ["0000320193-26-000001"]}
     args.accessions = None
-    assert not preview["sec_contact_configured"] and transport.calls == []
+    assert preview["sec_contact_configured"] and transport.calls == []
     assert old_path.read_bytes() == old_bytes
     args.entities = ["NOT-IN-UNIVERSE"]
     with pytest.raises(ValueError, match="entity_scope_outside_universe"):
@@ -143,10 +342,6 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
         setup, "network_access", lambda workspace: network_access(workspace, environment={})
     )
     args.network_consent = True
-    with pytest.raises(ValueError, match="sec_user_agent_required"):
-        setup.materialize(args)
-    assert transport.calls == []
-    monkeypatch.setenv("SEC_USER_AGENT", "Recorded protocol QA fixture@example.invalid")
     # The cutoff is declared, timezone-aware and never in the future; named
     # accessions need exactly one issuer and the official accession form.
     for invalid in ("2026-08-12", "2026-08-12T00:00:00", "not-a-time"):
@@ -840,6 +1035,9 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     )
     assert opened.returncode == 0, opened.stderr
     assert "--stop-on-stdin" in opened.stdout
+    # A workspace with no package yet runs there too, so a package installed later is served.
+    assert run_alphalattice.serve(["--workspace", str(tmp_path / "fresh")]) == 0
+    assert spawned[1][0][0] == str(interpreter)
     interpreter.unlink()
     assert run_alphalattice.serve(args) == 2
 
@@ -847,7 +1045,7 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     assert missing["next_action"] == "CREATE_DECLARED_RETRIEVAL_ENVIRONMENT"
     assert missing["setup_command"] == [*missing["network_setup_command"], "--offline"]
     assert "dependency-download permission" in missing["explanation"]
-    assert len(spawned) == 1
+    assert len(spawned) == 2
     # An uninitialized workspace must still reach the ordinary initializer.
     started = []
     monkeypatch.setattr(run_local_portfolio_web, "main", lambda args: started.append(args) or 0)

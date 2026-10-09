@@ -233,9 +233,9 @@ def test_a_workspace_under_a_retired_selection_is_refused_by_name(
         # The rebind as it is typed, its workspace filled in.
         rebind = preview["setup"]["authority"]["install"]
         assert rebind.endswith(
-            "--rebind-installed --matter-selection INTEGRATED_TOPIC_ROUTING --install"
+            '--setup="--rebind-installed --matter-selection INTEGRATED_TOPIC_ROUTING --install"'
         )
-        assert "materialize_evidence_cro_authority.py --workspace " in rebind
+        assert '--workspace "' in rebind and " evidence install --setup=" in rebind
         assert preview["matter_selection"]["retired"] is True
         # Its one offered request reads the workspace where the rebind is set up; nothing is
         # prepared or run under the retired selection (f72430809, verified recovery routes).

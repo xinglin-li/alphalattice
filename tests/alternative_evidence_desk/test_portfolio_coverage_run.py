@@ -535,7 +535,8 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         # different packages cannot be reviewed together (V546).
         ways = preview["source_ways"]
         assert "package" not in ways and ways["package_rule"] == PACKAGE_RULE
-        assert ways["official"]["serve"].endswith("serve --sec-network-consent")
+        assert ways["official"]["command"].endswith("evidence-consent set --per-issuer 3")
+        assert preview["acquisition_scope"]["units"] == UNIT_COUNT
         assert preview["status"] == "EVIDENCE_PREPARATION_READY" and "failure_code" not in preview
         prepared = _run_one(service, preview["next_requests"]["prepare"])
         assert prepared["disposition"] == "ADMITTED"
@@ -785,7 +786,7 @@ def test_a_book_its_sources_cannot_cover_says_so_with_its_ways_on(
             assert row["next_action"] == "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE"
         assert [row["unit_id"] for row in rows] == [value["unit_id"] for value in short]
         assert "package" not in section["source_ways"]
-        assert section["source_ways"]["official"]["serve"].endswith("--sec-network-consent")
+        assert section["source_ways"]["official"]["command"].endswith("--per-issuer 3")
     finally:
         service.session.stop()
 

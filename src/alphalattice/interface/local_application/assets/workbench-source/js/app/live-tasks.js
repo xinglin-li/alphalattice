@@ -13,6 +13,36 @@ const LiveTasks = (() => {
   // unfinished Task as Guanyin sees it (U22); `incidents`: the incident records, open first (U38); `remedy`:
   // the last remedy attempted from this page, said in place
   const S={selected:null,record:null,view:null,status:null,guardian:null,incidents:null,remedy:null,error:'',fetching:null,timer:null,confirming:null,busy:false,painted:'',settling:false,closureFailures:[]};
+  const subjects=new Map(); // admission context, refreshed by receipts; never current Task state
+  const shownTasks=()=>Data.tasks().filter(v=>stateMoving(v.lifecycle)).slice(0,LOBBY.shown);
+  function subjectContext(id,renewed=false) {
+    const held=subjects.get(id);
+    if(renewed){if(held){held.dirty=true;held.view=null;}return;}
+    if(!held || held.dirty && !held.pending)queueMicrotask(()=>readSubject(id));
+    return (held ? held.view : S.selected===id ? S.view : null)?.subject_context;
+  }
+  async function readSubject(id) {
+    if(subjects.get(id)?.pending || subjects.get(id)?.view && !subjects.get(id).dirty)return;
+    const entry={pending:true}, navigation=Data.navigationIntent(); subjects.set(id,entry);
+    try {
+      const v=await Data.read('/api/tasks/recovery?'+new URLSearchParams({task_id:id}));
+      if(!Data.navigationCurrent(navigation)) { if(subjects.get(id)===entry)subjects.delete(id); return; }
+      if(subjects.get(id)!==entry)return;
+      if(entry.dirty){entry.pending=false;paintCurrent();return;}
+      Object.assign(entry,{pending:false,view:v});
+    } catch(e) {
+      if(!Data.navigationCurrent(navigation)) { if(subjects.get(id)===entry)subjects.delete(id); return; }
+      Object.assign(entry,{pending:false,error:e.message});
+    }
+    paintCurrent();
+  }
+  const currentGroup=()=>stackSlot('currentWork',LiveViews.runningGroup(true));
+  function paintCurrent() {
+    const home=app.page==='overview', slot=$(home ? '#homeRunning' : '#currentWork');
+    if(!slot)return;
+    const content=LiveViews.runningGroup(!home);
+    if(slot.innerHTML!==String(content)){const saved=preserveSurface(slot);fillStackSlot(slot,content);restoreSurface(saved);}
+  }
   /* Keep polling while Task Control says the Task moves or the dispatcher says its operation
    * has not returned; the two facts are read apart and never masked over each other. */
   const alive=()=>stateMoving(S.record?.lifecycle) || (S.view ? stateMoving(S.view.lifecycle) || S.view.operation_running : false);
@@ -97,6 +127,9 @@ const LiveTasks = (() => {
     // it, as the Host's boundary read the request -- provenance, never an authority (an unknown is an empty slot)
     const tm=S.status?.timing, sb=S.status?.submitted_by, took=(s)=>s==null ? '' : durationText(Number(s)*1000);
     if(tm) rows.push([t('Waited in queue'),took(tm.queued_seconds)],[t(stateMoving(v.lifecycle) ? 'Running for' : 'Ran for'),took(tm.running_seconds)]);
+    const current=S.status?.task_id===v.task_id && S.status.current_stage===v.current_stage ? S.status : null, stage=current?.timing?.stages?.find(s=>s.stage_id===current.current_stage), actual=current?.activity_timing;
+    if(stage) rows.push([t('Stage updated'),when(stage.updated_at)],[t('Stage duration'),took(stage.seconds)]);
+    if(actual?.stage===current?.current_stage && actual?.last_work_at) rows.push([t('Latest actual work'),when(actual.last_work_at)]);
     if(sb) rows.push([t('Submitted by'),html`${sb.vendor ? PRODUCERS[String(sb.vendor).toLowerCase()] || codeWords(sb.vendor) : ''}${sb.session ? html`${sb.vendor ? ' · ' : ''}${t('session')} ${hash(sb.session,SHORT.id)}` : ''}${sb.goal_id ? html` · ${t('goal')} ${hash(sb.goal_id,SHORT.id)}` : ''}`]);
     return kv(rows,'run-receipt');
   }
@@ -246,7 +279,7 @@ const LiveTasks = (() => {
     const deferred=r?.lifecycle==='DEFERRED' ? S.status : null, until=deferred?.retry_after_at && Date.parse(deferred.retry_after_at)>(Date.parse(r.observed_at) || Date.now()) ? deferred.retry_after_at : null;
     const cause=!r ? noteLine(text,'',tone==='attention' ? 'warning' : 'neutral','',ic) : r.lifecycle==='SUCCEEDED' ? '' : stateHeld(r.lifecycle) || r.lifecycle==='CANCELLED' ? refusal({code:r.stop?.detail || w?.detail || stopKnown ? '' : stopCode,reason:(deferred?.detail ? LiveWorkspace.deferWords(deferred.detail) : '') || (r.stop?.detail ? t(r.stop.detail) : '') || (w?.detail ? t(w.detail) : '') || (r.operation_running ? t('the operation has not returned') : '')},TONE.attention,{state:r.lifecycle,word:t('Why it stopped'),next:until ? t('Waiting until {time}',{time:when(until)}) : way,more:causeLine(r.stop?.cause || S.status?.failure_cause)}) : noteLine(text,'',tone==='attention' ? 'warning' : 'neutral','',ic);
     const guardian=r ? html`<p class="caption">${t('Guanyin · G0 read-only · health {health} · no remediation attempted by this view · model facts not observed by this Host',{health:codeWords(r.health.status)})}</p>` : '';
-    return html`<div class="tp-detail"><p class="tp-truth">${t(v.goal_summary)}</p>${summary(v,r)}${LiveViews.taskSuccessor(r || v)}${S.error ? notRead(t('Status uncertain'),S.error) : ''}${cause}${r ? incident(r) : ''}${r ? permitted(r,fresh) : ''}<section class="inspector-section"><h3>${t('Steps')}${r ? html` <span>${r.verified_stage_count} / ${r.total_stage_count} ${t('verified')}</span>` : ''}</h3>${r ? steps(r) : skeleton('rows')}</section><details class="reveal-details inspector-section task-receipt"><summary>${t('Receipt')}</summary>${receipt(v,r)}</details>${log(v)}${guardian}</div>`;
+    return html`<div class="panel-body tp-detail"><p class="tp-truth">${t(v.goal_summary)}</p>${summary(v,r)}${LiveViews.taskSuccessor(r || v)}${S.error ? notRead(t('Status uncertain'),S.error) : ''}${cause}${r ? incident(r) : ''}${r ? permitted(r,fresh) : ''}<section class="inspector-section"><h3>${t('Steps')}${r ? html` <span>${r.verified_stage_count} / ${r.total_stage_count} ${t('verified')}</span>` : ''}</h3>${r ? steps(r) : skeleton('rows')}</section><details class="reveal-details inspector-section task-receipt"><summary>${t('Receipt')}</summary>${receipt(v,r)}</details>${log(v)}${guardian}</div>`;
   }
   /* Tasks as a lobby (F2, law 136): grouped by state -- the moving and the held open, the ended
    * folded; a held state's head says its way on in the state table's words -- by time (the moving
@@ -301,7 +334,9 @@ const LiveTasks = (() => {
   function paint() {
     Window.renderSide(); // the Tasks row's count (round 62)
     refreshInspector();
-    if(app.page==='tasks') patchMain();
+    const visible=$('#homeRunning') || $('#currentWork'), kept=new Set([...(visible ? shownTasks().map(v=>v.task_id) : []),S.selected]);
+    for(const [id,entry] of subjects){if(!kept.has(id))subjects.delete(id);else if(entry.error)void readSubject(id);}
+    if(app.page==='tasks')patchMain();else paintCurrent();
   }
   /* One read for the selected Task: the recovery view carries the same STATUS block every
    * reader receives, at the same moment, beside the owners' explanation. */
@@ -329,6 +364,7 @@ const LiveTasks = (() => {
           const record=view ? view.status : null;
           const ended=stateMoving(S.record?.lifecycle) && !stateMoving(record?.lifecycle);
           S.record=record; S.view=view; S.status=status; S.error=''; S.settling=false;
+          if(view)subjects.set(selected,{pending:false,view});
           if(ended) LiveReview.taskFinished(selected);
         }
       } catch(e) { S.error=e.message; }
@@ -371,7 +407,7 @@ const LiveTasks = (() => {
     Inspect.closeLens(false); closeDialog();
     // law 149 (the user, 2026-09-24: 侧栏点出来会闪烁): the record opens whole -- read first and shown
     // once, the list giving way in the same frame; a read slower than OPEN_WAIT shows its skeleton first
-    const closed=({nextMode}={})=>{ if(S.selected===id) { S.selected=null; S.record=null; S.view=null; S.status=null; S.remedy=null; S.painted=''; clearTimeout(S.timer); if(hashParams().get('task')===id && (nextMode!=='record' || app.page!=='tasks')) replaceHash({task:''}); } };
+    const closed=({nextMode}={})=>{ if(S.selected===id) { S.selected=null; S.record=null; S.view=null; S.status=null; S.remedy=null; S.painted=''; clearTimeout(S.timer); if(hashParams().get('task')===id && (nextMode!=='record' || app.page!=='tasks')) replaceHash({task:''}); patchMain(); } };
     const show=()=>{ if(!wanted() || S.selected!==id || (Window.inspectorMode()==='task' && Window.openedBy('task',id))) return; const nextMode=Inspect.addressedMode(); if(nextMode!=='task' || hashParams().get('task')!==id) { closed({nextMode}); return; } const recorded=S.record; Window.openInspector({mode:'task', readHeader:()=>({title:titleOf(id,recorded),kind:t('Task')}), title:titleOf(id), kind:t('Task'), body:runBody(), by:['task',id], onClose:closed}); S.painted=String(runBody()); };
     if(same && S.record) { show(); return refresh(); }
     const switching=Window.inspectorMode()==='task'; // another Task's record is shown: it stays until this one is read, then this one replaces it at once
@@ -554,5 +590,5 @@ const LiveTasks = (() => {
     window.addEventListener('pageshow',(e)=>{if(e.persisted&&alive())refresh();});
     LiveActivity.bind(); void LiveActivity.refresh();
   }
-  return {follow,page,open,refresh,refreshInspector,preview,commit,previewUnrecoverable,unrecoverableActions,previewRemedy,commitRemedy,replanPreview,replanCommit,turnIncidents,close,openResult,bind,paintActivity:paint,standing,liveness,dismissConfirmation:()=>{S.confirming=null;},toggle:()=>navigate('tasks'),view:()=>S.view,confirming:()=>S.confirming,selected:()=>S.selected};
+  return {follow,page,open,refresh,refreshInspector,currentGroup,subjectContext,preview,commit,previewUnrecoverable,unrecoverableActions,previewRemedy,commitRemedy,replanPreview,replanCommit,turnIncidents,close,openResult,bind,paintActivity:paint,standing,liveness,dismissConfirmation:()=>{S.confirming=null;},toggle:()=>navigate('tasks'),view:()=>S.view,confirming:()=>S.confirming,selected:()=>S.selected};
 })();

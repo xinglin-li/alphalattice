@@ -108,6 +108,7 @@ library.into = (c, appDir) => {
   if (c.Data && typeof c.Data === 'object' && !c.Data.route) {
     const routes = hostRoutes();
     c.Data.offers = (op) => Boolean(routes[op]);
+    if (!c.Data.posts) c.Data.posts = (op) => routes[op]?.method === 'POST';
     c.Data.route = (op) => { if (!routes[op]) throw Error('local_web.operation_route_absent: ' + op); return routes[op].path; };
   }
   // the reading helpers (`when`) read the locale: a context reads English unless it says otherwise

@@ -1089,3 +1089,117 @@ def test_daily_performance_names_absence_instead_of_annualizing_an_invalid_axis(
         assert lane["selected_window_metric_absences"][field]["reason"] == (
             "ZERO_DOWNSIDE_DEVIATION" if condition == "no_downside" else "NONFINITE_DERIVED_METRIC"
         )
+
+
+def test_a_plan_deep_verifies_the_updates_holding_each_recipes_latest_score() -> None:
+    "A plan deep verifies the updates holding each recipe's latest score."
+
+    from alphalattice.control.product_host.composition.decision_advancement import (
+        latest_per_recipe,
+    )
+
+    def score(package: str, recipe: str, day: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            strategy_package_hash=package,
+            component_recipe_hash=recipe,
+            formation_session=date(2026, 9, day),
+        )
+
+    completed = (
+        (score("p", "g2", 1), score("p", "g6", 1)),
+        (score("p", "g2", 2), score("p", "g6", 2)),
+        (score("p", "g2", 3),),
+        (score("p", "g6", 3), score("q", "g2", 1)),
+        (score("p", "g2", 3),),
+        (),
+    )
+    assert latest_per_recipe(completed) == (2, 3, 4)  # type: ignore[arg-type]
+    assert latest_per_recipe(()) == ()
+
+
+def test_the_completed_scores_seam_refuses_a_changed_latest_chain_and_a_changed_older_score(
+    tmp_path,
+) -> None:
+    "The completed scores seam refuses a changed latest chain and a changed older score."
+
+    from alphalattice.control.product_host.composition.decision_advancement import (
+        SCHEMA,
+        STAGES,
+        DecisionAdvancementApplication,
+    )
+    from alphalattice.control.task_control.contracts import TaskLifecycle
+    from alphalattice.investment.alpha_research.experiments.development_contracts import (
+        seal_current_contract,
+    )
+    from alphalattice.investment.alpha_research.publication.artifacts import (
+        AlphaCurrentArtifactStore,
+    )
+    from alphalattice.investment.alpha_research.publication.contracts import (
+        FrozenComponentScoreSnapshot,
+    )
+
+    store = AlphaCurrentArtifactStore(tmp_path / "artifacts")
+
+    def published(day: int) -> FrozenComponentScoreSnapshot:
+        score = seal_current_contract(
+            FrozenComponentScoreSnapshot,
+            {
+                "request_hash": "1" * 64,
+                "strategy_package_hash": "2" * 64,
+                "component_recipe_hash": "3" * 64,
+                "inference_authority_hash": "4" * 64,
+                "observation_snapshot_hash": "5" * 64,
+                "formation_session": date(2026, 9, day),
+                "ordered_listing_ids": ("a", "b"),
+                "feature_values_hashes": ("6" * 64,),
+                "model_identity_hashes": ("7" * 64,),
+                "projection_hash": "8" * 64,
+                "scores": (0.5, None),
+                "live": (True, False),
+                "prediction_calls": 1,
+            },
+            "snapshot_hash",
+        )
+        store.publish_frozen_component_score(score)
+        return score
+
+    updates = {"older": (published(1),), "latest": (published(2),)}
+    deep: list[str] = []
+    refused: set[str] = set()
+
+    def verify_products(plan: str, stage: str) -> None:
+        assert stage == STAGES[3]
+        deep.append(plan)
+        if plan in refused:
+            raise ValueError("research_update.features_binding_invalid")
+
+    tasks = [
+        SimpleNamespace(
+            name=name,
+            input=SimpleNamespace(input_schema_id=SCHEMA),
+            lifecycle=TaskLifecycle.SUCCEEDED,
+        )
+        for name in updates
+    ]
+    owner = SimpleNamespace(
+        session=SimpleNamespace(task_control_registry=SimpleNamespace(tasks=lambda: tasks)),
+        scoring=SimpleNamespace(store=store),
+        _plan_of=lambda task, current: task.name,
+        _verify_task_evidence=lambda task, plan: None,
+        _need=lambda plan, stage: SimpleNamespace(
+            products=tuple(score.snapshot_hash for score in updates[plan])
+        ),
+        _verify_products=verify_products,
+    )
+    completed = DecisionAdvancementApplication._completed_scores
+    assert completed(owner) == (*updates["older"], *updates["latest"])
+    assert deep == ["latest"]
+    refused.add("latest")
+    with pytest.raises(ValueError, match=r"^research_update\.features_binding_invalid$"):
+        completed(owner)
+    refused.clear()
+    (older,) = updates["older"]
+    path = next((tmp_path / "artifacts").rglob(f"{older.snapshot_hash}.json"))
+    path.write_bytes(path.read_bytes().replace(b"0.5", b"0.6"))
+    with pytest.raises(ValueError, match=r"^Alpha JSON payload hash is invalid$"):
+        completed(owner)

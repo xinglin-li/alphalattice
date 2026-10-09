@@ -492,9 +492,7 @@ def test_a_deferred_tasks_status_names_its_retry_time_and_resume() -> None:
 
 
 def test_a_deferred_tasks_clock_stops_while_it_waits() -> None:
-    """regression (V520, the lifecycle sweep S2): a deferred preparation or update counted its
-    wait for the provider as running, so its `running_seconds` grew for hours while nothing ran.
-    Its clock stops at its last change, as a recovery's or a review's does."""
+    """A deferred Task's recorded clock stops while it waits, including its listed row."""
 
     from alphalattice.control.task_control.timing import task_timing
 
@@ -535,10 +533,81 @@ def test_the_compact_view_leaves_out_the_timing_no_decision_reads() -> None:
     """requirement (V280): half of a `task show` answer was its stage timings; the compact
     view leaves them out and says so, the full view and --output keep them."""
 
+    stage = {"stage_id": "prepare_data", "seconds": 125.0}
     shown = client_module.compact_display(
-        {"status": "RUNNING", "lifecycle": "RUNNING", "timing": {"stages": [{"s": 1.0}] * 50}}
+        {
+            "status": "RUNNING",
+            "lifecycle": "RUNNING",
+            "timing": {"stages": [stage] * 50},
+            "stage_timing": stage,
+        }
     )
     assert "timing" not in shown["data"] and "timing" in shown["omitted_sections"]
+    assert shown["data"]["stage_timing"] == stage
+
+
+@pytest.mark.parametrize(
+    "overdue, language, timer_failure, operation",
+    [
+        (False, "en", None, "PLAN"),
+        (True, "en", None, "PLAN"),
+        (True, "zh", None, "PLAN"),
+        (False, "en", "create", "PLAN"),
+        (False, "en", "start", "PLAN"),
+        (True, "en", None, "RUN"),
+    ],
+)
+def test_a_pending_plan_explains_validation_once_without_changing_json_stdout(
+    live, tmp_path, monkeypatch, capsys, overdue, language, timer_failure, operation
+):
+    """A scheduled validation message leaves the CLI answer intact and closes with the request."""
+    from alphalattice.interface.local_application.cli import main
+
+    scheduled, finished = [], []
+
+    def timer(seconds, callback):
+        scheduled.append(seconds)
+        if timer_failure == "create":
+            raise RuntimeError("timer unavailable")
+
+        def start():
+            if timer_failure == "start":
+                raise RuntimeError("thread unavailable")
+            if overdue:
+                callback()
+
+        return SimpleNamespace(
+            start=start,
+            cancel=lambda: finished.append("cancel"),
+            join=lambda: finished.append("join"),
+        )
+
+    monkeypatch.setattr(client_module, "Timer", timer)
+    request = tmp_path / "plan-request.json"
+    request.write_text(json.dumps({"operation": operation, "spec": {}}), encoding="utf-8")
+    main(
+        [
+            "--workspace",
+            str(live.workspace),
+            "--lang",
+            language,
+            "request",
+            "--file",
+            str(request),
+        ],
+        serve=lambda _: 99,
+    )
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["operation"] == operation
+    assert scheduled == [5.0] and finished == ([] if timer_failure else ["cancel", "join"])
+    assert bool(captured.err) is overdue
+    if overdue:
+        message = json.loads(captured.err)
+        assert (message["operation"], message["status"]) == (operation, "VALIDATING")
+        assert message["elapsed_seconds"] >= 0 and message["detail"]
+        assert any("\u4e00" <= letter <= "\u9fff" for letter in message["detail"]) is (
+            language == "zh"
+        )
 
 
 class _Admitting(_Stub):
@@ -1238,11 +1307,14 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
     assert date_["formation_session"] == "2026-10-09"
     road = answer["first_use"]["road"]
     assert [step["step"] for step in road] == [
-        *("prepare", "strategy", "book", "activate", "review", "cro", "publish")
+        *("prepare", "strategy", "book", "activate", "review", "cro", "publish"),
+        *("committee", "report"),
     ]
     assert answer["next_action"] == "BUILD_THE_STRATEGY"
     assert answer["next_command"] == road[1]["command"]
-    assert "retrieval model" in answer["first_use"]["ask_now"][0]
+    asked = answer["first_use"]["ask_now"][0]
+    assert "default budget" in asked and "retrieval model" in asked
+    assert "SEC_USER_AGENT" not in asked
     assert "not recorded" in answer["first_use"]["sentence"]
     assert "project_declaration" in answer["first_use"]["setup"]["missing"]
 

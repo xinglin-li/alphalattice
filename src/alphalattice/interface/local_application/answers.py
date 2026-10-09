@@ -74,6 +74,8 @@ class TaskStatusAnswer(_Answer):
     view (`recovery show <task>`), and its owner's own requests where the Host has them. A
     DEFERRED one's: `resume`, its plan sent again once `retry_after_at` has passed, and `read`,
     its owner's readback."""
+    timing: dict[str, Any] | None = None
+    """Task Control's recorded queued/running spans and stage timings at this read."""
 
 
 class TaskArtifact(_Answer):
@@ -163,10 +165,21 @@ class TaskRecoveryAnswer(_Answer):
     """Why RECOVER would be refused now, as a code; none when it would be taken."""
     status: TaskStatusAnswer
     """The Task as its status read shows it."""
+    subjects: list[dict[str, str]] | None = None
+    """Every Evidence admission's exact book selector, admission time and selection provenance.
+    A Task can serve multiple books; without an address selector the reader must choose."""
+    subject_context: dict[str, str] | None = None
+    """The owner's recorded subject name, market date or Evidence cutoff, where retained."""
+    current_scope: dict[str, Any] | None = None
+    """The coverage run's admitted groups/issuers, nothing-filed and carried counts,
+    packing rule and failed_unit_ids from its unit receipts, independent of its book."""
+    subject_refusal: dict[str, Any] | None = None
+    """The owner's reason and way on when an admitted subject cannot be read."""
     next_requests: dict[str, Any] | None = None
     """Each permitted action that takes a version (`recover`, `cancel`), bound to the Task and
     the version this view read, and a blocked Task's owner's own requests, as its status offers
-    them; none when there are neither."""
+    them; `subject` names the exact book only when the Task has one unique admitted subject.
+    None when there are neither."""
 
 
 class ExperimentRow(_Answer):

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import socket
 import subprocess
 import urllib.request
 from collections.abc import Iterator
@@ -35,6 +36,9 @@ from alphalattice.control.product_host.composition.portfolio_application import 
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
+)
+from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
 from alphalattice.interface.local_application.web import (
     SESSION_COOKIE,
@@ -766,3 +770,48 @@ def _walk_badge_records(
         )
     finally:
         live.stop()
+
+
+def _agent(
+    session: LocalPortfolioWebSession, request: PortfolioResearchAgentRequest
+) -> dict[str, Any]:
+    assert session.operations is not None
+    bridge = InstalledAgent(session.operations)
+    return json.loads(bridge.invoke(request))
+
+
+def _raw(session: LocalPortfolioWebSession, request: bytes) -> tuple[int, bytes]:
+    """One handcrafted request. `urllib` cannot lie about `Content-Length`."""
+    port = session.web.bound_port
+    connection = socket.create_connection(("127.0.0.1", port), timeout=5.0)
+    try:
+        connection.sendall(request)
+        chunks: list[bytes] = []
+        while True:
+            try:
+                received = connection.recv(4096)
+            except TimeoutError:
+                break
+            if not received:
+                break
+            chunks.append(received)
+        payload = b"".join(chunks)
+    finally:
+        connection.close()
+    status = int(payload.split(b" ", 2)[1]) if payload.startswith(b"HTTP/") else 0
+    return (status, payload)
+
+
+def _run_to_completion(session: LocalPortfolioWebSession) -> str:
+    """Admit one background run and wait for the task, not for the request."""
+    admitted = _json(session, "/api/run", method="POST", payload={})
+    if admitted["disposition"] == "REUSED_EXACT":
+        assert admitted["task_id"] is None
+        return str(admitted["result_hash"])
+    assert admitted["disposition"] == "ADMITTED"
+    session.dispatcher.drain_for_tests()
+    status = _json(session, f"/api/status?task_id={admitted['task_id']}")
+    assert status["lifecycle"] == "SUCCEEDED", status
+    results = _json(session, "/api/results")["results"]
+    assert results
+    return str(results[0]["result_hash"])

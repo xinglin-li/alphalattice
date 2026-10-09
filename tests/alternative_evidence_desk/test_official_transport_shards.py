@@ -24,6 +24,7 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     SecIssuerRegistrySnapshot,
     seal_contract,
 )
+from alphalattice.evidence.alternative_evidence.sources.admission import sec_request_rate
 from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     HttpxSecOfficialTransport,
     SecEdgarSource,
@@ -315,3 +316,23 @@ def test_the_body_resource_budget_refuses_a_new_body_before_any_request() -> Non
     assert "sec_campaign_body_budget_exhausted" in outcomes[refused[0]][1]
     assert sum(1 for o, _d in outcomes.values() if o == "FETCHED") == 2
     assert snapshot.acquisition.body_request_count == 2
+
+
+def test_the_product_rate_spaces_official_requests_half_a_second_apart() -> None:
+    """requirement: the product asks the SEC at most twice a second."""
+    slept: list[float] = []
+    transport = HttpxSecOfficialTransport(
+        user_agent=USER_AGENT,
+        maximum_attempts=1,
+        transport=httpx.MockTransport(lambda _request: _json({})),
+        requests_per_second=sec_request_rate(),
+        monotonic=lambda: 0.0,
+        sleeper=slept.append,
+    )
+    registry = "https://www.sec.gov/files/company_tickers.json"
+    try:
+        transport.get(registry, maximum_bytes=1_000)
+        transport.get(registry, maximum_bytes=1_000)
+    finally:
+        transport.close()
+    assert slept == [0.5]

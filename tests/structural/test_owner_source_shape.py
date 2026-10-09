@@ -320,7 +320,7 @@ def test_every_coverage_floor_is_judged_by_one_rule_that_leaves_quiet_holdings_o
                     by_hand.add(f"{relative}::{function.name}")
     composition = "control/product_host/composition"
     assert judges == {
-        f"{composition}/evidence_authority_setup.py::_materialize": True,
+        f"{composition}/evidence_authority_setup.py::package": True,
         f"{composition}/evidence_review_application.py::units_short_of_sources": False,
         "evidence/alternative_evidence/runtime/task_adapter.py::_execute_stage": True,
     }
@@ -1054,6 +1054,43 @@ def test_a_score_producer_cannot_state_an_execution_term_source_shape() -> None:
     code = "".join(body[::2])
     assert "NEXT_COMMON_SESSION_OFFICIAL_OPEN" not in code
     assert "entry_offset_sessions" not in code
+
+
+def test_an_installed_package_moves_every_field_its_builder_takes_from_it_source_shape() -> None:
+    """regression: `adopt` swaps only `_INSTALLED_AUTHORITY`; a field the builder reads from the
+    package, left out of it, would keep serving the package it replaced."""
+    owners = ROOT / "src/alphalattice/control/product_host/composition"
+    installed = next(
+        ast.literal_eval(node.value)
+        for node in ast.parse((owners / "evidence_review_application.py").read_text("utf-8")).body
+        if isinstance(node, ast.Assign) and ast.unparse(node.targets[0]) == "_INSTALLED_AUTHORITY"
+    )
+    path = owners / "local_web_session.py"
+    builder = next(
+        node
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.FunctionDef) and node.name == "build_evidence_review_application"
+    )
+
+    def reads(node: ast.AST) -> set[str]:
+        return {name.id for name in ast.walk(node) if isinstance(name, ast.Name)}
+
+    package = {"authority", "official_source"}
+    package |= {
+        target.id
+        for node in ast.walk(builder)
+        if isinstance(node, ast.Assign) and reads(node.value) & package
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    (call,) = (
+        node
+        for node in ast.walk(builder)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "EvidenceReviewApplication"
+    )
+    taken = {keyword.arg for keyword in call.keywords if reads(keyword.value) & package}
+    assert taken == set(installed)
 
 
 def test_only_the_owner_writes_the_manifest() -> None:

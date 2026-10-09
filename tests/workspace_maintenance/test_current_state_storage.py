@@ -101,7 +101,7 @@ def test_storage_cap_counts_managed_models_panels_and_artifacts_and_follows_the_
     with pytest.raises(StorageInventoryError) as refusal:
         require_storage_capacity(tmp_path, additional_bytes=1)
     assert refusal.value.failure_code == "storage.managed_capacity_exceeded"
-    assert "Raise the cap in Settings or plan a cleanup" in str(refusal.value)
+    assert "storage set" in str(refusal.value) and "storage plan" in str(refusal.value)
     store.write(str(used + 1), chosen_by="HUMAN", chosen_at=datetime.now(UTC))
     require_storage_capacity(tmp_path, additional_bytes=1)
     assert {name: (tmp_path / name).read_bytes() for name in contents} == retained

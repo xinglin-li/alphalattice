@@ -22,7 +22,7 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
     PortfolioResearchOperations,
 )
 from alphalattice.control.product_host.publication.goals import GoalStore
-from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.control.workspace_runtime.network_access import NetworkAccess, network_access
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
@@ -37,6 +37,8 @@ from tests.portfolio_strategy_lab.local_web_support import run_node
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 SESSION = "00000000-0000-4000-8000-0000000000f1"
 OTHER_SESSION = "00000000-0000-4000-8000-0000000000f2"
+RELAY = ("--person-said", "Yes, go ahead.", "--asked", "May I widen the SEC budget?")
+INSTALL = "--setup=--acquire-sec --entities AAPL --network-consent --install"
 FIRST_USE = {
     "title": "First use",
     "objective": "Build me a reviewed book from public data.",
@@ -121,6 +123,78 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     assert not _network(live)
     code, refused = _cli(live, "network", "set", "--enabled", "true")
     assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
+
+
+def test_sec_source_consent_is_the_persons_outside_a_first_use(live: Any) -> None:
+    """requirement: outside a first use only the person, or their relayed yes, gives SEC source
+    consent or installs, within the source policy's bounds; a malformed setup is refused."""
+    code, refused = _cli(live, "evidence-consent", "set", "--per-issuer", "3")
+    assert code == 2 and refused["failure_code"] == "evidence_review.consent_human_only"
+    code, refused = _cli(live, "evidence", "install", INSTALL)
+    assert code == 2 and refused["failure_code"] == "evidence_review.consent_human_only"
+    for malformed in ('--setup=--entities "AAPL', INSTALL.removesuffix(" --install")):
+        code, invalid = _cli(live, "evidence", "install", malformed)
+        assert code == 2 and invalid["failure_code"] == "local_client.request_invalid", invalid
+    code, admitted = _cli(live, "evidence", "install", INSTALL, *RELAY)
+    assert code == 3 and admitted["status"] == "ADMITTED", admitted
+    invalid = live.operations.execute(
+        Request(operation="EVIDENCE_CONSENT_SET", evidence_documents_per_issuer=2), caller="HUMAN"
+    )
+    assert invalid["failure_code"] == "evidence_review.consent_budget_invalid"
+    given = live.operations.execute(
+        Request(operation="EVIDENCE_CONSENT_SET", evidence_documents_per_issuer=5), caller="HUMAN"
+    )
+    assert given["consent"]["actor"] == "HUMAN" and given["consent"]["documents_per_issuer"] == 5
+
+
+def test_a_first_use_gives_the_default_sec_budget_until_its_end(live: Any, tmp_path: Path) -> None:
+    """requirement: under the goal the agent gives the default budget, recorded as the goal's
+    delegation, more is refused by name, and the goal's end takes the consent back."""
+    declaration = tmp_path / "first-use.json"
+    declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
+    code, opened = _cli(live, "goal", "open", "--file", str(declaration))
+    assert code == 0, opened
+    code, given = _cli(live, "evidence-consent", "set", "--per-issuer", "3")
+    assert code == 0 and given["consent"]["actor"] == f"first-use-goal:{opened['goal_id']}"
+    code, wider = _cli(live, "evidence-consent", "set", "--per-issuer", "5")
+    assert code == 2 and wider["failure_code"] == "evidence_review.consent_beyond_delegation"
+    for beyond in ("--maximum-documents-per-issuer 5", "--analyst-timeout-seconds 30"):
+        code, wider = _cli(
+            live, "evidence", "install", INSTALL.replace(" --network", f" {beyond} --network")
+        )
+        assert code == 2 and wider["failure_code"] == "evidence_review.consent_beyond_delegation"
+    code, _ended = _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")
+    assert code == 0
+    code, shown = _cli(live, "evidence-consent", "show")
+    assert code == 0 and shown["consent"]["actor"] == "DEFAULT"
+
+
+def test_a_first_use_never_raises_the_persons_sec_consent(live: Any, tmp_path: Path) -> None:
+    """regression: a delegated agent could replace the person's narrower consent with the
+    default budget; the delegation gives nothing past what the person gave, unless relayed."""
+    narrower = live.operations.execute(
+        Request(
+            operation="EVIDENCE_CONSENT_SET",
+            evidence_documents_per_issuer=3,
+            evidence_total_bytes=1_000_000_000,
+        ),
+        caller="HUMAN",
+    )
+    assert narrower["consent"]["total_bytes"] == 1_000_000_000
+    declaration = tmp_path / "first-use.json"
+    declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
+    code, opened = _cli(live, "goal", "open", "--file", str(declaration))
+    assert code == 0, opened
+    code, raised = _cli(
+        live, "evidence-consent", "set", "--per-issuer", "3", "--bytes", "3000000000"
+    )
+    assert code == 2 and raised["failure_code"] == "evidence_review.consent_beyond_delegation"
+    code, relayed = _cli(
+        live, "evidence-consent", "set", "--per-issuer", "3", "--bytes", "3000000000", *RELAY
+    )
+    assert code == 0 and relayed["consent"]["total_bytes"] == 3_000_000_000, relayed
+    code, shown = _cli(live, "evidence-consent", "show")
+    assert code == 0 and shown["consent"]["actor"] == "HUMAN"
 
 
 def test_a_first_use_ends_without_undoing_what_the_person_set_since(
@@ -362,6 +436,36 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         code, opened = _cli(live, "goal", "open", "--file", str(declaration))
         assert code == 0, opened
         delegation = f"first-use-goal:{opened['goal_id']}"
+        with monkeypatch.context() as patch:
+            patch.setattr(live.operations.preparation, "provider", None)
+            patch.setattr(
+                "alphalattice.control.product_host.data_preparation.application.network_access",
+                lambda _root: NetworkAccess(False, "DEFAULT"),
+            )
+            patch.setattr(
+                "alphalattice.control.product_host.composition.portfolio_research_operations.network_access",
+                lambda _root: NetworkAccess(False, "DEFAULT"),
+            )
+            code, preview = _cli(live, "preparation", "plan")
+            code, hint = send({"operation": "NETWORK_ACCESS"})
+            assert all(hint[k] == v for k, v in preview["source_access"]["network_access"].items())
+            token = REQUEST_PROVENANCE.set(RequestProvenance(goal_id=opened["goal_id"]))
+            try:
+                human = live.operations.execute(Request(operation="NETWORK_ACCESS"), caller="HUMAN")
+            finally:
+                REQUEST_PROVENANCE.reset(token)
+            assert "delegation" not in human
+            assert human["next_action"] == "ASK_A_PERSON_TO_ALLOW_NETWORK_ACCESS"
+        code, offline = send({"operation": "NETWORK_ACCESS"})
+        assert offline["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
+        assert "delegation" not in offline and offline["next_requests"] == {}
+        access = preview["source_access"]["network_access"]
+        assert access["delegation"] == delegation
+        assert access["next_action"] == "SET_NETWORK_UNDER_FIRST_USE_DELEGATION"
+        assert access["next_requests"]["set"] == {
+            "operation": "NETWORK_ACCESS_SET",
+            "network_enabled": True,
+        }
         code, plan = _cli(live, "preparation", "plan")
         code, started = send(plan["next_requests"]["confirm"])
         assert started["status"] == "ADMITTED", started  # exit 3: the queued Task is pending

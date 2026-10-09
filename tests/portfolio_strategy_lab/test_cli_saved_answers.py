@@ -486,6 +486,23 @@ def test_a_request_a_listed_item_offers_is_followed(tmp_path: Path, fake_host, c
     assert (code, body["failure_code"]) == (2, "task_control.task_not_found"), body
     assert fake_host.sent == [{"operation": "STATUS", "task_id": task}]
 
+    plan = {"operation": "WORKSPACE_PREPARE_PLAN"}
+    aliases = (f"continue:{task}", "preparation_plan")
+    answer = {"next_requests": dict.fromkeys(aliases, plan)}
+    assert set(aliases) <= set(client.offered_requests(answer))
+    saved.write_text(json.dumps(answer), encoding="utf-8")
+    fake_host.sent.clear()
+    fake_host.answer = {"status": "PLANNED", "plan_hash": "c" * 64}
+    for alias in aliases:
+        assert (
+            cli.main(
+                ["--workspace", str(tmp_path), "request", "--from", str(saved), "--action", alias],
+                serve=lambda _: 99,
+            )
+            == 0
+        ), capsys.readouterr().out
+    assert fake_host.sent == [plan] * len(aliases)
+
 
 def test_schema_show_writes_its_output_file(tmp_path: Path, capsys: Any) -> None:
     """Schema, model, restore and scaffold commands save complete success and refusal answers."""
@@ -952,24 +969,23 @@ def test_a_read_alias_preserves_its_field_map_and_explicit_selection() -> None:
         ]
         == "f-1"
     )
-    day = {"operation": "EXPERIMENT_READBACK", "task_id": task, "portfolio_session": "2026-09-01"}
-    shown = named_read(day, {"status": "EXPERIMENT_PUBLISHED", "task_id": task})
-    assert client.continued("EXPERIMENT_READBACK", shown, {}, allowed("EXPERIMENT_READBACK")) == day
-    moved = client.continued(
-        "EXPERIMENT_READBACK",
-        shown,
-        {"portfolio_session": "2026-09-02"},
-        allowed("EXPERIMENT_READBACK"),
-    )
-    assert moved["portfolio_session"] == "2026-09-02"
+    for operation in ("EXPERIMENT_READBACK", "PORTFOLIO_READBACK"):
+        day = {"operation": operation, "task_id": task, "portfolio_session": "2026-09-01"}
+        if operation == "PORTFOLIO_READBACK":
+            day["performance"] = "latest"
+        shown = named_read(day, {"status": "EXPERIMENT_PUBLISHED", "task_id": task})
+        assert client.continued(operation, shown, {}, allowed(operation)) == day
+        moved = client.continued(
+            operation, shown, {"portfolio_session": "2026-09-02"}, allowed(operation)
+        )
+        assert moved == {**day, "portfolio_session": "2026-09-02"}
     package = {"operation": "CONTROLS", "strategy_package_id": "pkg-b"}
     controls = named_read(package, {"status": "CONTROLS", "strategy_package_id": "pkg-b"})
     assert client.continued("CONTROLS", controls, {}, allowed("CONTROLS")) == package
 
 
 def test_a_short_reference_is_read_back_as_the_one_value_it_begins(live, tmp_path):
-    """A short reference is read back as the one value it begins."""
-
+    "A short reference is read back as the one value it begins."
     from alphalattice.control.product_host.composition.reference_prefixes import ReferenceLedger
     from alphalattice.interface.local_application.client import (
         LocalResearchClientError,
@@ -1009,7 +1025,9 @@ def test_a_short_reference_is_read_back_as_the_one_value_it_begins(live, tmp_pat
         "candidates": sorted([plan, twin]),
     }
     assert (tmp_path / "runtime/reference-ledger.txt").read_text().split() == [plan, task, twin]
-
+    watched = {"operation": "ACTIVITY_LIST", "watch": [task[:12]]}
+    whole_references(watched, tmp_path)
+    assert watched == {"operation": "ACTIVITY_LIST", "watch": [task]}
     declaration = tmp_path / "goal.yaml"
     code, body, _ = _cli(live.workspace, "goal", "schema", "--save-declaration", str(declaration))
     assert code == 0, body

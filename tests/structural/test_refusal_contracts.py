@@ -75,7 +75,7 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
             "the source setup's script commands"
         ),
         ("control/product_host/composition/evidence_review_application.py", "source_ways"): (
-            "the official serve way: the person's restart, in their own shell"
+            "the official consent way: the person's own command, in their shell"
         ),
         ("control/product_host/composition/goals.py", "goal_prompt.command"): (
             "a /goal prompt opens another session's initial phase"
@@ -165,3 +165,24 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ),
     }
     assert naming == set(full_form_refusals)
+
+
+def test_every_research_strategy_refusal_has_its_owner_words():
+    """Every research strategy refusal in the owner has its declared door words."""
+    from alphalattice.interface.local_application.cli_contract import refusal_words
+
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "src/alphalattice/control/product_host/data_preparation/research_strategy.py"
+    ).read_text(encoding="utf-8")
+    internal = {
+        "research_strategy.evidence_binding_mismatch",
+        "research_strategy.evidence_invalid",
+        "research_strategy.materialized_inputs",
+        "research_strategy.plan_invalid",
+        "research_strategy.retry_requested",
+        "research_strategy.stage_unknown",
+        "research_strategy.task_contract_invalid",
+    }
+    reachable = set(re.findall('"(research_strategy\\.[a-z_]+)', source)) - internal
+    assert reachable and (not [c for c in sorted(reachable) if not refusal_words(c)]), reachable

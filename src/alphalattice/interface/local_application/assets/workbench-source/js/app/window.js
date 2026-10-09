@@ -360,7 +360,7 @@ const Window = (() => {
     const toggle = btnAttrs(icon(rail ? 'panel-right' : 'panel'), 'side-toggle', '', 'icon-btn top-side-toggle', html`aria-label="${t(sideOpen() ? 'Hide navigation' : 'Show navigation')}" aria-expanded="${sideOpen()}" aria-controls="side" data-tip="${t('Navigation')}" data-tip-key="Ctrl \\"`);
     const find = docked() && sideOpen() ? '' : btnAttrs(icon('search'), 'quick-open', '', 'icon-btn top-find', html`aria-label="${t('Quick Open, Control or Command K')}" data-tip="${t('Search')}" data-tip-key="${cmdK()}"`);
     const appearance = btnAttrs(icon(dark ? 'sun' : 'moon'), 'appearance', '', 'icon-btn top-appearance', html`aria-label="${t(dark ? 'Switch to Light' : 'Switch to Dark')}" data-tip="${t(dark ? 'Switch to Light' : 'Switch to Dark')}"`);
-    const follow = typeof LiveActivity !== 'undefined' && LiveActivity.followPaused?.() ? btnAttrs(icon('play'), 'activity-follow-again', '', 'icon-btn', html`aria-label="${t('Follow again')}" data-tip="${t('Follow again')}"`) : '';
+    const follow = typeof LiveActivity !== 'undefined' && LiveActivity.followPaused?.() ? btn(html`${icon('play')}${t('Follow again')}`, 'activity-follow-again', '', 'text-btn') : '';
     top.innerHTML = html`${rail ? '' : toggle}<nav class="top-where" aria-label="${t('Where you are')}">${whereMarkup()}</nav><span class="top-actions"></span>${recentMenu()}${follow}${find}${appearance}${rail ? toggle : ''}`;
     syncPageTop(); // N1: a redrawn row takes the page's marks, menu and verbs again (an inspector's open or close redraws it)
   }

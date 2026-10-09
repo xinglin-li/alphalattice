@@ -15,10 +15,10 @@
     "skills/chief-risk-officer/review-portfolio-evidence/SKILL.md": "CRO's task procedure."
   },
   "directories": {
-    ".agents/skills/alphalattice-research": "The Codex research Skill and its unchanged references.",
+    ".agents/skills": "The Codex Skills and their unchanged references.",
     ".codex/agents": "The installed Codex role cards, unchanged.",
     ".claude/agents": "The materialized Claude role cards, unchanged.",
-    ".claude/skills/alphalattice-research": "The materialized Claude Skill and its unchanged references."
+    ".claude/skills": "The materialized Claude Skills and their unchanged references."
   },
   "host_declarations": {
     ".codex/config.toml": "Codex hook and role declarations read by native configure.",

@@ -1488,6 +1488,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "blocking_task_id",
+    "kind": "string",
+    "required": false,
+    "meaning": "The existing Task that refused this admission; next_requests.read and next_requests.wait read that exact Task. No new Task was admitted."
    }
   ]
  },
@@ -3217,7 +3223,7 @@
     "name": "resource_estimate",
     "kind": "object",
     "required": false,
-    "meaning": "What the run is estimated to take on this machine, labelled `ESTIMATE` with its basis: `wall_seconds` and `peak_memory_bytes` at `cpu_cores`, the memory available now, and `at_one_core` where a lower CPU budget lowers the peak. It sits outside the plan's identity; a run whose peak exceeds the memory available is refused before admission with `execution.memory_insufficient`."
+    "meaning": "An execution estimate outside the plan identity: `cpu_budget` and `cpu_sampled_at` describe the current load sample; `cpu_cores` are indicative, and `cpu_selection` `RUN_START` means actual resources are chosen when the Task starts. `basis_details` names the measured calibration and size basis. A continuation whose remaining time cannot be estimated carries `wall_seconds` null, `wall_status` `UNKNOWN` and `elapsed_scope` `REMAINING_WORK`; `memory_scope` `FULL_TASK_CONSERVATIVE` keeps its full-task peak check. `peak_memory_bytes` and `available_memory_bytes` drive admission; `at_one_core` appears only when a lower CPU budget lowers the peak."
    },
    {
     "name": "next_requests",
@@ -3289,7 +3295,7 @@
     "name": "candidate_count_basis",
     "kind": "string",
     "required": false,
-    "meaning": "When the count is known: `KNOWN_AFTER_SOURCE_CAPTURE`."
+    "meaning": "The count's basis: `VERIFIED_SOURCE_CHECKPOINT` when reusing captured membership, otherwise `KNOWN_AFTER_SOURCE_CAPTURE`."
    },
    {
     "name": "universe",
@@ -5582,7 +5588,7 @@
     "name": "activation",
     "kind": "object",
     "required": false,
-    "meaning": "Whether the package runs forward: `ACTIVE` with its book, its first forward session and its horizon; `MOVED` when the package changed since its activation; `INACTIVE` otherwise. Its `next_requests` offer a person `deactivate` while bindings name the package, and `activate` with the newest completed book the activation admits; a newest book it would refuse is `held`, with its Task, refusal code and words. Its activation carries review_standing from the exact book Task's published Evidence/CRO review owner. With `activate` it carries review_holdings: the offered book's last sealed holdings by listing, its cash and the sessions they were decided and entered, claim `REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS`; activation is reversible, and the first forward update after it publishes the next positions."
+    "meaning": "Whether the package runs forward: `ACTIVE` with its book, its first forward session and its horizon; `MOVED` when the package changed since its activation; `INACTIVE` otherwise. Its `next_requests` offer a person `deactivate` while bindings name the package, and `activate` with the newest completed book the activation admits; a newest book it would refuse is `held`, with its Task, refusal code and words. Its activation carries review_standing from the exact book Task's published Evidence/CRO review owner. With `activate` it carries review_holdings: the offered book's last sealed holdings by listing, its cash and the sessions they were decided and entered, claim `BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS`; activation is reversible, and the first forward update after it publishes the next positions."
    },
    {
     "name": "template",
@@ -6221,6 +6227,84 @@
     "kind": "object",
     "required": false,
     "meaning": "Who set the control for the person: their first-use goal's delegation with when its setting ends, after which it reads closed, or the agent session that relayed their yes (`relayed_by`)."
+   }
+  ]
+ },
+ "EVIDENCE_CONSENT": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "The answer's status: `EVIDENCE_SOURCE_CONSENT`."
+   },
+   {
+    "name": "consent",
+    "kind": "object",
+    "required": true,
+    "meaning": "The workspace's consent to official SEC acquisition: `documents_per_issuer`, `total_documents`, `total_bytes`, `actor` (`HUMAN`, the first use's delegation, `DEFAULT` when none was recorded, or `UNREADABLE` for a record that does not read, which grants nothing) and `granted_at`."
+   },
+   {
+    "name": "default_budget",
+    "kind": "object",
+    "required": true,
+    "meaning": "The default budget a first use's delegation may give, in the same fields."
+   }
+  ]
+ },
+ "EVIDENCE_CONSENT_SET": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "The answer's status: `EVIDENCE_SOURCE_CONSENT`."
+   },
+   {
+    "name": "consent",
+    "kind": "object",
+    "required": true,
+    "meaning": "The workspace's consent to official SEC acquisition: `documents_per_issuer`, `total_documents`, `total_bytes`, `actor` (`HUMAN`, the first use's delegation, `DEFAULT` when none was recorded, or `UNREADABLE` for a record that does not read, which grants nothing) and `granted_at`."
+   },
+   {
+    "name": "default_budget",
+    "kind": "object",
+    "required": true,
+    "meaning": "The default budget a first use's delegation may give, in the same fields."
+   }
+  ]
+ },
+ "EVIDENCE_INSTALL": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "`ADMITTED`: the install was queued as a Task; with `--preflight`, `EVIDENCE_SOURCE_PREFLIGHT`: the setup's own check, nothing acquired or bound."
+   },
+   {
+    "name": "task_id",
+    "kind": "string",
+    "required": false,
+    "meaning": "The install Task, by its id: its stages are the environment, the model, the acquisition, the index and the publication."
+   },
+   {
+    "name": "lifecycle",
+    "kind": "string",
+    "required": false,
+    "meaning": "Where the install Task stands, as its Task lifecycle."
+   },
+   {
+    "name": "next_requests",
+    "kind": "object",
+    "required": false,
+    "meaning": "`status`: the request that reads the install Task; once it succeeds the running Host serves the package."
+   },
+   {
+    "name": "attributed_goal_id",
+    "kind": "string",
+    "required": false,
+    "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
    }
   ]
  },
@@ -7335,6 +7419,12 @@
     "meaning": "In RECORDED mode, how many units hold no recorded document and so cannot be prepared, and what would fetch them; absent when every unit holds one."
    },
    {
+    "name": "acquisition_scope",
+    "kind": "object",
+    "required": false,
+    "meaning": "What official SEC acquisition would take for this book under the workspace's consent, said before that consent and before any source package: `issuers`, `units`, `documents_per_issuer`, `documents_at_most`, `bytes_at_most`, `requests_estimated` and `seconds_estimated` (without retries), and `beyond_one_package`, the issuers a one-unit package leaves out."
+   },
+   {
     "name": "source_candidates",
     "kind": "array",
     "required": true,
@@ -7410,7 +7500,7 @@
     "name": "admission",
     "kind": "object",
     "required": true,
-    "meaning": "The bounds every preparation runs under: `maximum_document_bytes` and `acquisition_window_seconds`."
+    "meaning": "The bounds every preparation runs under: `maximum_documents_per_issuer`, `maximum_document_bytes` and `acquisition_window_seconds`."
    },
    {
     "name": "campaign",
@@ -8347,6 +8437,18 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "answer_status",
+    "kind": "string",
+    "required": true,
+    "meaning": "The answer verdict, independently of its Task: ACCEPTED, CORRECT, DONE or REFUSED. The envelope outcome follows the named Task lifecycle when present."
+   },
+   {
+    "name": "task_lifecycle",
+    "kind": "string",
+    "required": false,
+    "meaning": "The answer's named Task state, independently of answer_status; the envelope outcome follows this lifecycle when present."
    }
   ]
  },
@@ -9475,6 +9577,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The requests that read these positions' own current Evidence state and preparation preview: `review` and `evidence_preview`. The current Evidence answer offers its ordered continuation or CRO requests. Only with a publication."
+   },
+   {
+    "name": "review_standing",
+    "kind": "object",
+    "required": false,
+    "meaning": "The later sealed review bound to this exact publication. publication.cro_status records its standing at publication time; next_requests.published_review opens the later review when one exists. If its lineage cannot be read, review_standing is UNREADABLE with detail and failure_code; the sealed positions and original continuation requests remain readable."
    }
   ]
  },
@@ -9745,6 +9853,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The requests that read these positions' own current Evidence state and preparation preview: `review` and `evidence_preview`, only with a publication. The current Evidence answer offers its ordered continuation or CRO requests. For a Task stopped where its plan's rerun resumes it, or deferred, `resume`, that rerun, a deferred one's once `retry_after_at` has passed."
+   },
+   {
+    "name": "review_standing",
+    "kind": "object",
+    "required": false,
+    "meaning": "The later sealed review bound to this exact publication. publication.cro_status records its standing at publication time; next_requests.published_review opens the later review when one exists. If its lineage cannot be read, review_standing is UNREADABLE with detail and failure_code; the sealed positions and original continuation requests remain readable."
    }
   ]
  },
@@ -10179,6 +10293,168 @@
     "kind": "object",
     "required": true,
     "meaning": "The wake: its `registration_id`, `thread_id` and `read_command`, the Task's `lifecycle`, its `state` (`PENDING`, `ATTEMPTED`, `DELIVERED` or `UNDELIVERED`) and, once sent, its `event` and `result` (`delivered`, or the named `failure`). The same thread's pending wake is the one held; a settled one is answered again while the Task has not moved."
+   }
+  ]
+ },
+ "COMMITTEE_OPEN": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "`COMMITTEE_OPEN`: the floor is open, or was already."
+   },
+   {
+    "name": "stage",
+    "kind": "string",
+    "required": true,
+    "meaning": "`STANCES`, `DEBATE` or `CLOSED`; `committee show` reads the whole floor."
+   },
+   {
+    "name": "pm_key",
+    "kind": "string",
+    "required": false,
+    "meaning": "The PM's key, given to the session that opened the floor, at the open and again on its later open: pass it as `--key` with `--role PM`, and keep it out of every file a specialist reads."
+   },
+   {
+    "name": "next_requests",
+    "kind": "object",
+    "required": true,
+    "meaning": "Each specialist's bundle (`bundle:ALPHA`, `bundle:RISK`, `bundle:CRO`): its view of the date's positions and how it speaks on the floor."
+   }
+  ]
+ },
+ "COMMITTEE_SUBMIT": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "`COMMITTEE_MESSAGE_ACCEPTED`: the floor holds the message."
+   },
+   {
+    "name": "message_id",
+    "kind": "string",
+    "required": true,
+    "meaning": "The message's id on the floor (M4)."
+   }
+  ]
+ },
+ "COMMITTEE_READ": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "`COMMITTEE_FLOOR`: the floor as this reader reads it."
+   },
+   {
+    "name": "update_task_id",
+    "kind": "string",
+    "required": true,
+    "meaning": "The research update Task that published it."
+   },
+   {
+    "name": "strategy_package_id",
+    "kind": "string",
+    "required": false,
+    "meaning": "The strategy whose positions they are."
+   },
+   {
+    "name": "schedule",
+    "kind": "object",
+    "required": false,
+    "meaning": "The positions' formation and entry sessions, as the publication sealed them."
+   },
+   {
+    "name": "holdings_count",
+    "kind": "integer",
+    "required": true,
+    "meaning": "How many names the date's positions hold."
+   },
+   {
+    "name": "stage",
+    "kind": "string",
+    "required": true,
+    "meaning": "`STANCES` while the blind round runs, `DEBATE` once the stances are revealed, `CLOSED` after the verdict or the time box."
+   },
+   {
+    "name": "stances_close_at",
+    "kind": "string",
+    "required": true,
+    "meaning": "When the blind round's time box ends; the stances are then revealed whoever is in."
+   },
+   {
+    "name": "closes_at",
+    "kind": "string",
+    "required": true,
+    "meaning": "When the floor's time box ends; a member still silent then reads as not addressed."
+   },
+   {
+    "name": "verdict",
+    "kind": "object",
+    "required": false,
+    "meaning": "The PM's verdict once given (`PROCEED`, `PROCEED_WITH_NOTES` or `FOR_THE_PERSON`) with its words; `FOR_THE_PERSON` when the floor closed without one."
+   },
+   {
+    "name": "stances_in",
+    "kind": "integer",
+    "required": true,
+    "meaning": "How many of the four stances are in; their words stay withheld until the reveal."
+   },
+   {
+    "name": "members",
+    "kind": "object",
+    "required": true,
+    "meaning": "Each member's state in the current round: `IN`, `NOT_YET` or `NOT_ADDRESSED`."
+   },
+   {
+    "name": "tension_points",
+    "kind": "array",
+    "required": true,
+    "meaning": "The Host's tension points, each with its alias, words, targets, `state` (`OPEN`, `ADOPTED`, `REJECTED`, `FOR_THE_PERSON`), `ruling_id`, and the CRO challenges on it whose dissent stands (`dissent_stands`, `dissents`)."
+   },
+   {
+    "name": "holdings",
+    "kind": "array",
+    "required": true,
+    "meaning": "The date's held and exited names by weight, each with its alias, weight, change and component scores."
+   },
+   {
+    "name": "messages",
+    "kind": "array",
+    "required": true,
+    "meaning": "The floor messages this reader may read (a stance is withheld from the others until the reveal), each with its id, member, kind, targets, reply and the Host-rendered words."
+   },
+   {
+    "name": "for_you",
+    "kind": "array",
+    "required": true,
+    "meaning": "The ids among them addressed to this member past `seen`: a stance revealed, a challenge for the PM, a reply or ruling on its own message, or the close; none for a reader with no role."
+   },
+   {
+    "name": "person_items",
+    "kind": "array",
+    "required": true,
+    "meaning": "What the PM handed to the person: the question, when it was asked and, once relayed, the person's words."
+   },
+   {
+    "name": "seen",
+    "kind": "integer",
+    "required": true,
+    "meaning": "The last message number this reader has now seen; the next read and wait pass it."
+   },
+   {
+    "name": "delivery",
+    "kind": "object",
+    "required": true,
+    "meaning": "The delivery report's request for these positions, which carries the closed floor as its commentary."
+   },
+   {
+    "name": "next_requests",
+    "kind": "object",
+    "required": true,
+    "meaning": "Once the floor closed, `report`: the delivery that carries it as commentary."
    }
   ]
  },
@@ -10861,6 +11137,74 @@
     "kind": "array",
     "required": true,
     "meaning": "The metadata reading’s verification limits."
+   }
+  ]
+ },
+ "PORTFOLIO_READBACK": {
+  "fields": [
+   {
+    "name": "schema",
+    "kind": "string",
+    "required": true,
+    "meaning": "The shared verified Portfolio display schema."
+   },
+   {
+    "name": "subject",
+    "kind": "object",
+    "required": true,
+    "meaning": "The exact sealed book, its saved session and input binding."
+   },
+   {
+    "name": "holdings",
+    "kind": "array",
+    "required": false,
+    "meaning": "The saved book positions for the selected session."
+   },
+   {
+    "name": "forward_performance",
+    "kind": "object",
+    "required": false,
+    "meaning": "The exact book and quoted cost lane's latest realized window, or its explicit unavailable state."
+   },
+   {
+    "name": "rolling_performance",
+    "kind": "object",
+    "required": false,
+    "meaning": "Verified rolling history of the same book's retained forward publications."
+   },
+   {
+    "name": "forward_holdings",
+    "kind": "object",
+    "required": false,
+    "meaning": "The latest retained proposed positions with formation and entry dates, or their unavailable state."
+   }
+  ]
+ },
+ "EXPERIMENT_DECLARATION_CONVERT": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "DECLARATION_PARSED: safe format conversion only."
+   },
+   {
+    "name": "document",
+    "kind": "object",
+    "required": true,
+    "meaning": "The parsed safe declaration without changing its values."
+   },
+   {
+    "name": "yaml",
+    "kind": "string",
+    "required": true,
+    "meaning": "The same declaration serialized as safe YAML."
+   },
+   {
+    "name": "notice",
+    "kind": "string",
+    "required": true,
+    "meaning": "FORMAT_ONLY_PLAN_REQUIRED: conversion admits no plan or Task."
    }
   ]
  }

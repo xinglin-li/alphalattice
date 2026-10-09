@@ -491,12 +491,8 @@ class ModelTrainingInputApplication:
         if plan is None:
             raise ValueError("model_training.preview_required")
         sent = dispatcher.submit(ModelTrainingInputCommand(self, plan, caller))
-        return {
-            "status": sent.disposition,
-            "task_id": str(sent.task_id) if sent.task_id else None,
-            "lifecycle": sent.lifecycle,
-            "failure_code": sent.refusal_detail,
-            "next_requests": {
+        return sent.answer(
+            next_requests={
                 "readback": {
                     "operation": "MODEL_TRAINING_INPUT_READBACK",
                     "task_id": str(sent.task_id),
@@ -504,7 +500,7 @@ class ModelTrainingInputApplication:
             }
             if sent.task_id
             else {},
-        }
+        )
 
     def admit(self, plan: ModelTrainingInputPlan, caller: str) -> CommandAdmission:
         """Require exact source and exclusive preparation ownership under the mutation gate.
@@ -539,7 +535,9 @@ class ModelTrainingInputApplication:
                     TaskLifecycle.BLOCKED,
                     TaskLifecycle.CANCELLED,
                 }:
-                    raise ValueError("model_training.finish_or_recover_existing_task")
+                    raise ValueError(
+                        f"model_training.finish_or_recover_existing_task:{existing.task_id}"
+                    )
             task = registry.admit(
                 input_envelope=envelope, goal=goal, plan=workflow, observed_at=self.clock()
             ).record

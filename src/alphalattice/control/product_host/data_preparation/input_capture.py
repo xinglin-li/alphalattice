@@ -415,12 +415,7 @@ class ResearchInputCaptureApplication:
         if kept is None:
             raise ValueError("research_input.preview_required")
         sent = dispatcher.submit(ResearchInputCaptureCommand(self, kept))
-        return {
-            "status": sent.disposition,
-            "task_id": str(sent.task_id) if sent.task_id else None,
-            "lifecycle": sent.lifecycle,
-            "failure_code": sent.refusal_detail,
-        }
+        return sent.answer()
 
     def admit(self, plan: ResearchInputCapturePlan) -> CommandAdmission:
         """Validate source and parent under mutation ownership before exact capture admission.
@@ -450,12 +445,13 @@ class ResearchInputCaptureApplication:
             )
             if same is not None:
                 return CommandAdmission(task_id=same.task_id, lifecycle=same.lifecycle.value)
-            if any(
-                t.lifecycle
-                not in {TaskLifecycle.SUCCEEDED, TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED}
-                for t in registry.tasks()
-            ):
-                raise ValueError("research_input.finish_or_recover_existing_task")
+            for t in registry.tasks():
+                if t.lifecycle not in {
+                    TaskLifecycle.SUCCEEDED,
+                    TaskLifecycle.BLOCKED,
+                    TaskLifecycle.CANCELLED,
+                }:
+                    raise ValueError(f"research_input.finish_or_recover_existing_task:{t.task_id}")
             task = registry.admit(
                 input_envelope=envelope, goal=goal, plan=workflow, observed_at=self.clock()
             ).record

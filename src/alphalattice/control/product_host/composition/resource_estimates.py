@@ -23,6 +23,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -111,7 +112,7 @@ def _units(plan_operation: str, body: Mapping[str, Any]) -> float | None:
         return float(calls) if calls else None
     if plan_operation == "WORKSPACE_PREPARE_PLAN":
         count = body.get("candidate_count")
-        return float(count) if count else _CALIBRATIONS["WORKSPACE_PREPARE_CONFIRM"].reference_units
+        return float(count) if count else None
     return None
 
 
@@ -139,37 +140,68 @@ class ResourceGate:
     def __init__(self, workspace: Path) -> None:
         """Bind the workspace whose CPU budget the estimates use."""
         self.workspace = workspace
-        self._by_plan: dict[str, tuple[str, float, str | None]] = {}
-        self._by_task: dict[UUID, tuple[str, float, str | None]] = {}
+        self._by_plan: dict[str, tuple[str, float | None, str | None, bool]] = {}
+        self._by_task: dict[UUID, tuple[str, float | None, str | None, bool]] = {}
         self._lock = threading.Lock()
 
-    def _cores(self) -> int:
-        cores, _reason = budget_cores(
-            CpuBudgetStore(self.workspace / "runtime").read(), machine_load()
-        )
-        return int(cores)
-
     def estimate(
-        self, run_operation: str, units: float, lifecycle_component: str | None = None
+        self,
+        run_operation: str,
+        units: float | None,
+        lifecycle_component: str | None = None,
+        remaining_work: bool = False,
     ) -> dict[str, Any]:
         """The estimate at the current budget, the lighter one where it lowers the peak."""
         calibration = (
             _LIFECYCLE_CALIBRATIONS.get(lifecycle_component or "") or _CALIBRATIONS[run_operation]
         )
-        cores = self._cores()
+        estimated_units = units if units is not None else calibration.reference_units
+        budget = CpuBudgetStore(self.workspace / "runtime").read()
+        load = machine_load()
+        cores, reason = budget_cores(budget, load)
         value = {
             "label": "ESTIMATE",
-            "basis": (
-                f"measured on the first-use journey at {calibration.reference_units:g} "
-                f"{calibration.unit} and {calibration.reference_cores} cores; scaled by this "
-                f"plan's size, with CPU scaling capped at {calibration.parallelism:g} cores; "
-                "higher budgets keep the same time rate; another machine's speed differs"
+            "cpu_budget": budget.cpu_budget,
+            "cpu_sampled_at": datetime.now(UTC).isoformat(),
+            "cpu_basis": reason,
+            "cpu_load": {"processors": load.processors, "busy_processors": load.busy_processors},
+            "cpu_selection": "RUN_START",
+            "cpu_scope": "EXECUTION_ONLY",
+            "cpu_detail": (
+                "The CPU budget affects scheduling; resources are chosen when the Task starts."
             ),
-            **_estimate(calibration, units, cores),
+            "elapsed_scope": "REMAINING_WORK" if remaining_work else "FULL_TASK",
+            "wall_status": "UNKNOWN" if remaining_work else "ESTIMATED",
+            "memory_scope": "FULL_TASK_CONSERVATIVE" if remaining_work else "FULL_TASK",
+            "basis": (
+                "Measured shared-machine calibration scales workload by the plan size when "
+                "known, otherwise by the reference size, with capped CPU scaling; machine "
+                "speed, source access and retries can change elapsed time."
+            ),
+            "basis_details": {
+                "kind": "SHARED_MACHINE_CALIBRATION",
+                "unit": calibration.unit,
+                "reference_units": calibration.reference_units,
+                "reference_cores": calibration.reference_cores,
+                "reference_wall_seconds": calibration.reference_wall_seconds,
+                "plan_units": units,
+                "size_basis": "PLAN_SIZE" if units is not None else "CALIBRATION_REFERENCE_SIZE",
+                "cpu_scaling_cap": calibration.parallelism,
+            },
+            **_estimate(calibration, estimated_units, cores),
             "available_memory_bytes": available_work_memory_bytes(),
         }
         if calibration.peak_bytes_per_core and cores > 1:
-            value["at_one_core"] = _estimate(calibration, units, 1)
+            value["at_one_core"] = _estimate(calibration, estimated_units, 1)
+        if remaining_work:
+            value["wall_seconds"] = None
+            if "at_one_core" in value:
+                value["at_one_core"]["wall_seconds"] = None
+            value["basis"] = (
+                "Remaining time is unknown: retained local units must be revalidated, and "
+                "missing units may access their sources again. Memory uses the conservative "
+                "full-task calibration."
+            )
         return value
 
     def plan_answered(self, plan_operation: str, body: dict[str, Any]) -> None:
@@ -181,7 +213,9 @@ class ResourceGate:
             return
         plan_hash = body.get("update_plan_hash") or body.get("plan_hash")
         units = _units(plan_operation, body)
-        if not isinstance(plan_hash, str) or units is None:
+        if not isinstance(plan_hash, str) or (
+            units is None and plan_operation != "WORKSPACE_PREPARE_PLAN"
+        ):
             return
         run_operation = _PLAN_RUNS[plan_operation][0]
         preview = body.get("execution_preview", {})
@@ -192,9 +226,12 @@ class ResourceGate:
             and preview.get("model_adapter_id") == "dynamic_panel_lightgbm"
             else None
         )
+        remaining = plan_operation == "WORKSPACE_PREPARE_PLAN" and bool(
+            body.get("predecessor_task_id")
+        )
         with self._lock:
-            self._by_plan[plan_hash] = (run_operation, units, component)
-        body["resource_estimate"] = self.estimate(run_operation, units, component)
+            self._by_plan[plan_hash] = (run_operation, units, component, remaining)
+        body["resource_estimate"] = self.estimate(run_operation, units, component, remaining)
 
     def run_refusal(
         self,

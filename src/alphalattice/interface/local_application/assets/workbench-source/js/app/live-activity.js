@@ -17,8 +17,10 @@ const LiveActivity = (() => {
     stale: false, following: null, paused: null, followGeneration: 0, pendingOpen: null, pendingNoticed: null, opening: null, reconciled: 0};
   // A Goal follows only the Tasks and decisions its owners attributed, never a similar name.
   const G = {scope: '', id: '', body: null, stamp: '', reading: null, shown: new Set(), error: ''};
-  const goalScope = () => S.following === 'latest' || S.following?.startsWith('goal:');
-  const followedTasks = () => goalScope() ? (G.body?.record?.tasks || []).map(v => v.task_id) : S.following ? [S.following] : [];
+  const scopeOf = () => S.following || S.paused;
+  const goalScope = () => scopeOf() === 'latest' || scopeOf()?.startsWith('goal:');
+  const followedTasks = () => goalScope() ? (G.body?.record?.tasks || []).map(v => v.task_id) : scopeOf() ? [scopeOf()] : [];
+  const followWord = () => t(S.paused ? 'Following paused' : S.following === 'latest' ? 'Following latest' : goalScope() ? 'Following this Goal' : S.following ? 'Following' : 'Pinned');
   // `S.epoch` is the store whose ordinals the retained groups, watermark and cursor belong to.
   /* The declared Team event kinds the feed can name in words; any other kind is shown as declared.
    * The raw kind and payload stay in the row's exact observations. */
@@ -238,10 +240,10 @@ const LiveActivity = (() => {
   }
   async function reconcileGoal() {
     if (!goalScope() || G.reading || busy() || S.stale || S.error) return;
-    const scope = S.following, generation = S.followGeneration;
+    const scope = scopeOf(), generation = S.followGeneration;
     let origin = route();
     let stamp = goalStamp();
-    const wanted = () => S.following === scope && S.followGeneration === generation && route() === origin && goalStamp() === stamp && !busy();
+    const wanted = () => scopeOf() === scope && S.followGeneration === generation && route() === origin && goalStamp() === stamp && !busy();
     if (G.scope !== scope) Object.assign(G, {scope, id: scope.startsWith('goal:') ? scope.slice(5) : '', body: null, stamp: '', shown: new Set(), error: ''});
     G.reading = true;
     return (async () => {
@@ -259,6 +261,7 @@ const LiveActivity = (() => {
           if (body.goal?.goal_id !== G.id) throw Error('goal.not_found');
           G.body = body; stamp = goalStamp(); G.stamp = stamp; G.error = '';
         }
+        if(S.paused) return;
         // Decisions can finish their own bounded read after this Goal's last Task event.
         await Data.refreshDecisions();
         if (!wanted()) return;
@@ -279,7 +282,7 @@ const LiveActivity = (() => {
           G.shown.add(key);
           if (G.shown.size > MAX_GROUPS) G.shown.delete(G.shown.values().next().value);
         }
-      } catch (e) { if (S.following === scope && S.followGeneration === generation && e.name !== 'AbortError' && G.error !== e.message) { G.error = e.message; notify(e.message); } }
+      } catch (e) { if (scopeOf() === scope && S.followGeneration === generation && e.name !== 'AbortError' && G.error !== e.message) { G.error = e.message; notify(e.message); } }
       finally { G.reading = null; }
     })();
   }
@@ -404,8 +407,8 @@ const LiveActivity = (() => {
   // N6: the followed Task is a state with its control (notes); the log's sentence is the label's (i)
   function section() {
     const rows = ordered();
-    const following = S.following ? html`${goalScope() ? t('Following this Goal') : t('Following Task {task} · its verified result will open here; pin to keep the current view.', {task: shortRef(S.following)})} ${btn(t('Pin current view'), 'activity-pin', '', 'text-btn')}` : '';
-    return runLog({id: 'activityLog', title: t('Workspace activity'), caption: t('Recorded operations, Task returns and verified results · newest first · no simulated progress'), notes: html`${following ? html`<p class="run-log-following">${following}</p>` : ''}${banners()}`, lines: rows.map(row), empty: emptyState(t('No recorded activity yet.')), status: html`<span data-activity-cost>${t('Not read yet')}</span>`, cls: 'activity-log', linesCls: 'card-list lines slotted activity-rows'});
+    const following = S.paused ? followWord() : S.following ? html`${goalScope() ? followWord() : t('Following Task {task} · its verified result will open here; pin to keep the current view.', {task: shortRef(S.following)})} ${btn(t('Pin current view'), 'activity-pin', '', 'text-btn')}` : '';
+    return runLog({id: 'activityLog', title: t('Workspace activity'), caption: t('Recorded operations, Task returns and verified results · newest first · no simulated progress'), notes: html`${following ? html`<p class="run-log-following">${following}</p>` : ''}${G.error ? notRead(t('Goal'),G.error) : ''}${banners()}`, lines: rows.map(row), empty: emptyState(t('No recorded activity yet.')), status: html`<span data-activity-cost>${t('Not read yet')}</span>`, cls: 'activity-log', linesCls: 'card-list lines slotted activity-rows'});
   }
 
   /* Announce, never navigate (round 75: count, never toast): a new Task, a verified result, a
@@ -458,11 +461,16 @@ const LiveActivity = (() => {
     S.disposition = body.disposition; S.epoch = body.epoch; S.cursor = body.cursor; S.observer = body.observer || null; S.cost = body.read_cost || null;
     S.stale = false;
     S.unavailable += body.unavailable || 0;
-    for (const item of body.items || []) { if (absorb(item) && !baseline) announce(item); }
+    for (const item of body.items || []) {
+      if(!absorb(item))continue;
+      if(!baseline)announce(item);
+      const p=item.payload, id=item.task_id || p?.task_id;
+      if(item.schema_kind==='ProductOperationObserved' && p?.phase==='RETURNED' && p.status!=='REFUSED' && id && Data.offers?.(p.operation) && Data.posts(p.operation))LiveTasks.subjectContext?.(id,true);
+    }
     mergeFresh(body);
     prune();
     S.primed = true;
-    if (S.pendingOpen) openFollowed(); else if (S.following) reconcileFollowed();
+    if (S.pendingOpen) openFollowed(); else if (S.following || S.paused && goalScope()) reconcileFollowed();
   }
   function mergeFresh(body) {
     const fresh = Object.values(body.tasks || {});
@@ -534,7 +542,7 @@ const LiveActivity = (() => {
     window.addEventListener('pagehide', stop);
     window.addEventListener('pageshow', (event) => { if (event.persisted) resume(); });
   }
-  return {section, logLines, starterOf, recordOf, refresh, markSeen, bind, facts, nextRead, absorbPage, open, openSavedResult, cadence, stop, resume, follow, pin, setFollowing, pauseFollowing, followAgain, followPaused: () => S.paused, taskSettled, setNotices, noticesState, readSessionUsage,
+  return {section, logLines, starterOf, recordOf, refresh, markSeen, bind, facts, nextRead, absorbPage, open, openSavedResult, cadence, stop, resume, follow, pin, setFollowing, pauseFollowing, followAgain, followWord, followPaused: () => S.paused, taskSettled, setNotices, noticesState, readSessionUsage,
     retained: () => [...S.groups.values()],
     nativeUsageState: () => S.observer?.native_usage || null,
     state: () => ({cursor: S.cursor, epoch: S.epoch, groups: S.groups.size, unseen: S.unseen, error: S.error, notice: S.notice, tasks: Object.keys(S.tasks).length, watermark: S.watermark, disposition: S.disposition, stale: S.stale, stopped: S.stopped, fetching: Boolean(S.fetching), timer: S.timer !== null, following: S.following, pendingOpen: S.pendingOpen, opening: Boolean(S.opening), generation: S.followGeneration}),

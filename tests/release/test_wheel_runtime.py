@@ -56,7 +56,9 @@ def _assert_guidance_links_resolve(
         if public_pages:
             for imported in re.findall(r"^@([^\s]+)$", text, re.M):
                 target = (source.parent / imported).resolve()
-                assert target.is_relative_to(root.resolve()) and target.is_file(), name
+                assert target.is_relative_to(root.resolve()), name
+                # The person's own layer is imported when present; no release ships it.
+                assert target.is_file() or imported.startswith(".alphalattice/user/"), name
         tokens = parser.parse(text)
         while tokens:
             token = tokens.pop()

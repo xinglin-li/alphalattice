@@ -22,6 +22,7 @@ from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import 
     CurrentUniverseOnboarding,
     CurrentUniverseOnboardingStatus,
     ListingUnitObservation,
+    listing_outcome_category,
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import ProviderAdjustedClosePoint
 from alphalattice.foundation.market_data_ops.sources.providers import (
@@ -368,6 +369,7 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
     # Before its first chunk a resumed runner reports the retained counts without
     # advancing anything: the denominator and what the earlier run left behind.
     retained = resumed_runner.retained_progress()
+    assert sum(retained.exclusion_counts.values()) == retained.failed == 0
     assert (retained.candidates, retained.raw_ready, retained.feature_ready, retained.failed) == (
         4,
         1,
@@ -406,6 +408,13 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
     assert provider.daily_calls["MSFT"] == 1
     assert resumed.feature_ready == 2
     assert resumed.failed == 2
+    assert resumed.exclusion_counts == {
+        "acquisition_failure": 1,
+        "history_ineligible": 0,
+        "quality_rejection": 1,
+    }
+    for code in ("data.provider_fetch_failed", "data.adjusted_close_unavailable"):
+        assert listing_outcome_category("AUDIT_FAILED", failure_code=code) == "ACQUISITION_FAILURE"
     disclosure = store.latest_current_universe_onboarding_disclosure(
         market_profile_id="us-current-index-research"
     )
@@ -852,6 +861,8 @@ def test_same_session_membership_uses_its_unchanged_full_anchor_and_real_rolling
         else set()
     )
     assert {symbol for symbol, unit in units.items() if unit.state == "AUDIT_FAILED"} == rejected
+    assert result.exclusion_counts["quality_rejection"] == len(rejected)
+    assert sum(result.exclusion_counts.values()) == result.failed
     assert all(
         unit.state == "FEATURE_READY" for symbol, unit in units.items() if symbol not in rejected
     )
@@ -1056,6 +1067,11 @@ def test_short_history_addition_is_hydrated_once_then_quarantined(tmp_path) -> N
     assert revised.research_manifest is not None
     assert tuple(value.symbol for value in revised.research_manifest.listings) == ("AAPL",)
     assert provider.hydration_calls == {"SHORT": 1}
+    assert revised.exclusion_counts == {
+        "acquisition_failure": 0,
+        "history_ineligible": 1,
+        "quality_rejection": 0,
+    }
     disclosure = store.latest_current_universe_onboarding_disclosure(
         market_profile_id="us-current-index-research"
     )

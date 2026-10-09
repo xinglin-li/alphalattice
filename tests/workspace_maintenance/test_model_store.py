@@ -193,13 +193,29 @@ def test_a_recipe_binds_only_from_installed_verified_packs(tmp_path: Path) -> No
 
 
 def test_the_store_root_is_the_users(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The variable, else the store packs were last installed into, else the platform's; the
+    Evidence setup says where it reads them and what a download takes."""
+    from alphalattice.control.product_host.composition.evidence_review_application import (
+        evidence_setup,
+    )
+
     monkeypatch.setenv("ALPHALATTICE_MODEL_STORE", str(tmp_path / "elsewhere"))
     assert model_store.default_store_root() == tmp_path / "elsewhere"
     monkeypatch.delenv("ALPHALATTICE_MODEL_STORE")
+    for name in ("LOCALAPPDATA", "XDG_DATA_HOME"):
+        monkeypatch.setenv(name, str(tmp_path / "data"))
     root = model_store.default_store_root()
     assert "AlphaLattice" in str(root) or "alphalattice" in str(root)
-    assert not str(root).startswith(str(Path(__file__).resolve().parents[2]))
     assert os.name != "nt" or root.parts[-2:] == ("AlphaLattice", "models")
+    chosen = tmp_path / "tools" / "models"
+    chosen.mkdir(parents=True)
+    model_store.remember_store(chosen)
+    assert model_store.default_store_root() == chosen.resolve()
+    pack = evidence_setup(tmp_path / "workspace")["pack"]
+    assert pack["store"] == str(chosen.resolve()) and pack["present"] is False  # type: ignore[index]
+    assert pack["download_bytes"] > 0  # type: ignore[index,operator]
+    model_store.remember_store(root)
+    assert model_store.default_store_root() == root
 
 
 def test_a_retained_copy_is_linked_to_the_store_only_when_it_holds_the_packs_bytes(

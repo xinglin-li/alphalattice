@@ -656,7 +656,7 @@ def test_a_lone_lead_is_read_by_its_own_command_under_its_binding(tmp_path, monk
     the session files only at a subagent's stop; its own goal and answer commands read the lead
     through the bridge, for the bound session only and never where the binding reads nothing."""
 
-    from alphalattice.interface.local_application.native_bridge import lead_readings
+    from alphalattice.interface.local_application.client import lead_readings
 
     config = tmp_path / "claude"
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))

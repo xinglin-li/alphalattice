@@ -443,8 +443,9 @@ class SecEdgarSource:
         *,
         maximum_body_resources: int | None = None,
         ledger: SecCampaignLedger | None = None,
+        maximum_documents_per_issuer: int | None = None,
     ) -> None:
-        """Bind the admitted transport and filing-body budget."""
+        """Bind the admitted transport, filing-body budget and documents per issuer."""
         if maximum_body_resources is not None and maximum_body_resources < 1:
             raise ValueError("alternative_evidence.sec_campaign_budget_invalid")
         self._transport = transport
@@ -459,6 +460,20 @@ class SecEdgarSource:
             maximum_body_resources = owned
             self.body_resources.update(ledger.body_resources)
         self._maximum_body_resources = maximum_body_resources
+        self._documents_per_issuer = maximum_documents_per_issuer
+
+    def documents_per_issuer(self, request: AlternativeEvidenceRequest) -> int:
+        """The documents an issuer may give: the request's, never past this admission's.
+
+        A request sealed under a wider budget (queued, or recovered after the consent narrowed)
+        runs under the narrower one.
+        """
+        sealed = request.source_policy.maximum_documents_per_issuer
+        return (
+            sealed
+            if self._documents_per_issuer is None
+            else min(sealed, self._documents_per_issuer)
+        )
 
     @property
     def network_call_count(self) -> int:
@@ -472,7 +487,9 @@ class SecEdgarSource:
         index reads a preparation makes before packing, apart from what a
         running Task accounts for. It reads indexes and fetches no body.
         """
-        return SecEdgarSource(self._transport)
+        return SecEdgarSource(
+            self._transport, maximum_documents_per_issuer=self._documents_per_issuer
+        )
 
     @property
     def network_capable(self) -> bool:
@@ -655,7 +672,7 @@ class SecEdgarSource:
             cik=entry.cik,
             evidence_as_of=request.evidence_as_of,
             event_window_days=request.source_policy.sec_recent_8k_days,
-            policy_budget=request.source_policy.maximum_documents_per_issuer,
+            policy_budget=self.documents_per_issuer(request),
             unit_capacity=ADMITTED_DOCUMENT_CAPACITY,
             accession_scope=accession_scope,
             read_earlier=(
@@ -757,7 +774,7 @@ class SecEdgarSource:
         registry_entry = registry_entries.get(entity_id)
         if registry_entry is None:
             raise ValueError("alternative_evidence.issuer_not_in_registry")
-        if len(entries) > request.source_policy.maximum_documents_per_issuer:
+        if len(entries) > self.documents_per_issuer(request):
             raise ValueError("alternative_evidence.selected_filing_budget_exceeded")
         if len({value.accession for value in entries}) != len(entries):
             raise ValueError("alternative_evidence.selected_filing_duplicate")

@@ -1605,7 +1605,8 @@ def offered_requests(body: dict[str, Any]) -> dict[str, dict[str, Any]]:
     The top level's by their names; a nested part's (each of the pending decisions, each flow
     of `workspace show`'s intents) by its name, or, where two offer one name, by the name and
     the part's identifier (``recovery:<task_id>``), or its place (``decisions.2``,
-    ``intents.0.flows.factor``) when it has none. A request offered twice is listed once;
+    ``intents.0.flows.factor``) when it has none. The same named request offered twice is
+    listed once; distinct printed aliases remain sendable;
     two items that name theirs alike keep both, each by its place (V528).
 
     Args:
@@ -1623,7 +1624,7 @@ def offered_requests(body: dict[str, Any]) -> dict[str, dict[str, Any]]:
             if isinstance(offered, dict):
                 named = next((str(value[f]) for f in _ITEM_IDENTIFIERS if value.get(f)), None)
                 for name, request in offered.items():
-                    key = json.dumps(request, sort_keys=True, default=str)
+                    key = json.dumps((name, request), sort_keys=True, default=str)
                     if isinstance(request, dict) and key not in seen:
                         seen.add(key)
                         found.append((name, named, place, request))
@@ -1698,8 +1699,10 @@ def named_read(request: Mapping[str, Any], body: dict[str, Any]) -> dict[str, An
 
 def _scalar(value: object) -> object:
     """A request field's value as JSON writes it, when it is a value or a list of values: a
-    text, an id, a day, a number or a truth, or a list of them, the ids an activity list
-    watches among them (V556); None for an absent one, an empty list or a document."""
+    text, an id, a day, a number, a truth or a validated object, or a list of them;
+    None for an absent field or an empty list."""
+    if isinstance(value, dict):
+        return value
     if isinstance(value, list | tuple):
         items = [_scalar(item) for item in value]
         return items if items and all(item is not None for item in items) else None

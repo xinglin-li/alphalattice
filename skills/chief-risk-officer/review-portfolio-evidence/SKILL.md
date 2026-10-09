@@ -12,19 +12,21 @@ What to name
 
 1. Read the bundle's index (`README.md`) first, then every file it lists under
    Files, including holdings, findings and coverage. The bundle is complete;
-   there is nothing to fetch.
+   there is nothing to fetch. It names its subject and date, a book or a
+   date's published positions; name them in `summary`.
 2. Name a risk only for findings that are a real major negative for a held
    position, and order the risks by the holding's weight, heaviest first. Cite
    them in `findings` by their aliases (`F3`); do not restate their text.
 3. You need not classify every finding. A subset is an answer, an empty list
    says no major negative was found, and what you write must be true. The Host
    derives the issuers, their exposure and the route and lists what you did
-   not name.
+   not name. A finding you read but did not name is not cleared.
 
 How to write one -- the report shows these words first
 
 4. `why`: two sentences at most -- the fact, then why it matters to this
-   position (its weight, its place in the book).
+   position (its weight, its place in the book). Keep the source's fact, its
+   materiality and what the coverage could not reach apart.
 5. `severity` if true (`HIGH`, `MEDIUM` or `LOW`) and your `confidence` in the
    findings (`SUPPORTED`, `CONTESTED` or `LIMITED`). A finding with
    contradicting excerpts is at best `CONTESTED`; a finding held up by one

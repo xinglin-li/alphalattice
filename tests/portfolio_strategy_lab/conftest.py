@@ -81,5 +81,26 @@ def read_only_live(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LocalPo
     host.start()
     try:
         yield host
+        assert host.session is not None and not host.session.task_control_registry.tasks()
+    finally:
+        host.stop()
+
+
+@pytest.fixture(scope="module")
+def completed_host(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LocalPortfolioWebSession]:
+    """Share one synthetic Host with one completed default Portfolio run."""
+    from tests.portfolio_strategy_lab.local_web_support import _run_to_completion
+
+    workspace = tmp_path_factory.mktemp("local-web-completed")
+    host = LocalPortfolioWebSession(
+        workspace=workspace,
+        workspace_manifest=_manifest("qa-local-web"),
+        resolver=_Resolver(_resolved()),
+    )
+    host.start()
+    try:
+        _run_to_completion(host)
+        assert host.session is not None and len(host.session.task_control_registry.tasks()) == 1
+        yield host
     finally:
         host.stop()

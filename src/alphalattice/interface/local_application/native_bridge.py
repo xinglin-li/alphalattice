@@ -25,7 +25,7 @@ from typing import Any
 from uuid import UUID
 
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
-from alphalattice.interface.local_application.cli_contract import agent_session, refusal_words
+from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
@@ -866,58 +866,6 @@ def deliver_accepted_answer(
         return {**result, **references}
     except Exception:
         return unavailable("native_bridge.accepted_delivery_failed", "accepted_answer_delivery")
-
-
-def lead_readings(
-    project: Path,
-    environ: Mapping[str, str],
-    *,
-    workspace: Path | None = None,
-    goal: str | None = None,
-) -> list[dict[str, object]]:
-    """Ask the Host to read the bound Session's usage at a milestone (V301).
-
-    A goal's take and submission and an answer's submission are the milestones a command
-    names; the Host reads there, for the bound Session and the children its own files record,
-    never where the binding turned reading off, and never in the request's way.
-
-    Args:
-        project: The project whose binding names the session.
-        environ: The command's environment, naming the session it runs in.
-        workspace: The command's workspace; another workspace receives no reading.
-        goal: The command's named Goal; the Host resolves it using normal provenance.
-
-    Returns:
-        The Host's aggregate receipt; none when reading is off or this is not its lead.
-    """
-    session = agent_session(environ)
-    if session is None:
-        return []
-    try:
-        found = NativeResearchBinding.find(project, session=session)
-    except NativeBridgeError as error:
-        # This host has no lead in the nearest configured project. Optional readings
-        # skip it; public binding requests retain the strict project refusal.
-        if str(error) == "native_bridge.project_mismatch":
-            return []
-        raise
-    if found is None:
-        return []
-    project, binding = found
-    if binding.usage == "OFF":
-        return []
-    # The session as every reader of it reads it (V583): an agent inside another names none.
-    if agent_session(environ) != (binding.host, binding.session_id):
-        return []
-    if workspace is not None and workspace.resolve() != binding.workspace.resolve():
-        return [{"status": "UNAVAILABLE", "reason": "native_bridge.workspace_mismatch"}]
-    from alphalattice.interface.local_application.client import LocalResearchClient
-
-    return [
-        LocalResearchClient(binding.workspace, timeout=2.0, goal=goal).publish_native_event(
-            project, {"source": "native_usage_read"}
-        )
-    ]
 
 
 def _reading(

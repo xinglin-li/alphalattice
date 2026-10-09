@@ -72,69 +72,20 @@ _INTERNAL_CODE = re.compile(
 _PRODUCT_WORDS = frozenset({"(CLI)", "(CPU)", "(CRO)", "(ISO)", "(PM)", "(UTC)"})
 
 
-@pytest.mark.parametrize(
-    "network_consent",
-    [
-        pytest.param(None, id="defaults-without-consent"),
-        pytest.param(False, id="bounds-without-consent"),
-        pytest.param(True, id="consent-and-bounds"),
-    ],
-)
-def test_serve_preserves_explicit_sec_consent_and_source_bounds(
-    tmp_path: Path, network_consent: bool | None
-) -> None:
-    """The source-ways command reaches the launcher; bounds alone grant no consent."""
+def test_serve_forwards_its_own_options_to_the_launcher(tmp_path: Path) -> None:
+    """The serve options reach the launcher; the official source is the workspace's consent."""
     from alphalattice.interface.local_application.cli import main
 
     launches: list[list[str]] = []
-    source_arguments = (
-        []
-        if network_consent is None
-        else [
-            *(["--sec-network-consent"] if network_consent else []),
-            "--sec-max-document-bytes",
-            "2097152",
-            "--sec-acquisition-window-seconds",
-            "3600",
-            "--sec-max-total-attempts",
-            "300",
-            "--sec-max-total-response-bytes",
-            "100000000",
-            "--sec-max-body-resources",
-            "150",
-            "--sec-campaign-id",
-            "synthetic-cli-contract",
-        ]
-    )
 
     def launch(arguments: list[str]) -> int:
         launches.append(arguments)
         return 0
 
-    assert (
-        main(
-            [
-                "--workspace",
-                str(tmp_path),
-                "serve",
-                "--no-browser",
-                "--stop-on-stdin",
-                *source_arguments,
-            ],
-            serve=launch,
-        )
-        == 0
-    )
+    command = ["--workspace", str(tmp_path), "serve", "--no-browser", "--stop-on-stdin"]
+    assert main(command, serve=launch) == 0
     assert launches == [
-        [
-            "--workspace",
-            str(tmp_path),
-            "--port",
-            "0",
-            "--no-browser",
-            "--stop-on-stdin",
-            *source_arguments,
-        ]
+        ["--workspace", str(tmp_path), "--port", "0", "--no-browser", "--stop-on-stdin"]
     ]
 
 
@@ -715,6 +666,8 @@ def test_an_operation_only_a_person_completes_is_marked_so(
     assert {op for op, contract in contracts.items() if contract.get("person_only")} == PERSON_ONLY
     values = {
         "network_enabled": "true",
+        "evidence_documents_per_issuer": "3",
+        "evidence_setup": "--acquire-sec --entities AAPL --network-consent --install",
         "usage_reading_enabled": "false",
         "input_pinned": "true",
         "task_id": str(uuid4()),

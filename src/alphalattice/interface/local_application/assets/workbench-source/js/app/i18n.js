@@ -18,6 +18,10 @@ const I18N = (() => {
 
   /* Structural templates: exact shapes only, never arbitrary substring replacement. */
   const TEMPLATES = [
+    [/^(PARTIAL|COMPLETE|UNAVAILABLE)\. In scope: (.*?); read: (.*?); nothing filed: (.*?); unread: (.*?)\. Each share uses the total ending weight of all book positions as its denominator\. When recorded, read \+ nothing filed \+ unread = the whole book; in scope contains read and nothing filed\. In a legacy dossier, read equals in scope; it does not prove reading\. Nothing filed is not unread and is not a finding of no risk\. Read coverage does not mean every source passage was read\. This review changes no weight and grants no activation\.$/, (m) => {
+      const values=[t({PARTIAL:'Partial',COMPLETE:'Complete',UNAVAILABLE:'UNAVAILABLE'}[m[1]]),...m.slice(2).map(x=>t(x))];
+      return t('{subject}. In scope: {subject}; read: {subject}; nothing filed: {subject}; unread: {subject}. Each share uses the total ending weight of all book positions as its denominator. When recorded, read + nothing filed + unread = the whole book; in scope contains read and nothing filed. In a legacy dossier, read equals in scope; it does not prove reading. Nothing filed is not unread and is not a finding of no risk. Read coverage does not mean every source passage was read. This review changes no weight and grants no activation.').replace(/\{subject\}/g,()=>values.shift());
+    }],
     [/^case$/, () => t('Case')],
     [/^human review required$/, () => t('Human review required')],
     [/^gap(?:\(s\))?$/, () => t('gaps')],

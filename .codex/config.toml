@@ -28,3 +28,8 @@ config_file = "agents/alphalattice_portfolio.toml"
 [agents.alphalattice_evidence_analyst]
 description = "Read one AlphaLattice evidence bundle the lead prepared and write cited issuer findings to its answer file for the lead to submit; never a Portfolio judgment."
 config_file = "agents/alphalattice_evidence_analyst.toml"
+
+# The experience maintainer writes only the person's user layer, .alphalattice/user/.
+[agents.alphalattice_maintainer]
+description = "Keep the person's AlphaLattice user layer: record verified lessons and corrections, clean them within bounds and fold them into the local guide and card additions; never research, shipped files or authority."
+config_file = "agents/alphalattice_maintainer.toml"

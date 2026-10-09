@@ -1,5 +1,25 @@
 {
  "alternatives": {
+  "EXPERIMENT_DECLARATION_CONVERT": [
+   [
+    "experiment_yaml"
+   ],
+   [
+    "experiment_document"
+   ]
+  ],
+  "EXPERIMENT_DELIVERY_EXPORT": [
+   [
+    "task_id",
+    "experiment_receipt_hash",
+    "portfolio_session"
+   ],
+   [
+    "update_task_id",
+    "update_publication_hash",
+    "position_basis"
+   ]
+  ],
   "EXPERIMENT_PLAN": [
    [
     "experiment_yaml"
@@ -82,6 +102,15 @@
   "candidate compare": [
    "EXPERIMENT_ALPHA_COMPARE"
   ],
+  "committee open": [
+   "COMMITTEE_OPEN"
+  ],
+  "committee show": [
+   "COMMITTEE_READ"
+  ],
+  "committee submit": [
+   "COMMITTEE_SUBMIT"
+  ],
   "cpu-budget set": [
    "CPU_BUDGET_SET"
   ],
@@ -109,6 +138,9 @@
   "decision list": [
    "PENDING_DECISIONS"
   ],
+  "declaration convert": [
+   "EXPERIMENT_DECLARATION_CONVERT"
+  ],
   "event declare": [
    "EVENT_DECLARE"
   ],
@@ -120,6 +152,9 @@
   ],
   "evidence export": [
    "EVIDENCE_CRO_EXPORT"
+  ],
+  "evidence install": [
+   "EVIDENCE_INSTALL"
   ],
   "evidence ledger": [
    "EVIDENCE_LEDGER"
@@ -144,6 +179,12 @@
   ],
   "evidence submit": [
    "EVIDENCE_ANALYSIS_SUBMIT"
+  ],
+  "evidence-consent set": [
+   "EVIDENCE_CONSENT_SET"
+  ],
+  "evidence-consent show": [
+   "EVIDENCE_CONSENT"
   ],
   "feature activate": [
    "FEATURE_ACTIVATE"
@@ -289,6 +330,9 @@
   ],
   "operation list": [
    "OPERATION_LIST"
+  ],
+  "portfolio show": [
+   "PORTFOLIO_READBACK"
   ],
   "portfolio-update plan": [
    "PORTFOLIO_UPDATE_PLAN"
@@ -539,6 +583,10 @@
   "citation_entity_id": "The entity whose citation to open.",
   "citation_page": "Which page of the cited source to read, from 1.",
   "citation_unit_id": "The Evidence unit the citation belongs to.",
+  "committee_key": "That member's key: a specialist's is in its bundle, the PM's in its own open's answer.",
+  "committee_message": "One committee message, as its YAML or JSON file.",
+  "committee_role": "The committee member this request speaks or reads for: the PM (the lead), ALPHA, RISK or CRO.",
+  "committee_seen": "The last floor message the reader has seen, by its number (M4 is 4).",
   "component_id": "The strategy component, by its id.",
   "continuation_of": "The prepared packet a continuation reads on from, by the receipt it sealed.",
   "continuation_spans": "The packet's sealed span set, by its hash.",
@@ -557,7 +605,11 @@
   "event": "The event this client declares about its own work (`ExternalActivityEventDocument`).",
   "evidence_as_of": "The time Evidence is prepared as of, in ISO 8601.",
   "evidence_detail": "Which detail of the packet to read: `litigation_inventory`, `session_windows`, `topic_coverage` or `time_view`; `EVIDENCE_CRO` also takes `time_view` for the published reading.",
+  "evidence_documents_per_issuer": "The SEC filings official acquisition may take per issuer; the default budget is three.",
   "evidence_index_id": "The Evidence retrieval index to rebuild, by the id the storage view listed.",
+  "evidence_setup": "The Evidence setup's options, as its script takes them, for the running Host to install (`--acquire-sec --entities AAPL --network-consent --install`).",
+  "evidence_total_bytes": "The bytes official acquisition may read in all; the default budget's when absent.",
+  "evidence_total_documents": "The SEC filings official acquisition may take in all; the default budget's when absent.",
   "evidence_unit_id": "One Evidence unit, by its id (u01, u02 ...).",
   "expected_task_hash": "The Task's version as last read; a Task that moved since refuses the request.",
   "experiment_curation": "The Factor curation decision: which factors go on, and why.",
@@ -604,7 +656,9 @@
   "observed_through": "The last session the update observes, as YYYY-MM-DD.",
   "operation": "The operation asked for; `alphalattice schema show <name>` lists its fields.",
   "origin_task_id": "The study a new plan continues from, by its Task.",
+  "performance": "`latest` reads this exact book's latest retained Forward composite; omitted reads its saved report.",
   "person_confirmation": "The person's yes to this decision, asked in one line and relayed whole: `--person-said` their words and `--asked` your question, which the client binds to this request.",
+  "portfolio_scope": "`holdings` reads only this saved date's positions, without its Forward report.",
   "portfolio_session": "The session a dated view reads, as YYYY-MM-DD; for a book, names the book with the other book fields, as a book's offered requests fill them.",
   "position_basis": "The positions a book's update published them on.",
   "preparation_binding_hash": "The Evidence preparation's binding, by its hash.",
@@ -712,6 +766,39 @@
    ],
    "required": [
     "task_id"
+   ]
+  },
+  "COMMITTEE_OPEN": {
+   "allowed": [
+    "update_task_id"
+   ],
+   "required": [
+    "update_task_id"
+   ]
+  },
+  "COMMITTEE_READ": {
+   "allowed": [
+    "committee_key",
+    "committee_role",
+    "committee_seen",
+    "update_task_id"
+   ],
+   "required": [
+    "update_task_id"
+   ]
+  },
+  "COMMITTEE_SUBMIT": {
+   "allowed": [
+    "committee_key",
+    "committee_message",
+    "committee_role",
+    "update_task_id"
+   ],
+   "required": [
+    "committee_key",
+    "committee_message",
+    "committee_role",
+    "update_task_id"
    ]
   },
   "COMPARE": {
@@ -937,6 +1024,21 @@
     "task_id"
    ]
   },
+  "EVIDENCE_CONSENT": {
+   "allowed": [],
+   "required": []
+  },
+  "EVIDENCE_CONSENT_SET": {
+   "allowed": [
+    "evidence_documents_per_issuer",
+    "evidence_total_bytes",
+    "evidence_total_documents",
+    "person_confirmation"
+   ],
+   "required": [
+    "evidence_documents_per_issuer"
+   ]
+  },
   "EVIDENCE_CONTINUE": {
    "allowed": [
     "continuation_of",
@@ -1006,6 +1108,15 @@
     "documents_page"
    ],
    "required": []
+  },
+  "EVIDENCE_INSTALL": {
+   "allowed": [
+    "evidence_setup",
+    "person_confirmation"
+   ],
+   "required": [
+    "evidence_setup"
+   ]
   },
   "EVIDENCE_LEDGER": {
    "allowed": [
@@ -1174,6 +1285,13 @@
     "task_id"
    ]
   },
+  "EXPERIMENT_DECLARATION_CONVERT": {
+   "allowed": [
+    "experiment_document",
+    "experiment_yaml"
+   ],
+   "required": []
+  },
   "EXPERIMENT_DELIVERY_EXPORT": {
    "allowed": [
     "delivery_commentary",
@@ -1181,16 +1299,15 @@
     "experiment_receipt_hash",
     "left_task_id",
     "portfolio_session",
+    "position_basis",
     "review_publication_hash",
     "right_task_id",
     "risk_report_hash",
-    "task_id"
+    "task_id",
+    "update_publication_hash",
+    "update_task_id"
    ],
-   "required": [
-    "experiment_receipt_hash",
-    "portfolio_session",
-    "task_id"
-   ]
+   "required": []
   },
   "EXPERIMENT_DRAFT": {
    "allowed": [
@@ -1737,6 +1854,17 @@
     "spec"
    ]
   },
+  "PORTFOLIO_READBACK": {
+   "allowed": [
+    "performance",
+    "portfolio_scope",
+    "portfolio_session",
+    "task_id"
+   ],
+   "required": [
+    "task_id"
+   ]
+  },
   "PORTFOLIO_UPDATE_PLAN": {
    "allowed": [
     "observed_through",
@@ -2182,6 +2310,8 @@
  "first_use": [
   "DATA_CHANGE_CONFIRM",
   "DATA_ISSUE_CONFIRM",
+  "EVIDENCE_CONSENT_SET",
+  "EVIDENCE_INSTALL",
   "NETWORK_ACCESS_SET",
   "STRATEGY_ACTIVATE",
   "WORKSPACE_PREPARE_CONFIRM"
@@ -2205,6 +2335,10 @@
   "citation_entity_id": "citation-entity",
   "citation_page": "citation-page",
   "citation_unit_id": "citation-unit",
+  "committee_key": "key",
+  "committee_message": "file",
+  "committee_role": "role",
+  "committee_seen": "seen",
   "component_id": "component",
   "continuation_of": "continues",
   "continuation_spans": "spans",
@@ -2223,7 +2357,11 @@
   "event": "file",
   "evidence_as_of": "as-of",
   "evidence_detail": "detail",
+  "evidence_documents_per_issuer": "per-issuer",
   "evidence_index_id": "index",
+  "evidence_setup": "setup",
+  "evidence_total_bytes": "bytes",
+  "evidence_total_documents": "documents",
   "evidence_unit_id": "unit",
   "expected_task_hash": "expected",
   "experiment_curation": "file",
@@ -2270,7 +2408,9 @@
   "observed_through": "through",
   "operation": "operation",
   "origin_task_id": "origin",
+  "performance": "performance",
   "person_confirmation": "person-said",
+  "portfolio_scope": "portfolio-scope",
   "portfolio_session": "session",
   "position_basis": "basis",
   "preparation_binding_hash": "preparation",
@@ -2366,6 +2506,10 @@
      "A Factor, Alpha or Risk study: controls, plan, run, show, compare."
     ],
     [
+     "declaration",
+     "A declaration converted between JSON and YAML before planning."
+    ],
+    [
      "curation",
      "A Factor study's curation: which factors go on."
     ],
@@ -2407,6 +2551,10 @@
      "A Portfolio book: its draft from a candidate, its delivery report."
     ],
     [
+     "portfolio",
+     "One book's saved report and latest retained Forward view."
+    ],
+    [
      "risk-link",
      "The Risk reports linked to a Portfolio book."
     ],
@@ -2436,12 +2584,20 @@
      "A book's evidence: its preview, sources, ledger and packets."
     ],
     [
+     "evidence-consent",
+     "The consent to official SEC acquisition and its budget."
+    ],
+    [
      "review",
      "A CRO review of a book: request, dossier, findings, answer."
     ],
     [
      "bundle",
      "A specialist's prepared bundle and the answer to it."
+    ],
+    [
+     "committee",
+     "The investment committee on a date's published positions."
     ]
    ]
   ],
@@ -2554,6 +2710,10 @@
   ]
  ],
  "inner_required": {
+  "committee_message": [
+   "kind",
+   "text"
+  ],
   "experiment_curation": [
    "choices",
    "expected_receipt_hash",
@@ -2569,6 +2729,8 @@
   "agent_role": "one of ALPHA, ANALYST, CRO, DATA, FACTOR, PORTFOLIO, RISK",
   "backup_generations_kept": "from 1 to 100",
   "citation_page": "from 1 to 100000",
+  "committee_role": "one of PM, ALPHA, RISK, CRO",
+  "committee_seen": "from 0 to 9999",
   "delivery_budget_bytes": "from 1",
   "delivery_part": "from 1 to 100000",
   "documents_page": "from 1 to 100000",
@@ -2578,7 +2740,7 @@
   "ledger_page": "from 1 to 100000",
   "limit": "from 1 to 200",
   "model_lifecycle": "one of LIGHT, FULL",
-  "operation": "one of GOAL_SCHEMA, GOAL_LIST, GOAL_OPEN, GOAL_REVISE, GOAL_SHOW, GOAL_NARRATIVE, GOAL_REFERENCE, GOAL_ATTACH, GOAL_NOTE, GOAL_EXPORT, GOAL_CONTINUE, GOAL_TAKE, GOAL_SUBMIT, GOAL_ABANDON, RESEARCH_HISTORY, EXPERIMENT_COMPARE, EXPERIMENT_ALPHA_COMPARE, EXPERIMENT_DELIVERY_EXPORT, RESEARCH_INPUTS, RESEARCH_INPUT_PLAN, RESEARCH_INPUT_CONFIRM, RESEARCH_INPUT_READBACK, MODEL_TRAINING_INPUT_PLAN, MODEL_TRAINING_INPUT_PREPARE, MODEL_TRAINING_INPUT_READBACK, FEATURE_CATALOG_CONTROLS, FEATURE_CATALOG_PLAN, FEATURE_CATALOG_READBACK, FEATURE_CATALOG_BUILD, FEATURE_CATALOG_BUILD_READBACK, FEATURE_TRIAL, FEATURE_REVIEW, FEATURE_ACTIVATE, FEATURE_DEACTIVATE, FEATURE_EXTENSIONS, FEATURE_TRIAL_READBACK, FEATURE_TRIALS, RESEARCH_STRATEGY_PLAN, RESEARCH_STRATEGY_CONTROLS, RESEARCH_STRATEGY_PREPARE, RESEARCH_STRATEGY_READBACK, RESEARCH_STRATEGY_INSTALL, EXPERIMENT_DRAFT, EXPERIMENT_PROMOTE, EXPERIMENT_CONTINUE, WORKSPACE_PREPARE_READBACK, WORKSPACE_PREPARE_PLAN, WORKSPACE_PREPARE_CONFIRM, STORAGE_CAP_SHOW, STORAGE_CAP_SET, STORAGE_READBACK, STORAGE_PLAN, STORAGE_CONFIRM, STORAGE_PIN, STORAGE_EVIDENCE_REBUILD, EXPERIMENT_CONTROLS, EXPERIMENT_LINK_RISK, EXPERIMENT_RISK_LINKS, EXPERIMENT_RISK_EXPORT, EXPERIMENT_PLAN, EXPERIMENT_PREVIEW_READBACK, EXPERIMENT_RUN, EXPERIMENTS, EXPERIMENT_READBACK, EXPERIMENT_SUMMARY, EXPERIMENT_REPLAY, EXPERIMENT_EXPORT, EXPERIMENT_CURATION, EXPERIMENT_CURATE, EXPERIMENT_HANDOFF_PREVIEW, EXPERIMENT_FOUNDATIONS, EXPERIMENT_FOUNDATION_PREVIEW, EXPERIMENT_FOUNDATION_SEAL, EXPERIMENT_FOUNDATION_READBACK, EXPERIMENT_FOUNDATION_SUMMARY, EXPERIMENT_FOUNDATION_EXPORT, EXPERIMENT_FOUNDATION_DRAFT, EXPERIMENT_PORTFOLIO_DRAFT, EXPERIMENT_VERIFY_ALL, CONTROLS, PLAN, RUN, STATUS, TASK_RECOVERY, TASK_GUARDIAN, TASK_INCIDENTS, TASK_REMEDIATE, RECOVER, TASKS, UPGRADE_OVERVIEW, UPGRADE_ACKNOWLEDGE, NETWORK_ACCESS, NETWORK_ACCESS_SET, PENDING_DECISIONS, ACTIVITY_REFUSALS, CANCEL, RESULTS, REPORT, COMPARE, FREEZE, FINALIZATION, EXPORT, EVIDENCE_CRO, EVIDENCE_CRO_EXPORT, EVIDENCE_REFRESH, EVIDENCE_PREPARE, EVIDENCE_PREVIEW, EVIDENCE_PACKET, EVIDENCE_LEDGER, EVIDENCE_DOCUMENTS, EVIDENCE_CONTINUE, EVIDENCE_ANALYSIS_SUBMIT, EVIDENCE_SELECT, CRO_REVIEW, CRO_REVIEW_DOSSIER, CRO_REVIEW_FINDING, CRO_REVIEW_SUBMIT, AGENT_BUNDLE_PREPARE, AGENT_ANSWER_SUBMIT, DATA_UPDATE_PLAN, DATA_UPDATE_RUN, DATA_UPDATE_READBACK, DATA_CHANGE_CONFIRM, DATA_ISSUES, DATA_ISSUE_PREVIEW, DATA_ISSUE_CONFIRM, DATA_ISSUE_DELEGATE, DATA_ISSUE_REVOKE, STRATEGY_SCORE_PLAN, STRATEGY_SCORE_RUN, STRATEGY_SCORE_READBACK, STRATEGY_CALIBRATION_PLAN, STRATEGY_CALIBRATION_RUN, STRATEGY_CALIBRATION_READBACK, PORTFOLIO_UPDATE_PLAN, PORTFOLIO_UPDATE_RUN, PORTFOLIO_UPDATE_READBACK, RESEARCH_UPDATE_PLAN, RESEARCH_UPDATE_RUN, RESEARCH_UPDATE_READBACK, RESEARCH_UPDATE_AUTOMATION_READBACK, RESEARCH_UPDATE_AUTOMATION_CONFIGURE, WORKSPACE_SHOW, OPERATION_LIST, ACTIVITY_LIST, ACTIVITY_RECENT, EVENT_DECLARE, WAKE_REGISTER, SESSION_USAGE_READ, USAGE_READING, USAGE_READING_SET, CPU_BUDGET_SHOW, CPU_BUDGET_SET, WORKSPACE_BACKUP, WORKSPACE_BACKUPS, MODEL_EXTENSIONS, MODEL_ACTIVATE, MODEL_DEACTIVATE, STRATEGY_ACTIVATE, STRATEGY_DEACTIVATE",
+  "operation": "one of GOAL_SCHEMA, GOAL_LIST, GOAL_OPEN, GOAL_REVISE, GOAL_SHOW, GOAL_NARRATIVE, GOAL_REFERENCE, GOAL_ATTACH, GOAL_NOTE, GOAL_EXPORT, GOAL_CONTINUE, GOAL_TAKE, GOAL_SUBMIT, GOAL_ABANDON, RESEARCH_HISTORY, EXPERIMENT_COMPARE, EXPERIMENT_ALPHA_COMPARE, EXPERIMENT_DELIVERY_EXPORT, RESEARCH_INPUTS, RESEARCH_INPUT_PLAN, RESEARCH_INPUT_CONFIRM, RESEARCH_INPUT_READBACK, MODEL_TRAINING_INPUT_PLAN, MODEL_TRAINING_INPUT_PREPARE, MODEL_TRAINING_INPUT_READBACK, FEATURE_CATALOG_CONTROLS, FEATURE_CATALOG_PLAN, FEATURE_CATALOG_READBACK, FEATURE_CATALOG_BUILD, FEATURE_CATALOG_BUILD_READBACK, FEATURE_TRIAL, FEATURE_REVIEW, FEATURE_ACTIVATE, FEATURE_DEACTIVATE, FEATURE_EXTENSIONS, FEATURE_TRIAL_READBACK, FEATURE_TRIALS, RESEARCH_STRATEGY_PLAN, RESEARCH_STRATEGY_CONTROLS, RESEARCH_STRATEGY_PREPARE, RESEARCH_STRATEGY_READBACK, RESEARCH_STRATEGY_INSTALL, EXPERIMENT_DRAFT, EXPERIMENT_PROMOTE, EXPERIMENT_CONTINUE, WORKSPACE_PREPARE_READBACK, WORKSPACE_PREPARE_PLAN, WORKSPACE_PREPARE_CONFIRM, STORAGE_CAP_SHOW, STORAGE_CAP_SET, STORAGE_READBACK, STORAGE_PLAN, STORAGE_CONFIRM, STORAGE_PIN, STORAGE_EVIDENCE_REBUILD, EXPERIMENT_CONTROLS, EXPERIMENT_DECLARATION_CONVERT, EXPERIMENT_LINK_RISK, EXPERIMENT_RISK_LINKS, EXPERIMENT_RISK_EXPORT, EXPERIMENT_PLAN, EXPERIMENT_PREVIEW_READBACK, EXPERIMENT_RUN, EXPERIMENTS, EXPERIMENT_READBACK, EXPERIMENT_SUMMARY, EXPERIMENT_REPLAY, EXPERIMENT_EXPORT, EXPERIMENT_CURATION, EXPERIMENT_CURATE, EXPERIMENT_HANDOFF_PREVIEW, EXPERIMENT_FOUNDATIONS, EXPERIMENT_FOUNDATION_PREVIEW, EXPERIMENT_FOUNDATION_SEAL, EXPERIMENT_FOUNDATION_READBACK, EXPERIMENT_FOUNDATION_SUMMARY, EXPERIMENT_FOUNDATION_EXPORT, EXPERIMENT_FOUNDATION_DRAFT, EXPERIMENT_PORTFOLIO_DRAFT, EXPERIMENT_VERIFY_ALL, CONTROLS, PLAN, RUN, STATUS, TASK_RECOVERY, TASK_GUARDIAN, TASK_INCIDENTS, TASK_REMEDIATE, RECOVER, TASKS, UPGRADE_OVERVIEW, UPGRADE_ACKNOWLEDGE, NETWORK_ACCESS, NETWORK_ACCESS_SET, EVIDENCE_CONSENT, EVIDENCE_CONSENT_SET, EVIDENCE_INSTALL, PENDING_DECISIONS, ACTIVITY_REFUSALS, CANCEL, RESULTS, REPORT, COMPARE, FREEZE, FINALIZATION, EXPORT, EVIDENCE_CRO, EVIDENCE_CRO_EXPORT, EVIDENCE_REFRESH, EVIDENCE_PREPARE, EVIDENCE_PREVIEW, EVIDENCE_PACKET, EVIDENCE_LEDGER, EVIDENCE_DOCUMENTS, EVIDENCE_CONTINUE, EVIDENCE_ANALYSIS_SUBMIT, EVIDENCE_SELECT, CRO_REVIEW, CRO_REVIEW_DOSSIER, CRO_REVIEW_FINDING, CRO_REVIEW_SUBMIT, AGENT_BUNDLE_PREPARE, AGENT_ANSWER_SUBMIT, DATA_UPDATE_PLAN, DATA_UPDATE_RUN, DATA_UPDATE_READBACK, DATA_CHANGE_CONFIRM, DATA_ISSUES, DATA_ISSUE_PREVIEW, DATA_ISSUE_CONFIRM, DATA_ISSUE_DELEGATE, DATA_ISSUE_REVOKE, STRATEGY_SCORE_PLAN, STRATEGY_SCORE_RUN, STRATEGY_SCORE_READBACK, STRATEGY_CALIBRATION_PLAN, STRATEGY_CALIBRATION_RUN, STRATEGY_CALIBRATION_READBACK, PORTFOLIO_UPDATE_PLAN, PORTFOLIO_UPDATE_RUN, PORTFOLIO_UPDATE_READBACK, PORTFOLIO_READBACK, RESEARCH_UPDATE_PLAN, RESEARCH_UPDATE_RUN, RESEARCH_UPDATE_READBACK, RESEARCH_UPDATE_AUTOMATION_READBACK, RESEARCH_UPDATE_AUTOMATION_CONFIGURE, WORKSPACE_SHOW, OPERATION_LIST, ACTIVITY_LIST, ACTIVITY_RECENT, EVENT_DECLARE, WAKE_REGISTER, SESSION_USAGE_READ, USAGE_READING, USAGE_READING_SET, CPU_BUDGET_SHOW, CPU_BUDGET_SET, WORKSPACE_BACKUP, WORKSPACE_BACKUPS, MODEL_EXTENSIONS, MODEL_ACTIVATE, MODEL_DEACTIVATE, STRATEGY_ACTIVATE, STRATEGY_DEACTIVATE, COMMITTEE_OPEN, COMMITTEE_SUBMIT, COMMITTEE_READ",
   "remedy": "one of CANCEL, RECOVER, REPLAN",
   "session_limit": "from 1 to 99",
   "view_last_days": "from 1 to 3660",
@@ -2588,6 +2750,8 @@
  "person_only": [
   "DATA_ISSUE_DELEGATE",
   "DATA_ISSUE_REVOKE",
+  "EVIDENCE_CONSENT_SET",
+  "EVIDENCE_INSTALL",
   "FEATURE_ACTIVATE",
   "FEATURE_DEACTIVATE",
   "MODEL_ACTIVATE",
@@ -2638,6 +2802,7 @@
   "GOAL_TAKE": "goal_id",
   "MODEL_ACTIVATE": "model_id",
   "MODEL_DEACTIVATE": "model_id",
+  "PORTFOLIO_READBACK": "task_id",
   "RECOVER": "task_id",
   "REPORT": "result_hash",
   "RESEARCH_INPUT_PLAN": "research_input_id",
@@ -2661,7 +2826,8 @@
   "agent_answer",
   "analysis_answer",
   "review_answer",
-  "event"
+  "event",
+  "committee_message"
  ],
  "purposes": {
   "ACTIVITY_LIST": "Reads one page of the activity feed, with the state of any watched Tasks.",
@@ -2670,6 +2836,9 @@
   "AGENT_ANSWER_SUBMIT": "Submits an agent's answer to its bundle; the Host accepts it or names each problem.",
   "AGENT_BUNDLE_PREPARE": "Writes a specialist's complete bundle into a new directory; names its answer file.",
   "CANCEL": "Requests cancellation of a Task, optionally against the Task version you read.",
+  "COMMITTEE_OPEN": "Opens the investment committee on a date's published positions, or reads the one open; writes each member's bundle into a new directory with its commands.",
+  "COMMITTEE_READ": "Shows the committee's floor: its stage, members, tension points and the messages a member has not seen.",
+  "COMMITTEE_SUBMIT": "Sends one member's message to the committee's floor, checked by its rules.",
   "COMPARE": "Compares two saved installed-strategy results: which controls differ and how metrics compare; no winner.",
   "CONTROLS": "Lists the controls of an installed strategy's Portfolio book, with defaults and limits.",
   "CPU_BUDGET_SET": "Sets the CPU budget (auto or a core count) or how many Tasks may wait.",
@@ -2689,10 +2858,13 @@
   "DATA_UPDATE_RUN": "Runs a planned data update as a Task, within the workspace's network access.",
   "EVENT_DECLARE": "Records an event this client declares about its own work in the activity feed.",
   "EVIDENCE_ANALYSIS_SUBMIT": "Submits an Analyst's answer to a prepared packet; accepted findings publish as a Task.",
+  "EVIDENCE_CONSENT": "Shows the consent to official SEC acquisition and the budget it admits.",
+  "EVIDENCE_CONSENT_SET": "Sets the consent to official SEC acquisition: documents per issuer, in all, and bytes.",
   "EVIDENCE_CONTINUE": "Admits one more bounded source-reading session over a prepared packet, as a Task.",
   "EVIDENCE_CRO": "Shows a book's Evidence and CRO state, from preparation to published review.",
   "EVIDENCE_CRO_EXPORT": "Exports a published CRO review with its dossier and verified evidence spans.",
   "EVIDENCE_DOCUMENTS": "Lists the workspace's retained SEC documents, newest first, a page at a time; fetches nothing.",
+  "EVIDENCE_INSTALL": "Installs an Evidence source package in the running Host as a Task: its environment, model, acquisition, index and publication; served at once.",
   "EVIDENCE_LEDGER": "Reads a book's issuer-topic reading ledger from its sealed packets, twenty groups a page.",
   "EVIDENCE_PACKET": "Delivers one prepared evidence packet for an Analyst, whole, in parts or as a chosen detail.",
   "EVIDENCE_PREPARE": "Prepares a book's evidence packets as a Task: acquires, reads and seals sources; no findings.",
@@ -2706,6 +2878,7 @@
   "EXPERIMENT_CONTROLS": "Shows the controls and an editable declaration for a new study on a research input.",
   "EXPERIMENT_CURATE": "Records a Factor study's curation decision: which factors go on, and why; no Task.",
   "EXPERIMENT_CURATION": "Shows a completed Factor study's curation choices and what a decision must name.",
+  "EXPERIMENT_DECLARATION_CONVERT": "Converts a declaration between JSON and YAML; admits no plan or Task.",
   "EXPERIMENT_DELIVERY_EXPORT": "Exports one delivery report binding a selected book with its comparison, Risk link and review.",
   "EXPERIMENT_DRAFT": "Copies a completed study's declaration for editing, onto its own input or a chosen one.",
   "EXPERIMENT_EXPORT": "Exports a verified study as JSON, YAML and HTML with an export hash.",
@@ -2761,14 +2934,15 @@
   "MODEL_ACTIVATE": "Activates a reviewed Alpha model for this workspace's research.",
   "MODEL_DEACTIVATE": "Removes an activated Alpha model from this workspace's catalog.",
   "MODEL_EXTENSIONS": "Lists installed and extension Alpha models, each with its review packet.",
-  "MODEL_TRAINING_INPUT_PLAN": "Plans model-training inputs for a component on a research input; no model is fit.",
-  "MODEL_TRAINING_INPUT_PREPARE": "Prepares a planned component's training inputs as a Task, or reuses them.",
-  "MODEL_TRAINING_INPUT_READBACK": "Shows a training-input Task and the prepared sources and support it published.",
+  "MODEL_TRAINING_INPUT_PLAN": "Plans model inputs for a component on a research input; fitting and validation follow in the Alpha study.",
+  "MODEL_TRAINING_INPUT_PREPARE": "Prepares planned model inputs as a Task, or reuses them; no model is fit or validated.",
+  "MODEL_TRAINING_INPUT_READBACK": "Shows the model-input preparation Task, sources and support; fitting and validation are later Alpha study work.",
   "NETWORK_ACCESS": "Shows whether this workspace may reach the network and what decided it.",
   "NETWORK_ACCESS_SET": "Turns this workspace's network access on or off.",
   "OPERATION_LIST": "Lists every operation with its required and allowed fields, and the request schema.",
   "PENDING_DECISIONS": "Lists everything waiting on a person, each with the request that takes it.",
   "PLAN": "Previews an installed strategy's book from its controls: window, reuse and work; nothing runs.",
+  "PORTFOLIO_READBACK": "Reads one exact book's saved report or latest Forward composite.",
   "PORTFOLIO_UPDATE_PLAN": "Plans a Portfolio update that settles observed sessions for an installed package; fits nothing.",
   "PORTFOLIO_UPDATE_READBACK": "Shows a Portfolio update Task, or a strategy's latest, with the book it published.",
   "PORTFOLIO_UPDATE_RUN": "Runs a planned Portfolio update as a Task, or reuses the identical published one.",
@@ -2829,6 +3003,7 @@
   "ACTIVITY_LIST",
   "ACTIVITY_RECENT",
   "ACTIVITY_REFUSALS",
+  "COMMITTEE_READ",
   "COMPARE",
   "CONTROLS",
   "CPU_BUDGET_SHOW",
@@ -2836,6 +3011,7 @@
   "CRO_REVIEW_FINDING",
   "DATA_ISSUES",
   "DATA_UPDATE_READBACK",
+  "EVIDENCE_CONSENT",
   "EVIDENCE_CRO",
   "EVIDENCE_CRO_EXPORT",
   "EVIDENCE_DOCUMENTS",
@@ -2846,6 +3022,7 @@
   "EXPERIMENT_COMPARE",
   "EXPERIMENT_CONTROLS",
   "EXPERIMENT_CURATION",
+  "EXPERIMENT_DECLARATION_CONVERT",
   "EXPERIMENT_DELIVERY_EXPORT",
   "EXPERIMENT_DRAFT",
   "EXPERIMENT_EXPORT",
@@ -2882,6 +3059,7 @@
   "NETWORK_ACCESS",
   "OPERATION_LIST",
   "PENDING_DECISIONS",
+  "PORTFOLIO_READBACK",
   "PORTFOLIO_UPDATE_READBACK",
   "REPORT",
   "RESEARCH_HISTORY",
@@ -3017,6 +3195,18 @@
   "citation_unit_id": [
    "string"
   ],
+  "committee_key": [
+   "string"
+  ],
+  "committee_message": [
+   "object"
+  ],
+  "committee_role": [
+   "string"
+  ],
+  "committee_seen": [
+   "integer"
+  ],
   "component_id": [
    "string"
   ],
@@ -3071,8 +3261,20 @@
   "evidence_detail": [
    "string"
   ],
+  "evidence_documents_per_issuer": [
+   "integer"
+  ],
   "evidence_index_id": [
    "string"
+  ],
+  "evidence_setup": [
+   "string"
+  ],
+  "evidence_total_bytes": [
+   "integer"
+  ],
+  "evidence_total_documents": [
+   "integer"
   ],
   "evidence_unit_id": [
    "string"
@@ -3212,8 +3414,14 @@
   "origin_task_id": [
    "string"
   ],
+  "performance": [
+   "string"
+  ],
   "person_confirmation": [
    "object"
+  ],
+  "portfolio_scope": [
+   "string"
   ],
   "portfolio_session": [
    "string"

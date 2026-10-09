@@ -12,17 +12,19 @@ from __future__ import annotations
 import argparse
 import errno
 import hashlib
+import importlib.util
 import json
 import math
 import os
 import re
 import sys
-from collections.abc import Collection, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any, cast
+from uuid import UUID
 
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -49,6 +51,20 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
 from alphalattice.control.product_host.research_authoring.input_revisions import (
     ResearchInputRevisions,
 )
+from alphalattice.control.task_control.contracts import (
+    ResearchGoal,
+    ResearchPlan,
+    StageFailureCause,
+    TaskEvidence,
+    TaskExecution,
+    TaskExecutionCompatibility,
+    TaskInputEnvelope,
+    TaskLifecycle,
+    TaskRecord,
+    TaskReplan,
+    WorkItemDefinition,
+)
+from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.network_access import network_access
 from alphalattice.evidence.alternative_evidence.contracts import (
@@ -75,7 +91,17 @@ from alphalattice.evidence.alternative_evidence.runtime.coverage import index_qu
 from alphalattice.evidence.alternative_evidence.runtime.service import (
     AlternativeEvidenceDocumentIntelligenceRuntime,
 )
-from alphalattice.evidence.alternative_evidence.sources.admission import seal_live_setup_admission
+from alphalattice.evidence.alternative_evidence.sources.acquisition import (
+    AlternativeEvidenceTaskCancelled,
+)
+from alphalattice.evidence.alternative_evidence.sources.admission import (
+    DEFAULT_SOURCE_CONSENT,
+    NOT_GRANTED,
+    EvidenceSourceConsent,
+    seal_live_setup_admission,
+    sec_request_rate,
+    sec_user_agent,
+)
 from alphalattice.evidence.alternative_evidence.sources.contracts import (
     AcquiredEvidenceDocument,
     AcquiredEvidenceDocumentSet,
@@ -94,6 +120,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
 from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell
+from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.investment.portfolio_strategy_lab.application.resolution import (
     _risk_surface,
@@ -335,6 +362,12 @@ def _publish(
 
 def materialize(arguments: argparse.Namespace) -> dict[str, object]:
     """Read the captured source document under its admitted contract."""
+    _check(arguments)
+    with WorkspaceApplicationSession.acquire(arguments.workspace.resolve()) as session:
+        return run_setup(arguments, session)
+
+
+def _check(arguments: argparse.Namespace) -> None:
     if bool(arguments.model_name) != bool(arguments.deepseek_base_url):
         raise OptionRefused(
             "evidence_review.managed_profile_requires_model_and_endpoint", "model_name"
@@ -357,8 +390,193 @@ def materialize(arguments: argparse.Namespace) -> dict[str, object]:
         raise OptionRefused("evidence_review.source_set_hash_invalid", "source_set_hash")
     if rebind and getattr(arguments, "preflight", False):
         raise ValueError("evidence_review.preflight_requires_a_source")
-    with WorkspaceApplicationSession.acquire(arguments.workspace.resolve()) as session:
-        return _materialize(arguments, session)
+
+
+def setup_arguments(argv: Sequence[str], workspace: Path) -> argparse.Namespace:
+    """The setup's command line as the running Host takes it, on the Host's own workspace."""
+    arguments = _parser().parse_args([*argv, "--workspace", str(workspace)])
+    _check(arguments)
+    return arguments
+
+
+_CARRIED_REFUSAL = frozenset({"failure_code", "location", "next_commands"})
+"""What a blocked install keeps of its refusal beside the Task's code: its subject, its option and
+its way on."""
+EVIDENCE_INSTALL_TASK_KIND = "evidence_install"
+INSTALL_STAGES = ("environment", "model", "acquisition", "index", "publish")
+INSTALL_OUTPUTS = Path("runtime") / "evidence-install"
+"""Each install Task's stage outputs, by Task id: what a later stage, or a recovery, reads."""
+
+
+class EvidenceInstall:
+    """An Evidence package installed in the running Host, as a Task of the setup's steps.
+
+    Each stage keeps its outputs beside the Task, so a recovery runs only the stage it stopped
+    in; a cancel stops the acquisition between requests; once bound, the Host serves the
+    package (`installed`) with no restart.
+    """
+
+    task_kind = EVIDENCE_INSTALL_TASK_KIND
+    replans = (TaskReplan(task_kind=EVIDENCE_INSTALL_TASK_KIND, admitting="EVIDENCE_INSTALL"),)
+
+    def __init__(
+        self,
+        *,
+        session: WorkspaceApplicationSession,
+        clock: Callable[[], datetime],
+        installed: Callable[[], None],
+    ) -> None:
+        """Bind the install to the Host's session, its clock and how it serves a new package."""
+        self.session, self.clock, self.installed = session, clock, installed
+
+    def admit(self, argv: Sequence[str]) -> CommandAdmission:
+        """Admit one install of the setup's command line."""
+        kind = EVIDENCE_INSTALL_TASK_KIND
+        envelope = TaskInputEnvelope.create(
+            task_kind=EVIDENCE_INSTALL_TASK_KIND,
+            input_schema_id="evidence-install",
+            payload={"arguments": list(argv), "requested_at": self.clock().isoformat()},
+        )
+        goal = ResearchGoal.create(
+            goal_kind="INSTALL_EVIDENCE_PACKAGE",
+            input_hash=envelope.input_hash,
+            deliverable_kind="EvidenceReviewWorkspaceManifest",
+            summary="Install an Evidence source package in the running Host and serve it.",
+        )
+        plan = ResearchPlan.create(
+            goal_hash=goal.goal_hash,
+            workflow_definition_hash=canonical_hash(INSTALL_STAGES),
+            verifier_catalog_hash=canonical_hash([f"{kind}.{stage}" for stage in INSTALL_STAGES]),
+            work_items=tuple(
+                WorkItemDefinition.create(
+                    stage_id=stage,
+                    dependency_ids=INSTALL_STAGES[:position],
+                    verifier_id=f"{kind}.{stage}",
+                )
+                for position, stage in enumerate(INSTALL_STAGES)
+            ),
+        )
+        record = self.session.task_control_registry.admit(
+            input_envelope=envelope, goal=goal, plan=plan, observed_at=self.clock()
+        ).record
+        return CommandAdmission(task_id=record.task_id, lifecycle=record.lifecycle.value)
+
+    def execute(self, task_id: UUID, *, expected_task_hash: str | None = None) -> None:
+        """Run or recover an admitted install through Task Control's runner."""
+        task = self.session.task_control_registry.task(task_id)
+        self.session.execute_admitted(task, self, self.clock, expected_task_hash)
+
+    def compatibility(self, task: TaskRecord) -> TaskExecutionCompatibility:
+        """An install resumes under the stages it was admitted with."""
+        stages = canonical_hash(INSTALL_STAGES)
+        return TaskExecutionCompatibility.create(
+            task_contract_hash=canonical_hash({EVIDENCE_INSTALL_TASK_KIND: 1}),
+            workflow_definition_hash=task.plan.workflow_definition_hash,
+            input_schema_id=task.input.input_schema_id,
+            domain_policy_hash=stages,
+            framework_identity_hash=self.session.execution_identity(stages),
+        )
+
+    def execute_stage(
+        self, *, task: TaskRecord, execution: TaskExecution, work_item: WorkItemDefinition
+    ) -> StageExecutionResult:
+        """Run one stage of the install.
+
+        A refusal blocks the Task by its code and keeps its way on; a cancel stops it.
+        """
+        del execution
+        stage, path = work_item.stage_id, self._path(task)
+        held = self._outputs(task)
+        arguments = setup_arguments(task.input.payload["arguments"], self.session.workspace)
+        try:
+            if stage == "environment" and importlib.util.find_spec("fastembed") is None:
+                raise ValueError("evidence_review.retrieval_environment_not_loaded")
+            answer = _step(
+                _Setup(arguments, self.session),
+                stage,
+                held,
+                cancelled=lambda: (
+                    self.session.task_control_registry.task(task.task_id).lifecycle
+                    is TaskLifecycle.CANCEL_REQUESTED
+                ),
+            )
+            held[stage] = (
+                {key: answer.get(key) for key in ("authority_hash", "package_id", "installed")}
+                if stage == INSTALL_STAGES[-1]
+                else answer
+            )
+            if held[stage].get("installed"):
+                self.installed()
+        except AlternativeEvidenceTaskCancelled:
+            return StageExecutionResult(StageDisposition.CANCELLED)
+        except (ValueError, RuntimeError, OSError) as error:
+            refusal = setup_refusal(arguments, error)
+            code = str(refusal["failure_code"])
+            cause = StageFailureCause(
+                exception_type=type(error).__name__,
+                detail=json.dumps({k: v for k, v in refusal.items() if k in _CARRIED_REFUSAL})[
+                    :400
+                ],
+                step=stage,
+            )
+            return StageExecutionResult(
+                StageDisposition.BLOCKED,
+                failure_code=code if len(code) <= 120 else code.split(":")[0],
+                failure_cause=cause,
+            )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        staged = path.with_name(f"{path.name}.partial")
+        staged.write_bytes(json.dumps(held, sort_keys=True).encode("utf-8"))
+        replace_with_retry(staged, path)
+        reference = f"playpen://evidence-install/{task.task_id}/{stage}"
+        evidence = TaskEvidence(
+            evidence_kind=f"{EVIDENCE_INSTALL_TASK_KIND}.{stage}",
+            reference=reference,
+            content_hash=canonical_hash(held[stage]),
+        )
+        return StageExecutionResult(StageDisposition.READY, evidence=(evidence,))
+
+    def verify_stage(
+        self,
+        *,
+        task: TaskRecord,
+        execution: TaskExecution,
+        work_item: WorkItemDefinition,
+        evidence: tuple[TaskEvidence, ...],
+    ) -> tuple[TaskEvidence, ...]:
+        """The stage's kept outputs still hash to its evidence."""
+        del execution
+        held = self._outputs(task).get(work_item.stage_id)
+        if held is None or [item.content_hash for item in evidence] != [canonical_hash(held)]:
+            raise ValueError("evidence_review.install_failed")
+        return evidence
+
+    def _path(self, task: TaskRecord) -> Path:
+        return self.session.workspace / INSTALL_OUTPUTS / f"{task.task_id}.json"
+
+    def _outputs(self, task: TaskRecord) -> dict[str, Any]:
+        try:
+            return cast(dict[str, Any], json.loads(self._path(task).read_bytes()))
+        except FileNotFoundError:
+            return {}
+
+
+class EvidenceInstallCommand:
+    """One install, as the Host's dispatcher runs it; a recovery rebuilds it from its Task."""
+
+    command_kind = EVIDENCE_INSTALL_TASK_KIND
+
+    def __init__(self, install: EvidenceInstall, argv: Sequence[str] = ()) -> None:
+        """One install of the setup's command line."""
+        self.install, self.argv = install, tuple(argv)
+
+    def admit(self) -> CommandAdmission:
+        """Admit the install's Task."""
+        return self.install.admit(self.argv)
+
+    def execute(self, task_id: UUID, *, expected_task_hash: str | None = None) -> None:
+        """Run or recover the install's Task."""
+        self.install.execute(task_id, expected_task_hash=expected_task_hash)
 
 
 def _listing_authority(
@@ -403,295 +621,447 @@ def _listing_authority(
     )
 
 
-def _materialize(
-    arguments: argparse.Namespace, session: WorkspaceApplicationSession
-) -> dict[str, object]:
-    workspace = arguments.workspace.resolve()
-    input_id = getattr(arguments, "research_input_id", None)
-    input_hash = getattr(arguments, "research_input_hash", None)
-    if (input_id is None) != (input_hash is None):
-        raise OptionRefused(
-            "evidence_review.research_input_id_and_hash_required_together", "research_input_id"
-        )
-    if input_id is not None:
-        selected = ResearchInputRevisions(session).select(input_id, input_hash)
-        universe = _research_universe_listing_ids(workspace, selected.binding_hash)
-    else:
-        if read_research_workspace_manifest(workspace).strategy_installation == "NOT_INSTALLED":
+class _Setup:
+    """One setup's steps on a session its caller holds.
+
+    The script runs them at once (`run_setup`), the Host's install Task one stage each
+    (`EvidenceInstall`).
+    """
+
+    def __init__(self, arguments: argparse.Namespace, session: WorkspaceApplicationSession) -> None:
+        """Read the workspace, its research input, universe and recipe, and the model profile."""
+        workspace = arguments.workspace.resolve()
+        input_id = getattr(arguments, "research_input_id", None)
+        input_hash = getattr(arguments, "research_input_hash", None)
+        if (input_id is None) != (input_hash is None):
             raise OptionRefused(
-                "evidence_review.research_input_selection_required", "research_input_id"
+                "evidence_review.research_input_id_and_hash_required_together", "research_input_id"
             )
-        universe = _universe_listing_ids(workspace)
-    recipe = arguments.recipe or RECIPE_MINILM_CPU
-    if recipe not in SUPPORTED_RECIPES:
-        raise ValueError("evidence_review.retrieval_recipe_unsupported")
-    semantic_root = _semantic_root(arguments, workspace=workspace, recipe=recipe)
-    try:
-        semantic_relative = semantic_root.relative_to(workspace).as_posix()
-    except ValueError as error:
-        raise OptionRefused(
-            "evidence_review.semantic_model_outside_workspace", "semantic_model"
-        ) from error
-    capability = probe_hybrid_retrieval_capabilities(
-        semantic_root, HybridIndexSpec.for_recipe(recipe)
-    )
-    if capability.status != "READY":
-        raise RuntimeError("evidence_review.semantic_capability_not_ready")
-    profile = (
-        None
-        if not arguments.model_name
-        else EvidenceReviewModelProfile.create(
-            model_name=arguments.model_name,
-            base_url=arguments.deepseek_base_url,
-            analyst_timeout_seconds=arguments.analyst_timeout_seconds,
-            review_timeout_seconds=arguments.review_timeout_seconds,
+        if input_id is not None:
+            selected = ResearchInputRevisions(session).select(input_id, input_hash)
+            universe = _research_universe_listing_ids(workspace, selected.binding_hash)
+        else:
+            if read_research_workspace_manifest(workspace).strategy_installation == "NOT_INSTALLED":
+                raise OptionRefused(
+                    "evidence_review.research_input_selection_required", "research_input_id"
+                )
+            universe = _universe_listing_ids(workspace)
+        recipe = arguments.recipe or RECIPE_MINILM_CPU
+        if recipe not in SUPPORTED_RECIPES:
+            raise ValueError("evidence_review.retrieval_recipe_unsupported")
+
+        self.arguments, self.session, self.workspace = arguments, session, workspace
+        self.universe, self.recipe, self.research_input = universe, recipe, (input_id, input_hash)
+        self.profile = (
+            None
+            if not arguments.model_name
+            else EvidenceReviewModelProfile.create(
+                model_name=arguments.model_name,
+                base_url=arguments.deepseek_base_url,
+                analyst_timeout_seconds=arguments.analyst_timeout_seconds,
+                review_timeout_seconds=arguments.review_timeout_seconds,
+            )
         )
-    )
-    if getattr(arguments, "rebind_installed", False):
-        return _rebind_installed(
-            arguments,
-            workspace=workspace,
-            gate=session.mutation_gate,
-            universe=universe,
-            semantic_relative=semantic_relative,
-            capability_hash=str(capability.logical_hash),
-            profile=profile,
-            research_input=(input_id, input_hash),
-        )
-    if getattr(arguments, "acquire_sec", False):
-        requested = tuple(sorted(value.strip().upper() for value in arguments.entities or ()))
-        if not requested or len(requested) > 8 or len(set(requested)) != len(requested):
-            raise OptionRefused("evidence_review.entity_scope_invalid", "entities")
-        if any(value not in universe for value in requested):
-            raise OptionRefused("evidence_review.entity_scope_outside_universe", "entities")
-        maximum_documents = arguments.maximum_documents_per_issuer
-        if not 3 <= maximum_documents <= 20 or len(requested) * maximum_documents > 24:
+
+    def capability(self) -> tuple[str, str]:
+        """The recipe's packs bound into the workspace, and their capability: its root, its hash."""
+        arguments, workspace, recipe = self.arguments, self.workspace, self.recipe
+        semantic_root = _semantic_root(arguments, workspace=workspace, recipe=recipe)
+        try:
+            semantic_relative = semantic_root.relative_to(workspace).as_posix()
+        except ValueError as error:
             raise OptionRefused(
-                "evidence_review.document_budget_exceeds_retrieval_capacity",
-                "maximum_documents_per_issuer",
+                "evidence_review.semantic_model_outside_workspace", "semantic_model"
+            ) from error
+        capability = probe_hybrid_retrieval_capabilities(
+            semantic_root, HybridIndexSpec.for_recipe(recipe)
+        )
+        if capability.status != "READY":
+            raise RuntimeError("evidence_review.semantic_capability_not_ready")
+        return semantic_relative, str(capability.logical_hash)
+
+    def sources(
+        self, capability_hash: str, cancelled: Callable[[], bool] | None = None
+    ) -> tuple[Path, str, dict[str, object]] | dict[str, object]:
+        """The source set to package, acquired under consent or a recorded import's.
+
+        An acquisition's preflight answers instead.
+        """
+        arguments, workspace, universe = self.arguments, self.workspace, self.universe
+        if getattr(arguments, "acquire_sec", False):
+            requested = tuple(sorted(value.strip().upper() for value in arguments.entities or ()))
+            if not requested or len(requested) > 8 or len(set(requested)) != len(requested):
+                raise OptionRefused("evidence_review.entity_scope_invalid", "entities")
+            if any(value not in universe for value in requested):
+                raise OptionRefused("evidence_review.entity_scope_outside_universe", "entities")
+            maximum_documents = arguments.maximum_documents_per_issuer
+            if not 3 <= maximum_documents <= 20 or len(requested) * maximum_documents > 24:
+                raise OptionRefused(
+                    "evidence_review.document_budget_exceeds_retrieval_capacity",
+                    "maximum_documents_per_issuer",
+                )
+            consent = bool(arguments.network_consent)
+            network_enabled = network_access(workspace).allowed
+            user_agent = sec_user_agent()
+            cutoff = _acquisition_cutoff(arguments)
+            scopes = _accession_scopes(arguments, requested)
+            if arguments.preflight:
+                return {
+                    "status": "EVIDENCE_SOURCE_PREFLIGHT",
+                    "entity_ids": requested,
+                    "maximum_documents": len(requested) * maximum_documents,
+                    "evidence_as_of": None if cutoff is None else cutoff.isoformat(),
+                    "accession_scopes": {k: sorted(v) for k, v in scopes.items()},
+                    "maximum_document_bytes": arguments.maximum_document_bytes,
+                    "semantic_capability_hash": capability_hash,
+                    "network_consent": consent,
+                    "network_enabled": network_enabled,
+                    "sec_contact_configured": user_agent is not None,
+                    "managed_model_required": False,
+                    "acquisition_performed": False,
+                    "claim": "Preflight grants no acquisition, coverage or historical "
+                    "availability.",
+                }
+            if not consent:
+                raise ValueError("evidence_review.explicit_sec_network_consent_required")
+            if not network_enabled:
+                raise ValueError("evidence_review.workspace_network_not_allowed")
+            if user_agent is None:
+                raise ValueError("evidence_review.sec_contact_not_configured")
+            source_root, source_hash, acquisition = _acquire_sec_sources(
+                arguments,
+                requested,
+                user_agent,
+                cutoff=cutoff,
+                accession_scopes=scopes,
+                cancelled=cancelled,
             )
-        consent = bool(arguments.network_consent)
-        network_enabled = network_access(workspace).allowed
-        user_agent = os.environ.get("SEC_USER_AGENT", "").strip()
-        cutoff = _acquisition_cutoff(arguments)
-        scopes = _accession_scopes(arguments, requested)
-        if arguments.preflight:
+        else:
+            requested = ()
+            source_root, source_hash = (
+                arguments.source_artifact_root.resolve(),
+                arguments.source_set_hash,
+            )
+            acquisition = {"mode": "RECORDED_IMPORT", "network_calls": 0}
+        return source_root, source_hash, acquisition
+
+    def package(
+        self,
+        capability_hash: str,
+        source_root: Path,
+        source_hash: str,
+        acquisition: dict[str, object],
+    ) -> dict[str, Any]:
+        """The source set read and judged against its floor, as the seal takes it.
+
+        A recorded import's preflight answers instead (its `status`).
+        """
+        arguments, universe = self.arguments, self.universe
+        input_id, input_hash = self.research_input
+        requested: tuple[str, ...] = ()
+        # A recorded import names its roots, and a file it cannot read under one is refused naming
+        # the option, the file under it and what the option should hold (V590).
+        imported = acquisition["mode"] == "RECORDED_IMPORT"
+        with _reading("source_artifact_root" if imported else None, source_root):
+            source_set = _read_source(
+                source_root,
+                "source-document-sets",
+                source_hash,
+                AcquiredEvidenceDocumentSet,
+                "source_set_hash",
+            )
+            snapshot = _read_source(
+                source_root,
+                "snapshots",
+                source_set.source_snapshot_hash,
+                AlternativeEvidenceSnapshot,
+                "snapshot_hash",
+            )
+            registry = _read_source(
+                source_root,
+                "registries",
+                snapshot.registry_hash,
+                SecIssuerRegistrySnapshot,
+                "registry_hash",
+            )
+            if snapshot.request_hash != source_set.request_hash:
+                raise ValueError("evidence_review.source_request_mismatch")
+            source_request = _read_source(
+                source_root,
+                "requests",
+                source_set.request_hash,
+                AlternativeEvidenceRequest,
+                "request_hash",
+            )
+        if not requested:
+            requested = tuple(
+                sorted(
+                    value.strip().upper()
+                    for value in arguments.entities or source_request.ordered_entity_ids
+                )
+            )
+        if (
+            not requested
+            or len(set(requested)) != len(requested)
+            or not set(requested) <= set(source_request.ordered_entity_ids)
+        ):
+            raise OptionRefused("evidence_review.entity_scope_not_in_source_request", "entities")
+        knowledge_root = (
+            arguments.source_knowledge_root.resolve()
+            if getattr(arguments, "source_knowledge_root", None) is not None
+            else None
+        )
+        objects = "source_knowledge_root" if imported else None
+        with _reading(objects, knowledge_root or source_root.parent.parent / "evidence-knowledge"):
+            documents = _source_documents(
+                source_root, source_set, knowledge_root=knowledge_root, option=objects
+            )
+        admitted, rejected = canonicalize_source_documents(
+            tuple(value for value in documents if value.entity_id in requested)
+        )
+        # The floor as the coverage run judges it (V541, V587): an issuer whose filing index at
+        # the source's cutoff shows nothing filed in the window holds nothing to count and leaves
+        # the share; a failed or unread acquisition stays in it. Said whether it installs or not.
+        covered = {value.entity_id for value in admitted}
+        uncovered = tuple(entity for entity in requested if entity not in covered)
+        filed_nothing = (
+            index_quiet(
+                _sealed_plans(source_root, uncovered),
+                evidence_as_of=source_request.evidence_as_of,
+                window_days=source_request.source_policy.sec_recent_8k_days,
+            )
+            if uncovered
+            else frozenset()
+        )
+        failed = tuple(entity for entity in uncovered if entity not in filed_nothing)
+        if not admitted:
+            raise SourceCoverageRefused(
+                "evidence_review.materialization_has_no_admitted_documents:"
+                f"{len(filed_nothing)} of {len(requested)} issuers filed nothing in the window, "
+                f"{len(failed)} failed",
+                evidence_as_of=source_request.evidence_as_of,
+                entities=requested,
+                failed=len(failed),
+            )
+        captured = tuple(
+            RecordedEvidenceDocument(
+                entity_id=value.entity_id,
+                source_right="USER_PROVIDED_FOR_LOCAL_RESEARCH",
+                evidence_class=AlternativeEvidenceClass.ISSUER_OFFICIAL_RECORDED,
+                document_type=value.document_type,
+                revision=value.revision,
+                published_at=value.published_at,
+                captured_at=source_set.acquired_at
+                if value.source_name == "SEC_EDGAR"
+                else value.available_at,
+                # A recorded import is available no earlier than its capture; the
+                # original's acceptance, date precision and report period travel
+                # beside that bound rather than being lost to it.
+                available_at=max(value.available_at, source_set.acquired_at)
+                if value.source_name == "SEC_EDGAR"
+                else value.available_at,
+                accepted_at=value.accepted_at,
+                published_precision=value.published_precision,
+                report_period_end=value.report_period_end,
+                text=value.canonical_markdown.decode("utf-8"),
+                immutable_source=True,
+                # Ordered and deduplicated: re-materializing an already
+                # materialized source set carries these two lines in
+                # `value.limitations`, and appending them again rewrote the bundle
+                # hash over byte-identical text.
+                limitations=tuple(
+                    dict.fromkeys(
+                        (
+                            "Captured SEC EDGAR filing materialized for offline local research."
+                            if value.source_name == "SEC_EDGAR"
+                            else "Admitted recorded-local source; no new SEC acquisition.",
+                            f"Canonical source content hash: {value.canonical_content_hash}.",
+                            *value.limitations,
+                        )
+                    )
+                ),
+            )
+            for value in admitted
+        )
+        bundle = RecordedEvidenceDocumentBundle.create(captured)
+        entities = requested
+        floor = (
+            0.60 if arguments.minimum_entity_coverage is None else arguments.minimum_entity_coverage
+        )
+        short = sources_short(
+            entities, covered, floor=floor, quiet=lambda _uncovered: filed_nothing
+        )
+        if short is not None:
+            raise SourceCoverageRefused(
+                "evidence_review.materialization_issuer_coverage_incomplete:"
+                f"{short.held} of {short.issuers} counted issuers hold a document, "
+                f"{short.needed} needed, {short.quiet} filed nothing, "
+                f"{len(short.uncovered)} failed",
+                evidence_as_of=source_request.evidence_as_of,
+                entities=entities,
+                failed=len(short.uncovered),
+            )
+        listing = _listing_authority(universe, registry, entities)
+        standing = {
+            "hold_a_document": sorted(covered),
+            "filed_nothing": sorted(filed_nothing),
+            "failed": list(failed),
+        }
+        if getattr(arguments, "preflight", False):
+            # The recorded import's own check (V590): its records, scope, documents and floor read
+            # and judged as the install reads them, with no package sealed and no binding moved.
             return {
                 "status": "EVIDENCE_SOURCE_PREFLIGHT",
-                "entity_ids": requested,
-                "maximum_documents": len(requested) * maximum_documents,
-                "evidence_as_of": None if cutoff is None else cutoff.isoformat(),
-                "accession_scopes": {k: sorted(v) for k, v in scopes.items()},
-                "maximum_document_bytes": arguments.maximum_document_bytes,
-                "semantic_capability_hash": capability.logical_hash,
-                "network_consent": consent,
-                "network_enabled": network_enabled,
-                "sec_contact_configured": "@" in user_agent,
-                "managed_model_required": False,
-                "acquisition_performed": False,
-                "claim": "Preflight grants no acquisition, coverage or historical availability.",
+                "source": "RECORDED_IMPORT",
+                "entity_ids": entities,
+                "source_set_hash": source_set.source_set_hash,
+                "evidence_as_of": source_request.evidence_as_of.isoformat(),
+                "admitted_document_count": len(bundle.documents),
+                "rejected_document_count": len(rejected),
+                "issuer_coverage": standing,
+                "minimum_entity_coverage": floor,
+                "semantic_capability_hash": capability_hash,
+                "installed": False,
+                "claim": "Preflight seals no package and moves no binding; installing reads "
+                "the same records.",
             }
-        if not consent:
-            raise ValueError("evidence_review.explicit_sec_network_consent_required")
-        if not network_enabled:
-            raise ValueError("evidence_review.workspace_network_not_allowed")
-        if "@" not in user_agent:
-            raise ValueError("evidence_review.sec_user_agent_required")
-        source_root, source_hash, acquisition = _acquire_sec_sources(
-            arguments, requested, user_agent, cutoff=cutoff, accession_scopes=scopes
-        )
-    else:
-        requested = ()
-        source_root, source_hash = (
-            arguments.source_artifact_root.resolve(),
-            arguments.source_set_hash,
-        )
-        acquisition = {"mode": "RECORDED_IMPORT", "network_calls": 0}
-    # A recorded import names its roots, and a file it cannot read under one is refused naming
-    # the option, the file under it and what the option should hold (V590).
-    imported = acquisition["mode"] == "RECORDED_IMPORT"
-    with _reading("source_artifact_root" if imported else None, source_root):
-        source_set = _read_source(
-            source_root,
-            "source-document-sets",
-            source_hash,
-            AcquiredEvidenceDocumentSet,
-            "source_set_hash",
-        )
-        snapshot = _read_source(
-            source_root,
-            "snapshots",
-            source_set.source_snapshot_hash,
-            AlternativeEvidenceSnapshot,
-            "snapshot_hash",
-        )
-        registry = _read_source(
-            source_root,
-            "registries",
-            snapshot.registry_hash,
-            SecIssuerRegistrySnapshot,
-            "registry_hash",
-        )
-        if snapshot.request_hash != source_set.request_hash:
-            raise ValueError("evidence_review.source_request_mismatch")
-        source_request = _read_source(
-            source_root,
-            "requests",
-            source_set.request_hash,
-            AlternativeEvidenceRequest,
-            "request_hash",
-        )
-    if not requested:
-        requested = tuple(
-            sorted(
-                value.strip().upper()
-                for value in arguments.entities or source_request.ordered_entity_ids
-            )
-        )
-    if (
-        not requested
-        or len(set(requested)) != len(requested)
-        or not set(requested) <= set(source_request.ordered_entity_ids)
-    ):
-        raise OptionRefused("evidence_review.entity_scope_not_in_source_request", "entities")
-    knowledge_root = (
-        arguments.source_knowledge_root.resolve()
-        if getattr(arguments, "source_knowledge_root", None) is not None
-        else None
-    )
-    objects = "source_knowledge_root" if imported else None
-    with _reading(objects, knowledge_root or source_root.parent.parent / "evidence-knowledge"):
-        documents = _source_documents(
-            source_root, source_set, knowledge_root=knowledge_root, option=objects
-        )
-    admitted, rejected = canonicalize_source_documents(
-        tuple(value for value in documents if value.entity_id in requested)
-    )
-    # The floor as the coverage run judges it (V541, V587): an issuer whose filing index at the
-    # source's cutoff shows nothing filed in the window holds nothing to count and leaves the
-    # share; a failed or unread acquisition stays in it. Said whether the package installs or not.
-    covered = {value.entity_id for value in admitted}
-    uncovered = tuple(entity for entity in requested if entity not in covered)
-    filed_nothing = (
-        index_quiet(
-            _sealed_plans(source_root, uncovered),
-            evidence_as_of=source_request.evidence_as_of,
-            window_days=source_request.source_policy.sec_recent_8k_days,
-        )
-        if uncovered
-        else frozenset()
-    )
-    failed = tuple(entity for entity in uncovered if entity not in filed_nothing)
-    if not admitted:
-        raise SourceCoverageRefused(
-            "evidence_review.materialization_has_no_admitted_documents:"
-            f"{len(filed_nothing)} of {len(requested)} issuers filed nothing in the window, "
-            f"{len(failed)} failed",
-            evidence_as_of=source_request.evidence_as_of,
-            entities=requested,
-            failed=len(failed),
-        )
-    captured = tuple(
-        RecordedEvidenceDocument(
-            entity_id=value.entity_id,
-            source_right="USER_PROVIDED_FOR_LOCAL_RESEARCH",
-            evidence_class=AlternativeEvidenceClass.ISSUER_OFFICIAL_RECORDED,
-            document_type=value.document_type,
-            revision=value.revision,
-            published_at=value.published_at,
-            captured_at=source_set.acquired_at
-            if value.source_name == "SEC_EDGAR"
-            else value.available_at,
-            # A recorded import is available no earlier than its capture; the
-            # original's acceptance, date precision and report period travel
-            # beside that bound rather than being lost to it.
-            available_at=max(value.available_at, source_set.acquired_at)
-            if value.source_name == "SEC_EDGAR"
-            else value.available_at,
-            accepted_at=value.accepted_at,
-            published_precision=value.published_precision,
-            report_period_end=value.report_period_end,
-            text=value.canonical_markdown.decode("utf-8"),
-            immutable_source=True,
-            # Ordered and deduplicated: re-materializing an already
-            # materialized source set carries these two lines in
-            # `value.limitations`, and appending them again rewrote the bundle
-            # hash over byte-identical text.
-            limitations=tuple(
-                dict.fromkeys(
-                    (
-                        "Captured SEC EDGAR filing materialized for offline local research."
-                        if value.source_name == "SEC_EDGAR"
-                        else "Admitted recorded-local source; no new SEC acquisition.",
-                        f"Canonical source content hash: {value.canonical_content_hash}.",
-                        *value.limitations,
-                    )
-                )
-            ),
-        )
-        for value in admitted
-    )
-    bundle = RecordedEvidenceDocumentBundle.create(captured)
-    entities = requested
-    floor = 0.60 if arguments.minimum_entity_coverage is None else arguments.minimum_entity_coverage
-    short = sources_short(entities, covered, floor=floor, quiet=lambda _uncovered: filed_nothing)
-    if short is not None:
-        raise SourceCoverageRefused(
-            "evidence_review.materialization_issuer_coverage_incomplete:"
-            f"{short.held} of {short.issuers} counted issuers hold a document, "
-            f"{short.needed} needed, {short.quiet} filed nothing, {len(short.uncovered)} failed",
-            evidence_as_of=source_request.evidence_as_of,
-            entities=entities,
-            failed=len(short.uncovered),
-        )
-    listing = _listing_authority(universe, registry, entities)
-    standing = {
-        "hold_a_document": sorted(covered),
-        "filed_nothing": sorted(filed_nothing),
-        "failed": list(failed),
-    }
-    if getattr(arguments, "preflight", False):
-        # The recorded import's own check (V590): its records, scope, documents and floor read
-        # and judged as the install reads them, with no package sealed and no binding moved.
         return {
-            "status": "EVIDENCE_SOURCE_PREFLIGHT",
-            "source": "RECORDED_IMPORT",
-            "entity_ids": entities,
-            "source_set_hash": source_set.source_set_hash,
-            "evidence_as_of": source_request.evidence_as_of.isoformat(),
-            "admitted_document_count": len(bundle.documents),
-            "rejected_document_count": len(rejected),
-            "issuer_coverage": standing,
+            "registry": registry,
+            "listing": listing,
+            "bundle": bundle,
+            "entities": entities,
             "minimum_entity_coverage": floor,
-            "semantic_capability_hash": capability.logical_hash,
-            "installed": False,
-            "claim": "Preflight seals no package and moves no binding; installing reads the same "
-            "records.",
+            "facts": {
+                "source_set_hash": source_set.source_set_hash,
+                "source_artifact_root": str(source_root),
+                "acquisition": acquisition,
+                "research_input_id": input_id,
+                "research_input_hash": input_hash,
+                "source_document_count": len(source_set.documents),
+                "rejected_document_count": len(rejected),
+                "issuer_coverage": standing,
+            },
         }
-    return _seal_package(
-        arguments,
-        workspace=workspace,
-        gate=session.mutation_gate,
-        registry=registry,
-        listing=listing,
-        bundle=bundle,
-        entities=entities,
-        semantic_relative=semantic_relative,
-        capability_hash=str(capability.logical_hash),
-        profile=profile,
-        authority_id=arguments.authority_id or DEFAULT_AUTHORITY_ID,
-        minimum_entity_coverage=floor,
-        selection=_matter_selection(arguments),
-        facts={
-            "source_set_hash": source_set.source_set_hash,
-            "source_artifact_root": str(source_root),
-            "acquisition": acquisition,
-            "research_input_id": input_id,
-            "research_input_hash": input_hash,
-            "source_document_count": len(source_set.documents),
-            "rejected_document_count": len(rejected),
-            "issuer_coverage": standing,
-        },
+
+    def install(
+        self, semantic_relative: str, capability_hash: str, package: dict[str, Any] | None
+    ) -> dict[str, object]:
+        """Seal and bind the package, or with none rebind the installed one."""
+        if package is None:
+            return _rebind_installed(
+                self.arguments,
+                workspace=self.workspace,
+                gate=self.session.mutation_gate,
+                universe=self.universe,
+                semantic_relative=semantic_relative,
+                capability_hash=capability_hash,
+                profile=self.profile,
+                research_input=self.research_input,
+            )
+        return _seal_package(
+            self.arguments,
+            workspace=self.workspace,
+            gate=self.session.mutation_gate,
+            semantic_relative=semantic_relative,
+            capability_hash=capability_hash,
+            profile=self.profile,
+            authority_id=self.arguments.authority_id or DEFAULT_AUTHORITY_ID,
+            selection=_matter_selection(self.arguments),
+            **package,
+        )
+
+
+def run_setup(
+    arguments: argparse.Namespace, session: WorkspaceApplicationSession
+) -> dict[str, object]:
+    """Run the setup on a session the caller holds: its preflight answer or its installation."""
+    setup, held = _Setup(arguments, session), dict[str, Any]()
+    for stage in INSTALL_STAGES:
+        held[stage] = _step(setup, stage, held)
+        if held[stage].get("status") == "EVIDENCE_SOURCE_PREFLIGHT":
+            break
+    return cast(dict[str, object], held[stage])
+
+
+def _step(
+    setup: _Setup,
+    stage: str,
+    held: dict[str, Any],
+    cancelled: Callable[[], bool] = lambda: False,
+) -> dict[str, Any]:
+    """One stage of the setup over the outputs of the stages before it.
+
+    A preflight answers in place of the acquisition or the index (its `status`); the
+    publication is the answer.
+    """
+    rebind = bool(getattr(setup.arguments, "rebind_installed", False))
+    if stage == "environment":
+        return {"recipe": setup.recipe}
+    if stage == "model":
+        relative, capability = setup.capability()
+        return {"semantic_relative": relative, "capability_hash": capability}
+    model = held["model"]
+    if stage == "acquisition":
+        if rebind:
+            return {}
+        sources = setup.sources(model["capability_hash"], cancelled)
+        if isinstance(sources, dict):
+            return sources
+        root, source_hash, acquisition = sources
+        return {"source_root": str(root), "source_hash": source_hash, "acquisition": acquisition}
+    found = held["acquisition"]
+    package = (
+        None
+        if rebind
+        else setup.package(
+            model["capability_hash"],
+            Path(found["source_root"]),
+            found["source_hash"],
+            found["acquisition"],
+        )
+    )
+    if package is not None and "status" in package:
+        return package
+    bundle = None if package is None else package["bundle"].bundle_hash
+    if stage == "index":
+        return {"bundle_hash": bundle}
+    # The package is computed again from the kept source set; the index stage's hash binds it.
+    if bundle != held["index"]["bundle_hash"]:
+        raise ValueError("evidence_review.install_failed")
+    if cancelled():
+        raise AlternativeEvidenceTaskCancelled("alternative_evidence.current_task_cancelled")
+    return setup.install(model["semantic_relative"], model["capability_hash"], package)
+
+
+_DELEGATED = frozenset(
+    {
+        *("workspace", "acquire_sec", "entities", "accessions", "evidence_as_of"),
+        *("maximum_documents_per_issuer", "maximum_document_bytes", "network_consent"),
+        *("install", "preflight", "research_input_id", "research_input_hash", "semantic_model"),
+    }
+)
+"""The options a first use's agent may install with: its acquisition's own choices."""
+
+
+def within_delegation(arguments: argparse.Namespace, current: EvidenceSourceConsent) -> bool:
+    """Whether a first use's agent may install with these options.
+
+    Only the acquisition's own choices, within the default budget and the person's own consent.
+    """
+    defaults = vars(_parser().parse_args(["--workspace", str(arguments.workspace)]))
+    if any(vars(arguments)[name] != defaults[name] for name in defaults.keys() - _DELEGATED):
+        return False
+    per_issuer = arguments.maximum_documents_per_issuer
+    documents = per_issuer * max(len(arguments.entities or ()), 1)
+    wanted = EvidenceSourceConsent(
+        documents_per_issuer=per_issuer,
+        total_documents=documents,
+        total_bytes=documents * (arguments.maximum_document_bytes or DEFAULT_SOURCE_DOCUMENT_BYTES),
+    )
+    return wanted.within(DEFAULT_SOURCE_CONSENT) and (
+        current.actor in NOT_GRANTED
+        or current.actor.startswith("first-use-goal:")
+        or wanted.within(current)
     )
 
 
@@ -982,6 +1352,7 @@ def _acquire_sec_sources(
     *,
     cutoff: datetime | None = None,
     accession_scopes: dict[str, frozenset[str]] | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> tuple[Path, str, dict[str, object]]:
     now = datetime.now(UTC)
     request = seal_contract(
@@ -1008,7 +1379,9 @@ def _acquire_sec_sources(
         retrieval_recipe=recipe,
     )
     try:
-        with HttpxSecOfficialTransport(user_agent=user_agent) as transport:
+        with HttpxSecOfficialTransport(
+            user_agent=user_agent, requests_per_second=sec_request_rate()
+        ) as transport:
             source = SecEdgarSource(transport)
             _registry, snapshot, source_set = runtime.acquire_live(
                 request=request,
@@ -1016,6 +1389,7 @@ def _acquire_sec_sources(
                 source=source,
                 published_at=now,
                 accession_scopes=accession_scopes or None,
+                should_cancel=cancelled,
             )
         return (
             runtime.artifacts.root,
@@ -1278,75 +1652,83 @@ def _import_command(arguments: argparse.Namespace, root: Path) -> str:
     return join(parts, shell())
 
 
+def setup_refusal(arguments: argparse.Namespace, error: Exception) -> dict[str, Any]:
+    """A setup refusal whole.
+
+    Its code and words, its context, the option it refused on and the commands of its way on.
+    """
+    payload = setup_failure(error)
+    payload["context"] = {
+        "workspace": str(arguments.workspace),
+        "source": "SEC"
+        if arguments.acquire_sec
+        else ("REBIND_INSTALLED" if arguments.rebind_installed else "RECORDED_IMPORT"),
+        "issuers": arguments.entities or [],
+        "research_input_id": arguments.research_input_id,
+        "research_input_hash": arguments.research_input_hash,
+        "source_set_hash": arguments.source_set_hash,
+        "network_consent": arguments.network_consent,
+    }
+    # Each way on fits the mode (V590): an acquisition's read-only preflight keeps its exact
+    # binding, scope and explicit consent, and only an acquisition is offered the network
+    # decision; a recorded import's way on is its own check, offline.
+    if arguments.acquire_sec:
+        payload["next_requests"] = {"network": {"operation": "NETWORK_ACCESS"}}
+        payload["next_commands"] = {
+            "preflight": _acquisition_command(
+                arguments, arguments.entities or (), arguments.evidence_as_of, preflight=True
+            )
+        }
+    elif arguments.source_artifact_root is not None and arguments.source_set_hash:
+        root = arguments.source_artifact_root
+        if isinstance(error, SourceFileUnavailable) and error.option == "source_artifact_root":
+            root = _holding_root(root.resolve(), arguments.source_set_hash) or root
+        payload["next_commands"] = {"preflight": _import_command(arguments, root)}
+    else:
+        payload["next_commands"] = {"help": join([*_setup_entry(), "--help"], shell())}
+    if isinstance(error, OptionRefused):
+        # The option it refused on and what that option must hold, as the offer states it
+        # (V591, V592); a file under a root option, by its place there (V590).
+        payload["location"] = {
+            "option": error.option,
+            **({"file": error.file} if isinstance(error, SourceFileUnavailable) else {}),
+            "expected": SETUP_OPTIONS[error.option],
+        }
+    if (
+        isinstance(error, SourceCoverageRefused)
+        and arguments.acquire_sec
+        and error.failed
+        and len(error.entities) <= 8
+    ):
+        # The way on: the same official acquisition of the package's issuers at the one
+        # cutoff they were counted at -- what failed is fetched again and a quiet issuer
+        # stays uncounted -- checked first (V587).
+        cutoff, entities = error.evidence_as_of.isoformat(), error.entities
+        payload["next_commands"] = {
+            "preflight": _acquisition_command(arguments, entities, cutoff, preflight=True),
+            "acquire": _acquisition_command(arguments, entities, cutoff, preflight=False),
+        }
+    if (
+        arguments.acquire_sec
+        and payload["failure_code"] == "evidence_review.workspace_network_not_allowed"
+    ):
+        permission = network_access(arguments.workspace).body(for_refusal=True)
+        payload.update(refusal_words(payload["failure_code"], workspace=arguments.workspace))
+        payload["network_access"] = permission
+        payload["next_requests"] = {
+            "network": {"operation": "NETWORK_ACCESS"},
+            **cast(dict[str, object], permission["next_requests"]),
+        }
+    return payload
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the declared command and return its exit status."""
     arguments = _parser().parse_args(argv)
     try:
         result = materialize(arguments)
     except Exception as error:
-        payload = setup_failure(error)
-        payload["context"] = {
-            "workspace": str(arguments.workspace),
-            "source": "SEC"
-            if arguments.acquire_sec
-            else ("REBIND_INSTALLED" if arguments.rebind_installed else "RECORDED_IMPORT"),
-            "issuers": arguments.entities or [],
-            "research_input_id": arguments.research_input_id,
-            "research_input_hash": arguments.research_input_hash,
-            "source_set_hash": arguments.source_set_hash,
-            "network_consent": arguments.network_consent,
-        }
-        # Each way on fits the mode (V590): an acquisition's read-only preflight keeps its exact
-        # binding, scope and explicit consent, and only an acquisition is offered the network
-        # decision; a recorded import's way on is its own check, offline.
-        if arguments.acquire_sec:
-            payload["next_requests"] = {"network": {"operation": "NETWORK_ACCESS"}}
-            payload["next_commands"] = {
-                "preflight": _acquisition_command(
-                    arguments, arguments.entities or (), arguments.evidence_as_of, preflight=True
-                )
-            }
-        elif arguments.source_artifact_root is not None and arguments.source_set_hash:
-            root = arguments.source_artifact_root
-            if isinstance(error, SourceFileUnavailable) and error.option == "source_artifact_root":
-                root = _holding_root(root.resolve(), arguments.source_set_hash) or root
-            payload["next_commands"] = {"preflight": _import_command(arguments, root)}
-        else:
-            payload["next_commands"] = {"help": join([*_setup_entry(), "--help"], shell())}
-        if isinstance(error, OptionRefused):
-            # The option it refused on and what that option must hold, as the offer states it
-            # (V591, V592); a file under a root option, by its place there (V590).
-            payload["location"] = {
-                "option": error.option,
-                **({"file": error.file} if isinstance(error, SourceFileUnavailable) else {}),
-                "expected": SETUP_OPTIONS[error.option],
-            }
-        if (
-            isinstance(error, SourceCoverageRefused)
-            and arguments.acquire_sec
-            and error.failed
-            and len(error.entities) <= 8
-        ):
-            # The way on: the same official acquisition of the package's issuers at the one
-            # cutoff they were counted at -- what failed is fetched again and a quiet issuer
-            # stays uncounted -- checked first (V587).
-            cutoff, entities = error.evidence_as_of.isoformat(), error.entities
-            payload["next_commands"] = {
-                "preflight": _acquisition_command(arguments, entities, cutoff, preflight=True),
-                "acquire": _acquisition_command(arguments, entities, cutoff, preflight=False),
-            }
-        if (
-            arguments.acquire_sec
-            and payload["failure_code"] == "evidence_review.workspace_network_not_allowed"
-        ):
-            permission = network_access(arguments.workspace).body(for_refusal=True)
-            payload.update(refusal_words(payload["failure_code"], workspace=arguments.workspace))
-            payload["network_access"] = permission
-            payload["next_requests"] = {
-                "network": {"operation": "NETWORK_ACCESS"},
-                **cast(dict[str, object], permission["next_requests"]),
-            }
-        print(json.dumps(payload))
+        print(json.dumps(setup_refusal(arguments, error)))
         return 2
     print(json.dumps(result, indent=2, default=str))
     return 0

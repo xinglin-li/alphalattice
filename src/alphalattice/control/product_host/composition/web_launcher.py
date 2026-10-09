@@ -15,13 +15,9 @@ it actually got. `--no-browser` prints the URL and waits, which is what a headle
 check wants; `--port` pins a port for someone who needs a stable bookmark and
 accepts the collision risk that comes with it.
 
-`--sec-network-consent` is the operator's explicit consent to acquire SEC
-filings from the official endpoints for the workspace's Evidence and CRO
-section; without it the section stays on its recorded package, offline. The
-consent alone composes nothing: the environment must allow the network
-through the workspace network control and name the SEC contact (`SEC_USER_AGENT`),
-and a refusal is printed by name. `--sec-max-document-bytes` declares the
-per-document cap for that source, never above the contract's maximum.
+The workspace's Evidence and CRO section admits the official SEC source while it runs,
+from the workspace's consent and network control (`alphalattice evidence-consent set`,
+`alphalattice network set`); nothing about it is a launch option.
 """
 
 from __future__ import annotations
@@ -36,9 +32,6 @@ from pathlib import Path
 
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
-)
-from alphalattice.evidence.alternative_evidence.sources.admission import (
-    admit_official_source,
 )
 
 
@@ -95,94 +88,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="For an attached host: stop on a 'stop' line or EOF; join Tasks before exit.",
     )
-    parser.add_argument(
-        "--sec-network-consent",
-        action="store_true",
-        help="Explicit consent to acquire SEC filings from the official endpoints.",
-    )
-    parser.add_argument(
-        "--sec-max-document-bytes",
-        type=int,
-        default=None,
-        help="The per-document cap declared for the official source (contract maximum bound).",
-    )
-    parser.add_argument(
-        "--sec-acquisition-window-seconds",
-        type=int,
-        default=None,
-        help="The acquisition window declared for the official source's requests, from "
-        "each request's cutoff; the admitted policy's window otherwise.",
-    )
-    parser.add_argument(
-        "--sec-max-total-attempts",
-        type=int,
-        default=None,
-        help="Campaign bound on HTTP attempts of every kind, enforced before each request.",
-    )
-    parser.add_argument(
-        "--sec-max-total-response-bytes",
-        type=int,
-        default=None,
-        help="Campaign bound on decoded response bytes, partial transfers included.",
-    )
-    parser.add_argument(
-        "--sec-max-body-resources",
-        type=int,
-        default=None,
-        help="Campaign bound on distinct filing bodies fetched.",
-    )
-    parser.add_argument(
-        "--sec-campaign-id",
-        default=None,
-        help="Name the durable campaign these bounds admit (all three bounds and the "
-        "document cap required); a later launch with the same id and bounds resumes "
-        "it with only what remains, from its ledger under the workspace.",
-    )
     arguments = parser.parse_args(argv)
 
-    official_source = None
-    if arguments.sec_network_consent or arguments.sec_max_document_bytes is not None:
-        official_source = admit_official_source(
-            network_consent=bool(arguments.sec_network_consent),
-            maximum_document_bytes=arguments.sec_max_document_bytes,
-            acquisition_window_seconds=arguments.sec_acquisition_window_seconds,
-            maximum_total_attempts=arguments.sec_max_total_attempts,
-            maximum_total_response_bytes=arguments.sec_max_total_response_bytes,
-            maximum_body_resources=arguments.sec_max_body_resources,
-            campaign_id=arguments.sec_campaign_id,
-            workspace_root=arguments.workspace,
-        )
-        if official_source.transport_origin == "DENIED":
-            print(
-                "Official SEC source admitted with the network disabled: live "
-                "preparations read back, no request leaves this process, and a new "
-                f"source check is refused ({official_source.refusal_code})."
-            )
-        elif official_source.admitted:
-            print(
-                "Official SEC source admitted "
-                f"({official_source.transport_origin}; per-document cap "
-                f"{official_source.maximum_document_bytes or 'recorded policy'})."
-            )
-            campaign = official_source.campaign
-            if campaign is not None:
-                print(
-                    f"Campaign {campaign['campaign_id']} "
-                    f"{'resumed' if campaign['resumed'] else 'admitted'}: "
-                    f"{campaign['attempts_remaining']} attempts, "
-                    f"{campaign['bytes_remaining']:,} decoded bytes and "
-                    f"{campaign['body_resources_remaining']} bodies remain; "
-                    f"{campaign['unsettled_reservations']} unsettled reservation(s)."
-                )
-        else:
-            print(
-                f"Official SEC source not admitted: {official_source.refusal_code}; "
-                "the Evidence and CRO section stays on its recorded package."
-            )
     session = LocalPortfolioWebSession.from_workspace(
         arguments.workspace,
         port=arguments.port,
-        official_source=official_source,
     )
     # `start` is inside the cleanup boundary, not before it. It acquires a
     # workspace lease and starts a worker before it binds a socket, so a failure
@@ -213,9 +123,6 @@ def main(argv: list[str] | None = None) -> int:
         # worker before releasing the lease, and a launcher that gave up early
         # would leave a second writer behind for the next one to meet.
         session.stop()
-        if official_source is not None and official_source.source is not None:
-            # The official client, and with it the campaign's ownership.
-            official_source.source.close()
     return 0
 
 

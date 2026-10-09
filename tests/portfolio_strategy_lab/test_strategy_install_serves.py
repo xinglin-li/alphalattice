@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
 from alphalattice.control.product_host.composition import research_workspace
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.data_preparation import research_strategy
@@ -14,11 +16,15 @@ from alphalattice.control.product_host.data_preparation.research_strategy import
     CATEGORY,
 )
 from alphalattice.interface.local_application.cli import main
+from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
+    PortfolioResearchSpec,
+)
 from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies import (
     BROAD_FEATURE_PACKAGE,
     PRODUCT_EVIDENCE_ROOT_KEY,
     install_frozen_strategies,
 )
+from tests.portfolio_strategy_lab.local_web_support import _harness, _run
 
 
 def _cli(live: LocalPortfolioWebSession, capsys, *arguments: str) -> dict:  # type: ignore[no-untyped-def,type-arg]
@@ -29,9 +35,9 @@ def _cli(live: LocalPortfolioWebSession, capsys, *arguments: str) -> dict:  # ty
 def test_an_installed_strategy_is_served_by_the_running_host_without_a_restart(
     tmp_path: Path, capsys, monkeypatch
 ) -> None:
-    """regression (an offline first-use rehearsal): a Host started with nothing installed serves a
-    strategy installed through it, its controls and plan, with no restart. About 13 s: one real
-    Host composed with the shipped strategy catalog."""
+    """An installed strategy reaches controls, planning and report disclosure without a restart.
+
+    About 13 s: one real Host and a three-formation report."""
     shipped = install_frozen_strategies(artifacts={PRODUCT_EVIDENCE_ROOT_KEY: tmp_path})
     # The installed artifact's registry reads name the shipped package: a real preparation
     # runs whole Alpha and Risk studies.
@@ -98,6 +104,20 @@ def test_an_installed_strategy_is_served_by_the_running_host_without_a_restart(
         answer = _cli(live, capsys, "strategy", "install", "--task", str(uuid4()))["data"]
         assert answer["status"] == "INSTALLED_NON_DEFAULT_RESEARCH", answer
         assert live.operations.installed()
+
+        packages = live.application.resolver.installed_packages()
+        assert live.application.executor.packages == dict(packages)
+        proof_root = tmp_path / "disclosure"
+        proof_root.mkdir()
+        with _harness(proof_root) as harness:
+            result = _run(harness, PortfolioResearchSpec.default())
+            program = harness.application.program(result.result_hash)
+            report = harness.application.report(result.result_hash)
+        assert program.strategy_package_hash not in packages
+        with pytest.raises(
+            ValueError, match=r"^portfolio_application\.program_package_not_installed$"
+        ):
+            live.application.executor.disclosure(report=report, program=program)
 
         controls = _cli(live, capsys, "strategy-book", "controls", "--package", package_id)["data"]
         assert controls.get("template"), controls

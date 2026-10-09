@@ -19,7 +19,7 @@ Each Evidence recipe selects two packs for its local encoder and reranker. Insta
 | `Qwen/Qwen3-Reranker-0.6B` | `e61197ed45024b0ed8a2d74b80b4d909f1255473` | 1,207,471,008 | Apache-2.0 |
 | `Xenova/ms-marco-MiniLM-L-6-v2` | `a09144355adeed5f58c8ed011d209bf8ee5a1fec` | 91,707,303 | Apache-2.0; ONNX weights converted from `cross-encoder/ms-marco-MiniLM-L-6-v2` |
 
-Verified packs are reused, and interrupted installations resume their staged files. On Windows, `%LOCALAPPDATA%/AlphaLattice/models` is the default store. `ALPHALATTICE_MODEL_STORE` or `--store` changes its location. Workspaces share linked pack files. Runtime loaders read local files and never silently install missing models. Locked Python packages install during setup, while Playwright tooling installs separately. Both retain their licenses.
+Verified packs are reused, and interrupted installations resume their staged files. On Windows, `%LOCALAPPDATA%/AlphaLattice/models` is the default store. `ALPHALATTICE_MODEL_STORE` or `--store` changes its location, and a store packs were installed into is remembered, so later runs find it without the variable. Workspaces share linked pack files. Runtime loaders read local files and never silently install missing models. Locked Python packages install during setup, while Playwright tooling installs separately. Both retain their licenses.
 
 ## Yahoo Finance
 
@@ -49,9 +49,9 @@ Records keep the URL, retrieval time, response hash and membership evidence. Wik
 
 Admitted live Evidence uses `httpx` to read `https://www.sec.gov/files/company_tickers.json`, `https://data.sec.gov/submissions/CIK<10-digit-CIK>.json` and selected bodies under `https://www.sec.gov/Archives/edgar/data/`. Explicit XBRL requests use `https://data.sec.gov/api/xbrl/companyfacts/CIK<10-digit-CIK>.json`; Local Web's live policy requests filings.
 
-`SEC_USER_AGENT` requires a trimmed contact containing `@`, without a default. Each client starts at most 5 requests per second, at least 0.2 seconds apart. Response and attempt caps, delayed retries for 429 and server errors, and allowed-path checks apply. This limit applies per client.
+Requests name the product by its own contact, `AlphaLattice alphalattice.project@gmail.com`, an address the project maintains; an operator who must use another sets `SEC_USER_AGENT` to a contact containing `@`. Each client starts at most 2 requests per second, at least 0.5 seconds apart, well below the SEC's fair-access limit. Response and attempt caps, delayed retries for 429 and server errors, and allowed-path checks apply. This limit applies per client.
 
-Live admission requires source consent, workspace network authority and SEC contact. Otherwise Evidence uses its recorded package offline. Reused local filings imply no fresh acquisition. User-supplied official documents carry declared access rights for local research; AlphaLattice grants no license.
+Live admission requires source consent and workspace network authority. Otherwise Evidence uses its recorded package offline. Reused local filings imply no fresh acquisition. User-supplied official documents carry declared access rights for local research; AlphaLattice grants no license.
 
 ## Cost and scope
 

@@ -14,6 +14,7 @@ here for the callers that already reach for it on this path.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -31,6 +32,24 @@ from alphalattice.protocols.research_authoring.selection import (
 )
 
 _MAXIMUM_DEPTH = MAXIMUM_DEPTH
+
+
+def convert_authoring_document(
+    *, document: object = None, text: str | None = None
+) -> dict[str, Any]:
+    """Convert exactly one safe declaration without planning or admitting work."""
+    if (document is None) == (text is None):
+        raise AuthoringError("research_experiment.one_document_required")
+    if document is not None:
+        text = json.dumps(document, allow_nan=False)
+    assert text is not None
+    parsed = dict(load_authoring_document(text))
+    return {
+        "status": "DECLARATION_PARSED",
+        "document": parsed,
+        "yaml": yaml.safe_dump(parsed, sort_keys=False),
+        "notice": "FORMAT_ONLY_PLAN_REQUIRED",
+    }
 
 
 def load_authoring_document(text: str) -> Mapping[str, Any]:
@@ -86,6 +105,7 @@ def _reject_dynamic_import(node: object, *, depth: int) -> None:
 
 __all__ = [
     "FORBIDDEN_KEYS",
+    "convert_authoring_document",
     "load_authoring_document",
     "load_selection_only_document",
     "require_authoring_document",

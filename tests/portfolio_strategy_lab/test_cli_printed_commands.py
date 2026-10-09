@@ -311,6 +311,8 @@ def test_every_printed_command_reads_back_as_the_request_it_came_from(
     read = 0
     seen = set()
     table = command_table()
+    assert table["commands"]["portfolio show"] == ["PORTFOLIO_READBACK"]
+    assert table["commands"]["declaration convert"] == ["EXPERIMENT_DECLARATION_CONVERT"]
     for request in _offered_shapes():
         line = command(request, prefix=("alphalattice", "--workspace", "W"), quoting="posix")
         if line is None:
@@ -370,16 +372,41 @@ def test_every_printed_command_reads_back_as_the_request_it_came_from(
 
     fake_host.answer = {"status": "PLANNED", "plan_hash": "c" * 64}
     monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
-    request = {
-        "operation": "EXPERIMENT_PLAN",
-        "research_input_id": "input-1",
-        "experiment_document": {"experiment": {"kind": "factor.screening-development"}},
-    }
-    printed = command(request, prefix=("alphalattice", "--workspace", str(tmp_path)))
-    assert printed is not None and "--file" in printed, printed
-    arguments = shlex.split(printed)[1:]
-    assert cli.main(arguments, serve=lambda _: 99) == 0, capsys.readouterr().out
-    assert fake_host.sent == [request]
+    document = {"experiment": {"kind": "factor.screening-development"}}
+    task = str(uuid4())
+    requests = [
+        {
+            "operation": "EXPERIMENT_PLAN",
+            "research_input_id": "input-1",
+            "experiment_document": document,
+        },
+        {
+            "operation": "PORTFOLIO_READBACK",
+            "task_id": task,
+            "performance": "latest",
+            "portfolio_session": "2026-09-10",
+        },
+        {"operation": "EXPERIMENT_DECLARATION_CONVERT", "experiment_document": document},
+    ]
+    for request in requests:
+        printed = command(request, prefix=("alphalattice", "--workspace", str(tmp_path)))
+        assert printed is not None, request
+        arguments = shlex.split(printed)[1:]
+        if request["operation"] == "PORTFOLIO_READBACK":
+            assert arguments[2:] == [
+                "portfolio",
+                "show",
+                task,
+                "--performance",
+                "latest",
+                "--session",
+                "2026-09-10",
+            ]
+        else:
+            assert "--file" in arguments
+            assert json.loads(arguments[arguments.index("--file") + 1]) == document
+        assert cli.main(arguments, serve=lambda _: 99) == 0, capsys.readouterr().out
+    assert fake_host.sent == requests
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell is a Windows shell")

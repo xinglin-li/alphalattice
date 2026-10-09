@@ -609,6 +609,7 @@ def test_a_stage_failure_names_the_owners_own_code(
     def fail_canonicalization(*_args: object, **_kwargs: object) -> object:
         raise raised
 
+    canonicalize = authority.evidence_runtime.canonicalize
     monkeypatch.setattr(authority.evidence_runtime, "canonicalize", fail_canonicalization)
     service = start_service(workspace, authority, tmp_path)
     try:
@@ -635,6 +636,16 @@ def test_a_stage_failure_names_the_owners_own_code(
         assert completed["lifecycle"] == "SUCCEEDED" and completed["units_failed"] == 1
         assert completed["failed_units"][0]["failure_code"] == _failure_code(raised)
         assert completed["next_requests"]["preview"] == {"operation": "EVIDENCE_PREVIEW"}
+        monkeypatch.setattr(authority.evidence_runtime, "canonicalize", canonicalize)
+        monkeypatch.setattr(authority.evidence_runtime, "analyze", fail_canonicalization)
+        admitted = service.review.refresh_evidence(dispatcher=service.session.dispatcher)
+        service.drain()
+        task = service.registry.task(admitted.task_id)
+        (state,) = adapter.unit_states(task).values()
+        assert state["state"] == "PREPARED" and state["failed_stage"] == "analyze_evidence"
+        assert service.review.task_subject(task)["current_scope"]["failed_unit_ids"] == [
+            state["unit_id"]
+        ]
     finally:
         service.session.stop()
 

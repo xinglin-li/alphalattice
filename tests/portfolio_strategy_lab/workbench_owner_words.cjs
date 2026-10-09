@@ -72,7 +72,7 @@ for(const file of fs.readdirSync(appDir).filter(f=>f.endsWith('.js'))) {
     Data:{readShared:async url=>{reads++;if(url==='/api/tasks')return {tasks:[]};
       if(url==='/api/tasks/guardian')return {tasks:[]};if(url==='/api/tasks/incidents')return {incidents};
       throw Error('unexpected owner read '+url);},setTasks(){},runsOf:()=>[],taskRefusals:()=>[]},
-    LiveActivity:{refresh(){}},Window:{renderSide(){},inspectorMode:()=>''},patchMain(){},stateMoving:()=>false,
+    LiveActivity:{refresh(){}},Window:{renderSide(){},inspectorMode:()=>''},$:()=>null,patchMain(){},stateMoving:()=>false,
     objectHead:library.stubs.empty,btnAttrs:()=>'',icon:()=>'',groupHead:()=>'',pager:()=>'',tile:()=>'',
     emptyState:()=>'',link:()=>'',when:x=>x,pageOf:rows=>({shown:rows,page:0,pages:1})};
   library.context(c);

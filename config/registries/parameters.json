@@ -1576,6 +1576,26 @@
 "class": "METHOD",
 "count": 1
 },
+"src/alphalattice/evidence/alternative_evidence/sources/admission.py::REQUESTS_PER_DOCUMENT::2": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/evidence/alternative_evidence/sources/admission.py::CONSENT_ATTEMPTS_PER_DOCUMENT::4": {
+"class": "LIMIT",
+"count": 1
+},
+"src/alphalattice/evidence/alternative_evidence/sources/admission.py::documents_per_issuer::3": {
+"class": "LIMIT",
+"count": 1
+},
+"src/alphalattice/evidence/alternative_evidence/sources/admission.py::total_documents::600": {
+"class": "LIMIT",
+"count": 1
+},
+"src/alphalattice/evidence/alternative_evidence/sources/admission.py::total_bytes::3000000000": {
+"class": "LIMIT",
+"count": 1
+},
 "src/alphalattice/evidence/alternative_evidence/contracts.py::MAXIMUM_READ_FILINGS::512": {
 "class": "LIMIT",
 "count": 1

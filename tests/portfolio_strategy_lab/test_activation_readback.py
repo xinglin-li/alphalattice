@@ -26,6 +26,7 @@ def test_every_activation_surface_reads_the_exact_books_published_review(
 ):
     """Activation surfaces read the exact book's published review without starting research work."""
 
+    from alphalattice.interface.local_application.cli_contract import refusal_words
     from alphalattice.interface.local_application.client import LocalResearchClient
     from tests.alternative_evidence_desk.review_http_support import build_authority
     from tests.portfolio_strategy_lab.activation_review_support import activation_review_host
@@ -143,6 +144,8 @@ def test_every_activation_surface_reads_the_exact_books_published_review(
         ]
         assert offered["next_requests"]["activate"]["task_id"] == task_id
         assert offered["review_standing"] == standing
+        assert offered["review_holdings"]["claim"] == "BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS"
+        assert "reviewed" not in offered["review_holdings"]["detail"].lower()
         shown = activation_cli(live, capsys, "workspace", "show")
         (intent,) = [i for i in shown["intents"] if i.get("strategy_package_id") == PACKAGE]
         assert intent["activation"]["review_standing"] == standing
@@ -245,6 +248,11 @@ def test_every_activation_surface_reads_the_exact_books_published_review(
         active_controls = after.request(books_request)
         assert active_controls["activation"] == active
         assert active_controls["activation"]["book_task_id"] == task_id
+        unsupported = after.request(plan_request)
+        assert unsupported["failure_code"] == "research_update.model_epoch_unavailable"
+        assert unsupported["detail"] == refusal_words(unsupported["failure_code"])["detail"]
+        assert unsupported["next_action"] == "READ_STRATEGY_CONTROLS_AND_PLAN_WITH_MODEL_SUPPORT"
+        assert unsupported["next_requests"] == {"books": books_request}
         reopened = after.request(include_context=True)
         (forward,) = [
             row for row in reopened["intents"] if row.get("strategy_package_id") == PACKAGE

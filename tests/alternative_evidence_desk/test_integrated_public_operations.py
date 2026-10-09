@@ -18,8 +18,7 @@ import urllib.parse
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 from alphalattice.evidence.alternative_evidence.analysis.matters import (
@@ -316,9 +315,6 @@ def test_the_integrated_selection_flows_through_the_public_operations(tmp_path: 
 def test_the_first_release_reads_are_projections_of_the_sealed_evidence(tmp_path: Path) -> None:
     """The first release reads are projections of the sealed evidence."""
 
-    from alphalattice.control.product_host.composition.local_web_session import (
-        _campaign_reader,
-    )
     from alphalattice.evidence.alternative_evidence.sources.campaign import (
         SecCampaignDeclaration,
         SecCampaignLedger,
@@ -335,6 +331,7 @@ def test_the_first_release_reads_are_projections_of_the_sealed_evidence(tmp_path
         preview = service.get("/api/evidence/preview?" + query)
         policy = service.review.evidence_policy
         assert preview["admission"] == {
+            "maximum_documents_per_issuer": policy.source_policy.maximum_documents_per_issuer,
             "maximum_document_bytes": policy.source_policy.maximum_document_bytes,
             "acquisition_window_seconds": policy.acquisition_window_seconds,
         }
@@ -349,9 +346,7 @@ def test_the_first_release_reads_are_projections_of_the_sealed_evidence(tmp_path
             maximum_document_bytes=600,
         )
         with SecCampaignLedger.open(tmp_path / "campaign.jsonl", declaration=declaration) as ledger:
-            service.review.campaign_summary = _campaign_reader(
-                cast(Any, SimpleNamespace(campaign_ledger=ledger))
-            )
+            service.review.campaign_summary = ledger.summary
             assert service.get("/api/evidence/preview?" + query)["campaign"] == ledger.summary()
             sequence = ledger.reserve(
                 url="https://www.sec.gov/qa", resource="qa-1", maximum_bytes=500

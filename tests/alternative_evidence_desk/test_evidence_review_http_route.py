@@ -35,6 +35,7 @@ from alphalattice.control.product_host.composition.application_session import (
 )
 from alphalattice.control.product_host.composition.evidence_review_application import (
     ANSWER_CATEGORY,
+    agent_answer_result,
 )
 from alphalattice.control.product_host.composition.evidence_review_bundles import (
     EvidenceReviewBundles,
@@ -75,6 +76,7 @@ from tests.alternative_evidence_desk.review_dossiers import controlled_answer
 from tests.alternative_evidence_desk.review_http_support import (
     _raise_interruption,
     _Service,
+    _service,
     build_authority,
     start_service,
 )
@@ -121,29 +123,6 @@ def _packet(body: dict[str, Any]) -> dict[str, str]:
         if isinstance(value, dict) and value.get("operation") == "EVIDENCE_PACKET"
     ]
     return request
-
-
-def _service(
-    tmp_path: Path,
-    workspace: Path,
-    report,
-    *,
-    with_runtime: bool,
-    with_actor: bool,
-    model_authority_admitted: bool = True,
-) -> Iterator[_Service]:
-    authority = build_authority(
-        tmp_path=tmp_path,
-        report=report,
-        with_runtime=with_runtime,
-        with_actor=with_actor,
-        model_authority_admitted=model_authority_admitted,
-    )
-    service = start_service(workspace, authority, tmp_path)
-    try:
-        yield service
-    finally:
-        service.session.stop()
 
 
 @pytest.fixture
@@ -2160,19 +2139,24 @@ def test_no_analyst_is_credited_with_another_bundles_answer(
 def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> None:
     """A specialist's receipt names its task's state so a wait follows it."""
 
-    from alphalattice.control.product_host.composition.evidence_review_application import (
-        agent_answer_result,
-    )
     from alphalattice.interface.local_application.cli_contract import outcome_of
 
     answer = {"verdict": "ACCEPTED", "accepted_items": [1], "dropped": []}
     for role in ("ANALYST", "CRO"):
-        admitted = agent_answer_result(
-            role,
-            {"disposition": "ADMITTED", "task_id": "t-1", "lifecycle": "QUEUED", "answer": answer},
-        )
-        assert (admitted["task_lifecycle"], outcome_of(admitted)) == ("QUEUED", "PENDING")
-        assert admitted["next_requests"]["task"] == {"operation": "STATUS", "task_id": "t-1"}
+        for lifecycle, expected in (("QUEUED", "PENDING"), ("BLOCKED", "REFUSED")):
+            admitted = agent_answer_result(
+                role,
+                {
+                    "disposition": "ADMITTED",
+                    "task_id": "t-1",
+                    "lifecycle": lifecycle,
+                    "answer": answer,
+                },
+            )
+            assert admitted["status"] == admitted["answer_status"] == "ACCEPTED"
+            assert (admitted["task_lifecycle"], outcome_of(admitted)) == (lifecycle, expected)
+            assert all(word in admitted["message"] for word in ("accepted", "t-1", lifecycle))
+            assert admitted["next_requests"]["task"] == {"operation": "STATUS", "task_id": "t-1"}
         reused = agent_answer_result(
             role,
             {

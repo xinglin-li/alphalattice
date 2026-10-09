@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from alphalattice.interface.local_application import cli, cli_contract, client, native_bridge
+from alphalattice.interface.local_application import cli, cli_contract, client
 from alphalattice.interface.local_application.cli_contract import envelope
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
@@ -91,7 +91,7 @@ def local_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Callable[...,
         pytest.fail("A saved-answer reading reached a live entry.")
 
     monkeypatch.setattr(client, "LocalResearchClient", forbidden)
-    monkeypatch.setattr(native_bridge, "lead_readings", forbidden)
+    monkeypatch.setattr(client, "lead_readings", forbidden)
     monkeypatch.setattr(socket, "socket", forbidden)
     return forbidden
 

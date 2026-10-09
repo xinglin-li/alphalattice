@@ -34,13 +34,14 @@ def serve(arguments: list[str]) -> int:
         if (selected.workspace / RESEARCH_WORKSPACE_MANIFEST_NAME).is_file()
         else None
     )
-    if (
-        manifest is not None
-        and manifest.evidence_review is not None
-        and importlib.util.find_spec("fastembed") is None
+    interpreter = interpreter_path()
+    checkout = (ROOT / "pyproject.toml").is_file()
+    packaged = manifest is not None and manifest.evidence_review is not None
+    # The Host runs in the declared retrieval environment whenever it exists, so an Evidence
+    # package installed while it runs is served by it; a package with none to run in refuses.
+    if importlib.util.find_spec("fastembed") is None and (
+        packaged or (checkout and interpreter.is_file())
     ):
-        interpreter = interpreter_path()
-        checkout = (ROOT / "pyproject.toml").is_file()
         if not checkout or not interpreter.is_file():
             print(
                 json.dumps(

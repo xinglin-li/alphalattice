@@ -198,7 +198,7 @@ def test_shared_forward_read_preserves_exact_refusal_and_service_caller():
     with pytest.raises(LocalWebError, match="artifact_tampered"):
         read_workbench_portfolio(operations, query, caller="SERVICE_AUTOMATION")
     assert [(request.operation, request.task_id) for request, _ in calls] == [
-        ("EXPERIMENT_READBACK", task_id)
+        ("PORTFOLIO_READBACK", task_id)
     ] * 2
     assert [kwargs for _, kwargs in calls] == [{}, {"caller": "SERVICE_AUTOMATION"}]
     with pytest.raises(LocalWebError, match=r"workbench\.query_field_unknown"):

@@ -211,6 +211,16 @@
 "strategy-score-preparation"
 ]
 },
+"task_kind:evidence_install": {
+"owner": "task_kind:evidence_install",
+"readers": [
+"src/alphalattice/control/product_host/composition/evidence_authority_setup.py"
+],
+"upgraders": [],
+"version": [
+"evidence-install"
+]
+},
 "task_kind:study_verification_sweep": {
 "owner": "task_kind:study_verification_sweep",
 "readers": [

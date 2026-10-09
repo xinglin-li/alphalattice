@@ -206,6 +206,7 @@ class EvidenceReviewBundles:
         task_id: UUID | None = None,
         unit_id: str | None = None,
         dispatcher: LocalBackgroundDispatcher | None = None,
+        view: list[str] | None = None,
     ) -> dict[str, object] | ReviewOutcome:
         """Prepare one exact role-specific agent bundle and retained submission association.
 
@@ -216,14 +217,17 @@ class EvidenceReviewBundles:
         the selected book's current dossier. The caller writes the files to
         `directory`; the Host keeps that directory beside the exact submission
         an answer completes, so no file carries a hash and the answer needs
-        none. One directory holds one bundle.
+        none. One directory holds one bundle. A role's view of a date's positions
+        (`view`) makes its specialist bundle, the CRO's on the committee included.
         """
         if role not in get_args(AgentRole.__value__):
             raise PortfolioEvidenceReviewError("agent_bundle.role_unknown")
         if not Path(directory).is_absolute():
             raise PortfolioEvidenceReviewError("agent_bundle.directory_not_absolute")
-        if role not in TASK_PROCEDURES:
-            return self.prepare_specialist_bundle(role=role, directory=directory, task_id=task_id)
+        if role not in TASK_PROCEDURES or view is not None:
+            return self.prepare_specialist_bundle(
+                role=role, directory=directory, task_id=task_id, view=view
+            )
         chosen = self.app._review_selector(selector)
         if isinstance(chosen, ReviewOutcome):
             return chosen
@@ -299,9 +303,17 @@ class EvidenceReviewBundles:
         )
 
     def prepare_specialist_bundle(
-        self, *, role: AgentRole, directory: str, task_id: UUID | None
+        self,
+        *,
+        role: AgentRole,
+        directory: str,
+        task_id: UUID | None,
+        view: list[str] | None = None,
     ) -> dict[str, object]:
-        """Prepare one generic interpretation from exact retained Task metadata and references."""
+        """Prepare one interpretation from exact retained Task metadata and references.
+
+        When the Task published a date's positions, the role's view of them comes with it.
+        """
         if task_id is None:
             raise PortfolioEvidenceReviewError("agent_bundle.specialist_task_required")
         registry = self.app.session.task_control_registry
@@ -337,6 +349,17 @@ class EvidenceReviewBundles:
                             ),
                         ),
                     ),
+                ),
+                *(
+                    ()
+                    if view is None
+                    else (
+                        BundleSection(
+                            key="positions",
+                            heading="The date's positions as this role reads them",
+                            blocks=(BundleBlock(lines=tuple(view)),),
+                        ),
+                    )
                 ),
             ),
             stem="task",

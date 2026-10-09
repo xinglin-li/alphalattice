@@ -3,6 +3,7 @@
     "src/alphalattice/control/product_host/__init__.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/__init__.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/application_session.py": "COMPOSITION",
+    "src/alphalattice/control/product_host/composition/committee.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/decision_advancement.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/entry.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/evidence_authority_setup.py": "COMPOSITION",

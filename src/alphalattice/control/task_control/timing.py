@@ -114,11 +114,13 @@ def task_timing(
     *,
     now: datetime,
     spans: Sequence[Mapping[str, Any]] = (),
+    selected_stage: str | None = None,
 ) -> dict[str, object]:
     """Queued and running seconds, and each stage's, as of ``now`` for a Task still running.
 
     ``spans`` are the Task's kept phase readouts (`read_stage_spans`); each stage lists its own,
     oldest first, under ``phases``, with the execution each belongs to.
+    ``selected_stage`` returns that stage's same timing row, or ``None`` when absent.
     """
     end = record.updated_at if record.lifecycle in _ENDED else now
     started = record.started_at
@@ -129,25 +131,31 @@ def task_timing(
             phases.setdefault(stage, []).append(
                 {key: item for key, item in value.items() if key not in {"task_id", "stage_id"}}
             )
+    stages = [
+        {
+            "stage_id": item.stage_id,
+            "lifecycle": item.lifecycle.value,
+            "started_at": None if item.started_at is None else item.started_at.isoformat(),
+            "updated_at": item.updated_at.isoformat(),
+            "seconds": None
+            if item.started_at is None
+            else _seconds(
+                item.started_at, item.updated_at if item.lifecycle in _STAGE_ENDED else now
+            ),
+            "phases": phases.get(item.stage_id, []),
+        }
+        for item in items
+    ]
     return {
+        "sampled_at": now.isoformat(),
         "admitted_at": record.admitted_at.isoformat(),
         "started_at": None if started is None else started.isoformat(),
         "queued_seconds": _seconds(record.admitted_at, started or end),
         "running_seconds": None if started is None else _seconds(started, end),
-        "stages": [
-            {
-                "stage_id": item.stage_id,
-                "lifecycle": item.lifecycle.value,
-                "started_at": None if item.started_at is None else item.started_at.isoformat(),
-                "seconds": None
-                if item.started_at is None
-                else _seconds(
-                    item.started_at, item.updated_at if item.lifecycle in _STAGE_ENDED else now
-                ),
-                "phases": phases.get(item.stage_id, []),
-            }
-            for item in items
-        ],
+        "stages": stages,
+        "selected_stage": next(
+            (stage for stage in stages if stage["stage_id"] == selected_stage), None
+        ),
     }
 
 

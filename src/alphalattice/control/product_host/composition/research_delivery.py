@@ -36,8 +36,12 @@ def export_research_delivery(
     """Read-only composition: no implicit latest choice, publication, fit or Task."""
     from alphalattice.interface.local_application.experiment_report import render_research_delivery
 
-    assert request.task_id is not None and request.portfolio_session is not None
-    assert request.experiment_receipt_hash is not None
+    if (
+        request.task_id is None
+        or request.portfolio_session is None
+        or request.experiment_receipt_hash is None
+    ):
+        raise AuthoringError("research_delivery.subject_required")
     selector = BookSelector(
         experiment_task_id=request.task_id,
         experiment_receipt_hash=request.experiment_receipt_hash,
@@ -264,6 +268,76 @@ def export_research_delivery(
             "Verified historical research with separately attributed commentary. "
             "No winner, current advice, scientific approval or trade authority. "
             "Optional missing sections are not zero risk."
+        ),
+    }
+    rendered = render_research_delivery(snapshot)
+    body = {**snapshot, "html": rendered}
+    return {**body, "export_hash": str(canonical_hash(body))}
+
+
+def export_update_delivery(
+    *,
+    request: PortfolioResearchOperationRequest,
+    readback: dict[str, Any],
+    review: EvidenceReviewApplication | None,
+    committee: list[dict[str, str]] | None,
+) -> dict[str, object]:
+    """A date's published positions as the delivery.
+
+    Its publication, the exact review it names and, once the committee closed, its floor as the
+    commentary, which the Host accepted.
+    """
+    from alphalattice.interface.local_application.experiment_report import render_research_delivery
+
+    publication = readback.get("publication")
+    if (
+        not isinstance(publication, dict)
+        or publication["content_hash"] != request.update_publication_hash
+        or request.position_basis is None
+    ):
+        raise AuthoringError("research_delivery.update_subject_mismatch")
+    selection: dict[str, object] = {
+        "operation": "EXPERIMENT_DELIVERY_EXPORT",
+        "update_task_id": str(request.update_task_id),
+        "update_publication_hash": request.update_publication_hash,
+        "position_basis": request.position_basis,
+    }
+    review_export: dict[str, Any] | None = None
+    if request.review_publication_hash is not None:
+        if review is None:
+            raise AuthoringError("research_delivery.review_runtime_unavailable")
+        review_export = EvidenceReviewDelivery(review).export_review(
+            BookSelector(
+                update_task_id=request.update_task_id,
+                update_publication_hash=request.update_publication_hash,
+                position_basis=request.position_basis,
+            ),
+            request.review_publication_hash,
+        )
+        selection["review_publication_hash"] = request.review_publication_hash
+    evidence: dict[str, Any] = {"status": "PRESENT" if review_export else "NOT_SELECTED"}
+    if review_export:
+        evidence["value"] = review_export
+    snapshot: dict[str, object] = {
+        "kind": "ResearchDeliveryExport",
+        "status": "RESEARCH_DELIVERY_EXPORTED",
+        "selection": selection,
+        "input": {"strategy_package_id": readback.get("strategy_package_id"), **selection},
+        "question": request.delivery_question,
+        "question_status": "PROVIDED_FOR_THIS_DELIVERY_NOT_ORIGINAL_EXPERIMENT_INTENT"
+        if request.delivery_question
+        else "NOT_RECORDED",
+        "sections": {
+            "positions": {"status": "PRESENT", "value": {"html": readback.get("html")}},
+            "evidence_cro": evidence,
+        },
+        "summary": {"section_status": {"positions": "PRESENT", "evidence_cro": evidence["status"]}},
+        "commentary": committee or [],
+        "commentary_provenance": {"submitted_by": "HOST", "attribution": "COMMITTEE_FLOOR"},
+        "next_requests": {"reopen": selection},
+        "claim": (
+            "Research positions for a date, with the committee's attributed commentary. No "
+            "orders, current advice, scientific approval or trade authority."
         ),
     }
     rendered = render_research_delivery(snapshot)

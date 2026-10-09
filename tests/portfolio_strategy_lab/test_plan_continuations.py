@@ -33,6 +33,7 @@ from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecor
 from alphalattice.interface.local_application.answers import continuation_problem
 from alphalattice.interface.local_application.cli_contract import command_table
 from alphalattice.interface.local_application.client import continued
+from alphalattice.interface.local_application.dispatcher import CommandSubmission
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
@@ -593,12 +594,20 @@ def test_a_stopped_book_retains_its_controls_window_and_admitted_package(
         assert harness.resolver.numerical_calls == 0
 
 
-def test_a_training_task_never_silently_drops_a_component_from_its_replan(tmp_path):
-    """regression (TE12): the singleton planning entry refuses a multi-component retained
-    Task by name, instead of inventing a new request by dropping one of its selections."""
+def test_a_training_replan_refuses_an_ambiguous_component_selection(tmp_path):
+    """A retained training Task cannot choose one component from an ambiguous selection."""
+    manifest = ResearchWorkspaceManifest.create(
+        workspace_id="s1-workspace",
+        default_strategy_package_id=None,
+        default_score_source_mode=None,
+        strategy_artifacts=(),
+        strategy_installation="NOT_INSTALLED",
+    )
     plan = model_training.ModelTrainingInputPlan.create(
         workspace_id="s1-workspace",
-        workspace_manifest_hash="a" * 64,
+        workspace_manifest_hash=model_training.manifest_fields_hash(
+            manifest, model_training.PLAN_FIELDS
+        ),
         input_id="s1-input",
         input_binding_hash="b" * 64,
         component_ids=("G2_R0_TREND", "G6_R0_FAST_REBOUND"),
@@ -613,6 +622,42 @@ def test_a_training_task_never_silently_drops_a_component_from_its_replan(tmp_pa
     )
     with pytest.raises(ValueError, match=r"model_training\.component_selection_invalid"):
         app.replan_request(task)
+
+
+@pytest.mark.parametrize(
+    "owner",
+    [
+        "workspace_preparation",
+        "feature_research",
+        "research_input",
+        "research_strategy",
+        "workspace_data_update",
+        "model_training",
+    ],
+)
+@pytest.mark.parametrize("suffix", [None, "", "invalid-task"])
+def test_an_admission_refusal_names_its_blocking_task_and_offers_read_and_wait(owner, suffix):
+    """Only a valid blocking Task supplies read/wait requests across the saved-answer seam."""
+    suffix = str(uuid4()) if suffix is None else suffix
+    code = f"{owner}.finish_or_recover_existing_task" + (f":{suffix}" if suffix else "")
+    refused = CommandSubmission(
+        command_kind=owner,
+        disposition="REFUSED_INVALID_COMMAND",
+        submitted_at=datetime(2026, 10, 2, tzinfo=UTC),
+        refusal_detail=code,
+    ).answer()
+    expected = dict(
+        status="REFUSED_INVALID_COMMAND", task_id=None, lifecycle=None, failure_code=code
+    )
+    if suffix not in ("", "invalid-task"):
+        expected["blocking_task_id"] = suffix
+        expected["next_requests"] = {
+            "read": {"operation": "STATUS", "task_id": suffix},
+            "wait": {"operation": "STATUS", "task_id": suffix, "wait_seconds": 20},
+        }
+    assert refused == expected
+    for request in refused.get("next_requests", {}).values():
+        _assert_request(request, request)
 
 
 def test_a_full_training_plan_keeps_its_hash_and_a_light_one_names_its_lifecycle() -> None:

@@ -175,6 +175,47 @@ def test_the_window_is_what_the_issuer_filed_recently_and_nothing_older_is_kept(
     assert plan.selected == plan.events
 
 
+def test_the_workspaces_consent_binds_the_per_issuer_count_and_defers_the_rest_by_name(
+    tmp_path: Path,
+) -> None:
+    """requirement: an official source takes at most the documents per issuer the workspace's
+    consent admits, three unless the person approves another, even for a request sealed under
+    more (one queued or recovered), and defers the issuer's other filings by name."""
+    from alphalattice.evidence.alternative_evidence.sources.admission import (
+        EvidenceSourceConsent,
+        admit_official_source,
+        record_evidence_source_consent,
+    )
+
+    record_evidence_source_consent(tmp_path, EvidenceSourceConsent(actor="HUMAN"))
+    source = admit_official_source(
+        network_consent=True, transport=_FloodTransport(FLOOD), workspace_root=tmp_path
+    ).source
+    assert source is not None
+    plan = source.plan_entity_filings(
+        request=_request(budget=12),
+        registry=source.acquire_registry(captured_at=NOW),
+        entity_id="AAPL",
+    )
+    assert [value.accession for value in plan.selected] == WINDOWED[:3]
+    assert [(value.accession, value.reason) for value in plan.deferred] == [
+        (accession, "BEYOND_CAPACITY") for accession in WINDOWED[3:]
+    ]
+
+
+def test_an_official_source_declared_past_the_consent_is_refused(tmp_path: Path) -> None:
+    """requirement: a declared total above what the workspace's consent admits is refused."""
+    from alphalattice.evidence.alternative_evidence.sources.admission import admit_official_source
+
+    with pytest.raises(ValueError, match="budget_exceeds_consent"):
+        admit_official_source(
+            network_consent=True,
+            transport=_FloodTransport(FLOOD),
+            workspace_root=tmp_path,
+            maximum_body_resources=601,
+        )
+
+
 def test_a_filing_read_earlier_gives_its_capacity_to_what_is_new() -> None:
     """A filing read earlier gives its capacity to what is new."""
 

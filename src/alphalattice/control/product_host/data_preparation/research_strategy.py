@@ -710,12 +710,8 @@ class ResearchStrategyPreparation:
         if plan is None:
             raise ValueError("research_strategy.preview_required")
         sent = dispatcher.submit(ResearchStrategyCommand(self, plan, caller))
-        return {
-            "status": sent.disposition,
-            "task_id": str(sent.task_id) if sent.task_id else None,
-            "failure_code": sent.refusal_detail,
-            "lifecycle": sent.lifecycle,
-            "next_requests": {
+        return sent.answer(
+            next_requests={
                 "readback": {
                     "operation": "RESEARCH_STRATEGY_READBACK",
                     "task_id": str(sent.task_id),
@@ -723,7 +719,7 @@ class ResearchStrategyPreparation:
             }
             if sent.task_id
             else {},
-        }
+        )
 
     def admit(self, plan: ResearchStrategyPlan, caller: str) -> CommandAdmission:
         """Require current preparation scope and exclusive task ownership under the mutation gate.
@@ -754,7 +750,9 @@ class ResearchStrategyPreparation:
                     TaskLifecycle.CANCELLED,
                     TaskLifecycle.BLOCKED,
                 }:
-                    raise ValueError("research_strategy.finish_or_recover_existing_task")
+                    raise ValueError(
+                        f"research_strategy.finish_or_recover_existing_task:{task.task_id}"
+                    )
             envelope, goal, workflow = _contract(plan, caller)
             task = registry.admit(
                 input_envelope=envelope, goal=goal, plan=workflow, observed_at=self.clock()

@@ -177,7 +177,10 @@ const settle=(ms=20)=>new Promise(r=>setTimeout(r,ms));
   bodies.byTask[EARLIER]={...bodies.byTask[EARLIER],cycle:cycle('quality','review_pending',{failure_code:'data.truth_review_required'}),maintenance:maintenance(60,1,[corrected,reverified,failedUnit])};await w.refresh('data');
   c.location.hash='#page=data&update=no-such';bodies.byTask['no-such']=undefined;w.page();await settle();markup=w.page();
   assert.ok(markup.includes('This update Task cannot be shown') && markup.includes('workspace_data_update.task_not_found') && markup.includes('BTN(Open the current data state:workspace-current::)') && !markup.includes('data-scene'),'a missing id is a typed refusal, never a fall-back');
-  await w.current();assert.equal(c.location.hash,'#page=data&update='+UPDATE,'the way back discovers and pins the latest');assert.ok(w.page().includes('2026-07-31 → 2026-08-03'));
+  const currentReads=reads.length;await w.current();
+  assert.deepEqual(Object.fromEntries(new URLSearchParams(c.location.hash.slice(1))),{page:'data'});
+  assert.deepEqual(reads.slice(currentReads).filter(p=>p.startsWith('/api/data-update')||p.startsWith('/api/tasks/recovery')),['/api/data-update','/api/tasks/recovery?task_id='+UPDATE]);
+  assert.equal(c.app.data,receipt.after.data_through);assert.ok(w.page().includes('2026-07-31 → 2026-08-03'));
   // continuing a stopped update posts the same plan again and stays on this page
   c.location.hash='#page=data&update='+EARLIER;w.page();await settle();
   const cont=posts.length;bodies['/api/data-update/run']={status:'ADMITTED',task_id:EARLIER,lifecycle:'RECOVERY_REQUIRED',failure_code:null};

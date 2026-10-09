@@ -1,11 +1,13 @@
 """Derive the Claude Code host files from the Codex-native owners.
 
-Owners: the seven role cards `.codex/agents/*.toml` (their `developer_instructions` are the
-professional role text) and the PM Skill `.agents/skills/alphalattice-research/`.
+Owners: the role cards `.codex/agents/*.toml` (their `developer_instructions` are the
+professional role text) and the Skills under `.agents/skills/`.
 Derivatives: `.claude/agents/<name>.md` (one subagent per card: haiku, high effort, the
-tools its card's sandbox allows, no delegation), and a byte copy of the Skill under
-`.claude/skills/` (Claude Code reads only that directory). Default
-`.claude/settings.json` has no product lifecycle hooks; unrelated settings are preserved.
+tools its card's sandbox allows, no delegation), and a byte copy of each Skill under
+`.claude/skills/` (Claude Code reads only that directory). Every card ends with its
+`# Local method` paragraph: the person's file for it in the user layer, which no release
+writes. Default `.claude/settings.json` has no product lifecycle hooks; unrelated settings are
+preserved.
 
 Each stage card carries its reads, EXECUTE commands and graph (V384, V386), generated
 from the operation table, request fields and CLI help. It links the Skill's shared
@@ -33,22 +35,23 @@ from alphalattice.interface.local_application.failure_codes import setup_failure
 
 CARDS = ROOT / ".codex" / "agents"
 OPERATIONS = ROOT / "src" / "alphalattice" / "interface" / "local_application" / "operations.json"
+SKILLS = ROOT / ".agents" / "skills"
 SKILL_NAME = "alphalattice-research"
-SKILL_SOURCE = ROOT / ".agents" / "skills" / SKILL_NAME
+SKILL_SOURCE = SKILLS / SKILL_NAME
 CLAUDE = ROOT / ".claude"
 CLAUDE_MODEL = "haiku"
 CLAUDE_EFFORT = "high"
 CLAUDE_TOOLS = {
     # No Agent tool for any card, so a specialist cannot delegate.
     "read-only": "Read, Grep, Glob",
-    # The two evidence specialists read their bundle whole and write their own answer file:
-    # no Grep or Glob (none of 27 measured runs used either), and no Bash, since the lead runs
-    # the submit command (the Codex sandbox is unchanged).
-    "workspace-write": "Read, Write",
+    # A stage card runs its commands and writes its declarations and saved answers in the
+    # workspace, as its Codex card's workspace-write sandbox allows (V384).
+    "workspace-write": "Read, Grep, Glob, Edit, Write, Bash",
 }
-STAGE_TOOLS = "Read, Grep, Glob, Edit, Write, Bash"
-"""A stage card's Claude tools: it runs its commands and writes its declarations and saved
-answers in the workspace, as its Codex card's workspace-write sandbox allows (V384)."""
+BUNDLE_TOOLS = "Read, Write"
+"""The two evidence specialists read their bundle whole and write their own answer file: no Grep
+or Glob (none of 27 measured runs used either), and no Bash, since the lead runs the submit
+command (the Codex sandbox is unchanged)."""
 HOOK_MATCHER = "^alphalattice_.*$"
 HOOK_EVENTS = ("SubagentStart", "SubagentStop")
 
@@ -376,6 +379,26 @@ SKILL_COMMANDS: tuple[RoleCommand, ...] = (
         ("--cro-dir",),
     ),
     RoleCommand(
+        "committee open --update <task>",
+        "Opens the committee on a date's positions; offers each specialist's bundle.",
+        ("--update",),
+    ),
+    RoleCommand(
+        'bundle prepare --role ALPHA --task <task> --dir "<out>/committee/alpha"',
+        "A specialist's bundle; on a date's update, its view of the positions and the floor.",
+        ("--role",),
+    ),
+    RoleCommand(
+        "committee wait --update <task> --role PM --key <key>",
+        "Waits, as one member, for what the floor addresses to it, or its close.",
+        ("--role",),
+    ),
+    RoleCommand(
+        'committee show --update <task> --output "<out>/committee/floor.json"',
+        "The floor: its stage, members, tension points, messages and, once closed, the report.",
+        ("--update",),
+    ),
+    RoleCommand(
         'research-update plan --package <package> --output "<out>/research-update-plan.json"',
         "Plans the strategy's next sessions and offers `run`.",
     ),
@@ -675,6 +698,8 @@ STAGE_BOUNDARIES = "\n".join(
         "the person.",
         "- Cite the actual Task, receipt and result references with the owner's standing; an exit "
         "0, a saved file or a wait event proves nothing succeeded.",
+        "- The reads you run are the owners' projections; a prepared bundle is the whole of what "
+        "you read when you are given one.",
         "## Answer file",
         "- Given a prepared bundle and a nominated answer path: read README.md and the listed "
         "files whole and keep the bundle unchanged. Write nonempty `text` (at most 4,000 "
@@ -688,20 +713,34 @@ STAGE_BOUNDARIES = "\n".join(
 )
 """Every stage card's boundaries, one text: what a stage specialist never does, and its answer."""
 
+LOCAL_METHOD = (
+    "# Local method\n"
+    "If `.alphalattice/user/cards/{card}.md` exists in the checkout, read it whole before you "
+    "start; it is the one file outside your assignment you always read. It holds the person's "
+    "method for this card, kept by the experience maintainer, and refines how you work here: it "
+    "never widens what this card permits, and where the two differ, this card holds."
+)
+"""Every card's last paragraph: where the person's own method for it lives (the user layer)."""
+
 _GENERATED = ("# CLI", "# Bundle", "CLI capability.", "Bundle capability.", "Your commands:")
 """How the generated paragraph of a card begins (the last, its V384 form, is replaced)."""
 
 
 def card_text(path: Path) -> str:
-    """The card's TOML with its capability current, right after its place paragraph."""
+    """The card's TOML with its capability current, right after its place paragraph, and its
+    local method last."""
 
     text = path.read_text(encoding="utf-8")
-    if path.stem not in ROLE_COMMANDS and path.stem not in BUNDLE_ROLES:
-        return text
     opening = 'developer_instructions = """'
     start = text.index(opening) + len(opening)
     end = text.index('"""', start)
-    paragraphs = text[start:end].split("\n\n")
+    paragraphs = [
+        p for p in text[start:end].split("\n\n") if not p.lstrip("\n").startswith("# Local method")
+    ]
+    paragraphs[-1] = paragraphs[-1].rstrip("\n")
+    paragraphs.append(LOCAL_METHOD.format(card=path.stem))
+    if path.stem not in ROLE_COMMANDS and path.stem not in BUNDLE_ROLES:
+        return text[:start] + "\n\n".join(paragraphs) + text[end:]
     block = command_block(path.stem)
     current = [i for i, p in enumerate(paragraphs) if p.lstrip("\n").startswith(_GENERATED)]
     if path.stem in ROLE_COMMANDS:
@@ -750,7 +789,7 @@ def agent_markdown(card: dict[str, str]) -> str:
         f"model: {CLAUDE_MODEL}",
         f"effort: {CLAUDE_EFFORT}",
         "tools: "
-        + (STAGE_TOOLS if card["name"] in ROLE_COMMANDS else CLAUDE_TOOLS[card["sandbox_mode"]]),
+        + (BUNDLE_TOOLS if card["name"] in BUNDLE_ROLES else CLAUDE_TOOLS[card["sandbox_mode"]]),
         "---",
         f"<!-- Derived from .codex/agents/{card['name']}.toml"
         " by scripts/materialize_claude_host.py; edit the TOML, then rerun the script. -->",
@@ -798,8 +837,7 @@ def expected_files() -> dict[Path, bytes]:
     """Every derivative, keyed by its path under `.claude/`."""
     files: dict[Path, bytes] = {}
     for path in sorted(CARDS.glob("alphalattice_*.toml")):
-        if path.stem in ROLE_COMMANDS or path.stem in BUNDLE_ROLES:
-            files[path] = card_text(path).encode("utf-8")
+        files[path] = card_text(path).encode("utf-8")
     for card in role_cards():
         files[CLAUDE / "agents" / f"{card['name']}.md"] = agent_markdown(card).encode("utf-8")
     if not (SKILL_SOURCE / "SKILL.md").is_file():
@@ -807,8 +845,8 @@ def expected_files() -> dict[Path, bytes]:
     skill = skill_text().encode("utf-8")
     files[SKILL_SOURCE / "SKILL.md"] = skill
     files[SKILL_SOURCE / "references" / "operating.md"] = operating_text().encode("utf-8")
-    for source in sorted(p for p in SKILL_SOURCE.rglob("*") if p.is_file()):
-        files[CLAUDE / "skills" / SKILL_NAME / source.relative_to(SKILL_SOURCE)] = files.get(
+    for source in sorted(p for p in SKILLS.rglob("*") if p.is_file()):
+        files[CLAUDE / "skills" / source.relative_to(SKILLS)] = files.get(
             source, source.read_bytes()
         )
     settings = CLAUDE / "settings.json"

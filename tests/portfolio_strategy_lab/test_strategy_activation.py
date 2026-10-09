@@ -193,7 +193,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         assert review_standing["book_selector"] == {"result_hash": recorded.result_hash}
         assert offered["review_standing"] == review_standing
         holdings = offered["review_holdings"]
-        assert holdings["claim"] == "REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS"
+        assert holdings["claim"] == "BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS"
         assert holdings["book_task_id"] == book
         assert holdings["formation_session"] == report["book"]["formation_session"]
         assert holdings["entry_session"] > holdings["formation_session"]
@@ -1635,7 +1635,7 @@ def test_current_performance_follows_exact_books_daily_publications_and_keeps_hi
     tmp_path, monkeypatch
 ):
     """CONTRACT: the current view reads the book/cost-bound realized window separately."""
-    from alphalattice.control.product_host.composition import local_web_session
+    from alphalattice.control.product_host.composition import portfolio_result_context
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         PortfolioResearchOperations,
     )
@@ -1723,7 +1723,7 @@ def test_current_performance_follows_exact_books_daily_publications_and_keeps_hi
 
         monkeypatch.setattr(PortfolioResearchOperations, "execute", read)
         monkeypatch.setattr(
-            local_web_session,
+            portfolio_result_context,
             "forward_update_read_requests",
             lambda _operations, **_selection: (
                 PortfolioResearchOperationRequest(
@@ -1745,6 +1745,18 @@ def test_current_performance_follows_exact_books_daily_publications_and_keeps_hi
         assert selected_holdings["subject"] == pinned["subject"]
         assert selected_holdings["holdings"] == pinned["holdings"]
         first = _json(live, path + "&performance=latest")
+        assert (
+            live.operations.execute(
+                PortfolioResearchOperationRequest(
+                    operation="PORTFOLIO_READBACK",
+                    task_id=book.task_id,
+                    portfolio_session=book.last_session.isoformat(),
+                    performance="latest",
+                ),
+                caller="EXTERNAL_AUTOMATION",
+            )
+            == first
+        )
         assert first["forward_performance"]["available"] is True
         assert len(first["forward_performance"]["series"]) == 2
         assert (

@@ -46,6 +46,7 @@ const LiveReview = (() => {
   const SELECTOR_FORMS={result:['result_hash'],handoff:['handoff_hash'],update:['update_task_id','update_publication_hash','position_basis'],experiment:['experiment_task_id','experiment_receipt_hash','portfolio_session']};
   const named=(v,k)=>v?.[k]!==undefined && v[k]!==null && v[k]!=='';
   const selectorForm=(v)=>{ const forms=Object.keys(SELECTOR_FORMS).filter(f=>SELECTOR_FORMS[f].some(k=>named(v,k))); return forms.length===1 ? forms[0] : forms.length ? 'mixed' : ''; };
+  const taskSubjects=(view)=>[...new Map((Array.isArray(view?.subjects) ? view.subjects : view?.next_requests?.subject ? [view.next_requests.subject] : []).flatMap(s=>{const f=selectorForm(s);return s.operation==='EVIDENCE_CRO' && f && f!=='mixed' && SELECTOR_FORMS[f].every(k=>named(s,k)) ? [Object.fromEntries(SELECTOR_FORMS[f].map(k=>[k,s[k]]))] : [];}).map(s=>[key(s),s])).values()];
   const appliesHere=(r)=>{ const form=selectorForm(r); if(!form) return true; return form!=='mixed' && selectorForm(S.selector)===form && SELECTOR_FORMS[form].every(k=>named(r,k) && named(S.selector,k) && String(r[k])===String(S.selector[k])); };
   const bookName=()=>S.selector?.experiment_task_id || S.selector?.update_task_id || S.selector?.result_hash || S.selector?.handoff_hash || '';
   // the object's name for the head (round G1): the book's words from History, its short handle when History has no words
@@ -73,7 +74,7 @@ const LiveReview = (() => {
   const bind=(group,task,k=S.key,selector=(k===S.key ? S.selector : null),facts=null)=>{if(!task || !k) return;boundFor(k)[group].add(task);if(selector)S.taskBooks.set(task,{...selector});if(facts)noteFacts(task,facts);};
   const artifactHash=(view,kind)=>(view?.artifact_refs || []).map(r=>String(r).match(new RegExp(kind+'/([^/?#]+)'))?.[1]).find(Boolean) || '';
   // what Task Control's recovery view says a Task published
-  const artifactFacts=(view)=>({publication:artifactHash(view,'cro_review_publication'),analysis:artifactHash(view,'alternative_evidence_analysis_publication'),request:artifactHash(view,'alternative_evidence_request')});
+  const artifactFacts=(view)=>({publication:artifactHash(view,'cro_review_publication'),analysis:artifactHash(view,'alternative_evidence_analysis_publication'),request:artifactHash(view,'alternative_evidence_request'),asOf:view?.subject_context?.evidence_as_of || ''});
   /* The current evidence identity the projection (and a dossier read for this book) names: the
    * review publication, the selected analysis publication, the evidence as-of. */
   // a bundle read under the projection read the page is showing: its context is this read's;
@@ -317,7 +318,7 @@ const LiveReview = (() => {
    * read (the desk and the report), and shown on the other pages only while one is pinned. */
   /* E1: the book is chosen from the name's switch (GitHub's branch picker); the reading (the
    * current one or a pinned publication) stays a chooser on the context line. */
-  const bookChoices=()=>[['',t('Choose a saved book')],...books().map(v=>({value:JSON.stringify(v.selector),title:v.name,meta:v.ref}))]; // the name, and the reference that tells two alike apart (law 134)
+  const bookChoices=()=>{const all=books(),admitted=taskSubjects(S.unresolved?.view),choices=admitted.length ? admitted.map(selector=>all.find(b=>key(b.selector)===key(selector)) || {selector,name:t('Book'),ref:short(selector.experiment_task_id || selector.update_task_id || selector.result_hash || selector.handoff_hash,SHORT.id)}) : all;return [['',t('Choose a saved book')],...choices.map(v=>({value:JSON.stringify(v.selector),title:v.name,meta:v.ref}))];};
   function bookSwitch() { return picker('reviewBook',bookChoices(),{selected:S.selector ? JSON.stringify(S.selector) : '',kind:'switch',label:t('Choose the book')}); }
   function readingChooser() {
     const pubs=publications(); // B1: the reading is the object's, the context line's last fact on every tab -- the head does not change between tabs
@@ -795,7 +796,7 @@ const LiveReview = (() => {
     const runtimeMissing=/evidence_task_adapter_absent|NO_ADMITTED_EVIDENCE_RUNTIME/.test(code);
     const ms=ok?.matter_selection || null, allowance=ms?.per_session_allowance || null;
     const adm=ok?.admission || null, window=adm?.acquisition_window_seconds!=null ? Math.round(adm.acquisition_window_seconds/60) : null; // U57 (A2): the admitted bounds, as the preview states them
-    const policy=ok ? [ms?.method ? codeWords(ms.method) : '',allowance ? t('{r} reads · {w} windows · {b} a window',{r:count(allowance.reads),w:count(allowance.windows),b:BYTE_WORDS(allowance.window_bytes)}) : '',window!==null && Number.isFinite(window) ? t('a preparation submits within {n} min of its preview',{n:count(window)}) : '',adm?.maximum_document_bytes ? t('at most {b} a document',{b:BYTE_WORDS(adm.maximum_document_bytes)}) : '',v?.evidence_expires_at ? t('the current version lives until {t}',{t:dayWord(v.evidence_expires_at)}) : ''].filter(Boolean).join(' · ') : '';
+    const policy=ok ? [ms?.method ? codeWords(ms.method) : '',allowance ? t('{r} reads · {w} windows · {b} a window',{r:count(allowance.reads),w:count(allowance.windows),b:BYTE_WORDS(allowance.window_bytes)}) : '',window!==null && Number.isFinite(window) ? t('a preparation submits within {n} min of its preview',{n:count(window)}) : '',adm?.maximum_documents_per_issuer ? t('at most {n} documents an issuer',{n:count(adm.maximum_documents_per_issuer)}) : '',adm?.maximum_document_bytes ? t('at most {b} a document',{b:BYTE_WORDS(adm.maximum_document_bytes)}) : '',v?.evidence_expires_at ? t('the current version lives until {t}',{t:dayWord(v.evidence_expires_at)}) : ''].filter(Boolean).join(' · ') : '';
     const authority=
       {id:'authority',met:!authorityMissing && (Boolean(ok) || (!runtimeMissing && Boolean(v) && st!=='EVIDENCE_AUTHORITY_NOT_ADMITTED')),name:t('Evidence authority'),why:retired ? t('installed under a retired matter selection') : authorityMissing ? t('no recorded package is bound into this workspace and no live acquisition is admitted') : ok ? t(ok.source_mode==='LIVE_OFFICIAL' ? 'live official acquisition admitted' : 'a recorded package is bound into this workspace') : t('admitted'),command:String(p?.setup_help || 'scripts/materialize_evidence_cro_authority.py --help'),shows:p?.setup_help ? 'The command the Host names' : 'Its options',sentence:t('One script writes the recorded package into the workspace and binds it into its manifest, or admits the live acquisition; the product cannot run it. Run it in a terminal, then read again.'),setup:setup.authority || null,
         setupWords:t(retired ? 'Set up under a retired matter selection: bind it again under the integrated selection, in a terminal at the product folder.' : 'The retrieval pack comes first: the authority binds its recipe. Each step runs in a terminal at the product folder.')};
@@ -846,7 +847,7 @@ const LiveReview = (() => {
       s.environment ? setupStep(t('Create the retrieval environment'),t('not created yet'),s.environment) : '',
       s.check ? setupStep(t('setup|Check'),t(id==='pack' ? 'says whether it is installed' : 'installs nothing'),s.check) : '',
       s.install ? setupStep(t('Set up'),install,s.install,choose) : '',
-      html`<li>${btn(t('Read again'),'review-preview','','button compact')}${s.before ? html` <span class="caption">${t('after the Host is started again')}</span>` : ''}</li>`]}</ol>`;
+      html`<li>${btn(t('Read again'),'review-preview','','button compact')}${s.before ? html` <span class="caption">${t('once the install ends')}</span>` : ''}</li>`]}</ol>`;
   }
   /* Set up: the checklist, whole while a prerequisite is unmet, one line when all are met. */
   function setupSection(rows) {
@@ -990,7 +991,7 @@ const LiveReview = (() => {
   function waysSection() {
     const w=S.view?.source_ways; if(!w || typeof w!=='object') return '';
     const o=w.official || null, pk=w.package || null;
-    const official=o ? html`<ol class="setup-steps">${setupStep(t('Official SEC acquisition'),o.before ? html`<span class="owner-text">${t(o.before)}</span>` : '',o.serve || '')}</ol>` : '';
+    const official=o ? html`<ol class="setup-steps">${setupStep(t('Official SEC acquisition'),o.before ? html`<span class="owner-text">${t(o.before)}</span>` : '',o.command || '')}</ol>` : '';
     const packaged=pk ? html`<p><strong>${t('A recorded package for this book')}</strong>${pk.covers ? html` · <span class="owner-text">${t(pk.covers)}</span>` : ''}</p>${setupSteps('authority',pk)}` : '';
     return panel(t('Ways on'),'',html`${w.package_rule ? html`<p class="owner-text">${t(w.package_rule)}</p>` : ''}${official}${packaged}`,'','data-overview="ways"');
   }
@@ -1557,10 +1558,7 @@ const LiveReview = (() => {
     S.lastRefusal={role,kind,code:renewal ? message.split(':')[0] : body ? String(body.failure_code || body.refused || body.disposition || message) : message,detail:body?.detail || '',fields:body?.field_errors || [],next:body?.next_action || '',answer:isObject(body?.answer) ? body.answer : null,at:Date.now()};
   }
   /* ---- the owner's Tasks in the shared work area ---- */
-  // A book's coverage run is one Task of its groups x the evidence stages (10.8): the rail is the book's
-  // stages, each the count of its groups Task Control verified -- all verified, one blocked, some done,
-  // none begun; the book's current stage is the furthest any group has reached (its groups run at once,
-  // and Task Control's own current stage is whichever group moved last); nothing else is inferred
+  // Stages accumulate independently across groups; no furthest group is a global current stage.
   const BOOK_STAGES=['admit_evidence_request','resolve_official_sources','acquire_source_evidence','canonicalize_documents','build_retrieval_generation','select_evidence_spans'];
   const groupStage=(id)=>{ const m=/^u\d+_(.+)$/.exec(String(id || '')); return m ? m[1] : null; };
   const coverageRun=(v)=>Boolean(v?.stages?.length) && v.stages.every(s=>groupStage(s.stage_id));
@@ -1569,8 +1567,17 @@ const LiveReview = (() => {
     const stages=BOOK_STAGES.map(kind=>{ const of=v.stages.filter(s=>groupStage(s.stage_id)===kind), verified=of.filter(s=>s.lifecycle==='VERIFIED').length;
       const lifecycle=of.some(s=>s.lifecycle==='BLOCKED') ? 'BLOCKED' : verified===of.length ? 'VERIFIED' : verified || of.some(s=>['IN_PROGRESS','READY_FOR_VERIFICATION'].includes(s.lifecycle)) ? 'IN_PROGRESS' : 'PENDING';
       return {stage_id:kind,lifecycle,groups:of.length,verified,evidence_count:of.reduce((a,s)=>a+(Number(s.evidence_count) || 0),0),words:`${codeWords(lifecycle)} · ${count(verified)} / ${countText(of.length,'{n} group','{n} groups')}`}; }).filter(s=>s.groups);
-    const reached=stages.filter(s=>s.lifecycle!=='PENDING').at(-1) || stages[0];
-    return {...v,stages,status:{...v.status,current_stage:reached?.stage_id || ''}};
+    const groups=[...new Set(v.stages.map(s=>s.stage_id.split('_')[0]))].map(id=>{
+      const own=v.stages.filter(s=>s.stage_id.startsWith(id+'_'));
+      const failed=v.current_scope?.failed_unit_ids?.includes(id);
+      const blocked=own.find(s=>s.lifecycle==='BLOCKED');
+      const active=own.find(s=>['IN_PROGRESS','READY_FOR_VERIFICATION'].includes(s.lifecycle));
+      const lifecycle=failed ? 'failed' : blocked ? 'blocked' : own.every(s=>s.lifecycle==='VERIFIED') ? 'done' : active ? 'running' : 'waiting';
+      return {id,lifecycle,current_stage:groupStage((blocked || active)?.stage_id) || ''};
+    });
+    const parallel={total:groups.length,groups,scope:v.current_scope};
+    for(const state of ['done','running','waiting','blocked','failed']) parallel[state]=groups.filter(g=>g.lifecycle===state).length;
+    return {...v,stages,parallel,status:{...v.status,current_stage:''}};
   }
   const workView=()=>bookView(S.work?.view || null);
   // the evidence owner's count of a book stage while its run continues (10.10), for the book the page shows
@@ -1584,6 +1591,7 @@ const LiveReview = (() => {
     get title(){return S.work?.kind===REVIEW_KIND ? 'CRO review work' : preparing(S.work?.goal) ? 'Source preparation work' : managedWork(S.work) ? 'Analysis work' : 'Answer validation work';},
     get lines(){const m=workMode();return {...stageLines(),resolve_official_sources:m.resolve,acquire_source_evidence:m.acquire,...(managedWork(S.work) ? {analyze_evidence:t('The analysis stage runs the configured actor over the admitted passages when a managed refresh was requested (Provider quota), or validates an external answer when one was submitted; this page recorded no submission for this Task.')} : {})};},
     fallbackLine:'Continuing the reported stage.',
+    parallelTable:groups=>collectionTable('parallel-groups',groups,[{label:t('Group'),type:'id',absorb:true},{label:t('State'),type:'status'},{label:t('Stage'),type:'text'}],g=>[mono(g.id,SHORT.id),t({done:'Done',running:'Running',waiting:'Waiting',blocked:'Blocked',failed:'Failed'}[g.lifecycle]),g.current_stage ? codeWords(g.current_stage) : '']),
     get oneUnit(){const run=coverageRun(S.work?.view);return Object.fromEntries((workView()?.stages || []).map(s=>[s.stage_id,run ? 'One unit a group; Task Control verifies each group of the book.' : 'This stage is one unit of the owner\'s work; it reports at stage boundaries only.']));},
     view:()=>workView(),
     work:(b,v,state,shown)=>{
@@ -1596,19 +1604,19 @@ const LiveReview = (() => {
     },
     aside:(b,v,state,shown,isCurrent)=>{if(!isCurrent){ const s=coverageRun(S.work?.view) ? v.stages.find(x=>x.stage_id===shown) : null; return s ? LiveWorkArea.factsShell(WORK,{label:t('Stage record'),title:t('Stage record'),caption:t('One unit a group; each group\'s evidence is its own Task Control record.'),facts:kv([[t('Groups verified'),`${count(s.verified)} / ${count(s.groups)}`],[t('Evidence'),countText(s.evidence_count,'{n} reference','{n} references')]]),rail:''}) : null; }const w=S.work,bookOf=w && S.taskBooks.get(w.task);const bookRow=bookOf ? html`${mono(bookOf.experiment_task_id || bookOf.update_task_id || bookOf.result_hash || bookOf.handoff_hash,SHORT.id)}${infoMark(t('the book the owner admitted this Task for'))}` : t('scope unresolved: no owner fact binds this Task to a book on this page');const rows=[[t('Task'),html`${codeWords(v.task_kind)} <span class="sub-cell">${v.status?.goal_summary || ''}</span>`],[t('Book'),bookRow],[t('Kind of work'),t(w?.kind===REVIEW_KIND ? 'independent CRO assessment sealed and published by the product' : preparing(w?.goal) ? (workMode().kind==='live' ? 'source preparation by admitted official acquisition; no analyst or CRO inference' : workMode().kind==='recorded' ? 'local source preparation over the recorded package; no analyst or CRO inference' : 'source preparation; its source mode is not stated on this page') : managedWork(w) ? 'analysis publication; whether an external answer or the configured actor produced it is not recorded on this page' : 'product validation and publication of an answer this page submitted')],[t('Liveness'),typeof LiveTasks!=='undefined' && LiveTasks.liveness ? (LiveTasks.liveness(v) || t('the Task is not executing; its lifecycle says where it stands')) : v.liveness?.status || '']];return LiveWorkArea.factsShell(WORK,{label:t('Task facts'),title:t('This Task'),caption:t('What Task Control records; completion of a Task never implies CRO clearance'),facts:kv(rows),rail:html`<section class="ui-log-rail prep-log-rail"><div><span>${t('Task')}</span><strong class="mono">${short(v.task_id)}</strong></div><div><span>${t('Task Control')}</span><strong>${v.verified_stage_count} / ${v.total_stage_count} ${t('verified')}</strong></div></section>`});},
     absorb:()=>{},completedNow:(b)=>Boolean(b?.done)};
-  async function watch(task,quiet=false,mode='') {
+  async function watch(task,quiet=false,mode='',initial=null) {
     if(!task) return;
     const known=taskOf(task);
     S.work={task,kind:known?.task_kind || '',goal:known?.goal_summary || '',mode:mode || (S.work?.task===task ? S.work.mode : ''),view:null,readAt:0,stale:null,error:'',reading:false,done:false};
     writeRoute(routeUpdate());
-    return readWork(quiet);
+    return readWork(quiet,initial);
   }
-  async function readWork(quiet=false) {
+  async function readWork(quiet=false,initial=null) {
     const w=S.work; if(!w || w.reading) return;
     const nav=S.nav,reading={};w.reading=reading;
     const currentRead=()=>S.work===w && w.reading===reading && nav===S.nav && pages.has(app.page) && app.page!=='books';
     try {
-      const view=await Data.read('/api/tasks/recovery?'+new URLSearchParams({task_id:w.task}));
+      const view=initial || await Data.read('/api/tasks/recovery?'+new URLSearchParams({task_id:w.task}));
       if(!currentRead()) return;
       if(view.task_id!==w.task || ![EVIDENCE_KIND,REVIEW_KIND].includes(view.task_kind)) { w.error=t('Task {task} is {kind}, not evidence or review work; it is read on Tasks.',{task:short(view.task_id),kind:view.task_kind || ''}); w.view=null; w.readAt=Date.now(); return; }
       const wasMoving=Boolean(w.view && stateMoving(w.view.lifecycle));
@@ -1661,8 +1669,9 @@ const LiveReview = (() => {
     if(!v) return html`<section class="prep-scene lab-work review-work" data-scene="pending">${head}${w.error ? notRead(t('Task not read'),w.error) : noteLine(t('Reading the Task'),t('Its stages and liveness come from Task Control; nothing is started by reading.'))}</section>`;
     // N6 (laws 72, 98): a finished Task is one line -- what it published, what it was, its reader; its stages are the Task's own record
     if(v.lifecycle==='SUCCEEDED') {
-      const title=t(w.kind===REVIEW_KIND ? 'Review published' : preparing(w.goal) ? 'Sources prepared' : managedWork(w) ? 'Analysis published' : 'Answer validated and published');
-      const words=t(w.kind===REVIEW_KIND ? 'The published review is read on the Review desk and exported on the report page. Publication is a routed recommendation, not clearance to trade.' : w.goal===PREPARE_WORDS ? 'The exact Analyst packet of this Task can be read and handed off; a prepared packet is not an Analyst conclusion.' : 'The analysis is published. It is not a CRO review; the dossier can now be read for the independent assessment.');
+      const whole=Boolean(preparing(w.goal) && coverageRun(v));
+      const title=t(w.kind===REVIEW_KIND ? 'Review published' : whole ? 'Source preparation finished' : preparing(w.goal) ? 'Sources prepared' : managedWork(w) ? 'Analysis published' : 'Answer validated and published');
+      const words=t(w.kind===REVIEW_KIND ? 'The published review is read on the Review desk and exported on the report page. Publication is a routed recommendation, not clearance to trade.' : whole ? 'Read the groups to see the prepared sources, any failures and the next steps. Preparation is not analysis or a CRO review.' : preparing(w.goal) ? 'The exact Analyst packet of this Task can be read and handed off; a prepared packet is not an Analyst conclusion.' : 'The analysis is published. It is not a CRO review; the dossier can now be read for the independent assessment.');
       const reader=w.kind===REVIEW_KIND ? btn(t('Open the Review desk'),'review-step','evidence','button primary compact') : w.goal===PREPARE_WORDS ? (S.selector ? btn(t('Read the Analyst packet'),'review-use-task',w.task,'button primary compact') : '') : preparing(w.goal) ? (S.selector ? btn(t('Read the groups\' packets'),'review-step','evidence-stream','button primary compact') : '') : (S.selector ? btn(t('Read the CRO dossier'),'review-dossier','','button primary compact') : '');
       return html`<section class="prep-scene lab-work review-work lab-work-done" data-scene="review-task" data-lifecycle="SUCCEEDED" data-bound="${Boolean(bookOf)}">${noteLine(html`<strong>${title}</strong> · ${t(kicker)} <span class="mono">${short(w.task)}</span>${infoMark(bookOf ? words : words+' '+t('Scope unresolved on this page: no owner fact binds this Task to the book shown; its stages are read without claiming the book.'))}`,'','ok',html`${reader}${btn(t('Dismiss'),'review-dismiss-work','','text-btn')}`,'checkcircle')}</section>`;
     }
@@ -1671,55 +1680,55 @@ const LiveReview = (() => {
     const area=typeof LiveWorkArea!=='undefined' ? LiveWorkArea.workArea(WORK,{done:w.done},bookView(v),{readAt:w.readAt,stale:w.stale,recovered:false}) : '';
     return html`<section class="prep-scene lab-work review-work" data-scene="review-task" data-lifecycle="${v.lifecycle}" data-bound="${Boolean(bookOf)}">${head}${done}${area}</section>`;
   }
-  /* The book a Task belongs to, by an owner fact: a review Task through the publication Task
-   * Control names, a prepared Task through its packet returned for the candidate book, an
-   * analysis Task through the analysis the candidate's projection or dossier names; else null. */
+  /* A cold open reads the Task owner's admitted subjects. A legacy Task can only be bound
+   * by an explicit book choice verified by its packet or analysis, never by page memory. */
   async function resolveScope(id,view,candidate) {
-    if(!view) return null;
-    if(view.task_kind===REVIEW_KIND){
-      const pub=artifactHash(view,'cro_review_publication');
-      const entry=pub ? Data.history().find(e=>e.raw?.review_publication_hash===pub && e.raw?.book) : null;
-      return entry ? {group:'review',book:entry.raw.book,page:'evidence',facts:{publication:pub}} : null;
+    if(!view || view.task_id!==id || ![EVIDENCE_KIND,REVIEW_KIND].includes(view.task_kind)) return null;
+    const subjects=taskSubjects(view),book=candidate ? subjects.find(s=>key(s)===key(candidate)) : subjects.length===1 ? subjects[0] : null;
+    if(book){
+      const group=view.task_kind===REVIEW_KIND ? 'review' : preparing(view.status?.goal_summary) ? 'prepare' : 'analysis';
+      return {group,book,page:group==='analysis' ? 'handoff' : 'evidence',view,facts:artifactFacts(view)};
     }
+    if(subjects.length) return null;
     if(view.task_kind!==EVIDENCE_KIND || !candidate) return null;
     const prepareOnly=preparing(view.status?.goal_summary) || view.total_stage_count===6;
     try{
       if(prepareOnly){
         const doc=await Data.readDocument('/api/evidence/packet?'+new URLSearchParams({...candidate,task_id:id}));
-        return doc.value.submission_template ? {group:'prepare',book:candidate,page:'handoff',packet:doc,facts:packetIdentity(doc.value)} : null;
+        return doc.value.submission_template ? {group:'prepare',book:candidate,page:'handoff',packet:doc,view,facts:packetIdentity(doc.value)} : null;
       }
       const pub=artifactHash(view,'alternative_evidence_analysis_publication'); if(!pub) return null;
       const projection=await Data.read('/api/evidence-cro?'+new URLSearchParams(candidate));
       let asOf='';
       const named=(projection.eligible_versions || []).some(v=>v.analysis_publication_hash===pub) || (await Data.readDocument('/api/cro/dossier?'+new URLSearchParams(candidate)).then(d=>{const dd=d.value?.dossier;if(dd?.analysis_publication_hash===pub){asOf=dd.evidence_as_of || '';return true;}return false;}).catch(()=>false));
-      return named ? {group:'analysis',book:candidate,page:'handoff',facts:{analysis:pub,asOf}} : null;
+      return named ? {group:'analysis',book:candidate,page:'handoff',view,facts:{analysis:pub,asOf}} : null;
     }catch{ return null; } // the owner did not bind the Task to that book
   }
   /* The Task's book is opened and the Task followed, as one navigation: the continuation
    * belongs to the generation this open created and does nothing once the reader has moved. */
   function adopt(id,scope) {
     bind(scope.group,id,key(scope.book),scope.book,scope.facts);
-    const opened=open(scope.book,'',scope.page), gen=S.nav;
-    return opened.then(()=>{ if(gen!==S.nav) return; if(scope.packet){S.packetTask=id;S.packetUnit=scope.packet.value?.coverage_unit?.unit_id ? String(scope.packet.value.coverage_unit.unit_id) : '';S.packet={...scope.packet,key:S.key,task:id,unit:S.packetUnit,readGen:S.readGen};loadDrafts();writeRoute(routeUpdate());} return watch(id); });
+    const opened=open(scope.book,scope.group==='review' ? scope.facts.publication || '' : '',scope.page), gen=S.nav;
+    const watched=watch(id,true,'',scope.view);
+    return Promise.all([opened,watched]).then(async()=>{ if(gen!==S.nav) return false; if(scope.group==='prepare'){S.packetTask=id;S.packetUnit=scope.packet?.value?.coverage_unit?.unit_id || '';loadDrafts();adoptPacketRequest(S.view);writeRoute(routeUpdate());if(scope.packet)S.packet={...scope.packet,key:S.key,task:id,unit:S.packetUnit,readGen:S.readGen};else if(scope.view.lifecycle==='SUCCEEDED' && (!scope.view.current_scope || scope.view.current_scope.units_total===1)) await getBundle('analyst',null,true);} return gen===S.nav; });
   }
-  /* From Task Center: the Task's scope is resolved through owner facts (this page's record, or
-   * `resolveScope` against the book last read here) before a book is shown; else it is followed
-   * with its scope unresolved and no book is guessed. */
+  /* From Task Center, the owner's answer is accepted only in this navigation generation. */
   async function openTask(id,wanted=()=>true) {
     if(!wanted()) return false;
+    let addressed=null;try{addressed=JSON.parse(hashParams().get('review_selector') || 'null');}catch{addressed={};}
     const gen=++S.nav; // this return is a navigation; any later one supersedes it
-    const known=S.taskBooks.get(id), kb=known ? boundFor(key(known)) : null;
-    if(known){ const opened=open(known,'',kb.review.has(id) ? 'evidence' : 'handoff'), g=S.nav; return opened.then(async()=>{ if(g!==S.nav || !wanted()) return false; if(kb.prepare.has(id)){S.packetTask=id;S.packetUnit='';loadDrafts();adoptPacketRequest(S.view);writeRoute(routeUpdate());await getBundle('analyst');} if(g!==S.nav || !wanted()) return false; return watch(id); }); }
-    let view=null;
-    try { view=await Data.read('/api/tasks/recovery?'+new URLSearchParams({task_id:id})); } catch { view=null; }
+    let view=null,error='';
+    try { view=await Data.read('/api/tasks/recovery?'+new URLSearchParams({task_id:id})); } catch(e) { error=e.message; }
     if(gen!==S.nav || !wanted()) return false; // the reader navigated while the owner was answering: nothing is opened for this reply
-    const scope=await resolveScope(id,view,S.selector || readPreference('reviewLastBook') || null);
+    const scope=await resolveScope(id,view,addressed);
     if(gen!==S.nav || !wanted()) return false;
     if(scope) return adopt(id,scope);
     S.nav+=1; closeDialog();reset();S.selector=null;S.key=key(null);S.pin='';S.view=null;S.status='empty';S.packetTask='';S.packetUnit='';S.work=null;
-    S.unresolved={task:id,kind:view?.task_kind || '',view,reason:t('no owner fact binds this Task to a book on this page: choose the exact book to bind it (the owner verifies), or read it on Tasks')};
+    S.taskBooks.delete(id);
+    const why=view?.subject_refusal;
+    S.unresolved={task:id,kind:view?.task_kind || '',view,reason:error || (why ? why.detail || why.explanation || codeWords(why.failure_code) : taskSubjects(view).length ? t('Choose the book admitted onto this Task.') : t('no owner fact binds this Task to a book on this page: choose the exact book to bind it (the owner verifies), or read it on Tasks'))};
     app.page='handoff';writeRoute(routeUpdate({page:'handoff',work:id}));render();
-    return watch(id);
+    return watch(id,true,'',view);
   }
   /* A book chosen while a Task's scope is unresolved is offered to the owner as that Task's
    * book; the Task stays unresolved when the owner does not bind it. */
@@ -2568,7 +2577,7 @@ const LiveReview = (() => {
   function page() {
     if(app.page==='books') return booksPage();
     const title=t(ROUTES[app.page]?.[1] || 'Evidence'); // law 87: the page's one word
-    const unresolved=S.unresolved ? noteLine(t('Task scope unresolved'),html`${t('Task')} <span class="mono">${S.unresolved.task}</span> · ${codeWords(S.unresolved.kind)} · ${S.unresolved.reason}`,'warning') : '';
+    const unresolved=S.unresolved ? noteLine(t('Task scope unresolved'),html`${t('Task')} <span class="mono">${S.unresolved.task}</span> · ${codeWords(S.unresolved.kind)} · ${S.unresolved.reason}`,'warning',btn(t('Read again'),'review-work-refresh','','button compact')) : '';
     // without a book, every review page is the one banner with the way in, never an empty desk
     const bookless=S.status==='ready' && S.view?.state==='NO_BOOK_TO_REVIEW' && !S.selector;
     const unreached=(w)=>t(transport(S.error) ? 'The service could not be reached' : w);
@@ -2579,7 +2588,8 @@ const LiveReview = (() => {
     const study=isExperimentBook() && S.selector?.experiment_task_id ? [[t('Study'),link(t('Portfolio study'),'portfolio','inline-link',{book:S.selector.experiment_task_id})]] : []; // F3 (law 135): the book's other home, its study
     // B1 (the book plan's items 5 and 7): the book's identity and its evidence's days on every tab -- as-of, expiry and, once a review is published, its completeness and day; the publication is the chooser at the line's end
     const reviewed=withBook && Boolean(v) && (reviewPublished() || historical());
-    const headFacts=withBook ? [[t('trading|Session'),session()],[t('Book'),isExperimentBook()?t('authored book'):t('installed result')],...study,[t('Holdings'),b?.held_count==null? '' :count(b.held_count)],[t('As-of'),v?.evidence_as_of ? dayWord(v.evidence_as_of) : ''],[t('Expires'),v?.evidence_expires_at ? dayWord(v.evidence_expires_at) : ''],...(reviewed ? [[t('Completeness'),v.review_state ? codeWords(v.review_state) : ''],[t('Published'),publishedAt() || '']] : [])] : [];
+    const update=b?.update_subject;
+    const headFacts=withBook ? [[t(update ? 'Formation session' : 'trading|Session'),session()],[t('Book'),b?.authority ? codeWords(b.authority) : ''],...(update ? [[t('Observed through'),update.observed_through],[t('Entry session'),update.entry_session]] : []),...study,[t('Holdings'),b?.held_count==null? '' :count(b.held_count)],[t('As-of'),v?.evidence_as_of ? dayWord(v.evidence_as_of) : ''],[t('Expires'),v?.evidence_expires_at ? dayWord(v.evidence_expires_at) : ''],...(reviewed ? [[t('Completeness'),v.review_state ? codeWords(v.review_state) : ''],[t('Published'),publishedAt() || '']] : [])] : [];
     const tools=app.page==='handoff' ? handoffTools() : app.page==='report' ? [...(S.exportDoc ? [{ic:'file',action:'review-export',value:'json',word:t('Export review JSON'),why:t('The owner\'s exact export')},{ic:'file',action:'review-export',value:'html',word:t('Export review HTML'),why:t('The owner\'s exact export')}] : []),...(deliveryOf() ? [{ic:'file',action:'review-delivery-export',value:'html',word:t('Export delivery HTML'),why:t('The composed delivery')},{ic:'file',action:'review-delivery-export',value:'json',word:t('Export delivery JSON'),why:t('The composed delivery')}] : [])] : [];
     // the lane in transition (the same book's next reading, or its report, is on its way and what is painted is the previous one): dimmed after 300 ms and not interactive, never collapsed
     const transition=(S.status==='refreshing' && !viewShown()) || (app.page==='report' && Boolean(S.exportDoc) && S.exportDoc.hash!==(S.pin || workingPublication()));
@@ -2588,7 +2598,7 @@ const LiveReview = (() => {
     const lede=html`<p class="lede">${c && c.sentence ? html`${c.sentence}${S.view?.explanation && c.tone==='warning' && !historical() ? html` <span class="muted">${said(S.view.explanation)}</span>` : ''}` : t(LEDES[app.page] || LEDES.evidence)}</p>`;
     // N3 (law 119): a book page's sentence is the path's (i) -- its state is the top row's, the Overview's its status box
     const viewInfo=withBook && c && c.sentence && !['evidence','handoff'].includes(app.page) ? lede : '';
-    return html`<div class="es-page rc-desk work-cro">${objectHead(withBook ? bookTitle() : title,withBook ? viewInfo : lede,headActions(),!withBook ? '' : headState(),tools,{object:withBook,scope:withBook ? {name:bookTitle(),href:routeUrl('evidence',S.selector ? {review_selector:JSON.stringify(S.selector)} : {}),self:app.page==='evidence'} : null,id,facts:headFacts,top:withBook ? '' : selectorBar(),subject:withBook ? readingChooser() : '',switcher:withBook ? bookSwitch() : ''})}${unresolved}${notice}${app.page==='report' ? body : html`<div class="lane-split${S.item ? ' has-reading' : ''}"><div class="lane-main"${transition ? ' aria-busy="true"' : ''}>${body}</div>${readingPaneMarkup()}</div>`}</div>`;
+    return html`<div class="es-page rc-desk work-cro">${objectHead(withBook ? bookTitle() : title,withBook ? viewInfo : lede,headActions(),!withBook ? '' : headState(),tools,{object:withBook,scope:withBook ? {name:bookTitle(),href:routeUrl('evidence',S.selector ? {review_selector:JSON.stringify(S.selector)} : {}),self:app.page==='evidence'} : null,id,facts:headFacts,top:withBook ? '' : selectorBar(),subject:withBook ? readingChooser() : '',switcher:withBook ? bookSwitch() : ''})}${LiveTasks.currentGroup?.() || ''}${unresolved}${notice}${app.page==='report' ? body : html`<div class="lane-split${S.item ? ' has-reading' : ''}"><div class="lane-main"${transition ? ' aria-busy="true"' : ''}>${body}</div>${readingPaneMarkup()}</div>`}</div>`;
   }
   /* A file import belongs to the role, book, prepared Task and draft it was started for: it
    * lands only if nothing was typed there meanwhile, else it is dropped with a notice. */
@@ -2634,14 +2644,14 @@ const LiveReview = (() => {
     source:async h=>{const ticket=S.revision;if(!S.exportDoc)await readExport();if(ticket===S.revision)setItem(h);},
     dismissConfirmation:()=>{S.pending=null;},dismissRefusal:()=>{S.lastRefusal=null;render();},settleLegacy,settleUnitless,clearDraft:()=>{S.drafts[S.role]='';S.draftEdit[S.role]=++S.editSeq;saveDrafts();S.pending=null;render();},
     reconcile:async()=>{await Promise.all([Data.refreshHistory(),refresh()]);},
-    taskFinished:id=>{if(S.work?.task===id)void readWork(true);},readWork:()=>readWork(false),
+    taskFinished:id=>{if(S.work?.task===id)void readWork(true);},readWork:()=>S.unresolved ? openTask(S.unresolved.task) : readWork(false),
     exportReport:f=>downloadDoc(S.exportDoc,f,'AlphaLattice-review'),exportBundle:v=>downloadDoc(v==='cro' || (!v && S.role==='cro') ? S.dossier : S.packet,'json','AlphaLattice-'+(v==='cro' || (!v && S.role==='cro') ? 'cro-dossier' : 'analyst-packet')),
     documentsPage,openAnswer,assembleDelivery,deliveryOptions,deliveryDialog,reportFacts,handoffFacts,sourcesFacts,handoffRecord,boundTasks,ledgerTopic:(v)=>{S.ledgerTopic=String(v || '');patchMain();},ledgerGroup:(v)=>{const k=String(v || '');if(S.ledgerOpen.has(k))S.ledgerOpen.delete(k);else S.ledgerOpen.add(k);patchMain();},ledgerPage:(v)=>{S.ledgerPage=Math.max(0,S.ledgerPage+(v==='prev' ? -1 : 1));patchMain();},readView,readPart,continueDialog,continueLimit,viewFilter,usePacket,readCell,readExcerpts:()=>getBundle('analyst',null,true),spanQuery:(v)=>{S.spanQuery=String(v || '');S.spanPage=0;if(typeof patchMain==='function')patchMain();},spanPage:(v)=>{S.spanPage=Math.max(0,S.spanPage+(v==='prev' ? -1 : 1));patchMain();},ledgerQuery:(v)=>{S.ledgerQuery=String(v || '');S.ledgerPage=0;if(typeof patchMain==='function')patchMain();},sourceQuery:(v)=>{S.sourceQuery=String(v || '');S.sourcePage=0;if(typeof patchMain==='function')patchMain();},sourcePage:(v)=>{S.sourcePage=Math.max(0,S.sourcePage+(v==='prev' ? -1 : 1));patchMain();},issuerQuery:(v)=>{S.issuerQuery=String(v || '');S.issuerPage=0;if(typeof patchMain==='function')patchMain();},issuerState:(v)=>{S.issuerState=['reviewed','held'].includes(v) ? v : '';S.issuerPage=0;patchMain();},issuerPage:(v)=>{S.issuerPage=Math.max(0,S.issuerPage+(v==='prev' ? -1 : 1));patchMain();},findingPage:(v)=>{S.findingPage=Math.max(0,S.findingPage+(v==='prev' ? -1 : 1));patchMain();},findingMore:(h)=>{const k=String(h || '');if(S.findingOpen.has(k))S.findingOpen.delete(k);else S.findingOpen.add(k);patchMain();},runPage:(v)=>{S.runPage=Math.max(0,S.runPage+(v==='prev' ? -1 : 1));patchMain();},runsAll:()=>{S.runsOpen=true;patchMain();},packetPage:(v)=>{S.packetPage=Math.max(0,S.packetPage+(v==='prev' ? -1 : 1));patchMain();},unitPage:(v)=>{S.unitPage=Math.max(0,S.unitPage+(v==='prev' ? -1 : 1));patchMain();},checksPage:(v)=>{S.checksPage=Math.max(0,S.checksPage+(v==='prev' ? -1 : 1));patchMain();},citePage:(v)=>{const [id,dir]=String(v || '').split('|');S.citePages.set(id,Math.max(0,(S.citePages.get(id) || 0)+(dir==='prev' ? -1 : 1)));patchMain();},execution:()=>{S.executionOpen=!S.executionShown;patchMain();},storageAgain:()=>{S.storage=null;patchMain();},issuerDocs:(v)=>{const k=String(v || '');if(S.docsOpen.has(k))S.docsOpen.delete(k);else S.docsOpen.add(k);patchMain();},cycle,storeWords,readingWords,readingFacts,viewClear,reviewWords,nameRisk,reportWords,readLedgers,exportDelivery:f=>downloadDoc(S.delivery,f,'AlphaLattice-delivery'),
     reopenDelivery:()=>{const r=S.delivery?.value?.next_requests?.reopen;if(!r)return;S.risk=r.risk_report_hash || '';S.comparison=r.right_task_id && r.right_task_id!==r.task_id ? r.right_task_id : (r.left_task_id && r.left_task_id!==r.task_id ? r.left_task_id : '');S.question=r.delivery_question || '';S.delivery=null;render();return assembleDelivery();},
     selectRisk:v=>{S.risk=v;S.delivery=null;},selectComparison:v=>{S.comparison=v;S.delivery=null;},setQuestion:v=>{S.question=v;S.delivery=null;},
     proof:()=>html`${kv([[t('Book'),bookName()],[t('Holdings date'),session()],[t('Review publication'),S.pin || workingPublication() || '']])}<p>${said(S.view?.explanation || S.refusal || '')}</p>${S.view ? kv([[t('Evidence as-of'),S.view.evidence_as_of || ''],[t('Evidence expiry'),S.view.evidence_expires_at || ''],[t('Reviewer provenance'),attributionWords(S.view.review_attribution || [],{facts:true}) || '']]) : ''}`,
     context:()=>({selector:S.selector,review_publication_hash:S.pin || workingPublication() || null,pinned:historical(),prepared_task:S.packetTask,prepared_unit:S.packetUnit,work:S.work?.task || null}),
-    facts:()=>({reading:S.reading ? {status:S.reading.status,code:S.reading.code || '',selected:evOf()?.selected ?? null} : null,excerpts:S.excerpts.size,packetPart:S.packetDelivery?.part ?? null,pending:S.pending ? {operation:S.pending.operation,payload:{...S.pending.payload}} : null,ledgers:[...S.ledgers.entries()].map(([k,l])=>[k,l.status,l.code || '',l.coverage ? (l.coverage.cells || []).length : 0]),state:S.view?.state || null,refusal:S.refusal,error:S.error,busy:S.busy,pinned:historical(),publication:S.pin || workingPublication() || '',nav:S.nav,readGen:S.readGen,dossierRead:S.dossier ? S.dossier.readGen : null,taskFacts:Object.fromEntries(S.taskFacts),packetTask:S.packetTask,packetUnit:S.packetUnit,packet:S.packet ? {key:S.packet.key,task:S.packet.task,unit:S.packet.unit || ''} : null,pending:S.pending ? {path:S.pending.path,kind:S.pending.kind,operation:S.pending.operation || '',payload:S.pending.payload,task:S.pending.task,unit:S.pending.unit ?? ''} : null,finding:S.finding ? {key:S.finding.key,handle:S.finding.handle} : null,exportRequest:S.exportRequest ? S.exportRequest.request : null,unitless:S.unitless ? {id:S.unitless.id,analyst:S.unitless.analyst,cro:S.unitless.cro} : null,dossier:S.dossier ? {key:S.dossier.key} : null,role:S.role,drafts:{...S.drafts},draftsPersisted:S.draftsPersisted,draftsNote:S.draftsNote,editorNote:S.editorNote,held:Object.fromEntries([...S.held].map(([k,h])=>[k,{analyst:h.analyst,cro:h.cro}])),legacy:S.legacy ? {key:S.legacy.key,analyst:S.legacy.analyst,cro:S.legacy.cro} : null,refusalKept:S.lastRefusal ? {role:S.lastRefusal.role,kind:S.lastRefusal.kind,code:S.lastRefusal.code,fields:S.lastRefusal.fields.length} : null,work:S.work ? {task:S.work.task,kind:S.work.kind,lifecycle:S.work.view?.lifecycle || null,done:S.work.done,book:S.taskBooks.get(S.work.task) || null} : null,unresolved:S.unresolved,bound:Object.fromEntries([...S.bound].map(([k,b])=>[k,{prepare:[...b.prepare],analysis:[...b.analysis],review:[...b.review],imported:[...b.imported]}]))}),
+    facts:()=>({reading:S.reading ? {status:S.reading.status,code:S.reading.code || '',selected:evOf()?.selected ?? null} : null,excerpts:S.excerpts.size,packetPart:S.packetDelivery?.part ?? null,pending:S.pending ? {operation:S.pending.operation,payload:{...S.pending.payload}} : null,ledgers:[...S.ledgers.entries()].map(([k,l])=>[k,l.status,l.code || '',l.coverage ? (l.coverage.cells || []).length : 0]),state:S.view?.state || null,refusal:S.refusal,error:S.error,busy:S.busy,pinned:historical(),publication:S.pin || workingPublication() || '',nav:S.nav,readGen:S.readGen,dossierRead:S.dossier ? S.dossier.readGen : null,taskFacts:Object.fromEntries(S.taskFacts),packetTask:S.packetTask,packetUnit:S.packetUnit,packet:S.packet ? {key:S.packet.key,task:S.packet.task,unit:S.packet.unit || ''} : null,pending:S.pending ? {path:S.pending.path,kind:S.pending.kind,operation:S.pending.operation || '',payload:S.pending.payload,task:S.pending.task,unit:S.pending.unit ?? ''} : null,finding:S.finding ? {key:S.finding.key,handle:S.finding.handle} : null,exportRequest:S.exportRequest ? S.exportRequest.request : null,unitless:S.unitless ? {id:S.unitless.id,analyst:S.unitless.analyst,cro:S.unitless.cro} : null,dossier:S.dossier ? {key:S.dossier.key} : null,role:S.role,drafts:{...S.drafts},draftsPersisted:S.draftsPersisted,draftsNote:S.draftsNote,editorNote:S.editorNote,held:Object.fromEntries([...S.held].map(([k,h])=>[k,{analyst:h.analyst,cro:h.cro}])),legacy:S.legacy ? {key:S.legacy.key,analyst:S.legacy.analyst,cro:S.legacy.cro} : null,refusalKept:S.lastRefusal ? {role:S.lastRefusal.role,kind:S.lastRefusal.kind,code:S.lastRefusal.code,fields:S.lastRefusal.fields.length} : null,work:S.work ? {task:S.work.task,kind:S.work.kind,lifecycle:S.work.view?.lifecycle || null,done:S.work.done,book:S.taskBooks.get(S.work.task) || null,parallel:workView()?.parallel || null,current_scope:S.work.view?.current_scope || null} : null,unresolved:S.unresolved,bound:Object.fromEntries([...S.bound].map(([k,b])=>[k,{prepare:[...b.prepare],analysis:[...b.analysis],review:[...b.review],imported:[...b.imported]}]))}),
     // B1: the book's tabs count their objects where the owner records them -- the documents the inventory holds, the published review's citations, the findings
     counts:()=>{ const v=S.view, inv=inventory(), d=dossierOf(), published=Boolean(v) && (reviewPublished() || historical());
       return {documents:inv ? inv.rows.reduce((a,r)=>a+r.held,0) : undefined,citations:published && Array.isArray(v.citations) ? v.citations.length : undefined,findings:Array.isArray(d?.findings) ? d.findings.length : published && Array.isArray(v.issuer_rows) ? v.issuer_rows.reduce((a,r)=>a+(Number(r.finding_count) || 0),0) : undefined}; },

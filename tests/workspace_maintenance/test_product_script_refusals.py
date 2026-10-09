@@ -404,9 +404,7 @@ def test_every_product_setup_script_words_an_unexpected_failure(
     assert "NEVER-PRINT-ME" not in json.dumps(payload)
 
 
-_NETWORK_FLAGS = frozenset(
-    {"--acquire-sec", "--network", "--network-consent", "--sec-network-consent"}
-)
+_NETWORK_FLAGS = frozenset({"--acquire-sec", "--network", "--network-consent"})
 """What makes a setup command reach the network: an offline run offers none of them."""
 
 _ANSWER_PATH = re.compile(r"`([a-z_]+(?:\.[a-z_]+)*)`")

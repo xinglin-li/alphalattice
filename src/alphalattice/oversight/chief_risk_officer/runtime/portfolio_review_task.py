@@ -31,6 +31,7 @@ from alphalattice.control.task_control.contracts import (
 )
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
+from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
 from alphalattice.evidence.alternative_evidence.publication.analysis import (
     AlternativeEvidenceAnalysisPublicationService,
 )
@@ -428,6 +429,7 @@ class PortfolioReviewTaskAdapter:
             framework_identity_hash=self.resources.actor.process_binding_hash,
         )
 
+    @verified_model_read_scope(reuse_verified=True)
     def execute_stage(
         self,
         *,
@@ -455,6 +457,7 @@ class PortfolioReviewTaskAdapter:
             )
         return StageExecutionResult(disposition=StageDisposition.READY, evidence=(evidence,))
 
+    @verified_model_read_scope(reuse_verified=True)
     def verify_stage(
         self,
         *,

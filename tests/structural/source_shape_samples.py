@@ -236,6 +236,7 @@ def generated_evidence_sentences():
 
     from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
         NOT_ADDRESSED_RATIONALE,
+        ReviewState,
     )
 
     src = ROOT / "src/alphalattice"
@@ -301,4 +302,14 @@ def generated_evidence_sentences():
             elif n == "1" and words[:1].isupper():  # a whole sentence, not a part of the f-string
                 said.append(words)
     said.append(NOT_ADDRESSED_RATIONALE)
+    coverage = next(
+        filled(n, "{subject}")
+        for n in ast.walk(
+            body("interface/local_application/evidence_cro.py", "project_published_review")
+        )
+        if isinstance(n, ast.JoinedStr) and "In scope:" in (filled(n, "") or "")
+    )
+    for state in ReviewState:
+        values = iter((state.value, "100.000%", "44.000%", "not recorded", "not recorded"))
+        said.append(re.sub(r"\{subject\}", lambda _, values=values: next(values), coverage))
     return said

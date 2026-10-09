@@ -964,12 +964,27 @@ def project_published_review(
     coverage = dossier.coverage
     nothing_filed = getattr(coverage, "nothing_filed_ending_weight_coverage", None)
     unreached = getattr(coverage, "unreached_ending_weight_coverage", None)
+    scope_projection = _scope_coverage(scope, exposure, percent=percent, change=change)
+    read_weight = percent(coverage.reviewed_ending_weight_coverage)
+    nothing_filed_weight = None if nothing_filed is None else percent(nothing_filed)
+    unread_weight = None if unreached is None else percent(unreached)
+    in_scope = (
+        "not recorded" if scope_projection is None else scope_projection.whole_book_reviewed_weight
+    )
     return EvidenceCroProjection(
-        scope_coverage=_scope_coverage(scope, exposure, percent=percent, change=change),
+        scope_coverage=scope_projection,
         state="REVIEW_PUBLISHED",
         explanation=(
-            "One published review of the issuers named below, against the approved "
-            "sources at the stated cutoff. It is not an activation and changes no weight."
+            f"{recommendation.review_state}. In scope: {in_scope}; read: {read_weight}; "
+            f"nothing filed: {nothing_filed_weight or 'not recorded'}; "
+            f"unread: {unread_weight or 'not recorded'}. "
+            "Each share uses the total ending weight of all book positions as its denominator. "
+            "When recorded, read + nothing filed + unread = the whole book; "
+            "in scope contains read and nothing filed. "
+            "In a legacy dossier, read equals in scope; it does not prove reading. "
+            "Nothing filed is not unread and is not a finding of no risk. "
+            "Read coverage does not mean every source passage was read. "
+            "This review changes no weight and grants no activation."
         ),
         book=book,
         portfolio_report_link=dossier.portfolio_report_link,
@@ -993,14 +1008,12 @@ def project_published_review(
         evidence_as_of=recommendation.evidence_as_of.isoformat(),
         evidence_expires_at=recommendation.evidence_expires_at.isoformat(),
         coverage=EvidenceCroCoverage(
-            reviewed_ending_weight_coverage=percent(coverage.reviewed_ending_weight_coverage),
+            reviewed_ending_weight_coverage=read_weight,
             reviewed_absolute_change_coverage=percent(coverage.reviewed_absolute_change_coverage),
             mapping_coverage=percent(coverage.mapping_coverage),
             selected_issuer_coverage=percent(coverage.selected_issuer_coverage),
-            nothing_filed_ending_weight_coverage=(
-                None if nothing_filed is None else percent(nothing_filed)
-            ),
-            unreached_ending_weight_coverage=None if unreached is None else percent(unreached),
+            nothing_filed_ending_weight_coverage=nothing_filed_weight,
+            unreached_ending_weight_coverage=unread_weight,
             nothing_filed_window_days=getattr(coverage, "nothing_filed_window_days", None),
             accounted_ending_weight_coverage=(
                 None

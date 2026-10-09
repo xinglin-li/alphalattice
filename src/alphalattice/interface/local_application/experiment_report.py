@@ -715,6 +715,19 @@ def render_research_delivery(snapshot: dict[str, Any]) -> str:
     from alphalattice.interface.local_application.evidence_cro import render_review_export
 
     sections = snapshot["sections"]
+    if "positions" in sections:
+        # A date's published positions: their own page, the review and the commentary.
+        return _delivered(
+            str(sections["positions"]["value"]["html"]),
+            '<section id="delivery-context"><h2>Research delivery</h2><p>'
+            + _text(snapshot["claim"])
+            + "</p>"
+            + _facts({"Question for this delivery": snapshot["question"], **snapshot["input"]})
+            + "</section>",
+            [],
+            snapshot,
+            render_review_export,
+        )
     primary = _portfolio_report(sections["portfolio"]["value"])
     notice = (
         '<section id="delivery-context"><h2>Research delivery</h2><p>'
@@ -801,9 +814,22 @@ def render_research_delivery(snapshot: dict[str, Any]) -> str:
         )
     else:
         parts.append(_facts(risk))
-    review = sections["evidence_cro"]
+    parts.append("</section>")
+    return _delivered(primary, notice, parts, snapshot, render_review_export)
+
+
+def _delivered(
+    primary: str,
+    notice: str,
+    parts: list[str],
+    snapshot: dict[str, Any],
+    render_review_export: Any,
+) -> str:
+    """The delivery's subject page with its notice, sections, Evidence/CRO state and the
+    attributed commentary, then the exact review appended when one was named."""
+    review = snapshot["sections"]["evidence_cro"]
     parts.append(
-        '</section><section id="delivery-evidence-state"><h2>Evidence/CRO state</h2>'
+        '<section id="delivery-evidence-state"><h2>Evidence/CRO state</h2>'
         + _facts({k: v for k, v in review.items() if k != "value"})
         + "</section>"
     )
@@ -827,7 +853,7 @@ def render_research_delivery(snapshot: dict[str, Any]) -> str:
     )
     if "value" in review:
         result = render_review_export(review["value"], result)
-    return result
+    return str(result)
 
 
 def render_handoff_report(body: dict[str, Any]) -> str:

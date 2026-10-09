@@ -268,16 +268,23 @@ def _count(value: object) -> int:
 def private_test_growth(base: Mapping[str, object], current: Mapping[str, object]) -> list[str]:
     """What the tests' ratchet holds beyond the registry its change started from (LAWS.md TE5).
 
-    The ratchet only shrinks: a new test reaches the product through a public entry, so an entry
-    registered by hand is refused here. The scan alone let five through on 2026-09-30, each
-    registered beside its test (V16).
+    Counts follow the access kind and symbol across files: moving an existing access is not
+    growth. A new access or a second use still needs the product's public entry. The scan alone
+    let five through on 2026-09-30, each registered beside its test (V16).
     """
 
+    before: Counter[str] = Counter()
+    after: Counter[str] = Counter()
+    for entries, totals in ((base, before), (current, after)):
+        for key, value in entries.items():
+            totals[key.partition("::")[2]] += _count(value)
+
     return [
-        f"test-private: {key} is registered {_count(value)} times where the base held "
-        f"{_count(base.get(key, 0))}; write the test through a public entry (LAWS.md TE5)"
-        for key, value in sorted(current.items())
-        if _count(value) > _count(base.get(key, 0))
+        f"test-private: {key} is registered {after[key.partition('::')[2]]} times where the "
+        f"base held {before[key.partition('::')[2]]}; write the test through a public entry "
+        "(LAWS.md TE5)"
+        for key in sorted(current)
+        if after[key.partition("::")[2]] > before[key.partition("::")[2]]
     ]
 
 

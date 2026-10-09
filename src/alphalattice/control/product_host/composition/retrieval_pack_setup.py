@@ -199,6 +199,8 @@ def _install(store: Path, recipe: str, *, network: bool, source: Path | None) ->
 
         status = model_store.install_pack(store, pack, fetch, progress=progress)
         results[pack.pack_id] = status.status
+    if model_store.PACK_INSTALLED in results.values():
+        model_store.remember_store(store)
     return {
         "store": str(store),
         "recipe": recipe,

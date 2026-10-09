@@ -996,7 +996,9 @@ class WorkspaceDataUpdateApplication:
                     TaskLifecycle.BLOCKED,
                     TaskLifecycle.CANCELLED,
                 }:
-                    raise ValueError("workspace_data_update.finish_or_recover_existing_task")
+                    raise ValueError(
+                        f"workspace_data_update.finish_or_recover_existing_task:{task.task_id}"
+                    )
             now = self.clock()
             state = read_workspace_inputs(
                 self.session.workspace, plan.binding, allow_transition=True
@@ -1764,6 +1766,21 @@ class WorkspaceDataUpdateApplication:
             }
             if not set(plan.request.full_history_listing_ids) <= allowed:
                 raise ValueError("workspace_data_update.audit_scope_invalid")
+
+    def task_subject(self, task: TaskRecord) -> dict[str, object]:
+        """Read this owner's admitted date, independent of the current workspace head."""
+        try:
+            plan = self._plan_of(task, require_current=False)
+        except (KeyError, ValueError) as error:
+            return {
+                "subject_refusal": {
+                    "status": "REFUSED",
+                    "failure_code": public_failure(
+                        error, "workspace_data_update.task_binding_mismatch"
+                    ),
+                }
+            }
+        return {"subject_context": {"date": plan.request.target_market_session.isoformat()}}
 
     def _plan_of(
         self, task: TaskRecord, *, require_current: bool = True

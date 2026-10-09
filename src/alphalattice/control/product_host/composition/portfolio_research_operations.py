@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import threading
 from collections.abc import Callable, Mapping
 from contextlib import nullcontext, suppress
@@ -24,6 +25,7 @@ from pydantic import ValidationError
 
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdatePlan
 from alphalattice.control.observation_runtime.telemetry.progress import WorkspaceProgressPublisher
+from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -33,6 +35,15 @@ from alphalattice.control.product_host.composition.decision_advancement import (
 from alphalattice.control.product_host.composition.decision_advancement import (
     DecisionAdvancementApplication,
     DecisionAdvancementCommand,
+)
+from alphalattice.control.product_host.composition.evidence_authority_setup import (
+    EvidenceInstall,
+    EvidenceInstallCommand,
+    OptionRefused,
+    run_setup,
+    setup_arguments,
+    setup_refusal,
+    within_delegation,
 )
 from alphalattice.control.product_host.composition.evidence_review_application import (
     EvidenceReviewApplication,
@@ -247,6 +258,13 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     plan_execution,
 )
 from alphalattice.evidence.alternative_evidence.runtime.progress import publish_evidence_work
+from alphalattice.evidence.alternative_evidence.sources.admission import (
+    DEFAULT_SOURCE_CONSENT,
+    NOT_GRANTED,
+    EvidenceSourceConsent,
+    evidence_source_consent,
+    record_evidence_source_consent,
+)
 from alphalattice.evidence.alternative_evidence.storage.inventory import EvidenceStorageBinding
 from alphalattice.foundation.feature_engine.catalog.service import FeatureCatalogCrudError
 from alphalattice.interface.local_application.activity import (
@@ -280,6 +298,7 @@ from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
     safe_failure_code,
+    setup_failure,
     typed_failures,
 )
 from alphalattice.interface.local_application.goals import (
@@ -317,6 +336,9 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.investment.alpha_research.scores.model_renewal import (
     verified_lifecycle_admissions,
+)
+from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
+    ADVANCEMENT_TASK_KIND,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioResearchResult,
@@ -499,6 +521,10 @@ class PortfolioResearchOperations:
     version rides the dispatcher's queue item to Task Control's start boundary."""
     recoverable_task_kinds: Callable[[], frozenset[str]] | None = None
     """The Task kinds this service can resume, read at the moment a recovery view is built."""
+    install_review: Callable[[], Any] | None = None
+    """The service's own composition of an Evidence package an install Task just bound
+    (`LocalPortfolioWebSession.serve_installed_review`), answering the runtime it replaced;
+    None outside a Host."""
     resume_refusal: Callable[[TaskRecord], str | None] | None = None
     """Why a Task cannot resume under what is installed now, asked before any resume; the
     service's own check (`LocalPortfolioWebSession.resume_refusal`). Nothing is written."""
@@ -544,6 +570,7 @@ class PortfolioResearchOperations:
     _packages: dict[str, FrozenStrategyPackage] = field(init=False, repr=False)
     _study_identities: dict[str, str] | None = field(default=None, init=False, repr=False)
     sweep: StudyVerificationSweep = field(init=False)
+    evidence_install: EvidenceInstall = field(init=False)
     supervisor: TaskSupervisor = field(init=False)
 
     def __post_init__(self) -> None:
@@ -562,6 +589,11 @@ class PortfolioResearchOperations:
             clock=self.dispatcher.clock,
         )
         self.supervisor = TaskSupervisor(self)
+        self.evidence_install = EvidenceInstall(
+            session=self.workspace_session,
+            clock=self.dispatcher.clock,
+            installed=self._evidence_installed,
+        )
         self.sweep = StudyVerificationSweep(
             session=self.workspace_session,
             experiments=self.experiments,
@@ -623,6 +655,7 @@ class PortfolioResearchOperations:
         self._packages = {}
         if self.review is not None:
             self.review.read_experiment = self.experiments.readback
+            self.review.network_delegation = self._network_delegation
         if self.application is None:
             return
         assert self.review is not None
@@ -693,6 +726,15 @@ class PortfolioResearchOperations:
             stop=lambda: self.dispatcher.closing or self._tasks_wait(),
         )
 
+    @staticmethod
+    def _evidence_consent(consent: EvidenceSourceConsent) -> dict[str, object]:
+        # The running Host admits the official source under it at the next Evidence read.
+        return {
+            "status": "EVIDENCE_SOURCE_CONSENT",
+            "consent": consent.body(),
+            "default_budget": DEFAULT_SOURCE_CONSENT.body(),
+        }
+
     def _tasks_wait(self) -> bool:
         return any(
             task.lifecycle in {TaskLifecycle.QUEUED, TaskLifecycle.RUNNING, TaskLifecycle.DEFERRED}
@@ -741,6 +783,14 @@ class PortfolioResearchOperations:
         except ValueError:
             goal = None
         return self.goals.data_decisions(goal, caller)
+
+    def _network_delegation(self, caller: str) -> str | None:
+        """The attributed first-use goal's current network authority for this caller."""
+        try:
+            goal = self.goals.attributed_goal(REQUEST_PROVENANCE.get())
+        except ValueError:
+            return None
+        return None if goal is None else self.goals.delegation(goal, "NETWORK_ACCESS_SET", caller)
 
     def _task_facts(self, task_id: UUID) -> tuple[str, str, datetime | None] | None:
         """A Task's kind, lifecycle and canonical update clock; nothing when absent."""
@@ -1020,9 +1070,15 @@ class PortfolioResearchOperations:
         """Close the network a first-use goal's delegation opened, once the goal is over.
 
         The goal grants nothing after it (V452): its end, by submission, abandonment or its
-        hours passing, closes what its delegation opened, recorded in its ledger.
+        hours passing, closes what its delegation opened, recorded in its ledger, and the source
+        consent it gave goes back to none.
         """
-        if goal is None or not self.goals.network_left_open(goal):
+        if goal is None or goal.declaration.kind != "FIRST_USE" or self.goals.first_use_open(goal):
+            return
+        workspace = self.workspace_session.workspace
+        if evidence_source_consent(workspace).actor == f"first-use-goal:{goal.goal_id}":
+            record_evidence_source_consent(workspace, DEFAULT_SOURCE_CONSENT)
+        if not self.goals.network_left_open(goal):
             return
         # Only a setting the delegation still holds is undone: a person who set the network
         # since keeps theirs (V460).
@@ -1101,8 +1157,14 @@ class PortfolioResearchOperations:
                             LEDGER_READ_OPERATIONS
                             | {
                                 "REPORT",
+                                "PORTFOLIO_READBACK",
                                 "RESEARCH_UPDATE_READBACK",
                                 "PORTFOLIO_UPDATE_READBACK",
+                                # A review's submit and readback rebuild its dossier several
+                                # times, each reading the reviewed update whole.
+                                "CRO_REVIEW_SUBMIT",
+                                "AGENT_ANSWER_SUBMIT",
+                                "EVIDENCE_CRO",
                                 "GOAL_SHOW",
                                 "GOAL_EXPORT",
                                 "GOAL_REFERENCE",
@@ -1247,6 +1309,7 @@ class PortfolioResearchOperations:
             "REPORT",
             "EXPERIMENT_READBACK",
             "PORTFOLIO_UPDATE_READBACK",
+            "PORTFOLIO_READBACK",
         }:
             raise ValueError("research_update.automation_operation_not_admitted")
         client = self._client_operation(request, caller=caller)
@@ -1327,7 +1390,9 @@ class PortfolioResearchOperations:
                 return refused("activity.storage_unavailable")
             return self.observer.refusals(days=request.view_last_days or ACTIVITY_REFUSAL_DAYS)
         if request.operation == "NETWORK_ACCESS":
-            return network_access(self.workspace_session.workspace).body()
+            return network_access(self.workspace_session.workspace).body(
+                delegation=self._network_delegation(caller)
+            )
         if request.operation == "NETWORK_ACCESS_SET":
             # Network access is an authority, like the background update settings: a
             # person sets it; a client or an Agent reads it.
@@ -1343,6 +1408,43 @@ class PortfolioResearchOperations:
                 until=None if delegated is None else self.goals.delegation_ends(delegated),
                 relayed_by=self._relayed_by(),
             ).body()
+        if request.operation == "EVIDENCE_CONSENT":
+            return self._evidence_consent(evidence_source_consent(self.workspace_session.workspace))
+        if request.operation == "EVIDENCE_INSTALL":
+            assert request.evidence_setup is not None
+            return self._install_evidence(request.evidence_setup, caller)
+        if request.operation == "EVIDENCE_CONSENT_SET":
+            # Source consent is the person's; a first use's agent gives the default budget under
+            # the goal's delegation, and asks the person for more.
+            if caller != "HUMAN":
+                return refused("evidence_review.consent_human_only")
+            delegated = None if self._relayed_by() else self._delegating_goal()
+            workspace = self.workspace_session.workspace
+            current = evidence_source_consent(workspace)
+            assert request.evidence_documents_per_issuer is not None
+            try:
+                consent = EvidenceSourceConsent(
+                    documents_per_issuer=request.evidence_documents_per_issuer,
+                    total_documents=current.total_documents
+                    if request.evidence_total_documents is None
+                    else request.evidence_total_documents,
+                    total_bytes=current.total_bytes
+                    if request.evidence_total_bytes is None
+                    else request.evidence_total_bytes,
+                    actor="HUMAN" if delegated is None else f"first-use-goal:{delegated.goal_id}",
+                    granted_at=self.dispatcher.clock().isoformat(),
+                )
+            except ValueError:
+                return refused("evidence_review.consent_budget_invalid")
+            # The delegation gives the default budget, and never raises what the person gave.
+            if delegated is not None and not (
+                consent.within(DEFAULT_SOURCE_CONSENT)
+                and (current.actor in {*NOT_GRANTED, consent.actor} or consent.within(current))
+            ):
+                return refused("evidence_review.consent_beyond_delegation")
+            return self._evidence_consent(
+                record_evidence_source_consent(self.workspace_session.workspace, consent)
+            )
         if request.operation in {"UPGRADE_OVERVIEW", "UPGRADE_ACKNOWLEDGE"}:
             return self.upgrade(request)
         if request.operation == "RESEARCH_HISTORY":
@@ -1396,6 +1498,21 @@ class PortfolioResearchOperations:
                 }
         if request.operation.startswith("MODEL_"):
             return self._model_operation(request, caller)
+        if request.operation == "PORTFOLIO_READBACK":
+            from .portfolio_result_context import read_portfolio
+
+            return read_portfolio(self, request, caller=caller)
+        if request.operation == "EXPERIMENT_DECLARATION_CONVERT":
+            from alphalattice.control.research_program.authoring.document import (
+                convert_authoring_document,
+            )
+
+            return cast(
+                dict[str, object],
+                convert_authoring_document(
+                    document=request.experiment_document, text=request.experiment_yaml
+                ),
+            )
         if request.operation in {"STRATEGY_ACTIVATE", "STRATEGY_DEACTIVATE"}:
             return self._strategy_activation(request, caller)
         if request.operation in {
@@ -1405,6 +1522,8 @@ class PortfolioResearchOperations:
             "FEATURE_DEACTIVATE",
         }:
             return self._feature_extension_operation(request, caller)
+        if request.operation.startswith("COMMITTEE_"):
+            return self._committee(request)
         if request.operation.startswith("EXPERIMENT"):
             try:
                 if request.operation == "EXPERIMENT_FOUNDATION_SUMMARY":
@@ -1417,8 +1536,27 @@ class PortfolioResearchOperations:
                 if request.operation == "EXPERIMENT_VERIFY_ALL":
                     return self.verify_all()
                 if request.operation == "EXPERIMENT_DELIVERY_EXPORT":
-                    from .research_delivery import export_research_delivery
+                    from .research_delivery import export_research_delivery, export_update_delivery
 
+                    if request.update_task_id is not None:
+                        task, now = str(request.update_task_id), self.dispatcher.clock()
+                        self._file_floor(task, now)
+                        floor = committee.floor_of(self.goals.store, task)
+                        if floor is not None and floor.opened["selector"].get(
+                            "update_publication_hash"
+                        ) != str(request.update_publication_hash):
+                            floor = None  # a floor on another publication is not this report's
+                        return export_update_delivery(
+                            request=request,
+                            readback=self.execute(
+                                PortfolioResearchOperationRequest(
+                                    operation="RESEARCH_UPDATE_READBACK",
+                                    task_id=request.update_task_id,
+                                )
+                            ),
+                            review=self.review,
+                            committee=None if floor is None else committee.commentary(floor, now),
+                        )
                     return export_research_delivery(
                         request=request,
                         experiments=self.experiments,
@@ -1544,7 +1682,8 @@ class PortfolioResearchOperations:
                         return _position_rows(
                             self._research_update_way(
                                 chosen, self.research_updates.readback(chosen)
-                            )
+                            ),
+                            review=self.review,
                         )
                     assert request.update_plan_hash is not None
                     plan = self.research_updates.prepare(request.update_plan_hash)
@@ -1600,7 +1739,7 @@ class PortfolioResearchOperations:
                         chosen = self._strategy_task(request)
                         if isinstance(chosen, dict):
                             return chosen
-                        return _position_rows(self.updates.readback(chosen))
+                        return _position_rows(self.updates.readback(chosen), review=self.review)
                     assert request.update_plan_hash is not None
                     plan = self.updates.prepare(request.update_plan_hash)
                     reused = self.updates.reusable(plan)
@@ -2064,6 +2203,9 @@ class PortfolioResearchOperations:
         match request.operation:
             case "AGENT_BUNDLE_PREPARE":
                 assert request.agent_role is not None and request.bundle_directory is not None
+                # A role's view of a date's positions, and of its committee floor when one is
+                # open: one owner for both.
+                dated = None if request.task_id is None else self._dated(str(request.task_id))
                 try:
                     prepared = EvidenceReviewBundles(self.review).prepare_agent_bundle(
                         role=request.agent_role,
@@ -2072,6 +2214,14 @@ class PortfolioResearchOperations:
                         task_id=request.task_id,
                         unit_id=request.evidence_unit_id,
                         dispatcher=self.dispatcher,
+                        view=None
+                        if dated is None
+                        else committee.role_lines(
+                            request.agent_role,
+                            *dated,
+                            committee.floor_of(self.goals.store, str(request.task_id)),
+                            self.dispatcher.clock(),
+                        ),
                     )
                 except (PortfolioEvidenceReviewError, ValueError) as error:
                     code = public_failure(error, "agent_bundle.refused")
@@ -2246,7 +2396,7 @@ class PortfolioResearchOperations:
                     ),
                 }
             case "EVIDENCE_REFRESH":
-                return self.evidence_refresh(selector)
+                return self.evidence_refresh(selector, caller=caller)
             case "EVIDENCE_PREPARE":
                 outcome = self.review.refresh_evidence(
                     dispatcher=self.dispatcher,
@@ -2258,6 +2408,7 @@ class PortfolioResearchOperations:
                     ),
                     prepare_only=True,
                     preparation_binding_hash=request.preparation_binding_hash,
+                    caller=caller,
                 )
                 body = _review_outcome_body(outcome)
                 if outcome.task_id is not None:
@@ -2279,7 +2430,7 @@ class PortfolioResearchOperations:
                     }
                 return body
             case "EVIDENCE_PREVIEW":
-                return self.review.preview_evidence(selector)
+                return self.review.preview_evidence(selector, caller=caller)
             case "EVIDENCE_LEDGER":
                 return _review_outcome_body(
                     EvidenceReviewDelivery(self.review).book_ledger(
@@ -2533,14 +2684,61 @@ class PortfolioResearchOperations:
             )
         answer = self.research_strategies.install(task_id)
         resolver = None if self.application is None else self.application.resolver
-        if isinstance(resolver, StrategyPortfolioResolver):
+        if self.application is not None and isinstance(resolver, StrategyPortfolioResolver):
             admitted = admit_research_workspace(self.workspace_session.workspace)
             resolver.catalog = admitted.catalog
-            self._packages = {
-                package.strategy_id: package for package in resolver.installed_packages().values()
-            }
+            packages = resolver.installed_packages()
+            # The executor was composed before this installation. Refresh its report
+            # disclosures from the same admitted catalog used by planning and resolution.
+            # Unknown package hashes still refuse at the disclosure owner.
+            self.application.executor.packages = dict(packages)
+            self._packages = {package.strategy_id: package for package in packages.values()}
             self._hold_activation(admitted.manifest)
         return answer
+
+    def _install_evidence(self, setup: str, caller: str) -> dict[str, object]:
+        """A preflight, read-only, answers anyone at once; an install is a Task, the person's, a
+        relayed yes's, or a first use's agent's within its delegation (`within_delegation`)."""
+        workspace = self.workspace_session.workspace
+        try:
+            argv = shlex.split(setup, posix=True)
+            arguments = setup_arguments(argv, workspace)
+        except OptionRefused as error:
+            return setup_failure(error)
+        except (SystemExit, ValueError):
+            return refused("local_client.request_invalid")
+        if arguments.preflight:
+            try:
+                return run_setup(arguments, self.workspace_session)
+            except (ValueError, RuntimeError) as error:
+                return setup_refusal(arguments, error)
+        if not arguments.install:
+            return refused("local_client.request_invalid")
+        if caller != "HUMAN":
+            return refused("evidence_review.consent_human_only")
+        delegated = self._delegating_goal() is not None and not self._relayed_by()
+        if delegated and not within_delegation(arguments, evidence_source_consent(workspace)):
+            return refused("evidence_review.consent_beyond_delegation")
+        sent = self.dispatcher.submit(EvidenceInstallCommand(self.evidence_install, argv))
+        if sent.task_id is None:
+            full = sent.disposition == "REFUSED_QUEUE_FULL"
+            return refused("task_control.queue_full" if full else "evidence_review.install_failed")
+        return {
+            "status": "ADMITTED",
+            "task_id": str(sent.task_id),
+            "lifecycle": sent.lifecycle,
+            "next_requests": {"status": {"operation": "STATUS", "task_id": str(sent.task_id)}},
+        }
+
+    def _evidence_installed(self) -> None:
+        """Serve the package an install Task just bound: the review first, then the storage, then
+        the replaced runtime closed, and the manifest held last."""
+        replaced = None if self.install_review is None else self.install_review()
+        self.storage.evidence = self._evidence_storage_binding()
+        self._bind_evidence_storage_admission()
+        if replaced is not None:
+            replaced.close()
+        self._hold_activation(read_research_workspace_manifest(self.workspace_session.workspace))
 
     def _hold_activation(self, current: ResearchWorkspaceManifest) -> None:
         """Hold the manifest a person's activation or deactivation published (LS1).
@@ -2616,6 +2814,71 @@ class PortfolioResearchOperations:
             }
         # The activation stands; its first update answers for itself.
         return {**activated, **self._first_update(activated, provenance)}
+
+    def _committee(self, request: PortfolioResearchOperationRequest) -> dict[str, object]:
+        """The investment committee on a date's published positions (`committee`).
+
+        Its floor is the opening goal's ledger; each message it reveals is filed as a row of
+        that goal's conversation, so the Team page shows the floor as it moves.
+        """
+        task, now = str(request.update_task_id), self.dispatcher.clock()
+        return committee.operate(
+            self.goals.store,
+            request,
+            now,
+            provenance=REQUEST_PROVENANCE.get(),
+            dated=lambda: self._dated(task),
+            file_floor=lambda: self._file_floor(task, now),
+        )
+
+    def _dated(self, task: str) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        """A research update's publication and the Evidence on it; None for another Task."""
+        try:
+            kind = self.workspace_session.task_control_registry.task(UUID(task)).task_kind
+        except LookupError:  # an unknown Task is the specialist bundle's own refusal
+            return None
+        if kind != ADVANCEMENT_TASK_KIND:
+            return None
+        readback = self.execute(
+            PortfolioResearchOperationRequest(
+                operation="RESEARCH_UPDATE_READBACK", task_id=UUID(task)
+            )
+        )
+        selector = readback.get("review_selector")
+        if not isinstance(readback.get("publication"), dict) or not isinstance(selector, dict):
+            return None
+        evidence = self.execute(
+            PortfolioResearchRequestDocument.model_validate(
+                {"operation": "EVIDENCE_CRO", **selector}
+            ).to_operation_request()
+        )
+        return readback, evidence
+
+    def _file_floor(self, task: str, now: datetime) -> None:
+        """File the floor's revealed messages, not yet filed, as rows of its goal's conversation
+        on the Host's own channel (`committee.CHANNEL`), which a client's event never takes.
+
+        A wait's read takes the gate only when a row is due; the floor is read again under the
+        lock, so two filings never file one message twice.
+        """
+        floor, observer = committee.floor_of(self.goals.store, task), self.observer
+        if observer is None or floor is None or not committee.unfiled(floor, now):
+            return
+        with self.workspace_session.mutation_gate.hold(), self.goals.store.lock:
+            floor = committee.floor_of(self.goals.store, task)
+            rows = [] if floor is None else committee.unfiled(floor, now)
+            if floor is None or not rows:
+                return
+            token = REQUEST_PROVENANCE.set(RequestProvenance(goal_id=str(floor.goal_id)))
+            try:
+                for row in rows:
+                    self._file_declared_event(
+                        observer,
+                        ExternalActivityEventDocument.model_validate(row),
+                        accepted_receipt=None,
+                    )
+            finally:
+                REQUEST_PROVENANCE.reset(token)
 
     def _first_update(
         self, activated: dict[str, object], provenance: RequestProvenance | None
@@ -2986,7 +3249,7 @@ class PortfolioResearchOperations:
             case "WORKSPACE_PREPARE_READBACK":
                 return self._preparation_readback(request.task_id)
             case "WORKSPACE_PREPARE_PLAN":
-                return self.preparation.plan()
+                return self.preparation.plan(network_delegation=self._network_delegation(caller))
             case "WORKSPACE_PREPARE_CONFIRM":
                 assert request.preparation_plan_hash is not None
                 self.preparation.require_confirmation_caller(
@@ -3905,12 +4168,19 @@ class PortfolioResearchOperations:
             record, items = registry.task_with_work_items(task_id)
         except (KeyError, ValueError, TaskNotFoundError):
             return body
-        body["timing"] = task_timing(
+        timing = task_timing(
             record,
             items,
             now=self.dispatcher.clock(),
             spans=read_stage_spans(self.workspace_session.runtime_path, task_id),
+            selected_stage=projection.current_stage,
         )
+        body["timing"] = timing
+        stage_timing = cast(dict[str, object] | None, timing["selected_stage"])
+        body["stage_timing"] = stage_timing
+        body["stage_updated_at"] = stage_timing["updated_at"] if stage_timing else None
+        if record.task_kind == PREPARATION_TASK_KIND:
+            body.update(self.preparation.activity_readback(record))
         body["attention"] = self.supervisor.attention((record,))[task_id].model_dump(mode="json")
         # What the stopped stage's owner saw beside its code, as its work item keeps it (V444).
         cause = next((item.failure_cause for item in items if item.failure_cause), None)
@@ -4335,6 +4605,16 @@ class PortfolioResearchOperations:
             attention=attention,
         )
         status = task_status_body(self.dispatcher.masked(snapshot.projection))
+        timing = task_timing(
+            snapshot.task,
+            snapshot.work_items,
+            now=view.observed_at,
+            selected_stage=snapshot.projection.current_stage,
+        )
+        status["timing"] = timing
+        stage_timing = cast(dict[str, object] | None, timing["selected_stage"])
+        status["stage_timing"] = stage_timing
+        status["stage_updated_at"] = stage_timing["updated_at"] if stage_timing else None
         status["worker_failure"] = self.dispatcher.failure(task_id)
         status["task_record_hash"] = snapshot.projection.task_record_hash
         status["resume_refusal"] = resume_refusal
@@ -4369,8 +4649,15 @@ class PortfolioResearchOperations:
             if code and snapshot.projection.lifecycle is TaskLifecycle.BLOCKED
             else None
         )
-        if offered or owned:
-            body["next_requests"] = {**(owned or {}), **offered}
+        context = self.review.task_subject(snapshot.task) if self.review else {}
+        if snapshot.task.task_kind == PREPARATION_TASK_KIND:
+            context.update(self.preparation.task_subject(snapshot.task))
+        elif self.data_update and snapshot.task.task_kind == self.data_update.task_kind:
+            context.update(self.data_update.task_subject(snapshot.task))
+        body.update({key: value for key, value in context.items() if key != "next_requests"})
+        subject = cast(dict[str, object], context.get("next_requests") or {})
+        if offered or owned or subject:
+            body["next_requests"] = {**(owned or {}), **offered, **subject}
         return body
 
     def _task_replan(self, task: TaskRecord) -> dict[str, object] | None:
@@ -4661,12 +4948,7 @@ class PortfolioResearchOperations:
         `data_plan` (V601).
         """
         if sent.task_id is None:
-            refused: dict[str, Any] = {
-                "status": sent.disposition,
-                "task_id": None,
-                "lifecycle": None,
-                "failure_code": sent.refusal_detail,
-            }
+            refused: dict[str, Any] = sent.answer()
             if (
                 sent.refusal_detail == "workspace_data_update.retry_not_due"
                 and data_plan is not None
@@ -4863,12 +5145,14 @@ class PortfolioResearchOperations:
         """
         registry = self.workspace_session.task_control_registry
         batch = registry.record_collection()
+        records = {record.task_id: record for record in batch.records}
         attention = self.supervisor.attention(batch.records)
         if agent_session is None:
             all_tasks: dict[str, object] = {
                 "tasks": [
-                    self._task_row(value, attention.get(value.task_id))
+                    self._task_row(value, records[value.task_id], attention.get(value.task_id))
                     for value in self.dispatcher.active()
+                    if value.task_id in records
                 ]
             }
             if batch.refused_task_ids:
@@ -4891,13 +5175,13 @@ class PortfolioResearchOperations:
         canonical_refused_ids = frozenset(batch.refused_task_ids)
         rows: list[dict[str, object]] = []
         for task_id, agent in page:
-            if task_id in refused_ids or str(task_id) in canonical_refused_ids:
+            if task_id in refused_ids or task_id not in records:
                 continue
             projection = projected.get(task_id) or self.dispatcher.status(task_id)
             final = self.dispatcher.final_lifecycle(projection)
             rows.append(
                 {
-                    **self._task_row(projection, attention.get(task_id)),
+                    **self._task_row(projection, records[task_id], attention.get(task_id)),
                     "submitted_by": agent.model_dump(mode="json"),
                     "final_state": None if final is None else final.value,
                     "artifact": (
@@ -4949,10 +5233,18 @@ class PortfolioResearchOperations:
         }
 
     def _task_row(
-        self, value: TaskSafeProjection, attention: TaskAttentionFact | None = None
+        self,
+        value: TaskSafeProjection,
+        record: TaskRecord,
+        attention: TaskAttentionFact | None = None,
     ) -> dict[str, object]:
         return {
             **task_status_body(value),
+            "running_seconds": task_timing(
+                record,
+                (),
+                now=self.dispatcher.clock(),
+            )["running_seconds"],
             **self._evidence_completion(value),
             "task_record_hash": value.task_record_hash,
             **({"attention": attention.model_dump(mode="json")} if attention is not None else {}),
@@ -4964,24 +5256,10 @@ class PortfolioResearchOperations:
             **(
                 {"stop_next": LEDGER_REBUILT_NEXT}
                 if value.latest_failure_code == "task_control.ledger_rebuilt"
-                and "operation"
-                in (
-                    self._task_replan(
-                        self.workspace_session.task_control_registry.task(value.task_id)
-                    )
-                    or {}
-                )
+                and "operation" in (self._task_replan(record) or {})
                 else {}
             ),
             "resume_refusal": self._resume_refusal(value),
-            # A finished Task's span is fixed, so a listing reads the same twice; a
-            # running one is its running_since (CLI-4).
-            "running_seconds": None
-            if value.running_since is None or value.lifecycle in _LIVE_LIFECYCLES
-            else round(
-                max(0.0, (value.last_activity_at - value.running_since).total_seconds()),
-                3,
-            ),
         }
 
     def _evidence_completion(self, projection: TaskSafeProjection) -> dict[str, object]:
@@ -5513,11 +5791,15 @@ class PortfolioResearchOperations:
             return self._read_review_update(found[0], publication_hash)
         return body
 
-    def evidence_refresh(self, selector: BookSelector | None) -> dict[str, object]:
+    def evidence_refresh(
+        self, selector: BookSelector | None, *, caller: str = "HUMAN"
+    ) -> dict[str, object]:
         """`Refresh evidence`: one real Alternative Evidence Task, or a typed refusal."""
         assert self.review is not None
         return _review_outcome_body(
-            self.review.refresh_evidence(dispatcher=self.dispatcher, selector=selector)
+            self.review.refresh_evidence(
+                dispatcher=self.dispatcher, selector=selector, caller=caller
+            )
         )
 
     def evidence_select(
@@ -6005,6 +6287,9 @@ class PortfolioResearchOperations:
                 **located_failure(error, "activity.event_invalid"),
                 "next_action": "READ_ACTIVITY_EVENT_CONTRACT",
             }
+        if document.subject.get("input_channel") == committee.CHANNEL:
+            # Only the committee's own floor files on its channel (`_file_floor`).
+            return refused("activity.event_channel_reserved")
         with self.workspace_session.mutation_gate.hold(), self.goals.store.lock:
             return self._file_declared_event(observer, document, accepted_receipt=accepted_receipt)
 
@@ -6289,7 +6574,9 @@ def _latest_update(task: TaskRecord | None) -> dict[str, object] | None:
     }
 
 
-def _position_rows(body: dict[str, object]) -> dict[str, object]:
+def _position_rows(
+    body: dict[str, object], *, review: EvidenceReviewApplication | None = None
+) -> dict[str, object]:
     publication = body.get("publication")
     if isinstance(publication, dict):
         value = PortfolioUpdatePublication.model_validate(publication)
@@ -6324,6 +6611,26 @@ def _position_rows(body: dict[str, object]) -> dict[str, object]:
             **cast(dict[str, object], body.get("next_requests") or {}),
             **review_requests(cast(dict[str, str], body["review_selector"])),
         }
+        if review is not None:
+            try:
+                standing = EvidenceReviewDelivery(review).review_standing(
+                    BookSelector(
+                        update_task_id=UUID(str(body["task_id"])),
+                        update_publication_hash=value.content_hash,
+                        position_basis=positions.basis,
+                    )
+                )
+            except Exception as error:
+                # An optional review's broken lineage cannot hide the day's sealed positions.
+                standing = {
+                    "status": "UNREADABLE",
+                    "detail": "Review standing unreadable.",
+                    "failure_code": public_failure(error, "evidence_review.standing_unreadable"),
+                }
+            body["review_standing"] = standing
+            later = cast(dict[str, object], standing.get("next_requests") or {}).get("review")
+            if later is not None:
+                cast(dict[str, object], body["next_requests"])["published_review"] = later
     return body
 
 

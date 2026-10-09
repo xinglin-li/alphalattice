@@ -97,6 +97,32 @@ class CurrentUniverseOnboardingOutcome:
     deferred_retry_id: str | None = None
     retry_after_at: datetime | None = None
     next_workers: int | None = None
+    exclusion_counts: dict[str, int] = field(default_factory=dict)
+
+
+def listing_outcome_category(
+    state: str, reasons: Sequence[str] = (), failure_code: str | None = None
+) -> str | None:
+    """Classify the recorded acquisition, qualification or audit outcome, not its wording."""
+    if state == "RAW_FAILED" or (
+        state == "AUDIT_FAILED"
+        and failure_code
+        in {
+            "data.provider_fetch_failed",
+            "data.provider_timeout",
+            "data.provider_unavailable",
+            "data.provider_session_unstable",
+            "data.rate_limited",
+            "data.empty_payload",
+            "data.adjusted_close_unavailable",
+        }
+    ):
+        return "ACQUISITION_FAILURE"
+    if state == "QUALITY_INELIGIBLE" and tuple(reasons) == ("insufficient_research_history",):
+        return "HISTORY_INELIGIBLE"
+    if state in {"QUALITY_INELIGIBLE", "AUDIT_FAILED"}:
+        return "QUALITY_REJECTION"
+    return None
 
 
 @dataclass(frozen=True)
@@ -1483,6 +1509,23 @@ class CurrentUniverseOnboarding:
         deferred: HydrationDeferred | None = None,
     ) -> CurrentUniverseOnboardingOutcome:
         listings = self.store.current_universe_onboarding_listings(self.onboarding_id)
+        quality_reasons = (
+            {
+                item.listing_id: item.reasons
+                for item in self.store.current_universe_quality_admissions(self.onboarding_id)
+            }
+            if any(item.state == "QUALITY_INELIGIBLE" for item in listings)
+            else {}
+        )
+        exclusion_counts = dict.fromkeys(
+            ("acquisition_failure", "history_ineligible", "quality_rejection"), 0
+        )
+        for item in listings:
+            category = listing_outcome_category(
+                item.state, quality_reasons.get(item.listing_id, ()), item.failure_code
+            )
+            if category is not None:
+                exclusion_counts[category.lower()] += 1
         return CurrentUniverseOnboardingOutcome(
             onboarding_id=self.onboarding_id,
             status=status,
@@ -1503,4 +1546,5 @@ class CurrentUniverseOnboarding:
             deferred_retry_id=deferred.deferred_retry_id if deferred else None,
             retry_after_at=deferred.retry_after_at if deferred else None,
             next_workers=deferred.next_workers if deferred else None,
+            exclusion_counts=exclusion_counts,
         )

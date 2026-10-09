@@ -44,8 +44,8 @@ const LiveWorkspace = (() => {
   const W = LiveWorkArea, {clockText, readAge, staleFor, clockOf, shownStageOf} = W;
   const readWhen = (state) => when(new Date(state.readAt || Date.now()).toISOString()); // the last successful read, as an instant (law 133)
   /* The Task a scene tells: the route's `preparation` (welcome) or `update` (data) -- an explicit
-   * choice, kept until another is chosen -- or none: a bare entry, which discovers the latest
-   * Task of that kind and pins it in place so a later Task does not replace it silently. */
+   * choice, kept until another is chosen -- or none: a bare entry reads the owner's current
+   * Task. Discovery never turns that current view into a selected historical record. */
   const SCENE_ROUTE={welcome:'preparation',data:'update'};
   const selectedTask=(page)=>SCENE_ROUTE[page] && typeof hashParams==='function' ? (hashParams().get(SCENE_ROUTE[page]) || null) : null;
   const pinTask=(page,id)=>{ if(typeof replaceHash!=='function' || here()!==page) return false; replaceHash({[SCENE_ROUTE[page]]:id}); return true; };
@@ -119,6 +119,14 @@ const LiveWorkspace = (() => {
         // Workspace discovery (the notice on other pages, the bare-entry routing) is the
         // latest preparation's story; reading an earlier Task on request changes nothing there.
         if(!body.selected || !body.latest_task_id || body.task_id===body.latest_task_id) Data.setPreparation(body);
+        else {
+          try {
+            const current=await Data.readShared(reads.welcome,true);
+            if(states.get(page)!==state) return;
+            Data.setPreparation(current);
+          } catch { /* the current preparation read cannot invalidate this historical record */ }
+        }
+        if(states.get(page)!==state) return;
       }
       if(page==='data' && body.inputs) { app.data=body.inputs.data_through || app.data; app.feature=body.inputs.panel_through || app.feature; }
       if(SCENE_ROUTE[page]) {
@@ -130,7 +138,6 @@ const LiveWorkspace = (() => {
         if(body.task_id && !view && state.view?.task_id===body.task_id) { state.viewError=viewError; state.stale=notCurrent(state,viewError); }
         else { state.view=view; state.viewError=viewError; state.recovered=Boolean(state.stale); state.stale=null; state.readAt=Date.now(); }
         if(body.task_id) {
-          if(!wanted && pinTask(page,body.task_id)) state.requested=body.task_id; // discovered once, then explicit (what the route now says)
           const spec=SCENES[page];
           // The answer is absorbed into this scene and Task's state: the visible area when
           // this page is shown, otherwise the kept state -- a late answer to a page the
@@ -198,11 +205,13 @@ const LiveWorkspace = (() => {
     // A projection that no longer agrees with the view (a resumed Task already finished between
     // two reads, a stage verified) is a reason to read the owners again, moving or not.
     const differs=Boolean(v && projection && (projection.lifecycle!==v.lifecycle || projection.verified_stage_count!==v.verified_stage_count));
+    const successor=projection && Data.taskSuccessor?.(projection);
+    const continued=page==='welcome' && !selectedTask(page) && successor && state.body.task_id!==successor.successor_task_id;
     // The readback and the recovery view are two reads: a Task that completed between them
     // leaves a verified view beside a readback without its receipt. That is read again on
     // the cadence until the owner's readback says so too, a bounded number of times.
     const late=Boolean(v && v.lifecycle==='SUCCEEDED' && !SCENES[page].completedNow(state.body) && state.lateReads<3);
-    if(v && !stateMoving(v.lifecycle) && !v.operation_running && !(projection && stateMoving(projection.lifecycle)) && !differs && !late) return;
+    if(v && !stateMoving(v.lifecycle) && !v.operation_running && !(projection && stateMoving(projection.lifecycle)) && !differs && !continued && !late) return;
     if(late) state.lateReads+=1;
     S.observing=refresh(page,'',true).finally(()=>{S.observing=null;});
   }
@@ -264,6 +273,24 @@ const LiveWorkspace = (() => {
     if(p.sources) rows.push(['Sources',html`${p.sources.map(v=>html`<span class="mono">${v}</span><br>`)}`]);
     rows.push(['Network',t(p.source_mode==='REUSE_QUALIFIED_LOCAL_DATA_NO_DOWNLOAD'?'None: no source is accessed.':'The declared sources, only after this confirmation. No data API key is requested.')]);
     rows.push(['Storage',t(p.candidate_count_basis==='KNOWN_AFTER_SOURCE_CAPTURE'?'Estimated by the owner after the sources are captured (the candidate count is known then); not known at this preview.':'Estimated by the owner from the retained scope.')]);
+    const estimate=p.resource_estimate, recovery=p.recovery_work;
+    if(estimate) {
+      if(estimate.cpu_budget!=null) rows.push(['CPU budget',estimate.cpu_budget==='auto'?t('Auto'):countText(estimate.cpu_budget,'{n} core','{n} cores')]);
+      if(estimate.cpu_cores!=null) rows.push(['CPU estimate',countText(estimate.cpu_cores,'{n} core','{n} cores')]);
+      if(estimate.cpu_sampled_at) rows.push(['Load sampled',when(estimate.cpu_sampled_at)]);
+      if(estimate.cpu_selection==='RUN_START' && estimate.cpu_detail) rows.push(['CPU scheduling',t(estimate.cpu_detail)]);
+      if(estimate.wall_seconds!=null) rows.push([estimate.elapsed_scope==='REMAINING_WORK'?'Estimated remaining time':'Estimated run time',durationText(estimate.wall_seconds*1000)]);
+      else if(estimate.wall_status==='UNKNOWN') rows.push(['Estimated remaining time',t('Not estimated')]);
+      if(estimate.peak_memory_bytes!=null) rows.push(['Peak memory',html`${bytesWords(estimate.peak_memory_bytes)}${estimate.memory_scope==='FULL_TASK_CONSERVATIVE'?html` · ${t('Full task estimate')}`:''}`]);
+      if(estimate.basis) rows.push(['Estimate basis',t(estimate.basis)]);
+    }
+    if(recovery) {
+      for(const [label,key] of [['Reused stages','reused_stages'],['Remaining stages','remaining_stages']]) {
+        if(recovery[key]?.length) rows.push([label,recovery[key].map(id=>t(stageOf(id).word)).join(' · ')]);
+      }
+      if(recovery.sources_may_be_accessed?.length) rows.push(['Sources that may be accessed',recovery.sources_may_be_accessed.join(' · ')]);
+      if(recovery.detail) rows.push(['Remaining work',t(recovery.detail)]);
+    }
     if(p.resume_from_cancelled_task) rows.push(['Continues from',html`${t('the cancelled Task')} <span class="mono">${short(p.resume_from_cancelled_task)}</span>`]);
     rows.push(['Unchanged',t('Saved research, configured defaults and every selection. No Foundation or strategy is activated.')]);
     return rows;
@@ -553,22 +580,28 @@ const LiveWorkspace = (() => {
    * "no finer count". Never a percentage across stages, never an estimate of time. */
   function work(b, v, state, shown=null) {
     const stage=shown || v.status.current_stage, p=b.progress, w=b.work_progress, age=readAge(state);
+    const tm=v.status.timing?.stages?.find(s=>s.stage_id===stage), actual=b.task_id===v.task_id && b.activity_timing?.stage===stage ? b.activity_timing : null;
+    const clocks=html`${tm ? html` · ${t('Stage updated')} · ${when(tm.updated_at)} · ${t('Stage duration')} · ${tm.seconds==null ? t('Not reported') : durationText(Number(tm.seconds)*1000)}` : ''}${actual?.last_work_at ? html` · ${t('Latest actual work')} · ${when(actual.last_work_at)}` : ''}`;
+    let result;
     if(stage==='prepare_data' && p?.phase==='prepare_data') {
       // The runner's counts at the last unit snapshot while it is current (they advance
       // within a chunk), otherwise the durable chunk record; both are the owner's, and the
       // caption says which boundary the number is at.
-      const la=b.listing_activity, live=la && la.availability==='BOUND' && la.counts ? la.counts : null;
+      const la=b.listing_activity, live=la && la.availability==='BOUND' && la.stage===stage && la.counts ? la.counts : null;
       const c=Number((live ? live.candidates : p.candidates) ?? 0), r=Number((live ? live.raw_ready : p.raw_ready) ?? 0);
+      const exclusions=live ? live.exclusion_counts : p.exclusion_counts;
+      const categories=exclusions && ['acquisition_failure','history_ineligible','quality_rejection'].every(k=>Number.isInteger(exclusions[k]) && exclusions[k]>=0) ? t('{a} acquisition failures · {q} data quality rejections · {h} listings ineligible for history',{a:exclusions.acquisition_failure,q:exclusions.quality_rejection,h:exclusions.history_ineligible}) : t('Exclusion categories not reported');
       const boundary=live ? t('at the unit snapshot of {time} · the chunk record says {r} of {c}',{time:la.written_at ? when(la.written_at) : '',r:Number(p.raw_ready ?? 0).toLocaleString('en-US'),c:Number(p.candidates ?? 0).toLocaleString('en-US')}) : t('the chunk record');
-      return {count:html`<span class="tp-number">${r.toLocaleString('en-US')}</span><span class="tp-denom"> / ${c.toLocaleString('en-US')} ${t('candidates with raw bars')}</span>`,bar:[r,c],
-        detail:html`${t('{q} quality-eligible · {f} failed · candidates are the captured source membership; raw availability is not research qualification',{q:(live ? live.quality_eligible : p.quality_eligible) ?? '',f:(live ? live.failed : p.failed) ?? ''})} · ${boundary}`,wait:p.retry_after_at};
+      result={count:html`<span class="tp-number">${r.toLocaleString('en-US')}</span><span class="tp-denom"> / ${c.toLocaleString('en-US')} ${t('candidates with raw bars')}</span>`,bar:[r,c],
+        detail:html`${t('{q} quality-eligible · {f} failed · candidates are the captured source membership; raw availability is not research qualification',{q:(live ? live.quality_eligible : p.quality_eligible) ?? '',f:(live ? live.failed : p.failed) ?? ''})} · ${categories} · ${boundary}`,wait:p.retry_after_at};
     }
-    if(stage==='prepare_features' && w?.availability==='BOUND') return featureStep(w,state,p?.retry_after_at);
-    if(stage==='prepare_features' && p?.phase==='prepare_features') {
-      return {count:html`<span class="tp-denom">${t('No finer count is reported for this step')}</span>`,bar:null,
+    else if(stage==='prepare_features' && w?.availability==='BOUND' && w.stage===stage) result=featureStep(w,state,p?.retry_after_at);
+    else if(stage==='prepare_features' && p?.phase==='prepare_features') {
+      result={count:html`<span class="tp-denom">${t('No finer count is reported for this step')}</span>`,bar:null,
         detail:html`${t('Feature owner status')} ${coded(p.status)}${p.membership_revision ? html` · ${t('membership')} <span class="mono">${short(p.membership_revision,SHORT.hash)}</span>` : ''}`,wait:p.retry_after_at};
     }
-    return NO_COUNT(null,stageVerified(v,stage));
+    else result=NO_COUNT(null,stageVerified(v,stage));
+    return {...result,detail:html`${result.detail}${clocks}`};
   }
   function kept(v) {
     return html`<div class="tp-retained">${icon('archive')}<div><span>${t('Kept safe')}</span><strong>${v.artifact_refs.length ? countText(v.artifact_refs.length,'{n} artifact reference verified by its owner','{n} artifact references verified by their owners') : v.verified_stage_count ? t('{n} of {total} stages verified; their records are kept by Task Control',{n:v.verified_stage_count,total:v.total_stage_count}) : t('No stage verified yet; nothing to keep beyond the admitted Task')}</strong><small>${t('A lost Web connection or a closed page does not erase it; a resume re-verifies it from its evidence and runs only the unverified stage again.')}</small></div></div>`;
@@ -607,11 +640,7 @@ const LiveWorkspace = (() => {
           consequence=t('This input has too few listings for research. The minimum support is enforced by the owner; a new qualified source is required before a research input can be published.');
           break;
         }
-        if(b.superseded_by_task_id) {
-          consequence=t('This stopped Task is historical. A successor Task continued from its retained checkpoint; inspect that exact Task for the current result.');
-          actions=action('Inspect successor Task','task',b.superseded_by_task_id);
-          break;
-        }
+        if(b.superseded_by_task_id) break;
         if(truthPending || (truth?.decided && !truth.count)) {
           actions=link(t('Data issues'),'issues','button compact');
           break;
@@ -630,7 +659,7 @@ const LiveWorkspace = (() => {
       default: break;
     }
     if(!consequence && !(tone==='attention')) return '';
-    return html`<section class="panel prep-attention" data-box="decision"><div class="tp-callout ${tone || 'attention'}">${icon(ic)}<p>${shown}</p></div>${consequence ? html`<p class="prep-consequence">${consequence}</p>` : ''}${actions ? html`<div class="flow">${actions}</div>` : ''}</section>`;
+    return html`<section class="panel prep-attention panel-body" data-box="decision"><div class="tp-callout ${tone || 'attention'}">${icon(ic)}<p>${shown}</p></div>${consequence ? html`<p class="prep-consequence">${consequence}</p>` : ''}${actions ? html`<div class="flow">${actions}</div>` : ''}</section>`;
   }
   /* The listing snapshot is folded per listing for reading: one row per listing, its
    * transitions in order, its last observation. Retention is bounded (the newest LOG_RETAIN
@@ -673,7 +702,7 @@ const LiveWorkspace = (() => {
   function featureAside(spec, w, state, statusText) {
     const bound=w && w.availability==='BOUND';
     const items=bound ? [[t('Feature owner step'),t(stageOf(w.stage_id).word)],[t('Units'),html`${Number(w.completed_units).toLocaleString('en-US')} / ${Number(w.total_units).toLocaleString('en-US')} ${t(w.unit_name)}`],[t('Current item'),w.current_item ? html`<span class="mono">${short(w.current_item,SHORT.id)}</span>` : ''],...Object.entries(w.counters || {}).map(([k,n])=>[k.replaceAll('_',' '),Number(n).toLocaleString('en-US')])] : [];
-    const rail=html`<section class="ui-log-rail prep-log-rail"><div><span>${t('Feature owner')}</span><strong>${bound ? t('reported at {time}',{time:when(w.updated_at)}) : w?.availability==='NOT_CURRENT' ? t('last report is of an earlier step') : t('no report yet')}</strong></div><div><span>${t('Reading')}</span><strong>${t('Following latest')}</strong></div></section>`;
+    const rail=html`<section class="ui-log-rail prep-log-rail"><div><span>${t('Feature owner')}</span><strong>${bound ? t('reported at {time}',{time:when(w.updated_at)}) : w?.availability==='NOT_CURRENT' ? t('last report is of an earlier step') : t('no report yet')}</strong></div>${stateMoving(spec.view()?.lifecycle) ? html`<div><span>${t('Reading')}</span><strong>${W.A.follow ? t('Following latest') : t('Reading held')}</strong></div>` : ''}</section>`;
     return W.factsShell(spec,{label:t('Feature work'),title:t('Feature work'),caption:t('The Feature owner\'s own step and counters, bound to this Task; no per-listing units are reported here'),facts:bound ? kv(items) : html`<p class="caption">${statusText}</p>`,rail});
   }
   /* The stage's own recent activity: listing units for market data; the Feature owner's step
@@ -685,7 +714,7 @@ const LiveWorkspace = (() => {
       const snapshot=log?.snapshot, rows=log ? [...log.rows.values()] : [];
       const history=Boolean(la && la.availability==='NOT_CURRENT') || !current;
       const latest=rows.at(-1);
-      const rail=W.logRail({label:history ? t('Last retained unit') : t('Latest unit'),value:latest ? html`${latest.symbol} · ${t(STATE_WORD[latest.steps.at(-1).state] || latest.steps.at(-1).state)} · ${snapshot?.written_at ? t('snapshot of {time}',{time:when(snapshot.written_at)}) : ''}` : t('No unit reported yet')},state);
+      const rail=W.logRail({label:history ? t('Last retained unit') : t('Latest unit'),value:latest ? html`${latest.symbol} · ${t(STATE_WORD[latest.steps.at(-1).state] || latest.steps.at(-1).state)} · ${snapshot?.written_at ? t('snapshot of {time}',{time:when(snapshot.written_at)}) : ''}` : t('No unit reported yet')},state,moving);
       const status=!la ? t('No listing activity has been delivered for this stage yet; the counts above are the chunk record.') : la.availability==='UNREADABLE' ? t('The listing snapshot could not be read ({cause}); the rows shown are the last valid snapshot.',{cause:la.cause || ''}) : la.availability==='UNBOUND' ? t('The listing snapshot on disk belongs to another Task; nothing of it is shown.') : snapshot ? html`${t('{r} of {o} units of this execution retained in the snapshot',{r:snapshot.retained,o:snapshot.observed})}${snapshot.dropped ? html` · ${t('{n} earlier units not retained',{n:snapshot.dropped})}` : ''}${log.rows.size>=W.LOG_RETAIN ? html` · ${t('this page keeps the latest {n} listings',{n:W.LOG_RETAIN})}` : ''}${history ? html` · ${t('retained history, not current work')}` : ''}${state.stale ? html` · ${t('last successful read')}` : ''}` : '';
       const empty=html`<p class="caption prep-log-empty">${history ? t('No listing unit was retained for this stage.') : t('Listings appear here as the data owner records each unit; a chunk of parallel fetches completes as several units at once.')}</p>`;
       return W.logShell(PREPARATION,{label:t('Recent listing activity'),title:t('Recent listing activity'),caption:t('Units the data owner recorded · newest last · a bounded snapshot, not a complete history'),history,moving,rows:rows.map(listingRow),empty,status,rail});
@@ -700,12 +729,15 @@ const LiveWorkspace = (() => {
    * liveness line with the cancel beside it; the Home's head and the pinned run say the state. */
   function scene(b, v, state) {
     const life=v.lifecycle, id=v.task_id;
+    const successor=Data.tasks().find(r=>r.task_id===b.superseded_by_task_id);
+    const caption=successor ? html`${t(stateOf(successor.lifecycle).word)}${successor.last_activity_at ? html` · ${when(successor.last_activity_at)}` : ''}` : '';
+    const history=b.selected && b.latest_task_id && id!==b.latest_task_id ? banner(t('Historical Task'),caption,'neutral',b.superseded_by_task_id ? link(t('Continued by Task {task}',{task:short(b.superseded_by_task_id,SHORT.id)}),'overview','button compact',{preparation:b.superseded_by_task_id}) : link(t('Open the current preparation'),'overview','button compact',{preparation:''})) : '';
     const by=Object.fromEntries(v.actions.map(a=>[a.action,a])), cancel=by.CANCEL;
     const stale=state.stale;
     const live=v.liveness, observedNow=life==='RUNNING' && live.status==='OBSERVED' && !stale;
     const cancelControl=stateMoving(life) ? typedBtn(t('Request cancel'),'task-cancel',id,'button compact',S.busy || !cancel?.available ? (cancel?.reason || '') : '') : '';
     const liveness=html`<p class="prep-liveness"${stale ? ' data-retained="true"' : ''}>${icon(observedNow ? 'activity' : 'info')}<span>${stale ? html`${t('Last observation at {time}, not re-read since:',{time:readWhen(state)})} ` : ''}${LiveTasks.liveness(v) || t('The Task is not executing; its lifecycle, not a heartbeat, says where it stands.')}${v.operation_running ? html` · ${t('the operation has not returned')}` : ''}</span>${cancelControl}</p>`;
-    return html`${disconnected(state)}${attention(b,v,state)}${W.workArea(PREPARATION,b,v,state)}${liveness}<section class="panel prep-kept">${kept(v)}<p class="caption">${t('Closing or minimizing this page does not stop the preparation: it continues while the local service runs. Stopping the service or the computer interrupts it; the recorded stages stay, and a restarted service takes the Task up from its recorded evidence.')}</p><p class="caption">${t('Stage counts are not time estimates; no rate or remaining time is inferred. Missing telemetry is named, not invented.')}</p></section>${detail({readback:b,recovery:v})}`;
+    return html`${history}${disconnected(state)}${attention(b,v,state)}${W.workArea(PREPARATION,b,v,state)}${liveness}<section class="panel prep-kept">${kept(v)}<p class="caption">${t('Closing or minimizing this page does not stop the preparation: it continues while the local service runs. Stopping the service or the computer interrupts it; the recorded stages stay, and a restarted service takes the Task up from its recorded evidence.')}</p><p class="caption">${t('Stage counts are not time estimates; no rate or remaining time is inferred. Missing telemetry is named, not invented.')}</p></section>${detail({readback:b,recovery:v})}`;
   }
   // The reader's own outage is the page's fact, kept apart from the Task's: what is shown is
   // the last owner observation, nothing is signalled as fresh, and a successful read recovers.
@@ -740,9 +772,16 @@ const LiveWorkspace = (() => {
     }
     return banner(t('This workspace cannot be prepared'),html`${explainCode(code)} ${t(code.endsWith('newer_build') ? 'To research here, open it with the build that wrote it or a newer one, or work in another workspace.' : 'To research here, restore its manifest where the service log names it, or work in another workspace.')}${infoMark(code)}`,'warning',html`<div class="flow">${btn(t('Open an existing workspace'),'workspace-how','open','button primary')}${btn(t('Create a workspace'),'workspace-how','create','button')}</div>`,'warning');
   }
+  function sceneState(name) {
+    let state=states.get(name);
+    if(!state || (SCENE_ROUTE[name] && (state.requested ?? '')!==(selectedTask(name) || ''))) {
+      void refresh(name);state=states.get(name);
+    }
+    return state;
+  }
   function firstUse() {
-    const state=states.get('welcome');
-    if(!state){void refresh('welcome');return skeleton('rows');}
+    const state=sceneState('welcome');
+    if(!state)return skeleton('rows');
     const b=state.body, v=state.view;
     if(refusalOf(state.error)) return refusedScene(state,'welcome');
     const refused=prepareRefused() ? cannotPrepare() : '';
@@ -843,7 +882,7 @@ const LiveWorkspace = (() => {
     if(m.availability && m.availability!=='AVAILABLE') return unitsShell(t(m.availability==='UNREADABLE' ? 'unreadable' : 'not available'),html`${t(m.availability==='UNREADABLE' ? 'The maintenance units recorded for this update could not be read; nothing of another update is shown in their place.' : 'The maintenance units recorded for this update are not available in this workspace; nothing of another update is shown in their place.')} ${said(m.failure_code)}`);
     const rows=log ? [...log.rows.values()] : [], history=!current || !stateMoving(v.lifecycle);
     const latest=rows.at(-1), snapshot=log?.snapshot;
-    const rail=W.logRail({label:history ? t('Last recorded unit') : t('Latest unit'),value:latest ? html`${latest.symbol} · ${t(unitKind(latest))} · ${t('recorded {time}',{time:when(latest.updated_at)})}` : t('No unit recorded yet')},state); // N6 (law 133): the unit's instant, never an age
+    const rail=W.logRail({label:history ? t('Last recorded unit') : t('Latest unit'),value:latest ? html`${latest.symbol} · ${t(unitKind(latest))} · ${t('recorded {time}',{time:when(latest.updated_at)})}` : t('No unit recorded yet')},state,moving); // N6 (law 133): the unit's instant, never an age
     const status=html`${t('{m} of {l} listings moved · {r} shown',{m:snapshot?.moved ?? m.moved,l:m.counts.listings,r:snapshot?.retained ?? m.retained})}${history ? html` · ${t('recorded work of this update, not current activity')}` : ''}${state.stale ? html` · ${t('last successful read')}` : ''}`;
     const empty=html`<p class="caption prep-log-empty">${t('Listings appear here as the maintenance runner records each unit; a chunk of parallel fetches completes as several units at once.')}</p>`;
     return W.logShell(UPDATE,{label:t('Recent listing activity'),title:t('Recent listing activity'),caption:t('Units the maintenance runner recorded for this target session · newest last · one row per listing, the newest shown'),history,moving,rows:rows.map(maintenanceRow),empty,status,rail});
@@ -980,10 +1019,10 @@ const LiveWorkspace = (() => {
       if(!states.get('welcome')) void refresh('welcome','',true);
       if(!states.get('issues')) void refresh('issues','',true);
       const preparation=states.get('welcome');
-      return html`${objectHead(t('Data maintenance'),info)}${prepareRefused() ? cannotPrepare() : preparation?.body?.task_id ? firstUse() : !preparation?.body ? skeleton('rows') : emptyState(t('No maintained data yet'),link(t('Prepare workspace'),'overview','button primary'),'page-empty')}${issuesSection(true)}`;
+      return html`${objectHead(t('Data maintenance'),info)}${LiveTasks.currentGroup?.() || ''}${prepareRefused() ? cannotPrepare() : preparation?.body?.task_id ? firstUse() : !preparation?.body ? skeleton('rows') : emptyState(t('No maintained data yet'),link(t('Prepare workspace'),'overview','button primary'),'page-empty')}${issuesSection(true)}`;
     }
     const settled=!v || SETTLED.has(v.lifecycle), between=b?.next_action==='DATA_UPDATE_PLAN';
-    const head=objectHead(t('Data maintenance'),info,b?.task_id && settled && !between ? action('Preview update','preview','update') : '');
+    const head=html`${objectHead(t('Data maintenance'),info,b?.task_id && settled && !between ? action('Preview update','preview','update') : '')}${LiveTasks.currentGroup?.() || ''}`;
     const notices=html`${S.error||(state.error && !state.stale)?notRead(t('Workspace action needs attention'),S.error||state.error):''}${noticeFor('data')?noteLine(t('Last operation'),t(noticeFor('data'))):''}${state.loading && !b ? skeleton('head') : ''}`;
     if(!b) return html`${head}${notices}`;
     const blocker=between ? banner(t('The workspace is between states'),t('The data owner asks for a new update plan before anything else; previewing one names the pending transition.'),'warning',primary('Preview update','preview','update')) : b.current_input_failure ? notRead(t('Current inputs not readable'),b.current_input_failure,t('The working store\'s current inputs could not be read; the update owner names the cause. Nothing is inferred from it.')) : '';
@@ -1280,16 +1319,9 @@ const LiveWorkspace = (() => {
     return html`${resume}${summary}${cleanup}${breakdown}${versions}${evidencePanel(b.evidence)}${backupsPanel()}${detail(b,'Exact inventory and references')}`;
   }
   function page() {
-    const name=here(),state=states.get(name);
-    if(!state){void refresh(name);return skeleton('head');}
-    if(SCENE_ROUTE[name]) {
-      // The route names another Task than the one this state asked for (or none, where it
-      // asked for one): read again -- whether the state holds a body, a refusal, nothing yet
-      // or a read still in flight (a late answer to the earlier choice is discarded).
-      const want=selectedTask(name) || '';
-      if((state.requested ?? '')!==want) { void refresh(name); return name==='welcome' ? firstUse() : data(states.get(name)); }
-      return name==='welcome' ? firstUse() : data(state);
-    }
+    const name=here(),state=sceneState(name);
+    if(!state)return skeleton('head');
+    if(SCENE_ROUTE[name])return name==='welcome' ? firstUse() : data(state);
     const heads={issues:['Data issues','The data owner\'s decisions: what it asks, what it recorded, what it continues.'],inputs:['Input versions','Immutable research inputs: publish a version, select one explicitly.'],storage:['Storage','Bounded workspace storage: what is kept where, what cleanup may release.']};
     const b=state.body;
     // an issue named by the address is its own page (F2); one the owner no longer lists leaves the lobby with a line
