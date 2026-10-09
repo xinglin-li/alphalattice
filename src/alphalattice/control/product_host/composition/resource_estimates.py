@@ -28,12 +28,15 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import psutil  # type: ignore[import-untyped]
+
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     available_work_memory_bytes,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.evidence.alternative_evidence.runtime.execution import (
+    TASK_LEASES,
     CpuBudgetStore,
     budget_cores,
     machine_load,
@@ -288,13 +291,24 @@ class ResourceGate:
                 self._by_task[UUID(task_id)] = remembered
 
     def stage_refusal(self, task: TaskRecord) -> str | None:
-        """The refusal code when an admitted Task's estimated peak no longer fits; else None."""
+        """The refusal code when an admitted Task's estimated peak no longer fits; else None.
+
+        Beside the Tasks that started before it, it also needs what their peaks have yet to
+        take: their estimated peaks past what the process holds now. A Task counts only the
+        older leases, so two starting together do not each count the other.
+        """
         remembered = self._by_task.get(task.task_id)
         if remembered is None:
             return None
         estimate = self.estimate(*remembered)
         available = estimate["available_memory_bytes"]
-        if available is None or available >= estimate["peak_memory_bytes"]:
+        holders = TASK_LEASES.holders()
+        older = holders[: holders.index(task.task_id)] if task.task_id in holders else holders
+        others = [self._by_task[held] for held in older if held in self._by_task]
+        unreached = sum(self.estimate(*other)["peak_memory_bytes"] for other in others)
+        if unreached:
+            unreached = max(0, unreached - psutil.Process().memory_info().rss)
+        if available is None or available >= estimate["peak_memory_bytes"] + unreached:
             return None
         return MEMORY_INSUFFICIENT
 

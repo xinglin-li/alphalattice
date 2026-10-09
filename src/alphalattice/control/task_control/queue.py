@@ -1,4 +1,4 @@
-"""How many Tasks may wait behind the running one: the Task queue's places (LAWS PA2).
+"""How many Tasks may wait, and how many run at once: the Task queue's places (LAWS PA2).
 
 An execution setting, the operator's: it paces work and decides no number, so it enters no
 identity. A person sets it in the Local Web's settings and an agent by the CLI, beside the CPU
@@ -12,6 +12,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal, cast
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,18 +23,24 @@ MAXIMUM_TASKS_WAITING = 64
 PROCESSORS_PER_WAITING_PLACE = 4
 """`auto` gives one waiting place per four processors, at least one: a machine that drains a
 backlog faster holds a longer one for the same wait."""
+MAXIMUM_TASKS_RUNNING = 8
+PROCESSORS_FOR_TWO_RUNNING = 8
+"""`auto` runs two Tasks at once from eight processors, else one. Only Tasks that may run
+beside others share the places, within the CPU budget (`TaskCpuLeases`)."""
 
 Chooser = Literal["DEFAULT", "HUMAN", "INSTALLED_AGENT", "EXTERNAL_AUTOMATION"]
 TasksWaiting = Literal["auto"] | Annotated[int, Field(ge=1, le=MAXIMUM_TASKS_WAITING, strict=True)]
+TasksRunning = Literal["auto"] | Annotated[int, Field(ge=1, le=MAXIMUM_TASKS_RUNNING, strict=True)]
 
 
 class TaskQueueSetting(BaseModel):  # type: ignore[misc]
-    """The operator's Task queue: `auto`, or how many Tasks may wait behind the running one."""
+    """The operator's Task queue: how many Tasks may wait, and how many may run at once."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     schema_version: Literal[1] = 1
     tasks_waiting: TasksWaiting = "auto"
+    tasks_running: TasksRunning = "auto"
     chosen_by: Chooser = "DEFAULT"
     chosen_at: datetime | None = None
 
@@ -54,27 +61,38 @@ def read_queue_setting(runtime_root: Path) -> TaskQueueSetting:
         raise ValueError("task_control.queue_setting_unreadable") from error
 
 
-def parse_tasks_waiting(value: object) -> Literal["auto"] | int:
+def parse_tasks(value: object, field: str = "tasks_waiting") -> Literal["auto"] | int:
     """`auto` or a whole number of Tasks from 1; anything else refused by name."""
     if value == "auto":
         return "auto"
     if isinstance(value, str) and value.isdigit():
         value = int(value)
-    if type(value) is not int or not 1 <= value <= MAXIMUM_TASKS_WAITING:
-        raise ValueError("task_control.tasks_waiting_invalid")
+    most = MAXIMUM_TASKS_RUNNING if field == "tasks_running" else MAXIMUM_TASKS_WAITING
+    if type(value) is not int or not 1 <= value <= most:
+        raise ValueError(f"task_control.{field}_invalid")
     return value
 
 
 def write_queue_setting(
-    runtime_root: Path, value: object, *, chosen_by: Chooser, chosen_at: datetime
+    runtime_root: Path,
+    value: object,
+    *,
+    chosen_by: Chooser,
+    chosen_at: datetime,
+    field: Literal["tasks_waiting", "tasks_running"] = "tasks_waiting",
 ) -> TaskQueueSetting:
-    """Validate and atomically write the operator's Task queue setting."""
-    setting = TaskQueueSetting(
-        tasks_waiting=parse_tasks_waiting(value), chosen_by=chosen_by, chosen_at=chosen_at
+    """Validate and atomically write one of the operator's Task queue settings."""
+    setting: TaskQueueSetting = TaskQueueSetting.model_validate(
+        {
+            **read_queue_setting(runtime_root).model_dump(),
+            field: parse_tasks(value, field),
+            "chosen_by": chosen_by,
+            "chosen_at": chosen_at,
+        }
     )
     path = queue_setting_path(runtime_root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    staged = path.with_name(path.name + ".partial")
+    staged = path.with_name(f"{path.name}.{uuid4().hex}.partial")
     staged.write_text(setting.model_dump_json(), encoding="utf-8")
     os.replace(staged, path)
     return setting
@@ -90,3 +108,12 @@ def waiting_places(setting: TaskQueueSetting) -> tuple[int, str]:
     return places, (
         f"auto: one waiting place per {PROCESSORS_PER_WAITING_PLACE} of the {processors} processors"
     )
+
+
+def running_places(setting: TaskQueueSetting) -> tuple[int, str]:
+    """How many Tasks may run at once now, and why."""
+    if setting.tasks_running != "auto":
+        return setting.tasks_running, f"set to {setting.tasks_running}"
+    processors = os.cpu_count() or 1
+    places = 2 if processors >= PROCESSORS_FOR_TWO_RUNNING else 1
+    return places, f"auto: {places} at once on {processors} processors"

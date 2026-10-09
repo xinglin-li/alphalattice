@@ -5,10 +5,12 @@ from __future__ import annotations
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
+    TaskEvidence,
     TaskExecutionCompatibility,
     TaskInputEnvelope,
     WorkItemDefinition,
 )
+from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
@@ -71,3 +73,48 @@ def compatibility(plan: ResearchPlan) -> TaskExecutionCompatibility:
         domain_policy_hash=digest("domain-policy"),
         framework_identity_hash=digest("framework"),
     )
+
+
+class FixtureTaskAdapter:
+    """A two-stage Task's stages: ready with their evidence, or failing or deferring once."""
+
+    task_kind = "factor_research"
+
+    def __init__(self, *, fail_once: bool = False, defer_once: bool = False) -> None:
+        self.fail_once = fail_once
+        self.defer_once = defer_once
+        self.executed: list[str] = []
+
+    def compatibility(self, task):
+        return compatibility(task.plan)
+
+    def execute_stage(self, *, task, execution, work_item):
+        del task, execution
+        self.executed.append(work_item.stage_id)
+        if self.fail_once:
+            self.fail_once = False
+            raise RuntimeError("simulated process interruption")
+        if self.defer_once:
+            self.defer_once = False
+            return StageExecutionResult(
+                disposition=StageDisposition.DEFERRED,
+                failure_code="AGENT_TEMPORARILY_UNAVAILABLE",
+            )
+        kind = {
+            "resolve_inputs": "input_binding",
+            "publish_result": "screening_report",
+        }[work_item.stage_id]
+        return StageExecutionResult(
+            disposition=StageDisposition.READY,
+            evidence=(
+                TaskEvidence(
+                    evidence_kind=kind,
+                    reference=f"playpen://runner/{work_item.stage_id}",
+                    content_hash=digest(work_item.stage_id),
+                ),
+            ),
+        )
+
+    def verify_stage(self, *, task, execution, work_item, evidence):
+        del task, execution, work_item
+        return evidence

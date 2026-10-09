@@ -130,6 +130,17 @@ def test_the_canary_door_operator_command_parses_through_the_real_cli(live) -> N
     assert exit_code == 0 and configured["data"]["cpu_budget"] == 1
 
 
+def test_the_tasks_that_run_at_once_are_set_beside_the_waiting_places(live) -> None:
+    """requirement: `cpu-budget set --running` sets how many Tasks run at once, keeping the
+    waiting places, and a count past eight is refused by name."""
+    assert _cli(live.workspace, "cpu-budget", "set", "--queue", "3")[0] == 0
+    code, running, _ = _cli(live.workspace, "cpu-budget", "set", "--running", "2")
+    queue = running["data"]["task_queue"]
+    assert code == 0 and (queue["running_places"], queue["places"]) == (2, 3), running
+    code, refused, _ = _cli(live.workspace, "cpu-budget", "set", "--running", "9")
+    assert code == 2 and "task_control.tasks_running_invalid" in json.dumps(refused)
+
+
 def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
     read_only_live: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:

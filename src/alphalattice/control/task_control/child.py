@@ -332,7 +332,8 @@ def _retire_worker(worker: int, pool: ProcessPoolExecutor) -> None:
     with _WORKER_LOCK:
         if _WORKERS.get(worker) is pool:
             del _WORKERS[worker]
-    pool.shutdown(wait=False, cancel_futures=True)
+    # Only the failing call: other Tasks' calls queued on it are answered as they stand.
+    pool.shutdown(wait=False, cancel_futures=False)
 
 
 ONE_THREAD_VARIABLES = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +12,7 @@ from alphalattice.control.product_host.composition.resource_estimates import gat
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
 from alphalattice.control.task_control.ledger import SubmittingAgent
+from alphalattice.control.task_control.queue import read_queue_setting, running_places
 from alphalattice.control.task_control.registry import (
     DuckDbTaskControlRegistry,
     resolve_task_control_database,
@@ -25,11 +26,14 @@ from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutati
 from alphalattice.control.workspace_runtime.reader_threads import apply_reader_threads
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.evidence.alternative_evidence.runtime.execution import (
+    TASK_LEASES,
     CpuBudgetStore,
     TaskReaderExecution,
+    below_normal_thread,
     budget_cores,
     machine_load,
     platform_identity,
+    process_priority,
 )
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -57,55 +61,72 @@ class WorkspaceApplicationSession:
         """Run or recover one admitted Host task with this session's runner."""
         if task.lifecycle not in {TaskLifecycle.QUEUED, TaskLifecycle.RECOVERY_REQUIRED}:
             return None
-        cores = self._apply_cpu_budget(task, clock)
-        runner = TaskControlRunner(
-            registry=self.task_control_registry,
-            adapters={adapter.task_kind: adapter},
-            runtime_path=str(self.runtime_path),
-            clock=clock,
-            width=cores,
-            stage_gate=gate_for(self.workspace).stage_refusal,
-            stage_scope=storage_capacity_scope,
-        )
-        try:
-            if task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED:
-                return runner.recover(task.task_id, expected_task_hash=expected_task_hash)
-            return runner.run_next(
-                expected_task_id=task.task_id, expected_task_hash=expected_task_hash
+        with self._cpu_lease(task, clock) as cores:
+            runner = TaskControlRunner(
+                registry=self.task_control_registry,
+                adapters={adapter.task_kind: adapter},
+                runtime_path=str(self.runtime_path),
+                clock=clock,
+                width=cores,
+                stage_gate=gate_for(self.workspace).stage_refusal,
+                stage_scope=storage_capacity_scope,
             )
-        finally:
-            runner.close()
+            try:
+                if task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED:
+                    return runner.recover(task.task_id, expected_task_hash=expected_task_hash)
+                return runner.run_next(
+                    expected_task_id=task.task_id, expected_task_hash=expected_task_hash
+                )
+            finally:
+                runner.close()
 
-    def _apply_cpu_budget(self, task: TaskRecord, clock: Callable[[], datetime]) -> int:
-        """The CPU budget, as the threads this Task's DuckDB and Arrow reads use and the work
+    @contextmanager
+    def _cpu_lease(self, task: TaskRecord, clock: Callable[[], datetime]) -> Iterator[int]:
+        """The CPU budget's cores this Task holds while it runs: its reads' threads and the work
         items it runs at once (V436).
 
-        Applied when the Task starts, and recorded beside it in the workspace's execution
-        log; the reads give the same bytes at any count (binding plan, B7), and a Task's work
-        items answer in their order whatever the width (`_WorkPool`).
-
-        Returns:
-            The cores the budget gives the Task.
+        A Task that may run beside others takes its share of the budget over the running
+        places; the leases of the Tasks running at once stay within the budget (`TASK_LEASES`).
+        What it ran with is recorded beside it in the workspace's execution log; the reads give
+        the same bytes at any count (binding plan, B7), and a Task's work items answer in their
+        order whatever the width (`_WorkPool`).
         """
 
         store = CpuBudgetStore(self.workspace / "runtime")
         budget = store.read()
         machine = machine_load()
         cores, reason = budget_cores(budget, machine)
-        store.record(
-            TaskReaderExecution(
-                task_id=task.task_id,
-                task_kind=task.task_kind,
-                cpu_budget=budget.cpu_budget,
-                cores=cores,
-                reader_threads=apply_reader_threads(cores),
-                reason=reason,
-                machine=machine,
-                started_at=clock(),
-                platform=platform_identity(),
-            )
+        ceiling = (
+            machine.processors
+            if budget.cpu_budget == "auto"
+            else min(budget.cpu_budget, machine.processors)
         )
-        return cores
+        places, _why = running_places(read_queue_setting(self.workspace / "runtime"))
+        if places > 1 and self.task_control_registry.overlapping(task):
+            cores = max(1, min(cores, ceiling // places))
+            reason += f"; its share of {places} running places"
+        with (
+            TASK_LEASES.lease(task.task_id, cores, ceiling) as beside,
+            below_normal_thread() if beside else nullcontext(False) as lowered,
+        ):
+            store.record(
+                TaskReaderExecution(
+                    task_id=task.task_id,
+                    task_kind=task.task_kind,
+                    cpu_budget=budget.cpu_budget,
+                    cores=cores,
+                    reader_threads=apply_reader_threads(TASK_LEASES.widest()),
+                    reason=reason,
+                    machine=machine,
+                    started_at=clock(),
+                    platform=platform_identity(),
+                    running_beside=beside,
+                    cpu_ceiling=ceiling,
+                    # A Task beside another runs below normal, whatever the process runs at.
+                    priority=f"{process_priority()}{', thread below_normal' if lowered else ''}",
+                )
+            )
+            yield cores
 
     def execution_identity(self, implementation_hash: str) -> str:
         """Bind a Task's recovery to its owner's numerical implementation, and to nothing else.

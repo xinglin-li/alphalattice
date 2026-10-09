@@ -16,7 +16,8 @@ one model at a time on the budget's cores, behind LightGBM's sealed canary
 (`alpha_modeling.runtime.lightgbm_threads`); what its fits used is appended to
 `runtime/execution/model-fits.jsonl` (binding plan, B3). Each Task the Host starts reads
 DuckDB and Arrow on the budget's cores (`workspace_runtime.reader_threads`); what it started
-with is appended to `runtime/execution/tasks.jsonl` (binding plan, B7). A Feature build in the
+with is appended to `runtime/execution/tasks.jsonl` (binding plan, B7); Tasks that run at once
+share the budget's cores by lease (`TaskCpuLeases`). A Feature build in the
 Task spreads its listings' computation over the Host's kept workers on those cores, one of them
 left to the build's writer (`feature_engine.runtime.service`); the rows are the same at any count.
 """
@@ -24,10 +25,13 @@ left to the build's writer (`feature_engine.runtime.service`); the rows are the 
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+import sys
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
-from threading import Lock
+from threading import Condition, Lock
 from typing import Annotated, Literal, TypeVar, cast
 from uuid import UUID
 
@@ -147,6 +151,12 @@ class TaskReaderExecution(_Record):
     started_at: datetime
     platform: PlatformIdentity | None = None
     """Absent from what a Task recorded before the realization record (N4)."""
+    running_beside: int = Field(default=0, ge=0)
+    """Other Tasks holding cores when this one took its lease."""
+    cpu_ceiling: int | None = Field(default=None, ge=1)
+    """The cores every running Task's lease stays within, the budget's; None before leases."""
+    priority: str | None = None
+    """The process's scheduling priority the Task ran at; None before it was kept."""
 
 
 class ModelFitExecution(_Record):
@@ -270,13 +280,17 @@ def plan_execution(
     )
 
 
+_LOG_LOCK = Lock()
+"""One for the process: the stores of Tasks that run at once append to the same logs."""
+
+
 class CpuBudgetStore:
     """The workspace's CPU budget and the log of what preparations ran with."""
 
     def __init__(self, runtime_root: Path) -> None:
         """Locate the budget setting and execution logs under the runtime root."""
         self.root = runtime_root / EXECUTION_DIRECTORY
-        self._lock = Lock()
+        self._lock = _LOG_LOCK
 
     def read(self) -> CpuBudget:
         """Read the selected budget, defaulting to ``auto``.
@@ -436,17 +450,111 @@ PREPARATIONS = RunningPreparations()
 """This process's preparations (model sessions are the process's; `VERIFIED_PACKS`)."""
 
 
+class TaskCpuLeases:
+    """The cores the Tasks of this process hold at once, never more than the budget's.
+
+    A Task takes its cores before it starts and gives them back when it ends; one that would
+    take the total past the budget waits for cores rather than run narrower. A lease sets only
+    a Task's width (its work items at once, its reads, LightGBM's canary-proven threads); a
+    kernel's own thread count is its sealed one, so no number moves with a lease.
+    """
+
+    def __init__(self) -> None:
+        """Begin with no cores held."""
+        self._held: dict[UUID, int] = {}
+        self._turn = Condition()
+        self._current: ContextVar[int | None] = ContextVar("task_cpu_lease", default=None)
+
+    @contextmanager
+    def lease(self, task_id: UUID, cores: int, ceiling: int) -> Iterator[int]:
+        """Hold the Task's cores while it runs; yield how many other Tasks hold cores."""
+        with self._turn:
+            fits = lambda: not self._held or sum(self._held.values()) + cores <= ceiling  # noqa: E731
+            self._turn.wait_for(fits)
+            self._held[task_id] = cores
+            others = len(self._held) - 1
+        token = self._current.set(cores)
+        try:
+            yield others
+        finally:
+            self._current.reset(token)
+            with self._turn:
+                self._held.pop(task_id, None)
+                self._turn.notify_all()
+
+    def current(self) -> int | None:
+        """The cores the Task running here holds, if it holds a lease."""
+        return self._current.get()
+
+    def holders(self) -> tuple[UUID, ...]:
+        """The Tasks holding cores now, the oldest lease first: the Tasks this process runs."""
+        with self._turn:
+            return tuple(self._held)
+
+    def widest(self) -> int:
+        """The most cores any running Task holds: the process-wide reader threads."""
+        with self._turn:
+            return max(self._held.values(), default=1)
+
+
+TASK_LEASES = TaskCpuLeases()
+"""This process's Tasks' cores."""
+
+
+@contextmanager
+def below_normal_thread() -> Iterator[bool]:
+    """Run the block on this thread at below-normal priority (Windows); elsewhere as it is.
+
+    Yields whether the priority was lowered.
+    """
+    if sys.platform != "win32":
+        yield False
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    # Its own prototypes: an untyped call truncates the thread's pseudo-handle and fails.
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetCurrentThread.restype = wintypes.HANDLE
+    kernel.GetThreadPriority.argtypes = (wintypes.HANDLE,)
+    kernel.SetThreadPriority.argtypes = (wintypes.HANDLE, ctypes.c_int)
+    thread = kernel.GetCurrentThread()
+    before = kernel.GetThreadPriority(thread)
+    lowered = bool(kernel.SetThreadPriority(thread, -1))  # THREAD_PRIORITY_BELOW_NORMAL
+    try:
+        yield lowered
+    finally:
+        if lowered:
+            kernel.SetThreadPriority(thread, before)
+
+
+def process_priority() -> str:
+    """This process's scheduling priority: its Windows priority class, else its nice value."""
+    import psutil  # type: ignore[import-untyped]
+
+    value = psutil.Process().nice()
+    names = {
+        getattr(psutil, name): name.removesuffix("_PRIORITY_CLASS").lower()
+        for name in dir(psutil)
+        if name.endswith("_PRIORITY_CLASS")
+    }
+    return names.get(value, f"nice {value}")
+
+
 __all__ = [
     "CPU_BUDGET_FILE",
     "EXECUTION_DIRECTORY",
     "MAXIMUM_CPU_BUDGET",
     "PREPARATIONS",
     "PREPARATIONS_FILE",
+    "TASK_LEASES",
     "CpuBudget",
     "CpuBudgetStore",
     "MachineLoad",
     "PreparationExecution",
     "RunningPreparations",
+    "TaskCpuLeases",
+    "below_normal_thread",
     "machine_load",
     "parse_cpu_budget",
     "plan_execution",

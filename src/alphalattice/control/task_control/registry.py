@@ -41,7 +41,7 @@ from .contracts import (
     WorkItemState,
 )
 from .ledger import SubmittingAgent, TaskAdmissionRequest, read_requests, write_request
-from .queue import read_queue_setting, waiting_places
+from .queue import read_queue_setting, running_places, waiting_places
 
 TASK_CONTROL_DATABASE_FILENAME = "research-task-control.duckdb"
 """The sole durable Task Control store name inside a workspace."""
@@ -96,10 +96,15 @@ _ACTIVE_TASKS = frozenset(
     }
 )
 _RUNNING_PLACE = _ACTIVE_TASKS - {TaskLifecycle.RECOVERY_REQUIRED}
-"""The Tasks that hold the workspace's one running place. A Task waiting for its recovery
-holds none (V100): it waited for a person or a changed install while every Task behind it
-waited too."""
+"""The Tasks that hold a running place. A Task waiting for its recovery holds none (V100): it
+waited for a person or a changed install while every Task behind it waited too. More than one
+holds a place only when each may run beside others (`overlapping`)."""
 _RUNNING_PLACE_SQL = ", ".join(f"'{lifecycle.value}'" for lifecycle in sorted(_RUNNING_PLACE))
+
+_QUEUE_HEAD = """
+    SELECT task_id, record_json FROM workspace_task WHERE lifecycle = 'QUEUED'
+    ORDER BY admission_sequence NULLS FIRST, admitted_at, task_id LIMIT 1
+"""
 
 
 def task_is_unrecoverable(task: TaskRecord) -> bool:
@@ -308,6 +313,11 @@ class DuckDbTaskControlRegistry:
         self.database_path = database_path.resolve()
         # Who submits a Task, as the Host's boundary read its request (U33): provenance only.
         self._submitted_by = submitted_by or (lambda: None)
+        # Which Tasks may hold a running place beside others, as the Host composes it: none by
+        # default, so one Task runs at a time; `started` is told each start, so a waiting Task
+        # that may run beside it is driven at once.
+        self.overlapping: Callable[[TaskRecord], bool] = lambda _task: False
+        self.started: Callable[[], None] = lambda: None
         if self.database_path.name != TASK_CONTROL_DATABASE_FILENAME:
             # `_bootstrap` creates its schema on connect, so pointing this at the
             # market-data store does not fail -- it silently opens a second,
@@ -932,24 +942,13 @@ class DuckDbTaskControlRegistry:
         self._db_time(observed_at)
 
         def operation(connection):
-            active = connection.execute(
-                "SELECT COUNT(*) FROM workspace_task WHERE lifecycle IN ("
-                + _RUNNING_PLACE_SQL
-                + ")"
-            ).fetchone()[0]
-            if active:
-                return None
             # The queue's head in admission order, the order the dispatcher runs them in.
-            row = connection.execute(
-                """
-                SELECT task_id, record_json FROM workspace_task
-                WHERE lifecycle = 'QUEUED'
-                ORDER BY admission_sequence NULLS FIRST, admitted_at, task_id LIMIT 1
-                """
-            ).fetchone()
+            row = connection.execute(_QUEUE_HEAD).fetchone()
             if row is None:
                 return None
             current = self._verified_record(str(row[0]), row[1])
+            if not self._beside(connection, current):
+                return None
             if expected_task_id is not None and current.task_id != expected_task_id:
                 raise TaskTransitionRejected("task_control.queued_task_identity_mismatch")
             if expected_task_hash is not None and current.record_hash != expected_task_hash:
@@ -1000,7 +999,61 @@ class DuckDbTaskControlRegistry:
             )
             return task, execution
 
-        return self._write(operation)
+        started = self._write(operation)
+        if started is not None:
+            self.started()
+        return started
+
+    def may_start(self, task_id: UUID) -> bool:
+        """Whether the Task would take a running place now (`start_next`, `restart_recovery`).
+
+        It is owed its recovery or stands at the queue's head, and the places' holders let it
+        run beside them.
+        """
+
+        def operation(connection) -> bool:  # type: ignore[no-untyped-def]
+            current = self._task_row(connection, task_id)
+            if current.lifecycle is TaskLifecycle.QUEUED:
+                head = connection.execute(_QUEUE_HEAD).fetchone()
+                if head is None or str(head[0]) != str(task_id):
+                    return False
+            elif current.lifecycle is not TaskLifecycle.RECOVERY_REQUIRED:
+                return False
+            return self._beside(connection, current)
+
+        return bool(self._read(operation))
+
+    def turn_stamp(self) -> tuple[str, ...]:
+        """Who holds the running places and heads the queue, read together.
+
+        A returned command's turn moved when this did while it ran.
+        """
+
+        def operation(connection) -> tuple[str, ...]:  # type: ignore[no-untyped-def]
+            holders = connection.execute(
+                "SELECT task_id FROM workspace_task WHERE lifecycle IN ("
+                + _RUNNING_PLACE_SQL
+                + ") ORDER BY task_id"
+            ).fetchall()
+            head = connection.execute(_QUEUE_HEAD).fetchone()
+            return (*(str(row[0]) for row in holders), "|", "" if head is None else str(head[0]))
+
+        return tuple(self._read(operation))
+
+    def _beside(self, connection, task: TaskRecord) -> bool:  # type: ignore[no-untyped-def]
+        """Whether no other Task holds a running place, or a place is free and every holder and
+        this Task may run beside others (`tasks_running`)."""
+        rows = connection.execute(
+            "SELECT task_id, record_json FROM workspace_task WHERE task_id <> ? AND lifecycle IN ("
+            + _RUNNING_PLACE_SQL
+            + ")",
+            [str(task.task_id)],
+        ).fetchall()
+        if not rows:
+            return True
+        places, _reason = running_places(read_queue_setting(self.database_path.parent))
+        holders = [self._verified_record(str(row[0]), row[1]) for row in rows]
+        return len(holders) < places and all(map(self.overlapping, [task, *holders]))
 
     def restart_recovery(
         self,
@@ -1031,13 +1084,7 @@ class DuckDbTaskControlRegistry:
             if current.lifecycle is not TaskLifecycle.RECOVERY_REQUIRED:
                 raise TaskTransitionRejected("task does not require recovery")
             # It held no running place while it waited (V100), so another Task may hold it now.
-            holding = connection.execute(
-                "SELECT COUNT(*) FROM workspace_task WHERE task_id <> ? AND lifecycle IN ("
-                + _RUNNING_PLACE_SQL
-                + ")",
-                [str(task_id)],
-            ).fetchone()[0]
-            if holding:
+            if not self._beside(connection, current):
                 raise TaskTransitionRejected("task_control.recovery_waits_for_the_running_task")
             if current.plan.workflow_definition_hash != compatibility.workflow_definition_hash:
                 raise TaskTransitionRejected("task workflow compatibility changed before recovery")
@@ -2480,15 +2527,13 @@ class DuckDbTaskControlRegistry:
             return cls._tasks_from(connection)
 
     def active_task(self) -> TaskRecord | None:
-        """The Task holding the running place, else the first one waiting for its recovery."""
+        """The first Task holding a running place, else the first one waiting for its recovery."""
         tasks = [task for task in self.tasks() if task.lifecycle in _ACTIVE_TASKS]
         holding = [task for task in tasks if task.lifecycle in _RUNNING_PLACE]
-        if len(holding) > 1:
-            raise ValueError("workspace has multiple active task authorities")
         return holding[0] if holding else (tasks[0] if tasks else None)
 
     def running_place_holder(self) -> TaskRecord | None:
-        """The Task holding the workspace's one running place, if one does.
+        """The first Task holding a running place, if one does.
 
         A deferred one holds it too, which no command drives while it waits for its retry time
         (V604).

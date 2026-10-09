@@ -25,7 +25,9 @@ is the re-bind (V458). A deactivation removes the three bindings; the history st
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -296,6 +298,8 @@ class StrategyActivation:
         self.clock, self.hold = clock, hold
         self.read_information = read_information or read_experiment
         self.read_review = read_review
+        self._in_flight: dict[str, tuple[str, float]] = {}
+        """Each activation running now: its package's phase and when that phase began."""
 
     @property
     def workspace(self) -> Path:
@@ -1255,78 +1259,92 @@ class StrategyActivation:
                 its package moved since it ran, the package is already active, or its models,
                 schedule or listings refuse.
         """
+        seconds: dict[str, float] = {}
         with self.gate.hold():
-            require_no_pending_cleanup(self.workspace)
-            current = self.manifest()
-            book = self._activation_book(task_id, current)
-            package_id = book.package.strategy_id
-            review = None if self.read_review is None else self.read_review(task_id)
-            now = self.clock()
-            last, future = self._schedule(book, now)
-            made = tuple(
-                self._grant(book, current, c.component_id, future) for c in book.recipe.components
-            )
-            grants = tuple(grant for grant, _ in made)
-            score_inputs = tuple(
-                ResearchWorkspaceScoreInput(
-                    strategy_package_id=package_id,
-                    strategy_package_hash=book.package.package_hash,
-                    component_id=component.component_id,
-                    authority_relative_path=f"{_ADMISSIONS}/{grant.content_hash}.json",
-                    authority_hash=grant.content_hash,
-                    source_kind="WORKSPACE_DATA_FEATURE",
-                )
-                for component, grant in zip(book.recipe.components, grants, strict=True)
-            )
-            calibrated = [
-                (c.component_id, g)
-                for c, g in zip(book.recipe.components, grants, strict=True)
-                if c.weight_rule == "mu.iv0"
-            ]
-            seed = (
-                None
-                if not calibrated
-                else self._seed(book, calibrated[0][1].component.recipe_hash, calibrated[0][0])
-            )
-            checkpoint = self._checkpoint(book, grants, last, future, now)
-            admit_decision_checkpoint(self.workspace, checkpoint, score_inputs)
-            self.ledger.publish_decision_checkpoint(checkpoint)
-
-            def bind(now_manifest: ResearchWorkspaceManifest) -> ResearchWorkspaceManifest:
-                # The gate is held since `current` was read, so it is the manifest changed.
-                if now_manifest != current:
-                    raise ValueError("strategy_activation.configuration_changed")
-                kept = _without(now_manifest, package_id)
-                return now_manifest.with_bindings(
-                    score_inputs=(*(kept["score_inputs"] or ()), *score_inputs),
-                    calibration_inputs=(
-                        *(kept["calibration_inputs"] or ()),
-                        *(
-                            ()
-                            if seed is None
-                            else (
-                                ResearchWorkspaceCalibrationInput(
-                                    strategy_package_id=package_id,
-                                    strategy_package_hash=book.package.package_hash,
-                                    seed_hash=seed,
-                                    source_kind="WORKSPACE_DATA_FEATURE",
-                                ),
-                            )
-                        ),
+            with self._stage(seconds, None, "book"):
+                require_no_pending_cleanup(self.workspace)
+                current = self.manifest()
+                book = self._activation_book(task_id, current)
+                package_id = book.package.strategy_id
+                review = None if self.read_review is None else self.read_review(task_id)
+                now = self.clock()
+                last, future = self._schedule(book, now)
+            try:
+                with self._stage(seconds, package_id, "models"):
+                    made = tuple(
+                        self._grant(book, current, c.component_id, future)
+                        for c in book.recipe.components
                     )
-                    or None,
-                    decision_updates=(
-                        *(kept["decision_updates"] or ()),
-                        ResearchWorkspaceDecisionUpdate(
+                    grants = tuple(grant for grant, _ in made)
+                    score_inputs = tuple(
+                        ResearchWorkspaceScoreInput(
                             strategy_package_id=package_id,
                             strategy_package_hash=book.package.package_hash,
-                            checkpoint_hash=checkpoint.content_hash,
-                        ),
-                    ),
-                )
+                            component_id=component.component_id,
+                            authority_relative_path=f"{_ADMISSIONS}/{grant.content_hash}.json",
+                            authority_hash=grant.content_hash,
+                            source_kind="WORKSPACE_DATA_FEATURE",
+                        )
+                        for component, grant in zip(book.recipe.components, grants, strict=True)
+                    )
+                    calibrated = [
+                        (c.component_id, g)
+                        for c, g in zip(book.recipe.components, grants, strict=True)
+                        if c.weight_rule == "mu.iv0"
+                    ]
+                with self._stage(seconds, package_id, "seed"):
+                    seed = (
+                        None
+                        if not calibrated
+                        else self._seed(
+                            book, calibrated[0][1].component.recipe_hash, calibrated[0][0]
+                        )
+                    )
+                with self._stage(seconds, package_id, "checkpoint"):
+                    checkpoint = self._checkpoint(book, grants, last, future, now)
+                    admit_decision_checkpoint(self.workspace, checkpoint, score_inputs)
+                    self.ledger.publish_decision_checkpoint(checkpoint)
 
-            _, updated = update_research_workspace_manifest(self.workspace, bind, gate=self.gate)
-            self.hold(updated)
+                def bind(now_manifest: ResearchWorkspaceManifest) -> ResearchWorkspaceManifest:
+                    # The gate is held since `current` was read, so it is the manifest changed.
+                    if now_manifest != current:
+                        raise ValueError("strategy_activation.configuration_changed")
+                    kept = _without(now_manifest, package_id)
+                    return now_manifest.with_bindings(
+                        score_inputs=(*(kept["score_inputs"] or ()), *score_inputs),
+                        calibration_inputs=(
+                            *(kept["calibration_inputs"] or ()),
+                            *(
+                                ()
+                                if seed is None
+                                else (
+                                    ResearchWorkspaceCalibrationInput(
+                                        strategy_package_id=package_id,
+                                        strategy_package_hash=book.package.package_hash,
+                                        seed_hash=seed,
+                                        source_kind="WORKSPACE_DATA_FEATURE",
+                                    ),
+                                )
+                            ),
+                        )
+                        or None,
+                        decision_updates=(
+                            *(kept["decision_updates"] or ()),
+                            ResearchWorkspaceDecisionUpdate(
+                                strategy_package_id=package_id,
+                                strategy_package_hash=book.package.package_hash,
+                                checkpoint_hash=checkpoint.content_hash,
+                            ),
+                        ),
+                    )
+
+                with self._stage(seconds, package_id, "bind"):
+                    _, updated = update_research_workspace_manifest(
+                        self.workspace, bind, gate=self.gate
+                    )
+                    self.hold(updated)
+            finally:
+                self._in_flight.pop(package_id, None)
         return {
             "status": "ACTIVATED",
             "review_standing": review,
@@ -1350,6 +1368,7 @@ class StrategyActivation:
             "checkpoint_hash": checkpoint.content_hash,
             "workspace_manifest_hash": updated.manifest_hash,
             "fit_calls": 0,
+            "stage_seconds": seconds,
             "claim": "FORWARD_RESEARCH_NOT_TRADING_ADVICE",
             "next_requests": {
                 "update": {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": package_id},
@@ -1360,6 +1379,19 @@ class StrategyActivation:
                 },
             },
         }
+
+    @contextmanager
+    def _stage(
+        self, seconds: dict[str, float], package_id: str | None, name: str
+    ) -> Iterator[None]:
+        """One phase of an activation, timed; its package's summary names it while it runs."""
+        started = time.monotonic()
+        if package_id is not None:
+            self._in_flight[package_id] = (name, started)
+        try:
+            yield
+        finally:
+            seconds[name] = round(time.monotonic() - started, 3)
 
     def deactivate(self, package_id: str) -> dict[str, object]:
         """Stop a strategy running forward: remove its three bindings; its history stays.
@@ -1437,7 +1469,22 @@ class StrategyActivation:
         Returns:
             Activation state and owner dates. The selected state/offer verifies review standing.
         """
-        return {**self._state(package_id), "strategy_dates": self.dates(package_id)}
+        running = self._in_flight.get(package_id)
+        activating = (
+            {}
+            if running is None
+            else {
+                "activating": {
+                    "stage": running[0],
+                    "elapsed_seconds": round(time.monotonic() - running[1], 1),
+                }
+            }
+        )
+        return {
+            **self._state(package_id),
+            "strategy_dates": self.dates(package_id),
+            **activating,
+        }
 
     def state(self, package_id: str) -> dict[str, object]:
         """The activation state with the one owner's information and start-date readout."""

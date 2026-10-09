@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, cast
+from uuid import uuid4
 
 from alphalattice.kernel.shared_kernel.environment import held_offline
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -75,7 +76,7 @@ def _publish_immutable(root: Path, name: str, content: bytes, *, conflict: str) 
         if target.read_bytes() != content:
             raise AuthoringError(conflict)
         return
-    staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    staged = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
     staged.write_bytes(content)
     os.replace(staged, target)
 
@@ -208,7 +209,7 @@ class ResearchProgramStore:
         if program.program_hash not in known:
             index = self._root / "by-document" / f"{document_hash}.json"
             index.parent.mkdir(parents=True, exist_ok=True)
-            staged = index.with_name(f".{index.name}.{os.getpid()}.tmp")
+            staged = index.with_name(f".{index.name}.{uuid4().hex}.tmp")
             staged.write_bytes(
                 _canonical_bytes(
                     {

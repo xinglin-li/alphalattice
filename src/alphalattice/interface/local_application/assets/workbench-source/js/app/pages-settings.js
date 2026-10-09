@@ -33,6 +33,7 @@ const Settings = (() => {
     repaint();
   }
   const setWaiting = (value) => setBudget(value, 'tasks_waiting');
+  const setRunning = (value) => setBudget(value, 'tasks_running');
   let storageCap = {value: null, refused: ''}, storageCapRead = false, storageCapDraft = null;
   let storageCapReading = null, storageCapBusy = false, storageCapTicket = 0;
   const editStorageCap = value => { storageCapDraft = value; };
@@ -87,13 +88,17 @@ const Settings = (() => {
     return formRow({title, line: cause ? html`${t('Not set')} · ${cause}` : html`${now ? now.trim() : about}${infoMark([now ? about : '', v.guidance ? t(v.guidance) : ''].filter(Boolean).join(' '))}`, /* the machine's figure in the line, what the budget is in its (i) (WD4: the first screen of Settings, the phase 6 reading) */ detail: load, control: picker('cpuBudgetPick', choices, {action: 'cpu-budget-set', selected: String(v.cpu_budget), label: t('CPU budget')})});
   }
   const WAITING = [1, 2, 4, 8, 16, 32, 64]; // the choices offered; the owner holds the bound (MAXIMUM_TASKS_WAITING)
-  function queueRow() {
-    const q = budget.value?.task_queue, cause = budget.refused && budget.field === 'tasks_waiting' ? codeWords(budget.refused.split(':')[0]) : '';
-    const line = t('How many Tasks may wait behind the running one; a request past the last place is refused before any work.');
-    if (!q) return formRow({title: hint(t('Tasks that may wait'), line), line: cause ? html`${t('Not read')} · ${cause}` : ''}); // reading: the value's slot stays empty (ST7); what it is, on its title (WD4)
-    const sizes = [...new Set([...WAITING, ...(q.tasks_waiting === 'auto' ? [] : [Number(q.tasks_waiting)])])].sort((a, b) => a - b);
+  const RUNNING = [1, 2, 3, 4]; // the owner holds the bound (MAXIMUM_TASKS_RUNNING)
+  function queueRow(field = 'tasks_waiting') {
+    const waiting = field === 'tasks_waiting', q = budget.value?.task_queue, cause = budget.refused && budget.field === field ? codeWords(budget.refused.split(':')[0]) : '';
+    const title = waiting ? t('Tasks that may wait') : t('Tasks that run at once');
+    const line = waiting ? t('How many Tasks may wait behind the running one; a request past the last place is refused before any work.') : t('How many Risk and Factor studies and Evidence installs run at once; they share the CPU budget and compute the same results.');
+    if (!q) return formRow({title: hint(title, line), line: cause ? html`${t('Not read')} · ${cause}` : ''}); // reading: the value's slot stays empty (ST7); what it is, on its title (WD4)
+    const sizes = [...new Set([...(waiting ? WAITING : RUNNING), ...(q[field] === 'auto' ? [] : [Number(q[field])])])].sort((a, b) => a - b);
     const choices = [{value: 'auto', title: t('Auto')}, ...sizes.map((c) => ({value: String(c), title: countText(c, '{n} Task', '{n} Tasks')}))];
-    return formRow({title: hint(t('Tasks that may wait'), [line, q.reason ? t(q.reason) : ''].filter(Boolean).join(' ')), line: cause ? html`${t('Not set')} · ${cause}` : '', detail: t('{n} waiting of {places}', {n: count(q.waiting_now), places: count(q.places)}), control: picker('tasksWaitingPick', choices, {action: 'tasks-waiting-set', selected: String(q.tasks_waiting), label: t('Tasks that may wait')})});
+    const detail = waiting ? t('{n} waiting of {places}', {n: count(q.waiting_now), places: count(q.places)}) : countText(q.running_places, '{n} Task', '{n} Tasks');
+    const reason = waiting ? q.reason : q.running_reason;
+    return formRow({title: hint(title, [line, reason ? t(reason) : ''].filter(Boolean).join(' ')), line: cause ? html`${t('Not set')} · ${cause}` : '', detail, control: picker(waiting ? 'tasksWaitingPick' : 'tasksRunningPick', choices, {action: waiting ? 'tasks-waiting-set' : 'tasks-running-set', selected: String(q[field]), label: title})});
   }
   let sweep = null;
   async function verifyAll() {
@@ -225,7 +230,7 @@ const Settings = (() => {
   }
   function workspace() {
     const w = Data.workspaceFacts() || {};
-    return formGroup(t('Workspace'), html`${formRow({title: t('Workspace'), detail: Data.workspace()})}${formRow({title: t('Operated by'), detail: t('You and the agent alike')})}${formRow({title: t('Scope'), detail: t('Research only')})}${formRow({title: t('Execution mode'), detail: codeWords(w.execution_mode || '')})}${budgetRow()}${storageCapRow()}${queueRow()}${sweepRow()}${networkRow()}${usageRow()}${updateRow()}${formRow({title: t('Manifest'), detail: w.workspace_manifest_hash ? short(w.workspace_manifest_hash, SHORT.hash) : '', mono: true})}${formRow({title: t('Research input'), detail: app.input || ''})}${formRow({title: t('Where you are'), line: t('The workspace popover: its clocks, versions and ways.'), action: 'workspace'})}${formRow({title: t('Create or open a workspace'), action: 'workspace-how', value: 'create'})}`, {note: t('The local research space this window reads; switching never changes it.')});
+    return formGroup(t('Workspace'), html`${formRow({title: t('Workspace'), detail: Data.workspace()})}${formRow({title: t('Operated by'), detail: t('You and the agent alike')})}${formRow({title: t('Scope'), detail: t('Research only')})}${formRow({title: t('Execution mode'), detail: codeWords(w.execution_mode || '')})}${budgetRow()}${storageCapRow()}${queueRow()}${queueRow('tasks_running')}${sweepRow()}${networkRow()}${usageRow()}${updateRow()}${formRow({title: t('Manifest'), detail: w.workspace_manifest_hash ? short(w.workspace_manifest_hash, SHORT.hash) : '', mono: true})}${formRow({title: t('Research input'), detail: app.input || ''})}${formRow({title: t('Where you are'), line: t('The workspace popover: its clocks, versions and ways.'), action: 'workspace'})}${formRow({title: t('Create or open a workspace'), action: 'workspace-how', value: 'create'})}`, {note: t('The local research space this window reads; switching never changes it.')});
   }
   function advanced() {
     const {facts, governed} = LiveViews.governanceBody();
@@ -282,5 +287,5 @@ const Settings = (() => {
     if (landing && typeof requestAnimationFrame === 'function') requestAnimationFrame(land);
     return html`${objectHead(t('Settings'), t('What you set once: the appearance, the language, the keys, the workspace.'))}${general()}${workspace()}${advanced()}${tools}${keyboard()}`;
   }
-  return {page, setBudget, setWaiting, setStorageCap, editStorageCap, observeStorageCap, verifyAll, setNetwork, setUsage, rereadUsage, observeUsage, setUpdate, upgrade: upgradePage, readUpgrade, acknowledge, dailyUpdate, rereadUpdate, observeUpdate, updateState};
+  return {page, setBudget, setWaiting, setRunning, setStorageCap, editStorageCap, observeStorageCap, verifyAll, setNetwork, setUsage, rereadUsage, observeUsage, setUpdate, upgrade: upgradePage, readUpgrade, acknowledge, dailyUpdate, rereadUpdate, observeUpdate, updateState};
 })();

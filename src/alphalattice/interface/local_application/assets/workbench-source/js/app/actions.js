@@ -169,7 +169,7 @@ const PRODUCT_ACTIONS = {
     'review-finding-more':v=>LiveReview.findingMore(v),
     'review-name-risk':v=>LiveReview.nameRisk(v),
     'upgrade-acknowledge':()=>Settings.acknowledge(), 'upgrade-read':()=>Settings.readUpgrade(true), // R1: the upgrade overview, acknowledged by a person
-    'storage-cap-set':(value)=>Settings.setStorageCap(value), 'cpu-budget-set':(value)=>Settings.setBudget(value), 'tasks-waiting-set':(value)=>Settings.setWaiting(value), 'studies-verify-all':()=>Settings.verifyAll(), // U36, U37 // the operator's CPU budget (Settings, Workspace) // the CRO's turn names a risk citing a finding's alias (contract 10.7)
+    'storage-cap-set':(value)=>Settings.setStorageCap(value), 'cpu-budget-set':(value)=>Settings.setBudget(value), 'tasks-waiting-set':(value)=>Settings.setWaiting(value), 'tasks-running-set':(value)=>Settings.setRunning(value), 'studies-verify-all':()=>Settings.verifyAll(), // U36, U37 // the operator's CPU budget (Settings, Workspace) // the CRO's turn names a risk citing a finding's alias (contract 10.7)
     'review-run-page':v=>LiveReview.runPage(v), // the evidence pages' Runs lists (round H4)
     'review-runs-all':()=>LiveReview.runsAll(), // the Overview's Activity past its latest three (E1)
     'review-packet-page':v=>LiveReview.packetPage(v), // the Review page's packet groups (round H4, a wide book)

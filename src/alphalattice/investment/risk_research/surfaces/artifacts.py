@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 import numpy as np
 from numpy.typing import NDArray
@@ -49,7 +50,7 @@ class RiskArtifactStore:
     @staticmethod
     def _atomic_write(target: Path, content: bytes) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+        staged = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
         staged.write_bytes(content)
         os.replace(staged, target)
         staged.unlink(missing_ok=True)

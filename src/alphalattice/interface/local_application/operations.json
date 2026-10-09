@@ -691,6 +691,7 @@
   "storage_plan_hash": "The storage clean-up plan to confirm, by the hash its PLAN answered.",
   "strategy_package_id": "The installed strategy package, by its id.",
   "task_id": "The Task, by its id.",
+  "tasks_running": "`auto`, or how many Tasks that may run beside others run at once, within the budget.",
   "tasks_waiting": "`auto`, or how many Tasks may wait behind the running one.",
   "update_plan_hash": "An update plan, by the hash its PLAN answered.",
   "update_publication_hash": "The Portfolio update's publication a book comes from.",
@@ -820,6 +821,7 @@
   "CPU_BUDGET_SET": {
    "allowed": [
     "cpu_budget",
+    "tasks_running",
     "tasks_waiting"
    ],
    "required": []
@@ -2443,6 +2445,7 @@
   "storage_plan_hash": "plan",
   "strategy_package_id": "package",
   "task_id": "task",
+  "tasks_running": "running",
   "tasks_waiting": "queue",
   "update_plan_hash": "plan",
   "update_publication_hash": "update-publication",
@@ -3517,6 +3520,9 @@
    "string"
   ],
   "task_id": [
+   "string"
+  ],
+  "tasks_running": [
    "string"
   ],
   "tasks_waiting": [

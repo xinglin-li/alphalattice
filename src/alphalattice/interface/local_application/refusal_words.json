@@ -947,6 +947,10 @@
   "detail": "Tasks that may wait is `auto` or a whole number from 1 to 64.",
   "next_action": "SET_AUTO_OR_A_WHOLE_NUMBER_OF_TASKS"
  },
+ "task_control.tasks_running_invalid": {
+  "detail": "Tasks that run at once is `auto` or a whole number from 1 to 8.",
+  "next_action": "SET_AUTO_OR_A_WHOLE_NUMBER_OF_TASKS"
+ },
  "tasks.cursor_moved_reload": {
   "detail": "The Task the cursor named is no longer in this listing; read its first page again.",
   "next_action": "READ_THE_FIRST_PAGE"

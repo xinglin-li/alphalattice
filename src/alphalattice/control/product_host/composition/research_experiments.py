@@ -152,6 +152,7 @@ from alphalattice.control.task_control.runner import (
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.evidence.alternative_evidence.runtime.execution import (
+    TASK_LEASES,
     CpuBudgetStore,
     ModelFitExecution,
     budget_cores,
@@ -3940,7 +3941,13 @@ class ResearchExperimentApplication:
         store = CpuBudgetStore(self.session.workspace / "runtime")
         machine = machine_load()
         budget = store.read()
-        cores, reason = budget_cores(budget, machine)
+        # The Task's lease when it holds one: Tasks running at once share the budget.
+        leased = TASK_LEASES.current()
+        cores, reason = (
+            (leased, f"the Task's lease of {leased} cores")
+            if leased is not None
+            else budget_cores(budget, machine)
+        )
         with lightgbm_threads(cores) as used:
             store.record(
                 ModelFitExecution(

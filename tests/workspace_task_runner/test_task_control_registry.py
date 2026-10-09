@@ -66,6 +66,9 @@ from alphalattice.interface.local_application.dispatcher import (
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.workspace_task_runner.task_control_support import (
+    FixtureTaskAdapter as _FixtureTaskAdapter,
+)
+from tests.workspace_task_runner.task_control_support import (
     compatibility,
     digest,
     task_contract,
@@ -1066,49 +1069,6 @@ def test_registry_rejects_missing_required_evidence_and_stale_heartbeat(
             worker_instance_id=uuid4(),
             observed_at=now + timedelta(seconds=5),
         )
-
-
-class _FixtureTaskAdapter:
-    task_kind = "factor_research"
-
-    def __init__(self, *, fail_once: bool = False, defer_once: bool = False) -> None:
-        self.fail_once = fail_once
-        self.defer_once = defer_once
-        self.executed: list[str] = []
-
-    def compatibility(self, task):
-        return compatibility(task.plan)
-
-    def execute_stage(self, *, task, execution, work_item):
-        del task, execution
-        self.executed.append(work_item.stage_id)
-        if self.fail_once:
-            self.fail_once = False
-            raise RuntimeError("simulated process interruption")
-        if self.defer_once:
-            self.defer_once = False
-            return StageExecutionResult(
-                disposition=StageDisposition.DEFERRED,
-                failure_code="AGENT_TEMPORARILY_UNAVAILABLE",
-            )
-        kind = {
-            "resolve_inputs": "input_binding",
-            "publish_result": "screening_report",
-        }[work_item.stage_id]
-        return StageExecutionResult(
-            disposition=StageDisposition.READY,
-            evidence=(
-                TaskEvidence(
-                    evidence_kind=kind,
-                    reference=f"playpen://runner/{work_item.stage_id}",
-                    content_hash=digest(work_item.stage_id),
-                ),
-            ),
-        )
-
-    def verify_stage(self, *, task, execution, work_item, evidence):
-        del task, execution, work_item
-        return evidence
 
 
 class _InterruptedBeforeReceiptAdapter(_FixtureTaskAdapter):

@@ -20,15 +20,12 @@ for the market store's rebuild to take; the listed entries are named, not writte
 
 from __future__ import annotations
 
-import ctypes
 import hashlib
 import json
 import os
 import shutil
-import sys
 import tempfile
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, Self
@@ -51,6 +48,7 @@ from alphalattice.control.workspace_runtime.database import (
     open_workspace_database,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.evidence.alternative_evidence.runtime.execution import below_normal_thread
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span
@@ -778,7 +776,7 @@ def take_automatic_backup(
     """
     if (last_automatic_attempt(workspace) or {}).get("status") != "PENDING" or stop():
         return
-    with _below_normal_thread():
+    with below_normal_thread():
         _take(workspace, clock=clock, gate=gate, stop=stop, wait_seconds=1.0)
 
 
@@ -838,21 +836,6 @@ def _take(
         return str((last_automatic_attempt(workspace) or {}).get("failure_code"))
     record_backup_failure(workspace, None, at=clock())
     return None
-
-
-@contextmanager
-def _below_normal_thread() -> Iterator[None]:
-    if sys.platform != "win32":
-        yield
-        return
-    kernel = ctypes.windll.kernel32
-    thread = kernel.GetCurrentThread()
-    before = kernel.GetThreadPriority(thread)
-    kernel.SetThreadPriority(thread, -1)  # THREAD_PRIORITY_BELOW_NORMAL
-    try:
-        yield
-    finally:
-        kernel.SetThreadPriority(thread, before)
 
 
 def _record_attempt(workspace: Path, status: str, code: str | None, at: datetime) -> None:

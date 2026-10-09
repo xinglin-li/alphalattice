@@ -785,8 +785,8 @@ def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_
     assert "self._inputs_way(" in inspect.getsource(operations._execute)
     held = dispatcher.LocalBackgroundDispatcher
     assert "self._waits_its_turn(" in inspect.getsource(held._drain)
-    assert "self._drive_waiting()" in inspect.getsource(held._drain)
-    assert "self._drive_waiting()" in inspect.getsource(held.request_cancel)
+    assert "self.drive_waiting()" in inspect.getsource(held._drain)
+    assert "self.drive_waiting()" in inspect.getsource(held.request_cancel)
     assert "self._waiting" in inspect.getsource(held.command_running)
     assert "self._tasks_wait()" in inspect.getsource(operations.sweep_if_due)
     assert "TaskLifecycle.DEFERRED" in inspect.getsource(operations._tasks_wait)

@@ -613,6 +613,7 @@ class PortfolioResearchOperationRequest:
     """Automatic workspace capacity or a positive whole byte count, never a sealed input."""
     cpu_budget: str | None = None
     tasks_waiting: str | None = None
+    tasks_running: str | None = None
     backup_generations_kept: int | None = None
     person_confirmation: PersonConfirmation | None = None
     """The person's yes this request relays, on one of their decisions (`PERSON_DECISIONS`)."""
@@ -1219,8 +1220,11 @@ class PortfolioResearchOperationRequest:
                 frozenset({"usage_reading_enabled"}),
             ),
             "CPU_BUDGET_SHOW": (frozenset(), frozenset()),
-            # One of the two, which the owner holds to: a setting a request (V100).
-            "CPU_BUDGET_SET": (frozenset(), frozenset({"cpu_budget", "tasks_waiting"})),
+            # One of the three, which the owner holds to: a setting a request (V100).
+            "CPU_BUDGET_SET": (
+                frozenset(),
+                frozenset({"cpu_budget", "tasks_waiting", "tasks_running"}),
+            ),
             # The held state's backup outside the workspace (V209); its restore is the
             # client's own, with no Host (V328).
             "WORKSPACE_BACKUP": (frozenset(), frozenset({"backup_generations_kept"})),
@@ -1851,6 +1855,8 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """`auto`, or a whole number of cores a book's preparation may use."""
     tasks_waiting: str | None = Field(default=None, min_length=1, max_length=16)
     """`auto`, or how many Tasks may wait behind the running one."""
+    tasks_running: str | None = Field(default=None, min_length=1, max_length=16)
+    """`auto`, or how many Tasks that may run beside others run at once, within the budget."""
     backup_generations_kept: int | None = Field(default=None, ge=1, le=100, strict=True)
     """How many backup generations to keep: seven unless a request keeps another count."""
     committee_role: Literal["PM", "ALPHA", "RISK", "CRO"] | None = None

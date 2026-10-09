@@ -223,6 +223,7 @@ from alphalattice.control.task_control.contracts import (
 )
 from alphalattice.control.task_control.queue import (
     read_queue_setting,
+    running_places,
     waiting_places,
     write_queue_setting,
 )
@@ -5893,6 +5894,7 @@ class PortfolioResearchOperations:
         last_task, last_fits = store.last_task(), store.last_model_fits()
         queue = read_queue_setting(self.workspace_session.workspace / "runtime")
         places, places_reason = waiting_places(queue)
+        running, running_reason = running_places(queue)
         tasks = self.workspace_session.task_control_registry.tasks()
         return {
             "status": "CPU_BUDGET",
@@ -5902,6 +5904,8 @@ class PortfolioResearchOperations:
                 "places": places,
                 "reason": places_reason,
                 "waiting_now": sum(task.lifecycle is TaskLifecycle.QUEUED for task in tasks),
+                "running_places": running,
+                "running_reason": running_reason,
             },
             "machine": machine.model_dump(mode="json"),
             "a_book_now": {
@@ -5927,7 +5931,9 @@ class PortfolioResearchOperations:
                 "study's model, window or bounds to save time. tasks_waiting sets how many "
                 "Tasks may wait behind the running one (auto: one place per four processors); a "
                 "request past the last place is refused before its planning work, and a Task "
-                "waiting for its recovery holds no running place."
+                "waiting for its recovery holds no running place. tasks_running sets how many "
+                "Risk and Factor studies and Evidence installs run at once (auto: two from eight "
+                "processors); they share the budget's cores and compute the same results."
             ),
         }
 
@@ -5951,12 +5957,17 @@ class PortfolioResearchOperations:
             }
         return self.cpu_budget()
 
-    def set_tasks_waiting(
-        self, value: object, *, chosen_by: Literal["HUMAN", "EXTERNAL_AUTOMATION"]
+    def set_task_places(
+        self,
+        value: object,
+        *,
+        chosen_by: Literal["HUMAN", "EXTERNAL_AUTOMATION"],
+        field: Literal["tasks_waiting", "tasks_running"] = "tasks_waiting",
     ) -> dict[str, object]:
-        """Set how many Tasks may wait behind the running one: `auto` or a whole number.
+        """Set how many Tasks may wait, or run at once: `auto` or a whole number.
 
-        The next admission counts with it; the Tasks already waiting keep their places (V100).
+        The next admission or start counts with it; the Tasks already waiting or running keep
+        their places (V100).
         """
         try:
             write_queue_setting(
@@ -5964,13 +5975,17 @@ class PortfolioResearchOperations:
                 value,
                 chosen_by=chosen_by,
                 chosen_at=self.dispatcher.clock(),
+                field=field,
             )
         except ValueError as error:
             return {
                 "status": "REFUSED",
-                **located_failure(error, "task_control.tasks_waiting_invalid"),
+                **located_failure(error, f"task_control.{field}_invalid"),
                 "next_action": "SET_AUTO_OR_A_WHOLE_NUMBER_OF_TASKS",
             }
+        if field == "tasks_running":
+            self.dispatcher.start()
+            self.dispatcher.drive_waiting()
         return self.cpu_budget()
 
     def _model_operation(
@@ -6168,11 +6183,16 @@ class PortfolioResearchOperations:
             chosen_by: Literal["HUMAN", "EXTERNAL_AUTOMATION"] = (
                 "HUMAN" if caller == "HUMAN" else "EXTERNAL_AUTOMATION"
             )
-            # One setting a request (V100): the budget or the Tasks that may wait.
-            if (request.cpu_budget is None) == (request.tasks_waiting is None):
+            # One setting a request (V100): the budget, or the Tasks that wait or run at once.
+            given = [request.cpu_budget, request.tasks_waiting, request.tasks_running]
+            if sum(value is not None for value in given) != 1:
                 return refused("execution.cpu_budget_invalid")
             if request.tasks_waiting is not None:
-                return self.set_tasks_waiting(request.tasks_waiting, chosen_by=chosen_by)
+                return self.set_task_places(request.tasks_waiting, chosen_by=chosen_by)
+            if request.tasks_running is not None:
+                return self.set_task_places(
+                    request.tasks_running, chosen_by=chosen_by, field="tasks_running"
+                )
             return self.set_cpu_budget(request.cpu_budget, chosen_by=chosen_by)
         if operation == "WAKE_REGISTER":
             # A Codex turn ends its shell's children, so the Host holds the lead's wake in the

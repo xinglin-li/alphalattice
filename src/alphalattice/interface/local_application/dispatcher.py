@@ -20,10 +20,9 @@ everything else:
   registry. Nothing here caches a lifecycle, and nothing here can report one the
   registry would not.
 
-One worker thread, not a pool. The workspace admits one active task; a second
-worker could only ever wait, and waiting threads that look like parallelism are
-how a capacity rule stops being true. `close()` joins it, so no worker outlives
-the service that started it.
+One worker per running place (`workers`), never more: Task Control decides which
+Tasks may run beside others, and a worker past the places could only ever wait.
+`close()` joins every worker, so none outlives the service that started it.
 
 Generic on purpose. A command is a name, an admission and an execution; nothing
 below knows what a Portfolio is, and Gate 9C2 registers its own commands without
@@ -34,6 +33,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -112,8 +112,12 @@ class TaskStatusPort(Protocol):
         """Read Task records needed for cancellation decisions, in admission order."""
         ...
 
-    def running_place_holder(self) -> TaskRecord | None:
-        """Read the Task holding the workspace's one running place, if one does."""
+    def may_start(self, task_id: UUID) -> bool:
+        """Whether the Task would take a running place now."""
+        ...
+
+    def turn_stamp(self) -> tuple[str, ...]:
+        """Who holds the running places and heads the queue, read together."""
         ...
 
     def request_cancel(
@@ -232,10 +236,13 @@ class LocalBackgroundDispatcher:
     observer that could not write is not a worker that failed.
     """
 
+    workers: Callable[[], int] = lambda: 1
+    """How many Tasks may run at once, read at each start: one worker each."""
+
     _work: queue.Queue[tuple[LocalApplicationCommand, UUID, str | None] | None] = field(
         default_factory=queue.Queue, init=False, repr=False
     )
-    _worker: threading.Thread | None = field(default=None, init=False, repr=False)
+    _workers: list[threading.Thread] = field(default_factory=list, init=False, repr=False)
     _failures: dict[UUID, str] = field(default_factory=dict, init=False, repr=False)
     _running: set[UUID] = field(default_factory=set, init=False, repr=False)
     """Work this dispatcher queued and whose command has not yet returned."""
@@ -251,6 +258,10 @@ class LocalBackgroundDispatcher:
     _closed: bool = field(default=False, init=False, repr=False)
     admissions: int = field(default=0, init=False)
     executions: int = field(default=0, init=False)
+    _idle: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    """One idle observer at a time, however many workers come idle together."""
+    _idle_again: bool = field(default=False, init=False, repr=False)
+    """An idle moment that came while the observer ran: it runs once more after."""
     observer_failures: int = field(default=0, init=False)
     last_observer_failure: str | None = field(default=None, init=False)
     """Exception class of the last hook failure; never its message."""
@@ -258,20 +269,29 @@ class LocalBackgroundDispatcher:
     # ------------------------------------------------------------- lifecycle
 
     def start(self) -> None:
-        """Begin the worker. Idempotent, so a service may call it on every boot."""
+        """Begin the workers the running places want. Idempotent: a service may call it often."""
         with self._lock:
             if self._closed:
                 raise RuntimeError("local_application.dispatcher_closed")
-            if self._worker is not None:
-                return
-            worker = threading.Thread(
-                target=self._drain, name="local-application-dispatcher", daemon=False
-            )
-            self._worker = worker
-        worker.start()
+            added = [
+                threading.Thread(
+                    target=self._drain, name="local-application-dispatcher", daemon=False
+                )
+                for _ in range(self._wanted() - len(self._workers))
+            ]
+            self._workers.extend(added)
+        for worker in added:
+            worker.start()
+
+    def _wanted(self) -> int:
+        """The workers the running places want; one when the setting cannot be read."""
+        try:
+            return max(1, self.workers())
+        except Exception:
+            return 1
 
     def close(self, *, timeout: float | None = None) -> bool:
-        """Stop accepting work and join the worker. True when the worker ended.
+        """Stop accepting work and join the workers. True when every worker ended.
 
         Unbounded by default, and that is the safe default rather than a
         convenient one: a task that is mid-stage owns a workspace lease and a
@@ -284,19 +304,16 @@ class LocalBackgroundDispatcher:
         Calling again resumes the join rather than reporting success.
         """
         with self._lock:
-            if self._closed and self._worker is None:
-                return True
             self._closed = True
-            worker = self._worker
-        if worker is None:
-            return True
-        self._work.put(None)
-        worker.join(timeout=timeout)
-        if worker.is_alive():
-            return False
+            workers = list(self._workers)
+        for _worker in workers:
+            self._work.put(None)
+        deadline = None if timeout is None else time.monotonic() + timeout
+        for worker in workers:
+            worker.join(None if deadline is None else max(0.0, deadline - time.monotonic()))
         with self._lock:
-            self._worker = None
-        return True
+            self._workers = [worker for worker in self._workers if worker.is_alive()]
+            return not self._workers
 
     @property
     def closing(self) -> bool:
@@ -305,9 +322,8 @@ class LocalBackgroundDispatcher:
 
     @property
     def worker_alive(self) -> bool:
-        """Whether the one owned worker is still running. Never inferred."""
-        worker = self._worker
-        return worker is not None and worker.is_alive()
+        """Whether an owned worker is still running. Never inferred."""
+        return any(worker.is_alive() for worker in self._workers)
 
     def __enter__(self) -> LocalBackgroundDispatcher:
         """Start the owned worker when entering the dispatch scope."""
@@ -550,7 +566,7 @@ class LocalBackgroundDispatcher:
                 self._waiting.pop(task_id, None)
         if finalized:
             # A cancelled deferral frees the running place no command held.
-            self._drive_waiting()
+            self.drive_waiting()
         return True
 
     def _finalize_idle_cancel(self, task_id: UUID) -> None:
@@ -563,66 +579,62 @@ class LocalBackgroundDispatcher:
                 observed_at=self.clock(),
             )
 
-    def _waits_its_turn(self, task_id: UUID) -> bool:
+    def _waits_its_turn(self, task_id: UUID, seen: tuple[str, ...] | None) -> bool:
         """Whether the Task's command returned before its turn came.
 
-        Its Task is still queued or owed its recovery, and another Task holds the running place
-        or, for a queued one, stands ahead of it in the queue. A deferral holds the place while
-        no command drives it, so every Task admitted meanwhile met this; its command returned
-        and nothing drove it again. Any other start that did not happen stays the command's
+        Its Task is still queued or owed its recovery, and it may not start now: a Task holds
+        the places it needs or, for a queued one, stands ahead of it. A deferral holds a place
+        while no command drives it, so every Task admitted meanwhile met this. A queued one that
+        may start now met a turn that moved while its command ran (the places' holders or the
+        queue's head, read after `may_start` against `seen`): an identity read or a refused
+        start before another Task's start. A run that stopped stays the command's, with its
         failure.
         """
         try:
-            tasks = self.status_port.tasks()
-            own = next((task for task in tasks if task.task_id == task_id), None)
+            own = next((task for task in self.status_port.tasks() if task.task_id == task_id), None)
             if own is None or own.lifecycle not in {
                 TaskLifecycle.QUEUED,
                 TaskLifecycle.RECOVERY_REQUIRED,
             }:
                 return False
-            holder = self.status_port.running_place_holder()
+            if not self.status_port.may_start(task_id):
+                return True
+            return own.lifecycle is TaskLifecycle.QUEUED and self._stamp() != seen
         except Exception:
             return False
-        if holder is not None and holder.task_id != task_id:
-            return True
-        head = next((task for task in tasks if task.lifecycle is TaskLifecycle.QUEUED), None)
-        return (
-            own.lifecycle is TaskLifecycle.QUEUED and head is not None and head.task_id != task_id
-        )
 
-    def _drive_waiting(self) -> None:
-        """Drive again the commands whose turn had not come, once the running place is free.
+    def drive_waiting(self) -> None:
+        """Drive again the commands whose turn had not come, each once it may start.
 
         The recoveries first, then the queue in its admission order, the order Task Control
-        starts them in.
+        starts them in. Told of each start too, so a Task that may run beside it goes at once.
         """
         with self._lock:
             if self._closed or not self._waiting:
                 return
         try:
-            if self.status_port.running_place_holder() is not None:
-                return
             tasks = self.status_port.tasks()
+            recoveries = [
+                t.task_id for t in tasks if t.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+            ]
+            queue = [t.task_id for t in tasks if t.lifecycle is TaskLifecycle.QUEUED]
+            startable = {
+                task_id
+                for task_id in (*recoveries, *queue[:1])
+                if task_id in self._waiting and self.status_port.may_start(task_id)
+            }
         except Exception:
             return
-        recoveries = [t.task_id for t in tasks if t.lifecycle is TaskLifecycle.RECOVERY_REQUIRED]
-        queue = [t.task_id for t in tasks if t.lifecycle is TaskLifecycle.QUEUED]
         driven = False
         with self._lock:
             if self._closed:
                 return
-            for task_id in (*recoveries, *queue):
-                if task_id in self._running:
-                    continue
+            for task_id in startable:
                 command = self._waiting.pop(task_id, None)
-                if command is not None:
+                if command is not None and task_id not in self._running:
                     self._running.add(task_id)
                     self._work.put((command, task_id, None))
                     driven = True
-                elif task_id in queue:
-                    # A queued Task no command here drives stands at the queue's head; the rest
-                    # wait behind it, as Task Control starts them. Its recovery hands it back.
-                    break
             # A Task no longer queued or owed its recovery has nothing left for its command.
             live = {*recoveries, *queue}
             for task_id in [task_id for task_id in self._waiting if task_id not in live]:
@@ -639,6 +651,7 @@ class LocalBackgroundDispatcher:
                 if item is None:
                     return
                 command, task_id, expected_task_hash = item
+                seen = self._stamp()
                 try:
                     # Versionless work is called the way every command always was; only a
                     # confirmed version asks the command to carry it to Task Control.
@@ -653,7 +666,7 @@ class LocalBackgroundDispatcher:
                     with self._lock:
                         self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
                 finally:
-                    waits = self._waits_its_turn(task_id)
+                    waits = self._waits_its_turn(task_id, seen)
                     # Cleared whichever way it went: a caller waiting for a
                     # terminal answer must be released on failure too.
                     with self._lock:
@@ -667,20 +680,34 @@ class LocalBackgroundDispatcher:
                         except Exception as error:
                             self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
                 self._notify_returned(command.command_kind, task_id)
-                self._drive_waiting()
+                self.drive_waiting()
             finally:
                 self._work.task_done()
                 with self._lock:
                     callback = self.on_idle if not self._running and not self._closed else None
                 if callback is not None:
+                    self._idle_again = True
+                while callback is not None and self._idle.acquire(blocking=False):
                     try:
-                        callback()
+                        while self._idle_again:
+                            self._idle_again = False
+                            callback()
                     except Exception:
                         # An optional wake observer is not allowed to kill the
                         # Task worker or change a published Task's lifecycle.
                         with self._lock:
                             if item is not None:
                                 self._failures[item[1]] = "local_application.idle_observer_failed"
+                    finally:
+                        self._idle.release()
+                    if not self._idle_again:
+                        break
+
+    def _stamp(self) -> tuple[str, ...] | None:
+        try:
+            return self.status_port.turn_stamp()
+        except Exception:
+            return None
 
     def _notify_returned(self, command_kind: str, task_id: UUID) -> None:
         observer = self.on_command_returned

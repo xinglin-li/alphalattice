@@ -39,6 +39,7 @@ from alphalattice.control.product_host.composition.decision_advancement import (
     DecisionAdvancementCommand,
 )
 from alphalattice.control.product_host.composition.evidence_authority_setup import (
+    EVIDENCE_INSTALL_TASK_KIND,
     EvidenceInstallCommand,
 )
 from alphalattice.control.product_host.composition.evidence_review_application import (
@@ -79,6 +80,9 @@ from alphalattice.control.product_host.composition.portfolio_updates import (
 )
 from alphalattice.control.product_host.composition.portfolio_updates import PortfolioUpdateCommand
 from alphalattice.control.product_host.composition.reference_prefixes import ReferenceLedger
+from alphalattice.control.product_host.composition.research_experiments import (
+    TASK_KIND as STUDY_TASK_KIND,
+)
 from alphalattice.control.product_host.composition.research_experiments import (
     ResearchExperimentCommand,
 )
@@ -132,6 +136,7 @@ from alphalattice.control.product_host.maintenance.signals import (
     MaintenanceWakeController,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
+from alphalattice.control.task_control.queue import read_queue_setting, running_places
 from alphalattice.control.task_control.registry import (
     TaskQueueFull,
     TaskTransitionRejected,
@@ -213,6 +218,7 @@ from alphalattice.interface.local_application.web import (
     LocalWebService,
     report_policy,
 )
+from alphalattice.investment.alpha_research.experiments.authoring import ALPHA_EXPERIMENT_KIND
 from alphalattice.investment.alpha_research.scores.model_renewal import (
     verified_lifecycle_admissions,
 )
@@ -853,7 +859,10 @@ class LocalPortfolioWebSession:
             version_moved_error=TaskTransitionRejected,
             version_stale_error=TaskVersionStale,
             clock=self.clock,
+            workers=lambda: running_places(read_queue_setting(self.workspace / "runtime"))[0],
         )
+        session.task_control_registry.overlapping = runs_beside_others
+        session.task_control_registry.started = self.dispatcher.drive_waiting
         self.dispatcher.start()
         self.review = self._review_application(
             session, None if self.resolver is None else finalization.store
@@ -1273,6 +1282,25 @@ class LocalPortfolioWebSession:
         )
         follow = "latest" if goal is None else f"goal:{goal.goal_id}"
         return self.web.launch_url + "#" + urlencode({"follow": follow})
+
+
+def runs_beside_others(task: TaskRecord) -> bool:
+    """Whether a Task may run beside others.
+
+    A Risk or Factor study writes only its own folder, and an Evidence install only its
+    package. An Alpha study runs alone: its fold metrics are unscoped dot products over a
+    fold's rows, long enough that the BLAS splits their sums by the process's thread count,
+    which another Task's one-thread scope would narrow mid-run. A qualification reads the
+    studies of its family, so it runs alone too.
+    """
+    if task.task_kind == EVIDENCE_INSTALL_TASK_KIND:
+        return True
+    plan = task.input.payload.get("plan") if task.task_kind == STUDY_TASK_KIND else None
+    return (
+        isinstance(plan, dict)
+        and plan.get("qualification_family") is None
+        and plan.get("program", {}).get("kind") != ALPHA_EXPERIMENT_KIND
+    )
 
 
 def build_evidence_review_application(

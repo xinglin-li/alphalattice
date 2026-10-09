@@ -241,6 +241,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
             timeout=300.0,
         )
         assert activated["status"] == "ACTIVATED", activated
+        assert list(activated["stage_seconds"]) == ["book", "models", "seed", "checkpoint", "bind"]
         assert activated["review_standing"] == review_standing
         assert activated["strategy_dates"]["information_cutoff"] == "2026-09-10"
         assert (

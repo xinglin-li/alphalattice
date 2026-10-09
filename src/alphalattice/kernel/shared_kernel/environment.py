@@ -183,11 +183,35 @@ def numerical_thread_pools() -> list[dict[str, Any]]:
     return list(_thread_pool_controller().info())
 
 
+_LIMITS: list[int] = []
+_UNLIMITED: list[Any] = []
+_LIMITS_LOCK = threading.Lock()
+
+
 @contextmanager
 def numerical_thread_limit(limits: int) -> Iterator[None]:
-    """Limit the loaded numerical libraries' threads in the block, as ``threadpool_limits`` does."""
-    with _thread_pool_controller().limit(limits=limits):
+    """Limit the loaded numerical libraries' threads in the block, as ``threadpool_limits`` does.
+
+    The limit is the process's, so the scopes of Tasks running at once share it: the libraries
+    run at the fewest threads any open scope asks for, and only the last scope to close
+    restores the counts from before the first, so a scope closing early leaves no other
+    unlimited.
+    """
+    with _LIMITS_LOCK:
+        if not _LIMITS:
+            _UNLIMITED.append(_thread_pool_controller().limit(limits=limits))
+        elif limits < min(_LIMITS):
+            _thread_pool_controller().limit(limits=limits)
+        _LIMITS.append(limits)
+    try:
         yield
+    finally:
+        with _LIMITS_LOCK:
+            _LIMITS.remove(limits)
+            if not _LIMITS:
+                _UNLIMITED.pop().restore_original_limits()
+            elif limits < min(_LIMITS):
+                _thread_pool_controller().limit(limits=min(_LIMITS))
 
 
 __all__ = [

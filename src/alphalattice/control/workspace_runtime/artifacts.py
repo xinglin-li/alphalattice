@@ -9,6 +9,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -221,7 +222,7 @@ class ArtifactResolver:
                 },
             }
         )
-        staged = target.with_name(f".{content_hash}.{os.getpid()}.tmp")
+        staged = target.with_name(f".{content_hash}.{uuid4().hex}.tmp")
         if target.exists():
             self._validate_feature_panel_chunk(target, content_hash)
         else:
@@ -248,7 +249,7 @@ class ArtifactResolver:
         serialized = json.dumps(
             payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
         ).encode("utf-8")
-        staged = target.with_name(f".{snapshot_hash}.{os.getpid()}.tmp")
+        staged = target.with_name(f".{snapshot_hash}.{uuid4().hex}.tmp")
         if target.exists():
             existing = self._load_feature_panel_manifest(target, snapshot_hash)
             if existing != json.loads(serialized):
@@ -278,7 +279,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._feature_panel_semantic_index_path(index_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{index_hash}.{os.getpid()}.tmp")
+        staged = target.with_name(f".{index_hash}.{uuid4().hex}.tmp")
         if target.exists():
             if target.read_bytes() != serialized:
                 raise ValueError("feature panel semantic index identity was reused")
@@ -336,7 +337,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._panel_preprocessing_binding_path(binding_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{binding_hash}.{os.getpid()}.tmp")
+        staged = target.with_name(f".{binding_hash}.{uuid4().hex}.tmp")
         if target.exists():
             # Content-addressed, so identical bytes are the only lawful rewrite and a
             # true collision is the only way to reach the raise.
@@ -409,7 +410,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._panel_clipping_evidence_path(evidence_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{evidence_hash}.{os.getpid()}.tmp")
+        staged = target.with_name(f".{evidence_hash}.{uuid4().hex}.tmp")
         if target.exists():
             if target.read_bytes() != serialized:
                 raise ValueError("panel clipping evidence identity was reused")
@@ -494,7 +495,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._panel_clip_observation_path(receipt_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{receipt_hash}.{os.getpid()}.tmp")
+        staged = target.with_name(f".{receipt_hash}.{uuid4().hex}.tmp")
         if target.exists():
             # The receipt hashes the binding, the availability and the
             # admission of the batch, and the observations are a deterministic
@@ -564,7 +565,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._panel_preprocessing_marker_path(panel_content_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{panel_content_hash}.{os.getpid()}.tmp")
+        staged = target.with_name(f".{panel_content_hash}.{uuid4().hex}.tmp")
         if target.exists():
             # One Panel content can legitimately be produced by more than one
             # build -- a full materialization and a later incremental replay
@@ -693,7 +694,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._adjusted_return_revision_path(chain_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{chain_hash}.{os.getpid()}.tmp")
+        staged = target.with_name(f".{chain_hash}.{uuid4().hex}.tmp")
         if target.exists():
             if target.read_bytes() != serialized:
                 raise ValueError("adjusted-return revision identity was reused")
@@ -712,7 +713,7 @@ class ArtifactResolver:
         pointer_bytes = json.dumps(pointer_payload, sort_keys=True, separators=(",", ":")).encode(
             "utf-8"
         )
-        pointer_staged = pointer.with_name(f".{pointer.name}.{os.getpid()}.tmp")
+        pointer_staged = pointer.with_name(f".{pointer.name}.{uuid4().hex}.tmp")
         pointer_staged.write_bytes(pointer_bytes)
         os.replace(pointer_staged, pointer)
         pointer_staged.unlink(missing_ok=True)
@@ -840,7 +841,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._feature_panel_lifecycle_path()
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+        staged = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
         staged.write_bytes(serialized)
         os.replace(staged, target)
         self._load_feature_panel_lifecycle_projection()

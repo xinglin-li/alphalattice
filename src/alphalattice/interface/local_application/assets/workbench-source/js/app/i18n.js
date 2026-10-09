@@ -72,6 +72,7 @@ const I18N = (() => {
     [/^(\d[\d,]*) residual questions? skipped by the pair budget \((\d[\d,]*) of (\d[\d,]*) pairs spent\)$/, (m) => m[1] + ' 个余量问题因配对预算而跳过（已用 ' + m[2] + ' / ' + m[3] + ' 对）'],
     [/^(\d[\d,]*) more cell gap lines? in the routing record$/, (m) => '路由记录中还有 ' + m[1] + ' 行单元格缺口'],
     [/^auto: one waiting place per (\d+) of the (\d+) processors$/, (m) => t('auto: one waiting place per {k} of the {n} processors', {k: m[1], n: m[2]})],
+    [/^auto: (\d+) at once on (\d+) processors$/, (m) => t('auto: {k} at once on {n} processors', {k: m[1], n: m[2]})],
     [/^set to (\d+)$/, (m) => t('set to {n}', {n: m[1]})],
     [/^Selected immutable input (\d{4}-\d{2}-\d{2}) and all saved studies\.$/, (m) => '已选不可变输入 ' + m[1] + ' 与全部历史研究保持不变。'],
     [/^One immutable input from current Data \/ Features through (\d{4}-\d{2}-\d{2})\.$/, (m) => '基于当前数据与特征创建截止至 ' + m[1] + ' 的不可变输入。'],

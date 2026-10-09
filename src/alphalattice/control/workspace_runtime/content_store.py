@@ -30,7 +30,7 @@ from queue import Queue
 from threading import BoundedSemaphore, Event, Lock, Thread
 from time import sleep
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 from weakref import WeakSet
 
 import numpy as np
@@ -1098,7 +1098,7 @@ class ContentAddressedStore:
             self.capacity(len(content))
         with span("write", "content_store"):
             path.parent.mkdir(parents=True, exist_ok=True)
-            staged = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+            staged = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
             staged.write_bytes(content)
             os.replace(staged, path)
             staged.unlink(missing_ok=True)

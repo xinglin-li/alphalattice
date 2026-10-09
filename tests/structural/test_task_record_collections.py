@@ -92,7 +92,7 @@ STRICT_READERS = {
     ),
     "interface/local_application/dispatcher.py": (
         "LocalBackgroundDispatcher",
-        "resume _waits_its_turn _drive_waiting",
+        "resume _waits_its_turn drive_waiting",
     ),
 }
 

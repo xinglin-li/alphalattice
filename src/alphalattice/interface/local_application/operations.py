@@ -1105,6 +1105,7 @@ FLAGS: Final[dict[str, str]] = {
     "strategy_package_id": "package",
     "task_id": "task",
     "tasks_waiting": "queue",
+    "tasks_running": "running",
     "update_plan_hash": "plan",
     "update_publication_hash": "update-publication",
     "update_task_id": "update",
