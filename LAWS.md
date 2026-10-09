@@ -960,33 +960,29 @@ is gone. *Held by:* review.
 **TE6. A structural pin is a set or an invariant, never a count**; a moved set is re-pinned with its
 cause by name. *Held by:* review.
 
-**TE7. Development speed first; the whole suite at the maintainer's word.** Per commit the hook's fast gate
-and the smallest tests that answer for what changed; a change that cannot alter behaviour is proved
-directly (its syntax without docstrings, the identity readout) rather than by running more. The full
-gate (`check_playpen.py --staged` without `--fast`) and the whole suite run only at the maintainer's
-word, typically just before a product release, never as a goal's closing step (the maintainer,
-2026-09-26: development speed comes first). A merge moving door words or Chinese runs the whole
-Workbench readback; a new local require or import in a shipped reader reruns the public release
-closure on the combined candidate (V692, V696). Each check runs once, by one runner: a card runs
-the nodes it adds or edits, its owner's direct nodes and the census or harness its change touches;
-the merger runs the touched files whole, once, at the merge; U0, the golden replay, the UI walk and
-the whole suite run once each, at the end, on the final candidate (the maintainer, 2026-10-04: no
-work is done twice). *Not yet held:* the fast hook does not select
-these merge checks automatically; their selection remains the merger's recorded responsibility
-(V692, V696). *Held by:* `hook` for the per-commit fast gate;
+**TE7. Development speed first; each check runs once, by one runner.** Tests are written and run by
+`tests/README.md`. Per commit, the hook's fast gate, with its test-shape check, and the nodes that
+answer for the change; a change that cannot alter behaviour is proved directly (its syntax without
+docstrings, the identity readout) rather than by running more. The maintainer's merge set runs every
+affected file whole, once, with the public release closure, and leaves real evidence to its own lane
+(TE10); a merge moving door words or Chinese includes the whole Workbench readback (V692, V696). The
+full gate (`check_playpen.py --staged` without `--fast`) and the whole suite run only at the
+maintainer's word, typically just before a product release; U0, the golden replay and the UI walk
+run once each, at the end, on the final candidate (the maintainer, 2026-09-26 and 2026-10-04:
+development speed comes first, and no work is done twice). *Held by:* `hook` for the per-commit
+fast gate and the test shape;
 `private-test: test_every_chinese_translation_uses_its_owned_ui_vocabulary`,
 `private-test: test_every_public_file_closes_over_the_public_manifest`
-for the selected word and release-boundary checks, not automatic merge selection;
-review for the merger's recorded selection duty.
+for the word and release-boundary checks; review for the merge set's selection.
 
 **TE8. A failure is diagnosed, never masked.** No skip, relaxed assertion or unrelated fixture churn to get
-green; the failing cluster is diagnosed, its smallest failing subset rerun, then the consolidated set. A
-mechanism is reproduced by a targeted setup, not by rerunning until it shows; a heavy test runs once for
-evidence. *Held by:* review.
+green; the failing cluster is diagnosed and its failed nodes rerun after the fix, and the merge set
+reruns their files. A mechanism is reproduced by a targeted setup, not by rerunning until it shows; a
+heavy test runs once for evidence. *Held by:* review.
 
 **TE9. The quarantine names every test with its class, owner and end** (the private test signal
-record and private quarantine record); still there when the next wave is planned, it is deleted or
-its owner decides. *Held by:* review.
+record and private quarantine record); still there at its end, it is deleted or its owner decides.
+*Held by:* review.
 
 **TE10. Real evidence has its own lane.** A test that reads real evidence is marked `real_evidence`, reads
 roots declared in the private evidence-root declaration, leaves the routed lane, and skips by a named reason when
@@ -1029,11 +1025,12 @@ roots also stay outside the checkout. *Held by:*
 `private-test: test_pytest_uses_external_test_and_backup_temp`,
 the pre-collection guard in `tests/conftest.py::pytest_configure`.
 
-**TE14. Browser class checks preserve coverage and watchdog margin.** Every collected class in the
-split pinned-browser harnesses must run alone within half its declared watchdog and leave both
-files runnable whole at eight workers without a load-only timeout. Splitting preserves assertions,
-scenes, widths, languages, themes and the original watchdogs; a missing, unknown or repeated class
-selection refuses rather than silently changing coverage (V695). *Not yet held:* the roster and
+**TE14. A real-browser class checks what needs real layout, within its watchdog margin.** Widths,
+focus, scrolling and motion are checked in the browser; behaviour and words are checked once, in the
+Node harness (`tests/README.md`). Every collected class in the split pinned-browser harnesses must
+run alone within half its declared watchdog and leave both files runnable whole at eight workers
+without a load-only timeout. Splitting keeps each requirement and the original watchdogs; a
+missing, unknown or repeated class selection refuses rather than silently changing coverage (V695). *Not yet held:* the roster and
 runner holders below enforce class coverage and the full watchdogs, not the half-budget margin
 or an eight-worker load bound. The per-class measurements and whole-file run are observations,
 not an automated half-budget holder (V695). *Held by:*
@@ -1055,7 +1052,7 @@ names what it replaced, and a new path beside an old one removes it or lists it 
 review.
 
 **PR4. Living lists.** Every card adds what it found to the convergence list (removable, wrong or kept,
-with its decision and resolver) and the CLI list, and records its landing in the development plan. A card
+with its decision and resolver) and the CLI list, and records its landing in the maintainer's plan. A card
 fixes what it finds at its owner, in its own branch, while it is open, and names each finding, fix
 and commit in its hand-back; no finding is reassigned to another card, and where the fix lies in
 code another card is changing, the finder records it for that card (the maintainer, 2026-10-04). *Held by:* review.
