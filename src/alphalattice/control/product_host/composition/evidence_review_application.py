@@ -5080,7 +5080,8 @@ class EvidenceReviewApplication:
                     application=self, task=task
                 )
             elif kind == PortfolioReviewTaskAdapter.task_kind and (
-                self.review_actor is not None or "prepared_submission" in task.input.payload
+                self.review_actor is not None
+                or {"prepared_answer", "prepared_submission"} & set(task.input.payload)
             ):
                 commands[kind] = PortfolioReviewCommand(application=self)
         return commands

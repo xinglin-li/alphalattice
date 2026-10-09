@@ -35,6 +35,7 @@ from alphalattice.control.product_host.composition.application_session import (
 )
 from alphalattice.control.product_host.composition.evidence_review_application import (
     ANSWER_CATEGORY,
+    PortfolioReviewCommand,
     agent_answer_result,
 )
 from alphalattice.control.product_host.composition.evidence_review_bundles import (
@@ -540,9 +541,8 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
     # A refused request spends none of the bundle's answers.
     assert len(service.registry.tasks()) == count
     assert service.review.artifacts.write_count == writes + 2
-    # Admit two different answers without starting the dispatcher. Recovery must
+    # Admit two different answers without running them. Recovery must
     # rebuild each from its immutable input, not the last command in a kind map.
-    dispatcher = service.session.dispatcher
     workspace = ["--workspace", str(service.session.workspace), "--view", "full"]
     prepare = [
         *("bundle", "prepare", "--role", "CRO"),
@@ -561,7 +561,7 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
         return original_contract(**facts)
 
     with monkeypatch.context() as patch:
-        patch.setattr(dispatcher, "start", lambda: None)
+        patch.setattr(PortfolioReviewCommand, "execute", lambda *_: None)
         patch.setattr(service.review, "review_task_contract", counted_contract)
         assert main(["--view", "full", *bundle["submit_arguments"]], serve=lambda _: 99) == 3
         first = json.loads(capsys.readouterr().out)["data"]

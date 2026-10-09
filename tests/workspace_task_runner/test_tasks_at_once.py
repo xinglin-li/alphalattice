@@ -56,6 +56,31 @@ def _places(runtime: Path, running: str) -> None:
         write_queue_setting(runtime, value, chosen_by="HUMAN", chosen_at=NOW, field=field)
 
 
+class _Study:
+    """A Factor study's command over a fixture Task; with `waiting`, one whose turn has not come
+    returns and sets it, as a refused start does."""
+
+    command_kind = "factor_research"
+
+    def __init__(self, session: Any, salt: str, adapter: Any, waiting: Event | None = None):
+        self.session, self.salt, self.adapter, self.waiting = session, salt, adapter, waiting
+
+    def admit(self) -> CommandAdmission:
+        envelope, goal, plan = task_contract(salt=self.salt)
+        task = self.session.task_control_registry.admit(
+            input_envelope=envelope, goal=goal, plan=plan, observed_at=NOW
+        ).record
+        return CommandAdmission(task.task_id, task.lifecycle.value)
+
+    def execute(self, task_id: Any, *, expected_task_hash: str | None = None) -> None:
+        registry = self.session.task_control_registry
+        if self.waiting is not None and not registry.may_start(task_id):
+            self.waiting.set()
+            return
+        task = registry.task(task_id)
+        self.session.execute_admitted(task, self.adapter, lambda: NOW, expected_task_hash)
+
+
 def test_tasks_that_may_run_beside_others_share_the_places_in_queue_order(tmp_path: Path) -> None:
     """requirement: Tasks that may run beside others start together within the running places;
     one that runs alone waits for them to end and holds back every Task behind it."""
@@ -120,31 +145,14 @@ def test_the_host_runs_two_studies_at_once_within_the_budget(tmp_path: Path) -> 
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         registry = session.task_control_registry
         registry.overlapping = lambda _task: True
-
-        class Command:
-            command_kind = "factor_research"
-
-            def __init__(self, salt: str) -> None:
-                self.salt = salt
-
-            def admit(self) -> CommandAdmission:
-                envelope, goal, plan = task_contract(salt=self.salt)
-                task = registry.admit(
-                    input_envelope=envelope, goal=goal, plan=plan, observed_at=NOW
-                ).record
-                return CommandAdmission(task.task_id, task.lifecycle.value)
-
-            def execute(self, task_id, *, expected_task_hash=None):
-                session.execute_admitted(
-                    registry.task(task_id), Meeting(), lambda: NOW, expected_task_hash
-                )
-
         dispatcher = LocalBackgroundDispatcher(
             registry, version_moved_error=TaskTransitionRejected, workers=lambda: 2
         )
         registry.started = dispatcher.drive_waiting
         try:
-            sent = [dispatcher.submit(Command(salt)).task_id for salt in ("one", "two")]
+            sent = [
+                dispatcher.submit(_Study(session, s, Meeting())).task_id for s in ("one", "two")
+            ]
             dispatcher.drain_for_tests()
             for task_id in sent:
                 assert registry.task(task_id).lifecycle is TaskLifecycle.SUCCEEDED
@@ -221,6 +229,37 @@ def test_a_command_that_read_the_head_before_another_start_is_driven_again(
             ]
         finally:
             dispatcher.close()
+
+
+def test_a_command_waiting_its_turn_at_a_close_runs_before_the_workers_stop(
+    tmp_path: Path,
+) -> None:
+    """regression: a command deferred behind a running Task was dropped when the dispatcher
+    closed, though a queued one runs before the workers stop; its Task stayed queued."""
+    _places(tmp_path / "runtime", "2")
+    release, tried = Event(), Event()
+
+    class Held(FixtureTaskAdapter):
+        def execute_stage(self, *, task, execution, work_item):
+            release.wait(60)  # the first Task runs until the close has begun
+            return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        registry = session.task_control_registry
+        dispatcher = LocalBackgroundDispatcher(
+            registry, version_moved_error=TaskTransitionRejected, workers=lambda: 2
+        )
+        registry.started = dispatcher.drive_waiting
+        dispatcher.submit(_Study(session, "one", Held(), tried))
+        second = dispatcher.submit(_Study(session, "two", FixtureTaskAdapter(), tried)).task_id
+        assert tried.wait(60)  # its turn had not come: the first Task holds the place
+        closing = Thread(target=dispatcher.close)
+        closing.start()
+        while not dispatcher.closing:
+            closing.join(0.01)
+        release.set()
+        closing.join(60)
+        assert registry.task(second).lifecycle is TaskLifecycle.SUCCEEDED
 
 
 def test_studies_other_than_alpha_and_the_install_may_run_beside_others() -> None:

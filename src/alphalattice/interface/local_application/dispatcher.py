@@ -306,9 +306,17 @@ class LocalBackgroundDispatcher:
         with self._lock:
             self._closed = True
             workers = list(self._workers)
+        deadline = None if timeout is None else time.monotonic() + timeout
+        # Work admitted before the close runs before the workers stop, as a queued command
+        # always did; a command waiting its turn is driven again when the running ones return.
+        with self._work.all_tasks_done:
+            while workers and self._work.unfinished_tasks:
+                left = None if deadline is None else deadline - time.monotonic()
+                if threading.current_thread() in workers or (left is not None and left <= 0):
+                    break
+                self._work.all_tasks_done.wait(left)
         for _worker in workers:
             self._work.put(None)
-        deadline = None if timeout is None else time.monotonic() + timeout
         for worker in workers:
             worker.join(None if deadline is None else max(0.0, deadline - time.monotonic()))
         with self._lock:
@@ -610,7 +618,7 @@ class LocalBackgroundDispatcher:
         starts them in. Told of each start too, so a Task that may run beside it goes at once.
         """
         with self._lock:
-            if self._closed or not self._waiting:
+            if not self._waiting:
                 return
         try:
             tasks = self.status_port.tasks()
@@ -627,8 +635,6 @@ class LocalBackgroundDispatcher:
             return
         driven = False
         with self._lock:
-            if self._closed:
-                return
             for task_id in startable:
                 command = self._waiting.pop(task_id, None)
                 if command is not None and task_id not in self._running:
@@ -639,7 +645,8 @@ class LocalBackgroundDispatcher:
             live = {*recoveries, *queue}
             for task_id in [task_id for task_id in self._waiting if task_id not in live]:
                 del self._waiting[task_id]
-        if driven:
+            closed = self._closed
+        if driven and not closed:  # a closing dispatcher's workers stay until its queue drains
             self.start()
 
     # -------------------------------------------------------------- worker
