@@ -364,22 +364,135 @@ class DuckDbWorkspaceMaintenanceRegistry:
         cycle that recorded none (before this record existed, or before its market-data
         phase).
         """
+        details = self._latest_event(cycle_id, self.MARKET_DATA_SCOPE_EVENT)
+        if details is None:
+            return None
+        keys = ("maintenance_id", "manifest_revision", "as_of_session")
+        return {key: str(details[key]) for key in keys}
 
+    WORKING_MANIFEST_EVENT = "workspace_maintenance.working_manifest"
+
+    def record_working_manifest(
+        self, cycle_id: str, *, manifest_revision: str, authority: str, observed_at: datetime
+    ) -> None:
+        """Record the membership this cycle made active, in its own event log.
+
+        A cycle that moves the active membership -- a transition's qualified root or a child
+        it derives (Sector exclusion, gateway quarantine, baseline qualification) -- owns that
+        working membership until its Panel publishes. Recovery reads it here instead of
+        deriving it again from the journal; the same membership is recorded once, and only
+        on an existing cycle that has not finished.
+
+        Raises:
+            ValueError: The cycle does not exist or has finished.
+        """
+        if self.working_manifest(cycle_id) == manifest_revision:
+            return
+        details = {"manifest_revision": manifest_revision, "authority": authority}
+        now = observed_at.astimezone(UTC).replace(tzinfo=None)
+
+        def operation(connection: duckdb.DuckDBPyConnection) -> None:
+            row = connection.execute(
+                "SELECT status FROM workspace_maintenance_cycle WHERE cycle_id = ?", [cycle_id]
+            ).fetchone()
+            if row is None:
+                raise ValueError("workspace maintenance cycle does not exist")
+            if MaintenanceStatus(str(row[0])) in {
+                MaintenanceStatus.COMPLETED,
+                MaintenanceStatus.NOOP,
+                MaintenanceStatus.CANCELLED,
+            }:
+                raise ValueError("workspace maintenance cycle has finished")
+            self._append_event(
+                connection,
+                cycle_id=cycle_id,
+                kind=self.WORKING_MANIFEST_EVENT,
+                details=details,
+                observed_at=now,
+            )
+
+        self._write(operation)
+
+    def working_manifest(self, cycle_id: str) -> str | None:
+        """The membership this cycle last made active, or None when it moved none."""
+        details = self._latest_event(cycle_id, self.WORKING_MANIFEST_EVENT)
+        return None if details is None else str(details["manifest_revision"])
+
+    AUDIT_SUPPLEMENT_EVENT = "workspace_maintenance.audit_supplement"
+
+    def record_audit_supplement(
+        self,
+        cycle_id: str,
+        *,
+        listing_ids: tuple[str, ...],
+        requirement_receipt: str,
+        audit_plan_hash: str,
+        observed_at: datetime,
+    ) -> None:
+        """Admit full-history audits a stopped cycle receipted as required, onto that cycle.
+
+        The cycle keeps its sealed request; its next run reads these listings beside the
+        request's own. The requirement must be one this cycle receipted, and the same
+        admission is recorded once.
+
+        Raises:
+            ValueError: `workspace_data_update.audit_requirement_unverified` when the cycle
+                holds no such requirement receipt.
+        """
+        if requirement_receipt not in self.cycle(cycle_id).effect_receipts:
+            raise ValueError("workspace_data_update.audit_requirement_unverified")
+        details = {
+            "listing_ids": sorted(listing_ids),
+            "requirement_receipt": requirement_receipt,
+            "audit_plan_hash": audit_plan_hash,
+        }
+        if self._latest_event(cycle_id, self.AUDIT_SUPPLEMENT_EVENT) == details:
+            return
+        now = observed_at.astimezone(UTC).replace(tzinfo=None)
+
+        def operation(connection: duckdb.DuckDBPyConnection) -> None:
+            self._append_event(
+                connection,
+                cycle_id=cycle_id,
+                kind=self.AUDIT_SUPPLEMENT_EVENT,
+                details=details,
+                observed_at=now,
+            )
+
+        self._write(operation)
+
+    def audit_supplement(self, cycle_id: str) -> tuple[str, ...]:
+        """Every listing a supplement admitted onto this cycle, sorted."""
+        return tuple(
+            sorted({v for item in self._supplements(cycle_id) for v in item["listing_ids"]})
+        )
+
+    def admitted_audit_plans(self, cycle_id: str) -> frozenset[str]:
+        """The audit plans whose confirmation admitted a supplement onto this cycle."""
+        return frozenset(str(item["audit_plan_hash"]) for item in self._supplements(cycle_id))
+
+    def _supplements(self, cycle_id: str) -> list[dict[str, Any]]:
+        def operation(connection: duckdb.DuckDBPyConnection) -> Any:
+            return connection.execute(
+                "SELECT details_json FROM workspace_maintenance_event "
+                "WHERE cycle_id = ? AND kind = ?",
+                [cycle_id, self.AUDIT_SUPPLEMENT_EVENT],
+            ).fetchall()
+
+        return [dict(json.loads(str(row))) for (row,) in self._read(operation)]
+
+    def _latest_event(self, cycle_id: str, kind: str) -> dict[str, Any] | None:
         def operation(connection: duckdb.DuckDBPyConnection) -> Any:
             return connection.execute(
                 """
                 SELECT details_json FROM workspace_maintenance_event
                 WHERE cycle_id = ? AND kind = ? ORDER BY sequence DESC LIMIT 1
                 """,
-                [cycle_id, self.MARKET_DATA_SCOPE_EVENT],
+                [cycle_id, kind],
             ).fetchone()
 
         row = self._read(operation)
-        if row is None:
-            return None
-        details = json.loads(str(row[0]))
-        keys = ("maintenance_id", "manifest_revision", "as_of_session")
-        return {key: str(details[key]) for key in keys}
+        return None if row is None else dict(json.loads(str(row[0])))
 
     def cancel(self, cycle_id: str, *, observed_at: datetime) -> WorkspaceMaintenanceCycle:
         """Record that the Task running this cycle was cancelled at a safe checkpoint.

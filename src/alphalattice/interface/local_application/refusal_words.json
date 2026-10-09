@@ -952,7 +952,7 @@
   "next_action": "DATA_UPDATE_PLAN"
  },
  "workspace_data_update.transition_not_verified": {
-  "detail": "The approved stock-list change could not be verified against the current membership, prior Panel and approved candidate document. If it stopped part-way, with its new membership active while the Panel is still on the earlier one, this version can neither resume nor re-plan it: the research and history already recorded stay readable, and this workspace's daily updates resume with a later AlphaLattice release. Never edit a stored approval.",
+  "detail": "The approved stock-list change could not be verified: the active membership is neither the one it approved nor one its own run recorded or the gateway's admission derives from it, or its prior Panel or approved candidate document changed. Nothing ran. The research and history already recorded stay readable; to keep updating, prepare a new workspace from the current source. Never edit a stored approval.",
   "next_action": "DATA_UPDATE_READBACK"
  },
  "workspace_preparation.preview_required": {
@@ -1375,6 +1375,10 @@
   "detail": "Too few listings qualify for the research baseline at the preparation's session: it needs at least one, and five in each sector present. The Task's failure cause counts them and groups why the rest did not qualify. With no market observation at that session, the data source does not reach it yet: plan the preparation again once it does, with network access; a source that ends earlier cannot support a baseline there, so ask the person for one that reaches it.",
   "next_action": "READ_THE_SHORTFALL_THEN_REPLAN_OR_ASK_FOR_A_SOURCE"
  },
+ "feature.panel_coverage_not_ready": {
+  "detail": "The Panel's coverage floor is not met at this session: too few of its members' rows are verified for research to read it, so the new Panel is not published and the one before it stays readable. A departing member's rows missing before it left count against the floor, and the update's record and the Data overview disclose them; with few members, one missing session can exceed the floor on its own. Read the Task's recovery view for the actions its owner permits.",
+  "next_action": "READ_THE_RECOVERY_VIEW"
+ },
  "CODEX_COMMAND_MISSING": {
   "detail": "The Host could not send the Codex wake: the codex command is not on its path. Read the same Task; its work is unchanged.",
   "next_action": "READ_THE_SAME_TASK"
@@ -1394,6 +1398,10 @@
  "CODEX_WAKE_DELIVERY_UNCERTAIN": {
   "detail": "The Host stopped while sending the Codex wake, so it may or may not have arrived; it is not sent again. Read the same Task; its work is unchanged.",
   "next_action": "READ_THE_SAME_TASK"
+ },
+ "data.maintenance_stale_payload": {
+  "detail": "A listing's source ends before the update's session, so its new rows were not admitted; the Task's failure cause names the listing and its last bar. A departing member's missing last sessions are disclosed and do not stop the update. For a listing that stays, wait for the source to reach the session, then resume the same update.",
+  "next_action": "WAIT_FOR_THE_SOURCE_THEN_RESUME"
  },
  "research_strategy.installation_waits_for_portfolio_tasks": {
   "detail": "A book, score, calibration or update Task on the installed strategies is in progress, so nothing was installed. Wait for that Task ({subject}) to end, then install again.",

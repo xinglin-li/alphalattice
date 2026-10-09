@@ -5,10 +5,18 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any, Final
+from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    ValidationError,
+    model_serializer,
+    model_validator,
+)
 from pydantic_core import to_jsonable_python
 
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -60,6 +68,8 @@ class StageFailureCause(ContractModel):
         unit: The unit of work in hand, such as a listing.
         first_session: The first session that unit was computing.
         last_session: The last session that unit was computing.
+        row_count: The source's recorded row count, or its recorded unknown marker.
+        sanitizer_code: The source sanitizer's recorded subcode, when supplied.
     """
 
     exception_type: str = Field(min_length=1, max_length=120)
@@ -68,6 +78,17 @@ class StageFailureCause(ContractModel):
     unit: str | None = Field(default=None, max_length=160)
     first_session: date | None = None
     last_session: date | None = None
+    row_count: Annotated[int, Field(ge=0, strict=True)] | Literal["UNKNOWN"] | None = None
+    sanitizer_code: str | None = Field(default=None, max_length=120)
+
+    @model_serializer(mode="wrap")
+    def serialize_recorded_facts(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """Keep causes recorded before source facts byte-equivalent and hash-compatible."""
+        fields = handler(self)
+        for key in ("row_count", "sanitizer_code"):
+            if fields.get(key) is None:
+                fields.pop(key, None)
+        return fields
 
     @classmethod
     def from_facts(cls, facts: Mapping[str, object] | None) -> StageFailureCause | None:
@@ -103,6 +124,8 @@ class StageFailureCause(ContractModel):
                     "unit": text("unit", 160),
                     "first_session": facts.get("first_session"),
                     "last_session": facts.get("last_session"),
+                    "row_count": facts.get("row_count"),
+                    "sanitizer_code": text("sanitizer_code", 120),
                 }
             )
         except ValueError:

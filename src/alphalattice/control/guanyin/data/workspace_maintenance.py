@@ -47,10 +47,8 @@ def maintenance_failure_detail(code: str) -> str:
         ),
         "workspace_maintenance.membership_revision_mismatch": (
             "The research membership changed after this update was planned, so it stopped "
-            "before using it. Plan the update again. If a stock-list change stopped "
-            "part-way, the new plan is refused: this version cannot finish that change, the "
-            "research and history stay readable, and daily updates resume with a later "
-            "AlphaLattice release."
+            "before using it. Plan the update again: a stock-list change that stopped "
+            "part-way is offered to resume as the same Task."
         ),
         "workspace_data_update.membership_changed_review_required": (
             "The data decision changed the research membership, which this update plan "

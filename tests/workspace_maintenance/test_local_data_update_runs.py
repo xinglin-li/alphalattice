@@ -251,7 +251,15 @@ def test_failed_price_history_keeps_source_facts_without_admitting_rows(tmp_path
             "unit": "AAPL",
             "row_count": len(rejected),
             "sanitizer_code": subcode,
-        }
+        },
+        # The rejected rows are kept as source evidence beside the cause, never admitted.
+        "rejected_history": {
+            "provider": "fixture",
+            "requested_through": "2026-07-31",
+            "rows": [dict(row) for row in rejected],
+            "provider_policy_hash": None,
+            "repaired_sessions": [],
+        },
     }
     assert market.raw_bars("listing-aapl") == before
     assert market.manifest_raw_through(manifest) == date(2026, 7, 30)

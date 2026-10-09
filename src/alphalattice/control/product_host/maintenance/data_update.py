@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from hashlib import sha256
@@ -21,6 +21,7 @@ from alphalattice.control.data_platform.maintenance.contracts import (
     WorkspaceDataUpdateReceipt,
     WorkspaceInputStatus,
     WorkspaceMaintenanceRequest,
+    full_history_audit_requirement,
     workspace_maintenance_data_policy_hash,
 )
 from alphalattice.control.data_platform.maintenance.data_changes import (
@@ -123,6 +124,7 @@ from alphalattice.foundation.market_data_ops.sources.providers import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     CurrentUniverseMaintenanceListing,
+    ManifestTransitionRecord,
     MarketDataRepository,
 )
 from alphalattice.foundation.research_foundation.contracts import (
@@ -740,17 +742,22 @@ class WorkspaceDataUpdateApplication:
             if fresh
             else reversed(self.session.task_control_registry.tasks())
         )
-        for task in stopped:
-            if task.task_kind != self.task_kind or task.lifecycle is not TaskLifecycle.BLOCKED:
-                continue
-            planned = self._plan_of(task, require_current=False)
-            if self._partial_transition(task, planned, state):
-                self._require_plan(planned)
-                self.last_plan = planned
-                return self._plan_answer(planned, now, admitted=True)
-        if state.panel_manifest_revision is not None:
+        audit_parent = None
+        for task, planned in self._stopped_changes(state, stopped):
+            if task.failure_code == "data.full_history_audit_approval_required":
+                # The audit it owes is planned and admitted onto its own cycle.
+                audit_parent = planned
+                break
+            self._require_plan(planned)
+            self.last_plan = planned
+            return self._plan_answer(planned, now, admitted=True)
+        if state.panel_manifest_revision is not None and audit_parent is None:
             raise ValueError("workspace_data_update.transition_not_verified")
-        target = _latest_common_us_session(on_or_before=now.date(), observed_at=now)
+        target = (
+            _latest_common_us_session(on_or_before=now.date(), observed_at=now)
+            if audit_parent is None
+            else audit_parent.request.target_market_session
+        )
         if state.readiness_status == "ONBOARDING_IN_PROGRESS":
             self.last_plan = None
             return {
@@ -769,6 +776,8 @@ class WorkspaceDataUpdateApplication:
             valuation_grants=grants,
             target_session=target,
         )
+        if audit_parent is not None and (change is None or change.action != "FULL_HISTORY_AUDIT"):
+            raise ValueError("workspace_data_update.audit_requirement_unverified")
         if state.readiness_status == "MANIFEST_UPDATE_PENDING" and change is None:
             self.last_plan = None
             return {
@@ -845,8 +854,8 @@ class WorkspaceDataUpdateApplication:
         transition = market.manifest_transition(str(change.transition_id))
         readiness = market.readiness.load(plan.binding.market_profile_id)
         if (
-            transition.next_manifest_revision != state.manifest_revision
-            or state.panel_hash != plan.before.panel_hash
+            state.panel_hash != plan.before.panel_hash
+            or not self._accepts(plan, transition, state.manifest_revision)[0]
         ):
             return False
         if (
@@ -953,9 +962,13 @@ class WorkspaceDataUpdateApplication:
     def confirm(self, plan_hash: str, *, caller: str) -> CommandAdmission:
         """Require human consent and revalidate an exact current change under the mutation gate.
 
+        A stock-list change is the person's to approve. The full-history audit its listings
+        owe is a default the agent takes and discloses (person-stops row 49), so an agent may
+        confirm a `FULL_HISTORY_AUDIT` plan, which a stopped change then resumes on.
+
         Args:
             plan_hash: Exact retained membership/change proposal.
-            caller: Explicit caller required to be HUMAN.
+            caller: HUMAN, or any caller for a full-history audit.
 
         Returns:
             Exact reused or newly admitted change task.
@@ -964,10 +977,11 @@ class WorkspaceDataUpdateApplication:
             ValueError: Caller/change scope is invalid, proposal is stale or another task must
                 finish or recover.
         """
-        if caller != "HUMAN":
-            raise ValueError("workspace_data_update.human_confirmation_required")
         plan = self.changes.load_plan(plan_hash)
-        if plan.change is None:
+        change = plan.change
+        if caller != "HUMAN" and (change is None or change.action != "FULL_HISTORY_AUDIT"):
+            raise ValueError("workspace_data_update.human_confirmation_required")
+        if change is None:
             raise ValueError("workspace_data_update.change_proposal_required")
         self._require_plan(plan)
         registry = self.session.task_control_registry
@@ -997,13 +1011,35 @@ class WorkspaceDataUpdateApplication:
                 ),
                 target_session=plan.request.target_market_session,
             )
+            parent = self._audit_parent(state) if change.action == "FULL_HISTORY_AUDIT" else None
             if (
                 state != plan.before
                 or current != plan.change
-                or plan.request.target_market_session
-                != _latest_common_us_session(on_or_before=now.date(), observed_at=now)
+                or (
+                    parent is None
+                    and plan.request.target_market_session
+                    != _latest_common_us_session(on_or_before=now.date(), observed_at=now)
+                )
             ):
                 raise ValueError("workspace_data_update.proposal_stale")
+            if parent is not None:
+                # The stopped change keeps its approval, Task and sealed request; its cycle
+                # reads this supplement beside the request's audits when it runs again.
+                parent_task, parent_plan = parent
+                cycle_id = self._cycle_id(parent_plan)
+                ids = change.full_history_listing_ids
+                self._registry().record_audit_supplement(
+                    cycle_id,
+                    listing_ids=ids,
+                    requirement_receipt=full_history_audit_requirement(
+                        self._registry().cycle(cycle_id).request, ids
+                    ),
+                    audit_plan_hash=plan.content_hash,
+                    observed_at=now,
+                )
+                return CommandAdmission(
+                    task_id=parent_task.task_id, lifecycle=parent_task.lifecycle.value
+                )
             task = registry.admit(
                 input_envelope=envelope, goal=goal, plan=workflow, observed_at=now
             ).record
@@ -1132,6 +1168,17 @@ class WorkspaceDataUpdateApplication:
             # existing owners; none of them is a lifecycle or completion verdict.
             result["cycle"] = self._cycle_readback(plan)
             result["maintenance"] = self._maintenance_readback(plan)
+            # This selected update's saved formation disposition, not a later
+            # Panel or today's membership. Keep it visible if Feature's coverage
+            # floors stop the update before a publication exists.
+            result["removed_member_tails"] = [
+                value.model_dump(mode="json")
+                for value in (
+                    receipt.removed_member_tails
+                    if receipt is not None
+                    else self.changes.removed_member_tails(plan)
+                )
+            ]
             result["work_progress"] = self.telemetry.work_progress(task)
             # What its stopped step saw beside the code, as Task Control keeps it (V444).
             cause = next(
@@ -1568,6 +1615,15 @@ class WorkspaceDataUpdateApplication:
             ),
             None,
         )
+        if (
+            existing is None
+            and plan.change is not None
+            and plan.change.action == "FULL_HISTORY_AUDIT"
+        ):
+            supplemented = self._supplemented(plan)
+            if supplemented is not None:
+                task = self.resume_stopped(*supplemented)
+                return CommandAdmission(task_id=task.task_id, lifecycle=task.lifecycle.value)
         if plan.change is not None and existing is None:
             raise ValueError("workspace_data_update.human_confirmation_required")
         if existing is not None:
@@ -1743,6 +1799,39 @@ class WorkspaceDataUpdateApplication:
             self.session.workspace / "market-data.duckdb", gate=self.session.mutation_gate
         )
 
+    def _accepts(
+        self,
+        plan: WorkspaceDataUpdatePlan,
+        transition: ManifestTransitionRecord,
+        active: str | None,
+    ) -> tuple[bool, str | None]:
+        """Whether recovery accepts the active membership, and an admission to adopt; reads only.
+
+        It accepts the journal's next membership or the one this plan's own cycle recorded
+        making active: a stopped change owns the child it derived (a Sector exclusion, a gateway
+        quarantine) until its Panel publishes.
+
+        A change stopped part-way by 0.1.3 or earlier kept no record. Its active membership is
+        accepted only where the gateway's own admission chain derives it from the journal's next
+        membership at the change's session; `_step` records that admission as the cycle's
+        working membership, `adopted:<admission_hash>`, once it has verified the transition.
+        Nothing else is inferred. Retirement: remove the adoption in 0.2, once no supported
+        workspace predates the record.
+        """
+        following = transition.next_manifest_revision
+        if active == following:
+            return True, None
+        recorded = self._registry().working_manifest(self._cycle_id(plan))
+        if recorded is not None or active is None or following is None:
+            return active == recorded, None
+        market = MarketDataRepository(self.session.workspace)
+        admission = PanelStateRepository(market.database, market_data=market).deriving_admission(
+            candidate_revision=following,
+            result_revision=active,
+            as_of_session=plan.request.target_market_session,
+        )
+        return admission is not None, admission
+
     def _cancelled(self, plan: WorkspaceDataUpdatePlan) -> StageExecutionResult:
         """The safe checkpoint honoured the Task's cancel; say so on the cycle too.
 
@@ -1766,12 +1855,57 @@ class WorkspaceDataUpdateApplication:
             self._registry().cancel(cycle.cycle_id, observed_at=self.clock())
         return StageExecutionResult(StageDisposition.CANCELLED)
 
-    def _cycle(self, plan: WorkspaceDataUpdatePlan):  # type: ignore[no-untyped-def]
+    def _audit_parent(
+        self, state: WorkspaceInputStatus
+    ) -> tuple[TaskRecord, WorkspaceDataUpdatePlan] | None:
+        """The stopped membership change whose cycle stopped for an audit it may not run."""
+        tasks = reversed(self.session.task_control_registry.tasks())
+        return next(
+            (
+                (task, plan)
+                for task, plan in self._stopped_changes(state, tasks)
+                if task.failure_code == "data.full_history_audit_approval_required"
+            ),
+            None,
+        )
+
+    def _stopped_changes(
+        self, state: WorkspaceInputStatus, tasks: Iterable[TaskRecord]
+    ) -> Iterator[tuple[TaskRecord, WorkspaceDataUpdatePlan]]:
+        """Each stopped membership change among these Tasks that still owes its Panel."""
+        for task in tasks:
+            if task.task_kind == self.task_kind and task.lifecycle is TaskLifecycle.BLOCKED:
+                plan = self._plan_of(task, require_current=False)
+                if self._partial_transition(task, plan, state):
+                    yield task, plan
+
+    def _supplemented(
+        self, audit: WorkspaceDataUpdatePlan
+    ) -> tuple[TaskRecord, WorkspaceDataUpdatePlan] | None:
+        """The membership change an audit plan's confirmation was admitted onto, if any."""
+        registry = self._registry()
+        for task in reversed(self.session.task_control_registry.tasks()):
+            if task.task_kind != self.task_kind or task.lifecycle in {
+                TaskLifecycle.SUCCEEDED,
+                TaskLifecycle.CANCELLED,
+            }:
+                continue
+            plan = self._plan_of(task, require_current=False)
+            if (
+                plan.change is not None
+                and plan.change.action == "UNIVERSE"
+                and audit.content_hash in registry.admitted_audit_plans(self._cycle_id(plan))
+            ):
+                return task, plan
+        return None
+
+    def _cycle_id(self, plan: WorkspaceDataUpdatePlan) -> str:
         execution = self.changes.execution(plan) if plan.change is not None else None
         request = plan.request if execution is None else execution.request
-        return self._registry().cycle(
-            canonical_hash(["workspace-maintenance", request.request_hash])
-        )
+        return str(canonical_hash(["workspace-maintenance", request.request_hash]))
+
+    def _cycle(self, plan: WorkspaceDataUpdatePlan):  # type: ignore[no-untyped-def]
+        return self._registry().cycle(self._cycle_id(plan))
 
     def retry_after(self, plan: WorkspaceDataUpdatePlan) -> datetime | None:
         """When a deferred update of this plan may run again, as its cycle records it.
@@ -1977,12 +2111,22 @@ class WorkspaceDataUpdateApplication:
                 transition = market.manifest_transition(str(plan.change.transition_id))
                 readiness = market.readiness.load(plan.binding.market_profile_id)
                 assert readiness is not None and readiness.active_manifest_id is not None
+                accepted, adoption = self._accepts(
+                    plan, transition, readiness.active_manifest_revision
+                )
                 if (
                     transition.activated_at is None
                     or transition.prior_manifest_revision != plan.before.manifest_revision
-                    or transition.next_manifest_revision != readiness.active_manifest_revision
+                    or not accepted
                 ):
                     raise ValueError("workspace_data_update.transition_not_verified")
+                if adoption is not None:
+                    self._registry().record_working_manifest(
+                        self._cycle_id(plan),
+                        manifest_revision=readiness.active_manifest_revision,
+                        authority=f"adopted:{adoption}",
+                        observed_at=self.clock(),
+                    )
                 manifest = market.load_universe_manifest(readiness.active_manifest_id)
             execution = (
                 self.changes.capture_execution(plan, manifest.revision_sha256)
@@ -2119,6 +2263,7 @@ class WorkspaceDataUpdateApplication:
                         self.provider
                         or YFinanceMarketDataProvider(self.session.workspace / "yfinance-cache"),
                     ),
+                    removed_member_tails=self.changes.removed_member_tails(plan),
                 )
                 self._registry().publish_data_update_receipt(receipt)
                 self._back_up_held_state()

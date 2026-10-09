@@ -6,6 +6,9 @@
  * A choice is confirmed against that version and re-read at the action boundary: a Task that
  * moved meanwhile is shown again, and nothing is sent. Guanyin explains here; the owners act. */
 const LiveTasks = (() => {
+  // A Task kind whose result has its own page; any other kind's result is this inspector, which
+  // then offers no Open result that would only reopen itself.
+  const RESULT_PAGES=new Set(['workspace_data_update','workspace_preparation','research_input_capture','research_feature_materialization','research_experiment','portfolio_public_development_replay','alternative_evidence.document_intelligence','chief_risk_officer.portfolio_review']);
   // `status`: the selected Task's STATUS (its timing, who submitted it, its open incident); `guardian`: every
   // unfinished Task as Guanyin sees it (U22); `incidents`: the incident records, open first (U38); `remedy`:
   // the last remedy attempted from this page, said in place
@@ -122,7 +125,7 @@ const LiveTasks = (() => {
     // R2: a Task the installed code cannot resume shows Resume held, its reason on demand (CT7)
     const cannotResume=!recover.available && r.resume_refusal ? typedBtn(t('Resume this Task'),'task-recovery',r.task_id,'button','The code installed now cannot resume this Task; cancel it and plan the same work again.',held) : '';
     const refusedReplan=S.replanRefused?.id===r.task_id ? refusal({code:S.replanRefused.code,reason:S.replanRefused.detail ? t(S.replanRefused.detail) : explainCode(S.replanRefused.code)},'warning',{word:t('Not done')}) : '';
-    return html`${refusedReplan}<div class="tp-actions"><div class="flow">${r.lifecycle==='SUCCEEDED' ? btn(t('Open result'),'task-result',r.task_id,'button primary') : ''}${replanEntry}${sceneEntry}${recover.available ? typedBtn(t('Resume this Task'),'task-recovery',r.task_id,resumable ? 'button primary' : 'button',off(recover),held) : cannotResume}${cancel.available ? typedBtn(t('Request cancel'),'task-cancel',r.task_id,'button',off(cancel),held) : ''}</div>${why}</div>`;
+    return html`${refusedReplan}<div class="tp-actions"><div class="flow">${r.lifecycle==='SUCCEEDED' && RESULT_PAGES.has(r.task_kind) ? btn(t('Open result'),'task-result',r.task_id,'button primary') : ''}${replanEntry}${sceneEntry}${recover.available ? typedBtn(t('Resume this Task'),'task-recovery',r.task_id,resumable ? 'button primary' : 'button',off(recover),held) : cannotResume}${cancel.available ? typedBtn(t('Request cancel'),'task-cancel',r.task_id,'button',off(cancel),held) : ''}</div>${why}</div>`;
   }
   /* U38: the Task's open incident as Guanyin's supervisor last found it -- its code in words, the owner's
    * detail, when it was found -- with the remedies the Host offers for it, each confirmed against this Task's
@@ -487,9 +490,10 @@ const LiveTasks = (() => {
     const closeResult=()=>{close();intent=Data.navigationIntent();}; // this open owns its synchronous inspector dismissal
     const readers={'factor.screening-development':'factor','alpha.model-development':'alpha','risk.covariance-development':'risk'};
     const kind=S.record?.task_id===id ? S.record.task_kind : Data.tasks().find(v=>v.task_id===id)?.task_kind;
-    if(kind==='workspace_data_update') {
+    if(kind==='workspace_data_update' || kind==='workspace_preparation') {
+      // a preparation's result is the maintained data the Data page shows
       if(!current()) return false;
-      closeResult(); navigate('data', {update:id}); return true;
+      closeResult(); navigate('data', kind==='workspace_data_update' ? {update:id} : {}); return true;
     }
     if(kind==='research_input_capture') {
       const body=await Data.readShared('/api/research-inputs/readback?'+new URLSearchParams({task_id:id}));

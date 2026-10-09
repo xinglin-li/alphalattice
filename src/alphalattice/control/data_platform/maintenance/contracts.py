@@ -244,6 +244,22 @@ class WorkspaceMaintenanceRequest:
         return type(self).create(**{**values, **changes})
 
 
+def full_history_audit_requirement(
+    request: WorkspaceMaintenanceRequest, listing_ids: tuple[str, ...]
+) -> str:
+    """The receipt a cycle records when it stops for full-history audits it may not run."""
+    return str(
+        canonical_hash(
+            {
+                "kind": "FullHistoryAuditRequirement",
+                "market_profile_id": request.market_profile_id,
+                "target_market_session": request.target_market_session,
+                "listing_ids": tuple(sorted(listing_ids)),
+            }
+        )
+    )
+
+
 @dataclass(frozen=True)
 class ListingMarketDataChange:
     """Describe the exact new and corrected sessions observed for one listing.
@@ -984,6 +1000,42 @@ class WorkspaceDataUpdatePlan(_SealedDataUpdate):
         return self
 
 
+class RemovedMemberTail(_SealedDataUpdate):
+    """A removed member's verified retained prefix and explicitly unresolved formation tail."""
+
+    listing_id: str = Field(min_length=1)
+    symbol: str = Field(min_length=1)
+    maintenance_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    formation_manifest_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    last_verified_session: date
+    target_session: date
+    missing_sessions: tuple[date, ...]
+    missing_session_count: int = Field(ge=0)
+    session_authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    retained_audit_receipt_hashes: tuple[str, ...] = Field(min_length=1)
+    rejection_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sanitizer_code: Literal["INVALID_OHLC", "INVALID_VOLUME", "DUPLICATE_SESSION", "STALE_PAYLOAD"]
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def validate_tail(self) -> Self:
+        """Keep the exact ordered missing sessions and their count beside the retained prefix."""
+        if (
+            self.last_verified_session > self.target_session
+            or self.missing_sessions != tuple(sorted(set(self.missing_sessions)))
+            or self.missing_session_count != len(self.missing_sessions)
+            or any(
+                not self.last_verified_session < session <= self.target_session
+                for session in self.missing_sessions
+            )
+            or any(
+                not re.fullmatch(r"[0-9a-f]{64}", value)
+                for value in self.retained_audit_receipt_hashes
+            )
+        ):
+            raise ValueError("removed member tail does not match its retained source scope")
+        return self
+
+
 class WorkspaceDataUpdateReceipt(_SealedDataUpdate):
     """Seal completed Data update lineage with before/after inputs and committed effects.
 
@@ -998,6 +1050,7 @@ class WorkspaceDataUpdateReceipt(_SealedDataUpdate):
         child_task_refs: Completed child task references.
         transition_receipt_hash: Optional universe-transition receipt.
         valuation_receipt_hashes: Committed held-listing valuation receipts.
+        removed_member_tails: Recorded missing formation sessions of removed members.
         effect_receipts: Committed effect references.
     """
 
@@ -1012,4 +1065,7 @@ class WorkspaceDataUpdateReceipt(_SealedDataUpdate):
     child_task_refs: tuple[str, ...]
     transition_receipt_hash: str | None = Field(default=None, exclude_if=lambda v: v is None)
     valuation_receipt_hashes: tuple[str, ...] = Field(default=(), exclude_if=lambda v: not v)
+    removed_member_tails: tuple[RemovedMemberTail, ...] = Field(
+        default=(), exclude_if=lambda v: not v
+    )
     effect_receipts: tuple[str, ...]

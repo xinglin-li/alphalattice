@@ -694,6 +694,7 @@ class CurrentUniverseMaintenance:
                 observed_at=observed_at,
                 exception=exc,
                 row_count=len(hydration.daily_rows),
+                rejected_history=hydration,
                 connection=connection,
             )
             return "FAILED"
@@ -708,6 +709,18 @@ class CurrentUniverseMaintenance:
                 item,
                 code="data.price_action_sentinel_quarantine",
                 observed_at=observed_at,
+                connection=connection,
+            )
+            return "FAILED"
+        if raw_through < self.as_of_session:
+            # A source that stops short of the session admits nothing it has not verified: a
+            # departing member keeps its verified prefix and discloses the rest as its missing
+            # tail; a listing that stays keeps the stop, named with its last bar.
+            self._record_failure(
+                item,
+                code="data.maintenance_stale_payload",
+                observed_at=observed_at,
+                last_bar=raw_through,
                 connection=connection,
             )
             return "FAILED"
@@ -768,14 +781,6 @@ class CurrentUniverseMaintenance:
             observed_at=observed_at,
             _connection=connection,
         )
-        if raw_through < self.as_of_session:
-            self._record_failure(
-                item,
-                code="data.maintenance_stale_payload",
-                observed_at=observed_at,
-                connection=connection,
-            )
-            return "FAILED"
         with span("verify", "listing_action_audit"):
             return self._audit_and_finish(
                 item,
@@ -983,6 +988,7 @@ class CurrentUniverseMaintenance:
                     observed_at=observed_at,
                     exception=exc,
                     row_count=len(hydration.daily_rows),
+                    rejected_history=hydration,
                 )
                 return "FAILED"
         adjusted = self.store.provider_adjusted_closes(
@@ -1181,8 +1187,27 @@ class CurrentUniverseMaintenance:
         observed_at: datetime,
         exception: Exception | None = None,
         row_count: int | None = None,
+        rejected_history: HydrationEvidence | None = None,
+        last_bar: date | None = None,
         connection: DuckDBPyConnection | None = None,
     ) -> None:
+        # Rejection is source evidence, never admitted bars. Keep the exact
+        # normalized rows and provider repair facts with this failed attempt.
+        # A later removed-member disposition can disclose its unavailable tail
+        # without making the provider's contradictory rows look qualified.
+        rejected = (
+            {
+                "provider": self.provider.name,
+                "requested_through": self.as_of_session.isoformat(),
+                "rows": [dict(row) for row in rejected_history.daily_rows],
+                "provider_policy_hash": rejected_history.provider_policy_hash,
+                "repaired_sessions": [
+                    value.isoformat() for value in rejected_history.repaired_sessions
+                ],
+            }
+            if rejected_history is not None
+            else None
+        )
         self._mutate(
             self.store.record_failures,
             (
@@ -1205,6 +1230,16 @@ class CurrentUniverseMaintenance:
             failure_code=code,
             change_document={
                 "failure_cause": {
+                    "exception_type": "StalePayload",
+                    "detail": f"The source's last bar is {last_bar}, before the update's "
+                    f"session {self.as_of_session}.",
+                    "step": "Provider price history",
+                    "unit": self._listing(item.listing_id).symbol,
+                    "row_count": "UNKNOWN",
+                    "sanitizer_code": "STALE_PAYLOAD",
+                }
+                if last_bar is not None
+                else {
                     "exception_type": type(exception).__name__ if exception else "UNKNOWN",
                     "detail": "The provider price history could not be read."
                     if isinstance(exception, ProviderFetchError)
@@ -1217,7 +1252,8 @@ class CurrentUniverseMaintenance:
                     "sanitizer_code": exception.code
                     if isinstance(exception, CorruptedPayload)
                     else "UNKNOWN",
-                }
+                },
+                **({"rejected_history": rejected} if rejected is not None else {}),
             },
             observed_at=observed_at,
             _connection=connection,

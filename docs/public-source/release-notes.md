@@ -61,19 +61,24 @@ keeps its copied cards; set `model_reasoning_effort` in its `.codex/agents/` fil
 
 - Sessions bind automatically on their first workspace command; research opens a Goal automatically. The installing agent continues in the same session.
 - Only decisions outside the agent's authority wait for you; stopped steps keep their way on. Local Web follows the session's Goal and opens its progress, results and decisions.
+- During the first use, the agent decides its own preparation's data issues under the first-use delegation, and the Data page shows what it is deciding.
 - Answers carry the next step's fields. The agent can wait in one call instead of sending repeated status commands.
+- Installing a research strategy no longer needs a Host restart: the running Host serves the new package at once.
 - One call prepares an installed strategy's book and its review bundles; Evidence and the CRO still supply their judgments.
+- Open result appears only where a Task's result has its own page; a preparation's opens the Data page.
+
+**Data**
+
+- A daily update that crosses an index membership change and stops part-way now resumes through its own update cycle, including one an earlier release left stopped. A departing member whose source ends before the update's session is recorded as a disclosed missing tail; a member that stays keeps the stop, with the listing, its last bar and the session named.
+- A preparation whose data does not yet reach its target session stops at the data stage with the counts and the latest common bar, and resumes the same Task once the source catches up.
 
 **Speed and Risk**
 
-- Recorded Windows runs with a four-core execution budget reduced an Alpha lifecycle replay from 718 to 235 seconds. Preparing training history took 8.3 seconds instead of 98 for one component, and 3.5 instead of 82 for another.
-- A measured daily update after model renewal fell from about 223 to 198 seconds; its seal fell from about 82 to 59 seconds. These are measured runs, not runtime guarantees.
+- The first use trains the light lifecycle by default, one seed of each model vintage; the full lifecycle stays available by name.
+- Recorded Windows runs with a four-core execution budget reduced an Alpha lifecycle replay from 718 to about 170 seconds. Preparing training history took 8.3 seconds instead of 98 for one component, and 3.5 instead of 82 for another.
+- A warm daily update, measured alone, took about 142 seconds (plan 16 s, Task 133 s), with every published value equal to the earlier build's. These are measured runs, not runtime guarantees.
 - Risk diagnostics are now computed single-threaded and reproducible across machines; re-run Risk studies made before 0.1.3.
 
 **Contributions and security**
 
 - Contribution and governance policies are available; contributions open once the CLA bot is active. Report vulnerabilities privately through GitHub's Security tab.
-
-**Known issue**
-
-- An existing workspace whose daily update crosses an index membership change (S&P 500 additions and removals) can stop part-way. That happens, for example, when a new company has no sector classification yet, a departing company's last prices are invalid, or a member needs a full-history audit. This release can neither resume nor re-plan that update. The workspace's research and history stay readable, and its daily updates resume with a later release. A new workspace is not affected.

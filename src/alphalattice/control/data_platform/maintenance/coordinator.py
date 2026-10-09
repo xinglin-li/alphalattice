@@ -32,6 +32,7 @@ from alphalattice.control.data_platform.maintenance.contracts import (
     WorkspaceMaintenanceCycle,
     WorkspaceMaintenanceOutcome,
     WorkspaceMaintenanceRequest,
+    full_history_audit_requirement,
     remediation_failure_reason,
 )
 from alphalattice.control.data_platform.maintenance.invalidation import FeatureInvalidationTopology
@@ -273,6 +274,20 @@ class WorkspaceMaintenanceRecords(Protocol):
         """Records the maintenance run a cycle admitted, in the cycle's own event log."""
         ...
 
+    def record_working_manifest(
+        self, cycle_id: str, *, manifest_revision: str, authority: str, observed_at: datetime
+    ) -> None:
+        """Records the membership a cycle made active, in the cycle's own event log."""
+        ...
+
+    def working_manifest(self, cycle_id: str) -> str | None:
+        """Reads the membership a cycle last made active, if it moved any."""
+        ...
+
+    def audit_supplement(self, cycle_id: str) -> tuple[str, ...]:
+        """Reads the full-history audits admitted onto a stopped cycle."""
+        ...
+
     def record_action_audit(self, receipt: ActionAuditChainReceipt) -> bool:
         """Appends an action audit to its listing's chain."""
         ...
@@ -348,6 +363,7 @@ class WorkspaceMaintenanceCoordinator:
     _maintenance_runner: tuple[tuple[object, ...], CurrentUniverseMaintenance] | None = field(
         default=None, init=False, repr=False
     )
+    _cycle_id: str | None = field(default=None, init=False, repr=False)
     clock: Callable[[], datetime] | None = None
 
     def __post_init__(self) -> None:
@@ -407,6 +423,7 @@ class WorkspaceMaintenanceCoordinator:
         maintenance_work_budget: int | None,
     ) -> WorkspaceMaintenanceOutcome:
         cycle = self.registry.admit(request, observed_at=now)
+        self._cycle_id = cycle.cycle_id
         # A cycle that stopped inside quality governance -- waiting for a
         # decision, pending review, refused while binding the evidence of the
         # child the decision derived, or cancelled there -- resumes governance
@@ -644,9 +661,11 @@ class WorkspaceMaintenanceCoordinator:
     ) -> WorkspaceMaintenanceOutcome:
         # After U0 the request must bind exact active membership. Initialization
         # may finish qualifying its own candidate subset; that bounded exception
-        # cannot authorize a broader pool or an unrelated stale request.
+        # cannot authorize a broader pool or an unrelated stale request. A membership
+        # this cycle made active itself is its own working state, not a stale one.
         if (
             request.membership_revision != self.manifest.revision_sha256
+            and self.registry.working_manifest(cycle.cycle_id) != self.manifest.revision_sha256
             and not self._request_admits_working_manifest(request)
         ):
             return self._finish(
@@ -679,7 +698,7 @@ class WorkspaceMaintenanceCoordinator:
         maintenance_operation_id = current_universe_maintenance_id(
             self.manifest,
             as_of_session=request.target_market_session,
-            authorized_full_history_listing_ids=tuple(sorted(request.full_history_listing_ids)),
+            authorized_full_history_listing_ids=self._granted_full_audits(request),
         )
         requested_full_listing_ids = self._authorized_full_audit_listing_ids(request)
         authorized_full_listing_ids = self._pending_authorized_full_audit_listing_ids(
@@ -807,16 +826,7 @@ class WorkspaceMaintenanceCoordinator:
                     observed_at=now,
                     failure_code="data.full_history_audit_approval_required",
                     change_set=maintenance_change_set,
-                    effect_receipts=(
-                        canonical_hash(
-                            {
-                                "kind": "FullHistoryAuditRequirement",
-                                "market_profile_id": request.market_profile_id,
-                                "target_market_session": request.target_market_session,
-                                "listing_ids": approval_required,
-                            }
-                        ),
-                    ),
+                    effect_receipts=(full_history_audit_requirement(request, approval_required),),
                 )
             governance = (
                 self._govern_quality(
@@ -1393,7 +1403,7 @@ class WorkspaceMaintenanceCoordinator:
         maintenance_id = current_universe_maintenance_id(
             self.manifest,
             as_of_session=request.target_market_session,
-            authorized_full_history_listing_ids=tuple(sorted(request.full_history_listing_ids)),
+            authorized_full_history_listing_ids=self._granted_full_audits(request),
         )
         failed = {
             item.listing_id
@@ -1900,10 +1910,15 @@ class WorkspaceMaintenanceCoordinator:
             failure_code=cycle.failure_code,
         )
 
+    def _granted_full_audits(self, request: WorkspaceMaintenanceRequest) -> tuple[str, ...]:
+        """The request's full-history audits and those admitted onto this cycle after a stop."""
+        supplement = self.registry.audit_supplement(self._cycle_id) if self._cycle_id else ()
+        return tuple(sorted({*request.full_history_listing_ids, *supplement}))
+
     def _authorized_full_audit_listing_ids(
         self, request: WorkspaceMaintenanceRequest
     ) -> tuple[str, ...]:
-        explicitly_requested = set(request.full_history_listing_ids)
+        explicitly_requested = set(self._granted_full_audits(request))
         known_listing_ids = {item.listing_id for item in self.manifest.listings}
         if explicitly_requested - known_listing_ids:
             raise ValueError("full-history audit contains a listing outside the candidate manifest")
@@ -3272,6 +3287,15 @@ class WorkspaceMaintenanceCoordinator:
             reference_hash=reference_hash or manifest.revision_sha256,
         )
         if manifest.revision_sha256 != self.manifest.revision_sha256:
+            if self._cycle_id is not None:
+                # The cycle owns the membership it made active until its Panel publishes,
+                # recorded first: recovery accepts a record that runs ahead of readiness.
+                self.registry.record_working_manifest(
+                    self._cycle_id,
+                    manifest_revision=manifest.revision_sha256,
+                    authority=authority,
+                    observed_at=observed_at,
+                )
             record = self.market_data.readiness.load(manifest.profile.market_profile_id)
             if record is not None:
                 self.mutation_gate.run(

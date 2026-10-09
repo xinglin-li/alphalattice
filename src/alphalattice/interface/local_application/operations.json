@@ -2558,7 +2558,6 @@
   "window_limit": "from 1 to 4096"
  },
  "person_only": [
-  "DATA_CHANGE_CONFIRM",
   "DATA_ISSUE_DELEGATE",
   "DATA_ISSUE_REVOKE",
   "FEATURE_ACTIVATE",

@@ -1294,7 +1294,6 @@ PERSON_ONLY: Final[frozenset[str]] = frozenset(
         "STORAGE_CONFIRM",
         "STORAGE_PIN",
         "RESEARCH_INPUT_CONFIRM",
-        "DATA_CHANGE_CONFIRM",
         "DATA_ISSUE_DELEGATE",
         "DATA_ISSUE_REVOKE",
         "MODEL_ACTIVATE",
@@ -1310,11 +1309,15 @@ PERSON_ONLY: Final[frozenset[str]] = frozenset(
 
 Each owner refuses every other caller, a client's and an Agent's included: the network
 authority, the storage confirmation and pin, the research input's confirmation, the data
-change's confirmation, the data issues' delegation and its revocation, the daily research
+issues' delegation and its revocation, the daily research
 update's automation (V407: its owner refused every client while the CLI offered it), and a
 research strategy's activation and deactivation (LS1, OW12). The CLI
 lists them so that a person knows they exist, and marks each so that nobody else sends one
 expecting it to run. A test holds this set to the owners' refusals.
+
+Data change confirmation reads its plan kind: membership requires the person's approval,
+while an exactly scoped full-history audit also admits the installed agent. It is not
+unconditionally person-only (person-stops row 49).
 """
 
 FIRST_USE_STEPS: Final[frozenset[str]] = frozenset(

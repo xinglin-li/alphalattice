@@ -2355,15 +2355,8 @@ def test_granted_retry_survives_the_batch_boundary_and_a_restart(tmp_path: Path)
 def test_a_consumed_grant_is_not_spent_again_and_a_new_wait_grants_once_more(
     tmp_path: Path,
 ) -> None:
-    """recovery: after the granted attempt began, no restart or continuation re-grants it.
-
-    The granted attempt fails again (still stale): the row is failed with
-    three attempts and the wait's grant consumed. The same wait, offered
-    again by a later cycle or a restart, reopens nothing; a second confirmed
-    wait (another receipt and instant) grants exactly one more attempt. An
-    attempt interrupted after it began is exhausted by the existing rule,
-    and a non-retryable failure is never reopened, granted or not.
-    """
+    """recovery: a begun granted attempt is never re-granted, a new wait grants one more, and a
+    member still stale keeps its stop, its cause naming the listing, last bar and session."""
 
     market_data, provider, runner, maintenance_id = _two_exhausted_listings(tmp_path)
     provider.stale = {"listing-msft"}
@@ -2378,6 +2371,10 @@ def test_a_consumed_grant_is_not_spent_again_and_a_new_wait_grants_once_more(
         "data.maintenance_stale_payload",
         "consumed",
     )
+    (row,) = market_data.current_universe_maintenance_listings(maintenance_id)[1:]
+    cause = row.change_document["failure_cause"]
+    assert (cause["unit"], cause["sanitizer_code"]) == ("MSFT", "STALE_PAYLOAD"), cause
+    assert "2026-07-30" in cause["detail"] and "2026-07-31" in cause["detail"], cause
     for minute in (9, 10):  # the same wait, a later cycle and a fresh owner
         again = runner(**grants).run(observed_at=NOW + timedelta(minutes=minute))
         assert again.status is CurrentUniverseMaintenanceStatus.COMPLETED

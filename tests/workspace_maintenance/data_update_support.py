@@ -98,3 +98,28 @@ def _active_panel_manifest(workspace: Path) -> dict:
     return ArtifactResolver(workspace / "artifacts").load_feature_panel_manifest(
         str(active["manifest_uri"])
     )
+
+
+def one_sector_seed(tmp_path_factory, name: str, members: tuple[str, ...]) -> Path:  # type: ignore[no-untyped-def]
+    """A qualified workspace of ``members`` in one Sector: real history, catalog and Panel."""
+    from alphalattice.control.product_host.composition.research_workspace import (
+        publish_research_workspace_manifest,
+    )
+    from tests.portfolio_strategy_lab.local_web_support import _manifest
+    from tests.researcher_methodology_surface.real_workspace import build_real_risk_workspace
+    from tests.researcher_methodology_surface.session_workspace import (
+        copy_workspace,
+        session_workspace,
+    )
+
+    def build(root):  # type: ignore[no-untyped-def]
+        built = build_real_risk_workspace(
+            tmp_path_factory.mktemp(f"{name}-base"), symbols=members, sector_size=len(members)
+        )
+        publish_research_workspace_manifest(built.workspace, _manifest(f"data-update-{name}"))
+        _seed_foundation(built.workspace, built.panel_snapshot_hash)
+        set_parallel_test_budget(built.workspace)
+        copy_workspace(built.workspace, root)
+        return {}
+
+    return session_workspace(tmp_path_factory, f"maintenance_{name}", build)[0]

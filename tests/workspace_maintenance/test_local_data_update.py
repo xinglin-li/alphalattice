@@ -30,7 +30,7 @@ from tests.researcher_methodology_surface.real_workspace import (
     _bootstrap,
 )
 from tests.researcher_methodology_surface.session_workspace import copy_workspace, session_workspace
-from tests.workspace_maintenance.data_update_support import _provider
+from tests.workspace_maintenance.data_update_support import _provider, one_sector_seed
 from tests.workspace_maintenance.local_data_provider import (
     NOW,
     recording_provider,
@@ -42,29 +42,8 @@ ROOT = Path(__file__).resolve().parents[2]
 @pytest.fixture(scope="session")
 def entrant_seed(tmp_path_factory):
     """The real five-member Sector floor, full history and full shipped catalog."""
-    from alphalattice.control.product_host.composition.research_workspace import (
-        publish_research_workspace_manifest,
-    )
-    from tests.portfolio_strategy_lab.local_web_support import _manifest
-    from tests.researcher_methodology_surface.real_workspace import build_real_risk_workspace
-    from tests.workspace_maintenance.data_update_support import (
-        _seed_foundation,
-        set_parallel_test_budget,
-    )
-
     members = SYMBOLS[:5]
-
-    def build(root):
-        built = build_real_risk_workspace(
-            tmp_path_factory.mktemp("entrant-base"), symbols=members, sector_size=len(members)
-        )
-        publish_research_workspace_manifest(built.workspace, _manifest("data-update-entrant"))
-        _seed_foundation(built.workspace, built.panel_snapshot_hash)
-        set_parallel_test_budget(built.workspace)
-        copy_workspace(built.workspace, root)
-        return {}
-
-    return session_workspace(tmp_path_factory, "maintenance_entrant", build)[0], members
+    return one_sector_seed(tmp_path_factory, "entrant", members), members
 
 
 @pytest.fixture(scope="session")
@@ -175,7 +154,13 @@ def test_data_change_scope_never_turns_into_an_arbitrary_audit_grant():
 
 
 def test_data_change_confirmation_is_human_only_before_any_io():
+    """requirement: a stock-list change's confirmation by any caller but the person is refused
+    once its plan is read, before any session, Task or write."""
+    from types import SimpleNamespace
+
     owner = object.__new__(WorkspaceDataUpdateApplication)
+    universe = SimpleNamespace(change=SimpleNamespace(action="UNIVERSE"))
+    owner.changes = SimpleNamespace(load_plan=lambda _plan_hash: universe)  # type: ignore[assignment]
     for caller in ("INSTALLED_AGENT", "SERVICE_AUTOMATION"):
         with pytest.raises(ValueError, match="human_confirmation_required"):
             owner.confirm("a" * 64, caller=caller)
@@ -273,14 +258,19 @@ def test_a_partial_membership_update_reopens_its_exact_approved_task(
     provider.sectors["NEW"] = "Sector-0"
     fetch = provider.fetch_daily
     corrupt = True
+    rejected_row_count = None
 
     def source_response(symbols, **kwargs):
+        nonlocal rejected_row_count
         rows = fetch(symbols, **kwargs)
         active = market.readiness.load("us-current-index-research")
         if corrupt and active.active_manifest_revision != prior.revision_sha256:
             for symbol in symbols:
+                # An invalid action stays an integrity refusal even for a removed member;
+                # the missing-tail disposition of its price rows grants no other binding.
                 if symbol == SYMBOLS[0] and rows[symbol]:
-                    rows[symbol][0]["volume"] = -1
+                    rows[symbol][0]["split_ratio"] = -1
+                    rejected_row_count = len(rows[symbol])
         return rows
 
     provider.fetch_daily = source_response
@@ -320,6 +310,13 @@ def test_a_partial_membership_update_reopens_its_exact_approved_task(
         assert stopped["latest_failure_code"] == "data.sanitizer.corrupted_payload"
         assert stopped["failure_cause"]["unit"] == SYMBOLS[0]
         assert stopped["failure_cause"]["exception_type"] == "CorruptedPayload"
+        assert rejected_row_count is not None
+        assert stopped["failure_cause"]["row_count"] == rejected_row_count
+        assert stopped["failure_cause"]["sanitizer_code"] == "INVALID_ACTION"
+        assert (
+            live.operations.data_update.readback(task_id)["failure_cause"]
+            == stopped["failure_cause"]
+        )
         registry = live.session.task_control_registry
         original = registry.task(task_id)
         verified = registry.work_items(task_id)[0]

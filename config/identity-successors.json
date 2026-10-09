@@ -11838,6 +11838,27 @@
    "successor": "dc9fdcb9aa6168c9c5e2da95dd667b3a03a3fb82acc6b158e59ed7d96653fdb9",
    "change": "An installed strategy is served without a Host restart (2026-10-08)",
    "reason": "The Host always composes its portfolio half and an installation swaps the strategy catalog in, so the running Host serves the new package at once; no computation changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "61ded754c2143feaf4e19fa429d9d8149162652cb44f5dd9f7feccc6e1c6a2d1",
+   "successor": "2ef4208d63fc3051684dafed2f38d943a166c1463cd6a026a1677f0fe1b94e69",
+   "change": "A stopped stock-list change resumes through its own cycle (2026-10-08)",
+   "reason": "The update cycle records its working membership and recovery reads that record, so a stock-list change stopped part-way resumes; the shared repository module in these closures changed, and no value moves."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "6307cfe2266d259e9cd8fde94be5cc7b044e4dab8d8e5b3c3f556b515ea3b871",
+   "successor": "a29ed3eb5262fff388b906f897b12bc6547605a440ad2304463c100f016d1470",
+   "change": "A stopped stock-list change resumes through its own cycle (2026-10-08)",
+   "reason": "The update cycle records its working membership and recovery reads that record, so a stock-list change stopped part-way resumes; the shared repository module in these closures changed, and no value moves."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "dc9fdcb9aa6168c9c5e2da95dd667b3a03a3fb82acc6b158e59ed7d96653fdb9",
+   "successor": "af81e625975765e2822e7b00417d484d32ec329d6480a89a99712a15f6c29a5d",
+   "change": "A stopped stock-list change resumes through its own cycle (2026-10-08)",
+   "reason": "The update cycle records its working membership and recovery reads that record, so a stock-list change stopped part-way resumes; the shared repository module in these closures changed, and no value moves."
   }
  ]
 }

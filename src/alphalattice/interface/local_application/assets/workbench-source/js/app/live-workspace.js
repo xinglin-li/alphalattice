@@ -964,6 +964,11 @@ const LiveWorkspace = (() => {
     return html`<section class="prep-scene update-open" data-stack-box="box" data-scene="update" data-lifecycle="${life}">${earlier}${disconnected(state)}${updateStop(b,v,state)}${W.workArea(UPDATE,b,v,state)}${liveness}</section>`;
   }
   const SCENES={welcome:PREPARATION,data:UPDATE};
+  /* ST1/WD7: the selected update owner's retained tail account, also present when coverage
+   * stops publication. Counts and dates are read as recorded; recent listing activity is no source. */
+  function removedMemberTails(b) {
+    return html`${(b.removed_member_tails || []).map(row=>noteLine(t('{symbol} left the universe; its last {n} sessions could not be verified and are treated as missing data under the coverage rules.',{symbol:row.symbol,n:row.missing_session_count}),'','neutral'))}`;
+  }
   /* The Data overview (N6; law 129: the top row's one verb, not while an update runs or waits --
    * its way on is under its row): the figures, then the updates -- the last one with its counts. */
   function data(state) {
@@ -984,7 +989,7 @@ const LiveWorkspace = (() => {
     const blocker=between ? banner(t('The workspace is between states'),t('The data owner asks for a new update plan before anything else; previewing one names the pending transition.'),'warning',primary('Preview update','preview','update')) : b.current_input_failure ? notRead(t('Current inputs not readable'),b.current_input_failure,t('The working store\'s current inputs could not be read; the update owner names the cause. Nothing is inferred from it.')) : '';
     const membership=membershipFacts(b);
     const updates=!b.task_id ? emptyState(t('No update recorded yet'),between ? '' : primary('Preview update','preview','update')) : v ? updateRows(b,v,state) : notRead(t('Task not read'),state.viewError,t('The update owner names a Task, but its recovery view was not read. Tasks and the activity feed are unaffected; refresh to ask again.'));
-    return html`${head}${notices}${dataFigures(b,membership)}${blocker}${updates}${issuesSection()}${detail({readback:b,recovery:v},'Exact identity, scope and receipt')}`;
+    return html`${head}${notices}${dataFigures(b,membership)}${blocker}${removedMemberTails(b)}${updates}${issuesSection()}${detail({readback:b,recovery:v},'Exact identity, scope and receipt')}`;
   }
   /* Data issues are Data maintenance's (N5 of the open-issues plan; the user, 2026-09-24): the owner's cases
    * as the lobby's groups -- a Task waiting for the reader before them, the recorded ones folded -- where it

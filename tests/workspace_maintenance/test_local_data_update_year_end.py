@@ -333,29 +333,22 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
             DAY_ONE.date().isoformat()
         )
         assert snapshot_count() == snapshots_after_day_one
-        # The approval is the product's own: a plan naming the audit, confirmed
-        # by a Human on the page's route, refused to any other caller.
+        # The approval is a plan naming the audit. The audit is a default the agent
+        # takes and discloses (person-stops row 49), so its confirmation admits the Task.
         proposal = _json(live, "/api/data-update/plan", method="POST", payload={})
         assert proposal["status"] == "CONFIRMATION_REQUIRED", proposal
         assert proposal["change"]["action"] == "FULL_HISTORY_AUDIT"
         assert proposal["change"]["full_history_listing_ids"] == [corrected_listing]
         assert proposal["audit_labels"] == [SYMBOLS[0]]
         agent = InstalledAgent(live.operations)
-        refused = json.loads(
+        approved = json.loads(
             agent.invoke(
                 PortfolioResearchAgentRequest(
                     operation="DATA_CHANGE_CONFIRM", update_plan_hash=proposal["plan_hash"]
                 )
             )
         )
-        assert "human_confirmation_required" in str(refused)
-        approved = _json(
-            live,
-            "/api/data-update/confirm",
-            method="POST",
-            payload={"update_plan_hash": proposal["plan_hash"]},
-        )
-        assert approved["lifecycle"] == "QUEUED", approved
+        assert (approved["status"], approved["lifecycle"]) == ("APPROVED", "QUEUED"), approved
         # The confirmation admits the Task; the page's run dispatches that
         # same Task, never a second one.
         dispatched = _json(

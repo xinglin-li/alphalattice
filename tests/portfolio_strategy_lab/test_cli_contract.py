@@ -2296,16 +2296,15 @@ def test_a_door_refusal_filled_with_its_subject_reads_in_chinese(
         ),
         (
             "workspace_data_update.transition_not_verified",
-            "The approved stock-list change could not be verified against the current "
-            "membership, prior Panel and approved candidate document. If it stopped part-way, "
-            "with its new membership active while the Panel is still on the earlier one, this "
-            "version can neither resume nor re-plan it: the research and history already "
-            "recorded stay readable, and this workspace's daily updates resume with a later "
-            "AlphaLattice release. Never edit a stored approval.",
-            "已获批准的股票清单变更无法通过当前成员、此前面板及已批准候选文件的核验。若它在中途停止"
-            "\uff08新成员已生效而面板仍停在此前的成员上\uff09\uff0c当前版本既不能继续也不能重新计划它"
-            "\uff1a已记录的研究和历史仍可读取\uff0c这个工作区的每日更新将在 AlphaLattice 的"
-            "后续版本中恢复。不要修改已存储的批准记录。",
+            "The approved stock-list change could not be verified: the active membership is "
+            "neither the one it approved nor one its own run recorded or the gateway's admission "
+            "derives from it, or its prior Panel or approved candidate document changed. Nothing "
+            "ran. The research and history already recorded stay readable; to keep updating, "
+            "prepare a new workspace from the current source. Never edit a stored approval.",
+            "已获批准的股票清单变更无法核验\uff1a当前生效的成员既不是它批准的成员\uff0c也不是它自身运"
+            "行所记录、或网关准入从中派生的成员\uff1b或者此前的面板或已批准的候选文件已经改变。没"
+            "有执行任何操作。已记录的研究和历史仍可读取\uff1b要继续更新\uff0c请从当前来源准备一个新的"
+            "工作区。不要修改已存储的批准记录。",
         ),
     ),
 )

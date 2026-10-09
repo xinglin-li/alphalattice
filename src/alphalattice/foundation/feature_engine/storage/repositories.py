@@ -4123,16 +4123,14 @@ class PanelStateRepository(WorkspaceRepository):
             "quarantine_reason_counts": {},
         }
 
-    def admits_feature_candidate_subset(
-        self,
-        *,
-        candidate_revision: str,
-        result_revision: str,
-        as_of_session: date,
-        qualification_hash: str | None = None,
-        allow_sector_preparation: bool = False,
-    ) -> bool:
-        """Read a dated candidate admission; Sector proof permits preparation only."""
+    def _lineage_admissions(
+        self, *, candidate_revision: str, result_revision: str, as_of_session: date
+    ) -> list[tuple[str, dict[str, object]]]:
+        """Read the verified admissions deriving ``result_revision`` at a session.
+
+        They are reached through the gateway's own chain of admissions from
+        ``candidate_revision``; a stored admission whose identity does not verify is refused.
+        """
         connection = self._connect(read_only=True)
         try:
             rows = connection.execute(
@@ -4148,11 +4146,46 @@ class PanelStateRepository(WorkspaceRepository):
             ).fetchall()
         finally:
             connection.close()
+        verified = []
         for expected, document in rows:
             payload = json.loads(document)
             actual = payload.pop("admission_hash")
             if actual != expected or _canonical_hash(payload) != expected:
                 raise ValueError("feature.baseline_admission_identity_mismatch")
+            verified.append((str(expected), payload))
+        return verified
+
+    def deriving_admission(
+        self, *, candidate_revision: str, result_revision: str, as_of_session: date
+    ) -> str | None:
+        """Read the gateway's admission deriving ``result_revision`` from ``candidate_revision``.
+
+        Returns:
+            Its verified hash at the session, or None when the gateway's own chain of
+            admissions does not link the two revisions.
+        """
+        found = self._lineage_admissions(
+            candidate_revision=candidate_revision,
+            result_revision=result_revision,
+            as_of_session=as_of_session,
+        )
+        return min(admission for admission, _ in found) if found else None
+
+    def admits_feature_candidate_subset(
+        self,
+        *,
+        candidate_revision: str,
+        result_revision: str,
+        as_of_session: date,
+        qualification_hash: str | None = None,
+        allow_sector_preparation: bool = False,
+    ) -> bool:
+        """Read a dated candidate admission; Sector proof permits preparation only."""
+        for _expected, payload in self._lineage_admissions(
+            candidate_revision=candidate_revision,
+            result_revision=result_revision,
+            as_of_session=as_of_session,
+        ):
             if (
                 allow_sector_preparation
                 and qualification_hash is None

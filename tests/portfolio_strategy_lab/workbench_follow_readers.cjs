@@ -358,5 +358,13 @@ const projection=(task,lifecycle)=>({[task]:{...TASKS[task],lifecycle}});
       assert.ok(standing.includes('<strong>'+words631.codeWords(state)+'</strong>'),lang+' Task standing uses the shared state word: '+state);
     }
   }
+  // A succeeded Task offers Open result only where its kind has a result page; elsewhere the
+  // inspector is the result, and the button would only reopen it.
+  for(const [kind,offered] of [['model_training_input_preparation',false],['workspace_preparation',true]]) {
+    const id='done-'+kind;TASKS[id]={...TASKS['task-b'],task_id:id,task_kind:kind,lifecycle:'SUCCEEDED'};
+    recoveryViews[id]={...recoveryViews['task-b'],task_id:id,task_kind:kind,lifecycle:'SUCCEEDED',operation_running:false};
+    await T.open(id);await settled();
+    assert.equal(body.innerHTML.includes('task-result'),offered,kind+': Open result only where a result page exists');
+  }
   finish();
 })().catch(e=>{console.error(e);process.exitCode=1;});
