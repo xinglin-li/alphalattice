@@ -45,7 +45,7 @@ EXECUTE (only as authorized):
 Graph (→ the next step; what carries over):
 - `workspace show` → `study controls` (input id) | `feature controls` (binding) | `study show` (Task id)
 - `study controls` → edit factor.yaml → `study plan` → `study run` (plan.json) → `curation show` (run.json) → `curation submit` (curation.json, choices.yaml) → `handoff preview` (decision.json) → the Alpha role
-- `feature controls` → edit feature.yaml → `feature plan` → `trial run` (feature-plan.json, an Alpha Task) → `trial show` (trial.json) → `feature review` (trial-show.json) → a person activates
+- `feature controls` → edit feature.yaml → `feature plan` → `trial run` (feature-plan.json, an Alpha Task) → `trial show` (trial.json) → `feature review` (trial-show.json) → the lead asks the person to activate it
 - any answer: exit 2 → its `next_requests`; exit 3 → `activity wait` or `task show`
 
 # Method

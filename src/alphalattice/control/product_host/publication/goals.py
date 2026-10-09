@@ -209,6 +209,34 @@ class GoalStore:
             except (KeyError, TypeError, ValueError, OSError) as error:
                 raise ValueError("goal.event_filing_invalid") from error
 
+    def reserve_relay(self, key: str, record: Mapping[str, object]) -> dict[str, object] | None:
+        """Hold one relayed yes by its spend key before its decision runs, atomically.
+
+        Returns None when this request holds it now, else the record of the use that holds it,
+        whose `nonce` lets the person's next yes to the same decision be told apart.
+        """
+        path = self.content.root / "relays" / f"{key}.json"
+        with self.lock:
+            if path.is_file():
+                held: dict[str, object] = json.loads(path.read_bytes())
+                return held
+            self.content.atomic_write(path, json.dumps(dict(record), sort_keys=True).encode())
+            return None
+
+    def release_relay(self, key: str) -> None:
+        """Give back a held yes whose decision was refused: it was not used."""
+        with self.lock:
+            (self.content.root / "relays" / f"{key}.json").unlink(missing_ok=True)
+
+    def relay_nonce(self, nonce: str) -> dict[str, object] | None:
+        """The used yes that issued this nonce, if the Host issued it."""
+        folder = self.content.root / "relays"
+        for path in sorted(folder.glob("*.json")) if folder.is_dir() else ():
+            record: dict[str, object] = json.loads(path.read_bytes())
+            if record.get("nonce") == nonce:
+                return record
+        return None
+
     def attribute(self, goal_id: UUID, entry: Mapping[str, object]) -> None:
         """Keep one request or event a goal's work made: one immutable file each.
 

@@ -309,29 +309,16 @@ def test_every_command_example_writes_and_reads_under_out_or_the_workspace(mater
     assert stray == []
 
 
-def test_both_agent_guides_review_the_book_before_activation_and_positions_after():
-    """P1: activation precedes forward positions; both hosts keep cutoff and causal replay.
-    The agent reviews first whether it activates under a first use's delegation (STOPS-1) or
-    asks the person."""
-    sentence = (
-        "Before activating, or asking a person to activate, review the completed historical "
-        "book and its "
-        "review standing, and read `strategy_dates.information_cutoff` and the conditional "
-        "`strategy_dates.first_actionable_session`."
-    )
-    forward = (
-        "After activation, run the offered update and review its first published forward "
-        "positions at the first actionable session."
-    )
-    hold = (
-        "Hold positions only from the first actionable session; sessions before it are a "
-        "causal replay, inside the research window where marked."
-    )
+def test_both_agent_guides_read_the_dates_before_activation_and_review_the_positions_after():
+    """requirement: both hosts read the cutoff and first actionable session before activating,
+    review the date's positions on their own publication after it, and keep the causal replay."""
     for path in (
         ROOT / "AGENTS.md",
         ROOT / ".agents/skills/alphalattice-research/SKILL.md",
         ROOT / ".claude/skills/alphalattice-research/SKILL.md",
     ):
-        assert path.read_text(encoding="utf-8").count(sentence) == 1
-        assert path.read_text(encoding="utf-8").count(forward) == 1
-        assert path.read_text(encoding="utf-8").count(hold) == 1
+        text = path.read_text(encoding="utf-8")
+        dates = text.index("`strategy_dates.first_actionable_session`")
+        assert text.index("`strategy_dates.information_cutoff`") < dates
+        assert dates < text.index("admits the first update") < text.index("own publication")
+        assert "causal replay" in text and "--update" in text

@@ -604,6 +604,7 @@
   "observed_through": "The last session the update observes, as YYYY-MM-DD.",
   "operation": "The operation asked for; `alphalattice schema show <name>` lists its fields.",
   "origin_task_id": "The study a new plan continues from, by its Task.",
+  "person_confirmation": "The person's yes to this decision, asked in one line and relayed whole: `--person-said` their words and `--asked` your question, which the client binds to this request.",
   "portfolio_session": "The session a dated view reads, as YYYY-MM-DD; for a book, names the book with the other book fields, as a book's offered requests fill them.",
   "position_basis": "The positions a book's update published them on.",
   "preparation_binding_hash": "The Evidence preparation's binding, by its hash.",
@@ -814,6 +815,7 @@
   },
   "DATA_CHANGE_CONFIRM": {
    "allowed": [
+    "person_confirmation",
     "update_plan_hash"
    ],
    "required": [
@@ -833,7 +835,8 @@
     "data_issue_evidence_hash",
     "data_issue_grant_hash",
     "data_issue_option_hash",
-    "data_issue_option_id"
+    "data_issue_option_id",
+    "person_confirmation"
    ],
    "required": [
     "data_issue_case_token",
@@ -848,6 +851,7 @@
     "data_issue_evidence_hash",
     "data_issue_option_hash",
     "data_issue_option_id",
+    "person_confirmation",
     "task_id"
    ],
    "required": [
@@ -874,7 +878,8 @@
   },
   "DATA_ISSUE_REVOKE": {
    "allowed": [
-    "data_issue_grant_hash"
+    "data_issue_grant_hash",
+    "person_confirmation"
    ],
    "required": [
     "data_issue_grant_hash"
@@ -1400,7 +1405,8 @@
   "FEATURE_ACTIVATE": {
    "allowed": [
     "feature_factor_id",
-    "feature_plan_hash"
+    "feature_plan_hash",
+    "person_confirmation"
    ],
    "required": [
     "feature_factor_id",
@@ -1455,7 +1461,8 @@
   },
   "FEATURE_DEACTIVATE": {
    "allowed": [
-    "feature_factor_id"
+    "feature_factor_id",
+    "person_confirmation"
    ],
    "required": [
     "feature_factor_id"
@@ -1645,7 +1652,8 @@
   },
   "MODEL_ACTIVATE": {
    "allowed": [
-    "model_id"
+    "model_id",
+    "person_confirmation"
    ],
    "required": [
     "model_id"
@@ -1653,7 +1661,8 @@
   },
   "MODEL_DEACTIVATE": {
    "allowed": [
-    "model_id"
+    "model_id",
+    "person_confirmation"
    ],
    "required": [
     "model_id"
@@ -1701,7 +1710,8 @@
   },
   "NETWORK_ACCESS_SET": {
    "allowed": [
-    "network_enabled"
+    "network_enabled",
+    "person_confirmation"
    ],
    "required": [
     "network_enabled"
@@ -1792,6 +1802,7 @@
   },
   "RESEARCH_INPUT_CONFIRM": {
    "allowed": [
+    "person_confirmation",
     "recovery_task_hash",
     "recovery_task_id",
     "research_input_plan_hash"
@@ -1861,7 +1872,8 @@
   "RESEARCH_UPDATE_AUTOMATION_CONFIGURE": {
    "allowed": [
     "automation_enabled",
-    "automation_package_ids"
+    "automation_package_ids",
+    "person_confirmation"
    ],
    "required": [
     "automation_enabled",
@@ -1943,6 +1955,7 @@
   },
   "STORAGE_CONFIRM": {
    "allowed": [
+    "person_confirmation",
     "storage_plan_hash"
    ],
    "required": [
@@ -1960,7 +1973,8 @@
   "STORAGE_PIN": {
    "allowed": [
     "input_binding_hash",
-    "input_pinned"
+    "input_pinned",
+    "person_confirmation"
    ],
    "required": [
     "input_binding_hash",
@@ -1977,6 +1991,7 @@
   },
   "STRATEGY_ACTIVATE": {
    "allowed": [
+    "person_confirmation",
     "task_id"
    ],
    "required": [
@@ -2014,6 +2029,7 @@
   },
   "STRATEGY_DEACTIVATE": {
    "allowed": [
+    "person_confirmation",
     "strategy_package_id"
    ],
    "required": [
@@ -2104,6 +2120,7 @@
   },
   "USAGE_READING_SET": {
    "allowed": [
+    "person_confirmation",
     "usage_reading_enabled"
    ],
    "required": [
@@ -2135,6 +2152,7 @@
   "WORKSPACE_PREPARE_CONFIRM": {
    "allowed": [
     "data_issue_grant_hash",
+    "person_confirmation",
     "preparation_plan_hash",
     "recovery_task_hash",
     "recovery_task_id"
@@ -2252,6 +2270,7 @@
   "observed_through": "through",
   "operation": "operation",
   "origin_task_id": "origin",
+  "person_confirmation": "person-said",
   "portfolio_session": "session",
   "position_basis": "basis",
   "preparation_binding_hash": "preparation",
@@ -2539,6 +2558,11 @@
    "choices",
    "expected_receipt_hash",
    "limitations_acknowledged"
+  ],
+  "person_confirmation": [
+   "decision_hash",
+   "question",
+   "words"
   ]
  },
  "limits": {
@@ -3187,6 +3211,9 @@
   ],
   "origin_task_id": [
    "string"
+  ],
+  "person_confirmation": [
+   "object"
   ],
   "portfolio_session": [
    "string"

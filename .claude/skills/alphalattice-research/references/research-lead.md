@@ -41,4 +41,15 @@ Read `research-update show` for the Task the run returned. Each decision forms a
 - `CONDITIONAL_ESTIMATE` (`status` `PROPOSAL_PUBLISHED`): weights marked at the formation close for a conditional entry at the next open, not an execution target.
 - `OBSERVED_RESEARCH_ENTRY`: the entry settled on that open's daily bar, with cost lanes of 5 and 10 basis points a side; no venue fill is verified.
 
-Quote the publication's `claim` with its `risk_status` and `cro_status`: Risk and the CRO have not assessed the proposal until its own review runs. Before activation, the controls answer's `activation.review_holdings` are the reviewed book's last holdings (`REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS`); the product computes no preview, so run no update and build no book to make one. Activation is reversible and deactivation keeps history.
+Quote the publication's `claim` with its `risk_status` and `cro_status`. They are the publication's own, sealed when it published, and stay `NOT_EVALUATED` / `NOT_REVIEWED`; a later Evidence and CRO review of that publication is a separate record with its own standing and date, and you cite both. Before activation, the controls answer's `activation.review_holdings` are the reviewed book's last holdings (`REVIEWED_BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS`); the product computes no preview, so run no update and build no book to make one. Activation is reversible and deactivation keeps history.
+
+## Where the first reviewed positions stand
+
+| Stage | Read | Your next step |
+|---|---|---|
+| The book exists | `strategy-book controls --package <package>`: the book and its dates | Name the book and the date; you activate under the first use, otherwise the person does |
+| Activated, its update running | The activation answer's `update.run` | Follow that Task at once, in the background |
+| Positions published | `research-update show --task <task>`: formation, entry, basis, `claim` | Read them out with their dates; they are research positions |
+| Their review prepared | `strategy-book review --update <task>` | Start one Evidence Analyst per bundle |
+| CRO review published | `review continue` after the CRO | Cite the review beside the publication's own status |
+| Delivered | The goal's record | State coverage, expiry and Risk limits, then complete the goal |

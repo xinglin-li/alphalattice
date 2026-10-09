@@ -189,7 +189,7 @@ ROLE_COMMANDS: dict[str, RoleCapability] = {
             "choices.yaml) → `handoff preview` (decision.json) → the Alpha role",
             "`feature controls` → edit feature.yaml → `feature plan` → `trial run` "
             "(feature-plan.json, an Alpha Task) → `trial show` (trial.json) → `feature review` "
-            "(trial-show.json) → a person activates",
+            "(trial-show.json) → the lead asks the person to activate it",
             _ANSWERS_EDGE,
         ),
     ),
@@ -334,7 +334,7 @@ ROLE_COMMANDS: dict[str, RoleCapability] = {
         graph=(
             "`workspace show` → `data-update show` | `issue list`",
             "`issue list` (issues.json) → `request` preview (the case's request name) → the "
-            "lead, and a person confirms",
+            "lead, who confirms it under the delegation or on the person's yes",
             "`data-update plan` (update-plan.json) → `data-update run` (update-plan.json) → "
             "`data-update show`",
             _ANSWERS_EDGE,
@@ -350,7 +350,7 @@ BUNDLE_ROLES = {
 SKILL_COMMANDS: tuple[RoleCommand, ...] = (
     _WORKSPACE,
     RoleCommand(
-        'first-use prepare --sentence "Build me a reviewed book from public data."',
+        'first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09',
         "Opens the first use from the person's exact sentence and prepares its data; its answer "
         "lays out the whole first use.",
     ),

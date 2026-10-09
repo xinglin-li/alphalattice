@@ -11,7 +11,7 @@ wheel, and Local Web. Windows is verified; macOS and Linux are unverified.
 
 Your sentence becomes the first-use goal's unchanged objective. Its delegation
 lasts 24 hours from opening: the agent handles the admitted preparation and
-activates the book once reviewed, telling you each act. Submission, abandonment
+activates the book, telling you each act. Submission, abandonment
 or expiry ends it. The [agent guide](../../AGENTS.md) owns the flow and sole
 list of [person decisions](../../AGENTS.md#what-only-a-person-decides).
 

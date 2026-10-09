@@ -7,7 +7,7 @@ against that record, sealing it or naming each missing item.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
 
@@ -90,6 +90,19 @@ class GoalDeclaration(GoalContract):
     budget: GoalBudget | None = None
     research: GoalResearchDesign | None = None
     parent_goal_id: UUID | None = None
+    target_date: date | None = Field(
+        default=None,
+        description="The date the person named for the positions: they are entered on the first "
+        "XNYS/XNAS session on or after it, decided at the close before.",
+    )
+
+    @model_serializer(mode="wrap")  # type: ignore[untyped-decorator]
+    def _serialize_named_date(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """Keep an absent date absent, so every goal sealed before the field keeps its hash."""
+        serialized: dict[str, Any] = handler(self)
+        if self.target_date is None:
+            serialized.pop("target_date", None)
+        return serialized
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def _consistent(self) -> Self:
@@ -102,6 +115,41 @@ class GoalDeclaration(GoalContract):
     def intent(self) -> dict[str, Any]:
         """The declared intent without its display title."""
         return cast(dict[str, Any], self.model_dump(mode="json", exclude={"title"}))
+
+
+def target_sessions(named: date) -> dict[str, object]:
+    """The sessions a named date's positions stand on, from the exchange calendars alone.
+
+    Args:
+        named: The date the person named.
+
+    Returns:
+        The named date, whether it is a session, the entry session (the first common XNYS/XNAS
+        session on or after it) and the formation session before it, whose close is the
+        information cutoff.
+
+    Raises:
+        ValueError: `first_use.date_outside_calendar` for a date the calendars do not plan.
+    """
+    # The calendars load only for a dated first use, never with every client command.
+    from alphalattice.foundation.causal_outcomes.execution.readers import (
+        planned_local_qa_schedule,
+    )
+
+    try:
+        schedule = planned_local_qa_schedule(named - timedelta(days=14), named)
+    except (ValueError, KeyError, LookupError) as error:
+        raise ValueError("first_use.date_outside_calendar") from error
+    point = next((p for p in schedule if p.entry_session >= named), None)
+    if point is None:
+        raise ValueError("first_use.date_outside_calendar")
+    return {
+        "named_date": named.isoformat(),
+        "named_is_session": point.entry_session == named,
+        "entry_session": point.entry_session.isoformat(),
+        "formation_session": point.formation_session.isoformat(),
+        "information_cutoff_at": point.formation_close_at.isoformat(),
+    }
 
 
 class GoalReferenceRequest(GoalContract):

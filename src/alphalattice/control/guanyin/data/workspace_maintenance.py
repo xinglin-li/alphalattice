@@ -43,7 +43,8 @@ def maintenance_failure_detail(code: str) -> str:
         # The owner's own words (refusal_words.json), so the stop and its Chinese read alike.
         "data.truth_review_required": (
             "A data decision is needed before this Task can continue: the data owner found "
-            "an unexplained move and asks for a permitted response on the Data issues page."
+            "an unexplained move and asks for a permitted response, which the agent takes "
+            "under the first use's delegation or asks the person for in one line."
         ),
         "workspace_maintenance.membership_revision_mismatch": (
             "The research membership changed after this update was planned, so it stopped "

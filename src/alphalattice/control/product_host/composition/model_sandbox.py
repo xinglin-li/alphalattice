@@ -297,7 +297,7 @@ def run_sandbox(
             "verdict": "PASSED" if record.passed else "FAILED",
             "record": record.model_dump(mode="json"),
             "copy": str(copy) if keep else None,
-            "next_action": "A_PERSON_ACTIVATES_IN_THE_WORKBENCH"
+            "next_action": "ASK_THE_PERSON_TO_ACTIVATE_IT"
             if record.passed
             else "READ_THE_COPY_WITH_KEEP_AND_CORRECT_THE_MODEL",
         }

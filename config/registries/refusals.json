@@ -5811,6 +5811,9 @@
 "feature_trial.study_not_from_factor_evidence": {
 "owner": "feature_trial"
 },
+"first_use.date_outside_calendar": {
+"owner": "first_use"
+},
 "frozen_portfolio.alpha_input_mismatch": {
 "owner": "frozen_portfolio"
 },
@@ -6112,6 +6115,12 @@
 "owner": "local_client"
 },
 "local_client.field_given_twice": {
+"owner": "local_client"
+},
+"local_client.first_use_date_invalid": {
+"owner": "local_client"
+},
+"local_client.first_use_date_outside_calendar": {
 "owner": "local_client"
 },
 "local_client.max_wait_invalid": {
@@ -6677,6 +6686,21 @@
 },
 "operations.schema_reference_not_local": {
 "owner": "operations"
+},
+"person_confirmation.already_used": {
+"owner": "person_confirmation"
+},
+"person_confirmation.decision_mismatch": {
+"owner": "person_confirmation"
+},
+"person_confirmation.refused": {
+"owner": "person_confirmation"
+},
+"person_confirmation.repeat_unknown": {
+"owner": "person_confirmation"
+},
+"person_confirmation.session_required": {
+"owner": "person_confirmation"
 },
 "portfolio_advancement.correction_did_not_supersede": {
 "owner": "portfolio_advancement"
@@ -10924,6 +10948,9 @@
 "owner": "research_update"
 },
 "research_update.publication_task_ambiguous": {
+"owner": "research_update"
+},
+"research_update.refused": {
 "owner": "research_update"
 },
 "research_update.request_evidence_invalid": {

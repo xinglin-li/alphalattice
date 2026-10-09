@@ -268,7 +268,7 @@
   "next_action": "READ_WORKSPACE_SHOW_OR_RESTORE_A_BACKUP"
  },
  "data.truth_review_required": {
-  "detail": "A data decision is needed before this Task can continue: the data owner found an unexplained move and asks for a permitted response on the Data issues page.",
+  "detail": "A data decision is needed before this Task can continue: the data owner found an unexplained move and asks for a permitted response, which the agent takes under the first use's delegation or asks the person for in one line.",
   "next_action": "DATA_ISSUES"
  },
  "evidence_review.explicit_sec_network_consent_required": {
@@ -344,8 +344,8 @@
   "next_action": "ASK_FOR_A_PAGE_IN_RANGE"
  },
  "feature_extension.human_confirmation_required": {
-  "detail": "A person activates or deactivates a formula factor, in the Workbench.",
-  "next_action": "ASK_A_PERSON_TO_CONFIRM"
+  "detail": "Activating or deactivating a formula factor is the person's decision: ask the person in one line and, on a clear yes, send this again with --person-said and --asked.",
+  "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
  },
  "feature_input.case_manifest_unavailable": {
   "detail": "The case names a workspace manifest revision that cannot be read. Inspect the workspace (`workspace show`) and its kept backups (`backup list`); restore a generation that holds the recorded manifest into a new directory before reading this case there.",
@@ -356,7 +356,7 @@
   "next_action": "NAME_AN_OPEN_GOAL_OR_NONE"
  },
  "goal.first_use_after_preparation": {
-  "detail": "This workspace is prepared already, so its first use is over: the person decides the steps that are theirs on the page the agent names. Open a goal of another kind for this work (`goal schema` prints one to edit).",
+  "detail": "This workspace is prepared already, so its first use is over: ask the person in one line for each step that is theirs, and relay their yes. Open a goal of another kind for this work (`goal schema` prints one to edit).",
   "next_action": "OPEN_A_GOAL_OF_ANOTHER_KIND"
  },
  "goal.first_use_already_opened": {
@@ -1104,7 +1104,7 @@
   "next_action": "RESTORE_A_VERIFIED_BACKUP_AND_READ_THE_UPDATE"
  },
  "workbench.performance_selection_invalid": {
-  "detail": "This performance selection is not supported. Choose the saved report or the latest forward performance on Portfolio.",
+  "detail": "This performance selection is not supported. Choose the saved report, or the latest forward performance (`research-update show --package <package>`).",
   "next_action": "CHOOSE_REPORT_OR_LATEST_PERFORMANCE"
  },
  "native_bridge.event_invalid": {
@@ -1352,8 +1352,8 @@
   "next_action": "TURN_OFF_OPTIONAL_USAGE_IN_THE_BOUND_SESSION_THEN_CONTINUE_RESEARCH"
  },
  "native_bridge.usage_reading_human_only": {
-  "detail": "Only a person turns reading the agent Sessions' usage on or off, on Settings. Nothing was changed.",
-  "next_action": "ASK_A_PERSON_TO_SET_USAGE_READING_ON_SETTINGS"
+  "detail": "Reading the agent Sessions' usage is the person's decision: ask the person in one line and, on a clear yes, send this again with --person-said and --asked. Nothing was changed.",
+  "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
  },
  "native_bridge.local_environment_missing": {
   "detail": "The folder named for configure has no .venv of its own, so it is not a source checkout. Configure the checkout you work from, or a separate agent folder with the installed product; never a workspace or data folder. A configured project binds a workspace kept anywhere.",
@@ -1364,12 +1364,12 @@
   "next_action": "WAIT_FOR_MEMORY_THEN_TRY_AGAIN"
  },
  "feature_input.human_delegation_required": {
-  "detail": "A standing data-decision grant is the person's to give or revoke, on the Workbench's data issues. Under the workspace's open first-use goal you need none: preview the case and send its offered confirm.",
-  "next_action": "DATA_ISSUES"
+  "detail": "A standing data-decision grant is the person's to give or revoke: ask the person in one line and, on a clear yes, send this again with --person-said and --asked. Under the workspace's open first-use goal you need none: preview the case and send its offered confirm.",
+  "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
  },
  "feature_input.human_confirmation_required": {
-  "detail": "This data decision is the person's: on the Workbench's data issues, under a grant the person issued for it, or by you under the workspace's open first-use goal while its own preparation waits on the decision.",
-  "next_action": "ASK_A_PERSON_TO_DECIDE_THE_DATA_ISSUE"
+  "detail": "This data decision is the person's: ask the person in one line and, on a clear yes, send this again with --person-said and --asked. Under the workspace's open first-use goal, decide it yourself while its own preparation waits on the decision.",
+  "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
  },
  "data.target_session_not_covered": {
   "detail": "The data does not reach this preparation's target session for enough listings to support its baseline. The failure cause gives the target session, latest common bar, and coverage count. Wait until the provider has data for the target, then send the Task's offered resume request. Verified work is retained; only lagging listing histories are fetched and checked again.",
@@ -1410,5 +1410,33 @@
  "research_strategy.installation_waits_for_portfolio_tasks": {
   "detail": "A book, score, calibration or update Task on the installed strategies is in progress, so nothing was installed. Wait for that Task ({subject}) to end, then install again.",
   "next_action": "WAIT_FOR_THE_TASK_THEN_INSTALL"
+ },
+ "person_confirmation.decision_mismatch": {
+  "detail": "The person's yes answers another request than this one, so nothing was done. Ask them about this decision in one line, and relay that yes with this request.",
+  "next_action": "ASK_THE_PERSON_ABOUT_THIS_DECISION"
+ },
+ "person_confirmation.already_used": {
+  "detail": "That yes was already used for this decision, and each is used once. Ask the person again in one line; on a clear yes, send it with --repeat {subject}.",
+  "next_action": "ASK_THE_PERSON_AGAIN"
+ },
+ "person_confirmation.session_required": {
+  "detail": "A person's yes is relayed only from an agent's own session, whose goal records it. Send it from that session.",
+  "next_action": "SEND_FROM_THE_AGENT_SESSION"
+ },
+ "person_confirmation.repeat_unknown": {
+  "detail": "This --repeat names no yes the Host recorded for this decision, so nothing was done. Send the nonce its already-used refusal named, after asking the person again.",
+  "next_action": "ASK_THE_PERSON_AGAIN"
+ },
+ "person_confirmation.refused": {
+  "detail": "The person's yes could not be checked, so nothing was done. Ask the person again in one line and send it with their words.",
+  "next_action": "ASK_THE_PERSON_AGAIN"
+ },
+ "research_update.refused": {
+  "detail": "The update could not be planned or admitted, and the strategy's activation stands. Plan the update again with `research-update plan --package <package>`.",
+  "next_action": "PLAN_THE_UPDATE_AGAIN"
+ },
+ "first_use.date_outside_calendar": {
+  "detail": "The first use's date is one the exchange calendars do not plan, so no update was planned for it, and the activation stands. Plan the update with `research-update plan --package <package>`.",
+  "next_action": "PLAN_THE_UPDATE_AGAIN"
  }
 }

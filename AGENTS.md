@@ -44,105 +44,131 @@ its first research request opens a goal when it holds none; commands then omit
 
 ## Run the first use from the person's sentence
 
-Start it with the person's exact sentence:
+Start it with the person's exact sentence and the date it names for the positions
+(today's when it names none), as you read it:
 
 ```powershell
-alphalattice first-use prepare --sentence "Build me a reviewed book from public data." --output "<out>/first-use.json"
+alphalattice first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09 --output "<out>/first-use.json"
 ```
 
 It opens the workspace's one `FIRST_USE` goal, prepares the data under the goal's
-delegation and follows each Task. Its answer's `first_use.road` is the whole first
-use, one command per step, and each answer names its next action. Its
-`ask_now` is what only the person decides that the first use will need: ask for it
-at once, in one line. A stop names its way on: decide each data issue with its
-offered `confirm`, or take the refused step under the delegation, then run the same
-command again. The network setting and the offline switch matter only when an
-answer refuses for them. Never restart the Host or serve a second one for network
-access, and never ask the person to.
+delegation and follows each Task. Tell the person first how the product reads the
+date, from `first_use.date`: the positions are entered on its `entry_session`,
+decided at the `formation_session` close, and a date that is not a session says
+so. They correct it with one note. `first_use.road` is the whole first use, one
+command per step, each answer names its next action, and `first_use.setup` names
+anything this session's setup still lacks, with its way on. `ask_now` is what only
+the person decides that the first use will need: ask for it at once, in one line.
+
+The road: data, the strategy's models and Risk, its whole-support book (the
+numerical check), activation with the date's update in the same act, then Evidence
+and the CRO on that date's published positions. The historical book's own review
+runs only when someone asks for it. A stop names its way on: decide each data issue
+with its offered `confirm`, or take the refused step under the delegation, then run
+the same command again. The network setting and the offline switch matter only
+when an answer refuses for them. Never restart the Host or serve a second one for
+network access, and never ask the person to.
 
 On Claude Code, run every `--wait`, `activity wait` and agent verb (`first-use
 prepare`, `strategy build`, `strategy-book review`, `review continue`) with the
 Bash tool's `run_in_background`, then act on its completion notice; never read its
-output or check its Task before the notice. On Codex, add `--notify codex-queue`:
-at its first running Task the command registers the Host's wake and returns, and
-you end your turn; the wake names the command to run again, which reuses what is
-done and goes on.
+output or check its Task before the notice. Whenever a step goes to the person,
+keep `activity wait --goal <goal>` running in the background: their act's Task ends
+it. On Codex, add `--notify codex-queue`: at its first running Task the command
+registers the Host's wake and returns, and you end your turn; the wake names the
+command to run again, which reuses what is done and goes on. The Host also wakes a
+Codex lead when the person's act admits work under the first use.
 
 While the goal is open, for 24 hours from opening, it delegates to you: opening
 the preparation's network, confirming the preparation and its resumes, deciding
-its data issues, confirming its membership changes, and activating its book once
-the book's review standing is `REVIEWED`. Tell the person each act in one line;
-they deactivate the book in one click on **Portfolio**. Accepted submission,
-abandonment or expiry ends the delegation and closes the network it opened. The
-`FIRST_USE` declaration is never revised.
+its data issues, confirming its membership changes, and activating its book. Tell
+the person each act in one line; they stop the book by telling you, or on
+**Portfolio**. Accepted submission, abandonment or expiry ends the delegation and
+closes the network it opened. The `FIRST_USE` declaration is never revised.
 
-`strategy build` then runs the research strategy's required whole-support Alpha
-and Risk studies and installs it, reusing completed studies; the book, its
-Evidence and CRO review and its activation offer follow on the road.
-Training prepares the light lifecycle by default, one seed of each model
-vintage, as its answers' `model_lifecycle` says; tell the person so. When they
-ask for the full one, plan it by name with `training plan --input <input-id>
---component <component-id> --lifecycle FULL`, then `study controls --input
-<input-id> --component <component-id> --lifecycle FULL`.
+`strategy build` runs the research strategy's required whole-support Alpha and
+Risk studies and installs it, reusing completed studies, and offers each installed
+package's book run. Training prepares the light lifecycle by default, one seed of
+each model vintage, as its answers' `model_lifecycle` says; tell the person so.
+When they ask for the full one, plan it by name with `training plan --input
+<input-id> --component <component-id> --lifecycle FULL`, then `study controls
+--input <input-id> --component <component-id> --lifecycle FULL`.
 
 ## Choose the path by intent
 
-Read `workspace show` and take its first `intents` entry. A prepared workspace or
+The person's own target comes first: a date or a request in their words outranks
+`workspace show`'s first `intents` entry, so a request for a date's positions never
+becomes a new preparation. Otherwise take that first intent. A prepared workspace or
 an installed strategy goes to `strategy-book controls --package <package>`; open a
 Factor study, an Alpha handoff or a Lab book only when the person asks for
-exploration. Where a step offers a default (the model, the Risk window, the CPU
-budget), take it and say in one line what you chose and how to change it; never
-change a study's model, window or bounds to save time.
+exploration. A default (the model, the Risk window, the CPU budget) you take and
+say in one line with how to change it; a delegation is the person's step you carry
+under the first use; a permission stays theirs. Never change a study's model,
+window or bounds to save time.
 
-## Review the book
+## Review the date's positions
 
 ```powershell
-alphalattice strategy-book review --package <package> --dir "<out>/analysts"
+alphalattice strategy-book review --package <package> --dir "<out>/analysts" --update <task>
 alphalattice review continue --dir "<out>/analysts" --cro-dir "<out>/cro"
-alphalattice review continue --dir "<out>/cro" --package <package>
+alphalattice review continue --dir "<out>/cro"
 ```
 
-The first runs or reuses the whole-support book and writes every Analyst bundle;
-start one Evidence Analyst per bundle. The second submits their answers and
-writes the CRO's bundle; the third publishes the review and reads the activation
-offer. Each stops at the first answer that needs another step; follow its
-`next_action`. Wait for each as the first use says.
+The first reads that update's published positions, bound by their publication,
+prepares their Evidence and writes every Analyst bundle; start one Evidence Analyst
+per bundle. Without `--update` it reviews the strategy's whole-support book
+instead, when someone asks for that. The second submits their answers and writes
+the CRO's bundle; the third publishes the review. Each stops at the first answer
+that needs another step; follow its `next_action`. Wait for each as the first use
+says.
 
 ## Run an installed strategy forward
 
 On every fresh session read `strategy-book controls --package <package>` for
 `activation`, its book and horizon before a forward plan, and show the person
 the offer's `review_holdings`: the book's last sealed holdings, not next positions.
-Before activating, or asking a person to activate, review the completed historical book and its review standing, and read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
-After activation, run the offered update and review its first published forward positions at the first actionable session.
-Hold positions only from the first actionable session; sessions before it are a causal replay, inside the research window where marked.
-Report each position with its basis, dates and the publication's `claim`
+Before activating, read `strategy_dates.information_cutoff` and the conditional
+`strategy_dates.first_actionable_session`. Activation admits the first update in
+the same act, for the first use's date while its goal is open: follow it at once,
+then review its published positions on their own publication. Hold positions only
+from the first actionable session; sessions before it are a causal replay, inside
+the research window where marked. Report each position with its basis, dates and
+the publication's `claim`
 ([reading the dates](.agents/skills/alphalattice-research/references/research-lead.md#reading-the-dates)):
 research positions, never orders or advice. Past the horizon, about eleven
-months, request a newer book.
+months, request a newer book. Time a phase from its Goal and Task records, never
+from one `--wait`, and resume a stopped Task as itself after a fix.
+
+Outside the first use, activation is the person's: introduce the strategy once,
+from the controls with no number of your own, then ask in one line. Name its
+components; its holdings count and rules (top-k, exits, tranches, capital split);
+the book's results, as a replay and never a forecast; the date whose positions
+activation produces and its entry session; and how to stop it.
 
 ## Delegate and ask for decisions
 
 ### What only a person decides
 
-Everything else is a default you take and disclose in one line. These stay the
-person's; name the decision and its page, and wait:
+Everything else is a default you take and disclose in one line. These are the
+person's. Name the decision and ask once, in one line; on a clear yes, send it
+with their words, `--person-said "<their words>" --asked "<your question>"`.
+Never paraphrase or invent the words, and never send the person to a page to
+click. Each yes answers one request, once.
 
-- Network access (**Settings**), except the first use's preparation.
-- Strategy activation (**Portfolio**), except the first use's reviewed book;
-  deactivation always. Model activation (**Models**) and Factor activation
-  (**Features**).
-- Daily research automation (**Settings**) and the usage-reading switch.
-- Storage cleanup, pins and the cap; data-decision grants and their revocation.
+- Network access, except the first use's preparation.
+- Strategy activation, except under the first use's delegation; deactivation
+  always. Model and Factor activation.
+- Daily research automation and the usage-reading switch.
+- Storage cleanup and pins; data-decision grants and their revocation.
 - Preparation, data issues and membership changes outside the first use's
-  delegation, and a new research-input version (**Research inputs**): keep the
-  current input and tell the person newer data exists.
-- Source consent: official SEC acquisition, its contact and retrieval model
-  downloads; a dependency outside the lock.
+  delegation, and a new research-input version: keep the current input and tell
+  the person newer data exists.
+- Source scope beyond the default budget; retrieval model downloads; a
+  dependency outside the lock.
 - Scope: a request authorizes its stated scope only. Updating source data,
   sealing a new input or starting a different experiment is a new decision.
-- External sharing or publication (**Report & delivery**, **Review**) and any
-  paid action. Isolation the host cannot enforce holds the run.
+- External sharing or publication. A paid action is never relayed. Isolation the
+  host cannot enforce holds the run.
 
 ### Specialists
 

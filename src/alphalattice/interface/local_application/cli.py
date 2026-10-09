@@ -70,15 +70,15 @@ CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     ("schema", "show"): "A command's request schema (each branch of a two-operation command), "
     "its answer's and a YAML template.",
     ("activity", "wait"): "Wait, with no timer, for a Task or a goal's work to end or need you.",
-    ("first-use", "prepare"): "Open the first use from the person's sentence and prepare its "
-    "data under its delegation, following each Task to its end; the answer lays out the whole "
-    "first use. The first stop is the answer.",
+    ("first-use", "prepare"): "Open the first use from the person's sentence and named date "
+    "and prepare its data under its delegation, following each Task to its end; the answer "
+    "echoes the date's sessions and lays out the whole first use. The first stop is the answer.",
     ("strategy", "build"): "Run the research strategy's required Alpha and Risk studies on the "
     "workspace's one input with their defaults, one at a time, then prepare and install the "
     "strategy, following each Task to its end; the first stop is the answer.",
-    ("strategy-book", "review"): "Run or reuse an installed strategy's whole-support book, "
-    "prepare its Evidence and write every Analyst bundle, following each Task to its end; "
-    "the first stop is the answer.",
+    ("strategy-book", "review"): "Run or reuse an installed strategy's whole-support book, or "
+    "with --update read a date's published positions, prepare their Evidence and write every "
+    "Analyst bundle, following each Task to its end; the first stop is the answer.",
     ("review", "continue"): "Submit every specialist answer in a folder and follow each "
     "publication; after the Analysts, write the CRO's bundle; after the CRO, read the review and "
     "the strategy's activation offer. The first stop is the answer.",
@@ -311,7 +311,14 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             dest="objective",
             required=True,
             help="The person's exact sentence, the first use's objective; the same sentence "
-            "again reuses its goal.",
+            "and date again reuse its goal.",
+        )
+        child.add_argument(
+            "--date",
+            dest="target_date",
+            required=True,
+            help="The date the sentence names for the positions (YYYY-MM-DD), as you read it; "
+            "they are entered on the first session on or after it, decided at the close before.",
         )
     elif (noun, verb) == ("strategy-book", "review"):
         child.add_argument(
@@ -326,6 +333,12 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             type=Path,
             required=True,
             help="A folder for the Analyst bundles; each unit's is a new folder inside it.",
+        )
+        child.add_argument(
+            "--update",
+            dest="update_task_id",
+            help="Review this update Task's published positions, bound by their publication, "
+            "in place of the strategy's whole-support book.",
         )
     elif (noun, verb) == ("review", "continue"):
         child.add_argument(
@@ -506,7 +519,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
         # every action's use (V377, the review's F3).
         child = by_noun[noun].add_parser(
             verb,
-            help=f"{purpose}{' (a person completes it)' if person else ''}  {line}".strip(),
+            help=f"{purpose}{' (the person decides it)' if person else ''}  {line}".strip(),
             description=f"{purpose}{_person_words(operations, table) if person else ''}",
         )
         child.set_defaults(operations=operations)
@@ -531,6 +544,20 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
             )
         for name in others:
             child.add_argument(flag(name), dest=name, help=_field_help(name, required))
+        if "person_confirmation" in others:
+            child.add_argument(
+                "--asked",
+                dest="person_asked",
+                metavar="QUESTION",
+                help="With --person-said: the one-line question you asked the person, as asked.",
+            )
+            child.add_argument(
+                "--repeat",
+                dest="person_repeat",
+                metavar="NONCE",
+                help="With --person-said: the person's next yes to a decision already made, by "
+                "the nonce its refusal named.",
+            )
         child.add_argument(
             "--from",
             dest="from_answer",
@@ -859,8 +886,8 @@ def _declaration_sections() -> dict[str, Any]:
 
 
 _PERSON_ONLY_WORDS = (
-    ": only a person completes it, in the Workbench; a client's or an Agent's request is "
-    "refused, and the reads it names say what decides it."
+    ": the person decides it: ask them in one line and, on a clear yes, send it with "
+    "--person-said and --asked; without their yes, a client's or an Agent's request is refused."
 )
 
 
@@ -869,9 +896,9 @@ def _person_words(operations: tuple[str, ...], table: dict[str, Any]) -> str:
     person's first-use goal delegates it to (V452)."""
     if set(operations) & set(table["first_use"]):
         return (
-            ": a person completes it, in the Workbench, or the agent running this workspace's "
-            "first-use goal, opened from the person's sentence, for that goal's hours; any other "
-            "client's or Agent's request is refused."
+            ": the person decides it, or the agent running this workspace's first-use goal, "
+            "opened from the person's sentence, for that goal's hours; otherwise ask the person "
+            "in one line and, on a clear yes, send it with --person-said and --asked."
         )
     return _PERSON_ONLY_WORDS
 
@@ -1657,6 +1684,11 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
         parser.error("--choices fills the next request a saved answer offers: give --from")
     if missing and args.from_answer is None:
         parser.error("the following arguments are required: " + ", ".join(missing))
+    # The person's yes, asked in one line, relayed whole and bound to the request sent.
+    said, asked = given.pop("person_confirmation", None), getattr(args, "person_asked", None)
+    repeat = getattr(args, "person_repeat", None)
+    if (said is None) != (asked is None) or (repeat and said is None):
+        parser.error("--person-said and --asked go together: the person's words, your question")
 
     def document() -> dict[str, Any]:
         if (
@@ -1684,9 +1716,24 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
                     "local_client.field_given_twice:" + ",".join(twice)
                 )
             fields = {**chosen, **fields}
-        if args.from_answer is None:
-            return {"operation": operation, **fields}
-        return client.continuation(operation, args.from_answer, fields, allowed)
+        line = (
+            {"operation": operation, **fields}
+            if args.from_answer is None
+            else client.continuation(operation, args.from_answer, fields, allowed)
+        )
+        if said is None:
+            return line
+        from alphalattice.interface.local_application.portfolio_research import decision_hash
+
+        return {
+            **line,
+            "person_confirmation": {
+                "question": asked,
+                "words": said,
+                "decision_hash": decision_hash(line),
+                **({"nonce": repeat} if repeat else {}),
+            },
+        }
 
     return document
 

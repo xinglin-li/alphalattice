@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,6 +31,7 @@ from alphalattice.interface.local_application.goals import FIRST_USE_HOURS
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
+from alphalattice.interface.local_application.portfolio_research import decision_hash
 from tests.portfolio_strategy_lab.local_web_support import run_node
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
@@ -143,6 +145,52 @@ def test_a_first_use_ends_without_undoing_what_the_person_set_since(
     assert _network(live)
 
 
+def test_a_persons_yes_relayed_whole_completes_their_decision_once(
+    live: Any, tmp_path: Path
+) -> None:
+    """requirement (OP23): their yes, relayed whole, completes their decision, recorded with the
+    session; the same command run again, or the yes carried to another decision, is refused,
+    and their next yes goes with the nonce the refusal named."""
+
+    line = ("network", "set", "--enabled", "true", "--person-said", "Yes.", "--asked", "Open it?")
+    code, set_ = _cli(live, *line)
+    assert code == 0 and _network(live), set_
+    assert _cli(live, "network", "show")[1]["set_by"] == {"relayed_by": f"claude-code:{SESSION}"}
+    code, again = _cli(live, *line)
+    used = str(_code(again))
+    assert code == 2 and used.startswith("person_confirmation.already_used:"), again
+    assert _cli(live, *line, "--repeat", used.rpartition(":")[2])[0] == 0
+    store = live.operations.goals.store
+    relayed = [
+        e["relayed"] for g in store.goal_ids() for e in store.attributed(g) if "relayed" in e
+    ]
+    assert [(r["words"], r["agent_session"]) for r in relayed] == [("Yes.", SESSION)] * 2
+    yes = {key: relayed[0][key] for key in ("question", "words", "decision_hash")}
+    path = tmp_path / "relayed.json"
+    request = {"operation": "NETWORK_ACCESS_SET", "network_enabled": False}
+    path.write_text(json.dumps({**request, "person_confirmation": yes}))
+    code, refused = _cli(live, "request", "--file", str(path))
+    assert code == 2 and _code(refused) == "person_confirmation.decision_mismatch", refused
+
+
+def test_a_relayed_yes_is_held_once_and_only_from_an_agents_own_session(
+    live: Any, tmp_path: Path
+) -> None:
+    """regression (the review at 8c142c9c3): the yes was checked before its decision ran and
+    recorded after, so two copies at once could both pass; one sent from no agent session
+    was not refused."""
+
+    request = {"operation": "NETWORK_ACCESS_SET", "network_enabled": True}
+    yes = {"question": "Open it?", "words": "Yes.", "decision_hash": decision_hash(request)}
+    path = tmp_path / "relayed.json"
+    path.write_text(json.dumps({**request, "person_confirmation": yes}))
+    code, alone = _cli(live, "request", "--file", str(path), session="")
+    assert code == 2 and _code(alone) == "person_confirmation.session_required", alone
+    with ThreadPoolExecutor(2) as pool:
+        codes = sorted(pool.map(lambda _: _cli(live, "request", "--file", str(path))[0], (1, 2)))
+    assert codes == [0, 2]
+
+
 def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised(
     tmp_path: Path,
 ) -> None:
@@ -193,42 +241,74 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
     assert app.first_use_delegation(goal)["active"] is False
 
 
-def test_a_delegated_activation_takes_only_a_book_with_a_published_review() -> None:
-    """requirement (STOPS-1): under the first-use delegation the agent activates a book only once
-    its review standing is REVIEWED, and is refused by name before; the person's own activation
-    asks for no review."""
-
-    activated: list[UUID] = []
-    standing = {"status": "NOT_REVIEWED"}
-
-    def activate(task_id: UUID) -> dict[str, object]:
-        activated.append(task_id)
-        return {"status": "ACTIVATED"}
+def test_a_delegated_activation_runs_forward_without_the_history_review() -> None:
+    """requirement (the review on the date's positions): under the first-use delegation the
+    agent activates a book whose history is not reviewed, and the date's update comes with it."""
 
     owner = SimpleNamespace(
-        activations=SimpleNamespace(activate=activate),
-        review=object(),
-        _book_review_standing=lambda _task_id: standing,
+        activations=SimpleNamespace(activate=lambda _task: {"status": "ACTIVATED"}),
+        _first_update=lambda _activated, _provenance: {"update": {"run": {"task_id": "u"}}},
     )
     request = Request(operation="STRATEGY_ACTIVATE", task_id=UUID(int=3))
-
-    def run() -> dict[str, object]:
-        return PortfolioResearchOperations._strategy_activation(owner, request, "HUMAN")  # type: ignore[arg-type]
-
     scope = REQUEST_PROVENANCE.set(
         RequestProvenance(goal_id=str(UUID(int=7)), delegation=f"first-use-goal:{UUID(int=7)}")
     )
     try:
-        refused = run()
-        assert refused["failure_code"] == "strategy_activation.review_required", refused
-        assert not activated
-        standing["status"] = "REVIEWED"
-        assert run()["status"] == "ACTIVATED"
+        answer = PortfolioResearchOperations._strategy_activation(owner, request, "HUMAN")  # type: ignore[arg-type]
     finally:
         REQUEST_PROVENANCE.reset(scope)
-    standing["status"] = "NOT_REVIEWED"
-    assert run()["status"] == "ACTIVATED"
-    assert activated == [UUID(int=3), UUID(int=3)]
+    assert answer["status"] == "ACTIVATED" and answer["update"] == {"run": {"task_id": "u"}}
+
+
+def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_path: Path) -> None:
+    """requirement (activate and update in one act): activation plans the update for the first
+    use's named date and admits its run under the goal; a Codex lead's session is woken."""
+
+    sent: list[Request] = []
+    wakes: list[tuple[object, ...]] = []
+    goal = SimpleNamespace(goal_id=UUID(int=7), declaration=SimpleNamespace(target_date=None))
+    goal.declaration.target_date = datetime(2026, 10, 10).date()
+
+    def execute(request: Request) -> dict[str, object]:
+        sent.append(request)
+        if request.operation == "RESEARCH_UPDATE_PLAN":
+            return {"status": "PLANNED", "update_plan_hash": "h" * 64, "target_session": "x"}
+        return {"status": "ADMITTED", "task_id": str(UUID(int=9))}
+
+    codex = {"agent_vendor": "codex", "agent_session": "thread-1"}
+    owner = SimpleNamespace(
+        goals=SimpleNamespace(
+            first_use=lambda: goal,
+            first_use_delegation=lambda _goal: {"active": True},
+            store=SimpleNamespace(attributed=lambda _goal_id: (codex,)),
+        ),
+        execute=execute,
+        workspace_session=SimpleNamespace(
+            workspace=tmp_path,
+            task_control_registry=SimpleNamespace(
+                register_wake=lambda *args, **_: wakes.append(args)
+            ),
+        ),
+        dispatcher=SimpleNamespace(clock=lambda: datetime(2026, 10, 10, tzinfo=UTC)),
+    )
+    activated = {
+        "strategy_package_id": "BAL",
+        "next_requests": {"update": {"operation": "RESEARCH_UPDATE_PLAN"}},
+    }
+    answer = PortfolioResearchOperations._first_update(owner, activated, None)  # type: ignore[arg-type]
+
+    # A Saturday names Monday's positions, decided at Friday's close.
+    assert sent[0].observed_through == "2026-10-09"
+    assert sent[1].update_plan_hash == "h" * 64
+    assert answer["next_requests"] == {
+        "update_status": {"operation": "STATUS", "task_id": str(UUID(int=9))}
+    }
+    ((task, thread, read),) = wakes
+    assert (task, thread) == (UUID(int=9), "thread-1") and read.endswith(f"task show {UUID(int=9)}")
+    # A date the calendars do not plan leaves the committed activation standing (the review).
+    goal.declaration.target_date = datetime(2099, 1, 2).date()
+    update = PortfolioResearchOperations._first_update(owner, activated, None)["update"]  # type: ignore[arg-type]
+    assert update["plan"]["failure_code"] == "first_use.date_outside_calendar"
 
 
 def test_a_first_use_is_the_one_before_the_first_preparation(

@@ -2211,10 +2211,10 @@ class ResearchExperimentApplication:
             return None
         if code == RETRYABLE_CAPACITY_BLOCK:
             return (
-                "The stage stopped on storage.managed_capacity_exceeded. Raise the cap in "
-                "Settings or confirm a cleanup, then RECOVER with this version re-checks the "
-                "current capacity and plan and reopens the same Task; its verified stages and "
-                "checkpoint are kept."
+                "The stage stopped on storage.managed_capacity_exceeded. Raise the cap "
+                "(`storage set --cap-bytes <bytes>`) or confirm a cleanup on the person's yes, "
+                "then RECOVER with this version re-checks the current capacity and plan and "
+                "reopens the same Task; its verified stages and checkpoint are kept."
             )
         return (
             f"The stage stopped on {code}: a required artifact was missing or did not read. "

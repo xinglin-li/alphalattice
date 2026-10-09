@@ -94,13 +94,15 @@ class RequestProvenance:
     """Who sent one request, as its client declared it: an agent session and a named goal.
 
     `delegation` is the Host's, never a client's: the person's delegation the request acts under
-    (a first-use goal's, V452), which an owner recording who decided names.
+    (a first-use goal's, V452), which an owner recording who decided names. `relayed` is the
+    Host's too: the request relays the person's yes, checked against its decision.
     """
 
     vendor: str | None = None
     session: str | None = None
     goal_id: str | None = None
     delegation: str | None = None
+    relayed: bool = False
 
     def subject(self) -> dict[str, str]:
         """The references an activity row records for this request."""
@@ -1322,6 +1324,25 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "FOLLOW_EACH_STAGE_IN_THE_TURN",
             "A Codex wake comes once, when the Task ends, needs a decision or is deferred; "
             "--each-stage never wakes. Follow each stage inside the turn.",
+        ),
+    ),
+    (
+        "local_client.first_use_date_invalid",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "SEND_THE_DATE_AS_YYYY_MM_DD",
+            "The date is not a calendar date written YYYY-MM-DD, so nothing was opened. Send "
+            "the date the person named in that form.",
+        ),
+    ),
+    (
+        "local_client.first_use_date_outside_calendar",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "ASK_FOR_A_DATE_THE_CALENDARS_PLAN",
+            "The exchange calendars plan no session on or after this date, so its positions "
+            "have no entry session and nothing was opened. Ask the person for a date the "
+            "calendars plan.",
         ),
     ),
     (

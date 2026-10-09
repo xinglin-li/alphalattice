@@ -797,6 +797,7 @@ class _ScriptedHost:
         self.sent: list[dict[str, Any]] = []
         self.prerequisites = prerequisites
         self.previews = 0
+        self.prepares = 0
 
     def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
         self.sent.append(document)
@@ -831,6 +832,17 @@ class _ScriptedHost:
                         "evidence_preview": {"operation": "EVIDENCE_PREVIEW", **book},
                     },
                 }
+            case "RESEARCH_UPDATE_READBACK":
+                selector = {"update_task_id": document["task_id"], **PUBLICATION}
+                return {
+                    "status": "PUBLISHED",
+                    "update": {"target_session": "2026-10-12"},
+                    "review_selector": selector,
+                    "next_requests": {
+                        "evidence_preview": {"operation": "EVIDENCE_PREVIEW", **selector},
+                        "review": {"operation": "EVIDENCE_CRO", **selector},
+                    },
+                }
             case "EVIDENCE_PREVIEW":
                 self.previews += 1
                 if not self.prerequisites:
@@ -838,30 +850,30 @@ class _ScriptedHost:
                         "status": "EVIDENCE_PREREQUISITES_MISSING",
                         "next_requests": {"setup": {"operation": "EVIDENCE_SETUP"}},
                     }
-                units = (
-                    {
-                        f"analyst_bundle_{unit}": {
-                            "operation": "AGENT_BUNDLE_PREPARE",
-                            "agent_role": "ANALYST",
-                            "evidence_unit_id": unit,
-                            "bundle_directory": None,
-                            **book,
-                        }
-                        for unit in ("u1", "u2")
-                    }
-                    if self.previews > 1
-                    else {}
-                )
+                subject = {k: v for k, v in document.items() if k != "operation"}
                 return {
                     "status": "EVIDENCE_PREPARATION_READY",
                     "coverage": {"unit_count": 2},
-                    "next_requests": {
-                        "prepare": {"operation": "EVIDENCE_PREPARE", **book},
-                        **units,
-                    },
+                    "next_requests": {"prepare": {"operation": "EVIDENCE_PREPARE", **subject}},
                 }
-            case "EVIDENCE_PREPARE":
+            case "EVIDENCE_PREPARE" if not self.prepares:
+                self.prepares += 1
                 return {"status": "ADMITTED", "task_id": "t-evidence", "lifecycle": "QUEUED"}
+            case "EVIDENCE_PREPARE":
+                # The same preparation asked again: reused, its own units offered.
+                subject = {k: v for k, v in document.items() if k != "operation"}
+                units = {
+                    f"analyst_bundle_{unit}": {
+                        "operation": "AGENT_BUNDLE_PREPARE",
+                        "agent_role": "ANALYST",
+                        "evidence_unit_id": unit,
+                        "task_id": "t-evidence",
+                        "bundle_directory": None,
+                        **subject,
+                    }
+                    for unit in ("u1", "u2")
+                }
+                return {"status": "REUSED_EXACT", "task_id": "t-evidence", "next_requests": units}
             case "AGENT_BUNDLE_PREPARE":
                 return {
                     "status": "AGENT_BUNDLE_READY",
@@ -874,8 +886,14 @@ class _ScriptedHost:
         raise AssertionError(document)
 
 
-def _review_args(root: Path) -> SimpleNamespace:
-    return SimpleNamespace(strategy_package_id="pkg", bundle_root=root, max_wait=None)
+PUBLICATION = {"update_publication_hash": "p" * 64, "position_basis": "CONDITIONAL_ESTIMATE"}
+"""A date's sealed publication, as an update's readback names it."""
+
+
+def _review_args(root: Path, update: str | None = None) -> SimpleNamespace:
+    return SimpleNamespace(
+        strategy_package_id="pkg", bundle_root=root, max_wait=None, update_task_id=update
+    )
 
 
 def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_bundle(
@@ -897,10 +915,12 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
         "evidence_preview",
         "evidence",
         "evidence_task",
-        "evidence_preview_after",
+        "evidence_prepared",
         "analyst_bundle",
         "analyst_bundle",
     ]
+    # Its bundles are the prepared run's own; a later preview would pack other units.
+    assert host.previews == 1
     assert [bundle["unit"] for bundle in answer["analyst_bundles"]] == ["u1", "u2"]
     for bundle in answer["analyst_bundles"]:
         folder = Path(bundle["bundle_directory"])
@@ -935,20 +955,37 @@ def test_a_book_review_stops_at_the_first_answer_that_needs_another_step(tmp_pat
     assert not (tmp_path / "analysts").exists()
 
 
+def test_a_review_of_a_dates_positions_binds_their_publication(tmp_path: Path) -> None:
+    """requirement (the review on the date's positions): with an update, the review reads its
+    published positions and prepares their Evidence bound by the publication's hash."""
+    host = _ScriptedHost(tmp_path / "workspace")
+    answer = client_module._review_steps(host, _review_args(tmp_path / "analysts", "t-update"))  # type: ignore[arg-type]
+
+    assert answer["status"] == "BOOK_REVIEW_READY"
+    assert answer["positions"]["review_selector"]["update_publication_hash"] == "p" * 64
+    previews = [d for d in host.sent if d["operation"] == "EVIDENCE_PREVIEW"]
+    assert [d["update_publication_hash"] for d in previews] == ["p" * 64]
+    assert not any(d["operation"] in {"CONTROLS", "RUN"} for d in host.sent)
+    assert [bundle["unit"] for bundle in answer["analyst_bundles"]] == ["u1", "u2"]
+
+
 class _ReviewHost:
     """A Host answering a review's submissions, Evidence, dossier and offer as their owners do."""
 
     BOOK: ClassVar[dict[str, str]] = {"result_hash": "b" * 64}
 
-    def __init__(self, workspace: Path, *, correct: str | None = None) -> None:
+    def __init__(self, workspace: Path, *, correct: str | None = None, places: int = 8) -> None:
         self.workspace = workspace
         self.goal = None
         self.sent: list[dict[str, Any]] = []
         self.correct = correct
+        self.places, self.queued = places, set[str]()
 
     def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
         self.sent.append(document)
         match document["operation"]:
+            case "AGENT_ANSWER_SUBMIT" if len(self.queued) >= self.places:
+                return {"status": "REFUSED", "failure_code": "REFUSED_QUEUE_FULL"}
             case "AGENT_ANSWER_SUBMIT":
                 folder = Path(document["bundle_directory"])
                 role = "CRO" if folder.name == "cro" else "ANALYST"
@@ -960,6 +997,7 @@ class _ReviewHost:
                         "rounds_left": 2,
                     }
                 task = f"t-{folder.name}"
+                self.queued.add(task)
                 return {
                     "status": "ACCEPTED",
                     "agent_role": role,
@@ -972,6 +1010,7 @@ class _ReviewHost:
                     },
                 }
             case "STATUS":
+                self.queued.discard(document["task_id"])
                 return {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", **document}
             case "EVIDENCE_CRO":
                 return {
@@ -1027,16 +1066,18 @@ def _continue_args(root: Path, **fields: Any) -> SimpleNamespace:
 
 
 def test_review_continue_submits_the_analysts_and_writes_the_cros_bundle(tmp_path: Path) -> None:
-    """requirement (AGENT-TIME verb 3, approved 2026-10-08): one call submits every Analyst
-    answer, follows each publication, reads the book's Evidence, its dossier and the CRO's
-    offered bundle, and writes that bundle with its answer path and submit command."""
-    host = _ReviewHost(tmp_path / "workspace")
+    """requirement (AGENT-TIME verb 3): one call submits every Analyst answer within the Host's
+    waiting places, follows each publication, and writes the CRO's offered bundle with its
+    answer path and submit command."""
+    host = _ReviewHost(tmp_path / "workspace", places=1)
     root = _answers(tmp_path / "analysts", "analyst-u1", "analyst-u2")
     answer = client_module._continue_steps(  # type: ignore[arg-type]
         host, _continue_args(root, cro_root=tmp_path / "cro")
     )
 
     assert answer["status"] == "CRO_BUNDLE_READY" and answer["next_action"] == "DISPATCH_CRO"
+    # The second answer met a full queue: the first publication was followed, then it was sent.
+    assert sum(d["operation"] == "AGENT_ANSWER_SUBMIT" for d in host.sent) == 3
     assert [receipt["task_id"] for receipt in answer["receipts"]] == [
         "t-analyst-u1",
         "t-analyst-u2",
@@ -1129,20 +1170,29 @@ class _FirstUseHost:
         raise AssertionError(document)
 
 
-def _first_use(host: _FirstUseHost) -> dict[str, Any]:
-    args = SimpleNamespace(objective="Build me a book.", max_wait=None, notify=None, output=None)
+def _first_use(host: _FirstUseHost, named: str = "2026-10-10") -> dict[str, Any]:
+    args = SimpleNamespace(
+        objective="Positions for Saturday.",
+        target_date=named,
+        max_wait=None,
+        notify=None,
+        output=None,
+    )
     return client_module._first_use_steps(host, args)  # type: ignore[arg-type]
 
 
 def test_a_first_use_opens_its_goal_from_the_sentence_and_stops_at_its_data_issues(
     tmp_path: Path,
 ) -> None:
-    """requirement (fewer agent steps): one call opens the goal from the person's sentence,
-    prepares, and stops where the preparation needs data decisions, each confirm offered."""
+    """requirement (fewer agent steps): one call opens the goal from the person's sentence and
+    named date, prepares, and stops where the preparation needs data decisions."""
     host = _FirstUseHost(tmp_path / "workspace")
     stopped = _first_use(host)
 
-    assert host.sent[0]["goal_declaration"]["objective"] == "Build me a book."
+    declaration = host.sent[0]["goal_declaration"]
+    assert declaration["objective"] == "Positions for Saturday."
+    assert declaration["target_date"] == "2026-10-10"
+    assert "2026-10-12" in declaration["criteria"][0]["text"]
     assert host.goal == "g-1" and stopped["first_use"]["stopped_at"] == "issues"
     assert "confirm:c1:retain" in stopped["next_requests"]
 
@@ -1173,18 +1223,51 @@ def test_a_first_use_resumes_its_stopped_preparation_only_once_every_decision_is
 
 
 def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_record(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (plan first): every answer carries each later step's command and what only
-    the person decides; on a prepared workspace it names its sentence as not recorded."""
+    """requirement (plan first): every answer echoes the date's sessions, names what this
+    session's setup lacks, carries each later step's command and names an unrecorded sentence."""
+    monkeypatch.chdir(tmp_path)  # a project with no declaration for this session's host
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    monkeypatch.setenv("CODEX_THREAD_ID", "thread-1")
     answer = _first_use(_FirstUseHost(tmp_path / "workspace", prepared=True))
 
+    # A Saturday names no session: the positions enter on Monday, decided at Friday's close.
+    date_ = answer["first_use"]["date"]
+    assert (date_["named_is_session"], date_["entry_session"]) == (False, "2026-10-12")
+    assert date_["formation_session"] == "2026-10-09"
     road = answer["first_use"]["road"]
-    assert [step["step"] for step in road] == ["prepare", "strategy", "book", "review", "publish"]
+    assert [step["step"] for step in road] == [
+        *("prepare", "strategy", "book", "activate", "review", "cro", "publish")
+    ]
     assert answer["next_action"] == "BUILD_THE_STRATEGY"
     assert answer["next_command"] == road[1]["command"]
-    assert "SEC_USER_AGENT" in answer["first_use"]["ask_now"][0]
+    assert "retrieval model" in answer["first_use"]["ask_now"][0]
     assert "not recorded" in answer["first_use"]["sentence"]
+    assert "project_declaration" in answer["first_use"]["setup"]["missing"]
+
+
+@pytest.mark.parametrize(
+    ("named", "read"),
+    [
+        ("2026-09-07", (False, "2026-09-08", "2026-09-04")),
+        ("2026-10-09", (True, "2026-10-09", "2026-10-08")),
+        ("2026-13-01", "local_client.first_use_date_invalid"),
+        ("2099-01-02", "local_client.first_use_date_outside_calendar"),
+    ],
+)
+def test_a_first_use_reads_the_named_date_by_the_exchange_calendars(
+    tmp_path: Path, named: str, read: object
+) -> None:
+    """requirement (the person's date): a holiday enters on the next session, a session date on
+    itself; a date that is not one, or that the calendars do not plan, is refused by name."""
+    answer = _first_use(_FirstUseHost(tmp_path / "workspace", prepared=True), named)
+
+    if isinstance(read, str):
+        assert answer["failure_code"] == read and answer["detail"], answer
+        return
+    date_ = answer["first_use"]["date"]
+    assert (date_["named_is_session"], date_["entry_session"], date_["formation_session"]) == read
 
 
 WINDOW = {"start": "2022-07-01", "end": "2026-09-03", "formation_history": {"start": "2021-06-30"}}
@@ -1302,11 +1385,9 @@ def test_a_strategy_build_takes_each_offered_step_as_its_owner_admits_it_and_ins
     assert answer["studies"][0]["model_lifecycle"] == "LIGHT"
     # The Risk study covers the named window from its formation history, not the default.
     assert answer["studies"][2]["sessions"] == {"start": "2021-06-30", "end": "2026-09-04"}
-    # Each installed package's book review is offered; the agent chooses.
-    assert answer["next_action"] == "REVIEW_THE_BOOK" and set(answer["next_commands"]) == {
-        "BAL",
-        "G6",
-    }
+    # Each installed package's book run is offered; the agent chooses.
+    assert answer["next_action"] == "RUN_THE_BOOK"
+    assert {"book:BAL", "book:G6"} <= set(answer["next_requests"])
 
 
 @pytest.mark.parametrize(

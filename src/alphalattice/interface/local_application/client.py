@@ -45,6 +45,7 @@ from alphalattice.interface.local_application.cli_contract import (
     shell,
     task_state,
 )
+from alphalattice.interface.local_application.goals import target_sessions
 
 CONNECTION_NAME = "local-research-connection.json"
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
@@ -2483,46 +2484,69 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
 
     It sends the requests the answers offer, in their order, and follows each Task to its end:
     the strategy's controls, its book's run with their defaults, the book's saved result and its
-    report, Evidence's preview and preparation, then each prepared unit's Analyst bundle into
-    ``--dir``. The first answer that stops it (a refusal, a missing prerequisite, a Task waiting
-    on a decision or the wait's cap) is the answer, with the steps it took; nothing runs beyond
-    this call, and every step stays its own command for an agent that would choose otherwise.
+    report, or with ``--update`` that update's published positions, bound by their
+    publication; then Evidence's preview and preparation, and each unit the preparation itself
+    offers, at its own cutoff, as an Analyst bundle into ``--dir``. The first answer that
+    stops it (a refusal, a missing prerequisite, a Task waiting on a decision or the wait's cap)
+    is the answer, with the steps it took; nothing runs beyond this call, and every step stays
+    its own command for an agent that would choose otherwise.
     """
     package = str(args.strategy_package_id)
     root = Path(args.bundle_root).resolve()
     chain = _chain(client, args, "book_review")
-    controls = chain.send("controls", {"operation": "CONTROLS", "strategy_package_id": package})
-    if outcome_of(controls) != "OK" or not isinstance(controls.get("template"), dict):
-        return chain.stop("controls", controls)
-    run = chain.send("book", {"operation": "RUN", "spec": controls["template"]})
-    if (ended := chain.followed("book", run)) is not None:
-        return ended
-    # A book's Task names no result when it ends; the saved results do, by their Task.
-    result_hash = run.get("result_hash")
-    if run.get("task_id"):
-        results = chain.send("book_result", {"operation": "RESULTS"})
-        result_hash = next(
-            (
-                row.get("result_hash")
-                for row in results.get("results") or []
-                if row.get("task_id") == run["task_id"]
-            ),
-            None,
+    update = getattr(args, "update_task_id", None)
+    if update:
+        # The date's published positions, bound by their publication's hash.
+        readback = chain.send(
+            "update", {"operation": "RESEARCH_UPDATE_READBACK", "task_id": update}
         )
-        if result_hash is None:
-            return chain.stop("book_result", results)
-    readback = chain.send("book_readback", {"operation": "REPORT", "result_hash": result_hash})
+        subject: dict[str, Any] = {
+            "update_task_id": update,
+            "target_session": (readback.get("update") or {}).get("target_session"),
+            "review_selector": readback.get("review_selector"),
+        }
+    else:
+        controls = chain.send("controls", {"operation": "CONTROLS", "strategy_package_id": package})
+        if outcome_of(controls) != "OK" or not isinstance(controls.get("template"), dict):
+            return chain.stop("controls", controls)
+        run = chain.send("book", {"operation": "RUN", "spec": controls["template"]})
+        if (ended := chain.followed("book", run)) is not None:
+            return ended
+        # A book's Task names no result when it ends; the saved results do, by their Task.
+        result_hash = run.get("result_hash")
+        if run.get("task_id"):
+            results = chain.send("book_result", {"operation": "RESULTS"})
+            result_hash = next(
+                (
+                    row.get("result_hash")
+                    for row in results.get("results") or []
+                    if row.get("task_id") == run["task_id"]
+                ),
+                None,
+            )
+            if result_hash is None:
+                return chain.stop("book_result", results)
+        readback = chain.send("book_readback", {"operation": "REPORT", "result_hash": result_hash})
+        subject = {
+            "task_id": run.get("task_id"),
+            "result_hash": result_hash,
+            "disposition": run.get("disposition"),
+            "review_selector": readback.get("review_selector"),
+        }
     preview_request = chain.offered(readback, "evidence_preview")
     if preview_request is None:
-        return chain.stop("book_readback", readback)
+        return chain.stop("update" if update else "book_readback", readback)
     preview = chain.send("evidence_preview", preview_request)
     prepare = chain.offered(preview, "prepare")
     if preview.get("status") != "EVIDENCE_PREPARATION_READY" or prepare is None:
         return chain.stop("evidence_preview", preview)
     prepared = chain.send("evidence", prepare)
+    pending = outcome_of(prepared) == "PENDING"
     if (ended := chain.followed("evidence", prepared)) is not None:
         return ended
-    current = chain.send("evidence_preview_after", preview_request)
+    # The run's own bundles, at its cutoff: the same preparation asked again reuses it, where a
+    # new preview at a later clock would pack other units.
+    current = chain.send("evidence_prepared", prepare) if pending else prepared
     bundles: list[dict[str, Any]] = []
     for name, request in offered_requests(current).items():
         if not name.startswith("analyst_bundle") or not isinstance(request, dict):
@@ -2536,18 +2560,13 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         bundles.append({"unit": unit, **written})
     review = chain.offered(readback, "review")
     return {
-        "status": "BOOK_REVIEW_READY",
+        "status": "BOOK_REVIEW_READY" if bundles else "EVIDENCE_PREPARED",
         "strategy_package_id": package,
-        "book": {
-            "task_id": run.get("task_id"),
-            "result_hash": result_hash,
-            "disposition": run.get("disposition"),
-            "review_selector": readback.get("review_selector"),
-        },
+        ("positions" if update else "book"): subject,
         "evidence": {
-            "status": current.get("status"),
-            "evidence_as_of": current.get("evidence_as_of"),
-            "coverage": current.get("coverage"),
+            "status": current.get("status") or current.get("disposition"),
+            "evidence_as_of": current.get("evidence_as_of") or prepared.get("evidence_as_of"),
+            "coverage": preview.get("coverage"),
             "prepared_task_id": prepared.get("task_id"),
         },
         "analyst_bundles": bundles,
@@ -2557,7 +2576,7 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
             "Give each Analyst its bundle directory, file list and answer path; when their answers "
             "are written, `review continue --dir` submits them all and prepares the CRO's bundle."
             if bundles
-            else "Evidence offered no Analyst bundle for this book; read its review state."
+            else "Evidence is prepared with no Analyst bundle to answer; read its review state."
         ),
         "next_requests": {} if review is None else {"review": review},
     }
@@ -2593,16 +2612,22 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
     published: list[dict[str, Any]] = []
     roles: set[str] = set()
     book: dict[str, Any] | None = None
+    followed = 0
     for folder in folders:
         answer = _document(folder / "answer.json")
-        body = chain.send(
-            "submit",
-            {
-                "operation": "AGENT_ANSWER_SUBMIT",
-                "bundle_directory": str(folder),
-                "agent_answer": answer,
-            },
-        )
+        submit = {
+            "operation": "AGENT_ANSWER_SUBMIT",
+            "bundle_directory": str(folder),
+            "agent_answer": answer,
+        }
+        body = chain.send("submit", submit)
+        # The Host's waiting places are full: the oldest accepted publication is followed to
+        # free one, and the refused answer, never filed, is sent again.
+        while body.get("failure_code") == "REFUSED_QUEUE_FULL" and followed < len(published):
+            if (ended := chain.followed("publication", published[followed])) is not None:
+                return ended
+            followed += 1
+            body = chain.send("submit", submit)
         if body.get("status") == "CORRECT":
             corrections.append(
                 {
@@ -2632,7 +2657,7 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
                 "then run this command again; the accepted answers stand."
             ),
         }
-    for body in published:
+    for body in published[followed:]:
         if (ended := chain.followed("publication", body)) is not None:
             return ended
     if book is None:
@@ -2696,28 +2721,15 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
     }
 
 
-_FIRST_USE: Final = {
-    "title": "First use",
-    "kind": "FIRST_USE",
-    "criteria": [{"criterion_id": "book", "text": "A reviewed book stands for the person."}],
-}
-"""The first use's declaration beside the person's sentence, as the guide writes it."""
-
-_BOOK_REVIEW: Final = (
-    "strategy-book",
-    "review",
-    "--package",
-    "<package>",
-    "--dir",
-    "<out>/analysts",
-)
-"""The book review's command, its package filled once it is known."""
+_FIRST_USE: Final = {"title": "First use", "kind": "FIRST_USE"}
+"""The first use's declaration beside the person's sentence and named date."""
 
 _FIRST_USE_ROAD: Final = (
     (
         "prepare",
-        ("first-use", "prepare", "--sentence", "<sentence>"),
-        "Opens the first use and prepares its data; its data issues are yours to decide.",
+        ("first-use", "prepare", "--sentence", "<sentence>", "--date", "<date>"),
+        "Opens the first use for the named date and prepares its data; its data issues are "
+        "yours to decide.",
     ),
     (
         "strategy",
@@ -2726,29 +2738,42 @@ _FIRST_USE_ROAD: Final = (
     ),
     (
         "book",
-        _BOOK_REVIEW,
-        "Runs the whole-support book and writes each Analyst's bundle; start one Evidence "
-        "Analyst per bundle.",
+        ("strategy-book", "run", "--file", '{"strategy_package_id":"<package>"}', "--wait"),
+        "Runs the package's whole-support book: the numerical check before it runs forward.",
+    ),
+    (
+        "activate",
+        ("strategy", "activate", "<book-task>"),
+        "Activates the book (yours under the first use) and admits the date's update in the "
+        "same act; wait for that update.",
     ),
     (
         "review",
+        (
+            *("strategy-book", "review", "--package", "<package>"),
+            *("--dir", "<out>/analysts", "--update", "<update-task>"),
+        ),
+        "Prepares Evidence on the date's published positions and writes each Analyst's bundle; "
+        "start one Evidence Analyst per bundle.",
+    ),
+    (
+        "cro",
         ("review", "continue", "--dir", "<out>/analysts", "--cro-dir", "<out>/cro"),
         "Submits the Analysts' answers and writes the CRO's bundle; start the CRO.",
     ),
     (
         "publish",
-        ("review", "continue", "--dir", "<out>/cro", "--package", "<package>"),
-        "Publishes the review and reads the activation offer: once the book is REVIEWED, its "
-        "activation and then its offered update are yours under the first use.",
+        ("review", "continue", "--dir", "<out>/cro"),
+        "Publishes the review of the date's positions.",
     ),
 )
 """The whole first use in order: each step's command and what it leaves to the agent."""
 
 _FIRST_USE_ASK_NOW: Final = (
-    "Unless this workspace's Evidence is set up already, the book's review needs the person's "
-    "consent to acquire SEC filings from the official endpoints, their contact in "
-    "SEC_USER_AGENT and the retrieval model's download. Ask for it now, in one line, so the "
-    "review never waits for it.",
+    "Unless this workspace's Evidence is set up already, the review of the date's positions "
+    "fetches recent SEC filings within the default budget under the first use's delegation, "
+    "and needs the retrieval model's download, which is the person's. Ask for that now, in one "
+    "line, so the review never waits for it.",
 )
 """What only the person decides that the first use will need, asked at its start."""
 
@@ -2772,7 +2797,23 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
     person decides that it will need.
     """
     chain = _chain(client, args, "first_use")
-    answer, note = _prepared(chain, str(args.objective))
+    try:
+        named = target_sessions(date.fromisoformat(str(args.target_date)))
+    except ValueError as error:
+        code = "local_client." + (
+            "first_use_date_outside_calendar"
+            if str(error) == "first_use.date_outside_calendar"
+            else "first_use_date_invalid"
+        )
+        refusal = client_refusal(code)
+        return {
+            "status": "REFUSED",
+            "failure_code": code,
+            "detail": refusal.detail,
+            "next_action": refusal.next_action,
+            chain.name: {"steps": chain.steps},
+        }
+    answer, note = _prepared(chain, str(args.objective), named)
     prefix = _entry_of(client)
     road = [
         {"step": step, "command": join([*prefix, *words], shell()), "does": does}
@@ -2780,6 +2821,8 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
     ]
     answer[chain.name] = {
         **answer.get(chain.name, {"steps": chain.steps}),
+        "date": named,
+        "setup": _setup(),
         "road": road,
         "ask_now": list(_FIRST_USE_ASK_NOW),
         **({"sentence": note} if note else {}),
@@ -2789,14 +2832,38 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
     return answer
 
 
-def _prepared(chain: _Chain, sentence: str) -> tuple[dict[str, Any], str | None]:
+def _setup() -> dict[str, Any]:
+    """This agent session's readiness for the first use, each missing item named with its
+    way on; a command run outside an agent session has nothing to check."""
+    from alphalattice.interface.local_application.native_bridge import NativeResearchBinding
+    from alphalattice.interface.local_application.native_setup import attachment_preflight
+
+    session = agent_session(os.environ)
+    if session is None:
+        return {"status": "NO_AGENT_SESSION"}
+    try:
+        binding = NativeResearchBinding.read(Path.cwd(), session=session)
+    except (OSError, ValueError):
+        binding = None
+    return attachment_preflight(Path.cwd(), binding)
+
+
+def _prepared(
+    chain: _Chain, sentence: str, named: dict[str, object]
+) -> tuple[dict[str, Any], str | None]:
     """The first use's goal and its prepared data: the plan that says ALREADY_PREPARED, or the
     first answer that stops on the way; beside it, what became of the sentence if it was not
     recorded."""
-    opened = chain.send(
-        "goal",
-        {"operation": "GOAL_OPEN", "goal_declaration": {**_FIRST_USE, "objective": sentence}},
+    criterion = (
+        f"The positions for {named['entry_session']}, with their review, stand for the person."
     )
+    declaration = {
+        **_FIRST_USE,
+        "objective": sentence,
+        "target_date": named["named_date"],
+        "criteria": [{"criterion_id": "positions", "text": criterion}],
+    }
+    opened = chain.send("goal", {"operation": "GOAL_OPEN", "goal_declaration": declaration})
     note = None
     if opened.get("goal_id"):
         chain.client.goal = str(opened["goal_id"])
@@ -2909,22 +2976,22 @@ def _built(chain: _Chain, studies: list[dict[str, Any]]) -> dict[str, Any]:
     packages = installed.get("strategy_package_ids") or []
     if outcome_of(installed) != "OK" or not packages:
         return chain.stop("install", installed)
-    prefix = _entry_of(chain.client)
-    # The installation may serve several packages; each one's book review is the agent's to choose.
+    # The installation may serve several packages; each one's book, the numerical check before
+    # it runs forward, is the agent's to choose and run.
     return {
         "status": "STRATEGY_INSTALLED",
         "strategy_package_ids": packages,
         "authority_hash": installed.get("authority_hash"),
         "studies": studies,
         "steps": chain.steps,
-        "next_action": "REVIEW_THE_BOOK",
-        "next_commands": {
-            package: join(
-                [*prefix, *(package if w == "<package>" else w for w in _BOOK_REVIEW)], shell()
-            )
-            for package in packages
+        "next_action": "RUN_THE_BOOK",
+        "next_requests": {
+            **(installed.get("next_requests") or {}),
+            **{
+                f"book:{package}": {"operation": "RUN", "spec": {"strategy_package_id": package}}
+                for package in packages
+            },
         },
-        "next_requests": installed.get("next_requests") or {},
     }
 
 
@@ -3048,11 +3115,19 @@ class _Verb(NamedTuple):
 
 
 AGENT_VERBS: Final[dict[str, _Verb]] = {
-    "first-use": _Verb(("first-use", "prepare"), (("--sentence", "objective"),), _first_use_steps),
+    "first-use": _Verb(
+        ("first-use", "prepare"),
+        (("--sentence", "objective"), ("--date", "target_date")),
+        _first_use_steps,
+    ),
     "strategy-build": _Verb(("strategy", "build"), (), _build_steps),
     "book-review": _Verb(
         ("strategy-book", "review"),
-        (("--package", "strategy_package_id"), ("--dir", "bundle_root")),
+        (
+            ("--package", "strategy_package_id"),
+            ("--dir", "bundle_root"),
+            ("--update", "update_task_id"),
+        ),
         _review_steps,
     ),
     "review-continue": _Verb(

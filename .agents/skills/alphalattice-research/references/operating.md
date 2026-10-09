@@ -42,6 +42,7 @@ Keep it attached to stdin; `stop` or a closed stream stops it after its workers 
 
 The grammar is `alphalattice <object> <action>`, then any id and flags; `request` sends a whole operation document. Commands do not prompt and have no aliases. Global `--workspace`, `--view`, `--goal` and `--lang` may appear anywhere.
 
+- Every command prints one envelope: `{"outcome", "status", "data", "failure_code", "detail", "next_requests", "next_commands", "timing"}`. The owner's answer sits under `data`, its `next_action` with it; a refusal fills `failure_code` and `detail`. A file saved with `--output` is the owner's whole answer, not the envelope, and `answer show --file` reads it.
 - The answer's top-level `next_action` and `next_requests` decide the next step. A part's own `next_action`, such as a nested `network_access`, describes that part only and never overrides them.
 - Run `next_commands` as returned; fill a `next_templates` entry only with its named choices. Take a named edge with `request --from "<out>/answer.json" --action <returned-action-name>`; same-named requests from separate parts carry a qualified name. `--choices` fills open fields and never replaces a bound reference.
 - Take ids, hashes and choices exactly from an answer. A compact id is usable only when unique. An offered edge is navigation, not proof its prerequisites hold; the Host revalidates every continuation.

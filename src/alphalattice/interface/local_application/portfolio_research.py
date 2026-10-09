@@ -21,9 +21,10 @@ them.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from datetime import date, datetime
-from typing import Any, Literal, Protocol, Self, get_args
+from typing import Any, Final, Literal, Protocol, Self, get_args
 from uuid import UUID
 
 import numpy as np
@@ -65,6 +66,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.controls import 
 from alphalattice.investment.portfolio_strategy_lab.application.report_projection import (
     project_dated_position,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewAnswer,
 )
@@ -97,6 +99,25 @@ class ResearchDeliveryCommentary(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
     attribution: str = Field(min_length=1, max_length=160)
     text: str = Field(min_length=1, max_length=20_000)
+
+
+class PersonConfirmation(BaseModel):  # type: ignore[misc]
+    """The person's yes to one of their decisions, asked in one line and relayed whole.
+
+    The Host cannot prove who typed the words, so it keeps them as they were said for audit and
+    revocation. `decision_hash` binds them to the one request they answer, and each is used
+    once; the Host's clock dates it.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    question: str = Field(min_length=1, max_length=600)
+    """The one-line question the agent asked, as it asked it."""
+    words: str = Field(min_length=1, max_length=600)
+    """The person's answer, verbatim, never paraphrased."""
+    decision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    """The request it answers, without this confirmation."""
+    nonce: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    """For the person's next yes to a decision already made: the nonce its refusal named."""
 
 
 type PortfolioResearchOperation = Literal[
@@ -295,6 +316,61 @@ _RECOVERY_CONTEXT_OPERATIONS = frozenset(
 )
 """Existing Task planner/admission doors that can carry common recovery context."""
 
+PERSON_ONLY: Final[frozenset[str]] = frozenset(
+    {
+        "NETWORK_ACCESS_SET",
+        "USAGE_READING_SET",
+        "STORAGE_CONFIRM",
+        "STORAGE_PIN",
+        "RESEARCH_INPUT_CONFIRM",
+        "DATA_ISSUE_DELEGATE",
+        "DATA_ISSUE_REVOKE",
+        "MODEL_ACTIVATE",
+        "MODEL_DEACTIVATE",
+        "FEATURE_ACTIVATE",
+        "FEATURE_DEACTIVATE",
+        "RESEARCH_UPDATE_AUTOMATION_CONFIGURE",
+        "STRATEGY_ACTIVATE",
+        "STRATEGY_DEACTIVATE",
+    }
+)
+"""The operations only a person decides.
+
+Each owner refuses every other caller, a client's and an Agent's included, unless the request
+relays the person's yes (`person_confirmation`, `PERSON_DECISIONS`): the network
+authority, the storage confirmation and pin, the research input's confirmation, the data
+issues' delegation and its revocation, the daily research
+update's automation (its owner refused every client while the CLI offered it), and a
+research strategy's activation and deactivation (LS1, OW12). The CLI
+marks each, so that an agent asks the person in one line before it sends one. A test holds this
+set to the owners' refusals.
+
+Data change confirmation reads its plan kind: membership requires the person's approval,
+while an exactly scoped full-history audit also admits the installed agent. It is not
+unconditionally person-only (person-stops row 49).
+"""
+
+FIRST_USE_STEPS: Final[frozenset[str]] = frozenset(
+    {
+        "NETWORK_ACCESS_SET",
+        "WORKSPACE_PREPARE_CONFIRM",
+        "DATA_ISSUE_CONFIRM",
+        "DATA_CHANGE_CONFIRM",
+        "STRATEGY_ACTIVATE",
+    }
+)
+"""The person's steps a first-use goal delegates to the agent that runs it (OP19):
+opening the network for the first preparation, confirming that preparation and its resumes,
+deciding its data issues, confirming its membership changes, and activating its book, which the
+person deactivates in one click. A deactivation, a model's
+or Feature's activation, a storage decision, an automation, a revocation and anything paid stay a
+person's."""
+
+PERSON_DECISIONS: Final[frozenset[str]] = PERSON_ONLY | FIRST_USE_STEPS | {"EVIDENCE_CONSENT_SET"}
+"""The person's decisions an agent sends with the person's yes, asked in one line
+(`person_confirmation`): each person-only operation, and each first-use step outside its goal's
+delegation. A paid action or a real order never joins it."""
+
 
 @dataclass(frozen=True, slots=True)
 class PortfolioResearchOperationRequest:
@@ -479,6 +555,8 @@ class PortfolioResearchOperationRequest:
     cpu_budget: str | None = None
     tasks_waiting: str | None = None
     backup_generations_kept: int | None = None
+    person_confirmation: PersonConfirmation | None = None
+    """The person's yes this request relays, on one of their decisions (`PERSON_DECISIONS`)."""
 
     def __post_init__(self) -> None:
         """Validate operation fields and normalize delivery commentary."""
@@ -507,6 +585,14 @@ class PortfolioResearchOperationRequest:
                     else ResearchDeliveryCommentary.model_validate(value)
                     for value in self.delivery_commentary
                 ),
+            )
+        if self.person_confirmation is not None and not isinstance(
+            self.person_confirmation, PersonConfirmation
+        ):
+            object.__setattr__(
+                self,
+                "person_confirmation",
+                PersonConfirmation.model_validate(self.person_confirmation),
             )
         if self.history_limit is not None and (
             type(self.history_limit) is not int or not 1 <= self.history_limit <= 50
@@ -1339,6 +1425,8 @@ class PortfolioResearchOperationRequest:
             }
         if operation in _RECOVERY_CONTEXT_OPERATIONS:
             allowed |= {"recovery_task_id", "recovery_task_hash"}
+        if operation in PERSON_DECISIONS:
+            allowed |= {"person_confirmation"}
         return required, frozenset(allowed)
 
 
@@ -1645,8 +1733,12 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """`auto`, or how many Tasks may wait behind the running one."""
     backup_generations_kept: int | None = Field(default=None, ge=1, le=100, strict=True)
     """How many backup generations to keep: seven unless a request keeps another count."""
-    # Deliberately no actor field. Who is choosing is decided by the bridge
-    # this envelope arrives at, never by the envelope.
+    person_confirmation: PersonConfirmation | None = None
+    """The person's yes to this decision, asked in one line and relayed whole: `--person-said`
+    their words and `--asked` your question, which the client binds to this request. Only a
+    person's decision takes it, once."""
+    # Deliberately no actor field. Who is choosing is decided by the bridge this envelope
+    # arrives at; a relayed yes is recorded as the person's, relayed by the agent's session.
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_operation_fields(self) -> Self:
@@ -1662,6 +1754,22 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
                 for field in fields(PortfolioResearchOperationRequest)
             }
         )
+
+
+def decision_hash(request: Mapping[str, object]) -> str:
+    """The decision a person's relayed yes answers.
+
+    The request's own fields as the Host reads them, without the confirmation: the client binds
+    the yes with it, and the Host checks it.
+    """
+    document = PortfolioResearchRequestDocument.model_validate(
+        {
+            name: value
+            for name, value in request.items()
+            if name != "person_confirmation" and value is not None
+        }
+    )
+    return str(canonical_hash(document.model_dump(mode="json", exclude_none=True)))
 
 
 OperationCaller = Literal["HUMAN", "INSTALLED_AGENT", "EXTERNAL_AUTOMATION", "SERVICE_AUTOMATION"]

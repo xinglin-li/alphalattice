@@ -789,7 +789,7 @@ def _across_years(feature, catalog):
 
 def _without_seals(feature, catalog):
     with feature.database.connect(read_only=False) as connection:
-        connection.execute("DELETE FROM verified_year_fact WHERE kind = 'feature_year'")
+        connection.execute("DROP TABLE verified_year_fact")  # a store from before the facts
     return _across_years(feature, catalog)
 
 

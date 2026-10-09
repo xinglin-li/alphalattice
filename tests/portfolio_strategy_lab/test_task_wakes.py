@@ -154,8 +154,11 @@ def test_the_host_sends_a_wake_once_after_the_cli_has_gone(live, codex) -> None:
     wake = _register(live, task)
     assert codex.calls() == []
     assert _run(live, task)["result"] == {"channel": "codex-queue", "delivered": True}
-    read = f"Host event ENDED: read and verify it with {wake['read_command']}"
-    assert codex.calls() == [["queue", "--thread", THREAD, "--message", read]]
+    ((*queue, message),) = codex.calls()
+    assert queue == ["queue", "--thread", THREAD, "--message"]
+    # The line names the Task and what happened before the command that reads it.
+    assert message.startswith("Host: ") and "finished" in message
+    assert message.endswith(wake["read_command"])
     assert wake["read_command"].endswith(f"task show {task.task_id}")
     live.activity.command_returned("factor_research", task.task_id, None)
     live.activity.drain_wakes()
@@ -164,7 +167,7 @@ def test_the_host_sends_a_wake_once_after_the_cli_has_gone(live, codex) -> None:
     stopped = _task(live, "decision")
     _register(live, stopped)
     assert _run(live, stopped, decision=True)["event"] == "NEEDS_DECISION"
-    assert len(codex.calls()) == 2 and codex.calls()[-1][-1].startswith("Host event NEEDS_DECISION")
+    assert len(codex.calls()) == 2 and "needs a decision" in codex.calls()[-1][-1]
 
 
 def test_a_held_wake_outlives_a_restart_and_an_interrupted_send_reads_uncertain(
@@ -190,7 +193,7 @@ def test_a_held_wake_outlives_a_restart_and_an_interrupted_send_reads_uncertain(
     live.activity.drain_wakes()
     assert len(codex.calls()) == 1
     _restart(live)
-    assert codex.calls()[-1][-1].startswith("Host event ENDED")
+    assert "stopped" in codex.calls()[-1][-1]  # a cancelled Task ended, not finished
 
     interrupted = _task(live, "interrupted")
     held = _register(live, interrupted)
@@ -290,7 +293,7 @@ def test_a_goal_wake_is_refused_and_offers_each_unfinished_task_its_own(
 _VERB_ARGUMENTS = {
     "strategy-book review": ("--package", "installed-book"),
     "review continue": (),
-    "first-use prepare": ("--sentence", "Build me a book."),
+    "first-use prepare": ("--sentence", "Build me a book.", "--date", "2026-10-09"),
     "strategy build": (),
 }
 """Each agent verb's own arguments beside its folder, where it takes one."""

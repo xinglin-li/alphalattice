@@ -108,9 +108,11 @@ def _control(workspace: Path, now: datetime) -> tuple[bool | None, dict[str, str
     except (OSError, ValueError):
         return False, None  # An unreadable control fails closed.
     # Anything but the two mappings the writer writes reads as closed (OP5, V271): a person's
-    # (version 1), or a delegation's, open only until its end (version 2, OP19).
+    # (version 1), or a delegation's, open only until its end (version 2, OP19), or the
+    # person's yes an agent relayed (version 3, OP23).
     keys = {1: {"schema", "version", "network_enabled"}}
     keys[2] = keys[1] | {"delegation", "until"}
+    keys[3] = keys[1] | {"relayed_by"}
     if (
         not isinstance(record, dict)
         or record.get("schema") != _SCHEMA
@@ -121,6 +123,8 @@ def _control(workspace: Path, now: datetime) -> tuple[bool | None, dict[str, str
         return False, None
     if record["version"] == 1:
         return bool(record["network_enabled"]), None
+    if record["version"] == 3:
+        return bool(record["network_enabled"]), {"relayed_by": str(record["relayed_by"])}
     try:
         until = datetime.fromisoformat(str(record["until"]))
     except ValueError:
@@ -159,6 +163,7 @@ def set_network_access(
     enabled: bool,
     delegation: str | None = None,
     until: datetime | None = None,
+    relayed_by: str | None = None,
 ) -> NetworkAccess:
     """Atomically persist the typed workspace setting and read effective permission.
 
@@ -167,6 +172,7 @@ def set_network_access(
         enabled: Requested workspace network setting; offline holds still take precedence.
         delegation: The person's delegation that sets it (a first-use goal), with ``until``.
         until: When that delegation's setting ends; after it the control reads closed.
+        relayed_by: The agent session that relayed the person's yes, when one did.
 
     Returns:
         Effective access after applying higher-priority run and operator offline holds.
@@ -174,6 +180,8 @@ def set_network_access(
     record: dict[str, object] = {"schema": _SCHEMA, "version": 1, "network_enabled": enabled}
     if delegation is not None and until is not None:
         record.update(version=2, delegation=delegation, until=until.isoformat())
+    elif relayed_by is not None:
+        record.update(version=3, relayed_by=relayed_by)
     path = workspace / CONTROL_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     staged = path.with_suffix(".json.tmp")

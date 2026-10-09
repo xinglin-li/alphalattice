@@ -14,10 +14,11 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from dataclasses import field as dataclass_field
 from datetime import datetime, timedelta
 from pathlib import Path
+from secrets import token_hex
 from typing import Any, Self
 from uuid import UUID, uuid5
 
@@ -51,6 +52,7 @@ from alphalattice.interface.local_application.operations import FIRST_USE_STEPS
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
+    decision_hash,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.bundles import bundle_directory_key, bundle_slot
@@ -560,6 +562,56 @@ class GoalApplication:
                 opened = entry.get("network_enabled") is True
         return opened
 
+    def relayed(
+        self,
+        request: PortfolioResearchOperationRequest,
+        caller: str,
+        goal: Goal | None,
+        provenance: RequestProvenance | None,
+    ) -> dict[str, object] | None:
+        """The person's yes an agent's request relays, held for it before it runs.
+
+        It answers only the decision it was bound to, from the agent session whose goal the
+        request works for, and once: the same words to the same question for the same decision
+        are refused while held or used, naming the nonce with which the person's next yes to it
+        is sent. The Host's clock dates it; `release_relay` gives back one whose decision was
+        refused.
+        """
+        confirmation = request.person_confirmation
+        if confirmation is None or caller == "HUMAN":
+            return None
+        session = self._session(provenance)
+        held = None if session is None else self.store.bound(session)
+        if goal is None or held is None or held.goal_id != goal.goal_id:
+            raise ValueError("person_confirmation.session_required")
+        decision = decision_hash(
+            {field.name: getattr(request, field.name) for field in fields(request)}
+        )
+        if confirmation.decision_hash != decision:
+            raise ValueError("person_confirmation.decision_mismatch")
+        if confirmation.nonce is not None:
+            earlier = self.store.relay_nonce(confirmation.nonce)
+            if earlier is None or earlier.get("decision_hash") != decision:
+                raise ValueError("person_confirmation.repeat_unknown")
+        assert session is not None
+        key = canonical_hash(
+            [decision, confirmation.words, confirmation.question, confirmation.nonce]
+        )
+        record: dict[str, object] = {
+            "question": confirmation.question,
+            "words": confirmation.words,
+            "decision_hash": decision,
+            "repeat_of": confirmation.nonce,
+            "relayed_at": self.clock().isoformat(),
+            "agent_vendor": session.vendor,
+            "agent_session": session.session_id,
+            "nonce": token_hex(16),
+        }
+        used = self.store.reserve_relay(key, record)
+        if used is not None:
+            raise ValueError(f"person_confirmation.already_used:{used['nonce']}")
+        return {**record, "key": key}
+
     def attribute(
         self,
         goal: Goal,
@@ -567,11 +619,13 @@ class GoalApplication:
         body: Mapping[str, Any],
         provenance: RequestProvenance | None,
         delegation: str | None = None,
+        relayed: Mapping[str, object] | None = None,
     ) -> None:
         """Record one request the goal's work made, and the Task it started, if any.
 
         A step the person delegated is recorded as theirs, by the delegation that carried it
-        (V452); a network step records what it set.
+        (V452), and one they confirmed by the yes the agent relayed, whole; a network step
+        records what it set.
         """
         receipt = body.get("receipt")
         task = (
@@ -628,6 +682,7 @@ class GoalApplication:
                 "agent_vendor": provenance.vendor if provenance else None,
                 "agent_session": provenance.session if provenance else None,
                 **({"delegation": delegation} if delegation else {}),
+                **({"relayed": dict(relayed)} if relayed else {}),
                 **(
                     {"network_enabled": request.network_enabled}
                     if request.operation == "NETWORK_ACCESS_SET"

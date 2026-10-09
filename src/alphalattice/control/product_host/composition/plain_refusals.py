@@ -170,17 +170,13 @@ _NOT_RUNNING_FORWARD = frozenset(
 
 _STRATEGY_ACTIVATION_WORDS = {
     "strategy_activation.human_confirmation_required": (
-        "A person runs a strategy forward or stops it, in the Workbench; an agent runs and "
-        "reviews its book, and reads whether it runs forward in the book's controls."
+        "Running a strategy forward or stopping it is the person's decision: introduce the "
+        "strategy from its book's controls, ask the person in one line and, on a clear yes, "
+        "send this again with --person-said and --asked."
     ),
     "strategy_activation.research_strategy_required": (
         "Only an installed research strategy runs forward: prepare one from your Alpha and Risk "
         "studies and install it, then run and review its book."
-    ),
-    "strategy_activation.review_required": (
-        "Under the first-use delegation an agent activates only a book with a published "
-        "Evidence and CRO review: review this book first, or ask the person to activate it on "
-        "Portfolio."
     ),
     "strategy_activation.book_task_absent": "No Task has this id; `study list` names the books.",
     "strategy_activation.book_task_required": (
@@ -469,9 +465,9 @@ def explain(
         # one stopped since; the daily update's plan meets them first (OP4, U73).
         return {
             "detail": (
-                "This strategy is not active. Read this package's controls, then open "
-                "the exact book on Portfolio and read its recorded review standing. "
-                "Follow the exact activation offer for who may activate it. Once active, "
+                "This strategy is not active. Read this package's controls for its "
+                "activation offer: under the first use's delegation you activate it; otherwise "
+                "introduce the strategy and ask the person in one line. Once active, "
                 "continue with this package's Forward update. Installation, activation and "
                 "the automatic schedule are separate facts; activation does not enable the "
                 "automatic schedule."
@@ -514,16 +510,18 @@ def explain(
     if base == "model_extension.human_confirmation_required":
         return {
             "detail": (
-                "A person activates or deactivates a model, in the Workbench; an agent "
-                "declares, checks and sandboxes it, and reads its review packet."
+                "Activating or deactivating a model is the person's decision: ask the person "
+                "in one line and, on a clear yes, send this again with --person-said and "
+                "--asked. An agent declares, checks and sandboxes it, and reads its review packet."
             ),
             "next_requests": {"models": {"operation": "MODEL_EXTENSIONS"}},
         }
     if base == "research_update.human_confirmation_required":
         return {
             "detail": (
-                "A person turns the daily research update on or off, in the Workbench; an agent "
-                "reads its state with `automation show`."
+                "Turning the daily research update on or off is the person's decision: ask the "
+                "person in one line and, on a clear yes, send this again with --person-said and "
+                "--asked; `automation show` reads its state."
             ),
             "next_requests": {"automation": {"operation": "RESEARCH_UPDATE_AUTOMATION_READBACK"}},
         }
@@ -539,8 +537,9 @@ def explain(
     if base == "feature_extension.human_confirmation_required":
         return {
             "detail": (
-                "A person activates or deactivates a formula factor, in the Workbench; an agent "
-                "declares, builds and tries it, and reads its review packet."
+                "Activating or deactivating a formula factor is the person's decision: ask the "
+                "person in one line and, on a clear yes, send this again with --person-said and "
+                "--asked. An agent declares, builds and tries it, and reads its review packet."
             ),
         }
     if base == "feature_extension.trial_required":
@@ -845,8 +844,9 @@ def explain(
     if code == "local_application.network_access_human_only":
         return {
             "detail": (
-                "Network access is set by a person in the Local Web, as the background "
-                "update settings are; a client or an Agent can read what decides it."
+                "Network access is the person's decision outside a first use: ask the person "
+                "in one line and, on a clear yes, send this again with --person-said and "
+                "--asked; `network show` reads what decides it."
             ),
             "next_requests": {"network": {"operation": "NETWORK_ACCESS"}},
         }

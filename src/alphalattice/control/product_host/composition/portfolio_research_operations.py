@@ -182,7 +182,7 @@ from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
     read_workspace_inputs,
 )
-from alphalattice.control.product_host.publication.goals import GoalStore
+from alphalattice.control.product_host.publication.goals import GoalStore, sessions_of
 from alphalattice.control.product_host.research_authoring.feature_research import (
     ResearchFeatureDefinitions,
 )
@@ -260,6 +260,8 @@ from alphalattice.interface.local_application.activity import (
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
+    command,
+    entry,
     refusal_words,
     worded_refusal,
 )
@@ -284,6 +286,7 @@ from alphalattice.interface.local_application.goals import (
     Goal,
     GoalAcceptedAnswerReceipt,
     GoalSession,
+    target_sessions,
 )
 from alphalattice.interface.local_application.native_bridge import (
     HOSTS,
@@ -785,6 +788,14 @@ class PortfolioResearchOperations:
                     "next_action": "NAME_AN_OPEN_GOAL_OR_NONE",
                 }
             )
+        try:
+            relayed = self.goals.relayed(request, caller, goal, provenance)
+        except ValueError as error:
+            code = public_failure(error, "person_confirmation.refused")
+            return worded_refusal(
+                {"status": "REFUSED", "failure_code": code, "refused": code},
+                workspace=self.workspace_session.workspace,
+            )
         if goal is None:
             # Every refusal leaves with its words and a way on (OP4, V449).
             answered = worded_refusal(
@@ -809,8 +820,10 @@ class PortfolioResearchOperations:
                 provenance or RequestProvenance(),
                 goal_id=str(goal.goal_id),
                 delegation=delegation,
+                relayed=relayed is not None,
             )
         )
+        body: dict[str, object] = {"refused": "person_confirmation.refused"}
         try:
             # The observer records the actual executor; delegation supplies authority only
             # when the existing dispatcher checks the person's step.
@@ -821,8 +834,13 @@ class PortfolioResearchOperations:
             )
         finally:
             REQUEST_PROVENANCE.reset(scope)
+            if relayed is not None and refusal_code(body) is not None:
+                # A refused decision did not use the person's yes.
+                self.goals.store.release_relay(str(relayed["key"]))
         self._observe(
-            lambda: self.goals.attribute(goal, request, body, provenance, delegation=delegation)
+            lambda: self.goals.attribute(
+                goal, request, body, provenance, delegation=delegation, relayed=relayed
+            )
         )
         self._settle_first_use(goal)
         # The goal the request counted toward, which the answer's context names (V401).
@@ -983,6 +1001,14 @@ class PortfolioResearchOperations:
             for binding in NativeResearchBinding.bindings(project)
         )
 
+    @staticmethod
+    def _relayed_by() -> str | None:
+        """The agent session that relayed the person's yes to this request, if one did (OP23)."""
+        provenance = REQUEST_PROVENANCE.get()
+        if provenance is None or not provenance.relayed:
+            return None
+        return f"{provenance.vendor}:{provenance.session}"
+
     def _delegating_goal(self) -> Goal | None:
         """The first-use goal whose delegation this request runs under, if any (V452)."""
         provenance = REQUEST_PROVENANCE.get()
@@ -1044,8 +1070,12 @@ class PortfolioResearchOperations:
 
         observer = self.observer
         provenance = REQUEST_PROVENANCE.get()
-        # Delegated authority affects admission, never the observed caller.
-        authority = "HUMAN" if provenance is not None and provenance.delegation else caller
+        # Delegated or relayed authority affects admission, never the observed caller.
+        authority = (
+            "HUMAN"
+            if provenance is not None and (provenance.delegation or provenance.relayed)
+            else caller
+        )
         span = (
             None
             if observer is None
@@ -1271,9 +1301,11 @@ class PortfolioResearchOperations:
                     request.operation == "GOAL_OPEN"
                     and isinstance(request.goal_declaration, dict)
                     and request.goal_declaration.get("kind") == "FIRST_USE"
+                    and self.goals.first_use() is None
                     and any(t.lifecycle.value == "SUCCEEDED" for t in self.preparation.tasks())
                 ):
-                    # A first use is the one before the workspace's first preparation (V452).
+                    # A first use is the one before the workspace's first preparation (V452);
+                    # its own sentence opened again after it reuses the goal it opened.
                     raise ValueError("goal.first_use_after_preparation")
                 answer = self.goals.operate(request, caller, REQUEST_PROVENANCE.get())
                 if request.operation in {"GOAL_SUBMIT", "GOAL_ABANDON"}:
@@ -1309,6 +1341,7 @@ class PortfolioResearchOperations:
                 enabled=request.network_enabled,
                 delegation=None if delegated is None else f"first-use-goal:{delegated.goal_id}",
                 until=None if delegated is None else self.goals.delegation_ends(delegated),
+                relayed_by=self._relayed_by(),
             ).body()
         if request.operation in {"UPGRADE_OVERVIEW", "UPGRADE_ACKNOWLEDGE"}:
             return self.upgrade(request)
@@ -2535,11 +2568,13 @@ class PortfolioResearchOperations:
     def _strategy_activation(
         self, request: PortfolioResearchOperationRequest, caller: OperationCaller
     ) -> dict[str, object]:
-        """A person runs a reviewed research book's strategy forward, or stops it (LS1, OW12).
+        """A person runs a research book's strategy forward, or stops it (LS1, OW12).
 
         As a person activates a model (OW11), every other caller is refused by name, before
-        anything else is asked. A first-use goal's delegation carries the activation of a book
-        with a published review, and only of one (STOPS-1); the person deactivates it.
+        anything else is asked. A first-use goal's delegation carries the activation, the
+        person's authority kept in its record; the person deactivates it. The date's positions
+        are reviewed on their own publication, so activation asks for no review of the book's
+        history. Activation admits the first update in the same act (`_first_update`).
         """
         if caller != "HUMAN":
             return cast(
@@ -2551,20 +2586,11 @@ class PortfolioResearchOperations:
             )
         provenance = REQUEST_PROVENANCE.get()
         try:
-            if request.operation == "STRATEGY_ACTIVATE":
-                assert request.task_id is not None
-                if (
-                    provenance is not None
-                    and provenance.delegation is not None
-                    and (
-                        self.review is None
-                        or self._book_review_standing(request.task_id)["status"] != "REVIEWED"
-                    )
-                ):
-                    raise ValueError("strategy_activation.review_required")
-                return self.activations.activate(request.task_id)
-            assert request.strategy_package_id is not None
-            return self.activations.deactivate(request.strategy_package_id)
+            if request.operation != "STRATEGY_ACTIVATE":
+                assert request.strategy_package_id is not None
+                return self.activations.deactivate(request.strategy_package_id)
+            assert request.task_id is not None
+            activated = self.activations.activate(request.task_id)
         except Exception as error:
             if owner_failure_code(error) is None and not isinstance(
                 error, (ValueError, OSError, KeyError)
@@ -2588,6 +2614,100 @@ class PortfolioResearchOperations:
                     else {}
                 ),
             }
+        # The activation stands; its first update answers for itself.
+        return {**activated, **self._first_update(activated, provenance)}
+
+    def _first_update(
+        self, activated: dict[str, object], provenance: RequestProvenance | None
+    ) -> dict[str, object]:
+        """The activated strategy's first update, admitted in the activation's own act.
+
+        The person's activation and the first use's agent's alike plan the update for the first
+        use's named date while its goal is open, else for the latest completed session, and admit
+        its run, so neither waits on the other. It is recorded under the open first use, whose
+        lead's goal wait sees it end, and the Host wakes a Codex lead's session when it does.
+        """
+        first_use = self.goals.first_use()
+        live = (
+            first_use
+            if first_use is not None and self.goals.first_use_delegation(first_use)["active"]
+            else None
+        )
+        named = None if live is None else live.declaration.target_date
+        scope = (
+            REQUEST_PROVENANCE.set(
+                replace(provenance or RequestProvenance(), goal_id=str(live.goal_id))
+            )
+            if live is not None
+            else None
+        )
+        run = None
+        try:
+            plan = self.execute(
+                PortfolioResearchOperationRequest(
+                    operation="RESEARCH_UPDATE_PLAN",
+                    strategy_package_id=str(activated["strategy_package_id"]),
+                    observed_through=None
+                    if named is None
+                    else str(target_sessions(named)["formation_session"]),
+                )
+            )
+            run = (
+                self.execute(
+                    PortfolioResearchOperationRequest(
+                        operation="RESEARCH_UPDATE_RUN",
+                        update_plan_hash=str(plan["update_plan_hash"]),
+                    )
+                )
+                if plan.get("status") == "PLANNED"
+                else None
+            )
+        except (ValueError, OSError, KeyError) as error:
+            # A date outside the calendar or an owner's refusal leaves the activation standing.
+            failure = located_failure(error, "research_update.refused")
+            plan = {"status": "REFUSED", **failure, **explain(str(failure["failure_code"]))}
+        finally:
+            if scope is not None:
+                REQUEST_PROVENANCE.reset(scope)
+        task = None if run is None else run.get("task_id")
+        if task and live is not None:
+            read = command(
+                {"operation": "STATUS", "task_id": str(task)},
+                prefix=entry(self.workspace_session.workspace, ()),
+            )
+            for session in sessions_of(self.goals.store.attributed(live.goal_id)):
+                # A wake not registered leaves the admitted update to its offered status read.
+                with suppress(ValueError, OSError):
+                    if session["vendor"] == "codex":
+                        self.workspace_session.task_control_registry.register_wake(
+                            UUID(str(task)),
+                            session["session_id"],
+                            str(read),
+                            observed_at=self.dispatcher.clock(),
+                        )
+        offered = dict(cast(dict[str, object], activated.get("next_requests") or {}))
+        if task:
+            offered.pop("update", None)
+            offered["update_status"] = {"operation": "STATUS", "task_id": str(task)}
+        return {
+            "update": {
+                "plan": {
+                    key: plan[key]
+                    for key in (
+                        "status",
+                        "target_session",
+                        "update_plan_hash",
+                        "failure_code",
+                        "detail",
+                        "next_action",
+                        "next_requests",
+                    )
+                    if key in plan
+                },
+                **({"run": run} if run is not None else {}),
+            },
+            "next_requests": offered,
+        }
 
     def _workspace_operation(
         self,
@@ -5748,7 +5868,7 @@ class PortfolioResearchOperations:
         if operation == "USAGE_READING":
             return usage_reading_answer(self.workspace_session.workspace)
         if operation == "USAGE_READING_SET":
-            # The person's privacy choice: an Agent reads it and never turns reading back on.
+            # The person's privacy choice: an Agent sets it only on the person's relayed yes.
             if caller != "HUMAN":
                 return refused("native_bridge.usage_reading_human_only")
             assert request.usage_reading_enabled is not None
@@ -5829,12 +5949,12 @@ class PortfolioResearchOperations:
             "Contracts describe requests, not grants; inspect owner readiness before work.",
             (
                 "Data decisions accept an exact local Human grant for EXTERNAL_AUTOMATION; "
-                "other Human confirmations remain Human-only."
+                "other Human confirmations take the person's own yes."
             ),
             "External automation cannot change background update settings.",
             (
-                "Each operation marked person_only is completed by a person, in the "
-                "Workbench; a client's or an Agent's request for it is refused."
+                "Each operation marked person_only is the person's decision: ask them in one "
+                "line and, on a clear yes, send it with their words; without them it is refused."
             ),
             (
                 "Each operation marked first_use is the person's too, and the agent running the "
@@ -5851,7 +5971,7 @@ class PortfolioResearchOperations:
         for operation in OPERATIONS:
             required, allowed = PortfolioResearchOperationRequest.field_contract(operation)  # type: ignore[arg-type]
             contracts[operation] = {"required": sorted(required), "allowed": sorted(allowed)}
-            if operation in PERSON_ONLY:  # a person completes it, in the Workbench (V143)
+            if operation in PERSON_ONLY:  # the person's decision (V143)
                 contracts[operation]["person_only"] = True
         body["operation_schema"] = PortfolioResearchRequestDocument.model_json_schema()
         body["operation_fields"] = contracts

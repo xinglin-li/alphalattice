@@ -5,7 +5,7 @@ Use this when preparation or an update stops for data review. Start from the exa
 
 ## Read the decision
 
-- `decision list` shows each pending step and whom it `waits_on`: the `PERSON`, or you (`AGENT`) to take and disclose. For `INPUT_VERSION`, keep the research on its current input and tell the person newer data can become a new input version on **Research inputs**.
+- `decision list` shows each pending step and whom it `waits_on`: the `PERSON`, or you (`AGENT`) to take and disclose. For `INPUT_VERSION`, keep the research on its current input and tell the person newer data can become a new input version, and relay their yes if they want it.
 - `issue list` lists the cases; read each whole case: its evidence, prior decisions, options, consequences and `next_requests`. A listed option is not proof it applies now.
 - A large raw move proves neither corruption nor a real event. Tell a raw move, invalid adjusted prices, missing sessions and an identity mismatch apart, and never invent a corporate action. For a quarantine or exclusion, state the retained history and effective population; never filter to improve results.
 - A refusal asking for a full-history audit or a catch-up beyond a year names its listings: plan the update again admitting them and take it, saying so in one line.
@@ -13,7 +13,7 @@ Use this when preparation or an update stops for data review. Start from the exa
 ## Preview, confirm and continue
 
 1. Take the exact preview request from `next_requests`. A preview applies nothing; `CONFIRMATION_REQUIRED` and `effect_applied: false` are not success.
-2. Confirm within the authority the [guide](../../../../AGENTS.md) gives: the person's, or the first use's delegation, under which you take an offered `retain_isolated_raw_move_with_caveat` for an isolated verified move and disclose its caveat. Automation outside it needs the person's exact grant.
+2. Confirm within the authority the [guide](../../../../AGENTS.md) gives: the person's yes, relayed, or the first use's delegation, under which you take an offered `retain_isolated_raw_move_with_caveat` for an isolated verified move and disclose its caveat. Automation outside it needs the person's exact grant.
 3. Read the applied effect and refreshed issues, then follow the original Task's offered continuation. Keep valid stages and source captures; never recreate a workspace to escape a stop.
 4. Read the continuing Task, readiness and input publication: a receipt alone does not prove a usable input.
 

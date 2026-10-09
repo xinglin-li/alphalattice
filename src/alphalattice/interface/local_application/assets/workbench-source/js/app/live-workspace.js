@@ -73,7 +73,7 @@ const LiveWorkspace = (() => {
     'workspace_maintenance.manifest_update_consent_required':'The membership check found a changed candidate manifest (index members moved), and the data owner holds it as a pending transition: it asks for a new update plan that consents to it before any fetch. Preview an update; the transition it names is what you confirm.',
     'workspace_maintenance.initialization_consent_required':'The workspace is not initialized for research: the preparation on the Workspace page is the consent the data owner asks for before any update.',
     'workspace_data_update.not_configured':'This workspace has no maintained data yet: a daily update maintains a prepared workspace. One explicit preparation makes it usable; nothing starts by opening this page.',
-    'data.truth_review_required':'A data decision is needed before this Task can continue: the data owner found an unexplained move and asks for a permitted response on the Data issues page.',
+    'data.truth_review_required':'A data decision is needed before this Task can continue: the data owner found an unexplained move and asks for a permitted response, which the agent takes under the first use\'s delegation or asks the person for in one line.',
     'workspace_data_update.source_access_not_admitted':'Source access is not admitted in this service: the configured provider cannot be reached from here. Nothing was fetched.',
     'data.full_history_audit_approval_required':'A full-history audit of some listings needs explicit approval: preview the update again; the owner names the listings and asks for confirmation.',
     'workspace_data_update.retry_not_due':'The owner\'s retry time has not come yet; continuing is refused until it is due.',

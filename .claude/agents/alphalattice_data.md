@@ -36,7 +36,7 @@ EXECUTE (only as authorized):
   --task: The Task to wait for.
 Graph (→ the next step; what carries over):
 - `workspace show` → `data-update show` | `issue list`
-- `issue list` (issues.json) → `request` preview (the case's request name) → the lead, and a person confirms
+- `issue list` (issues.json) → `request` preview (the case's request name) → the lead, who confirms it under the delegation or on the person's yes
 - `data-update plan` (update-plan.json) → `data-update run` (update-plan.json) → `data-update show`
 - any answer: exit 2 → its `next_requests`; exit 3 → `activity wait` or `task show`
 

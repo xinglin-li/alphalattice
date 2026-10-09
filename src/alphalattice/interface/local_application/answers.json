@@ -6168,7 +6168,7 @@
     "name": "set_by",
     "kind": "object",
     "required": false,
-    "meaning": "When the person's first-use goal set the control: that delegation and when its setting ends, after which it reads closed."
+    "meaning": "Who set the control for the person: their first-use goal's delegation with when its setting ends, after which it reads closed, or the agent session that relayed their yes (`relayed_by`)."
    }
   ]
  },
@@ -6220,7 +6220,7 @@
     "name": "set_by",
     "kind": "object",
     "required": false,
-    "meaning": "When the person's first-use goal set the control: that delegation and when its setting ends, after which it reads closed."
+    "meaning": "Who set the control for the person: their first-use goal's delegation with when its setting ends, after which it reads closed, or the agent session that relayed their yes (`relayed_by`)."
    }
   ]
  },
@@ -9994,7 +9994,7 @@
     "name": "operation_fields",
     "kind": "object",
     "required": true,
-    "meaning": "Each operation's `required` and `allowed` request fields, with `person_only` where a person completes it in the Workbench."
+    "meaning": "Each operation's `required` and `allowed` request fields, with `person_only` where the decision is the person's."
    },
    {
     "name": "package_controls",

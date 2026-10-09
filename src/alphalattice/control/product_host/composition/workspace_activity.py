@@ -276,7 +276,8 @@ class WorkspaceActivity:
             if held["state"] != "PENDING":
                 continue
             task = UUID(held["task_id"])
-            lifecycle = dispatcher.status(task).lifecycle.value
+            status = dispatcher.status(task)
+            lifecycle = status.lifecycle.value
             event = WAIT_EXITS.get(lifecycle)
             if event is None and outcome_of({"lifecycle": lifecycle}) != "PENDING":
                 event = "ENDED"
@@ -291,11 +292,12 @@ class WorkspaceActivity:
                     observed_at=self.clock(),
                 )
             )
-            if claimed is None:
+            if claimed is None or event is None:
                 continue
             result = _queue_wake(
                 claimed["thread_id"],
-                f"Host event {event}: read and verify it with {claimed['read_command']}",
+                _wake_line(event, status.task_kind, lifecycle, status.latest_failure_code)
+                + f" Read and verify it with {claimed['read_command']}",
             )
             registry.finish_wake(held["registration_id"], task, result, observed_at=self.clock())
             self._record_wake({**claimed, "result": result})
@@ -1201,6 +1203,32 @@ class WorkspaceActivity:
         if ledger is None:
             return None
         return f"{ledger.store_epoch}:{ledger.head_ordinal()}"
+
+
+def _wake_line(event: str, kind: str, lifecycle: str, failure: str | None) -> str:
+    """What a wake tells its lead first: the Task, what happened in plain words and whose move
+    it is, before the command that reads it.
+
+    Args:
+        event: The wait's event: ENDED, NEEDS_DECISION or DEFERRED.
+        kind: The Task's kind.
+        lifecycle: Its lifecycle now.
+        failure: Its latest failure code, if any.
+
+    Returns:
+        One sentence, ending before the read command.
+    """
+    task = kind.replace("_", " ").capitalize()
+    words = (refusal_words(failure).get("detail") if failure else None) or failure
+    if event == "NEEDS_DECISION":
+        happened = "needs a decision; yours, or the person's where it says so"
+    elif event == "DEFERRED":
+        happened = "is deferred and resumes by itself"
+    elif lifecycle == "SUCCEEDED":
+        return f"Host: {task} finished; its result is yours to read."
+    else:
+        happened = "stopped; its way on is yours, or the person's where it says so"
+    return f"Host: {task} {happened}" + (f": {words.rstrip('.')}." if words else ".")
 
 
 def _queue_wake(thread: str, message: str) -> dict[str, Any]:

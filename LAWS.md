@@ -227,10 +227,12 @@ use. *Held by:*
 `test: tests/alpha_research/test_model_contract.py::test_an_installed_model_passes_its_contract`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_operation_only_a_person_completes_is_marked_so`.
 
-**OW12. A strategy runs forward by a person's activation of its reviewed book.** An installed
-research strategy's book replays history until a person activates a completed run of it over its
-whole support (`STRATEGY_ACTIVATE`, person-only; under a first use's delegation its agent activates
-the book once that book's review is published, OP19). The activation binds what the daily chain reads,
+**OW12. A strategy runs forward by the person's activation of its book.** An installed
+research strategy's book replays history until the person activates a completed run of it over its
+whole support (`STRATEGY_ACTIVATE`, the person's decision, relayed by the agent on their yes, OP23;
+under a first use's delegation its agent activates the book, OP19). Activation admits the strategy's
+first update in the same act, for the first use's date while its goal is open, and that date's
+positions are reviewed on their own publication. The activation binds what the daily chain reads,
 each built from the strategy's own research: each component's models, a lifecycle grant from the
 training input its Alpha study read, so the study's fitted models are reused by their keys and
 later quarters fit on the workspace's data through the horizon; the calibration's starting
@@ -557,8 +559,7 @@ the answer check every test's operations pass (`exit_problem`).
 opened from the person's sentence, once per workspace and before its first preparation, delegates
 the first use's person-only steps (`FIRST_USE_STEPS`: opening the network for the preparation,
 confirming it and its resumes, deciding its data issues, confirming its membership changes, and
-activating its book once that book's Evidence and CRO review is published, which the person
-deactivates) to the agent running it, while it is
+activating its book, which the person deactivates) to the agent running it, while it is
 open and within its hours (`FIRST_USE_HOURS`); each runs as the person's decision carried by the
 agent and is recorded in the goal's ledger as delegated. Its book draft's declared
 unavailable-return quarantine is a data decision of that kind: the draft's policy kept and the
@@ -574,7 +575,7 @@ is a default the agent takes and discloses, so the reviewed book's activation an
 source names are the first use's (STOPS-1). *Held by:*
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them`,
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised`,
-`test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_delegated_activation_takes_only_a_book_with_a_published_review`,
+`test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_delegated_activation_runs_forward_without_the_history_review`,
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_is_the_one_before_the_first_preparation`.
 
 **OP20. A person's decision carries by its evidence.** A retry that changes only a run or clock
@@ -606,6 +607,23 @@ product twice as its first real user (V699, V701), and the whole suite on the fi
 34 field-note links with anchors that no merge's test set had reached. *Held by:*
 `test: tests/release/test_wheel_runtime.py::test_installed_configure_copies_guidance_unchanged_and_refuses_an_overwrite`;
 the guidance's content by review.
+
+**OP23. Every operation completes from one sentence of the person's.** The agent completes any
+operation from at most one sentence of the person's; a step that only a click in the Workbench
+completes is a defect. A person's decision (`PERSON_DECISIONS`: each person-only operation, and each
+first-use step outside its goal's delegation) is asked in one line, and on a clear yes the agent
+sends it with the person's words verbatim and its question (`person_confirmation`), which the
+client binds to that request's own fields (`decision_hash`). The Host accepts it as the person's
+decision, records it in the goal's ledger as the person's, relayed by the agent's session, and uses
+each once: a yes carried to another decision, or sent again, is refused by name. The Host cannot
+prove who typed the words, so it keeps them whole for audit and revocation, and the agent never
+invents or paraphrases them. The person's own Workbench action stays a second way, never the
+required one. A paid action or a real order never takes a relayed yes. *Why:* the maintainer,
+2026-10-09: every operation is completed by the agent from at most one sentence of the person's,
+and a step that needs the person's click is likely a defect; a person-only step is asked once and
+then continued. *Held by:*
+`test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_persons_yes_relayed_whole_completes_their_decision_once`,
+`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_operation_only_a_person_completes_is_marked_so`.
 
 ## PA. Parameters
 

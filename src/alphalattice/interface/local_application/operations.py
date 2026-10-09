@@ -24,6 +24,8 @@ from typing import Any, Final, get_args
 
 from alphalattice.interface.local_application.activity import READ_OPERATIONS
 from alphalattice.interface.local_application.portfolio_research import (
+    FIRST_USE_STEPS,
+    PERSON_ONLY,
     PortfolioResearchOperation,
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
@@ -1021,6 +1023,7 @@ FLAGS: Final[dict[str, str]] = {
     "network_enabled": "enabled",
     "observed_through": "through",
     "origin_task_id": "origin",
+    "person_confirmation": "person-said",
     "portfolio_session": "session",
     "position_basis": "basis",
     "preparation_binding_hash": "preparation",
@@ -1287,55 +1290,6 @@ ALTERNATIVES: Final[dict[str, tuple[tuple[str, ...], ...]]] = {
 }
 """The requests whose owner takes exactly one of several field groups, which `schema show` states
 as its `oneOf` (V409, the review's F4). The gate holds each group to the request's own fields."""
-
-PERSON_ONLY: Final[frozenset[str]] = frozenset(
-    {
-        "NETWORK_ACCESS_SET",
-        "USAGE_READING_SET",
-        "STORAGE_CONFIRM",
-        "STORAGE_PIN",
-        "RESEARCH_INPUT_CONFIRM",
-        "DATA_ISSUE_DELEGATE",
-        "DATA_ISSUE_REVOKE",
-        "MODEL_ACTIVATE",
-        "MODEL_DEACTIVATE",
-        "FEATURE_ACTIVATE",
-        "FEATURE_DEACTIVATE",
-        "RESEARCH_UPDATE_AUTOMATION_CONFIGURE",
-        "STRATEGY_ACTIVATE",
-        "STRATEGY_DEACTIVATE",
-    }
-)
-"""The operations only a person completes, in the Workbench (V143).
-
-Each owner refuses every other caller, a client's and an Agent's included: the network
-authority, the storage confirmation and pin, the research input's confirmation, the data
-issues' delegation and its revocation, the daily research
-update's automation (V407: its owner refused every client while the CLI offered it), and a
-research strategy's activation and deactivation (LS1, OW12). The CLI
-lists them so that a person knows they exist, and marks each so that nobody else sends one
-expecting it to run. A test holds this set to the owners' refusals.
-
-Data change confirmation reads its plan kind: membership requires the person's approval,
-while an exactly scoped full-history audit also admits the installed agent. It is not
-unconditionally person-only (person-stops row 49).
-"""
-
-FIRST_USE_STEPS: Final[frozenset[str]] = frozenset(
-    {
-        "NETWORK_ACCESS_SET",
-        "WORKSPACE_PREPARE_CONFIRM",
-        "DATA_ISSUE_CONFIRM",
-        "DATA_CHANGE_CONFIRM",
-        "STRATEGY_ACTIVATE",
-    }
-)
-"""The person's steps a first-use goal delegates to the agent that runs it (V452, OP19; STOPS-1):
-opening the network for the first preparation, confirming that preparation and its resumes,
-deciding its data issues, confirming its membership changes, and activating its book once that
-book has a published review, which the person deactivates in one click. A deactivation, a model's
-or Feature's activation, a storage decision, an automation, a revocation and anything paid stay a
-person's."""
 
 
 def table() -> dict[str, Any]:

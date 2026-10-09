@@ -393,8 +393,9 @@ def stop_detail(task_kind: str, code: str, source: str) -> str:
         )
     if code.endswith("storage.managed_capacity_exceeded"):
         return (
-            "The stage's write exceeds the workspace storage cap. Raise the cap in Settings "
-            "or preview and confirm a cleanup, then resume the Task's offered request; "
+            "The stage's write exceeds the workspace storage cap. Raise the cap (`storage "
+            "set --cap-bytes <bytes>`), or preview a cleanup and confirm it on the person's "
+            "yes, then resume the Task's offered request; "
             "its verified stages and retained results stay intact."
         )
     if code.endswith(":storage.disk_space_insufficient"):

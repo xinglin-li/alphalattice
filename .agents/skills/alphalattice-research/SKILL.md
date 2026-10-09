@@ -10,12 +10,12 @@ You lead the research. AlphaLattice's owners calculate, validate, record and pub
 
 ## Shortest paths
 
-Begin at `workspace show`: its first `intents` entry chooses the path, and each answer offers the next request ([command contract](references/operating.md)). One exact read needs no goal; multi-step work runs under one ([goals](references/goals.md)).
+Begin at the person's own target (a date's positions, a named request), else at `workspace show`'s first `intents` entry, and each answer offers the next request ([command contract](references/operating.md)). One exact read needs no goal; multi-step work runs under one ([goals](references/goals.md)).
 
-- **First use from one sentence**: `first-use prepare --sentence` with the person's exact sentence, then each answer's next action along its `first_use.road` ([guide](../../../AGENTS.md)).
+- **First use from one sentence**: `first-use prepare --sentence` with the person's exact sentence and `--date` the date it names, then each answer's next action along its `first_use.road`: data, models and Risk, the book, activation with the date's update, the review of that date's positions ([guide](../../../AGENTS.md); [where a first use stands](references/research-lead.md)).
 - **Orient**: `workspace show` → the first intent's offered request.
-- **Run an installed research strategy forward**: `strategy-book controls` → `strategy-book review` → `review continue` → activation → `research-update plan` → `research-update run` → `research-update show` ([leading research](references/research-lead.md)).
-- **The book's Evidence and CRO review**: `strategy-book review`, then `review continue` after the Analysts and again after the CRO ([specialists](references/specialist-handoff.md)).
+- **Run an installed research strategy forward**: `strategy-book controls` → activation, which admits its update → `research-update show` → `strategy-book review --update` → `review continue` ([leading research](references/research-lead.md)).
+- **Evidence and CRO review of a date's positions**: `strategy-book review --update`, then `review continue` after the Analysts and again after the CRO; without `--update`, of the whole-support book when asked ([specialists](references/specialist-handoff.md)).
 - **A Factor study**: `study controls` → `study plan` → `study run` → `study show`.
 - **An Alpha study from a Factor study**: the Factor study's offered curation, then the handoff it offers → `study plan` → `study run`.
 - **A Risk study**: `study controls --kind risk.covariance-development` → `study plan` → `study run`.
@@ -23,15 +23,15 @@ Begin at `workspace show`: its first `intents` entry chooses the path, and each 
 - **A formula factor**: `feature controls` → its offered plan, trial and review.
 - **A data issue**: `issue list` → its offered `request` ([pipeline issues](references/pipeline-issues.md)).
 
-Before activating, or asking a person to activate, review the completed historical book and its review standing, and read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
-After activation, run the offered update and review its first published forward positions at the first actionable session.
+Before activating, read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
+Activation admits the first update in the same act: follow it at once, then review its published positions on their own publication.
 Hold positions only from the first actionable session; sessions before it are a causal replay, inside the research window where marked.
 
 ## Commands
 
 Each command's exact form; the [Command contract](references/operating.md) covers answers, continuations and waits.
 - `workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
-- `first-use prepare --sentence "Build me a reviewed book from public data."`: Opens the first use from the person's exact sentence and prepares its data; its answer lays out the whole first use.
+- `first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09`: Opens the first use from the person's exact sentence and prepares its data; its answer lays out the whole first use.
 - `strategy build`: Runs the strategy's required Alpha and Risk studies on their defaults, then prepares and installs it.
 - `strategy-book controls --package <package>`: The installed strategy's activation, book, horizon and review standing.
 - `strategy-book review --package <package> --dir "<out>/analysts"`: Runs or reuses the whole-support book, prepares its Evidence, writes the Analyst bundles.
