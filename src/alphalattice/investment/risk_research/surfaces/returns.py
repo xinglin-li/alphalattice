@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 from itertools import pairwise
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import pyarrow as pa
@@ -440,6 +440,32 @@ def derive_risk_return_rows(
     return tuple(rows)
 
 
+def listing_returns(
+    store: Any,
+    manifest: UniverseManifest,
+    listing: Any,
+    sessions: tuple[date, ...],
+    connection: Any = None,
+) -> tuple[dict[str, object], ...]:
+    """One listing's causal returns over `sessions`, from the store's bars and actions."""
+    bars = store.raw_bars(
+        listing.listing_id, start=sessions[0], through=sessions[-1], _connection=connection
+    )
+    actions = tuple(
+        item
+        for item in store.actions(listing.listing_id, _connection=connection)
+        if sessions[0] <= item.effective_date <= sessions[-1]
+    )
+    return derive_risk_return_rows(
+        manifest=manifest,
+        listing_id=listing.listing_id,
+        symbol=listing.symbol,
+        bars=bars,
+        actions=actions,
+        required_sessions=sessions,
+    )
+
+
 class CausalRiskReturnSurfacePublisher:
     """Compile current-universe causal Risk returns from the clean market store."""
 
@@ -540,25 +566,7 @@ class CausalRiskReturnSurfacePublisher:
         connection = self.store._connect(read_only=True)
         try:
             for index_value, listing in enumerate(listings, start=1):
-                bars = self.store.raw_bars(
-                    listing.listing_id,
-                    start=sessions[0],
-                    through=sessions[-1],
-                    _connection=connection,
-                )
-                actions = tuple(
-                    item
-                    for item in self.store.actions(listing.listing_id, _connection=connection)
-                    if sessions[0] <= item.effective_date <= sessions[-1]
-                )
-                for row in derive_risk_return_rows(
-                    manifest=manifest,
-                    listing_id=listing.listing_id,
-                    symbol=listing.symbol,
-                    bars=bars,
-                    actions=actions,
-                    required_sessions=sessions,
-                ):
+                for row in listing_returns(self.store, manifest, listing, sessions, connection):
                     formation = row["formation_session"]
                     if not isinstance(formation, date):
                         raise RiskReturnSurfaceError(

@@ -155,6 +155,9 @@ def test_the_book_variance_matches_the_dense_form_it_never_builds() -> None:
     weights = _book()
     assert surface.book_variance(weights) == pytest.approx(float(weights @ dense @ weights))
     assert surface.per_name_variance() == pytest.approx(np.diag(dense))
+    shares = surface.variance_shares(weights)
+    assert shares.sum() == pytest.approx(1.0)
+    assert shares == pytest.approx(weights * (dense @ weights) / surface.book_variance(weights))
 
 
 def test_the_variance_split_accounts_for_the_whole_book_variance() -> None:

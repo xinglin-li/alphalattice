@@ -575,24 +575,18 @@ def test_a_risk_surface_designs_a_formation_by_the_sectors_in_force() -> None:
     sessions = tuple(date.fromordinal(730_000 + index) for index in range(567))
     returns = np.random.default_rng(346).normal(0.0, 0.01, (567, len(listings)))
 
-    def surface(formation_sectors: dict[str, str] | None):  # type: ignore[no-untyped-def]
-        return (
-            RiskSurfaceProducer()
-            .produce(
-                RiskDecompositionInputs(
-                    formation_session=date.fromordinal(730_568),
-                    history_sessions=sessions,
-                    ordered_listing_ids=listings,
-                    open_to_open_log_returns=returns,
-                    classification=classification,
-                    return_surface_hash="3" * 64,
-                    formation_sectors=formation_sectors,
-                )
-            )
-            .surface
-        )
+    formation = date.fromordinal(730_568)
 
-    current, earlier = surface(None), surface({"a": "Technology"})
+    def surface(moves: tuple[SectorReclassification, ...]):  # type: ignore[no-untyped-def]
+        current = {"a": "Energy", "b": "Technology", "c": "Technology"}
+        history = SectorHistory("e" * 64, current, moves)
+        inputs = RiskDecompositionInputs.at(
+            formation, sessions, listings, returns, classification, "3" * 64, history
+        )
+        return RiskSurfaceProducer().produce(inputs).surface
+
+    later = SectorReclassification("a", date.fromordinal(730_569), "Technology", "Energy")
+    current, earlier = surface(()), surface((later,))
     assert current.ordered_factor_ids == ("energy", "technology")
     assert current.exposures.tolist() == [[1.0, 0.0], [0.0, 1.0], [0.0, 1.0]]
     assert earlier.ordered_factor_ids == ("technology",)

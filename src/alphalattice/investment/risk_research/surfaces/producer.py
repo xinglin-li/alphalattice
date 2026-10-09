@@ -13,7 +13,7 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from typing import Final
+from typing import Any, Final
 
 import numpy as np
 import numpy.typing as npt
@@ -57,6 +57,30 @@ class RiskDecompositionInputs:
     formation_sectors: Mapping[str, str] | None = None
     """Each listing whose Sector at this formation is not its current one, with that Sector's
     name; None while every listing reads its current Sector."""
+
+    @classmethod
+    def at(
+        cls,
+        formation_session: date,
+        history_sessions: tuple[date, ...],
+        ordered_listing_ids: tuple[str, ...],
+        returns: FloatArray,
+        classification: SectorRevisionMap,
+        return_surface_hash: str,
+        sectors: Any,
+    ) -> RiskDecompositionInputs:
+        """One formation's inputs over its history rows, with the Sectors in force at it."""
+        in_force = sectors.at(formation_session) if sectors.reclassifications else sectors.current
+        moved = {v: in_force[v] for v in ordered_listing_ids if in_force[v] != sectors.current[v]}
+        return cls(
+            formation_session=formation_session,
+            history_sessions=history_sessions,
+            ordered_listing_ids=ordered_listing_ids,
+            open_to_open_log_returns=np.ascontiguousarray(returns, dtype=np.float64),
+            classification=classification,
+            return_surface_hash=return_surface_hash,
+            formation_sectors=moved or None,
+        )
 
     def validate(self, recipe: RiskDecompositionRecipe) -> None:
         """Require complete causal history, aligned inputs and classification coverage.

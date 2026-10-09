@@ -452,6 +452,17 @@ class FactorIdiosyncraticRiskSurface:
         loadings = self.scaled_exposures.T @ values
         return np.asarray(loadings * (self.factor_covariance @ loadings), dtype=np.float64)
 
+    def variance_shares(self, weights: FloatArray) -> FloatArray:
+        """Each name's Euler share of the book variance: its weight times `Sigma w` over the total.
+
+        The shares sum to one; a hedge's share is negative.
+        """
+        values = np.asarray(weights, dtype=np.float64)
+        loadings = self.scaled_exposures.T @ values
+        marginal = self.scaled_exposures @ (self.factor_covariance @ loadings)
+        marginal = marginal + np.square(self.rescaling) * self.idiosyncratic_variance * values
+        return np.asarray(values * marginal / self.book_variance(values), dtype=np.float64)
+
 
 def _base_diagonal(
     exposures: FloatArray,

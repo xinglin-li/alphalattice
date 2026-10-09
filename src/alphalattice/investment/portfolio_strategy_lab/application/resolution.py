@@ -1044,25 +1044,15 @@ class SharedPortfolioInputResolver:
                     "portfolio_application.risk_history_insufficient"
                 )
             rows = np.arange(stop - required, stop, dtype=np.int64)
-            # The listings whose Sector at this formation is not their current one.
-            in_force = history.at(session) if history.reclassifications else history.current
-            moved = {
-                listing: in_force[listing]
-                for listing in listings
-                if in_force[listing] != history.current[listing]
-            }
             produced = producer.produce(
-                RiskDecompositionInputs(
-                    formation_session=session,
-                    history_sessions=risk_sessions[stop - required : stop],
-                    ordered_listing_ids=listings,
-                    open_to_open_log_returns=np.ascontiguousarray(
-                        all_risk_returns[np.ix_(rows, columns)],
-                        dtype=np.float64,
-                    ),
-                    classification=classification,
-                    return_surface_hash=risk_surface.surface_hash,
-                    formation_sectors=moved or None,
+                RiskDecompositionInputs.at(
+                    session,
+                    risk_sessions[stop - required : stop],
+                    listings,
+                    all_risk_returns[np.ix_(rows, columns)],
+                    classification,
+                    risk_surface.surface_hash,
+                    history,
                 )
             )
             allocations[session] = produced.allocation

@@ -9,15 +9,22 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import numpy as np
 import pytest
 
 from alphalattice.control.product_host.composition import committee
+from alphalattice.control.product_host.composition import portfolio_result_context as context
 from alphalattice.control.product_host.composition.goals import GoalApplication
+from alphalattice.control.product_host.composition.portfolio_result_context import date_risk
 from alphalattice.control.product_host.composition.research_delivery import (
     export_update_delivery,
+)
+from alphalattice.control.product_host.composition.research_workspace import (
+    ResearchWorkspaceManifest,
 )
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.interface.local_application.cli_contract import RequestProvenance
@@ -26,8 +33,11 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
+    PortfolioUpdatePublication,
     advance_decision_state,
+    portfolio_update_positions,
 )
+from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSurfaceError
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     HASH,
     build_numerical,
@@ -68,6 +78,118 @@ def readback() -> dict[str, Any]:
 
 
 EVIDENCE = {"state": "EVIDENCE_AUTHORITY_NOT_ADMITTED", "evidence_as_of": None}
+
+
+@pytest.fixture
+def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
+    """The book's installed Risk surface over real sessions and the market data's later returns."""
+    positions = portfolio_update_positions(
+        PortfolioUpdatePublication.model_validate(readback["publication"])
+    )
+    session, listings = positions.schedule.formation_session, tuple(readback["listing_labels"])
+    days = [
+        p.formation_session
+        for p in context.planned_local_qa_schedule(
+            session - timedelta(days=950), session + timedelta(days=9)
+        )
+    ]
+    table = np.random.default_rng(5).normal(0.0, 0.01, (len(days), len(listings)))
+    rows = {d: i for i, d in enumerate(days)}
+    state = SimpleNamespace(positions=positions, k=days.index(session), days=days)
+    state.sessions, state.bars, state.listings = days, set(listings), listings
+    authority = SimpleNamespace(sector_map_hash="b" * 64)
+    classification = SimpleNamespace(
+        map_hash="b" * 64,
+        sector_revision="d" * 64,
+        manifest_revision="e" * 64,
+        entries=[
+            SimpleNamespace(listing_id=v, sector_name=v[-1], sector_key=None) for v in listings
+        ],
+    )
+    surface = SimpleNamespace(
+        surface_hash="c" * 64,
+        epoch=SimpleNamespace(ordered_listing_ids=listings, universe_manifest_revision="u"),
+    )
+
+    def carried(_market: Any, _universe: Any, listing: Any, sessions: Any, _connection: Any) -> Any:
+        if listing.listing_id not in state.bars:
+            raise RiskReturnSurfaceError("risk_research.return_bars_missing")
+        column = listings.index(listing.listing_id)
+        return tuple(
+            {"open_total_return_log": table[rows[d], column], "row_hash": d.isoformat()}
+            for d in sessions[1:]
+        )
+
+    def load(*_args: Any, **_kwargs: Any) -> Any:
+        authority.risk_return_surface_hash = uuid4().hex * 2  # no memo answers another read
+        return authority
+
+    market = SimpleNamespace(
+        load_universe_manifest_revision=lambda _revision: "universe",
+        listing_scope=lambda _u, listing_ids: [SimpleNamespace(listing_id=v) for v in listing_ids],
+        _connect=lambda read_only: SimpleNamespace(close=lambda: None),
+    )
+    reader = SimpleNamespace(
+        available_sessions=lambda _surface: tuple(state.sessions),
+        read_sessions=lambda _surface, kept: table[[rows[d] for d in kept]],
+    )
+    history = SimpleNamespace(reclassifications=(), current={v: v[-1] for v in listings})
+    stores = SimpleNamespace(load_manifest=lambda _hash: surface)
+    path = tmp_path / "a" / "b" / "c" / "authority.json"
+    monkeypatch.setattr(context, "confined", lambda *_args: path)
+    monkeypatch.setattr(context.PortfolioResearchArtifactStore, "load", load)
+    monkeypatch.setattr(
+        context.PanelClosureArtifactStore, "load_model", lambda *_a, **_k: classification
+    )
+    monkeypatch.setattr(
+        context, "sector_history_as_of", lambda *_a: SimpleNamespace(subset=lambda _v: history)
+    )
+    monkeypatch.setattr(context, "RiskReturnArtifactStore", lambda _root: stores)
+    monkeypatch.setattr(context, "CausalRiskReturnReader", lambda _root: reader)
+    monkeypatch.setattr(context, "MarketDataRepository", lambda _workspace: market)
+    monkeypatch.setattr(context, "listing_returns", carried)
+    manifest = SimpleNamespace(
+        strategy_artifacts=(SimpleNamespace(artifact_key=context.ARTIFACT_KEY, relative_path="a"),)
+    )
+    state.risk = lambda: date_risk(tmp_path, manifest, readback, positions)
+    return state
+
+
+def test_a_dates_risk_stands_at_its_formation_or_dated_at_the_surfaces_next_session(
+    risk_source: Any,
+) -> None:
+    """requirement: a Risk carried by later returns is the one read inside the surface; without
+    them it stands, dated, at the session after the surface ends."""
+    s = risk_source
+    inside = s.risk()
+    assert inside["risk_as_of"] == s.days[s.k].isoformat()
+    assert inside["sessions_before_the_positions"] == 0 and inside["covered_weight"] == 1.0
+    s.sessions = s.days[: s.k - 2]
+    carried = s.risk()
+    assert {**carried, "source_hash": None} == {**inside, "source_hash": None}
+    s.bars = set()
+    stale = s.risk()
+    assert stale["risk_as_of"] == s.days[s.k - 2].isoformat()
+    assert stale["sessions_before_the_positions"] == 2
+
+
+def test_a_name_without_later_returns_is_uncovered_and_left_out(risk_source: Any) -> None:
+    """requirement: a held name the market data cannot carry forward lowers the covered weight
+    and leaves the contributors; with no covered weight the Risk is not evaluated."""
+    s = risk_source
+    weights = dict(zip(s.listings, s.positions.weights, strict=True))
+    largest = max(weights, key=lambda v: abs(weights[v]))
+    s.sessions, s.bars = s.days[: s.k - 2], s.bars - {largest}
+    risk = s.risk()
+    total = sum(abs(w) for w in weights.values())
+    assert risk["covered_weight"] == pytest.approx(1 - abs(weights[largest]) / total)
+    assert largest not in [row["listing_id"] for row in risk["top_contributors"]]
+    s.bars = {v for v in weights if not weights[v]}
+    assert s.risk() == {
+        "risk_status": "NOT_EVALUATED",
+        "reason": "risk_research.positions_outside_the_risk_axis",
+        "covered_weight": 0.0,
+    }
 
 
 def _floor(tmp_path: Path, readback: dict[str, Any]) -> tuple[GoalStore, list[datetime]]:
@@ -317,6 +439,40 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     assert any(
         "no name" in line for line in committee.role_lines("RISK", readback, {}, emptied, NOW) or []
     )
+
+
+def test_the_risk_member_reads_the_dates_predicted_risk(tmp_path: Path, readback: dict) -> None:
+    """requirement: the RISK view and a tension point carry the date's predicted risk, dated, and
+    its largest contributors, or why none stands."""
+    held = committee.holdings(readback)
+    top = {"listing_id": held[0]["listing_id"], "weight": held[0]["weight"], "share": 0.21}
+    risk = {
+        "risk_status": "EVALUATED",
+        "risk_as_of": "2026-09-09",
+        "sessions_before_the_positions": 0,
+        "volatility_per_session": 0.011,
+        "volatility_annualized": 0.1746,
+        "systematic_share": 0.6,
+        "top_contributors": [top],
+        "covered_weight": 1.0,
+    }
+    view = committee.role_lines("RISK", {**readback, "date_risk": risk}, EVIDENCE, None, NOW)
+    assert view is not None and all(f in view[1] for f in ("1.10%", "17.5%", "H1 21%"))
+    kinds = [(p["kind"], p["targets"]) for p in committee.tension_points(held, EVIDENCE, risk)]
+    assert ("TOP_RISK_CONTRIBUTORS", ["H1"]) in kinds
+    manifest = ResearchWorkspaceManifest.create(
+        workspace_id="w",
+        default_strategy_package_id="BALANCED",
+        default_score_source_mode="HISTORICAL_ARRAY_REPLAY",
+        strategy_artifacts=(),
+    )
+    positions = portfolio_update_positions(
+        PortfolioUpdatePublication.model_validate(readback["publication"])
+    )
+    absent = date_risk(tmp_path, manifest, readback, positions)
+    assert absent["reason"] == "risk_research.installed_risk_surface_absent"
+    gap = committee.tension_points(held, EVIDENCE, absent)
+    assert any(p["kind"] == "RISK_GAP" and absent["reason"] in p["text"] for p in gap)
 
 
 def test_a_dates_delivery_carries_the_closed_floor_as_its_commentary(

@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
 from typing import Any, Literal, cast
 from uuid import UUID
 
+import numpy as np
+from numpy.typing import NDArray
+
+from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
+    TRADING_SESSIONS_PER_YEAR,
+)
 from alphalattice.control.product_host.composition.decision_advancement import (
     DecisionAdvancementPlan,
 )
@@ -21,6 +28,7 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import c
 from alphalattice.control.product_host.research_authoring.timing import binding_temporal_scope
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
+from alphalattice.foundation.causal_outcomes.execution.readers import planned_local_qa_schedule
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
 )
@@ -28,6 +36,7 @@ from alphalattice.foundation.feature_engine.panels.closure_contracts import Sect
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
     sector_history_as_of,
 )
+from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.activity import refusal_code, returned_status
 from alphalattice.interface.local_application.failure_codes import (
     FAILURE_DETAIL_WITHHELD,
@@ -45,6 +54,9 @@ from alphalattice.investment.alpha_research.scores.model_renewal import (
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioExecutionProgram,
 )
+from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
+    PortfolioUpdatePositions,
+)
 from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
     FrozenStrategyPackage,
     recipe_hashes_match,
@@ -61,6 +73,18 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
     PortfolioResearchArtifactStore,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import PortfolioReportContext
+from alphalattice.investment.risk_research.contracts import CausalRiskReturnSurface
+from alphalattice.investment.risk_research.surfaces.producer import (
+    RiskDecompositionInputs,
+    RiskSurfaceProducer,
+)
+from alphalattice.investment.risk_research.surfaces.returns import (
+    CausalRiskReturnReader,
+    RiskReturnArtifactStore,
+    RiskReturnSurfaceError,
+    listing_returns,
+)
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def installed_source_binding(workspace: Path, manifest: ResearchWorkspaceManifest) -> str | None:
@@ -73,22 +97,34 @@ def installed_source_binding(workspace: Path, manifest: ResearchWorkspaceManifes
     Returns:
         The input's binding hash, or None when no installed authority is kept.
     """
+    try:
+        installed = _installed_authority(workspace, manifest)
+    except (ValueError, OSError, KeyError):
+        return None
+    return None if installed is None else str(installed[1].input_binding_hash)
+
+
+def _installed_authority(
+    workspace: Path, manifest: ResearchWorkspaceManifest, expected: str | None = None
+) -> tuple[Path, LifecyclePortfolioAuthority] | None:
+    """The installed strategy's lifecycle authority and its artifact root, if one is kept.
+
+    `expected`, when given, is the authority a saved book names; another refuses before a read.
+    """
     reference = next(
         (a for a in manifest.strategy_artifacts if a.artifact_key == ARTIFACT_KEY), None
     )
     if reference is None:
         return None
-    try:
-        path = confined(workspace, reference.relative_path)
-        authority = PortfolioResearchArtifactStore(path.parents[2]).load(
-            category=CATEGORY,
-            content_hash=path.stem,
-            model=LifecyclePortfolioAuthority,
-            identity_field="authority_hash",
-        )
-    except (ValueError, OSError, KeyError):
-        return None
-    return str(authority.input_binding_hash)
+    path = confined(workspace, reference.relative_path)
+    if expected is not None and path.stem != expected:
+        raise ValueError("portfolio_application.saved_source_not_installed")
+    return path.parents[2], PortfolioResearchArtifactStore(path.parents[2]).load(
+        category=CATEGORY,
+        content_hash=path.stem,
+        model=LifecyclePortfolioAuthority,
+        identity_field="authority_hash",
+    )
 
 
 def installed_temporal_statements(
@@ -153,22 +189,11 @@ def saved_portfolio_context(
                 "legacy generic report labels do not redefine it."
             ),
         }
-    reference = next(
-        (a for a in manifest.strategy_artifacts if a.artifact_key == ARTIFACT_KEY), None
-    )
-    if reference is None:
-        return context
     try:
-        path = confined(workspace, reference.relative_path)
-        if path.stem != program.alpha_evidence_manifest_hash:
-            raise ValueError("portfolio_application.saved_source_not_installed")
-        store = PortfolioResearchArtifactStore(path.parents[2])
-        authority = store.load(
-            category=CATEGORY,
-            content_hash=path.stem,
-            model=LifecyclePortfolioAuthority,
-            identity_field="authority_hash",
-        )
+        installed = _installed_authority(workspace, manifest, program.alpha_evidence_manifest_hash)
+        if installed is None:
+            return context
+        root, authority = installed
         if (
             authority.sector_map_hash != program.sector_map_hash
             or session not in authority.formation_sessions
@@ -226,7 +251,7 @@ def saved_portfolio_context(
             "state_transition_binding_hash": authority.transition.binding_hash,
         }
         context["sectors"], context["listing_labels"] = _saved_sector_context(
-            path.parents[2], program.sector_map_hash, session
+            root, program.sector_map_hash, session
         )
     except (ValueError, OSError, KeyError) as error:
         context["source"] = {
@@ -250,24 +275,14 @@ def saved_portfolio_sectors(
     classification still names the book's exact retained Sector revision and dated history.
     Missing or mismatched sources remain explicitly unavailable.
     """
-    reference = next(
-        (a for a in manifest.strategy_artifacts if a.artifact_key == ARTIFACT_KEY), None
-    )
-    if reference is None:
-        return {"status": "UNAVAILABLE", "by_listing": {}}
     try:
-        path = confined(workspace, reference.relative_path)
-        if path.stem != program.alpha_evidence_manifest_hash:
-            raise ValueError("portfolio_application.saved_source_not_installed")
-        authority = PortfolioResearchArtifactStore(path.parents[2]).load(
-            category=CATEGORY,
-            content_hash=path.stem,
-            model=LifecyclePortfolioAuthority,
-            identity_field="authority_hash",
-        )
+        installed = _installed_authority(workspace, manifest, program.alpha_evidence_manifest_hash)
+        if installed is None:
+            return {"status": "UNAVAILABLE", "by_listing": {}}
+        root, authority = installed
         if authority.sector_map_hash != program.sector_map_hash:
             raise ValueError("portfolio_application.saved_source_binding_mismatch")
-        sectors, _ = _saved_sector_context(path.parents[2], program.sector_map_hash, session)
+        sectors, _ = _saved_sector_context(root, program.sector_map_hash, session)
         return sectors
     except (ValueError, OSError, KeyError) as error:
         return {"status": "UNAVAILABLE", "reason": str(error), "by_listing": {}}
@@ -673,3 +688,145 @@ def book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
     }
     _SECTOR_CACHE[key] = value
     return value
+
+
+_DATE_RISK: dict[tuple[str, str], dict[str, Any]] = {}
+"""Each publication's Risk at its own session with every name covered, once per process."""
+
+
+def date_risk(
+    workspace: Path,
+    manifest: ResearchWorkspaceManifest,
+    readback: Mapping[str, Any],
+    positions: PortfolioUpdatePositions,
+) -> dict[str, Any]:
+    """A research update's positions' predicted Risk under the installed recipe, report only.
+
+    The book's own return surface, carried in memory to the positions' formation session by
+    returns derived from the workspace's market data for the sessions since it ends; a name
+    without them is uncovered. Where none derive, the Risk stands at the first session that
+    surface serves, dated, with the sessions before the positions. Where nothing fits,
+    NOT_EVALUATED names why. Nothing is written.
+    """
+    try:
+        return _date_risk(workspace, manifest, readback, positions)
+    except (ValueError, OSError, KeyError, IndexError, RuntimeError) as error:
+        return _unevaluated(safe_failure_code(str(error)) or "risk_research.date_risk_unavailable")
+
+
+def _unevaluated(reason: str, covered: float = 0.0) -> dict[str, Any]:
+    return {"risk_status": "NOT_EVALUATED", "reason": reason, "covered_weight": covered}
+
+
+def _date_risk(
+    workspace: Path,
+    manifest: ResearchWorkspaceManifest,
+    readback: Mapping[str, Any],
+    positions: PortfolioUpdatePositions,
+) -> dict[str, Any]:
+    session = positions.schedule.formation_session
+    installed = _installed_authority(workspace, manifest)
+    if installed is None:
+        raise ValueError("risk_research.installed_risk_surface_absent")
+    root, authority = installed
+    key = (str(readback["publication"]["content_hash"]), str(authority.risk_return_surface_hash))
+    if key in _DATE_RISK:
+        return _DATE_RISK[key]
+    surface = RiskReturnArtifactStore(root).load_manifest(authority.risk_return_surface_hash)
+    reader = CausalRiskReturnReader(root)
+    closure = PanelClosureArtifactStore(ArtifactResolver(root))
+    sessions = reader.available_sessions(surface)
+    classification = closure.load_model(
+        category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
+    )
+    classified = {entry.listing_id for entry in classification.entries}
+    listings = tuple(v for v in surface.epoch.ordered_listing_ids if v in classified)
+    calendar = (
+        [p.formation_session for p in planned_local_qa_schedule(sessions[-1], session)]
+        if session > sessions[-1]
+        else [session]
+    )
+    gap = tuple(v for v in calendar if sessions[-1] < v < session)
+    carried = _carried_returns(workspace, surface, listings, (sessions[-1], *gap))
+    formation, forward, hashes = (
+        (session, *carried) if carried else (calendar[1], np.empty((0, len(listings))), [])
+    )
+    missing = {v for v, column in zip(listings, forward.T, strict=True) if np.isnan(column).any()}
+    held = dict(zip(readback["listing_labels"], positions.weights, strict=True))
+    total = sum(abs(w) for w in held.values())
+    covered = sum(abs(held.get(v, 0.0)) for v in listings if v not in missing) / (total or 1.0)
+    producer = RiskSurfaceProducer()
+    recipe = producer.recipe
+    required = recipe.conditional_volatility_initialization_sessions + recipe.factor_fit_sessions
+    stop = bisect_left(sessions, formation)  # the rows a formation reads end before it
+    kept = sessions[max(0, stop - required + len(forward)) : stop]
+    if not covered or len(kept) + len(forward) != required:
+        why = "return_surface_short_of_the_date" if covered else "positions_outside_the_risk_axis"
+        return _unevaluated(f"risk_research.{why}", covered)
+    columns = [surface.epoch.ordered_listing_ids.index(v) for v in listings]
+    source = canonical_hash({"surface": surface.surface_hash, "carried": hashes})
+    model = producer.produce(
+        RiskDecompositionInputs.at(
+            formation,
+            (*kept, *gap[: len(forward)]),
+            listings,
+            np.vstack([reader.read_sessions(surface, kept)[:, columns], forward]),
+            classification,
+            source,
+            sector_history_as_of(closure, classification.sector_revision).subset(listings),
+        )
+    ).surface
+    w = np.asarray([0.0 if v in missing else held.get(v, 0.0) for v in listings])
+    variance, shares = float(model.book_variance(w)), model.variance_shares(w)
+    value = {
+        "risk_status": "EVALUATED",
+        "risk_as_of": formation.isoformat(),
+        "sessions_before_the_positions": len(gap) - len(forward),
+        "volatility_per_session": float(np.sqrt(variance)),
+        "volatility_annualized": float(np.sqrt(variance * TRADING_SESSIONS_PER_YEAR)),
+        "systematic_share": float(model.variance_split(w)[0]) / variance,
+        "top_contributors": [
+            {"listing_id": listings[i], "weight": float(w[i]), "share": float(shares[i])}
+            for i in np.argsort(-shares, kind="stable")[:5]
+            if w[i]
+        ],
+        "covered_weight": covered,
+        "source_hash": source,
+        "claim": "REPORT_ONLY_NEVER_USED_FOR_WEIGHTS",
+    }
+    if formation == session and not missing:
+        _DATE_RISK[key] = value
+    return value
+
+
+def _carried_returns(
+    workspace: Path, surface: CausalRiskReturnSurface, listings: tuple[str, ...], sessions: Any
+) -> tuple[NDArray[np.float64], list[str]] | None:
+    """The returns of `sessions` after the first, derived as the surface's own from market data.
+
+    A listing the workspace's market data lacks stays NaN; None when none derives.
+    """
+    if len(sessions) < 2:
+        return np.empty((0, len(listings))), []
+    market = MarketDataRepository(workspace)
+    try:
+        universe = market.load_universe_manifest_revision(surface.epoch.universe_manifest_revision)
+        scope = market.listing_scope(universe, listing_ids=listings)
+    except (ValueError, OSError, KeyError):
+        return None
+    returns = np.full((len(sessions) - 1, len(listings)), np.nan)
+    hashes: list[str] = []
+    connection = market._connect(read_only=True)
+    try:
+        for listing in scope:
+            try:
+                rows = listing_returns(market, universe, listing, sessions, connection)
+            except RiskReturnSurfaceError:
+                continue
+            returns[:, listings.index(listing.listing_id)] = [
+                r["open_total_return_log"] for r in rows
+            ]
+            hashes.extend(str(row["row_hash"]) for row in rows)
+    finally:
+        connection.close()
+    return (returns, hashes) if hashes else None

@@ -11355,6 +11355,9 @@
 "risk_research.daily_covariance_snapshot_invalid": {
 "owner": "risk_research"
 },
+"risk_research.date_risk_unavailable": {
+"owner": "risk_research"
+},
 "risk_research.decomposition_axis_duplicated": {
 "owner": "risk_research"
 },
@@ -11571,6 +11574,9 @@
 "risk_research.input_universe_epoch_mismatch": {
 "owner": "risk_research"
 },
+"risk_research.installed_risk_surface_absent": {
+"owner": "risk_research"
+},
 "risk_research.insufficient_input_history": {
 "owner": "risk_research"
 },
@@ -11614,6 +11620,9 @@
 "owner": "risk_research"
 },
 "risk_research.parameter_value_not_admitted": {
+"owner": "risk_research"
+},
+"risk_research.positions_outside_the_risk_axis": {
 "owner": "risk_research"
 },
 "risk_research.producer_classification_incomplete": {
@@ -11719,6 +11728,9 @@
 "owner": "risk_research"
 },
 "risk_research.return_surface_row_count_invalid": {
+"owner": "risk_research"
+},
+"risk_research.return_surface_short_of_the_date": {
 "owner": "risk_research"
 },
 "risk_research.return_universe_unavailable": {

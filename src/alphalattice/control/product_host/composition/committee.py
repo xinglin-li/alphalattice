@@ -129,7 +129,8 @@ def open_floor(
         "closes_at": (now + timedelta(minutes=FLOOR_MINUTES)).isoformat(),
         "session": list(session),
         "holdings": held,
-        "tension_points": tension_points(held, evidence),
+        "date_risk": readback.get("date_risk"),
+        "tension_points": tension_points(held, evidence, readback.get("date_risk")),
     }
     with store.lock:
         kept = store.committee(task, goal_id)
@@ -449,12 +450,14 @@ def holdings(readback: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def tension_points(
-    held: Sequence[Mapping[str, Any]], evidence: Mapping[str, Any]
+    held: Sequence[Mapping[str, Any]],
+    evidence: Mapping[str, Any],
+    risk: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """What the committee argues.
 
-    Held names its Evidence flags, the largest changes, the largest position, and a gap in the
-    Evidence itself.
+    Held names its Evidence flags, the largest changes, the largest position, the largest
+    contributors to the date's predicted risk (or why none stands), and a gap in the Evidence.
     """
     adverse = {
         h["alias"]: int(row["adverse_issue_count"])
@@ -479,6 +482,7 @@ def tension_points(
             "The largest position, H1, and the five largest together.",
             [h["alias"] for h in held[:5]],
         ),
+        *_risk_point(held, risk),
         *([("EVIDENCE_GAP", f"No Evidence stands for these positions: {gap}.", [])] if gap else []),
     ]
     return [
@@ -527,11 +531,9 @@ def role_lines(
             for h in held
         ]
     elif role == "RISK":
-        view = [
-            f"Risk evaluation of this proposal: {publication.get('risk_status')}; "
-            + _concentration(held),
-            *table,
-        ]
+        risk = floor.opened.get("date_risk") if floor else readback.get("date_risk")
+        sealed = f"Risk status sealed at publication: {publication.get('risk_status')}. "
+        view = [sealed + _risk_view(risk, held) + _concentration(held), *table]
     elif role == "CRO":
         gap = evidence_gap(evidence)
         view = [
@@ -581,6 +583,45 @@ def render(text: str, held: Sequence[Mapping[str, Any]]) -> str:
     """Each holding alias with its name and weight, as the Host has them; agents type none."""
     named = {h["alias"]: f"{h['alias']} ({h['name']}, {h['weight']:.2%})" for h in held}
     return ALIAS.sub(lambda m: named.get(m.group(0), m.group(0)), text)
+
+
+def _risk_point(
+    held: Sequence[Mapping[str, Any]], risk: Mapping[str, Any] | None
+) -> list[tuple[str, str, list[str]]]:
+    """The date's largest risk contributors as a point, or the reason no predicted risk stands."""
+    if risk is None:
+        return []
+    alias = {h["listing_id"]: h["alias"] for h in held}
+    top = [
+        alias[c["listing_id"]]
+        for c in risk.get("top_contributors") or ()
+        if c["listing_id"] in alias
+    ]
+    if risk.get("risk_status") == "EVALUATED" and top:
+        return [("TOP_RISK_CONTRIBUTORS", f"The largest risk contributors: {', '.join(top)}.", top)]
+    reason = risk.get("reason") or "none of the held names contributes"
+    return [("RISK_GAP", f"No predicted risk stands for these positions: {reason}.", [])]
+
+
+def _risk_view(risk: Mapping[str, Any] | None, held: Sequence[Mapping[str, Any]]) -> str:
+    """The date's predicted risk as the Host renders it, report only; members type no digit."""
+    if not risk or risk.get("risk_status") != "EVALUATED":
+        reason = (risk or {}).get("reason") or "risk_research.date_risk_unavailable"
+        return f"Predicted risk of these positions: not evaluated ({reason}); "
+    alias = {h["listing_id"]: h["alias"] for h in held}
+    top = ", ".join(
+        f"{alias.get(c['listing_id'], c['listing_id'])} {c['share']:.0%}"
+        for c in risk["top_contributors"]
+    )
+    later = risk["sessions_before_the_positions"]
+    return (
+        f"Predicted risk of these positions at {risk['risk_as_of']}"
+        + (f", {later} sessions before them" if later else "")
+        + f" (the installed recipe, report only): volatility {risk['volatility_per_session']:.2%} "
+        f"a session, {risk['volatility_annualized']:.1%} a year; systematic share "
+        f"{risk['systematic_share']:.0%}; covered weight {risk['covered_weight']:.0%}; largest "
+        f"contributors {top}; "
+    )
 
 
 def _concentration(held: Sequence[Mapping[str, Any]]) -> str:

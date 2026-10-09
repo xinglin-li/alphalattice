@@ -89,6 +89,7 @@ from alphalattice.control.product_host.composition.portfolio_application import 
     PortfolioResearchApplication,
 )
 from alphalattice.control.product_host.composition.portfolio_result_context import (
+    date_risk,
     installed_temporal_statements,
     saved_portfolio_context,
 )
@@ -346,6 +347,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioResearchSpec,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
+    PortfolioUpdatePositions,
     PortfolioUpdatePublication,
     portfolio_update_positions,
 )
@@ -1685,6 +1687,7 @@ class PortfolioResearchOperations:
                                 chosen, self.research_updates.readback(chosen)
                             ),
                             review=self.review,
+                            risk=self._date_risk,
                         )
                     assert request.update_plan_hash is not None
                     plan = self.research_updates.prepare(request.update_plan_hash)
@@ -1740,7 +1743,9 @@ class PortfolioResearchOperations:
                         chosen = self._strategy_task(request)
                         if isinstance(chosen, dict):
                             return chosen
-                        return _position_rows(self.updates.readback(chosen), review=self.review)
+                        return _position_rows(
+                            self.updates.readback(chosen), review=self.review, risk=self._date_risk
+                        )
                     assert request.update_plan_hash is not None
                     plan = self.updates.prepare(request.update_plan_hash)
                     reused = self.updates.reusable(plan)
@@ -2831,6 +2836,13 @@ class PortfolioResearchOperations:
             dated=lambda: self._dated(task),
             file_floor=lambda: self._file_floor(task, now),
         )
+
+    def _date_risk(
+        self, body: dict[str, object], positions: PortfolioUpdatePositions
+    ) -> dict[str, Any]:
+        """The date's positions' predicted Risk over the one manifest the applications read."""
+        manifest = cast(ResearchWorkspaceManifestHolder, self.manifests).current
+        return date_risk(self.workspace_session.workspace, manifest, body, positions)
 
     def _dated(self, task: str) -> tuple[dict[str, Any], dict[str, Any]] | None:
         """A research update's publication and the Evidence on it; None for another Task."""
@@ -6595,7 +6607,10 @@ def _latest_update(task: TaskRecord | None) -> dict[str, object] | None:
 
 
 def _position_rows(
-    body: dict[str, object], *, review: EvidenceReviewApplication | None = None
+    body: dict[str, object],
+    *,
+    review: EvidenceReviewApplication | None = None,
+    risk: Callable[[dict[str, object], PortfolioUpdatePositions], dict[str, Any]] | None = None,
 ) -> dict[str, object]:
     publication = body.get("publication")
     if isinstance(publication, dict):
@@ -6631,6 +6646,9 @@ def _position_rows(
             **cast(dict[str, object], body.get("next_requests") or {}),
             **review_requests(cast(dict[str, str], body["review_selector"])),
         }
+        if risk is not None:
+            # The date's predicted Risk, report only; the sealed publication keeps its own status.
+            body["date_risk"] = risk(body, positions)
         if review is not None:
             try:
                 standing = EvidenceReviewDelivery(review).review_standing(
