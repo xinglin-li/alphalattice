@@ -12090,6 +12090,62 @@
    "successor": "4e416ae6e81473c802d2c82478e3de8546a11e022ab474cdccf1814619e41379",
    "change": "Fresh-computer fixes, the person's date road, Evidence consent and in-Host install, overlapping Tasks (2026-10-09)",
    "reason": "These closures changed through shared modules: owner fixes from the person's fresh-computer tests, the date road and relayed decisions, the Evidence consent and install, and independent Tasks running side by side; each line's exact reads of the moved roles are equal, and overlapped study results are byte-equal to sequential ones."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "ff5aabbd8441eefc3fdb1771f2a36e94975f1f7e0a260f5b34b5ab8c69c5ef03",
+   "successor": "7d444d7ac28a460eb1ca14a56ca1f59594d55c0a36143f0c18eddd634733976f",
+   "change": "The date's Risk on the dated readback (2026-10-09)",
+   "reason": "The Risk owners' per-listing return derivation, decomposition inputs and variance shares were extracted for the date's Risk to share; each is the same computation, the producer's reference test, the sectors-in-force test and the publisher's window tests pass unchanged, and every published value is equal."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "ead284e19b92b03194e42b0e432d297ce011bd64c7624c7d6626d1244d39aca2",
+   "successor": "9c5d8dee0e40981e5966e1f0fe832eac6298ba14805498669f50ab50e18354eb",
+   "change": "The date's Risk on the dated readback (2026-10-09)",
+   "reason": "The Risk owners' per-listing return derivation, decomposition inputs and variance shares were extracted for the date's Risk to share; each is the same computation, the producer's reference test, the sectors-in-force test and the publisher's window tests pass unchanged, and every published value is equal."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "ba8ff2007947d23f5210de144f3fdd035587b737cb28c492de37ef96cffe22c9",
+   "successor": "c5190c53807474a8c499c533101a1ba46273c290b071aaa0f7954eb2659a2120",
+   "change": "The date's Risk on the dated readback (2026-10-09)",
+   "reason": "The Risk owners' per-listing return derivation, decomposition inputs and variance shares were extracted for the date's Risk to share; each is the same computation, the producer's reference test, the sectors-in-force test and the publisher's window tests pass unchanged, and every published value is equal."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "6f0face835fa761f3179a6b84cea2b2b4285992ccf0f682eadc8c97b4845c0e6",
+   "successor": "71e0b9edc1e0922cb31b3ed0c30a4ba871c3043d37a561a5d749ba1f3d4277a4",
+   "change": "The date's Risk on the dated readback (2026-10-09)",
+   "reason": "The Risk owners' per-listing return derivation, decomposition inputs and variance shares were extracted for the date's Risk to share; each is the same computation, the producer's reference test, the sectors-in-force test and the publisher's window tests pass unchanged, and every published value is equal."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "8fcf1f06dee6a9a4c99e5282fcdf885927dbeb2b30f6554e7fe6626f070a0016",
+   "successor": "d5786cf0aabb7a9c2fdc07c39ed6f6eb9d03f9a1dec80d6a9814870730be0432",
+   "change": "The date's Risk on the dated readback (2026-10-09)",
+   "reason": "The Risk owners' per-listing return derivation, decomposition inputs and variance shares were extracted for the date's Risk to share; each is the same computation, the producer's reference test, the sectors-in-force test and the publisher's window tests pass unchanged, and every published value is equal."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "c1f8d36a16ec03f99c1da7777dfcada070dfd0740ca023ad55dbc73ee509d167",
+   "successor": "23460db9285e9260b97f5ff9088ab1b9996709c0be6cce1451295b3a50089d06",
+   "change": "The date's Risk on the dated readback (2026-10-09)",
+   "reason": "The Risk owners' per-listing return derivation, decomposition inputs and variance shares were extracted for the date's Risk to share; each is the same computation, the producer's reference test, the sectors-in-force test and the publisher's window tests pass unchanged, and every published value is equal."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "54ce66b1b68065da710627b399988fc6d5a56fdd73d7870e3208448fe936b13a",
+   "successor": "0d80f3fbe4cce8d18e462f7cdb6bb8630db81698c3de181752cce8d436eef80f",
+   "change": "The date's Risk on the dated readback (2026-10-09)",
+   "reason": "The Risk owners' per-listing return derivation, decomposition inputs and variance shares were extracted for the date's Risk to share; each is the same computation, the producer's reference test, the sectors-in-force test and the publisher's window tests pass unchanged, and every published value is equal."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "4e416ae6e81473c802d2c82478e3de8546a11e022ab474cdccf1814619e41379",
+   "successor": "bd3a114d8dfdb08b1788994af4498b90dc43c6cd413b8fa8278536941b59fe0e",
+   "change": "The date's Risk on the dated readback (2026-10-09)",
+   "reason": "The Risk owners' per-listing return derivation, decomposition inputs and variance shares were extracted for the date's Risk to share; each is the same computation, the producer's reference test, the sectors-in-force test and the publisher's window tests pass unchanged, and every published value is equal."
   }
  ]
 }
