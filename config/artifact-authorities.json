@@ -1141,6 +1141,21 @@
     },
     {
       "path_prefixes": [
+        "evidence-install",
+        "runtime/evidence-install"
+      ],
+      "roots": [
+        "workspace"
+      ],
+      "semantic_role": "the Evidence install Task's stage outputs under runtime/evidence-install, with logical playpen://evidence-install references verified by the same owner for later stages and recovery",
+      "authority_owner": "product_host.composition.evidence_authority_setup.EvidenceInstall",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
+      "eviction_authority": "NONE"
+    },
+    {
+      "path_prefixes": [
         "runtime/evidence-knowledge"
       ],
       "roots": [

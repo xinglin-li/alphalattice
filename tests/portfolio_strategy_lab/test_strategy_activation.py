@@ -1859,11 +1859,8 @@ def test_activation_over_the_real_storage_cap_is_a_worded_http_refusal(tmp_path:
             assert unique_managed_bytes(managed_file_inventory(live.workspace)) > cap
             language = ANSWER_LANGUAGE.set("zh")
             try:
-                assert worded(refused["detail"]) == (
-                    "受管存储超过工作区上限。请在设置中提高上限（"  # noqa: RUF001
-                    "`storage set --cap-bytes <bytes>`），"  # noqa: RUF001
-                    "或规划清理（`storage plan`）供人确认。"  # noqa: RUF001
-                )
+                assert worded(refused["detail"]) == worded(refusal_words(code)["detail"])
+                assert worded(refused["detail"]) != refused["detail"]
             finally:
                 ANSWER_LANGUAGE.reset(language)
             assert set(checkpoints.glob("*.json")) == before

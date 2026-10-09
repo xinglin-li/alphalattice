@@ -64,6 +64,12 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ("control/product_host/composition/evidence_authority_setup.py", "_parser"): (
             "the source setup script's own option"
         ),
+        ("control/product_host/composition/evidence_authority_setup.py", "setup_arguments"): (
+            "the running Host binds the setup script to its own workspace"
+        ),
+        ("control/product_host/composition/evidence_authority_setup.py", "within_delegation"): (
+            "the setup script's defaults are read for the same bound workspace"
+        ),
         ("control/product_host/composition/evidence_authority_setup.py", "_acquisition_command"): (
             "the source setup script's own command, a script, not an object and an action; "
             "its acquisition offered again at one cutoff"

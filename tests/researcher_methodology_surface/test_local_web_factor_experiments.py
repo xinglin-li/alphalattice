@@ -2757,9 +2757,7 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
         plan_hash = planned.get("plan_hash") or planned["plan"]["plan_hash"]
         request = {"feature_plan_hash": plan_hash, "task_id": alpha["task_id"]}
 
-        # A queued study holds this workspace. The trial must remain stopped until
-        # a request can admit work, and reopening then lets the idle hook advance it.
-
+        # A queued study stops the trial; cancelling its exact Task allows reopening.
         registry = live.session.task_control_registry
         baseline = registry.task(UUID(alpha["task_id"]))
         busy = registry.admit(
@@ -2772,7 +2770,7 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
         assert stopped["state"] == "STOPPED", stopped
         assert stopped["stopped"] == {
             "step": "FEATURE_BUILD",
-            "failure_code": "feature_research.finish_or_recover_existing_task",
+            "failure_code": f"feature_research.finish_or_recover_existing_task:{busy.task_id}",
         }
         refused_again = _json(live, "/api/feature-trials", method="POST", payload=request)
         assert refused_again["state"] == "STOPPED"

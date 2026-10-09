@@ -14,7 +14,7 @@ Read current Evidence's `continuation_scope` and remaining allowance. Continue t
 If `evidence preview` reports no suitable package, the running Host installs one as a Task (environment, model, acquisition, index, publish), with an admitted input and the workspace's pinned semantic pack; nothing is stopped:
 
 ```text
-alphalattice evidence install --setup="--research-input-id <selected-id> --research-input-hash <exact-binding> --acquire-sec --entities <tickers> --preflight"
+alphalattice evidence install --setup="--research-input-id <input-id> --research-input-hash <binding> --acquire-sec --entities <tickers> --preflight"
 ```
 
 Take `--entities` from the preview's `coverage` packs for the book's unit and tell the person which you chose. Preflight acquires nothing and answers at once. To acquire, replace `--preflight` with `--network-consent --install`, with the workspace's network allowed, and follow the Task with `activity wait`; the product names itself to the SEC by its own contact, so never ask the person for a name or an address. Defaults admit at most three filings per issuer, unless the person approves another count, and 10 MB per document, eight issuers and one unit; they describe the setup's own package only, and a later Evidence Task admits under its own budget. Before you acquire, compare the preview's scope and budget with what the person, or the first use's delegation, approved, item by item, and acquire nothing when any is missing or differs. A failed issuer floor offers the same acquisition at one cutoff: run it under the consent already given, and ask only for a wider scope or budget. `--install` changes the workspace's Evidence binding, never a strategy; an install makes packets prepared under the old package stale.

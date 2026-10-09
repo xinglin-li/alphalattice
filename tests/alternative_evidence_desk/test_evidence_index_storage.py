@@ -30,6 +30,7 @@ from alphalattice.control.product_host.composition.local_web_session import (
 from alphalattice.control.product_host.composition.research_workspace import (
     publish_research_workspace_manifest,
 )
+from alphalattice.control.product_host.composition.task_recovery import stop_detail
 from alphalattice.control.product_host.storage.inventory import (
     managed_file_inventory,
     unique_managed_bytes,
@@ -618,10 +619,8 @@ def test_evidence_writes_are_admitted_by_the_workspace_budget(
         view = service.get(f"/api/tasks/recovery?task_id={refused_id}")
         assert view["stop"]["code"].endswith(":storage.managed_capacity_exceeded")
         assert view["stop"]["stage_id"] == f"{ONE_UNIT}_build_retrieval_generation"
-        assert view["stop"]["detail"] == (
-            "The stage's write exceeds the workspace storage cap. Raise the cap in Settings "
-            "or preview and confirm a cleanup, then resume the Task's offered request; "
-            "its verified stages and retained results stay intact."
+        assert view["stop"]["detail"] == stop_detail(
+            view["task_kind"], view["stop"]["code"], "TASK_CONTROL"
         )
         # A blocked evidence Task is terminal for Task Control: the way
         # forward is room and a new preparation, which restores the index

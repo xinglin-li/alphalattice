@@ -141,11 +141,16 @@ def _consumer(feed: dict[str, Any], tmp: Path, *selection: str) -> dict[str, Any
 def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     live: LocalPortfolioWebSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("CODEX_THREAD_ID", SESSION)
     producer = _Producer(tmp_path)
     tasks_before = len(live.session.task_control_registry.tasks())  # type: ignore[union-attr]
     start = _json(live, "/api/activity")
     cursor = start["cursor"]
     lead, analyst, cro = SESSION, "child-analyst-7", "child-cro-9"
+    # Establish this fixture session's Goal through its existing real refusal before events.
+    bogus_plan = "b" * 64
+    code, refused = _cli(live, "study", "run", "--plan", bogus_plan)
+    assert code == 2 and refused["data"]["failure_code"] == "research_experiment.preview_required"
 
     # The foreground PM assigns; the host names the child; the child asks; the PM answers.
     assignment = producer.publish(
@@ -186,7 +191,6 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
 
     # The Analyst's long answer names a PLAN this service never previewed: the retained preview
     # is 500 characters and marked, and the referenced original is not this feed's to hold.
-    bogus_plan = "b" * 64
     long_answer = " ".join(f"finding-{i}" for i in range(120))
     answer = producer.publish(
         live,
@@ -213,15 +217,10 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     assert first["status"] == "APPENDED" and replay["status"] == "REUSED_EXACT"
     assert replay["observation_id"] == first["observation_id"]
 
-    # A real domain-owner refusal on that exact reference; then an unrelated Portfolio replay
-    # is admitted (generic transport: the two are different contexts, not a correction).
-    code, refused = _cli(live, "study", "run", "--plan", bogus_plan)
-    assert code == 2 and refused["data"]["failure_code"] == "research_experiment.preview_required"
+    # An unrelated Portfolio replay is admitted; the earlier refusal is no correction link.
     spec = tmp_path / "spec.yaml"
     spec.write_text("{}", encoding="utf-8")
-    with monkeypatch.context() as m:
-        m.setenv("CODEX_THREAD_ID", SESSION)
-        code, sent = _cli(live, "strategy-book", "run", "--file", str(spec))
+    code, sent = _cli(live, "strategy-book", "run", "--file", str(spec))
     assert code == 3 and sent["data"]["disposition"] == "ADMITTED"
     task_id = sent["data"]["task_id"]
     live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
@@ -304,25 +303,25 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     )
     kinds = [(e["kind"], e["messageKind"], e["replayOf"]) for e in session["entries"]]
     assert kinds == [
+        ("message", "session_bound", None),
         ("message", "assignment", None),
         ("hook", None, None),
         ("message", "question", None),
         ("message", "pm_response", None),
         ("message", "answer", None),
         ("message", "objection", None),
-        ("message", "session_bound", None),
         ("message", "answer", None),
         ("message", "pm_response", None),
         ("hook", None, None),
         ("message", None, None),
     ]
-    answered = session["entries"][4]
+    answered = session["entries"][5]
     assert answered["truncated"] is True and answered["textLength"] == 500
     assert (
         answered["bytes"] == str(len(long_answer.encode())) and answered["reference"] == bogus_plan
     )
     assert answered["qualified"] == "hash"
-    assert session["entries"][6]["channel"] == "PRODUCT_OPERATION"
+    assert session["entries"][0]["channel"] == "PRODUCT_OPERATION"
     stop = session["entries"][9]
     assert stop["hookEvent"] == "SubagentStop" and stop["terminal"] == "NOT_ESTABLISHED"
     assert stop["stopActive"] == "false" and stop["channel"] == "CODEX_HOOK"
@@ -359,11 +358,8 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
         ("PortfolioResearchResult", None, None, None, [task_id]),
     ]
     assert all(f["followed"] == [] for f in session["facts"]), "no hop was needed or inferred"
-    # The Research Team page: the declared foreground PM on its card, every retained exchange in
-    # the thread with its kind told apart (an undeclared kind named as such), the unknown event
-    # kind named, and the product evidence -- the refusal, the admission, the owner-verified
-    # artifact and the current projection -- in its own block after the thread, in recorded
-    # order, none of it among the member statements.
+    # The thread distinguishes every retained declaration, including unknown kinds.
+    # Product evidence follows in recorded order, apart from member statements.
     html = scene["html"]
     for text in (
         "Main PM · declared foreground conversation",
@@ -404,7 +400,7 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     # same declared reference; the stop hook keeps its provenance and its unestablished terminal
     # state.
     reader = {e["observation"]: scene["readers"][e["observation"]] for e in session["entries"]}
-    assignment_reader = reader[session["entries"][0]["observation"]]
+    assignment_reader = reader[assignment["observation_id"]]
     assert "Main PM → @Alternative Analyst · Assignment" in _words(assignment_reader)
     assert "Actor-declared text · not host-verified" in assignment_reader
     truncated_reader = reader[answered["observation"]]
@@ -416,7 +412,7 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
         f"<team-resolve:{bogus_plan}>",
     ):
         assert text in truncated_reader, text
-    objection_reader = reader[session["entries"][5]["observation"]]
+    objection_reader = reader[first["observation_id"]]
     assert "CRO → @Main PM · Objection" in _words(objection_reader)
     assert f"<team-resolve:{bogus_plan}>" in objection_reader
     hook_reader = reader[stop["observation"]]

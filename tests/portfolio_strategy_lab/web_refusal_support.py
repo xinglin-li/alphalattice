@@ -187,6 +187,12 @@ PUBLIC_SEAMS = frozenset(
 )
 ACTIVATION_OPERATIONS = frozenset({"STRATEGY_ACTIVATE", "STRATEGY_DEACTIVATE"})
 ACTIVATION_SEAMS = frozenset({"activate", "deactivate"})
+RETURNED_TASK_AUTHORITY_ERRORS = frozenset(
+    {
+        "alphalattice.control.task_control.registry.TaskQueueHeadAuthorityError",
+        "alphalattice.control.task_control.registry.TaskRecordAuthorityError",
+    }
+)
 
 
 class RefusalCase(Protocol):
@@ -301,7 +307,7 @@ def registered_route_probes(live: Any) -> tuple[RouteProbe, ...]:
             ("GET", "/api/workbench/portfolio"): (
                 {"task_id": TASK},
                 "execute",
-                "EXPERIMENT_READBACK",
+                "PORTFOLIO_READBACK",
             ),
             ("GET", "/api/session"): ({}, "session_projection", None),
             ("GET", "/report"): ({"result_hash": HASH}, "open_html", None),
@@ -472,14 +478,17 @@ def exercise_matrix(
                 label = (probe.key, case.name, probe.seam)
                 assert counter["calls"] == 1, (label, "owner not reached", status, answer)
                 assert live.web.application.routes[probe.key].handler is original_handler, label
-                # Native setup's own code-bearing exception is an owner-returned refusal,
-                # like activation; other raised owner refusals keep the HTTP400 boundary.
-                native_returned = (
+                # Native setup and Task Control publish these refusals as owner answers;
+                # other raised owner refusals keep the HTTP400 boundary.
+                owner_returned = (
                     probe.seam == "admitted_session_project"
                     and case.name
                     == "alphalattice.interface.local_application.native_bridge.NativeBridgeError"
+                ) or (
+                    probe.seam == "load_authoring_document"
+                    and case.name in RETURNED_TASK_AUTHORITY_ERRORS
                 )
-                assert status == (200 if native_returned else expected_status), (
+                assert status == (200 if owner_returned else expected_status), (
                     label,
                     status,
                     answer,
@@ -538,11 +547,7 @@ def exercise_observed_owner_matrix(
     # answers with per-record recovery. Keep that meaning as well as raised transport.
     from tests.portfolio_strategy_lab.typed_owner_refusals import OwnerRefusalCase
 
-    returned = {
-        "alphalattice.control.task_control.registry.TaskQueueHeadAuthorityError",
-        "alphalattice.control.task_control.registry.TaskRecordAuthorityError",
-    }
-    preserved = tuple(case for case in cases if case.name not in returned)
+    preserved = tuple(case for case in cases if case.name not in RETURNED_TASK_AUTHORITY_ERRORS)
     canonical = tuple(
         OwnerRefusalCase(
             case.name,
@@ -551,9 +556,9 @@ def exercise_observed_owner_matrix(
             case.private_markers,
         )
         for case in cases
-        if case.name in returned
+        if case.name in RETURNED_TASK_AUTHORITY_ERRORS
     )
-    assert {case.name for case in canonical} == returned
+    assert {case.name for case in canonical} == RETURNED_TASK_AUTHORITY_ERRORS
     initial = live.activity.read(ActivityReadQuery(limit=ACTIVITY_MAXIMUM_LIMIT))
     assert initial["cursor"] is not None, initial
     exercise_matrix(live, monkeypatch, (probe,), preserved, 400)

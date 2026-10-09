@@ -137,6 +137,7 @@ def test_every_documented_command_line_parses(
             "feature_plan_hash": "1" * 64,
             "key": "1" * 32,
             "risk-kind": "risk-covariance-development",
+            "tickers": "AAPL",
             "unit": "u01",
         }
     )

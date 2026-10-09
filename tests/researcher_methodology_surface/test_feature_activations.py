@@ -294,6 +294,7 @@ def test_feature_build_reuses_execution_but_not_changed_source_axes(tmp_path: Pa
         feature_source_projection_hash,
     )
     from alphalattice.control.task_control.contracts import TaskLifecycle
+    from alphalattice.interface.local_application.dispatcher import CommandSubmission
 
     class Work:
         def model_dump(self, **kwargs):
@@ -357,12 +358,7 @@ def test_feature_build_reuses_execution_but_not_changed_source_axes(tmp_path: Pa
 
         def submit(self, command):
             self.calls += 1
-            return SimpleNamespace(
-                disposition="ADMITTED",
-                task_id=task.task_id,
-                lifecycle="QUEUED",
-                refusal_detail=None,
-            )
+            return CommandSubmission(TASK_KIND, "ADMITTED", owner.clock(), task.task_id, "QUEUED")
 
     owner = Owner(
         SimpleNamespace(

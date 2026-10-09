@@ -212,8 +212,15 @@ def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(m
             review=None,
             caller="EXTERNAL_AUTOMATION",
         )
-    with pytest.raises(ValueError, match="operation_field_required"):
-        PortfolioResearchOperationRequest(operation="EXPERIMENT_DELIVERY_EXPORT", task_id=primary)
+    with pytest.raises(ValueError, match=r"research_delivery\.subject_required"):
+        export_research_delivery(
+            request=PortfolioResearchOperationRequest(
+                operation="EXPERIMENT_DELIVERY_EXPORT", task_id=primary
+            ),
+            experiments=app,
+            review=None,
+            caller="EXTERNAL_AUTOMATION",
+        )
     with pytest.raises(ValueError, match="comparison_pair_required"):
         PortfolioResearchOperationRequest(
             operation="EXPERIMENT_DELIVERY_EXPORT", task_id=primary, left_task_id=other

@@ -24,6 +24,7 @@ for(const file of fs.readdirSync(appDir).filter(n=>n.endsWith('.js'))) {
 const meanings={
   'components.js:CODE_WORDS:COMPLETE':'code wording',
   'components.js:goalReferenceIntegrity:COMPLETE':'nonempty reference integrity',
+  'i18n.js:values:COMPLETE':'coverage state wording with recorded shares and review limits',
   'live-feature-research.js:contract:PASSED':'required golden examples',
   'live-feature-research.js:held:PASSED':'formula contract admission',
   'live-goals.js:GOAL_STATES:COMPLETE':'record completion',

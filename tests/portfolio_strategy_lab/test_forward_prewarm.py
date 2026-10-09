@@ -315,7 +315,7 @@ def test_returned_refusal_is_a_failed_prewarm_cycle():
     entered = Event()
 
     def execute(request, *, caller):
-        assert request.operation == "EXPERIMENT_READBACK" and request.task_id == task_id
+        assert request.operation == "PORTFOLIO_READBACK" and request.task_id == task_id
         assert caller == "SERVICE_AUTOMATION"
         entered.set()
         return {"status": "REFUSED", "failure_code": "portfolio_update.artifact_missing"}

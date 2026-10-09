@@ -1889,6 +1889,7 @@ def test_a_deferred_preparation_confirmed_again_goes_to_its_owner(tmp_path, monk
     from alphalattice.control.product_host.data_preparation.application import (
         WorkspacePreparationCommand,
     )
+    from alphalattice.interface.local_application.dispatcher import CommandSubmission
 
     deferred = SimpleNamespace(
         task_id=uuid4(),
@@ -1897,13 +1898,13 @@ def test_a_deferred_preparation_confirmed_again_goes_to_its_owner(tmp_path, monk
     )
     sent: list[object] = []
 
-    def submit(command: object) -> SimpleNamespace:
+    def submit(command: WorkspacePreparationCommand) -> CommandSubmission:
         """The owner refuses the plan before its retry time, as V375 has it."""
         sent.append(command)
-        return SimpleNamespace(
+        return CommandSubmission(
+            command_kind=command.command_kind,
             disposition="REFUSED_INVALID_COMMAND",
-            task_id=None,
-            lifecycle=None,
+            submitted_at=OBSERVED_AT,
             refusal_detail="workspace_preparation.retry_not_due",
         )
 

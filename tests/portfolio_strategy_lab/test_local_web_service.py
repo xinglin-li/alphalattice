@@ -1207,6 +1207,8 @@ def test_a_port_the_browser_refuses_is_never_the_workbenchs():
 def test_human_and_agent_share_plan_task_status_report_and_freeze(
     live: LocalPortfolioWebSession,
 ) -> None:
+    sampled_at = live.dispatcher.clock()
+    live.dispatcher.clock = lambda: sampled_at
     spec: dict[str, object] = {"top_k": 22, "exit_rank": 45, "cost_bps_per_side": "13"}
     selected = spec
     resolver = live.resolver

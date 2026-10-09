@@ -10336,7 +10336,7 @@
     "name": "message_id",
     "kind": "string",
     "required": true,
-    "meaning": "The message's id on the floor (M4)."
+    "meaning": "The message's id on the floor."
    }
   ]
  },
