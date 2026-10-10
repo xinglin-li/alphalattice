@@ -34,6 +34,8 @@ Count review work by subject, not attempt. One CRO assessment binds one subject:
 
 The 2026-10-02 decision entered at Monday's open, before activation: causal replay inside the research window, never out-of-sample evidence. The 2026-10-05 decision is after the cutoff and enters at Tuesday's open, the first position to hold.
 
+A named date reads the same way: its positions enter on its `entry_session` and are decided at the `formation_session` close, whose data is ready two hours after it (`information_available_at`). Asked at 11:00 New York on 2026-10-08 for 2026-10-09, the usual case, the positions are decided at the 2026-10-08 close and their data is ready after about 18:00 ET: say so in one line with `reading`, which adds the person's own time where their zone differs. Everything before the update runs now, and under a first use the Host holds the update until then and runs it once. A position row whose entry open has already passed says so (`Close estimate; its entry open has passed`).
+
 ## Reporting positions
 
 Read `research-update show` for the Task the run returned. Each decision forms at its formation session's close and enters at the next open (`schedule.formation_close_at`, `schedule.entry_open_at`). Name each position's basis, from `review_selector.position_basis`:
@@ -49,6 +51,7 @@ Quote the publication's `claim` with its `risk_status` and `cro_status`. They ar
 |---|---|---|
 | The book exists | `strategy-book controls --package <package>`: the book and its dates | Name the book and the date; you activate under the first use, otherwise the person does |
 | Activated, its update running | The activation answer's `update.run` | Follow that Task at once, in the background |
+| Activated, its update held | The activation answer's `update.plan.held_until` and `reading` | Tell the person the time in one line; keep `activity wait --goal` running, which wakes when the held update ends |
 | Positions published | `research-update show --task <task>`: formation, entry, basis, `claim` | Read them out with their dates; they are research positions |
 | Their review prepared | `strategy-book review --update <task>` | Start one Evidence Analyst per bundle |
 | CRO review published | `review continue` after the CRO | Cite the review beside the publication's own status |

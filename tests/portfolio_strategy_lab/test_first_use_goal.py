@@ -14,12 +14,19 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 
+from alphalattice.control.product_host.composition import (
+    portfolio_research_operations as operations,
+)
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     PortfolioResearchOperations,
+)
+from alphalattice.control.product_host.composition.research_update_automation import (
+    first_update,
 )
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.workspace_runtime.network_access import NetworkAccess, network_access
@@ -27,7 +34,7 @@ from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
 )
-from alphalattice.interface.local_application.goals import FIRST_USE_HOURS
+from alphalattice.interface.local_application.goals import FIRST_USE_HOURS, target_sessions
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
@@ -315,14 +322,17 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
     assert app.first_use_delegation(goal)["active"] is False
 
 
-def test_a_delegated_activation_runs_forward_without_the_history_review() -> None:
+def test_a_delegated_activation_runs_forward_without_the_history_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """requirement (the review on the date's positions): under the first-use delegation the
     agent activates a book whose history is not reviewed, and the date's update comes with it."""
 
     owner = SimpleNamespace(
         activations=SimpleNamespace(activate=lambda _task: {"status": "ACTIVATED"}),
-        _first_update=lambda _activated, _provenance: {"update": {"run": {"task_id": "u"}}},
     )
+    update = {"update": {"run": {"task_id": "u"}}}
+    monkeypatch.setattr(operations, "first_update", lambda _host, _activated, _given: update)
     request = Request(operation="STRATEGY_ACTIVATE", task_id=UUID(int=3))
     scope = REQUEST_PROVENANCE.set(
         RequestProvenance(goal_id=str(UUID(int=7)), delegation=f"first-use-goal:{UUID(int=7)}")
@@ -340,7 +350,9 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
 
     sent: list[Request] = []
     wakes: list[tuple[object, ...]] = []
-    goal = SimpleNamespace(goal_id=UUID(int=7), declaration=SimpleNamespace(target_date=None))
+    goal = SimpleNamespace(
+        goal_id=UUID(int=7), state="OPEN", declaration=SimpleNamespace(target_date=None)
+    )
     goal.declaration.target_date = datetime(2026, 10, 10).date()
 
     def execute(request: Request) -> dict[str, object]:
@@ -369,7 +381,7 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
         "strategy_package_id": "BAL",
         "next_requests": {"update": {"operation": "RESEARCH_UPDATE_PLAN"}},
     }
-    answer = PortfolioResearchOperations._first_update(owner, activated, None)  # type: ignore[arg-type]
+    answer = first_update(owner, activated, None)  # type: ignore[arg-type]
 
     # A Saturday names Monday's positions, decided at Friday's close.
     assert sent[0].observed_through == "2026-10-09"
@@ -381,14 +393,40 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
     assert (task, thread) == (UUID(int=9), "thread-1") and read.endswith(f"task show {UUID(int=9)}")
     # A refused plan's offered update keeps the named date, never the latest session's (F10).
     refusing = SimpleNamespace(**{**vars(owner), "execute": lambda _request: {"status": "REFUSED"}})
-    kept = PortfolioResearchOperations._first_update(refusing, activated, None)  # type: ignore[arg-type]
+    kept = first_update(refusing, activated, None)  # type: ignore[arg-type]
     assert kept["next_requests"]["update"]["observed_through"] == "2026-10-09"
     # A date the calendars do not plan leaves the committed activation standing (the review),
     # and offers no update at all.
     goal.declaration.target_date = datetime(2099, 1, 2).date()
-    outside = PortfolioResearchOperations._first_update(owner, activated, None)  # type: ignore[arg-type]
+    outside = first_update(owner, activated, None)  # type: ignore[arg-type]
     assert outside["update"]["plan"]["failure_code"] == "first_use.date_outside_calendar"
     assert "update" not in outside["next_requests"]
+    # Asked at 11:00 New York for Monday, before Friday's data settles: held until 18:00 ET,
+    # run once then, and kept in the goal's ledger for a Host that starts again.
+    goal.declaration.target_date = datetime(2026, 10, 12).date()
+    holds: list[datetime] = []
+    kept_entries: list[dict[str, object]] = []
+    early = SimpleNamespace(
+        **{
+            **vars(owner),
+            "execute": lambda _request: {
+                "status": "REFUSED",
+                "failure_code": "research_update.target_not_completed",
+            },
+            "dispatcher": SimpleNamespace(clock=lambda: datetime(2026, 10, 9, 15, tzinfo=UTC)),
+            "automation": SimpleNamespace(hold=lambda at, _run: holds.append(at)),
+        }
+    )
+    early.goals.store.attribute = lambda _goal, entry: kept_entries.append(entry)
+    plan = first_update(early, activated, None)["update"]["plan"]  # type: ignore[arg-type]
+    assert holds == [datetime(2026, 10, 9, 22, tzinfo=UTC)] and "18:00 ET" in plan["reading"]
+    assert plan["held_until"] == holds[0].isoformat() and kept_entries[0]["held_update"]
+    # A reader outside New York also gets their own time, with its date where the day differs.
+    asked = datetime(2026, 10, 9, 15, tzinfo=UTC)
+    west = target_sessions(goal.declaration.target_date, asked, ZoneInfo("America/Los_Angeles"))
+    east = target_sessions(goal.declaration.target_date, asked, ZoneInfo("Asia/Shanghai"))
+    assert "(15:00 your time)" in str(west["reading"]) and "18:00 ET" in str(west["reading"])
+    assert "06:00 on 2026-10-10" in str(east["reading"])
 
 
 def test_a_first_use_is_the_one_before_the_first_preparation(

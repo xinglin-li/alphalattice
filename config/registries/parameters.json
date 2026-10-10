@@ -804,6 +804,10 @@
 "class": "METHOD",
 "count": 2
 },
+"src/alphalattice/capabilities/causal_inputs/availability.py::hours::2": {
+"class": "METHOD",
+"count": 1
+},
 "src/alphalattice/capabilities/causal_inputs/contracts.py::draft::64": {
 "class": "METHOD",
 "count": 1

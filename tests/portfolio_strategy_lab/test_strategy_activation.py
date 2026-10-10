@@ -882,6 +882,18 @@ def test_conditional_start_uses_the_activations_admitted_score_axis(tmp_path, ca
                 assert dates["forward_book_start_detail"]
 
 
+def test_a_position_row_whose_entry_open_has_passed_says_so() -> None:
+    """requirement (the person's date): a conditional estimate read after its entry's open says
+    the open has passed; before it, it stays a conditional execution."""
+    from alphalattice.control.product_host.composition.strategy_activation import position_basis
+
+    opened = datetime(2026, 10, 9, 13, 30, tzinfo=UTC)
+    before, after = opened - timedelta(minutes=1), opened + timedelta(minutes=1)
+    assert position_basis("CONDITIONAL_ESTIMATE", opened, before).endswith("conditional execution")
+    assert position_basis("CONDITIONAL_ESTIMATE", opened, after).endswith("open has passed")
+    assert position_basis("OBSERVED_RESEARCH_ENTRY", opened, after) == "Observed research entry"
+
+
 @pytest.mark.parametrize("package", (PACKAGE, "BALANCED_G2_G6_EQUAL_CAPITAL"))
 def test_a_forward_book_before_data_end_names_actionable_and_in_sample_replay(
     tmp_path, capsys, monkeypatch, package

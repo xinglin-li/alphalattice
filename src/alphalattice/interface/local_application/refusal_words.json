@@ -1522,5 +1522,9 @@
  "task_control.wake_task_stopped": {
   "detail": "The Task is {subject}, so it moves only on a request and a wake would never come. Read its way on with `task show <task>` and follow the recovery it offers.",
   "next_action": "READ_THE_TASKS_WAY_ON"
+ },
+ "research_update.target_not_completed": {
+  "detail": "The update's session has not completed with its data yet: a date's positions wait for its formation close and the data settling after it. Under a first use the Host holds the update and runs it once at the time `held_until` names, so keep your goal wait running; otherwise plan it again after that time.",
+  "next_action": "WAIT_FOR_THE_DATED_UPDATE"
  }
 }

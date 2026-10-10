@@ -74,7 +74,12 @@ It opens the workspace's one `FIRST_USE` goal, prepares the data under the goal'
 delegation and follows each Task. Tell the person first how the product reads the
 date, from `first_use.date`: the positions are entered on its `entry_session`,
 decided at the `formation_session` close, and a date that is not a session says
-so. They correct it with one note. `first_use.road` is the whole first use, one
+so. Asked during the US session for the next session's positions, the usual case,
+`information_available` is false: give the person `reading` in one line (ready after
+about 18:00 ET, and their own time where it differs; preparing now, it finishes
+itself). Everything before the update runs now; the Host holds the update and runs
+it once at that time (`held_until` on the activation's answer), and your goal wait
+wakes when it ends. They correct the date with one note. `first_use.road` is the whole first use, one
 command per step, each answer names its next action, and `first_use.setup` names
 anything this session's setup still lacks, with its way on. Follow `ask_now`'s
 returned words: disclose delegated steps in one line, and ask only for a decision

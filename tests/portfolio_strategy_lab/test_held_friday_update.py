@@ -48,7 +48,11 @@ def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status,
         ops,
         "portfolio_update_positions",
         lambda *_args: SimpleNamespace(
-            weights=(1.0,), changes=None, preceding=None, basis="CONDITIONAL_ESTIMATE"
+            weights=(1.0,),
+            changes=None,
+            preceding=None,
+            basis="CONDITIONAL_ESTIMATE",
+            schedule=SimpleNamespace(entry_open_at=datetime(2026, 10, 9, 13, 30, tzinfo=UTC)),
         ),
     )
     kept = {

@@ -112,6 +112,8 @@ from alphalattice.control.product_host.composition.research_experiments import (
 from alphalattice.control.product_host.composition.research_history import ResearchHistory
 from alphalattice.control.product_host.composition.research_update_automation import (
     ResearchUpdateAutomation,
+    first_update,
+    resume_held,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     RESEARCH_WORKSPACE_MANIFEST_NAME,
@@ -130,6 +132,7 @@ from alphalattice.control.product_host.composition.strategy_activation import (
     INSTALLED_BOOK_WORDS,
     RUN_FORWARD_WORDS,
     StrategyActivation,
+    position_basis,
 )
 from alphalattice.control.product_host.composition.strategy_calibration import (
     TASK_KIND as STRATEGY_CALIBRATION_TASK_KIND,
@@ -199,7 +202,7 @@ from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
     read_workspace_inputs,
 )
-from alphalattice.control.product_host.publication.goals import GoalStore, sessions_of
+from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.product_host.research_authoring.feature_research import (
     ResearchFeatureDefinitions,
 )
@@ -285,8 +288,6 @@ from alphalattice.interface.local_application.activity import (
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
-    command,
-    entry,
     refusal_words,
     worded_refusal,
 )
@@ -312,8 +313,6 @@ from alphalattice.interface.local_application.goals import (
     Goal,
     GoalAcceptedAnswerReceipt,
     GoalSession,
-    target_sessions,
-    update_offers,
 )
 from alphalattice.interface.local_application.native_bridge import (
     HOSTS,
@@ -701,8 +700,8 @@ class PortfolioResearchOperations:
             installed_package_ids=tuple(p for p in self._packages if self._update_configured(p)),
             clock=self.dispatcher.clock,
             execute=lambda request: self.execute(request, caller="SERVICE_AUTOMATION"),
+            resume=partial(resume_held, self),
         )
-        self.dispatcher.on_idle = self._worker_idle
 
     def _worker_idle(self) -> None:
         """The Task worker went idle: wake the update automation, move feature trials on, admit
@@ -1675,13 +1674,7 @@ class PortfolioResearchOperations:
                         chosen = self._strategy_task(request)
                         if isinstance(chosen, dict):
                             return chosen
-                        return _position_rows(
-                            self._research_update_way(
-                                chosen, self.research_updates.readback(chosen)
-                            ),
-                            review=self.review,
-                            risk=self._date_risk,
-                        )
+                        return self._positions(self._research_update_readback(chosen))
                     assert request.update_plan_hash is not None
                     plan = self.research_updates.prepare(request.update_plan_hash)
                     reused_task = self.research_updates.reusable(plan)
@@ -1736,9 +1729,7 @@ class PortfolioResearchOperations:
                         chosen = self._strategy_task(request)
                         if isinstance(chosen, dict):
                             return chosen
-                        return _position_rows(
-                            self.updates.readback(chosen), review=self.review, risk=self._date_risk
-                        )
+                        return self._positions(self.updates.readback(chosen))
                     assert request.update_plan_hash is not None
                     plan = self.updates.prepare(request.update_plan_hash)
                     reused = self.updates.reusable(plan)
@@ -2809,7 +2800,7 @@ class PortfolioResearchOperations:
                 ),
             }
         # The activation stands; its first update answers for itself.
-        return {**activated, **self._first_update(activated, provenance)}
+        return {**activated, **first_update(self, activated, provenance)}
 
     def _committee(self, request: PortfolioResearchOperationRequest) -> dict[str, object]:
         """The investment committee on a date's published positions (`committee`).
@@ -2882,96 +2873,6 @@ class PortfolioResearchOperations:
                     )
             finally:
                 REQUEST_PROVENANCE.reset(token)
-
-    def _first_update(
-        self, activated: dict[str, object], provenance: RequestProvenance | None
-    ) -> dict[str, object]:
-        """The activated strategy's first update, admitted in the activation's own act.
-
-        The person's activation and the first use's agent's alike plan the update for the first
-        use's named date while its goal is open, else for the latest completed session, and admit
-        its run, so neither waits on the other. It is recorded under the open first use, whose
-        lead's goal wait sees it end, and the Host wakes a Codex lead's session when it does.
-        """
-        first_use = self.goals.first_use()
-        live = (
-            first_use
-            if first_use is not None and self.goals.first_use_delegation(first_use)["active"]
-            else None
-        )
-        named = None if live is None else live.declaration.target_date
-        scope = (
-            REQUEST_PROVENANCE.set(
-                replace(provenance or RequestProvenance(), goal_id=str(live.goal_id))
-            )
-            if live is not None
-            else None
-        )
-        run = None
-        try:
-            plan = self.execute(
-                PortfolioResearchOperationRequest(
-                    operation="RESEARCH_UPDATE_PLAN",
-                    strategy_package_id=str(activated["strategy_package_id"]),
-                    observed_through=None
-                    if named is None
-                    else str(target_sessions(named)["formation_session"]),
-                )
-            )
-            run = (
-                self.execute(
-                    PortfolioResearchOperationRequest(
-                        operation="RESEARCH_UPDATE_RUN",
-                        update_plan_hash=str(plan["update_plan_hash"]),
-                    )
-                )
-                if plan.get("status") == "PLANNED"
-                else None
-            )
-        except (ValueError, OSError, KeyError) as error:
-            # A date outside the calendar or an owner's refusal leaves the activation standing.
-            failure = located_failure(error, "research_update.refused")
-            plan = {"status": "REFUSED", **failure, **explain(str(failure["failure_code"]))}
-        finally:
-            if scope is not None:
-                REQUEST_PROVENANCE.reset(scope)
-        task = None if run is None else run.get("task_id")
-        if task and live is not None:
-            read = command(
-                {"operation": "STATUS", "task_id": str(task)},
-                prefix=entry(self.workspace_session.workspace, ()),
-            )
-            for session in sessions_of(self.goals.store.attributed(live.goal_id)):
-                # A wake not registered leaves the admitted update to its offered status read.
-                with suppress(ValueError, OSError):
-                    if session["vendor"] == "codex":
-                        self.workspace_session.task_control_registry.register_wake(
-                            UUID(str(task)),
-                            session["session_id"],
-                            str(read),
-                            observed_at=self.dispatcher.clock(),
-                        )
-        offered = dict(cast(dict[str, object], activated.get("next_requests") or {}))
-        offered |= update_offers(offered.pop("update", None), named, task)
-        return {
-            "update": {
-                "plan": {
-                    key: plan[key]
-                    for key in (
-                        "status",
-                        "target_session",
-                        "update_plan_hash",
-                        "failure_code",
-                        "detail",
-                        "next_action",
-                        "next_requests",
-                    )
-                    if key in plan
-                },
-                **({"run": run} if run is not None else {}),
-            },
-            "next_requests": offered,
-        }
 
     def _workspace_operation(
         self,
@@ -4272,6 +4173,12 @@ class PortfolioResearchOperations:
         """A research update's readback by its Task, with its way on (STATUS's deferral reader)."""
         assert self.research_updates is not None and task_id is not None
         return self._research_update_way(task_id, self.research_updates.readback(task_id))
+
+    def _positions(self, body: dict[str, Any]) -> dict[str, object]:
+        """An update's readback with its position rows, read against this Host's clock."""
+        return _position_rows(
+            body, review=self.review, risk=self._date_risk, now=self.dispatcher.clock()
+        )
 
     def _research_update_way(self, task_id: UUID, read: dict[str, Any]) -> dict[str, Any]:
         """A research update's read, a stopped or deferred one with its way on.
@@ -6597,6 +6504,7 @@ def _position_rows(
     *,
     review: EvidenceReviewApplication | None = None,
     risk: Callable[[dict[str, object], PortfolioUpdatePositions], dict[str, Any]] | None = None,
+    now: datetime | None = None,
 ) -> dict[str, object]:
     publication = body.get("publication")
     if isinstance(publication, dict):
@@ -6615,9 +6523,7 @@ def _position_rows(
                 "name": label,
                 "weight": format_book_weight(weights[i]),
                 "change": "Not an estimate" if changes is None else format_book_change(changes[i]),
-                "basis": "Close estimate; conditional execution"
-                if positions.basis == "CONDITIONAL_ESTIMATE"
-                else "Observed research entry",
+                "basis": position_basis(positions.basis, positions.schedule.entry_open_at, now),
             }
             for i, (listing, label) in enumerate(labels.items())
             if weights[i] > 0 or previous[i] > 0

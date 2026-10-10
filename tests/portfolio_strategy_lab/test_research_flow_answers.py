@@ -785,6 +785,42 @@ def test_automation_uses_durable_settings_and_sequential_wakes(tmp_path):
         assert second.close(timeout=None)
 
 
+def test_a_held_dated_update_runs_once_at_its_time_without_the_daily_setting(tmp_path):
+    """requirement (the person's date): the first use's dated update, held until its data is
+    ready, runs once at that time with the daily automation off, and start resumes the hold."""
+    from alphalattice.control.product_host.composition.research_update_automation import (
+        ResearchUpdateAutomation,
+    )
+    from alphalattice.control.workspace_runtime.content_store import (
+        CommittedIndex,
+        ContentAddressedStore,
+    )
+
+    now = [datetime(2026, 10, 9, 15, tzinfo=UTC)]
+    daily, ran, resumed = [], [], []
+    reached = threading.Event()
+    automation = ResearchUpdateAutomation(
+        index=CommittedIndex(tmp_path, ContentAddressedStore(tmp_path, uri_prefix="test://held")),
+        workspace_manifest_hash="b" * 64,
+        installed_package_ids=("one",),
+        clock=lambda: now[0],
+        execute=lambda request: daily.append(request.operation) or {},
+        resume=lambda: resumed.append(True),
+    )
+    automation.start()
+    try:
+        automation.hold(now[0] + timedelta(hours=7), lambda: ran.append(1) or reached.set())
+        assert not reached.wait(0.05) and resumed == [True]
+        now[0] += timedelta(hours=7)
+        automation.held_wake.event.set()
+        assert reached.wait(5)
+        reached.clear()
+        automation.held_wake.event.set()  # once: a second wake runs nothing
+        assert not reached.wait(0.1) and ran == [1] and daily == []
+    finally:
+        assert automation.close(timeout=None)
+
+
 def test_automation_attends_what_it_admitted_and_never_replans_a_stopped_update(tmp_path):
     "Automation attends what it admitted and never replans a stopped update."
     from alphalattice.control.product_host.composition.research_update_automation import (

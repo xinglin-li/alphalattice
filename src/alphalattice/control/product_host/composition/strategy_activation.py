@@ -285,6 +285,19 @@ INSTALLED_BOOK_WORDS: Final = {
 }
 
 
+def position_basis(basis: str, entry_open_at: datetime, now: datetime | None) -> str:
+    """A position row's basis, read against the clock: an entry whose open has passed says so.
+
+    A conditional estimate stands on the formation close; once its entry session has opened, it
+    can no longer be entered as published, and its row says that.
+    """
+    if basis != "CONDITIONAL_ESTIMATE":
+        return "Observed research entry"
+    if now is not None and entry_open_at <= now:
+        return "Close estimate; its entry open has passed"
+    return "Close estimate; conditional execution"
+
+
 class StrategyActivation:
     """Own a person's activation and deactivation of an installed research strategy's book."""
 

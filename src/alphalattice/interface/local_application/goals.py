@@ -7,7 +7,7 @@ against that record, sealing it or naming each missing item.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
 
@@ -134,21 +134,33 @@ def update_offers(update: object, named: date | None, task: object) -> dict[str,
     return {"update": {**update, "observed_through": formation}}
 
 
-def target_sessions(named: date) -> dict[str, object]:
-    """The sessions a named date's positions stand on, from the exchange calendars alone.
+def target_sessions(
+    named: date, now: datetime | None = None, here: tzinfo | None = None
+) -> dict[str, object]:
+    """The sessions a named date's positions stand on, and when their information is available.
+
+    Asked during the US session for the next session's positions -- the usual case -- the data
+    is not ready yet: the reading gives its time in New York exchange time, and in the reader's
+    own time where that zone differs, and says the work goes on and finishes itself.
 
     Args:
         named: The date the person named.
+        now: The clock the reading is told against; the current time when omitted.
+        here: The reader's zone; the machine's when omitted.
 
     Returns:
         The named date, whether it is a session, the entry session (the first common XNYS/XNAS
         session on or after it) and the formation session before it, whose close is the
-        information cutoff.
+        information cutoff; when that session's data is available, whether it is now, and when
+        it is not yet, the one line that says so with its time.
 
     Raises:
         ValueError: `first_use.date_outside_calendar` for a date the calendars do not plan.
     """
     # The calendars load only for a dated first use, never with every client command.
+    from zoneinfo import ZoneInfo
+
+    from alphalattice.capabilities.causal_inputs.availability import information_available_at
     from alphalattice.foundation.causal_outcomes.execution.readers import (
         planned_local_qa_schedule,
     )
@@ -160,12 +172,34 @@ def target_sessions(named: date) -> dict[str, object]:
     point = next((p for p in schedule if p.entry_session >= named), None)
     if point is None:
         raise ValueError("first_use.date_outside_calendar")
+    ready = information_available_at(point.formation_close_at)
+    available = ready <= (now or datetime.now(UTC))
+    exchange, mine = ready.astimezone(ZoneInfo("America/New_York")), ready.astimezone(here)
+    yours = (
+        ""
+        if mine.utcoffset() == exchange.utcoffset()
+        else f" ({mine:%H:%M}{'' if mine.date() == exchange.date() else f' on {mine.date()}'} "
+        "your time)"
+    )
     return {
         "named_date": named.isoformat(),
         "named_is_session": point.entry_session == named,
         "entry_session": point.entry_session.isoformat(),
         "formation_session": point.formation_session.isoformat(),
         "information_cutoff_at": point.formation_close_at.isoformat(),
+        "information_available_at": ready.isoformat(),
+        "information_available": available,
+        **(
+            {}
+            if available
+            else {
+                "reading": f"The {point.entry_session} positions are decided at the "
+                f"{point.formation_session} close; its data is ready after about "
+                f"{exchange:%H:%M} ET{yours}. Preparing now: the Host finishes the update itself "
+                "then, and your goal wait wakes when it ends. If the Host is not running then, "
+                "serving it again runs the update at its start."
+            }
+        ),
     }
 
 
