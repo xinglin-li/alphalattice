@@ -135,8 +135,7 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
     )
     history = SimpleNamespace(reclassifications=(), current={v: v[-1] for v in listings})
     stores = SimpleNamespace(load_manifest=lambda _hash: surface)
-    path = tmp_path / "a" / "b" / "c" / "authority.json"
-    monkeypatch.setattr(context, "confined", lambda *_args: path)
+    relative_path = f"artifacts/portfolio-strategy-lab/{context.CATEGORY}/{'a' * 64}.json"
     monkeypatch.setattr(context.PortfolioResearchArtifactStore, "load", load)
     monkeypatch.setattr(
         context.PanelClosureArtifactStore, "load_model", lambda *_a, **_k: classification
@@ -149,7 +148,9 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(context, "MarketDataRepository", lambda _workspace: market)
     monkeypatch.setattr(context, "listing_returns", carried)
     manifest = SimpleNamespace(
-        strategy_artifacts=(SimpleNamespace(artifact_key=context.ARTIFACT_KEY, relative_path="a"),)
+        strategy_artifacts=(
+            SimpleNamespace(artifact_key=context.ARTIFACT_KEY, relative_path=relative_path),
+        )
     )
     state.risk = lambda: date_risk(tmp_path, manifest, readback, positions)
     return state

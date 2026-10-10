@@ -241,6 +241,11 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): "an unfinished preparation is one not succeeded or cancelled",
     (
         "control/product_host/data_preparation/application.py",
+        "WorkspacePreparationApplication.plan",
+        "BLOCKED,CANCELLED",
+    ): "a stopped preparation stays the named predecessor of its recovery plan",
+    (
+        "control/product_host/data_preparation/application.py",
         "WorkspacePreparationApplication.confirm",
         "BLOCKED,DEFERRED",
     ): "the retry path: refused before the retry time, resumed after it (V375, V506)",

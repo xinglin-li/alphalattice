@@ -873,6 +873,9 @@ class _ScriptedHost:
         self.prepares = 0
         self.prepared_request: dict[str, Any] | None = None
 
+    def activity(self) -> dict[str, Any]:
+        return {"observer": {"codex_queue": {"present": True}}}
+
     def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
         self.sent.append(document)
         book = {"result_hash": "b" * 64}
