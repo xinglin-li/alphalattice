@@ -2958,10 +2958,11 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
 
 
 def _setup() -> dict[str, Any]:
-    """This agent session's readiness for the first use, each missing item named with its
-    way on; a command run outside an agent session has nothing to check."""
-    from alphalattice.interface.local_application.native_bridge import NativeResearchBinding
-    from alphalattice.interface.local_application.native_setup import attachment_preflight
+    """Read this agent Session's binding preflight; outside one, there is nothing to check."""
+    from alphalattice.interface.local_application.native_bridge import (
+        NativeResearchBinding,
+        attachment_preflight,
+    )
 
     session = agent_session(os.environ)
     if session is None:

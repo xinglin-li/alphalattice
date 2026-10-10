@@ -43,6 +43,7 @@ from alphalattice.control.product_host.storage.contracts import (
 from alphalattice.control.product_host.storage.evidence_references import EvidenceStorageReferences
 from alphalattice.control.product_host.storage.inventory import (
     MANAGED_ROOTS,
+    RECOVERY_HEADROOM_BYTES,
     managed_file_inventory,
     require_storage_capacity,
     unique_managed_bytes,
@@ -652,6 +653,7 @@ class ResearchInputStorage:
         return {
             "status": "AVAILABLE",
             "capacity": capacity.model_dump(mode="json"),
+            "recovery_headroom_bytes": RECOVERY_HEADROOM_BYTES,
             "display": {
                 "cap": _display_bytes(capacity.cap_bytes),
                 "automatic": _display_bytes(capacity.automatic_cap_bytes),

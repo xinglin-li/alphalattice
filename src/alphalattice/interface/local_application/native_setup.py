@@ -18,7 +18,6 @@ from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from alphalattice.control.product_host.storage.inventory import RECOVERY_HEADROOM_BYTES
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_DIRECTORY,
@@ -31,10 +30,12 @@ from alphalattice.interface.local_application.native_bridge import (
     USAGE_READINGS,
     NativeBridgeError,
     NativeResearchBinding,
+    attachment_preflight,
     declares_product,
     session_project,
 )
 from alphalattice.interface.local_application.native_usage import codex_thread_spawn
+from alphalattice.kernel.shared_kernel.environment import offline, recorded_environment
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PRODUCT_HOOK_MATCHER = "^alphalattice_.*$"
@@ -115,9 +116,11 @@ def _host_facts(binding: NativeResearchBinding | None) -> dict[str, Any]:
         return {"scope": "LOCAL_PROCESS", "reason": "SESSION_NOT_BOUND"}
     try:
         client = LocalResearchClient(Path(binding.workspace), timeout=5)
+        storage = client.request({"operation": "STORAGE_CAP_SHOW"})
         return {
             "scope": "WORKSPACE_HOST",
-            "capacity": client.request({"operation": "STORAGE_CAP_SHOW"}).get("capacity"),
+            "capacity": storage.get("capacity"),
+            "recovery_headroom_bytes": storage.get("recovery_headroom_bytes"),
             "cpu": client.request({"operation": "CPU_BUDGET_SHOW"}),
             "network": client.request({"operation": "NETWORK_ACCESS"}),
             "queue": client.activity(limit=1).get("observer", {}).get("codex_queue"),
@@ -207,22 +210,24 @@ def host_readiness(
         else {**codex_queue_readiness(), "scope": "LOCAL_PROCESS"}
     )
     capacity = facts.get("capacity")
+    headroom = facts.get("recovery_headroom_bytes")
     free = shutil.disk_usage(project).free
     disk_ready = (
         None
-        if capacity is None
+        if capacity is None or headroom is None
         else (
             capacity["measured_data_bytes"] <= capacity["cap_bytes"]
-            and capacity["free_disk_bytes"] >= RECOVERY_HEADROOM_BYTES
+            and capacity["free_disk_bytes"] >= headroom
         )
     )
     user = project / ".alphalattice/user"
     backups = sorted(path.name for path in (user / "backups").glob("*") if path.is_dir())
+    python_version = str(recorded_environment()["python"])
     specifications = (
         (
             "python",
-            sys.version_info[:2] == (3, 12),
-            {"version": sys.version.split()[0], "interpreter": sys.executable},
+            python_version.split(".")[:2] == ["3", "12"],
+            {"version": python_version, "interpreter": sys.executable},
         ),
         ("uv", (uv := command_readiness([os.environ.get("UV", "uv"), "--version"]))["present"], uv),
         ("installed_leg", (installed := _installed_leg())["present"], installed),
@@ -256,7 +261,7 @@ def host_readiness(
             {
                 "scope": facts["scope"],
                 "setting": facts.get("network"),
-                "operator_offline": os.environ.get("ALPHALATTICE_NETWORK_DISABLED") == "1",
+                "operator_offline": offline(),
             },
         ),
         ("user_layer", user.is_dir(), {"path": str(user)}),
@@ -369,67 +374,6 @@ def admitted_session_project(workspace: Path, requested: Path, host: str) -> Pat
     if any(path.is_symlink() for path in (project, declaration.parent, declaration)):
         raise NativeBridgeError("native_bridge.configuration_path_invalid")
     return project.resolve()
-
-
-def readiness(project: Path, binding: NativeResearchBinding | None) -> dict[str, Any]:
-    """Whether this project's Session binding is usable for research.
-
-    It reads only the project declaration and the supplied exact binding; no native file,
-    hook definition or host trust.
-
-    Args:
-        project: The agent project.
-        binding: The caller's exact binding, when bound.
-
-    Returns:
-        ``READY``, or ``REFUSED`` naming what is missing; research never waits on it.
-    """
-    host = "codex" if binding is None else binding.host
-    missing: list[str] = []
-    failure: str | None = None
-    try:
-        declared = session_project(project, host)
-        if declared.resolve() != project.resolve():
-            raise ValueError("native_bridge.project_mismatch")
-    except (OSError, ValueError) as error:
-        missing.append("project_declaration")
-        failure = (
-            str(error)
-            if isinstance(error, ValueError)
-            else "native_bridge.configuration_path_invalid"
-        )
-    if binding is None:
-        missing.append("native_session_binding")
-        failure = failure or "native_bridge.not_bound"
-    return {
-        "status": "READY" if not missing else "REFUSED",
-        "failure_code": failure,
-        "host": host,
-        "session_id": None if binding is None else binding.session_id,
-        "missing": missing,
-        "research_nonblocking": True,
-    }
-
-
-def attachment_preflight(
-    project: Path | None = None, binding: NativeResearchBinding | None = None
-) -> dict[str, Any]:
-    """Read the binding's readiness and attach the named way forward."""
-    from alphalattice.interface.local_application.cli_contract import refusal_words
-
-    result = readiness(ROOT if project is None else project, binding)
-    return {
-        **result,
-        **(refusal_words(result["failure_code"]) if result.get("failure_code") else {}),
-        **(
-            {
-                "detail": "The Session binding is ready for research.",
-                "next_action": "Continue research with this Session binding.",
-            }
-            if not result.get("failure_code")
-            else {}
-        ),
-    }
 
 
 def files_unavailable(

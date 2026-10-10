@@ -449,7 +449,11 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
     (tmp_path / "pyproject.toml").write_text('[project]\nversion = "1.2.3"\n')
     monkeypatch.setattr(setup, "RESOURCE_ROOT", tmp_path)
     monkeypatch.setattr(setup.sys, "executable", str(python))
-    monkeypatch.setattr(setup.sys, "version_info", (3, 11) if missing == "python" else (3, 12))
+    monkeypatch.setattr(
+        setup,
+        "recorded_environment",
+        lambda: {"python": "3.11.0" if missing == "python" else "3.12.0"},
+    )
     monkeypatch.setattr(os, "cpu_count", lambda: 0 if missing == "cpu" else 4)
     monkeypatch.delenv("UV", raising=False)
 
@@ -479,7 +483,7 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
     free = 0 if missing == "disk" else 2 * 1024**3
     capacity = {"measured_data_bytes": 1, "cap_bytes": 2, "free_disk_bytes": free}
     replies = {
-        "STORAGE_CAP_SHOW": {"capacity": capacity},
+        "STORAGE_CAP_SHOW": {"capacity": capacity, "recovery_headroom_bytes": 2 * 1024**3},
         "CPU_BUDGET_SHOW": {"status": "CPU_BUDGET", "cores": 4},
         "NETWORK_ACCESS": None if missing == "network" else {"network_allowed": False},
     }

@@ -1114,3 +1114,62 @@ def read_session_usage(
         "participants": members,
         **({"reason": first["reason"]} if first is not None and "reason" in first else {}),
     }
+
+
+def readiness(project: Path, binding: NativeResearchBinding | None) -> dict[str, Any]:
+    """Whether this project's Session binding is usable for research.
+
+    It reads only the project declaration and the supplied exact binding; no native file,
+    hook definition or host trust.
+
+    Args:
+        project: The agent project.
+        binding: The caller's exact binding, when bound.
+
+    Returns:
+        ``READY``, or ``REFUSED`` naming what is missing; research never waits on it.
+    """
+    host = "codex" if binding is None else binding.host
+    missing: list[str] = []
+    failure: str | None = None
+    try:
+        declared = session_project(project, host)
+        if declared.resolve() != project.resolve():
+            raise ValueError("native_bridge.project_mismatch")
+    except (OSError, ValueError) as error:
+        missing.append("project_declaration")
+        failure = (
+            str(error)
+            if isinstance(error, ValueError)
+            else "native_bridge.configuration_path_invalid"
+        )
+    if binding is None:
+        missing.append("native_session_binding")
+        failure = failure or "native_bridge.not_bound"
+    return {
+        "status": "READY" if not missing else "REFUSED",
+        "failure_code": failure,
+        "host": host,
+        "session_id": None if binding is None else binding.session_id,
+        "missing": missing,
+        "research_nonblocking": True,
+    }
+
+
+def attachment_preflight(
+    project: Path, binding: NativeResearchBinding | None = None
+) -> dict[str, Any]:
+    """Read the binding's readiness and attach the named way forward."""
+    result = readiness(project, binding)
+    return {
+        **result,
+        **(refusal_words(result["failure_code"]) if result.get("failure_code") else {}),
+        **(
+            {
+                "detail": "The Session binding is ready for research.",
+                "next_action": "Continue research with this Session binding.",
+            }
+            if not result.get("failure_code")
+            else {}
+        ),
+    }
