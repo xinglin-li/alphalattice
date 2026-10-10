@@ -1536,19 +1536,14 @@ class PortfolioResearchOperations:
                     if request.update_task_id is not None:
                         task, now = str(request.update_task_id), self.dispatcher.clock()
                         self._file_floor(task, now)
-                        floor = committee.floor_of(self.goals.store, task)
-                        if floor is not None and floor.opened["selector"].get(
-                            "update_publication_hash"
-                        ) != str(request.update_publication_hash):
-                            floor = None  # a floor on another publication is not this report's
+                        readback = self._read_review_update(
+                            request.update_task_id, str(request.update_publication_hash)
+                        )
+                        context = cast(dict[str, Any] | None, readback.get("committee_context"))
+                        floor = committee.floor_of(self.goals.store, task) if context else None
                         return export_update_delivery(
                             request=request,
-                            readback=self.execute(
-                                PortfolioResearchOperationRequest(
-                                    operation="RESEARCH_UPDATE_READBACK",
-                                    task_id=request.update_task_id,
-                                )
-                            ),
+                            readback=self._positions(readback, committee_context=context),
                             review=self.review,
                             committee=None if floor is None else committee.commentary(floor, now),
                         )
@@ -3737,8 +3732,7 @@ class PortfolioResearchOperations:
         refuses one by name (`research_update.automation_package_not_installed`)."""
         assert self.automation is not None
         ids = sorted(self.automation.installed)
-        # Each strategy's own latest update, found as its readback finds it and its read bound to
-        # it: a reader of one running forward never takes another's (V595).
+        # Each strategy owns its latest update and its read (V595).
         read = _STRATEGY_READS["RESEARCH_UPDATE_READBACK"]
         latest = latest_by_strategy(
             (
@@ -4175,13 +4169,22 @@ class PortfolioResearchOperations:
         assert self.research_updates is not None and task_id is not None
         return self._research_update_way(task_id, self.research_updates.readback(task_id))
 
-    def _positions(self, body: dict[str, Any]) -> dict[str, object]:
-        """An update's readback with its position rows, read against this Host's clock."""
+    def _positions(
+        self, body: dict[str, Any], *, committee_context: dict[str, Any] | None = None
+    ) -> dict[str, object]:
+        """Owner position rows and verified Committee context at the Host clock."""
         body = _position_rows(
             body, review=self.review, risk=self._date_risk, now=self.dispatcher.clock()
         )
         body.pop("committee_context", None)
-        floor = committee.floor_of(self.goals.store, str(body.get("task_id")))
+        if committee_context is not None:
+            body["committee_context"] = committee_context
+            return body
+        floor = (
+            committee.floor_of(self.goals.store, str(body["task_id"]))
+            if body.get("review_selector")
+            else None
+        )
         if floor is not None and floor.opened["selector"] == body.get("review_selector"):
             body["committee_context"] = committee.context(floor, self.dispatcher.clock())
         return body

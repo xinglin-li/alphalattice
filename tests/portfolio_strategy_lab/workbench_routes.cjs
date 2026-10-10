@@ -106,6 +106,7 @@ run('workbench_routes', async () => {
     const values=list==='goals'?[H,ID]:[list==='books'?JSON.stringify({task_id:ID,result_hash:H,portfolio_session:'2026-08-03'}):ID];
     for(const value of values){
       const c=makeContext({hash:'#'+new URLSearchParams({page:from,[set.param]:value})});c.probe.readRoute();
+      if(list==='team-sessions'){assert(!String(c.probe.Window.pageTabs()).includes('data-value="team-committee"'));c.probe.LiveActivity.absorbPage({workspace_id:'qa',disposition:'TAIL',epoch:'floor',cursor:'floor:1',head:1,more:false,unavailable:0,tasks:{},items:[{ordinal:1,observation_id:'floor-row',schema_kind:'ExternalActivityObserved',availability:'AVAILABLE',occurred_at:'2026-08-03T12:00:00Z',payload:{event_kind:'NATIVE_COORDINATION_MESSAGE',producer_id:'committee-fixture',producer_session:value,producer_sequence:1,summary:'Fixture floor row',subject:{native_session_id:value,native_agent_id:value,role:'research_lead',message_kind:'stance',input_channel:'PRODUCT_COMMITTEE',reference:ID}}}]});assert(c.probe.LiveTeam.hasCommittee());}
       const tabs=String(c.probe.Window.pageTabs());assert.ok(tabs.includes('page-tabs'),'addressed folders have tabs');
       for(const destination of set.tabs)assert.ok(tabs.includes('data-value="'+destination+'"'),'offered tab '+destination);
       c.probe.ACTIONS.go(to);assert.equal(q(c).get(set.param),value,'tab keeps exact object param');assert.equal(q(c).get('page'),to);

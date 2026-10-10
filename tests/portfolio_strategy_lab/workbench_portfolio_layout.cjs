@@ -263,7 +263,7 @@ for(const locale of ['en','zh-CN'])for(const theme of ['light','dark'])for(const
         assert.ok(!head.includes(inputKey),'an unknown input leaves no labelled placeholder in either language');
       } else {
         assert.ok(head.includes(inputKey),'a known input retains its translated property label');
-        assert.ok(head.includes(index===1 ? 'recorded-input' : 'Bound historical input'),'the owner input name or bound-input distinction stays intact');
+        assert.ok(head.includes(index===1 ? 'recorded-input' : translate('Bound historical input')),'the owner input name or bound-input distinction stays intact');
       }
     }
     reader.owner.subject=JSON.parse(JSON.stringify(raw.subject));

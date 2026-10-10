@@ -229,6 +229,7 @@ def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(m
 
 def test_delivery_renderer_keeps_units_gaps_and_escapes_commentary(monkeypatch):
     from alphalattice.interface.local_application import experiment_report
+    from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
 
     monkeypatch.setattr(
         experiment_report, "_portfolio_report", lambda _: "<html><h1>Portfolio</h1></html>"
@@ -279,7 +280,20 @@ def test_delivery_renderer_keeps_units_gaps_and_escapes_commentary(monkeypatch):
         },
         "commentary_provenance": {"attribution": "CALLER_SUPPLIED"},
         "commentary": [
-            {"attribution": "<script>actor</script>", "text": "<script>alert(1)</script>"}
+            {"attribution": "<script>actor</script>", "text": "<script>alert(1)</script>"},
+            {
+                "attribution_word": "Committee verdict: {outcome}",
+                "attribution_words": {"outcome": "PROCEED_WITH_NOTES"},
+                "text": "kept verdict",
+            },
+            {
+                "attribution": "Person",
+                "text": "unused composed text",
+                "question": "Kept question?",
+                "relay_word": "Relayed by the agent",
+                "answer_present": True,
+                "answer": "Keep 5%.",
+            },
         ],
     }
     rendered = experiment_report.render_research_delivery(body)
@@ -288,6 +302,20 @@ def test_delivery_renderer_keeps_units_gaps_and_escapes_commentary(monkeypatch):
     assert "NOT_SELECTED" in rendered and "NOT_RECORDED" in rendered
     assert 'id="factor-study-context"' in rendered and 'id="alpha-study-context"' in rendered
     assert rendered.count("<h1>") == 1
+    for language in ("en", "zh"):
+        token = ANSWER_LANGUAGE.set(language)
+        try:
+            rendered = experiment_report.render_research_delivery(body)
+            assert (
+                worded("Committee verdict: {outcome}").format(outcome=worded("Proceed with notes"))
+                in rendered
+            )
+            assert (
+                "PROCEED_WITH_NOTES" not in rendered and worded("Relayed by the agent") in rendered
+            )
+            assert "Keep 5%." in rendered and "unused composed text" not in rendered
+        finally:
+            ANSWER_LANGUAGE.reset(token)
 
 
 def test_each_explained_refusal_keeps_its_code_and_asks_only_operations_the_host_accepts():

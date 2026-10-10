@@ -47,6 +47,8 @@ for(const lang of ['en','zh']) {
 }
 // Every word table participates, even a branch this particular owner matrix does not render.
 w.I18N.set('zh');
+for(const key of ['Not an estimate','Close estimate; its entry open has passed','The PM gave no verdict.','Not addressed.','Bound historical input'])
+  assert.notEqual(w.t(key),key,key);
 for(const [word,variants] of [['Case',['case']],['Human review required',['human review required']],['gaps',['gap','gap(s)']]]) {
   assert.notEqual(w.t(word),word,'the canonical noun has a Chinese key: '+word);
   for(const variant of variants)assert.equal(w.t(variant),w.t(word),'one declared noun translation: '+variant);

@@ -6,6 +6,28 @@ import html
 import json
 from typing import Any
 
+from alphalattice.interface.local_application.cli_contract import worded
+
+
+def _attribution(item: dict[str, Any]) -> str:
+    """Read a keyed product attribution; participant-authored attribution stays verbatim."""
+    key = item.get("attribution_word")
+    labels = {
+        "PROCEED": "Proceed",
+        "PROCEED_WITH_NOTES": "Proceed with notes",
+        "FOR_THE_PERSON": "For you",
+        "ADOPT": "Adopt",
+        "REJECT": "Rejected",
+    }
+    if not key:
+        return str(item["attribution"])
+    return (worded(key) or key).format(
+        **{
+            k: worded(labels.get(v, v)) if k == "outcome" else v
+            for k, v in item.get("attribution_words", {}).items()
+        }
+    )
+
 
 def _text(value: object) -> str:
     """Escape owner values consistently; unavailable is never a numeric zero."""
@@ -73,7 +95,7 @@ def render_goal(body: dict[str, Any]) -> str:
     parts.append("<h2>Conclusions, disagreements and PM response</h2>")
     for item in goal["statements"]:
         parts.append(
-            f"<article><h3>{_text(item['attribution'])} · {_text(item['disposition'])}</h3>"
+            f"<article><h3>{_text(_attribution(item))} · {_text(item['disposition'])}</h3>"
             f"<p>{_text(item['text'])}</p>"
             + _facts({"Evidence": item["evidence"], "Response to": item["responds_to"]})
             + _facts(
@@ -840,9 +862,17 @@ def _delivered(
     for item in snapshot["commentary"]:
         parts.append(
             "<article><h3>"
-            + _text(item["attribution"])
+            + _text(_attribution(item))
             + '</h3><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'
-            + _text(item["text"])
+            + _text(item.get("question", worded(item.get("text_word")) or item["text"]))
+            + (
+                "</pre><p>"
+                + _text(worded(item["relay_word"]))
+                + "</p><pre>"
+                + _text(item["answer"] if item["answer_present"] else worded("Not yet given"))
+                if "relay_word" in item
+                else ""
+            )
             + "</pre></article>"
         )
     if not snapshot["commentary"]:

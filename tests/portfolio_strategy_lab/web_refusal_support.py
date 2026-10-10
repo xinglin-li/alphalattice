@@ -169,6 +169,7 @@ REQUIRED_SEED_FIELDS = frozenset(
         "strategy_package_id",
         "task_id",
         "update_plan_hash",
+        "update_task_id",
         "upgrade_set_hash",
         "usage_reading_enabled",
         "window_limit",

@@ -31,7 +31,8 @@ from alphalattice.interface.local_application.activity import (
     ExternalActivityEventDocument,
     ExternalActivityReadQuery,
 )
-from alphalattice.interface.local_application.cli_contract import RequestProvenance
+from alphalattice.interface.local_application.cli_contract import RequestProvenance, worded
+from alphalattice.interface.local_application.labels import Label
 from alphalattice.interface.local_application.portfolio_research import CommitteeMessage
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
@@ -70,7 +71,15 @@ def readback() -> dict[str, Any]:
     )
     return {
         "task_id": TASK,
-        "strategy_package_id": "BALANCED",
+        "strategy_package_id": n.checkpoint.package.strategy_id,
+        "labels": Label(
+            kind="strategy",
+            id=n.checkpoint.package.strategy_id,
+            title="Synthetic test book",
+            summary="Synthetic committee presentation fixture.",
+            title_zh="合成测试组合",
+            summary_zh="委员会展示使用的合成测试样例。",
+        ).model_dump(),
         "publication": value.model_dump(mode="json"),
         "history": [],
         "listing_labels": {listing: f"N{i}" for i, listing in enumerate(listings)},
@@ -405,10 +414,12 @@ def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
     spoken = [m for m in floor.messages if m["kind"] in {"STANCE", "CHALLENGE", "REPLY"}]
     said = {m["role"]: committee.render(m["text"], held) for m in spoken}
     assert views == said
+    assert not any(row.get("text_word") for row in rows if row["text"] in said.values())
     person = next(row for row in rows if "answer_present" in row)
     question = next(m["text"] for m in floor.messages if m["id"] == handed)
     expected = (committee.render(question, held), "Cap at 5%.", True)
     assert (person["question"], person["answer"], person["answer_present"]) == expected
+    assert person["relay_word"] == committee.RELAY_WORD
     aimed = next(p for p in floor.opened["tension_points"] if p["alias"] == "T2")
     point = committee.render(", ".join(["T2", *aimed["targets"]]), held)
     assert person["attribution_word"] == "Handed to the person: {targets}"
@@ -422,6 +433,7 @@ def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
     assert page["standing_dissents"] == [challenge, untargeted]
     assert page["person_items"][0]["answer_at"] == now[0].isoformat()
     assert page["person_items"][0]["answer"] == "Cap at 5%."
+    assert page["person_items"][0]["relay_word"] == committee.RELAY_WORD
 
 
 def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
@@ -439,6 +451,13 @@ def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
     assert closed["stage"] == "CLOSED" and closed["verdict"]["outcome"] == "FOR_THE_PERSON"
     assert (closed["members"]["PM"], closed["members"]["ALPHA"]) == ("IN", "NOT_ADDRESSED")
     assert {p["state"] for p in closed["tension_points"]} == {"NOT_ADDRESSED"}
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    rows = committee.commentary(floor, now[0])
+    assert rows and [r["text_word"] for r in rows if "text_word" in r] == [
+        closed["verdict"]["text"],
+        *["Not addressed."] * 3,
+    ]
 
 
 def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
@@ -478,6 +497,7 @@ def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
         clock=lambda: now[0],
     )
     for row in committee.unfiled(floor, now[0]):
+        row["subject"]["goal_id"] = str(floor.goal_id)
         observer.admit_external_event(ExternalActivityEventDocument.model_validate(row))
     page = observer.read_external(ExternalActivityReadQuery())
     observer.close()
@@ -619,4 +639,6 @@ def test_a_dates_delivery_carries_the_closed_floor_as_its_commentary(
         "operation": "EXPERIMENT_DELIVERY_EXPORT",
         **readback["review_selector"],
     }
-    assert said[0]["attribution"] in str(delivered["html"])
+    assert (
+        worded(said[0]["attribution_word"]).format(outcome=worded("Proceed")) in delivered["html"]
+    )

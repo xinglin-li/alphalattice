@@ -15,6 +15,7 @@ import pytest
 
 from alphalattice.capabilities.alpha_modeling.runtime.service import AlphaModelRuntimeService
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
+from alphalattice.foundation.causal_outcomes.execution.readers import planned_local_qa_schedule
 from alphalattice.foundation.market_data_ops.sources.universe import (
     bootstrap_from_candidate_manifest_document,
 )
@@ -52,7 +53,7 @@ def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status,
             changes=None,
             preceding=None,
             basis="CONDITIONAL_ESTIMATE",
-            schedule=SimpleNamespace(entry_open_at=datetime(2026, 10, 9, 13, 30, tzinfo=UTC)),
+            schedule=planned_local_qa_schedule(date(2026, 10, 8), date(2026, 10, 8))[0],
         ),
     )
     kept = {

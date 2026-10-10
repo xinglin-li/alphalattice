@@ -272,6 +272,10 @@ def test_service_authority_admits_only_retained_forward_reads(live, monkeypatch)
     monkeypatch.setattr(type(operations), "report", report)
     monkeypatch.setattr(type(operations.experiments), "operate", experiment)
     monkeypatch.setattr(type(operations.updates), "readback", update)
+    monkeypatch.setattr(
+        "alphalattice.control.product_host.composition.committee.floor_of",
+        lambda _store, task: calls.append(("COMMITTEE", task)),
+    )
     task_id = uuid4()
     requests = (
         PortfolioResearchOperationRequest(operation="REPORT", result_hash="a" * 64),

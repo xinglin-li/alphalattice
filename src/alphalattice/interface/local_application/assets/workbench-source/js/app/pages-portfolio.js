@@ -637,7 +637,7 @@ const Portfolio = (() => {
   function portfolioHead() {
     const subject=Data.subject(), sessions=Data.sessions(), recorded=Data.history().find((x)=>x.task_id===subject.task_id&&['portfolio.policy-development','INSTALLED_RESULT'].includes(x.raw.kind));
     const context=holdingsContext(), date=positionsDate();
-    const headFacts=[[t('Declared as-of'),subject.input_date],[t('Report'),dateRange(sessions[0],sessions.at(-1))],[t('trading|Sessions'),count(sessions.length)],[t('Recorded'),recorded?.recordedAt ? when(recorded.recordedAt) : ''],[t('Input'),subject.input_id || Data.raw()?.research_input_id || '']];
+    const headFacts=[[t('Declared as-of'),subject.input_date],[t('Report'),dateRange(sessions[0],sessions.at(-1))],[t('trading|Sessions'),count(sessions.length)],[t('Recorded'),recorded?.recordedAt ? when(recorded.recordedAt) : ''],[t('Input'),subject.input_id === 'Bound historical input' ? t(subject.input_id) : subject.input_id || Data.raw()?.research_input_id || '']];
     const title=bookTitle();
     const selector=context.forward ? context.projection?.review_selector : Data.raw()?.reviewSelector, review=context.forward ? context.projection?.review_standing : Data.raw()?.review_standing;
     const standing=review?.status ? stateLine(review.status,{word:codeWords(review.status),next:''}) : '';

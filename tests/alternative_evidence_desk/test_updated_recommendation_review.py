@@ -227,11 +227,9 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     task = c.selector["update_task_id"]
     update_url = f"/api/portfolio-update?task_id={task}"
     evidence_url = "/api/evidence-cro?" + urlencode(c.selector)
-    # Every continuation retains this update's exact review subject.
     from alphalattice.interface.local_application.client import continued
 
     readback = service.get(update_url)
-    # Exact reuse names its original publication Task.
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         reused_read,
     )
@@ -241,7 +239,6 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     expected = {"operation": "PORTFOLIO_UPDATE_READBACK", "task_id": task}
     assert continued("PORTFOLIO_UPDATE_READBACK", reused, {}, frozenset({"task_id"})) == expected
     assert reused_read(service.registry, "0" * 64, "READ") == {}
-    # A non-study names its kind and the owner read that takes it.
     refused = service.agent(Request(operation="EXPERIMENT_READBACK", task_id=UUID(task)))
     assert refused["failure_code"] == "research_experiment.task_kind_mismatch", refused
     assert refused["detail"] and refused["task_kind"], refused
@@ -297,10 +294,8 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
         code, body = service.request(
             "/api/evidence-cro?" + urlencode({**c.selector, **replacement})
         )
-        # Refused by name and worded with the way on.
         assert (code, body["failure_code"]) == (400, refused), body
         assert body["detail"] and body["next_action"], body
-    # An ambiguous selector names the history-based way on.
     code, body = service.request(
         "/api/evidence-cro?" + urlencode({**c.selector, "result_hash": service.result_hash()})
     )
@@ -351,6 +346,22 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
         {k: v for k, v in exported.items() if k != "export_hash"}
     )
     assert service.agent(Request(operation="EVIDENCE_CRO_EXPORT", **export_selector)) == exported
+    delivery_request = {"operation": "EXPERIMENT_DELIVERY_EXPORT", **export_selector}
+    delivery = service.post("/api/research/delivery", delivery_request)
+    assert delivery["selection"] == delivery_request
+    positions = delivery["sections"]["positions"]
+    assert positions["status"] == "PRESENT" and readback["position_rows"]
+    assert positions["value"]["position_rows"] == readback["position_rows"]
+    review = delivery["sections"]["evidence_cro"]["value"]
+    assert review["portfolio"]["publication"] == exported["portfolio"]["publication"]
+    code, body = service.request(
+        "/api/research/delivery",
+        method="POST",
+        payload={**delivery_request, "update_publication_hash": "0" * 64},
+    )
+    assert code == 200
+    assert body["status"] == "REFUSED"
+    assert body["failure_code"] == "portfolio_update.publication_not_bound_to_task"
     calls, tasks = (
         len(service.review.review_actor.observed_deadlines),
         len(service.registry.tasks()),
@@ -373,7 +384,6 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     after = service.get("/api/evidence-cro?" + urlencode(observed_selector))
     assert after["state"] != "REVIEW_PUBLISHED", "a different basis cannot inherit the verdict"
     assert after["book"]["authority"] == "OBSERVED_RESEARCH_ENTRY"
-    # New observed changes reuse the issuer evidence when its ordered scope matches.
     if after["state"] == "AWAITING_ALTERNATIVE_EVIDENCE":
         service.post("/api/evidence-refresh", observed_selector)
         service.drain()

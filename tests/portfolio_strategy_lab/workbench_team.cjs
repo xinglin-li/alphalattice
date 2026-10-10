@@ -30,12 +30,10 @@ c.Data.readShared = (...args) => c.Data.read(...args);
 library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);vm.runInContext(library.explainCodeSource(root),c);vm.runInContext(library.prerequisiteWaysSource(root),c);vm.runInContext(runShapes(root),c);library.refusal(c,root);
 for(const name of ['live-activity.js','live-team.js'])vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),c);
 vm.runInContext('globalThis.A=LiveActivity;globalThis.TM=LiveTeam;',c);
-// The section is read as a reader pages it: the workroom (the thread and its reader), the
-// participants, then the evidence view of the same retained session.
+// Read the Workroom and Evidence of the retained session.
 const teamSection=c.TM.section;
 {const real=teamSection;c.TM.section=()=>{const was=c.app.page;c.app.page='team-evidence';const b=real();c.app.page=was;const a=real();return a+b;};} // the evidence view is painted first: a paint consumes the one-time arrival flash
-// Details are progressively disclosed now: exercise the real selection action for each
-// retained exchange, keeping one copy of the scene's product evidence for the old invariants.
+// Select each retained exchange while keeping the scene's product evidence.
 function readScene() {
   const saved=hash.value,q=new URLSearchParams(saved.slice(1));
   const sessions=c.TM.scene().sessions,s=q.get('team')?sessions.find(s=>s.id===q.get('team')):sessions[0];
@@ -49,8 +47,7 @@ function readScene() {
 let ordinal=0;
 const item=(schema,payload,extra={})=>{ordinal+=1;return {ordinal,observation_id:'obs-'+ordinal,occurred_at:'2026-09-14T12:'+String(Math.floor(ordinal/60)).padStart(2,'0')+':'+String(ordinal%60).padStart(2,'0')+'Z',observed_at:'2026-09-14T12:00:00Z',schema_kind:schema,source_kind:'PRODUCT_OPERATION',source_id:'local-web:i1',source_sequence:ordinal,task_id:null,run_id:null,stage_id:null,correlation_ids:[],authority:'OPERATIONAL_ASSERTION',retention_class:'TRANSIENT_OPERATIONAL',availability:'AVAILABLE',payload,...extra};};
 const page=(disposition,items,tasks={})=>({workspace_id:'qa',disposition,epoch:'e1',cursor:'e1:'+ordinal,head:ordinal,more:false,items,unavailable:0,tasks,observer:{status:'OK'},read_cost:{observations:items.length,elapsed_ms:1}});
-// Events shaped like the lead's producer: subject strings only, BRIDGE_RECEIVED time kind, the
-// producer's own event id, EXTERNAL_CLIENT / AGENT_PROPOSAL assigned by the boundary.
+// Producer-shaped events retain their subject, time kind, identity and boundary authority.
 let seq=0;
 const external=(kind,subject,summary,opts={})=>item('ExternalActivityObserved',{event_kind:kind,producer_id:'codex-native',producer_session:'scope1',producer_sequence:++seq,summary,summary_truncated:opts.truncated===true,subject:{source_time_kind:'BRIDGE_RECEIVED',native_event_id:opts.eventId||('evt-'+seq),...subject},task_verified:Boolean(opts.task)},{source_kind:'EXTERNAL_CLIENT',authority:'AGENT_PROPOSAL',source_id:'codex-native:scope1',source_sequence:seq,task_id:opts.task||null,correlation_ids:[subject.native_session_id||'']});
 const hook=(session,agent,role,event,turn,stopActive='unknown',opts={})=>external(event==='SubagentStart'?'NATIVE_SUBAGENT_START_HOOK':'NATIVE_SUBAGENT_STOP_HOOK',{native_session_id:session,native_turn_id:turn,native_agent_id:agent,role,input_channel:'CODEX_HOOK',native_hook_event:event,terminal_state:'NOT_ESTABLISHED',stop_hook_active:stopActive},`${role}: ${event} hook observed. The child may continue; this is not proof of agent exit, Task completion or publication.`,opts);
@@ -312,8 +309,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(html.includes('T4 exceeds the turnover budget.'),'a responded objection is still shown as recorded');
   assert.equal(TM.summary().unresolved,1);assert.equal(TM.summary().objections,2);assert.equal(TM.summary().session,S4,'the Overview reads the same session and the same rule');
   assert.ok(!html.includes('resolved by')&&!html.includes('accepted the correction'),'no resolution or acceptance is claimed');
-  // A later message declaring the objection's id makes the id ambiguous: the association is no
-  // longer attributable, and says so, rather than being settled by whichever came last.
+  // Reusing an objection id makes its association ambiguous.
   A.absorbPage(page('CONTINUED',[message(S4,'c4','independent_cro','objection','Reissued under the same declared id with different words.',{recipient:S4,reference:T4,message_id:'obj-4'})]));
   html=TM.section();
   assert.ok(objRow(byId('obj-4')).includes('data-answered="false"')&&objRow(byId('pm-obj-4')).includes('declared by 2 exchanges · ambiguous, names none'),'a duplicated objection id withdraws the attribution instead of picking one');
@@ -340,20 +336,20 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const attributed=(row,goal=G1)=>{row.payload.subject.goal_id=goal;return row;},bound=(ref)=>{const row=attributed(message(S5,S5,'research_lead','session_bound','Fixture binding',{reference:ref}));row.payload.subject.input_channel='PRODUCT_OPERATION';return row;};
   const oldMember=attributed(message(S5,'old-member','alphalattice_cro','answer','Earlier workspace answer'),G2),usageOnly=attributed(external('NATIVE_AGENT_USAGE',{native_session_id:S5,native_agent_id:'old-member',role:'alphalattice_cro',model:'fixture-model',input_channel:'CODEX_SESSION_FILE',last_at:'2026-09-30T12:00:00Z'},'Fixture session-wide usage'));
   A.absorbPage(page('CONTINUED',[oldMember,usageOnly,bound(refitCase)]));hash.value='#page=team&team='+S5;c.app.page='team';TM.refresh();TM.section();await new Promise(r=>setImmediate(r));let sum=TM.summary();html=TM.section();
-  assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H1].question)&&html.includes(narratives[H1].title));assert.equal(sum.question.goalId,G1);assert.equal(sum.participants,1);
+  assert.equal(sum.question.title,narratives[H1].title);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H1].question)&&html.includes(narratives[H1].title));assert.equal(sum.question.goalId,G1);assert.equal(sum.participants,1);
   assert.deepEqual(narrativeReads,[H1]);assert.ok(TM.recordOf(S5).includes(oldMember.payload.summary));
   A.absorbPage(page('CONTINUED',[bound('case:'+H3)]));TM.refresh();await new Promise(r=>setImmediate(r));sum=TM.summary();html=TM.section();const head5=()=>TM.section().split('</header>')[0];
-  assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H3].question)&&!html.includes('<team-question:'));assert.equal(sum.question.goalId,G1);assert.equal(sum.question.groups.length,1);
+  assert.equal(sum.question.title,narratives[H3].title);assert.equal(sum.question.choice,false);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H3].question)&&!html.includes('<team-question:'));assert.equal(sum.question.goalId,G1);assert.equal(sum.question.groups.length,1);
   assert.ok(head5().includes(narratives[H3].title)&&!head5().includes(H1.slice(0,8)));assert.ok(folds.some(f=>f.key===c.t('{n} earlier revision',{n:1})&&f.body.includes(H1.slice(0,8))));
   const currentMember=attributed(message(S5,'current-member','alphalattice_alpha','answer','Current Goal answer',{reference:turnoverCase}));A.absorbPage(page('CONTINUED',[currentMember]));await TM.resolve(turnoverCase);await TM.verify(turnoverCase);sum=TM.summary();
-  assert.equal(sum.participants,2);assert.ok(TM.section().includes('team-question-related')&&TM.section().includes(narratives[H3].question));assert.ok(head5().includes('FACT('+c.t('Participants')+'=2)'));
+  assert.equal(sum.participants,2);assert.equal(sum.question.title,narratives[H3].title);assert.ok(TM.section().includes('team-question-related')&&TM.section().includes(narratives[H3].question));assert.ok(head5().includes('FACT('+c.t('Participants')+'=2)'));
   A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Second Goal',{reference:turnoverCase}))]));sum=TM.summary();html=TM.section();
-  assert.ok(html.includes('data-question="choice"')&&html.includes('<team-question:'+turnoverCase+'>')&&head5().includes(c.t('{n} goals declared by Main PM',{n:2})));assert.equal(sum.question.count,2);
-  TM.chooseQuestion(turnoverCase);sum=TM.summary();html=TM.section();assert.equal(sum.question.goalId,G2);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H2].question)&&html.includes('[ready:'+c.t('chosen')+']'));
-  A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Unread Goal',{reference:'case:'+H4}))]));TM.refresh();assert.ok(TM.section().includes(narratives[H2].question));await new Promise(r=>setImmediate(r));
+  assert.equal(sum.question.kind,'choice');assert.equal(sum.question.text,c.t('{n} goals declared by Main PM',{n:2}));assert.ok(html.includes('data-question="choice"')&&html.includes('<team-question:'+turnoverCase+'>')&&head5().includes(c.t('{n} goals declared by Main PM',{n:2})));assert.equal(sum.question.count,2);
+  TM.chooseQuestion(turnoverCase);sum=TM.summary();html=TM.section();assert.equal(sum.question.goalId,G2);assert.equal(sum.question.title,narratives[H2].title);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H2].question)&&html.includes('[ready:'+c.t('chosen')+']'));
+  A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Unread Goal',{reference:'case:'+H4}))]));TM.refresh();assert.equal(TM.summary().question.ref,turnoverCase);assert.ok(TM.section().includes(narratives[H2].question));await new Promise(r=>setImmediate(r));
   assert.equal(TM.resolved().get('case:'+H4).failure,'goal.revision_unknown');assert.equal(TM.summary().question.ref,turnoverCase);const readCount5=narrativeReads.length;TM.section();TM.summary();assert.equal(narrativeReads.length,readCount5);
-  TM.chooseQuestion('case:'+H4);html=TM.section();assert.ok(html.includes('data-question="case-declared"')&&head5().includes(c.t('Goal {ref}',{ref:H4.slice(0,c.SHORT.hash)}))&&html.includes('[ready:'+c.t('chosen')+']'));
-  TM.chooseQuestion('');html=TM.section();assert.ok(html.includes('data-question="choice"')&&head5().includes(c.t('Choose a Goal reference')));Object.assign(c,was5);
+  TM.chooseQuestion('case:'+H4);sum=TM.summary();html=TM.section();assert.equal(sum.question.kind,'case-declared');assert.equal(sum.question.text,c.t('Goal {ref}',{ref:H4.slice(0,c.SHORT.hash)}));assert.ok(html.includes('data-question="case-declared"')&&head5().includes(c.t('Goal {ref}',{ref:H4.slice(0,c.SHORT.hash)}))&&html.includes('[ready:'+c.t('chosen')+']'));
+  TM.chooseQuestion('');html=TM.section();assert.equal(TM.summary().question.text,c.t('Choose a Goal reference'));assert.ok(html.includes('data-question="choice"')&&head5().includes(c.t('Choose a Goal reference')));Object.assign(c,was5);
   const S6='sess-parent-6';
   A.absorbPage(page('CONTINUED',[
     message(S6,S6,'research_lead','assignment','Screen the August universe.',{recipient:'a6',message_id:'as-6a'}),
@@ -388,10 +384,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   entry=keys(routeUrl('team'));assert.equal(entry.team,S4,'the link keeps the unavailable selection until the reader chooses');
   sum=TM.summary();assert.equal(sum.missing,S4);assert.equal(sum.session,undefined,'the Overview names the missing selection instead of the newest');
   TM.select('');html=TM.section();sum=TM.summary();assert.equal(sum.session,S6);assert.equal(sum.missing,undefined);
-  // 12. C2 (law 140): noise folds, the ends stay -- hooks in a row are one line with the count of the
-  //     records it holds; a comment's replies keep the first and the last, the middle one line that
-  //     opens in place (a follow-up to a reply flat beside them); a clamped exchange opens where it
-  //     stands; a reply read quotes the exchange it names.
+  // 12. C2 (law 140): counted folds keep their ends; exchange details open in place, quoting replies.
   const S7='sess-parent-7';
   A.absorbPage(page('CONTINUED',[
     message(S7,S7,'research_lead','assignment','Refit on the July input.',{recipient:'a7',message_id:'as-7'}),
@@ -432,9 +425,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   TM.toggleWords(long7);html=TM.section();
   assert.ok(html.includes('data-clamp="open"')&&html.includes('<team-words:'+long7+' aria-expanded="true" data-clamp-way >{Show less}'),'a clamped exchange opens where it stands, and closes again');
   TM.toggleWords(long7);
-  // 13. C3 (law 142): the thread's Display -- Show and the density, kept per session and viewer, never
-  //     an order -- the lobby's component; one member is the route's filter. Arrivals are one pill
-  //     aimed at the newest, where it is: a fold that holds it is its place.
+  // 13. C3 (law 142): Display keeps Show and density per session; arrivals target the newest, folded or not.
   TM.markSeen();TM.showEvent(q7);html=TM.section();
   const name7='thread.'+S7,spec7=()=>c.displays[name7],choose=(patch)=>spec7().apply(c.setDisplay(name7,patch)),actorOf=()=>new URLSearchParams(hash.value.slice(1)).get('actor')||'';
   assert.ok((html.split('<span class="team-head-tools">')[1]||'').includes('<display:'+name7+'>')&&html.includes('<span class="team-members"'),'the head carries the members (C4) and the Display');

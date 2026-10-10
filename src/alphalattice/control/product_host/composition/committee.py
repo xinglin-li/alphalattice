@@ -37,6 +37,7 @@ CARDS: Final = {r: f"alphalattice_{r.lower()}" for r in ROLES[1:]} | {"PM": "res
 """Each member's card, the Team page's participant name."""
 CHANNEL: Final = "PRODUCT_COMMITTEE"
 """The Host's own channel for floor rows; a client's event never takes it."""
+RELAY_WORD: Final = "Relayed by the agent"
 STANCE_MINUTES, FLOOR_MINUTES, MESSAGE_CAP = 10, 40, 3
 RULES: Final[dict[str, tuple[tuple[str, ...], frozenset[str], str | None]]] = {
     "STANCE": (ROLES, frozenset({"STANCES"}), None),
@@ -332,6 +333,7 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
                 "asked_at": m["at"],
                 "answer": answers.get(m["id"], {}).get("text"),
                 "answer_at": answers.get(m["id"], {}).get("at"),
+                "relay_word": RELAY_WORD,
             }
             for m in items
         ],
@@ -347,7 +349,12 @@ def verdict(floor: Floor, now: datetime) -> dict[str, Any] | None:
     if given is not None:
         return {"outcome": given["outcome"], "text": given["text"], "at": given["at"]}
     if floor.stage(now) == "CLOSED":
-        return {"outcome": "FOR_THE_PERSON", "text": "The PM gave no verdict.", "at": None}
+        return {
+            "outcome": "FOR_THE_PERSON",
+            "text": "The PM gave no verdict.",
+            "at": None,
+            "text_word": "The PM gave no verdict.",
+        }
     return None
 
 
@@ -388,6 +395,7 @@ def floor_row(floor: Floor, message: Mapping[str, Any]) -> dict[str, Any]:
             "reference": task,
             "input_channel": CHANNEL,
             "authorship_basis": "HOST_ACCEPTED",
+            **({"relay_word": RELAY_WORD} if message["kind"] == "PERSON_ANSWER" else {}),
             **reply,
         },
     }
@@ -441,7 +449,12 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
 
     named = {m["id"]: targets(m) for m in floor.messages}
     items: list[tuple[str, dict[str, str], str, dict[str, Any]]] = [
-        ("Committee verdict: {outcome}", {"outcome": closed["outcome"]}, closed["text"], {}),
+        (
+            "Committee verdict: {outcome}",
+            {"outcome": closed["outcome"]},
+            closed["text"],
+            {"text_word": closed.get("text_word")},
+        ),
         *(
             (
                 "CRO dissent stands on {targets}" if named[m["id"]] else "CRO dissent stands",
@@ -452,16 +465,21 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
             for m in standing_dissents(floor)
         ),
         *(
-            ("{member}, final view", {"member": r}, said.get(r, "Not addressed."), {})
+            (
+                "{member}, final view",
+                {"member": r},
+                said.get(r, "Not addressed."),
+                {} if r in said else {"text_word": "Not addressed."},
+            )
             for r in ROLES
         ),
         *(
             (
                 "Handed to the person: {targets}" if named[m["id"]] else "Handed to the person",
                 {"message": m["id"], "targets": named[m["id"]]},
-                f"{m['text']} The person's answer, relayed by the PM: "
-                + answers.get(m["id"], "not yet given."),
+                f"{m['text']} {RELAY_WORD}: " + answers.get(m["id"], "not yet given."),
                 {
+                    "relay_word": RELAY_WORD,
                     "question": render(m["text"], floor.opened["holdings"]),
                     "answer": answers.get(m["id"]),
                     "answer_present": m["id"] in answers,
