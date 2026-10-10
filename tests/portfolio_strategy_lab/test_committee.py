@@ -1,6 +1,4 @@
-"""The investment committee on a date's published positions: one floor per publication, members
-by their own keys, a blind first round, capped debate by event, the PM's rulings and verdict, and
-the delivery it feeds."""
+"""Publication-bound committee: blind stances, bounded debate, rulings and attributed delivery."""
 
 from __future__ import annotations
 
@@ -26,7 +24,13 @@ from alphalattice.control.product_host.composition.research_delivery import (
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
 )
+from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.product_host.publication.goals import GoalStore
+from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.interface.local_application.activity import (
+    ExternalActivityEventDocument,
+    ExternalActivityReadQuery,
+)
 from alphalattice.interface.local_application.cli_contract import RequestProvenance
 from alphalattice.interface.local_application.portfolio_research import CommitteeMessage
 from alphalattice.interface.local_application.portfolio_research import (
@@ -38,6 +42,8 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     portfolio_update_positions,
 )
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSurfaceError
+from alphalattice.protocols.research_authoring.contracts import AuthoringError
+from tests.portfolio_strategy_lab.local_web_support import run_node
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     HASH,
     build_numerical,
@@ -158,20 +164,28 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
 
 def test_a_dates_risk_stands_at_its_formation_or_dated_at_the_surfaces_next_session(
     risk_source: Any,
+    readback: dict[str, Any],
 ) -> None:
     """requirement: a Risk carried by later returns is the one read inside the surface; without
     them it stands, dated, at the session after the surface ends."""
     s = risk_source
     inside = s.risk()
     assert inside["risk_as_of"] == s.days[s.k].isoformat()
-    assert inside["sessions_before_the_positions"] == 0 and inside["covered_weight"] == 1.0
+    assert inside["sessions_before_the_positions"] == 1 and inside["covered_weight"] == 1.0
+    assert inside["systematic_share"] + inside["specific_share"] == pytest.approx(1.0)
+    held = {row["listing_id"]: row for row in committee.holdings(readback)}
+    for row in inside["top_contributors"]:
+        assert (row["alias"], row["name"]) == (
+            held[row["listing_id"]]["alias"],
+            held[row["listing_id"]]["name"],
+        )
     s.sessions = s.days[: s.k - 2]
     carried = s.risk()
     assert {**carried, "source_hash": None} == {**inside, "source_hash": None}
     s.bars = set()
     stale = s.risk()
     assert stale["risk_as_of"] == s.days[s.k - 2].isoformat()
-    assert stale["sessions_before_the_positions"] == 2
+    assert stale["sessions_before_the_positions"] == 3
 
 
 def test_a_name_without_later_returns_is_uncovered_and_left_out(risk_source: Any) -> None:
@@ -262,6 +276,11 @@ def test_the_stances_stay_blind_until_all_four_are_in(
     alpha = _read(store, now, "ALPHA", 0)
     assert alpha["stage"] == "STANCES" and [m["role"] for m in alpha["messages"]] == ["ALPHA"]
     assert (alpha["seen"], alpha["for_you"]) == (0, [])  # its own M2 never passes the PM's M1
+    person = _read(store, now, None, 0)
+    assert (person["message_count"], person["member_count"], person["stances_in"]) == (0, 4, 2)
+    assert person["messages"] == [] and person["first_message_at"] is None
+    assert person["session"] == ["claude-code", "s-1"]
+    assert person["review_selector"] == readback["review_selector"]
     floor = committee.floor_of(store, TASK)
     assert floor is not None and committee.unfiled(floor, now[0]) == []
     for role in ("RISK", "CRO"):
@@ -356,12 +375,12 @@ def test_a_specialist_speaks_three_times_after_its_stance_and_only_the_pm_rules(
 def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
     tmp_path: Path, readback: dict[str, Any]
 ) -> None:
-    """requirement (the report): a CRO challenge the PM rejects stands in the CRO's own words
-    after the verdict, and the person's relayed answer stays theirs, not the PM's view."""
+    """The Report keeps rejected CRO dissent and relayed answers in their authors' words."""
     store, now = _floor(tmp_path, readback)
     _stances(store, now)
     dissent = "H1 lacks Evidence."  # a challenge on a holding, not a tension point
     challenge = _say(store, now, "CRO", "CHALLENGE", targets=("H1",), text=dissent)
+    untargeted = _say(store, now, "CRO", "CHALLENGE", targets=())
     _say(store, now, "PM", "RULING", reply_to=challenge, outcome="REJECT")
     asked = _say(store, now, "RISK", "CHALLENGE", targets=("T2",))
     handed = _say(store, now, "PM", "RULING", reply_to=asked, outcome="FOR_THE_PERSON")
@@ -371,35 +390,66 @@ def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
         _say(store, now, "RISK", "CHALLENGE", targets=("T1",))
     floor = committee.floor_of(store, TASK)
     assert floor is not None
-    items = {i["attribution"]: i["text"] for i in committee.commentary(floor, now[0]) or []}
-    first, second = list(items)[:2]
-    assert first.endswith("PROCEED_WITH_NOTES") and items[second].startswith("H1 (N")
-    assert items["PM, final view"].startswith("PM on H1 (N")
-    assert any(t.endswith("Cap at 5%.") for t in items.values())
+    rows = committee.commentary(floor, now[0]) or []
+    held = floor.opened["holdings"]
+    holding = committee.render("H1", held)
+    assert rows[0]["attribution_word"] == "Committee verdict: {outcome}"
+    assert rows[0]["attribution_words"] == {"outcome": "PROCEED_WITH_NOTES"}
+    assert rows[1]["attribution_word"] == "CRO dissent stands on {targets}"
+    assert rows[1]["attribution_words"] == {"message": challenge, "targets": holding}
+    assert rows[1]["text"] == committee.render(dissent, held)
+    assert rows[2]["attribution_word"] == "CRO dissent stands"
+    assert rows[2]["attribution_words"] == {"message": untargeted, "targets": ""}
+    final = [r for r in rows if r["attribution_word"] == "{member}, final view"]
+    views = {r["attribution_words"]["member"]: r["text"] for r in final}
+    spoken = [m for m in floor.messages if m["kind"] in {"STANCE", "CHALLENGE", "REPLY"}]
+    said = {m["role"]: committee.render(m["text"], held) for m in spoken}
+    assert views == said
+    person = next(row for row in rows if "answer_present" in row)
+    question = next(m["text"] for m in floor.messages if m["id"] == handed)
+    expected = (committee.render(question, held), "Cap at 5%.", True)
+    assert (person["question"], person["answer"], person["answer_present"]) == expected
+    aimed = next(p for p in floor.opened["tension_points"] if p["alias"] == "T2")
+    point = committee.render(", ".join(["T2", *aimed["targets"]]), held)
+    assert person["attribution_word"] == "Handed to the person: {targets}"
+    assert person["attribution_words"] == {"message": handed, "targets": point}
+    ruled = [r for r in rows if r["attribution_word"] == "PM ruling on {targets}: {outcome}"]
+    rulings = [r["attribution_words"] for r in ruled]
+    expected = {challenge: (holding, "REJECT"), asked: (point, "FOR_THE_PERSON")}
+    assert {r["message"]: (r["targets"], r["outcome"]) for r in rulings} == expected
+    assert not any(m["id"] in row["attribution"] for m in floor.messages for row in rows)
+    page = committee.state(floor, None, 0, now[0])
+    assert page["standing_dissents"] == [challenge, untargeted]
+    assert page["person_items"][0]["answer_at"] == now[0].isoformat()
+    assert page["person_items"][0]["answer"] == "Cap at 5%."
 
 
 def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
     tmp_path: Path, readback: dict[str, Any]
 ) -> None:
-    """requirement (the committee): one slow member never holds the floor; its time boxes reveal
-    the stances in and then close it, with the person deciding when the PM gave no verdict."""
+    """Time boxes reveal stances, then leave unruled points for the person."""
     store, now = _floor(tmp_path, readback)
     _say(store, now, "PM", "STANCE")
     now[0] += timedelta(minutes=11)
     state = _read(store, now, None, 0)
     assert state["stage"] == "DEBATE" and state["members"]["ALPHA"] == "NOT_ADDRESSED"
+    assert {p["state"] for p in state["tension_points"]} == {"OPEN"}
     now[0] += timedelta(minutes=30)
     closed = _read(store, now, None, 0)
     assert closed["stage"] == "CLOSED" and closed["verdict"]["outcome"] == "FOR_THE_PERSON"
     assert (closed["members"]["PM"], closed["members"]["ALPHA"]) == ("IN", "NOT_ADDRESSED")
+    assert {p["state"] for p in closed["tension_points"]} == {"NOT_ADDRESSED"}
 
 
 def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
     tmp_path: Path, readback: dict[str, Any]
 ) -> None:
-    """requirement (the Team page shows the floor): each row names its member's card under the
-    lead's session, so the Team page lists every member, and its reply's author as recipient."""
+    """Floor rows retain member, session and reply-recipient identities for Team."""
     store, now = _floor(tmp_path, readback)
+    opened = committee.floor_of(store, TASK)
+    assert opened is not None
+    blind = committee.context(opened, now[0])
+    assert (blind["stage"], blind["verdict"]) == ("STANCES", None)
     _stances(store, now)
     challenge = _say(store, now, "RISK", "CHALLENGE", targets=("H1",))
     _say(store, now, "PM", "RULING", reply_to=challenge, outcome="ADOPT")
@@ -408,13 +458,53 @@ def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
     floor = committee.floor_of(store, TASK)
     assert floor is not None
     ruling = committee.unfiled(floor, now[0])[-1]["subject"]
-    assert (ruling["message_id"], ruling["role"], ruling["native_agent_id"]) == (
-        "M6",
-        "research_lead",
-        "s-1",
-    )
+    expected = ("M6", "research_lead", "s-1")
+    assert (ruling["message_id"], ruling["role"], ruling["native_agent_id"]) == expected
     assert ruling["recipient_id"] == "s-1:alphalattice_risk"
     assert ruling["input_channel"] == "PRODUCT_COMMITTEE"
+    dissent = _say(store, now, "CRO", "CHALLENGE", targets=("H1",), text="H1 lacks Evidence.")
+    _say(store, now, "PM", "RULING", reply_to=dissent, outcome="REJECT")
+    asked = _say(store, now, "RISK", "CHALLENGE", targets=("T2",))
+    handed = _say(store, now, "PM", "RULING", reply_to=asked, outcome="FOR_THE_PERSON")
+    _say(store, now, "PM", "PERSON_ANSWER", reply_to=handed, text="Cap at 5%.")
+    _say(store, now, "PM", "VERDICT", outcome="PROCEED_WITH_NOTES")
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    observer = WorkspaceActivity(
+        workspace=tmp_path,
+        workspace_id="committee-fixture",
+        gate=WorkspaceMutationGate(),
+        instance="committee-fixture",
+        clock=lambda: now[0],
+    )
+    for row in committee.unfiled(floor, now[0]):
+        observer.admit_external_event(ExternalActivityEventDocument.model_validate(row))
+    page = observer.read_external(ExternalActivityReadQuery())
+    observer.close()
+    body = committee.state(floor, None, 0, now[0])
+    assert [m["row"] for m in body["messages"]] == committee.unfiled(floor, now[0])
+    assert committee.context(floor, now[0]) == {
+        "goal_id": str(floor.goal_id),
+        "update_task_id": TASK,
+        "review_selector": readback["review_selector"],
+        "native_host": "claude-code",
+        "native_session_id": "s-1",
+        "stage": "CLOSED",
+        "verdict": body["verdict"],
+        "specialists": ["alphalattice_alpha", "alphalattice_risk", "alphalattice_cro"],
+    }
+    assert set(blind) == set(committee.context(floor, now[0]))
+    fixture = tmp_path / "committee-reader.json"
+    payload = {"pages": [page], "reads": {"/api/committee": body}, "committee": body}
+    fixture.write_text(json.dumps(payload), encoding="utf-8")
+    modules = (
+        Path(__file__).resolve().parents[2]
+        / "src/alphalattice/interface/local_application/assets/workbench-source/js/app"
+    )
+    script = Path(__file__).with_name("workbench_team_readback.cjs")
+    args = [str(script), str(modules), str(fixture), "s-1"]
+    result = run_node(args, capture_output=True, text=True, timeout=30)
+    assert result is not None and result.returncode == 0, result.stderr if result else ""
 
 
 def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
@@ -479,19 +569,54 @@ def test_the_risk_member_reads_the_dates_predicted_risk(tmp_path: Path, readback
 
 
 def test_a_dates_delivery_carries_the_closed_floor_as_its_commentary(
-    readback: dict[str, Any],
+    tmp_path: Path, readback: dict[str, Any]
 ) -> None:
-    """requirement (the report): the delivery takes a date's publication, and the committee's
-    record is its commentary, attributed to the committee's floor."""
+    """The date's delivery retains its positions and attributed floor commentary."""
     request = Request(
         operation="EXPERIMENT_DELIVERY_EXPORT",
         update_task_id=UUID(TASK),
         update_publication_hash=readback["review_selector"]["update_publication_hash"],
         position_basis="CONDITIONAL_ESTIMATE",
     )
-    said = [{"attribution": "Committee verdict: PROCEED", "text": "Proceed."}]
-    delivered = export_update_delivery(
-        request=request, readback=readback, review=None, committee=said
+    positions = portfolio_update_positions(
+        PortfolioUpdatePublication.model_validate(readback["publication"])
     )
+    facts = {
+        "schedule": positions.schedule.model_dump(mode="json"),
+        "position_rows": [],
+        "date_risk": {"state": "NOT_EVALUATED", "reason": "risk.not_recorded"},
+    }
+    store, now = _floor(tmp_path, readback)
+    _stances(store, now)
+    _say(store, now, "PM", "VERDICT", outcome="PROCEED")
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    context = committee.context(floor, now[0])
+    said = committee.commentary(floor, now[0])
+    assert said is not None
+    delivered = export_update_delivery(
+        request=request,
+        readback={**readback, **facts, "committee_context": context},
+        review=None,
+        committee=said,
+    )
+    assert delivered["committee_context"] == context
+    with pytest.raises(AuthoringError, match=r"^research_delivery\.update_subject_mismatch$"):
+        export_update_delivery(
+            request=replace(request, position_basis="OBSERVED_RESEARCH_ENTRY"),
+            readback={**readback, **facts, "committee_context": context},
+            review=None,
+            committee=said,
+        )
     assert delivered["commentary_provenance"]["attribution"] == "COMMITTEE_FLOOR"
-    assert "Committee verdict: PROCEED" in str(delivered["html"])
+    assert delivered["commentary"] == said
+    assert delivered["sections"]["positions"]["value"] == {
+        "html": readback["html"],
+        "basis": request.position_basis,
+        **facts,
+    }
+    assert delivered["selection"] == {
+        "operation": "EXPERIMENT_DELIVERY_EXPORT",
+        **readback["review_selector"],
+    }
+    assert said[0]["attribution"] in str(delivered["html"])

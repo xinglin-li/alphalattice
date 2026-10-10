@@ -1,4 +1,3 @@
-// Owner-derived receipt kinds and the runtime boundaries found by the Phase 7 census.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const library=require('./workbench_library.cjs');
 const {babelParse,traverse}=require('../../third_party/playwright/node_modules/playwright/lib/transform/babelBundle.js');
@@ -7,6 +6,11 @@ assert.ok(kinds.length>1,'the owners declare artifact kinds');
 const hash='a'.repeat(64);
 for(const lang of ['en','zh']) {
  words.I18N.set(lang);
+ const superseded=words.stateOf('alternative_evidence_superseded');
+ assert.equal(superseded.key,'alternative_evidence_superseded');assert.equal(superseded.word,'Superseded');
+ assert.ok(superseded.line && superseded.next);words.t(superseded.line);words.t(superseded.next);
+ assert.match(String(words.signed(-0.001,'pp')).replace(/<[^>]+>/g,''),/^0\.00 /);
+ assert.match(String(words.signed(-0.00034)),/−0\.00034/);
  for(const kind of kinds)for(const suffix of ['', '.json?spans=synthetic']) {
   const uri=kind==='Reference'?'playpen://workspace-preparation/synthetic-task/verify_inputs':`semantic://synthetic-owner/${kind}/${hash}${suffix}`;
   const html=String(words.refCell(uri)), label=html.match(/class="run-ref-kind">([^<]*)</)[1];

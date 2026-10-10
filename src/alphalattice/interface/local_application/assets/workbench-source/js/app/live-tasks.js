@@ -37,11 +37,12 @@ const LiveTasks = (() => {
     paintCurrent();
   }
   const currentGroup=()=>stackSlot('currentWork',LiveViews.runningGroup(true));
+  const currentPaint=new WeakMap();
   function paintCurrent() {
     const home=app.page==='overview', slot=$(home ? '#homeRunning' : '#currentWork');
     if(!slot)return;
-    const content=LiveViews.runningGroup(!home);
-    if(slot.innerHTML!==String(content)){const saved=preserveSurface(slot);fillStackSlot(slot,content);restoreSurface(saved);}
+    const content=String(LiveViews.runningGroup(!home));
+    if(currentPaint.get(slot)!==content){const saved=preserveSurface(slot);fillStackSlot(slot,content);currentPaint.set(slot,content);restoreSurface(saved);}
   }
   /* Keep polling while Task Control says the Task moves or the dispatcher says its operation
    * has not returned; the two facts are read apart and never masked over each other. */

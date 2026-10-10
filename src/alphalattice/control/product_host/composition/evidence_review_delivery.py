@@ -1366,6 +1366,7 @@ class EvidenceReviewDelivery:
         publication_hash: str | None,
         *,
         prior_publication_hash: str | None = None,
+        read_context: dict[str, object] | None = None,
     ) -> tuple[
         dict[str, object],
         PortfolioReviewView | None,
@@ -1388,8 +1389,7 @@ class EvidenceReviewDelivery:
             if publication_hash is None
             else self.app.review_publications.read(publication_hash)
         )
-        # Freeze changes the authority for new reviews, not the identity of the
-        # already sealed result/report an explicitly selected old review named.
+        # A recorded review retains its sealed result/report identity after a freeze.
         historical_result = (
             view is not None
             and book.result_hash is not None
@@ -1410,6 +1410,8 @@ class EvidenceReviewDelivery:
             raise PortfolioEvidenceReviewError(
                 "product_host.evidence_review_export_subject_mismatch"
             )
+        if read_context is not None:
+            read_context["committee_context"] = book.committee_context
         if book.experiment_subject is not None:
             from alphalattice.interface.local_application.experiment_report import (
                 render_experiment_report,
@@ -1429,6 +1431,10 @@ class EvidenceReviewDelivery:
                 subject.update_task_id, subject.update_publication_hash
             )
             base_html = cast(str | None, portfolio.get("html"))
+            portfolio = {  # Task status stays outside the immutable export.
+                k: portfolio[k]
+                for k in ("publication", "history", "listing_labels", "strategy_package_id")
+            }
         else:
             assert book.report is not None
             portfolio = {"report": book.report.model_dump(mode="json")}
@@ -1535,12 +1541,6 @@ class EvidenceReviewDelivery:
             "claim": "Readback grants no current evidence eligibility, forward advice, "
             "protected validation or trade authority.",
         }
-        # Dynamic task status is not part of the immutable exported portfolio.
-        if book.update_subject is not None:
-            snapshot["portfolio"] = {
-                k: portfolio[k]
-                for k in ("publication", "history", "listing_labels", "strategy_package_id")
-            }
         rendered = render_review_export(snapshot, base_html)
         exported = {
             **snapshot,

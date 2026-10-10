@@ -43,6 +43,7 @@ const ROUTES = {
   handoff: ['Evidence & CRO', 'Review', 'evidence'], // round E4: the page's one word
   history: ['History', 'History', 'history'],
   team: ['Team', 'Conversation', 'team'],
+  'team-committee': ['Team', 'Committee', 'team'],
   'team-participants': ['Team', 'Participants', 'team'],
   'team-outputs': ['Team', 'Outputs', 'team'],
   'team-evidence': ['Team', 'Product record', 'team'],

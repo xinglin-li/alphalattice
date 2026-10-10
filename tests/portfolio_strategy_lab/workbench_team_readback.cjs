@@ -1,22 +1,10 @@
-// Feed real activity pages (as the Host returned them) through the real consumer modules and
-// print what the team scene derives, so a Python test over the booted product can assert on the
-// consumer's reading of its own rows. Usage: node workbench_team_readback.cjs <modules dir>
-// <input json> [team session] [actor]. The input holds `pages` (activity pages in order) and,
-// optionally, `history` (the Host's research-history entries) and `reads` (path prefix -> body,
-// the Host's own answers to owner readbacks) plus `resolve`/`verify` (references to ask about).
-// Only presentation helpers and routing state are mocked; transport answers only from `reads`.
-// `html` is the Research Team page for the selection (its thread with its members' filter, the pinned
-// exchange's reader and the product evidence); `readers` is every retained exchange of that
-// selection as the page reads it (the exchange selected through `showEvent`: its line, its words and
-// its verification opened in place under it), keyed by the exchange's observation id.
-const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const library=require('./workbench_library.cjs'); // the library's constants, the page chrome and the builders, from the source (the harnesses' one way)
+// Read Host pages and owner answers through Team; mock only presentation and routing.
+// Usage: node workbench_team_readback.cjs <modules dir> <input json> [session] [actor].
+// Input: pages/history/reads/resolve/verify; output: page, exchange readers, facts and requests.
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict'),library=require('./workbench_library.cjs');
 const [root,inputPath,team='',actor='']=process.argv.slice(2);
 const input=JSON.parse(fs.readFileSync(inputPath,'utf8'));
-const pages=Array.isArray(input)?input:input.pages;
-const reads=(input.reads)||{},requested=[];
-const kindName=(k)=>k;
-const history=(input.history||[]).map(e=>({id:e.entry_id,name:kindName(e.kind),task_id:e.task_id,raw:e}));
+const pages=Array.isArray(input)?input:input.pages,reads=(input.reads)||{},requested=[],history=(input.history||[]).map(e=>({id:e.entry_id,name:e.kind,task_id:e.task_id,raw:e}));
 const hash={value:'#page=tasks'+(team?'&team='+encodeURIComponent(team):'')+(actor?'&actor='+encodeURIComponent(actor):'')};
 const c={console,URLSearchParams,Date,Number,Math,Set,Map,Object,Array,String,Promise,JSON,Boolean,Error,PAGES:{},ROUTES:{team:['Research Team','Workroom'],'team-members':['Research Team','Participants'],'team-sessions':['Research Team','Sessions'],'team-evidence':['Research Team','Team evidence']}, // the page words (2026-09-21: one word per page, ROUTES owns it)
   app:{page:'tasks',book:null},document:{hidden:false,addEventListener(){},querySelector:()=>null,getElementById:()=>null},window:{addEventListener(){}},
@@ -31,29 +19,44 @@ const c={console,URLSearchParams,Date,Number,Math,Set,Map,Object,Array,String,Pr
   subjectChoice:library.stubs.subjectPicker,objectHead:library.stubs.headingSubject,
   routeUrl:(page)=>'#page='+page,NAV_ATTR:'',controlAttrs:()=>'',codeWords:(code)=>String(code ?? '—'),short:(v,n=8)=>String(v||'').slice(0,n),mono:(v,n=12)=>v?'<span class="mono">'+String(v).slice(0,n)+'</span>':'—',coded:(code)=>`<span class="mono">${code ?? '—'}</span>`,actorWords:(caller)=>String(caller ?? '—'),whenText:(value)=>String(value ?? '—'),pluralText:(n,one,many,args={})=>String(Number(n)===1?one:many).replace(/\{(\w+)\}/g,(m,k)=>args&&args[k]!==undefined?args[k]:m),countText:(n,one,many)=>(Number(n)===1 ? one : many).replace('{n}',String(n)),table:(headers,rows)=>'<table>'+(Array.isArray(rows)?rows.join(''):rows)+'</table>',tr:(cells)=>'<tr>'+cells.map(String).join('|')+'</tr>'};
 c.Data.readShared = (...args) => c.Data.read(...args);
-library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);
-for(const name of ['live-activity.js','live-team.js'])vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),c);
+library.context(c, root);for(const name of ['status.js','live-activity.js','live-team.js'])vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),c);
 vm.runInContext('globalThis.A=LiveActivity;globalThis.TM=LiveTeam;',c);
 (async()=>{
   for(const page of pages)c.A.absorbPage(page);
-  for(const ref of input.resolve||[])await c.TM.resolve(ref);
-  for(const ref of input.verify||[])await c.TM.verify(ref);
+  for(const ref of input.resolve||[])await c.TM.resolve(ref);for(const ref of input.verify||[])await c.TM.verify(ref);
   const scene=c.TM.scene();
-  // the places round (law 123): a session's pages read a chosen session -- without one, the reader picks the newest from Sessions
   {const q=new URLSearchParams(hash.value.slice(1));if(!q.get('team')&&scene.sessions[0]){q.set('team',scene.sessions[0].id);hash.value='#'+q;}}
-  // the workroom (the thread, its members' filter and its reader), then the evidence view, as the reader would page
-  // (the Participants page retired into the thread's head in C4; its old address opens the thread)
+  if(input.committee){
+    const b=reads['/api/committee'],s=scene.sessions.find(s=>s.id===b.session[1]),saved=structuredClone(b),words=library.words(root);
+    hash.value='#'+new URLSearchParams({page:'team-committee',team:s.id,committee:b.update_task_id});c.app.page='team-committee';
+    Object.assign(c,{I18N:words.I18N,t:words.t,codeWords:words.codeWords,declaredCodeWord:words.declaredCodeWord,stat:words.stat});let head;c.labelWords=l=>c.I18N.zh?l?.title_zh||l?.title:l?.title;c.objectHead=(...args)=>{head=args;return library.stubs.headingSubject(...args)+c.kv(args[5].facts);};
+    const row=c.objectRow;c.objectRow=(s,x)=>row(s,x)+(x?.attrs||'');c.btnAttrs=(label,action,value,cls,attrs)=>`<button data-action="${action}" data-value="${value}" ${attrs||''}>${label}</button>`;await c.TM.readCommittee(s);
+    for(const [stage,messages,person_items,verdict] of [['STANCES',[],[],null],['STANCES',[saved.messages[0]],[],null],['DEBATE',saved.messages.filter(m=>!['PERSON_ANSWER','VERDICT'].includes(m.kind)),saved.person_items.map(p=>({...p,answer:null})),null],['CLOSED',saved.messages,saved.person_items,saved.verdict]]){
+      Object.assign(b,{stage,messages,person_items,verdict});const floor=c.TM.section();assert(floor.includes(`data-committee-stage="${stage}"`));assert(!String(head[3]).includes(stage));assert.equal(head[5].facts[0][0],c.t(verdict?'Verdict':'Committee'));
+      for(const [role,state] of Object.entries(b.members))assert(floor.includes(`data-member="${role}" data-state="${state}"`));for(const p of b.tension_points)assert(floor.includes(`data-point="${p.alias}" data-state="${p.state}"`));for(const m of messages)assert(floor.includes(m.text));
+      if(person_items.length){assert(floor.indexOf('committeeAgenda')<floor.indexOf('data-person-item=')&&floor.indexOf('data-person-item=')<floor.indexOf('committeeFloor'));for(const p of person_items){assert(floor.includes(p.question));assert.equal(floor.includes(saved.person_items.find(v=>v.id===p.id).answer),p.answer!==null);}}
+      if(stage==='STANCES')for(const id of ['committeeProgress','committeeMembers'])assert(floor.includes(`id="${id}" data-stack-box="section"`));assert(!floor.includes('lobby-tools'));assert(!floor.includes('data-column="state"'));
+    }
+    Object.assign(b,saved);const floor=c.TM.section(),taskFact=String(head[5].facts.find(r=>r[0]===c.t('Task'))[1]);assert(taskFact.includes('data-action="task"')&&taskFact.includes(`data-value="${b.update_task_id}"`)&&!taskFact.includes('run-ref-kind'));for(const id of b.standing_dissents){const m=b.messages.find(m=>m.id===id);assert(floor.includes('data-dissent="stands"'));assert(floor.includes(`data-clamp="open">${m.text}`));}
+    const report=[...floor.matchAll(/href="#([^"]+)"/g)].map(m=>new URLSearchParams(m[1].replaceAll('&amp;','&'))).find(q=>q.get('page')==='report'),answer=b.messages.find(m=>m.kind==='PERSON_ANSWER'),ruling=b.messages.find(m=>m.outcome==='REJECT');assert(answer&&ruling);
+    assert(floor.includes(`data-kind="person_answer"`));assert(floor.includes(`<strong>${c.t('Person')}</strong><span class="team-kind">· ${c.t('Relayed by the agent')}</span>`));assert(floor.includes(`is-pm-response`)&&floor.includes(`id="team-event-${ruling.row.producer_session}:${ruling.id}"`));assert(floor.includes(`data-outcome="REJECT">${c.t('Rejected')}`));assert(report);assert.deepEqual(JSON.parse(report.get('review_selector')),b.review_selector);
+    c.TM.chooseCommitteePoint('T2');const filtered=c.TM.section();for(const id of b.standing_dissents)assert(!filtered.includes(b.messages.find(m=>m.id===id).text));c.TM.chooseCommitteePoint('T2');
+    b.tension_points=Array.from({length:c.LOBBY.shown+1},(_,i)=>({...saved.tension_points[0],alias:'T'+(i+1)}));assert(!c.TM.section().includes(`data-point="T${b.tension_points.length}"`));c.Lobby.more('committee-agenda:'+b.tension_points[0].state);assert(c.TM.section().includes(`data-point="T${b.tension_points.length}"`));b.tension_points=saved.tension_points;
+    for(const page of ['team','team-participants','team-outputs','team-evidence']){c.app.page=page;const rendered=c.TM.section();assert(rendered.includes(`data-verdict="${b.verdict.outcome}"`));assert(!String(head[3]).includes(b.verdict.outcome));}
+    c.app.page='team';const folded=c.TM.section();assert(!folded.includes('data-kind="stance"'));assert(folded.includes('team-committee'));assert.equal(c.TM.counts().exchanges,0);
+    assert.equal(requested.filter(p=>p.startsWith('/api/committee')).length,1);const retained=c.A.retained;c.A.retained=()=>[];c.app.page='team-committee';for(const m of b.messages)assert(c.TM.section().includes(m.text));vm.runInContext(fs.readFileSync(path.join(root,'live-views.js'),'utf8'),c);vm.runInContext('globalThis.V=LiveViews;',c);const facts=c.V.collaborationRows(b.update_task_id,b.review_selector.update_publication_hash,b);
+    assert.equal(facts.length,1);assert.deepEqual(JSON.parse(JSON.stringify(facts[0].to)),{page:'team-committee',extra:{team:b.native_session_id,committee:b.update_task_id}});assert(String(facts[0].value).includes(c.codeWords(b.verdict.outcome)));assert.equal(c.TM.sessionsNaming(b.update_task_id,b)[0].entries,undefined);c.A.retained=retained;
+    c.I18N.set('zh');const zh=c.TM.section();for(const key of ['Person','Relayed by the agent','Rejected','committee|Floor','committee|Received']){assert.notEqual(c.t(key),key);assert(zh.includes(c.t(key)));}if(b.labels.title_zh)assert(zh.includes(b.labels.title_zh));c.I18N.set('en');
+  }
+  // Read Conversation and Evidence, then each retained exchange without its replies.
   c.app.page='team';const workroom=c.TM.section();c.app.page='team-evidence';const evidence=c.TM.section();c.app.page='team';
-  const html=workroom+evidence;
-  const readers={};
+  const html=workroom+evidence,readers={};
   const readIn=(markup,id)=>{const at=markup.indexOf(`id="team-event-${id}"`);if(at<0)return '';const start=markup.lastIndexOf('<li',at),tag=/<(\/?)li(?=[\s>])/g;let depth=0,end=markup.length;tag.lastIndex=start;for(let m;(m=tag.exec(markup));){depth+=m[1]?-1:1;if(!depth){end=m.index+5;break;}}const li=markup.slice(start,end),cut=li.indexOf('<ol class="team-replies">');return cut<0?li:li.slice(0,cut);};
   {
-    const saved=hash.value,q=new URLSearchParams(saved.slice(1)),chosenActor=q.get('actor')||'';
-    const s=q.get('team')?scene.sessions.find(v=>v.id===q.get('team')):scene.sessions[0];
+    const saved=hash.value,q=new URLSearchParams(saved.slice(1)),chosenActor=q.get('actor')||'',s=q.get('team')?scene.sessions.find(v=>v.id===q.get('team')):scene.sessions[0];
     for(const e of s?[...s.entries.values()].sort((a,b)=>a.ordinal-b.ordinal):[]){
       if(e.replayOf||(chosenActor&&e.actor!==chosenActor&&e.recipient!==chosenActor))continue;
       c.TM.showEvent(e.id);
-      // the exchange as the page reads it (C4 item 7): its line, its words and its verification opened in place under it, the replies beneath it left out
       readers[e.id]=readIn(c.TM.section(),e.id);
     }
     hash.value=saved;

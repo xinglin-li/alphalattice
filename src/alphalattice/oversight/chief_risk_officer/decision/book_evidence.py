@@ -214,6 +214,10 @@ class SealedBook:
     temporal_statements: tuple[str, ...] = ()
     """What the book's window can claim about time, from its readback's Panel marks:
     T0, the initial cohort, survivorship, the Sector treatment and the price basis."""
+    policy: dict[str, object] | None = None
+    """The authored book's declared naming facts, read beside its verified positions."""
+    committee_context: dict[str, object] | None = None
+    """Fresh display facts for this exact subject; never part of its sealed identity."""
 
     @property
     def report_hash(self) -> str | None:
@@ -333,13 +337,7 @@ def _installed_statements(
 
 
 def open_sealed_book(inputs: PortfolioEvidenceReviewInputs, selector: BookSelector) -> SealedBook:
-    """Open exactly one sealed book and name its authority.
-
-    A handoff book is opened through the handoff's released report. A result is
-    a development book unless the finalization store holds a candidate frozen
-    from it, in which case it is a frozen candidate. The report validates its
-    own identity on load, so the chain selector -> report -> book is checked by
-    the owners that wrote each link.
+    """Open one exact book through its validated handoff, frozen result or publication.
 
     Args:
         inputs: Sealed stores, read callbacks, and admitted authority for the review.
@@ -355,48 +353,7 @@ def open_sealed_book(inputs: PortfolioEvidenceReviewInputs, selector: BookSelect
     if selector.experiment_task_id is not None:
         return _open_experiment_book(inputs, selector)
     if selector.update_task_id is not None:
-        if inputs.read_update is None:
-            raise PortfolioEvidenceReviewError("product_host.evidence_review_update_not_configured")
-        assert selector.update_publication_hash is not None
-        body = inputs.read_update(selector.update_task_id, selector.update_publication_hash)
-        value = PortfolioUpdatePublication.model_validate(body.get("publication"))
-        if value.content_hash != selector.update_publication_hash:
-            raise PortfolioEvidenceReviewError(
-                "product_host.evidence_review_update_publication_mismatch"
-            )
-        history = tuple(
-            PortfolioUpdatePublication.model_validate(v)
-            for v in cast(list[object], body.get("history", []))
-        )
-        positions = portfolio_update_positions(value, history)
-        if positions.basis != selector.position_basis:
-            raise PortfolioEvidenceReviewError("product_host.evidence_review_update_basis_mismatch")
-        labels = body["listing_labels"]
-        if not isinstance(labels, dict) or len(labels) != len(positions.weights):
-            raise PortfolioEvidenceReviewError("product_host.evidence_review_update_axis_mismatch")
-        subject = PortfolioUpdateReviewSubject(
-            update_task_id=UUID(str(body["task_id"])),
-            update_publication_hash=value.content_hash,
-            position_basis=positions.basis,
-            position_hash=positions.position_hash,
-            checkpoint_hash=value.input_checkpoint_hash or value.checkpoint_hash,
-            strategy_package_id=str(body["strategy_package_id"]),
-            observed_through=value.observed_through.isoformat(),
-            formation_session=positions.schedule.formation_session.isoformat(),
-            entry_session=positions.schedule.entry_session.isoformat(),
-        )
-        formation = positions.schedule.formation_session
-        return SealedBook(
-            subject.book_authority,
-            None,
-            None,
-            None,
-            None,
-            subject,
-            positions,
-            tuple(labels),
-            temporal_statements=_installed_statements(inputs, formation, formation),
-        )
+        return _open_update_book(inputs, selector)
     if selector.handoff_hash is not None:
         if inputs.ledger is None:
             raise PortfolioEvidenceReviewError("product_host.evidence_review_handoff_unknown")
@@ -459,6 +416,62 @@ def _refuse_if_absent(error: ValueError, code: str) -> None:
     """
     if str(error).partition(":")[0] == "content_store.artifact_missing":
         raise PortfolioEvidenceReviewError(code) from error
+
+
+def _open_update_book(inputs: PortfolioEvidenceReviewInputs, selector: BookSelector) -> SealedBook:
+    """Validate one dated publication, its position basis and axis before opening its book."""
+    assert selector.update_task_id is not None
+    if inputs.read_update is None:
+        raise PortfolioEvidenceReviewError("product_host.evidence_review_update_not_configured")
+    assert selector.update_publication_hash is not None
+    body = inputs.read_update(selector.update_task_id, selector.update_publication_hash)
+    value = PortfolioUpdatePublication.model_validate(body.get("publication"))
+    if value.content_hash != selector.update_publication_hash:
+        raise PortfolioEvidenceReviewError(
+            "product_host.evidence_review_update_publication_mismatch"
+        )
+    history = tuple(
+        PortfolioUpdatePublication.model_validate(v)
+        for v in cast(list[object], body.get("history", []))
+    )
+    positions = portfolio_update_positions(value, history)
+    if positions.basis != selector.position_basis:
+        raise PortfolioEvidenceReviewError("product_host.evidence_review_update_basis_mismatch")
+    labels = body["listing_labels"]
+    if not isinstance(labels, dict) or len(labels) != len(positions.weights):
+        raise PortfolioEvidenceReviewError("product_host.evidence_review_update_axis_mismatch")
+    subject = PortfolioUpdateReviewSubject(
+        update_task_id=UUID(str(body["task_id"])),
+        update_publication_hash=value.content_hash,
+        position_basis=positions.basis,
+        position_hash=positions.position_hash,
+        checkpoint_hash=value.input_checkpoint_hash or value.checkpoint_hash,
+        strategy_package_id=str(body["strategy_package_id"]),
+        observed_through=value.observed_through.isoformat(),
+        formation_session=positions.schedule.formation_session.isoformat(),
+        entry_session=positions.schedule.entry_session.isoformat(),
+    )
+    formation = positions.schedule.formation_session
+    context = body.get("committee_context")
+    exact = {
+        "update_task_id": str(subject.update_task_id),
+        "update_publication_hash": subject.update_publication_hash,
+        "position_basis": subject.position_basis,
+    }
+    return SealedBook(
+        subject.book_authority,
+        None,
+        None,
+        None,
+        None,
+        subject,
+        positions,
+        tuple(labels),
+        temporal_statements=_installed_statements(inputs, formation, formation),
+        committee_context=context
+        if isinstance(context, dict) and context.get("review_selector") == exact
+        else None,
+    )
 
 
 def _open_experiment_book(
@@ -546,6 +559,13 @@ def _open_experiment_book(
         experiment_subject=subject,
         experiment_positions=positions,
         experiment_effective_n=1.0 / hhi if hhi > 0 else 0.0,
+        policy={
+            **{
+                key: cast(dict[str, object], document["portfolio"]).get(key)
+                for key in ("top_k", "tranches", "weight_rule")
+            },
+            "catalog_policy": cast(dict[str, object], document["portfolio"]).get("policy"),
+        },
         temporal_statements=(
             tuple(str(value) for value in cast(list[object], scope.get("statements") or []))
             if scope.get("status") == "RECORDED"

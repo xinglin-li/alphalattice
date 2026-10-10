@@ -290,17 +290,23 @@ def export_update_delivery(
     from alphalattice.interface.local_application.experiment_report import render_research_delivery
 
     publication = readback.get("publication")
+    subject = {
+        "update_task_id": str(request.update_task_id),
+        "update_publication_hash": request.update_publication_hash,
+        "position_basis": request.position_basis,
+    }
+    context = readback.get("committee_context")
     if (
         not isinstance(publication, dict)
         or publication["content_hash"] != request.update_publication_hash
         or request.position_basis is None
+        or readback.get("review_selector") != subject
+        or (context and context.get("review_selector") != subject)
     ):
         raise AuthoringError("research_delivery.update_subject_mismatch")
     selection: dict[str, object] = {
         "operation": "EXPERIMENT_DELIVERY_EXPORT",
-        "update_task_id": str(request.update_task_id),
-        "update_publication_hash": request.update_publication_hash,
-        "position_basis": request.position_basis,
+        **subject,
     }
     review_export: dict[str, Any] | None = None
     if request.review_publication_hash is not None:
@@ -328,11 +334,23 @@ def export_update_delivery(
         if request.delivery_question
         else "NOT_RECORDED",
         "sections": {
-            "positions": {"status": "PRESENT", "value": {"html": readback.get("html")}},
+            "positions": {
+                "status": "PRESENT",
+                "value": {
+                    "html": readback.get("html"),
+                    "basis": request.position_basis,
+                    **{
+                        k: readback[k]
+                        for k in ("position_rows", "schedule", "date_risk")
+                        if k in readback
+                    },
+                },
+            },
             "evidence_cro": evidence,
         },
         "summary": {"section_status": {"positions": "PRESENT", "evidence_cro": evidence["status"]}},
         "commentary": committee or [],
+        **({"committee_context": context} if context else {}),
         "commentary_provenance": {"submitted_by": "HOST", "attribution": "COMMITTEE_FLOOR"},
         "next_requests": {"reopen": selection},
         "claim": (

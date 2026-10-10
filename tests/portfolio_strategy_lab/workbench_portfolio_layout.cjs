@@ -8,7 +8,7 @@ const appDir = process.argv[2];
 const app = {page:'portfolio',tab:'holdings',session:'2024-08-12',holdingsSort:'listing-asc',holdingsQuery:'',holdingsPage:0,chart:'indexed'};
 const raw = {
   subject:{task_id:'book',title:'Book',input_date:'2024-08-01',cost_per_side:'5',support:{start:'2024-08-05',end:'2024-08-12'}},
-  position:{holdingCount:113},
+  position:{holdingCount:113,session:'2024-08-12'},
   holdings_basis:{basis:'HISTORICAL_REPLAY',comparison_basis:'PRECEDING_FORMATION',preceding_formation_session:'2024-07-29',formation_session:'2024-08-12'},
   holdings:[{listing_id:'A',ticker:'AAA',name:'Alpha',target:2,executed:99,current_weight:0.015,preceding_weight:0.01,weight_change:0.005,disposition:'INCREASED',sector:null,mapped:null},...Array.from({length:128},(_,i)=>({listing_id:`exit-${i}`,ticker:`EXIT${i}`,current_weight:0,weight_change:-0.01,sector:null,mapped:null}))],
   forward_holdings:{status:'RECORDED_FORWARD_HOLDINGS',available:true,basis:'CONDITIONAL_ESTIMATE',comparison_basis:'FORMATION_CLOSE_ESTIMATE',formation_session:'2024-08-19',entry_session:'2024-08-20',holding_count:1,holdings:[{listing_id:'A',ticker:'AAA',name:'Alpha',target:null,executed:null,current_weight:0.025,preceding_weight:0.02,weight_change:0.005,disposition:null,sector:null,mapped:null}]},
@@ -21,7 +21,7 @@ const Data = {
   rollingPerformance:()=>null, forwardPerformance:()=>raw.forward_performance,
   portfolioReading:()=>false, portfolioSession:()=>app.session,
 };
-let mode='historical', headDetails;
+let mode='historical', headDetails, headStanding;const statTiles=[];
 const html = (parts,...values) => parts.reduce((out,part,index)=>out+part+(index<values.length?String(values[index] ?? ''):''),'');
 const t = (word,args={}) => String(word).replace(/\{([^}]+)\}/g,(_,key)=>args[key] ?? '');
 const button = (label,action,value='',cls='') => `<button class="${cls}" data-action="${action}" data-value="${value}">${label}</button>`;
@@ -34,7 +34,7 @@ const c = {
   btnAttrs:(label,action,value,cls)=>button(label,action,value,cls),
   segBtn:(label,action,value,pressed)=>button(label,action,value,pressed?'on':'off'),
   icon:(name)=>`<i>${name}</i>`, picker:(id)=>`<select id="${id}"></select>`,
-  objectHead:(name,_meta,_actions,_state,_tools,details)=>{headDetails=details;return `<header class="object-head">${name}</header>`;},
+  objectHead:(name,_meta,_actions,state,_tools,details)=>{headDetails=details;headStanding=state;return `<header class="object-head">${name}</header>`;},
   badge:()=>'', codeWords:(value)=>value, link:()=>'',
   LiveViews:{bookWords:()=>'',bookTools:()=>'',researchTiming:()=>'',portfolioDetails:()=>'<div>Diagnostics</div>',metricAbsence:()=>null},
   LiveActivation:{ensure:()=>{},panel:()=>''},
@@ -42,13 +42,16 @@ const c = {
   Data,
   displayState:(_name)=>({order:'listing-asc',group:'none',props:{}}), setDisplay:()=>{}, displayOptions:()=>'',
   searchBar:()=>'<div class="search"></div>', detailSplit:(body)=>body,
-  table,pager:()=>'', pageOf:(values)=>({shown:values,start:0,page:0,pages:1}), stateLine:()=>'',
+  table,pager:()=>'', pageOf:(values)=>({shown:values,start:0,page:0,pages:1}), stateLine:(key,o={})=>`${key}:${o.word || ''}`,
   num:(value,kind)=>kind==='percent'&&value!=null?`${Number(value).toFixed(1)}%`:String(value??''),
   signed:(value,kind)=>`${value>0?'+':value<0?'−':''}${Math.abs(Number(value)).toFixed(2)} ${kind==='pp'?'pp':''}`.trim(),
   fmt:(value)=>String(value??''), count:(value)=>String(value??''), dateRange:(a,b)=>a&&b?`${a} — ${b}`:'', when:()=>'',
-  stat:(label,value,note)=>`<div class="stat"><span>${label}</span><b>${value}</b><small>${note}</small></div>`,
+  stat:(label,value,note)=>{const key=String(value).match(/data-risk="([^"]+)"/)?.[1];if(key)statTiles.push({key,value:String(value).replace(/<[^>]*>/g,'')});return `<div class="stat"><span>${label}</span><b>${value}</b><small>${note}</small></div>`;},
   hint:(term,note)=>`${term} ${note}`, emptyState:(line,way='')=>`<div class="section-empty" data-empty="elsewhere"><p>${line}</p>${way}</div>`,
-  joinMarkup:(parts,separator='')=>parts.join(separator), sectionHead:()=>'', kv:()=>'',
+  joinMarkup:(parts,separator='')=>parts.join(separator), sectionHead:()=>'', kv:rows=>rows.flat().join(' '),
+  panel:(title,_note,body)=>`<section>${title}${body}</section>`,
+  tr:cells=>cells.join(' '),
+  pctFraction:value=>value==null?'':`${Number(value)*100}%`,coded:value=>String(value),declaredCodeWord:()=>'',
   LEGEND:{fold:8,shown:6},
   figureBox:(title,drawing,options)=>`<section class="${options.cls}" data-box="figure">${title}${options.info}${drawing}</section>`,
   meter:(options)=>`<div class="composition">${options.slices.map(([label,value])=>`${label}:${value}`).join('|')}</div>`, infoMark:(note)=>`<span class="source">${note}</span>`,
@@ -61,9 +64,10 @@ const c = {
 library.context(c);
 vm.runInContext(fs.readFileSync(path.join(appDir,'pages-portfolio.js'),'utf8'),c,{filename:'pages-portfolio.js'});
 
-const render = () => c.PAGES.portfolio();
+const render = () => {statTiles.length=0;return c.PAGES.portfolio();};
 let markup=render();
 assert.equal(headDetails.subject,undefined,'the book head does not own the holdings date picker');
+assert.equal(headStanding,'');raw.review_standing={status:'NOT_REVIEWED'};render();assert.equal(headStanding,'NOT_REVIEWED:NOT_REVIEWED');delete raw.review_standing;
 assert.match(markup,/Holdings113/,'the Historical badge uses the owner current holding count, not the 129-row replay union');
 assert.equal(raw.holdings.length,129,'the fixture contains exit rows in addition to the owner holding count');
 assert.ok(markup.indexOf('class="tabs portfolio-tabs"') < markup.indexOf('class="holdings-toolbar"'));
@@ -99,6 +103,19 @@ assert.doesNotMatch(markup,/class="chart-under"><span>/);
 assert.doesNotMatch(markup,/holdingsSession|Holdings session/,'Forward does not offer the historical holdings-date picker');
 assert.match(markup,/Formation 2024-08-19 · Entry 2024-08-20/,'Forward shows its own read-only formation and entry dates');
 assert.match(markup,/Holdings1/,'Forward badge uses the owner holding count');
+raw.forward_holdings.date_risk={risk_status:'EVALUATED',risk_as_of:'2024-08-16',sessions_before_the_positions:1,covered_weight:0.8,volatility_per_session:0.01,volatility_annualized:0.16,systematic_share:0.6,specific_share:0.4,top_contributors:[{alias:'H1',name:'Alpha',weight:0.025,share:0.21}]};
+raw.forward_holdings.review_standing={status:'REVIEWED'};
+markup=render();
+assert.equal(headStanding,'REVIEWED:REVIEWED');delete raw.forward_holdings.review_standing;
+assert.ok(markup.includes(t('Positions for {date}',{date:raw.forward_holdings.entry_session})));
+assert.deepEqual(Object.fromEntries(statTiles.map(x=>[x.key,x.value])),{volatility_per_session:'1%',volatility_annualized:'16%',systematic_share:'60%',specific_share:'40%',covered_weight:'80%',sessions_before_the_positions:'1'});
+for(const value of ['2024-08-16','H1','Alpha','80%','21%'])assert.ok(markup.includes(value),value);
+raw.forward_holdings.date_risk={risk_status:'NOT_EVALUATED',reason:'risk_research.installed_risk_surface_absent',covered_weight:0.5};
+markup=render();
+assert.ok(markup.includes('data-date-risk="NOT_EVALUATED"') && markup.includes(raw.forward_holdings.date_risk.reason) && markup.includes('50%'));
+assert.ok(!markup.includes('data-risk="volatility_per_session"'));
+delete raw.forward_holdings.date_risk.covered_weight;markup=render();assert.ok(!markup.includes('data-risk="covered_weight"') && !markup.includes(t('Not recorded')));
+delete raw.forward_holdings.date_risk;
 assert.doesNotMatch(markup,/performance-surface/,'the zero-observation Forward view has no performance box wrapper');
 
 // Both modes use the existing figure/meter builder, with their own owner weights, sealed

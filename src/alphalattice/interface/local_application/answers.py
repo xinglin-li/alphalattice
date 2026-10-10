@@ -168,7 +168,7 @@ class TaskRecoveryAnswer(_Answer):
     subjects: list[dict[str, str]] | None = None
     """Every Evidence admission's exact book selector, admission time and selection provenance.
     A Task can serve multiple books; without an address selector the reader must choose."""
-    subject_context: dict[str, str] | None = None
+    subject_context: dict[str, Any] | None = None
     """The owner's recorded subject name, market date or Evidence cutoff, where retained."""
     current_scope: dict[str, Any] | None = None
     """The coverage run's admitted groups/issuers, nothing-filed and carried counts,

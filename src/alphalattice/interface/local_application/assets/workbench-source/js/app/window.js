@@ -9,7 +9,7 @@ const SIDEBAR = [
   {page: 'data', word: 'Data', icon: 'data', attention: () => LiveViews.dataNeeds()}, // N5 (the user, 2026-09-24: 并且可以把data移动到Studies上面): one row, its pages the place's tabs
   {group: 'studies', word: 'Studies', icon: 'lab', pages: ['factor', 'feature-research', 'foundation', 'alpha', 'alpha-compare', 'models', 'risk', 'portfolio', 'compare']}, // N6: the research chain's order -- the risk model before the portfolio it sizes (the user, 2026-09-24: risk应该在portfolio上面)
   {group: 'evidence', word: 'Evidence', icon: 'evidence', pages: ['books', 'evidence', 'evidence-stream', 'evidence-reading', 'handoff', 'report']},
-  {group: 'team', word: 'Team', icon: 'team', pages: ['team-sessions', 'team', 'team-participants', 'team-outputs', 'team-evidence']},
+  {group: 'team', word: 'Team', icon: 'team', pages: ['team-sessions', 'team', 'team-committee', 'team-participants', 'team-outputs', 'team-evidence']},
   {page: 'history', word: 'History', icon: 'history'},
 ];
 const SIDEBAR_GROUPS = {};
@@ -17,7 +17,7 @@ for (const item of SIDEBAR) if (item.group) for (const page of item.pages) SIDEB
 /* param names the addressed object; keep retains a list view on an object, and also adds pages without their own tab.
  * remember restores the last list view; the dock stops at the list while the path names the selected tab. */
 const PAGE_TABS = {books: {tabs: ['evidence', 'evidence-stream', 'evidence-reading', 'handoff', 'report'], param: 'review_selector'},
-  'team-sessions': {tabs: ['team', 'team-participants', 'team-outputs', 'team-evidence'], param: 'team'},
+  'team-sessions': {tabs: ['team', 'team-committee', 'team-participants', 'team-outputs', 'team-evidence'], param: 'team'},
   goals: {tabs: ['goal', 'goal-conversation', 'goal-results'], param: 'goal'},
   factor: {tabs: ['factor', 'feature-research'], words: {factor: 'Experiments'}, remember: true},
   alpha: {tabs: ['alpha', 'alpha-compare', 'models'], keep: ['alpha-compare'], words: {alpha: 'Experiments'}, remember: true},
@@ -714,7 +714,7 @@ const Window = (() => {
     if (set.remember && readPreference('tab:' + list) !== app.page) savePreference('tab:' + list, app.page);
     const place = SIDEBAR.find((x) => x.page === list)?.word || pageWord(list);
     const counted = (page) => { const n = TAB_COUNT[page]?.(); return typeof n === 'number' ? count(n) : ''; }; // a tab with nothing says 0 (a review, 2026-09-24)
-    return tabStrip(t(place), set.tabs.map((page) => ({word: t(set.words?.[page] || pageWord(page)), on: page === app.page, action: 'go', value: page, count: counted(page)})), 'page-tabs');
+    return tabStrip(t(place), set.tabs.filter(page => page !== 'team-committee' || LiveTeam.hasCommittee?.()).map((page) => ({word: t(set.words?.[page] || pageWord(page)), on: page === app.page, action: 'go', value: page, count: counted(page)})), 'page-tabs');
   }
   return {render, afterRender, renderSide, renderTop, syncFrame, syncRoutes, pageTabs, toggleSide, toggleGroup, sideOpen, closeSideOverlay, openInspector, detailPane, inspectorTitle, setInspectorBody, refreshInspectorHeader, closeInspector, toggleInspector, inspectorOpen, inspectorMode, detailOpen, openedBy, closeDetail, clearDetailTrail, markDetail, notePress, trailMark, trailAfter, backTo, back, backMarkup, returnFocus, focusAfterPaint, onNavigate, bind, docked, railed, pane, layout, navMode, setNavigation, dockSide, setDockSide, zoomLevel, setZoom, stepZoom, toggleWorkspace, toggleProduct, toggleRailGroup, toggleRecent, about, hotkeys};
 })();

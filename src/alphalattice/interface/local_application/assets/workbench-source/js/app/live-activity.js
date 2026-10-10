@@ -20,7 +20,7 @@ const LiveActivity = (() => {
   const scopeOf = () => S.following || S.paused;
   const goalScope = () => scopeOf() === 'latest' || scopeOf()?.startsWith('goal:');
   const followedTasks = () => goalScope() ? (G.body?.record?.tasks || []).map(v => v.task_id) : scopeOf() ? [scopeOf()] : [];
-  const followWord = () => t(S.paused ? 'Following paused' : S.following === 'latest' ? 'Following latest' : goalScope() ? 'Following this Goal' : S.following ? 'Following' : 'Pinned');
+  const followWord = () => S.paused ? t('Following paused') : S.following === 'latest' ? t('Following latest') : goalScope() ? t('Following this Goal') : '';
   // `S.epoch` is the store whose ordinals the retained groups, watermark and cursor belong to.
   /* The declared Team event kinds the feed can name in words; any other kind is shown as declared.
    * The raw kind and payload stay in the row's exact observations. */

@@ -523,7 +523,7 @@ body[data-page] .fv-step {
   gap: var(--space-1);
   min-width: 0;
 }
-.ui-log-rail>div:last-child {
+.ui-log-rail>div:last-child:not(:only-child) {
   text-align: right;
 }
 .ui-log-rail span {

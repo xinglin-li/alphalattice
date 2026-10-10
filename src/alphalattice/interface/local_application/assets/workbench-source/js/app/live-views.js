@@ -127,19 +127,12 @@ const LiveViews = (() => {
     const ways = html`<div class="flow">${row.raw.status === 'SUCCEEDED' && row.raw.kind.endsWith('-development') ? btn(t('Continue as a new draft'), 'research-continue', row.task_id, 'button primary') : ''}${btn(t('Copy reference'), 'history-copy', id, 'button compact')}</div>`;
     Window.openInspector({mode: 'object', readHeader: () => { const current = Data.history().find(x => x.id === id) || row; return {title: savedName(current), kind: t('Saved object')}; }, title: name, kind: t('Saved object'), by: ['history-open', id], body: html`<section class="inspector-section">${kv(rows, 'side-props')}<p class="caption">${note}</p>${ways}${codeRef(t('Exact reference'), id, 'text')}</section>`});
   }
-  /* The research team in context, from the retained feed alone: the question as the Team scene
-   * says it, the latest contribution and the unresolved objections; without a retained session an
-   * honest entry, never a manufactured active team. */
-  /* An exact object's way to its collaboration: the retained sessions whose declared references
-   * name it. One is an entry to that session; several are offered as the matching candidates,
-   * each its own entry, so no unrelated newest session is shown in their place; none is said. */
+  /* Exact owner Committee context and retained collaboration references; never a recency guess. */
   function collaborationRows(...refs) {
     if (typeof LiveTeam === 'undefined' || !LiveTeam.sessionsNaming) return [];
     const named = LiveTeam.sessionsNaming(...refs);
     if (!named.length) return [{icon: 'team', label: t('Team session'), value: t('none names this object')}];
-    // one row per session that names the object (round 14): its label, the specialists in it (the way in by role,
-    // the user 2026-09-26), its size, the way to it
-    return named.map((s) => ({icon: 'team', label: t('Team session'), value: html`<span><span class="mono">${LiveTeam.sessionLabel(s.id)}</span>${(s.roles || []).length ? html` · ${s.roles.map(LiveTeam.roleName).join(', ')}` : ''} · ${countText(s.entries, '{n} exchange', '{n} exchanges')}</span>`, action: {name: 'team-open', value: s.id}, note: s.question ? html`<span class="owner-text line-cut" data-tip="@overflow">${s.question}</span>` : ''}));
+    return named.map((s) => ({icon: 'team', label: t(s.committee ? 'Committee' : 'Team session'), value: html`<span><span class="mono">${LiveTeam.sessionLabel(s.id)}</span>${(s.roles || []).length ? html` · ${s.roles.map(LiveTeam.roleName).join(', ')}` : ''}${s.committee ? html` · ${codeWords(s.committee.verdict?.outcome || s.committee.stage)}` : html` · ${countText(s.entries, '{n} exchange', '{n} exchanges')}`}</span>`, ...(s.committee ? {to: {page: 'team-committee', extra: {team: s.id, committee: s.committee.update_task_id}}} : {action: {name: 'team-open', value: s.id}}), note: s.question ? html`<span class="owner-text line-cut" data-tip="@overflow">${s.question}</span>` : ''}));
   }
   /* The workspace chooser of the template: the workspace this service opened, and the two ways
    * to another one -- an empty folder the product is started on (its first page prepares it),
@@ -370,7 +363,8 @@ const LiveViews = (() => {
     const prep = Data.preparation();
     const rows = Data.runsOf('task').filter((r) => stateMoving(r.state)).slice(0,LOBBY.shown).map((r) => {
       const subject=LiveTasks.subjectContext?.(r.id);
-      return runRow(subject?.name ? {...r,name:subject.name,markup:null} : r, {pinned:true,until:r.id===prep?.task_id ? prep.progress?.retry_after_at || null : null,word:r.id===prep?.task_id ? t('Preparing the workspace') : undefined,columns:['id','kind','date','verified'],props:['',codeWords(r.kind),subject?.date || '',html`${count(r.verified[0])} / ${count(r.verified[1])} ${t('verified')}`]});
+      const name=I18N.zh && subject?.name_zh || (subject?.name ? t(subject.name) : bookWords(subject?.policy));
+      return runRow(name ? {...r,name,markup:null} : r, {pinned:true,until:r.id===prep?.task_id ? prep.progress?.retry_after_at || null : null,word:r.id===prep?.task_id ? t('Preparing the workspace') : undefined,columns:['id','kind','date','verified'],props:['',codeWords(r.kind),subject?.date || '',html`${count(r.verified[0])} / ${count(r.verified[1])} ${t('verified')}`]});
     });
     if(tasksOnly)return rows;
     // U70 (V452, OP19): the person's first use, run by their agent -- the Host's FIRST_USE item while its delegation holds: the
@@ -406,7 +400,7 @@ const LiveViews = (() => {
    * it holds something; a Home with nothing in any shows the one empty state and its way. */
   function homeGroups(unprepared) {
     const decide = decisionRows(), running = runningGroup(), forward = LiveActivation.forwardRows(), recent = Data.recent(8).map((r) => recordRow(r)), closure = LiveTasks.unrecoverableActions();
-    if (!decide.length && !String(running).trim() && !forward.length && !recent.length && !closure) return emptyState(t('No saved research yet.'), unprepared ? '' : link(t('New experiment'), 'lab', 'button primary'), 'page-empty');
+    if (!decide.length && !String(running).trim() && !forward.length && !recent.length && !closure) return html`${stackSlot('homeRunning','')}${emptyState(t('No saved research yet.'), unprepared ? '' : link(t('New experiment'), 'lab', 'button primary'), 'page-empty')}`;
     // V593 (U81): what runs forward, after what runs now (LiveActivation reads it from its owners)
     return html`${decisionGroup(decide)}${closure}${stackSlot('homeRunning',running)}${group(t('Running forward'), forward)}${group(t('Recently recorded'), recent, undefined, recent.length, '', '', LOBBY.shown)}`;
   }
@@ -505,9 +499,11 @@ const LiveViews = (() => {
   }
   function bookFactsSections() {
     const s = Data.subject(), raw = Data.raw(), doc = raw.declaration || {}, src = raw.source || {};
+    const committee=Data.performanceMode?.()==='forward' ? raw.forward_holdings?.committee_context : null, collaboration=collaborationRows(s.task_id,s.result_hash,committee?.update_task_id,committee?.review_selector?.update_publication_hash,committee);
     if (s.source_kind === 'INSTALLED_RESULT') {
       const clock=raw.positionClock || {}, policy=raw.bookPolicy || {};
       return [
+        {title:t('Team'),body:kv(sourceRows(collaboration))},
         {title:t('Sources'),body:html`${kv([[t('Strategy'),s.title],[t('Exact result'),html`<span class="mono">${s.result_hash}</span>`],[t('Source input'),html`<span class="mono">${s.input_hash || ''}</span>`],[t('Source status'),codeWords(src.status || '')]])}${(src.alpha_tasks || []).map(v=>feature('branch',v.component_id,html`<span class="mono">${shortRef(v.task_id)}</span>`,link(t('Open Alpha study'),'alpha','button compact',{study:v.task_id})))}${src.reason ? html`<p class="caption">${src.reason}</p>` : ''}`},
         {title:t('Research timing'),body:html`${kv([[t('Input data through'),s.input_date || ''],[t('Formation date'),s.session],[t('Decision phase'),codeWords(clock.decision_phase || '')],[t('Execution session'),clock.entry_session || ''],[t('Outcome end session'),clock.holding_end_session || '']])}${temporalAll(raw.temporalScope)}<p class="caption">${t('The date selector is the formation date, not the execution date. Changing it reads saved weights and runs nothing.')}</p>`},
         {title:t('Frozen book policy'),body:html`${kv([[t('Weight rule'),weightWords(doc.weight_rule)],[t('Names per sleeve'),doc.top_k],[t('Sleeves'),doc.tranches],[t('Exit rank'),doc.exit_rank],[t('Sleeve notional'),codeWords(policy.sleeve_notional || '')],[t('Initial staging'),codeWords(policy.initial_staging || '')],[t('Review phase'),policy.review_phase ?? ''],[t('Risk role'),codeWords(raw.riskDisposition || '')]])}<p class="caption">${t('The saved HTML is the original whole report. The dated JSON contains exact weights and targets; legacy generic sleeve wording does not replace this frozen policy.')}</p>`},
@@ -545,7 +541,7 @@ const LiveViews = (() => {
       {icon: 'archive', label: t('Foundation'), value: src.foundation_admission_hash ? html`<span class="mono">${short(src.foundation_admission_hash, SHORT.hash)}</span>` : t('none recorded'), to: src.foundation_admission_hash ? {page: 'foundation', extra: {foundation: src.foundation_admission_hash}} : null},
       {icon: 'cube', label: t('Exact input'), value: html`${s.input_id} · ${cutoffText(inputState(s.input_hash))}`},
       {icon: 'history', label: t('Continued from'), value: src.origin_task_id ? html`<span class="mono">${shortRef(src.origin_task_id)}</span>` : t('authored directly'), to: src.origin_task_id ? {page: 'portfolio', extra: {book: src.origin_task_id, session: ''}} : null},
-      ...collaborationRows(s.task_id, s.result_hash),
+      ...collaboration,
     ];
     const limits = (raw.limitations || []).length ? html`<div class="card-list">${(raw.limitations || []).map((v) => objectRow({lead: statusDot('metadata', t('Recorded limitation')), name: typeof v === 'string' ? coded(v) : html`<span class="mono">${JSON.stringify(v)}</span>`, cls: 'limit-row'}))}</div>` : '';
     return [{title: t('Sources'), body: kv(sourceRows(rows))}, limits ? {title: t('Recorded limitations'), body: limits} : null, {title: t('This study'), body: facts}, {title: t('Sources and continuation'), body: sources}, {title: t('Documents'), body: codeRef(t('Read the exact declaration (JSON)'), doc)}].filter(Boolean); // round 92: the book's declaration as a document, as the studies' Facts carry theirs

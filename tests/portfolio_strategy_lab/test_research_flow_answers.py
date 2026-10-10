@@ -1448,6 +1448,10 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(li
     latest = running["latest_update"]
     assert latest["task_id"] == str(task.task_id) and latest["lifecycle"] == "SUCCEEDED"
     assert latest["target_session"] == plan.target.isoformat()
+    assert (
+        latest["positions_session"]
+        == publication.pending_proposal.schedule.entry_session.isoformat()
+    )
     assert latest["claim"] == publication.claim
     assert latest["verification"] == "METADATA_ONLY_SELECTED_READBACK_VERIFIES_DESCENDANTS"
     assert latest["review_selector"] == {

@@ -699,17 +699,17 @@ const LiveWorkspace = (() => {
     return html`<article class="fv-log-row prep-unit${row.attention ? ' attention' : ''}" data-listing-key="${row.listing_id}"><div class="fv-log-time"><time datetime="${row.noted}">${clockOf(row.noted)}</time><span class="fv-log-dot" aria-hidden="true"></span></div><div class="fv-log-entry"><strong data-tip="${row.listing_id}">${row.symbol}</strong><span class="fv-log-object">${row.steps.map((s,i)=>html`${i ? ' → ' : ''}${stepText(s)}`)}</span></div></article>`;
   }
   /* The Feature owner's step and counters, bound to this Task; no per-listing units. */
-  function featureAside(spec, w, state, statusText) {
+  function featureAside(spec, w, state, statusText, current) {
     const bound=w && w.availability==='BOUND';
     const items=bound ? [[t('Feature owner step'),t(stageOf(w.stage_id).word)],[t('Units'),html`${Number(w.completed_units).toLocaleString('en-US')} / ${Number(w.total_units).toLocaleString('en-US')} ${t(w.unit_name)}`],[t('Current item'),w.current_item ? html`<span class="mono">${short(w.current_item,SHORT.id)}</span>` : ''],...Object.entries(w.counters || {}).map(([k,n])=>[k.replaceAll('_',' '),Number(n).toLocaleString('en-US')])] : [];
-    const rail=html`<section class="ui-log-rail prep-log-rail"><div><span>${t('Feature owner')}</span><strong>${bound ? t('reported at {time}',{time:when(w.updated_at)}) : w?.availability==='NOT_CURRENT' ? t('last report is of an earlier step') : t('no report yet')}</strong></div>${stateMoving(spec.view()?.lifecycle) ? html`<div><span>${t('Reading')}</span><strong>${W.A.follow ? t('Following latest') : t('Reading held')}</strong></div>` : ''}</section>`;
+    const rail=W.logRail({label:t('Feature owner'),value:bound ? t('reported at {time}',{time:when(w.updated_at)}) : w?.availability==='NOT_CURRENT' ? t('last report is of an earlier step') : t('no report yet')},state,W.moving(spec.view(),state,current));
     return W.factsShell(spec,{label:t('Feature work'),title:t('Feature work'),caption:t('The Feature owner\'s own step and counters, bound to this Task; no per-listing units are reported here'),facts:bound ? kv(items) : html`<p class="caption">${statusText}</p>`,rail});
   }
   /* The stage's own recent activity: listing units for market data; the Feature owner's step
    * for Features; the stage as one unit elsewhere. Retained rows of another execution or
    * stage are history, said so, never current work. */
   function stageAside(b, v, state, shown, current) {
-    const la=b.listing_activity, log=W.A.log, moving=current && v.lifecycle==='RUNNING' && v.liveness.status==='OBSERVED' && !state.stale;
+    const la=b.listing_activity, log=W.A.log, moving=W.moving(v,state,current);
     if(shown==='prepare_data') {
       const snapshot=log?.snapshot, rows=log ? [...log.rows.values()] : [];
       const history=Boolean(la && la.availability==='NOT_CURRENT') || !current;
@@ -719,7 +719,7 @@ const LiveWorkspace = (() => {
       const empty=html`<p class="caption prep-log-empty">${history ? t('No listing unit was retained for this stage.') : t('Listings appear here as the data owner records each unit; a chunk of parallel fetches completes as several units at once.')}</p>`;
       return W.logShell(PREPARATION,{label:t('Recent listing activity'),title:t('Recent listing activity'),caption:t('Units the data owner recorded · newest last · a bounded snapshot, not a complete history'),history,moving,rows:rows.map(listingRow),empty,status,rail});
     }
-    if(shown==='prepare_features') return featureAside(PREPARATION,b.work_progress,state,t(b.progress?.status ? 'The Feature owner reports its status only: {status}.' : 'The Feature owner has not reported a step yet.',{status:codeWords(b.progress?.status || '')}));
+    if(shown==='prepare_features') return featureAside(PREPARATION,b.work_progress,state,t(b.progress?.status ? 'The Feature owner reports its status only: {status}.' : 'The Feature owner has not reported a step yet.',{status:codeWords(b.progress?.status || '')}),current);
     return null; // the stage's retained record
   }
   const PREPARATION={key:'preparation',page:'overview',title:'Preparation work',railLabel:'Preparation stages; select to inspect, not execute',factsLabel:'Preparation facts',steps:PREPARATION_STEPS,lines:stageLines(PREPARATION_STEPS.map(([id])=>id)),fallbackLine:'Continuing the reported preparation stage.',
@@ -730,7 +730,7 @@ const LiveWorkspace = (() => {
   function scene(b, v, state) {
     const life=v.lifecycle, id=v.task_id;
     const successor=Data.tasks().find(r=>r.task_id===b.superseded_by_task_id);
-    const caption=successor ? html`${t(stateOf(successor.lifecycle).word)}${successor.last_activity_at ? html` · ${when(successor.last_activity_at)}` : ''}` : '';
+    const caption=successor ? t(successor.last_activity_at ? 'Its successor: {state} at {time}' : 'Its successor: {state}',{state:t(stateOf(successor.lifecycle).word),time:successor.last_activity_at ? when(successor.last_activity_at) : ''}) : '';
     const history=b.selected && b.latest_task_id && id!==b.latest_task_id ? banner(t('Historical Task'),caption,'neutral',b.superseded_by_task_id ? link(t('Continued by Task {task}',{task:short(b.superseded_by_task_id,SHORT.id)}),'overview','button compact',{preparation:b.superseded_by_task_id}) : link(t('Open the current preparation'),'overview','button compact',{preparation:''})) : '';
     const by=Object.fromEntries(v.actions.map(a=>[a.action,a])), cancel=by.CANCEL;
     const stale=state.stale;
@@ -870,15 +870,15 @@ const LiveWorkspace = (() => {
     return html`<article class="fv-log-row prep-unit${r.attention ? ' attention' : ''}" data-listing-key="${r.listing_id}"><div class="fv-log-time"><time datetime="${r.updated_at}">${clockOf(r.updated_at)}</time><span class="fv-log-dot" aria-hidden="true"></span></div><div class="fv-log-entry"><strong data-tip="${r.listing_id}">${r.symbol}</strong><span class="fv-log-object">${unitText(r)}</span>${extra.map(x=>html`<span class="fv-log-by">${x}</span>`)}</div></article>`;
   }
   function updateAside(b, v, state, shown, current) {
-    const c=b.cycle, m=b.maintenance, w=b.work_progress, log=W.A.log, moving=current && v.lifecycle==='RUNNING' && v.liveness.status==='OBSERVED' && !state.stale;
+    const c=b.cycle, m=b.maintenance, w=b.work_progress, log=W.A.log, moving=W.moving(v,state,current);
     if(shown!=='maintain_data_feature') return null;
-    if(c && w?.availability==='BOUND' && w.stage_id!=='market_data_increment' && c.phase!=='completed') return featureAside(UPDATE,w,state,t('The Feature owner has not reported a step yet.'));
+    if(c && w?.availability==='BOUND' && w.stage_id!=='market_data_increment' && c.phase!=='completed') return featureAside(UPDATE,w,state,t('The Feature owner has not reported a step yet.'),current);
     // No units of this cycle's own: not admitted yet while it moves; none recorded once it
     // settled (a transition brings its members' data through its own path, and a cycle whose
     // data was current fetched nothing) -- the change set above is then the cycle's record.
-    const unitsShell=(word,text)=>W.factsShell(UPDATE,{label:t('Recent listing activity'),title:t('Recent listing activity'),caption:t('Units the maintenance runner recorded for this update'),facts:html`<p class="caption">${text}</p>`,rail:html`<section class="ui-log-rail prep-log-rail"><div><span>${t('Maintenance units')}</span><strong>${word}</strong></div><div><span>${t('Reading')}</span><strong>${t('Following latest')}</strong></div></section>`});
+    const unitsShell=(word,text)=>W.factsShell(UPDATE,{label:t('Recent listing activity'),title:t('Recent listing activity'),caption:t('Units the maintenance runner recorded for this update'),facts:html`<p class="caption">${text}</p>`,rail:W.logRail({label:t('Maintenance units'),value:word},state,moving)});
     if(!m && c && (c.phase==='completed' || ['completed','noop','cancelled'].includes(c.status))) return unitsShell(t('none recorded'),t('This cycle recorded no maintenance units of its own: its market data came through another owner\'s path (a membership transition) or needed no fetch. What changed is the cycle\'s change set, read above; nothing of another update is shown here.'));
-    if(!m) return featureAside(UPDATE,w,state,t(c ? 'The maintenance runner has not admitted its listing units yet ({phase}).' : 'The maintenance cycle has not been admitted yet; listing units appear as the runner records them.',{phase:t(PHASE_TEXT[c?.phase] || c?.phase || '')}));
+    if(!m) return featureAside(UPDATE,w,state,t(c ? 'The maintenance runner has not admitted its listing units yet ({phase}).' : 'The maintenance cycle has not been admitted yet; listing units appear as the runner records them.',{phase:t(PHASE_TEXT[c?.phase] || c?.phase || '')}),current);
     if(m.availability && m.availability!=='AVAILABLE') return unitsShell(t(m.availability==='UNREADABLE' ? 'unreadable' : 'not available'),html`${t(m.availability==='UNREADABLE' ? 'The maintenance units recorded for this update could not be read; nothing of another update is shown in their place.' : 'The maintenance units recorded for this update are not available in this workspace; nothing of another update is shown in their place.')} ${said(m.failure_code)}`);
     const rows=log ? [...log.rows.values()] : [], history=!current || !stateMoving(v.lifecycle);
     const latest=rows.at(-1), snapshot=log?.snapshot;

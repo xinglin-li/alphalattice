@@ -1,36 +1,22 @@
-/* The research team as observed: what the store holds about each declared native session --
- * the foreground PM's assignment, the participants a host hook named, the permitted messages
- * between them, the product observations that name the same qualified references, and what
- * their owners recorded. The declared events are read from their owner (`/api/activity/external`,
- * the newest 200 of that kind whatever the product recorded between them, round 88) and kept
- * fresh by the feed's arrivals; the product facts stay the feed's retained groups. Nothing is
- * polled twice or run from here.
- *
- * Every line keeps its source label. A hook callback is an observation labelled CODEX_HOOK, not
- * host authentication; a message is actor-declared text; neither proves an agent finished, a
- * Task completed or an assessment was accepted. Product facts attach only through qualified
- * references (a Task id, a 64-hex hash, a History entry id) that both sides name exactly;
- * ordinary words are declarations. Nothing here infers that one operation corrected another.
- * A declared reference is discovered, resolved and verified as three different things: History
- * or the Task list can name a candidate object; only the owner's own readback verifies it. */
+/* Sessions retain declared native identity and member text. Hooks and statements are
+ * observations, never proof of completion. Product facts join through exact Task, hash or
+ * History references and owner readbacks. One external feed serves each store epoch; its
+ * arrivals refresh existing readers without another poll. */
 const LiveTeam = (() => {
   const KINDS = {NATIVE_SUBAGENT_START_HOOK: 'hook', NATIVE_SUBAGENT_STOP_HOOK: 'hook', NATIVE_COORDINATION_MESSAGE: 'message', NATIVE_AGENT_USAGE: 'usage'};
   // U25: the decision notes (决策笔记) a member writes are messages of their own kinds, in the conversation
-  const MESSAGE_KINDS = {assignment: ['Assignment', 'arrow'], question: ['Question', 'info'], answer: ['Answer', 'file'], objection: ['Objection', 'warning'], pm_response: ['PM response', 'user'], plan: ['Plan', 'flag'], decision: ['Decision', 'check'], dead_end: ['Dead end', 'ban'], surprise: ['Surprise', 'info'], session_bound: ['Session bound', 'check']};
+  const MESSAGE_KINDS = {assignment: ['Assignment', 'arrow'], question: ['Question', 'info'], answer: ['Answer', 'file'], objection: ['Objection', 'warning'], pm_response: ['PM response', 'user'], plan: ['Plan', 'flag'], decision: ['Decision', 'check'], dead_end: ['Dead end', 'ban'], surprise: ['Surprise', 'info'], session_bound: ['Session bound', 'check'], stance: ['Stance', 'flag'], challenge: ['Challenge', 'warning'], reply: ['Reply', 'arrow'], ruling: ['Ruling', 'user'], person_answer: ['Person answer', 'user'], verdict: ['Verdict', 'file']};
   const NOTE_KINDS = new Set(['plan', 'decision', 'dead_end', 'surprise']);
   const CHANNELS = {CODEX_HOOK: 'Codex hook input · not host-authenticated', CLAUDE_CODE_HOOK: 'Claude Code hook input · not host-authenticated', ACTOR_DECLARED: 'Actor-declared text · not host-verified', PRODUCT_ACCEPTED_ANSWER: 'Accepted structured answer · product record, not a native spoken turn'};
   const PM_ROLE = 'research_lead';
   /* Product identity fields an operation may name; anything else in a subject is not a reference. */
   const PRODUCT_KEYS = ['case_hash', 'task_id', 'experiment_task_id', 'publication_task_id', 'existing_task_id', 'update_task_id', 'left_task_id', 'right_task_id', 'development_task_id', 'experiment_plan_hash', 'plan_hash', 'result_hash', 'cached_result_hash', 'review_publication_hash', 'analysis_publication_hash', 'candidate_hash', 'report_hash', 'export_hash', 'foundation_admission_hash', 'publication_hash', 'answer_reference', 'bundle_reference'];
   const MAX_RESOLVED = 64;
-  /* The section's views: the sessions' lobby and a session's two tabs, its conversation and what the
-   * product observed of its references (C4: Participants folded into the conversation's filter). */
-  const PAGES_SET = new Set(['team', 'team-participants', 'team-outputs', 'team-evidence', 'team-sessions']);
+  /* A session's shared head serves its conversation, committee and recorded views. */
+  const PAGES_SET = new Set(['team', 'team-committee', 'team-participants', 'team-outputs', 'team-evidence', 'team-sessions']);
   const onTeam = () => PAGES_SET.has(app.page);
-  /* The declared sessions' own readback (round 88): the feed's tail is the newest rows of every
-   * kind, so two hundred of the product's own operations pushed a team's exchanges out of the
-   * workroom ("no main PM declared"). The owner read walks one kind; it is read once per store
-   * epoch, on the first paint that needs the scene, and merged with what the feed brings live. */
+  /* The external reader isolates native rows from the product feed's tail. Read once per
+   * store epoch, it merges owner-retained rows with live arrivals. */
   const EXTERNAL_LIMIT = 200, EXTERNAL_KEEP = 400;
   const X = {items: new Map(), epoch: null, fetching: null, error: '', read: false, more: false, oldest: null, keep: EXTERNAL_KEEP};
   function ensureExternal() {
@@ -82,7 +68,7 @@ const LiveTeam = (() => {
   // the reading grammar: to the minute (an exchange's exact stamp stays on the element's title)
   const clock = (iso) => when(iso); // N3 (law 133): one clock -- the same instant reads as the Sessions list reads it
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, HASH = /^[0-9a-f]{64}$/i;
-  const selection = () => ({session: hashParams().get('team') || '', actor: hashParams().get('actor') || '', event: hashParams().get('event') || ''});
+  const selection = () => ({session: hashParams().get('team') || '', actor: hashParams().get('actor') || '', event: hashParams().get('event') || '', committee: hashParams().get('committee') || '', point: hashParams().get('committee_point') || ''});
   const ROLE_NAMES = {research_lead: 'Main PM', alphalattice_data: 'Data', alphalattice_factor: 'Factor & Foundation', alphalattice_alpha: 'Alpha Modeling', alphalattice_risk: 'Risk Modeling', alphalattice_portfolio: 'Portfolio', alphalattice_evidence_analyst: 'Alternative Analyst', alternative_analyst: 'Alternative Analyst', alphalattice_cro: 'CRO', independent_cro: 'CRO'};
   const roleName = (role) => (role ? t(ROLE_NAMES[role] || role) : '');
   /* A qualified product reference, or null: a Task id, a 64-hex hash or a History entry id. */
@@ -108,6 +94,7 @@ const LiveTeam = (() => {
     return found;
   }
   /* ---- the scene, derived from the retained feed ---- */
+  const sessionState = id => ({id, participants: new Map(), entries: new Map(), byEvent: new Map(), references: new Set(), producers: new Set(), facts: [], unknownKinds: [], goals: new Set(), last: 0});
   function scene(fullRecord = false) {
     const sessions = new Map(), unknown = [];
     const external = externalItems(), scopes = new Map(), contributors = new Map();
@@ -120,7 +107,7 @@ const LiveTeam = (() => {
         contributors.get(key).add(sub.native_agent_id);
       }
     }
-    const session = (id) => { if (!sessions.has(id)) sessions.set(id, {id, participants: new Map(), entries: new Map(), byEvent: new Map(), references: new Set(), producers: new Set(), facts: [], unknownKinds: [], goals: new Set(), last: 0}); return sessions.get(id); };
+    const session = (id) => { if (!sessions.has(id)) sessions.set(id, sessionState(id)); return sessions.get(id); };
     const participant = (s, id, role) => { if (!s.participants.has(id)) s.participants.set(id, {id, roles: new Set(), messages: [], hooks: [], usage: new Map(), pins: null, last: 0}); const p = s.participants.get(id); if (role) p.roles.add(role); return p; };
     for (const item of external) {
       const p = item.payload || {}, sub = p.subject || {};
@@ -371,7 +358,7 @@ const LiveTeam = (() => {
   }
   const readableAnswer = (s, m) => m?.item ? productAcceptedAnswer(s, m) : m && (acceptedArtifact(s, m) || acceptedRelay(s, m));
   const answerObservation = (m) => m?.item?.observation_id || m?.id;
-  const selectedAnswerRecord = (s, id) => s?.entries.get(id) || s?.facts.find((f) => f.item.observation_id === id && productAcceptedAnswer(s, f));
+  const selectedAnswerRecord = (s, id) => s?.entries.get(id) || s?.facts.find((f) => f.item.observation_id === id && productAcceptedAnswer(s, f)) || (s && S.committee?.session === s.id && S.committee.task === committeeTask(s) && S.committee.body ? committeeEntries(S.committee.body).find(e => e.id === id) : null);
   const acceptedArtifacts = (s) => Data.uniqueRows([...s.entries.values()].filter((e) => !e.replayOf && acceptedArtifact(s, e)), (e) => e.subject.answer_reference).sort((a, b) => b.ordinal - a.ordinal);
   const timeKindWords = (e) => t(e.timeKind === 'TASK_ADMISSION' ? 'Task admission time' : e.timeKind === 'PRODUCT_ACCEPTED_AT' ? 'Answer acceptance time' : e.timeKind === 'BRIDGE_RECEIVED' ? 'bridge receipt time' : 'time kind not declared');
   function identityNote(e) {
@@ -381,7 +368,7 @@ const LiveTeam = (() => {
     return bits.length ? html`<p>${bits}</p>` : '';
   }
   // T4 (the Team review, 2026-09-24): an exchange's record read in place is a grid of what was recorded -- its receipt, its channel, its identities -- not a sentence of dots
-  const sourceRows = (e) => [[acceptedAnswer(e) && ['TASK_ADMISSION', 'PRODUCT_ACCEPTED_AT'].includes(e.timeKind) ? timeKindWords(e) : t('Received'), html`${clock(e.at)} <span class="muted">· ${timeKindWords(e)}</span>`], [t('Channel'), t(CHANNELS[e.channel] || 'input channel not declared')], [t('Observation'), html`<span class="mono">${short(e.id)}</span>`], [t('Declared event'), e.declaredEvent ? html`<span class="mono">${short(e.declaredEvent)}</span>` : t('not declared')]];
+  const sourceRows = (e) => e.ownerFloor ? [[t('Recorded'), clock(e.at)], [t('Committee'), referenceLine(e.reference)]] : [[acceptedAnswer(e) && ['TASK_ADMISSION', 'PRODUCT_ACCEPTED_AT'].includes(e.timeKind) ? timeKindWords(e) : t('Received'), html`${clock(e.at)} <span class="muted">· ${timeKindWords(e)}</span>`], [t('Channel'), t(CHANNELS[e.channel] || 'input channel not declared')], [t('Observation'), html`<span class="mono">${short(e.id)}</span>`], [t('Declared event'), e.declaredEvent ? html`<span class="mono">${short(e.declaredEvent)}</span>` : t('not declared')]];
   /* The feed keeps a bounded excerpt. Only its selected accepted record asks the sealed
    * owner for the whole contribution; one selection is held, never another history cache. */
   const answerBindings = (s, m) => {
@@ -519,17 +506,9 @@ const LiveTeam = (() => {
     const groups = new Map(s.facts.filter((f) => f.group.task_id).map((f) => [f.group.key, f.group]));
     return [...groups.values()].map((g) => { const f = LiveActivity.facts(g); return html`<div class="record-bundle">${icon('task')}<div><strong>${t('Task')} ${f.live?.status==='REFUSED' ? hashCell(g.task_id,SHORT.id) : html`<span class="mono">${short(g.task_id)}</span>`} · ${t('current state')}</strong><small>${f.live?.status==='REFUSED' ? html`${stateLine('refused')} ${explainCode(f.live.failure_code) || t(f.live.detail)}` : f.live ? html`${stateLine(f.state)} ${f.live.verified_stage_count} / ${f.live.total_stage_count} ${t('stages')} · ${t('Task Control projection, read now')}` : html`${stateLine('metadata', {word: t('no current projection')})} ${t('last recorded')} ${codeWords(f.state)}`} ${f.verified ? stateLine('verified', {word: t('Result verified by its owner')}) : ''}</small></div><div class="flow">${LiveActivity.nextRead(f, g)}</div></div>`; });
   }
-  /* Explicit relationships only. A message whose declared reference is another exchange's
-   * message id names that exchange -- when exactly one retained exchange declares that id; an id
-   * that several declare is ambiguous and names nothing. Two messages naming the same qualified
-   * product reference share a topic, which is a relation, never a reply. A recipient is the
-   * addressee. Order, a shared role, a shared reference or proximity establish nothing.
-   *
-   * An objection has a recorded Main PM response only when a message that names it exactly is a
-   * pm_response by the established foreground PM (the parent session id with the research_lead
-   * role). Every other message naming it -- another member declaring pm_response, a question,
-   * an answer -- stays readable with its real author and declared kind, neither promoted nor
-   * discarded. A recorded response is not a resolution: the objection stays as recorded. */
+  /* A reply names exactly one message through replyTo/reference. Shared references relate
+   * topics only; author, order and proximity never form replies. A PM response must be the
+   * parent's recorded research_lead; other responses keep their authors. None resolves it. */
   function linkExchanges(s, entries) {
     const declared = new Map();
     for (const e of entries) if (e.kind === 'message' && e.messageId) declared.set(e.messageId, [...(declared.get(e.messageId) || []), e]);
@@ -632,13 +611,16 @@ const LiveTeam = (() => {
    * established Main PM recorded a response, never that it was resolved (law 17). */
   function exchange(s, e, selected, replies = [], chosen = null, reply = false) {
     const accepted = acceptedAnswer(e), kind = accepted ? ['Accepted answer', 'file'] : e.kind === 'message' ? MESSAGE_KINDS[e.messageKind] || ['Message kind not declared', 'info'] : ['Host input', 'activity'];
-    const pmOf = (r) => { const pt = s.participants.get(r.actor); return r.messageKind === 'pm_response' && Boolean(pt) && isLead(pt, s); };
-    const mention = e.recipient ? html`<span class="team-mention" tabindex="0" data-tip="${e.recipient}">→ @${recipientName(s, e.recipient)}</span>` : '';
+    const pmOf = (r) => { const pt = s.participants.get(r.actor); return ['pm_response', 'ruling'].includes(r.messageKind) && (r.ownerFloor ? r.role === PM_ROLE && r.actor === s.id : Boolean(pt) && isLead(pt, s)); };
+    const person = e.channel === 'PRODUCT_COMMITTEE' && e.messageKind === 'person_answer', author = person ? t('Person') : e.ownerFloor ? roleName(e.role) : actorName(s, e.actor);
+    const mention = person ? html`<span class="team-kind">· ${t('Relayed by the agent')}</span>` : e.recipient ? html`<span class="team-mention" tabindex="0" data-tip="${e.recipient}">→ @${e.recipientRole ? roleName(e.recipientRole) : recipientName(s, e.recipient)}</span>` : '';
     const declaredPm = e.messageKind === 'pm_response' && !pmOf(e) ? html` <span class="muted">(${t('declared pm_response, not the Main PM')})</span>` : '';
     const kindMark = accepted ? html`<span class="team-kind" tabindex="0" data-tip="${t(CHANNELS.PRODUCT_ACCEPTED_ANSWER)}">· ${t(kind[0])}</span>` : html`<span class="team-kind">· ${t(kind[0])}${declaredPm}</span>`;
     const submitter = accepted ? html`<span class="team-kind">· ${t('Submitted by')} <span tabindex="0" data-tip="${e.subject.submitted_by || ''}">${recipientName(s, e.subject.submitted_by)}</span></span>` : '';
-    const topic = e.qualified ? html`<span class="team-topic" tabindex="0" data-tip="${e.sameReference?.length ? countText(e.sameReference.length, 'Names the same reference as {n} other exchange · related, not a reply', 'Names the same reference as {n} other exchanges · related, not a reply') : t('Declared reference')}">${topicWords(e.qualified)}</span>` : '';
+    const topic = e.targetText ? html`<span class="team-topic">${e.targetText}</span>` : !e.ownerFloor && e.qualified ? html`<span class="team-topic" tabindex="0" data-tip="${e.sameReference?.length ? countText(e.sameReference.length, 'Names the same reference as {n} other exchange · related, not a reply', 'Names the same reference as {n} other exchanges · related, not a reply') : t('Declared reference')}">${topicWords(e.qualified)}</span>` : '';
     let status = '';
+    if (e.outcome) status = html`<span class="team-kind" data-outcome="${e.outcome}">${codeWords(e.outcome)}</span>`;
+    if (e.dissentStands) status = html`${status}<span class="team-objection-status" data-dissent="stands">${stateLine('review_pending', {word: t('Dissent stands'), next: ''})}</span>`;
     if (e.messageKind === 'objection') {
       const answered = e.pmResponses.length > 0, others = e.responses.filter((r) => !e.pmResponses.includes(r));
       const tip = answered ? t('Recorded Main PM response · not a resolution; the objection stays as recorded') : `${t('No recorded Main PM response · unresolved choice')}${others.length ? ' · ' + countText(others.length, '{n} other message names this objection', '{n} other messages name this objection') : ''}`;
@@ -649,13 +631,13 @@ const LiveTeam = (() => {
     const ambiguous = e.ambiguousReference ? html`<p class="team-relation team-ambiguous">${t('Names message ID {id}, declared by {n} exchanges · ambiguous, names none', {id: short(e.ambiguousReference.id, SHORT.id), n: e.ambiguousReference.count})}</p>` : '';
     // C2 (law 140): a run of replies keeps its first (the cause) and its last (the latest); the middle is one line that opens in place, and opens by itself when it holds the exchange being read
     const replyRow = (r) => exchange(s, r, chosen?.id === r.id, [], chosen, true), middle = replies.length > 2 ? replies.length - 2 : 0;
-    const heldReply = replies.slice(1, -1).find((r) => r.id === chosen?.id), open = S.replies.has(e.id) || Boolean(heldReply);
+    const heldReply = replies.slice(1, -1).find((r) => r.id === chosen?.id), open = S.replies.has(e.id) || Boolean(heldReply) || replies.some(r => r.dissentStands);
     const thread = replies.length ? html`<ol class="team-replies">${middle && !open ? html`${replyRow(replies[0])}<li class="team-replies-more" data-holds="${replies.slice(1, -1).map((r) => r.id).join(' ')}">${btnAttrs(html`··· ${countText(middle, 'Show {n} more', 'Show {n} more')} ···`, 'team-replies', e.id, 'text-btn', html`aria-expanded="false" data-fold-count="${middle}"`)}</li>${replyRow(replies.at(-1))}` : html`${replies.map(replyRow)}${middle ? html`<li class="team-replies-more">${btnAttrs(t('Show less'), heldReply && !S.replies.has(e.id) ? 'team-event' : 'team-replies', heldReply && !S.replies.has(e.id) ? heldReply.id : e.id, 'text-btn', html`aria-expanded="true" data-fold-count="${middle}"`)}</li>` : ''}`}</ol>` : '';
     // the feed keeps a message's first 500 characters (`summary_truncated`): an opened exchange says where the retained words end
     const words = e.kind === 'message' ? html`${e.text}${e.truncated ? html`<span class="muted"> … ${t('the feed keeps its first 500 characters')}</span>` : ''}` : t('Hook observed; child completion is not established.');
-    return html`<li class="team-exchange${reply ? ' team-reply' : ''} ${e.messageKind === 'objection' ? 'is-objection' : ''} ${e.messageKind === 'pm_response' ? 'is-pm-response' : ''} ${selected ? 'is-selected' : ''} ${S.flash.has(e.id) ? 'just-arrived' : ''}" id="team-event-${e.id}" data-kind="${e.messageKind || e.kind}" data-role="${roleTone(s, e.actor)}" data-read="${e.id}" tabindex="0" aria-label="${actorName(s, e.actor)} · ${t(kind[0])}">
-      <span class="team-exchange-icon">${icon(roleIcon(s, e.actor))}</span><div class="team-exchange-body"><div class="team-exchange-line"><strong>${actorName(s, e.actor)}</strong>${mention}${kindMark}${submitter}${topic}${status}${S.incoming.has(e.id) ? html`<span class="team-unread">${t('Unread')}</span>` : ''}${e.conflictsWith.length ? badge('blocked', t('Conflicting event')) : ''}</div><span class="team-exchange-end"><time data-tip="${whenText(e.at)}${accepted ? ' · ' + timeKindWords(e) : ''}">${clock(e.at)}</time></span>
-      <p class="team-words owner-text" data-clamp="${S.words.has(e.id) ? 'open' : ''}">${words}</p>${btnAttrs(t(S.words.has(e.id) ? 'Show less' : 'Show more'), 'team-words', e.id, 'text-btn team-words-more', html`aria-expanded="${S.words.has(e.id)}" data-clamp-way ${S.words.has(e.id) ? '' : 'hidden'}`)}${waiting}${selected ? inlineRecord(s, e) : ''}${ambiguous}${thread}
+    return html`<li class="team-exchange${reply ? ' team-reply' : ''} ${e.messageKind === 'objection' ? 'is-objection' : ''} ${pmOf(e) ? 'is-pm-response' : ''} ${selected ? 'is-selected' : ''} ${S.flash.has(e.id) ? 'just-arrived' : ''}" id="team-event-${e.id}" data-kind="${e.messageKind || e.kind}" data-role="${roleTone(s, e.actor)}" data-read="${e.id}" tabindex="0" aria-label="${author} · ${t(kind[0])}">
+      <span class="team-exchange-icon">${icon(roleIcon(s, e.actor))}</span><div class="team-exchange-body"><div class="team-exchange-line"><strong>${author}</strong>${mention}${kindMark}${submitter}${topic}${status}${e.channel !== 'PRODUCT_COMMITTEE' && S.incoming.has(e.id) ? html`<span class="team-unread">${t('Unread')}</span>` : ''}${e.conflictsWith.length ? badge('blocked', t('Conflicting event')) : ''}</div><span class="team-exchange-end"><time data-tip="${whenText(e.at)}${accepted ? ' · ' + timeKindWords(e) : ''}">${clock(e.at)}</time></span>
+      <p class="team-words owner-text" data-clamp="${e.dissentStands || S.words.has(e.id) ? 'open' : ''}">${words}</p>${e.dissentStands ? '' : btnAttrs(t(S.words.has(e.id) ? 'Show less' : 'Show more'), 'team-words', e.id, 'text-btn team-words-more', html`aria-expanded="${S.words.has(e.id)}" data-clamp-way ${S.words.has(e.id) ? '' : 'hidden'}`)}${waiting}${selected ? inlineRecord(s, e) : ''}${ambiguous}${thread}
       </div></li>`;
   }
   /* A host input as one line of the thread (a hook is an observation, not a statement). */
@@ -828,7 +810,7 @@ const LiveTeam = (() => {
    * an exchange pressed opens whole in the inspector (none is read, none is filled). The thread flows
    * with the page (law 113): no box scrolls on its own. */
   function sessionView(s, actor) {
-    const all = entriesOf(s), stated = all.filter((e) => !e.replayOf);
+    const all = entriesOf(s), stated = all.filter((e) => !e.replayOf && e.channel !== 'PRODUCT_COMMITTEE');
     const entries = stated.filter((e) => !actor || e.actor === actor || recipientParticipant(s, e.recipient)?.id === actor);
     const chosenId = selection().event, chosen = chosenId ? entries.find((e) => e.id === chosenId) || null : null;
     const unread = entries.filter((e) => S.incoming.has(e.id)).length;
@@ -859,7 +841,7 @@ const LiveTeam = (() => {
     const thread = shown.length ? html`<ol class="team-thread${display.density === 'compact' ? ' density-compact' : ''}" id="teamThread" role="log" aria-live="off">${runs.map(line)}</ol>` : emptyState(empty);
     const missing = chosenId && !chosen && !chosenProduct ? noteLine(t('Selected exchange not retained'), t('Selected exchange is not retained for this selection.'), 'neutral') : '';
     return html`${unknownActor ? noteLine(t('Selected participant not retained'), actor, 'neutral') : ''}${missing}${questionCard(s, stated, questionOf(s, stated))}
-      <section class="team-conversation" aria-label="${t('Conversation')}">${head}${filter}${actor ? '' : outsideLine(s, tf)}${items.length > S.visible ? btn(t('Show earlier exchanges'), 'team-more', '', 'button compact') : ''}${pill}${thread}</section>
+      <section class="team-conversation" aria-label="${t('Conversation')}">${head}${filter}${committeeLinks(s)}${actor ? '' : outsideLine(s, tf)}${items.length > S.visible ? btn(t('Show earlier exchanges'), 'team-more', '', 'button compact') : ''}${pill}${thread}</section>
       ${s.unknownKinds.length ? noteLine(t('Unknown event kinds in this session'), s.unknownKinds.map(({item}) => `${item.payload.event_kind} (${item.payload.producer_id})`).join(', '), 'neutral') : ''}`;
   }
   /* The Product record (U53, the user 2026-09-30: 至今都没看懂这个observation是干什么的; C4 items 4 and 9 before it): what the product
@@ -945,6 +927,50 @@ const LiveTeam = (() => {
         ...(roles.length ? [{field: 'role', label: t('Participant'), multiple: true, options: roles.map((x) => [x, roleName(x)]), test: (r, one) => r.roles.includes(one)}] : [])],
       properties: [['lead', t('Lead')], ['roles', t('Roles')], ['size', t('Participants and exchanges')], ['objections', t('Objections')]]}); // N3 (law 121): the path says Sessions
   }
+  const committeeRefs = s => [...new Set([...s.entries.values()].filter(e => e.channel === 'PRODUCT_COMMITTEE').map(e => e.reference).concat(s.facts.filter(f => f.attributed && f.item.payload?.operation === 'COMMITTEE_OPEN' && f.item.payload?.status === 'COMMITTEE_OPEN').map(f => f.item.payload.subject?.update_task_id || f.item.payload.task_id), S.committee?.session === s.id ? S.committee.body?.update_task_id : null).filter(id => UUID.test(id || '')))];
+  const committeeTask = s => selection().committee || (committeeRefs(s).length === 1 ? committeeRefs(s)[0] : '');
+  function hasCommittee() { const sel = selection(), s = scene().sessions.find(s => s.id === sel.session); return Boolean(s && (sel.committee || committeeRefs(s).length) || S.committee?.session === sel.session && S.committee?.body?.update_task_id === sel.committee); }
+  async function readCommittee(s, force = false) {
+    const task = committeeTask(s); if (!task) return;
+    const last = [...s.entries.values()].filter(e => e.channel === 'PRODUCT_COMMITTEE' && e.reference === task).at(-1)?.id || '';
+    const changed = s.facts.filter(f => ['COMMITTEE_OPEN', 'COMMITTEE_SUBMIT'].includes(f.item.payload?.operation) && (f.item.payload.subject?.update_task_id || f.item.payload.task_id) === task).at(-1)?.item.observation_id || '';
+    const epoch = LiveActivity.state().epoch, key = [epoch, task, last, changed].join('|'), was = S.committee;
+    if (was?.session === s.id && was.task === task && (was.busy || (!force && was.key === key))) return was.promise;
+    const mine = S.committee = {session: s.id, task, key, epoch, busy: true, deadlineRead: was?.deadlineRead, body: was?.epoch === epoch && was?.session === s.id && was.task === task ? was.body : null}, intent = Data.navigationIntent();
+    mine.promise = Data.read('/api/committee?' + new URLSearchParams({update_task_id: task})).then(b => {
+      if (S.committee !== mine || !Data.navigationCurrent(intent)) { if (S.committee === mine) S.committee = null; return; }
+      if (b.status === 'REFUSED') mine.refused = b;
+      else if (b.update_task_id !== task) mine.error = t('The owner answered for another Task.');
+      else if (b.session?.[1] !== s.id) mine.error = t('The owner answered for another session.');
+      else mine.body = b;
+    }, e => { if (S.committee === mine) { if (Data.navigationCurrent(intent)) mine.error = e.message; else S.committee = null; } }).finally(() => { if (S.committee === mine) mine.busy = false; paint(); });
+    return mine.promise;
+  }
+  function committeeLinks(s) {
+    return html`${committeeRefs(s).map(task => { const b = S.committee?.task === task ? S.committee.body : null; return html`<p class="caption">${link(b ? countText(b.message_count, 'Committee · {n} message', 'Committee · {n} messages') : t('Committee'), 'team-committee', 'text-btn', {team: s.id, actor: '', event: '', committee: task, committee_point: ''})}${b?.first_message_at ? html` · ${when(b.first_message_at)}${b.last_message_at !== b.first_message_at ? html` – ${when(b.last_message_at)}` : ''}` : ''}</p>`; })}`;
+  }
+  function committeeEntries(b) {
+    return b.messages.map(m => {
+      const row = m.row, sub = row.subject, recipient = Object.keys(b.member_agents).find(role => b.member_agents[role] === sub.recipient_id);
+      return {id: row.producer_session + ':' + m.id, ordinal: row.producer_sequence, kind: 'message', at: row.occurred_at, subject: sub, payload: row, actor: sub.native_agent_id, role: sub.role, channel: sub.input_channel, messageKind: sub.message_kind, messageId: sub.message_id, recipient: sub.recipient_id, recipientRole: b.member_cards[recipient], reference: sub.reference, replyTo: sub.reply_to, qualified: qualify(sub.reference), text: m.text, outcome: m.outcome, targets: m.targets, targetText: m.target_text, dissentStands: b.standing_dissents.includes(m.id), ownerFloor: true, conflictsWith: []};
+    });
+  }
+  function committeeView(s, actor) {
+    const task = committeeTask(s), selected = selection().point, o = S.committee?.session === s.id && S.committee.task === task ? S.committee : null;
+    if (!task) return committeeRefs(s).length ? Lobby.render('committee-floors', {items: committeeRefs(s), words: String, columns: [], axes: [{key: 'committee', label: t('Committee'), group: () => ({key: 'committee', label: t('Committee'), open: true})}], row: id => objectRow({lead: 'team', name: t('Committee'), ref: id, to: {page: 'team-committee', extra: {team: s.id, committee: id, committee_point: '', actor: '', event: ''}}})}) : emptyState(t('No committee floor is open'));
+    if (!o?.body) return o?.refused ? refusal(o.refused, TONE.attention, {catalog: true}) : o?.error ? notRead(t('Committee not read'), o.error, '', btn(t('Read again'), 'team-committee-read', '', 'button compact')) : skeleton('rows');
+    const b = o.body, entries = committeeEntries(b);
+    linkExchanges(s, entries);
+    const members = html`<div class="team-members">${Object.entries(b.members).map(([role, state]) => btnAttrs(html`<span>${roleName(b.member_cards[role])}</span> · ${{IN: t('committee|Received'), NOT_YET: t('Not yet received'), NOT_ADDRESSED: t('Not addressed')}[state] || codeWords(state)}`, 'team-actor', actor === b.member_agents[role] ? '' : b.member_agents[role], 'team-chip team-member-chip', html`aria-pressed="${actor === b.member_agents[role]}" data-member="${role}" data-state="${state}"`))}</div>`;
+    const points = Lobby.render('committee-agenda', {items: b.tension_points, tools: false, columns: [{key: 'dissent', label: t('Dissent stands')}], axes: [{key: 'state', label: t('State'), group: p => ({key: p.state, label: codeWords(p.state), open: true})}], row: p => objectRow({lead: 'evidence', name: p.alias, to: {action: 'team-committee-point', value: p.alias}, why: p.word ? t(p.word, {...p.words, ...(p.words?.reason ? {reason: declaredCodeWord(p.words.reason) ? codeWords(p.words.reason) : t(p.words.reason)} : {})}) : html`<span class="owner-text">${p.text}</span>`}, {key: p.alias, selected: selected === p.alias, columns: ['dissent'], props: [p.dissent_stands ? ['', stateLine('review_pending', {word: t('Dissent stands'), next: ''})] : ''], attrs: html`data-point="${p.alias}" data-state="${p.state}"`})});
+    const shown = entries.filter(e => (!actor || e.actor === actor || e.recipient === actor) && (!selected || e.targets?.includes(selected) || e.namesExchange?.targets?.includes(selected))), items = threadItems(s, shown, actor, []), chosen = shown.find(e => e.id === selection().event);
+    const incoming = new Set([...s.entries.values()].filter(e => e.channel === 'PRODUCT_COMMITTEE' && e.reference === task && S.incoming.has(e.id)).map(e => e.messageId));
+    const fresh = shown.filter(e => incoming.has(e.messageId)), newest = fresh.at(-1)?.id;
+    const pill = newest ? html`<div class="team-new-bar" data-waypoint="#team-event-${newest}" hidden>${btnAttrs(countText(fresh.length, '{n} new exchange', '{n} new exchanges'), 'team-newest', newest, 'button compact team-new-pill')}</div>` : '';
+    const floor = items.length ? html`<ol class="team-thread" id="teamThread" role="log" aria-live="off">${items.map(it => exchange(s, it.entry, chosen?.id === it.entry.id, it.replies, chosen))}</ol>` : b.stage === 'STANCES' ? '' : emptyState(t('The floor’s recorded messages are not retained here yet.'));
+    return html`${o.refused ? refusal(o.refused, TONE.attention, {catalog: true}) : o.error ? notRead(t('Committee not read'), o.error) : ''}${stackSlot('committeeProgress', b.stage === 'STANCES' ? stat(t('Stances received'), html`${b.stances_in} / ${b.member_count}`) : '')}${stackSlot('committeeMembers', members)}${stackSlot('committeeAgenda', html`${sectionHead(t('Agenda'))}${points}`)}${b.person_items.length ? panel(t('For you'), t('Asked in your conversation with the agent'), b.person_items.map(p => html`<p class="owner-text" data-person-item="${p.id}">${p.question}</p><p class="caption">${when(p.asked_at)}</p>${p.answer !== null ? html`<p class="owner-text">${p.answer}</p><p class="caption">${t('Relayed by the agent')} · ${when(p.answer_at)}</p>` : ''}`)) : ''}${stackSlot('committeeFloor', html`${sectionHead(t('committee|Floor'))}${selected ? noteLine(html`${t('Showing')} ${selected}`, '', 'neutral', btn(t('Show everything'), 'team-committee-point', '', 'button compact')) : ''}${pill}${floor}`)}`;
+  }
+  const chooseCommitteePoint = point => { replaceHash({committee_point: selection().point === point ? '' : point, event: ''}); paint(); };
   // round 90: one lede per page, its own (the sentence budget); member statements and product evidence stay two things
   const LEDES = {team: 'The conversation, who is in it and what they cite.', 'team-participants': 'Who took part, the models they ran and the tokens they spent.', 'team-sessions': 'Retained conversations, read back exactly.', 'team-outputs': 'What this session produced: accepted answers, submitted Tasks and their artifacts, and the goals it took.', 'team-evidence': 'The product\'s records about this session.'};
   // N3: what a section's caption said is the page's (i)
@@ -953,33 +979,34 @@ const LiveTeam = (() => {
     const {sessions, unknown} = scene(), sel = selection(), view = app.page;
     // law 123: a session's page with no session chosen opens Sessions, the Team's Home
     if (view !== 'team-sessions' && !sel.session && sessions.length) { app.page = 'team-sessions'; replaceHash({page: 'team-sessions'}); return section(); }
-    const chosen = sel.session ? sessions.find((s) => s.id === sel.session) : null;
+    const chosen = sel.session ? sessions.find((s) => s.id === sel.session) || (sel.committee ? sessionState(sel.session) : null) : null;
     if (S.answerDetail && (view !== 'team' || S.answerDetail.epoch !== answerEpoch() || !sameAnswer(S.answerDetail, chosen, selectedAnswerRecord(chosen, sel.event)))) S.answerDetail = null;
     // What this page shows is the reader's retained selection: a global entry (the navigation
     // link, Quick Open, the Overview) returns to it until the reader chooses otherwise. A named
     // session the window no longer holds stays retained -- and visibly unavailable -- rather
     // than being replaced by the newest.
-    S.retained = {session: chosen?.id || sel.session, actor: sel.actor, event: sel.event};
+    S.retained = {session: chosen?.id || sel.session, actor: sel.actor, event: sel.event, committee: sel.committee, point: sel.point};
+    if (chosen && view !== 'team-sessions' && committeeTask(chosen)) void readCommittee(chosen);
     // the two sentences of the workroom (what it is; what a member statement is not) are the head's (i)
     const readback = X.error ? html`<p class="caption">${t('The sessions\' readback is unavailable ({error}); only what the activity feed retains is shown.', {error: X.error})}</p>` : '';
     const body = view === 'team-sessions' ? (sessions.length ? sessionsView(sessions) : emptyState(html`${t('No session yet')}${infoMark(t('No native session has been declared in the retained activity window. The foreground Codex remains the only conversational entry; nothing is simulated here.'))}`,'','page-empty'))
-      : !sessions.length ? emptyState(html`${t('No session yet')}${infoMark(t('No native session has been declared in the retained activity window. The foreground Codex remains the only conversational entry; nothing is simulated here.'))}`,'','page-empty')
+      : !sessions.length && !chosen ? emptyState(html`${t('No session yet')}${infoMark(t('No native session has been declared in the retained activity window. The foreground Codex remains the only conversational entry; nothing is simulated here.'))}`,'','page-empty')
       : !chosen ? noteLine(t('Selected session not retained'), html`<span class="mono">${sessionLabel(sel.session)}</span> ${t('is not in the retained activity window (reset, gap or retention).')}`, 'neutral', btn(t('Choose a session'), 'team-select', '', 'button compact'))
-      : view === 'team-evidence' ? evidenceView(chosen) : view === 'team-participants' ? participantsView(chosen) : view === 'team-outputs' ? outputsView(chosen) : sessionView(chosen, sel.actor);
+      : view === 'team-committee' ? committeeView(chosen, sel.actor) : view === 'team-evidence' ? evidenceView(chosen) : view === 'team-participants' ? participantsView(chosen) : view === 'team-outputs' ? outputsView(chosen) : sessionView(chosen, sel.actor);
     const state = LiveActivity.state();
     const usage = LiveActivity.nativeUsageState?.(), usageFailure = usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : '';
     // The feed's own condition, said once at the top: current, not current, or unreachable.
     const feed = state.error ? ['unreachable', t('Feed unreachable')] : state.stale || ['RESET', 'UNAVAILABLE'].includes(state.disposition) ? ['stale', t('Feed not current')] : ['live', t('Live feed')];
-    // the conversation is the session's object page: its research question is the title that takes
-    // the entry's focus (law 120); the session's other views are its lists (law 119)
-    // the session is the object of both its tabs: its question the title, its recorded state beside the feed's
-    // (C4 item 2: an objection awaiting the Main PM, as recorded), its facts the context line, its id the head's
+    // All session tabs share its state and facts; the floor's standing is a fact.
     const stated = chosen ? entriesOf(chosen).filter((e) => !e.replayOf) : [];
     const conversation = view !== 'team-sessions' && chosen ? questionOf(chosen, stated) : null;
+    const floor = chosen && S.committee?.session === chosen.id && S.committee?.task === committeeTask(chosen) ? S.committee?.body : null;
+    const floorFacts = floor ? [[t(floor.verdict ? 'Verdict' : 'Committee'), html`<span data-committee-stage="${floor.stage}"${floor.verdict ? html` data-verdict="${floor.verdict.outcome}"` : ''}>${codeWords(floor.verdict?.outcome || floor.stage)}</span>`], ...(labelWords(floor.labels) ? [[t('Strategy'), html`<span class="owner-text">${labelWords(floor.labels)}</span>`]] : []), ...(floor.schedule?.entry_session ? [[t('Positions for'), floor.schedule.entry_session]] : []), [t('Holdings'), floor.holdings_count], [t('Task'), btnAttrs(mono(floor.update_task_id,SHORT.id),'task',floor.update_task_id,'text-btn',html`data-tip="${floor.update_task_id}"`)], [t(floor.stage === 'STANCES' ? 'Stances close' : 'Floor closes'), when(floor.stage === 'STANCES' ? floor.stances_close_at : floor.closes_at)]] : [];
+    const floorActions = floor?.stage === 'CLOSED' ? link(t('Read the report'), 'report', 'text-btn', {review_selector: JSON.stringify(floor.review_selector)}) : '';
     const pending = stated.filter((e) => e.messageKind === 'objection' && !e.pmResponses.length), awaiting = pending.length;
     // T2 (the Team review, 2026-09-24): the awaiting objection is the head's way to it -- the Conversation, the first one read in place
     const marks = html`<span class="team-live" data-feed="${feed[0]}"><i class="live-dot" aria-hidden="true"></i><span class="state-word">${feed[1]}</span></span>${conversation && awaiting ? html`<span class="team-objection-status">${btn(stateLine('review_pending', {word: countText(awaiting, '{n} objection awaiting the Main PM', '{n} objections awaiting the Main PM'), next: ''}), 'team-reveal', pending[0].id, 'text-btn')}</span>` : ''}`;
-    const view_ = html`<section class="team-scene" id="teamScene" data-view="${view}">${objectHead(conversation ? titleOf(conversation) : t(ROUTES[view]?.[1] || ROUTES.team[1]), html`<p class="lede">${t(LEDES[view] || LEDES.team)}${INFO[view] ? ' ' + t(INFO[view]) : ''}</p>`, '', marks, [], {cls: 'team-head', headingId: 'teamSceneHeading', object: Boolean(conversation), facts: conversation ? sessionFacts(chosen, stated, conversation) : [], id: conversation ? chosen.id : '', scope: chosen && view !== 'team-sessions' ? {name: titleOf(questionOf(chosen, stated)), href: routeUrl('team', {team: chosen.id, actor: '', event: ''}), self: view === 'team'} : null})}
+    const view_ = html`<section class="team-scene" id="teamScene" data-view="${view}">${objectHead(conversation ? titleOf(conversation) : t(ROUTES[view]?.[1] || ROUTES.team[1]), html`<p class="lede">${t(view === 'team-committee' ? 'The committee’s recorded floor on these positions.' : LEDES[view] || LEDES.team)}${INFO[view] ? ' ' + t(INFO[view]) : ''}</p>`, floorActions, marks, [], {cls: 'team-head', headingId: 'teamSceneHeading', object: Boolean(conversation), facts: floorFacts.length ? floorFacts : conversation ? sessionFacts(chosen, stated, conversation) : [], id: conversation ? chosen.id : '', scope: chosen && view !== 'team-sessions' ? {name: titleOf(questionOf(chosen, stated)), href: routeUrl('team', {team: chosen.id, actor: '', event: ''}), self: view === 'team'} : null})}
       ${state.error || state.notice || state.stale || ['RESET', 'UNAVAILABLE'].includes(state.disposition) ? noteLine(t('Activity visibility limited'), state.error || state.notice || t('Retained observations are not current host state.'), 'warning') : ''}
       ${readback}${usageFailure}${body}${unknown.length ? noteLine(t('Events outside any declared session'), countText(unknown.length, '{n} external event without a native session id or with an unretained payload is listed in the activity feed, not here.', '{n} external events without a native session id or with an unretained payload are listed in the activity feed, not here.'), 'neutral') : ''}</section>`;
     // An arrival flashes once, on the view that shows it: the workroom consumes the exchanges'
@@ -989,20 +1016,20 @@ const LiveTeam = (() => {
   }
   /* A deliberate choice: another session, or the newest ("Show the newest", an empty id) --
    * the one action that gives up the retained selection. */
-  function select(sessionId) { S.visible = 50; if (!sessionId) S.retained = null; replaceHash({team: sessionId || '', actor: '', event: ''}); paint(); }
+  function select(sessionId) { S.visible = 50; if (!sessionId) S.retained = null; replaceHash({team: sessionId || '', actor: '', event: '', committee: '', committee_point: ''}); paint(); }
   /* The reader's choice among several PM-declared research cases, per session, in this tab. */
   function chooseQuestion(ref) { const s = selection().session || S.retained?.session || ''; if (!s) return; S.question.set(s, ref || ''); paint(); }
   /* The Team keys a route carries when the page is entered without explicit context: the
    * retained selection, so the navigation link, Quick Open and the Overview entry return to it.
    * Explicit keys in the caller's context override these (routeUrl spreads them after). */
-  const routeContext = () => (S.retained ? {team: S.retained.session || '', actor: S.retained.actor || '', event: S.retained.event || ''} : {});
+  const routeContext = () => (S.retained ? {team: S.retained.session || '', actor: S.retained.actor || '', event: S.retained.event || '', committee: S.retained.committee || '', committee_point: S.retained.point || ''} : {});
   /* An exchange the head points at -- its awaiting objection (T2), a declared reference's first exchange --
    * read in place on the Conversation, brought into view once the page has had its frame, from either
    * tab; only this press moves the reader. */
   function revealExchange(eventId) {
     const sid = selection().session;
     if (!sid) return;
-    navigate('team', {team: sid, actor: '', event: eventId});
+    navigate(app.page === 'team-committee' ? app.page : 'team', {team: sid, actor: '', event: eventId});
     requestAnimationFrame(() => { const row = document.getElementById('team-event-' + eventId); if (row) { row.scrollIntoView({block: 'center', behavior: 'instant'}); row.focus({preventScroll: true}); } });
   }
   /* U51 (the user, 2026-09-30): the session's members, one row a member and model -- the role it declared (the lead
@@ -1107,7 +1134,7 @@ const LiveTeam = (() => {
   /* An exchange pressed opens its verification in place (C4 item 7); pressed again, it closes. */
   function showEvent(eventId) {
     const sessions = scene().sessions, sid = selection().session;
-    const s = sid ? sessions.find((v) => v.id === sid) : sessions[0];
+    const s = sid ? sessions.find((v) => v.id === sid) || (selection().committee ? sessionState(sid) : null) : sessions[0];
     if (!selectedAnswerRecord(s, eventId)) return;
     S.incoming.delete(eventId); replaceHash({team: s.id, event: selection().event === eventId ? '' : eventId}); paint();
   }
@@ -1152,6 +1179,7 @@ const LiveTeam = (() => {
   function refresh() {
     if (!onTeam()) { S.answerDetail = null; S.usageAsked = false; if (app.page !== 'overview') return; }
     if (onTeam() && !S.usageAsked) { S.usageAsked = true; LiveActivity.readSessionUsage?.(); }
+    if (onTeam() && app.page !== 'team-sessions') { const s = scene().sessions.find(s => s.id === selection().session); if (s && committeeTask(s)) { const o = S.committee, deadline = o?.body?.stage === 'STANCES' ? o.body.stances_close_at : o?.body?.stage === 'DEBATE' ? o.body.closes_at : ''; const crossed = deadline && Date.now() >= Date.parse(deadline) && o.deadlineRead !== deadline; if (crossed) o.deadlineRead = deadline; void readCommittee(s, crossed); } }
     for (const s of scene().sessions) for (const ref of questionOf(s, entriesOf(s)).declared) if (!S.resolved.has(ref) && !S.busy.has(ref)) void resolve(ref).then(() => verify(ref));
     const a = LiveActivity.state(), usage = LiveActivity.nativeUsageState?.();
     const key = [a.epoch, a.cursor, a.watermark, a.error, a.stale, a.disposition, usage?.status, usage?.reason].join('|');
@@ -1196,17 +1224,23 @@ const LiveTeam = (() => {
    * hash or a History entry naming it): the object's own way to its collaboration. Several
    * matches are several, none is none; nothing is picked by recency. */
   function sessionsNaming(...refs) {
-    const wanted = new Set(refs.filter(Boolean).map((r) => String(r).toLowerCase()));
+    const wanted = new Set(refs.filter(r => typeof r === 'string' && r).map(r => r.toLowerCase())), context = refs.find(r => r?.native_session_id && r.update_task_id && r.review_selector?.update_task_id === r.update_task_id);
     if (!wanted.size) return [];
-    return scene().sessions.filter((s) => [...s.references].some((r) => wanted.has(r) || wanted.has(r.split(':').at(-1)))).map((s) => { const all = [...s.entries.values()].sort((a, b) => a.ordinal - b.ordinal).filter((e) => !e.replayOf); linkExchanges(s, all); return {id: s.id, entries: s.entries.size, question: questionOf(s, all).text || '', roles: rolesOf(s)}; });
+    const named = scene().sessions.filter((s) => [...s.references].some((r) => wanted.has(r) || wanted.has(r.split(':').at(-1)))).map((s) => { const all = [...s.entries.values()].sort((a, b) => a.ordinal - b.ordinal).filter((e) => !e.replayOf); linkExchanges(s, all); return {id: s.id, entries: s.entries.size, question: questionOf(s, all).text || '', roles: rolesOf(s)}; });
+    if (context && [context.update_task_id, context.review_selector.update_publication_hash].some(ref => wanted.has(ref))) {
+      const held = named.find(s => s.id === context.native_session_id);
+      if (held) held.committee = context;
+      else named.push({id: context.native_session_id, roles: context.specialists, committee: context});
+    }
+    return named;
   }
   /* The session an activity row belongs to, for the row's own "Team scene" read. */
   const sessionOf = (item) => (item.schema_kind === 'ExternalActivityObserved' && KINDS[item.payload?.event_kind] ? item.payload.subject?.native_session_id || null : null);
   function counts() {
     const s = scene().sessions.find((v) => v.id === selection().session);
     // U54's 产出 carries no count: known only once both its reads answer, it would appear on one tab and move the others
-    return s ? {exchanges: entriesOf(s).filter((e) => !e.replayOf).length, participants: s.participants.size, observations: s.facts.length} : {};
+    return s ? {exchanges: entriesOf(s).filter((e) => !e.replayOf && e.channel !== 'PRODUCT_COMMITTEE').length, participants: s.participants.size, observations: s.facts.length} : {};
   }
-  return {pages: PAGES_SET, usageCount, usageTokenWords, usageMetadata, sessionLabel, roleName, recipientName, section, scene, select, counts, openMember, turnParticipants, turnOutputs, outputsOlder, outputsRead, leaveOutputs, setFactKind, readOlder, toggleWords, showActor, showEvent, revealExchange, more, toggleReplies, toggleFold, markSeen, arrivals, refresh, open, resolve, verify, sessionOf, qualify, productReferences, summary, recordOf, sessionsNaming, questionSource, chooseQuestion, routeContext, runs, retained: () => S.retained, resolved: () => S.resolved};
+  return {pages: PAGES_SET, hasCommittee, readCommittee, chooseCommitteePoint, committeeRead: () => { const sel = selection(), s = scene().sessions.find(s => s.id === sel.session) || (sel.session && sel.committee ? sessionState(sel.session) : null); if (s) void readCommittee(s, true); }, usageCount, usageTokenWords, usageMetadata, sessionLabel, roleName, recipientName, section, scene, select, counts, openMember, turnParticipants, turnOutputs, outputsOlder, outputsRead, leaveOutputs, setFactKind, readOlder, toggleWords, showActor, showEvent, revealExchange, more, toggleReplies, toggleFold, markSeen, arrivals, refresh, open, resolve, verify, sessionOf, qualify, productReferences, summary, recordOf, sessionsNaming, questionSource, chooseQuestion, routeContext, runs, retained: () => S.retained, resolved: () => S.resolved};
 })();
 for (const page of LiveTeam.pages) PAGES[page] = LiveTeam.section;

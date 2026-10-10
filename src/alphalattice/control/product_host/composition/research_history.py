@@ -131,10 +131,12 @@ class ResearchHistory:
             identities = owner._need(plan, UPDATE_STAGES[5]).products
             value = owner._load("decision-candidates", identities[-1], PortfolioUpdatePublication)
             entry = ResearchHistory._update_entry(task.task_id, plan.package_id, value)
+            positions = value.pending_proposal or value.book
             assert entry.book is not None
             return {
                 "verification": "METADATA_ONLY_SELECTED_READBACK_VERIFIES_DESCENDANTS",
                 "target_session": plan.target.isoformat(),
+                "positions_session": positions.schedule.entry_session.isoformat(),
                 "claim": value.claim,
                 "review_selector": entry.book.request_fields(),
             }

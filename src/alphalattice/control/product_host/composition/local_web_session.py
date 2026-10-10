@@ -1167,12 +1167,8 @@ class LocalPortfolioWebSession:
                 application=self.application
             )
         if self.review is not None:
-            # The evidence and review Tasks are recoverable for the same reason
-            # the Portfolio run is: their identity, their verified stage prefix
-            # and their inputs are all durable, so a restart owes the work and
-            # not a new Task. Each command is rebuilt from the Task that is
-            # actually recovery-required, so resuming cannot silently answer a
-            # different question than the one that was admitted.
+            # Resume the admitted Task's durable identity, verified stages and inputs.
+            # Rebuild from the recovery-required Task so it cannot answer another question.
             for kind, command in self.review.recovery_commands(owed_only=owed_only).items():
                 commands[kind] = cast(LocalApplicationCommand, command)
         return commands
@@ -1497,6 +1493,7 @@ OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     # and continuing stay an agent's, through the client's route), the saved studies'
     # sweep (U37) and Guanyin's incidents with their remedies (U38).
     ("GET", "/api/goals", "GOAL_LIST"),
+    ("GET", "/api/committee", "COMMITTEE_READ"),
     ("GET", "/api/goals/schema", "GOAL_SCHEMA"),
     ("GET", "/api/goals/show", "GOAL_SHOW"),
     ("GET", "/api/goals/narrative", "GOAL_NARRATIVE"),

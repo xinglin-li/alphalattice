@@ -29,6 +29,7 @@ const Portfolio = (() => {
     return {forward, projection, basis, weightLabel, rows: forward ? (projection?.available === true ? projection.holdings || [] : []) : Data.holdings()};
   };
   const ownerHoldings = () => holdingsContext().rows;
+  const positionsDate = () => holdingsContext().forward ? holdingsContext().projection?.entry_session : Data.raw()?.position?.session;
   const sectorsAbsent = () => ownerHoldings().length > 0 && ownerHoldings().every((x) => !x.sector);
   const mappingAbsent = () => ownerHoldings().length > 0 && ownerHoldings().every((x) => x.mapped == null);
   const uniformAbsence = () => sectorsAbsent() && mappingAbsent();
@@ -121,6 +122,7 @@ const Portfolio = (() => {
     const clauses = [];
     if (metadata.formation_session) clauses.push(`${t('Formation')} ${metadata.formation_session}`);
     if (metadata.entry_session) clauses.push(`${t('Entry')} ${metadata.entry_session}`);
+    if (metadata.holding_end_session) clauses.push(`${t('Holding end')} ${metadata.holding_end_session}`);
     return clauses.length ? html`<p class="caption">${clauses.join(' · ')}</p>` : '';
   };
   const holdingsToolbar = () => holdingsContext().forward ? forwardDates() : sessionSubject();
@@ -255,6 +257,10 @@ const Portfolio = (() => {
     if (timing) fillStackSlot(timing, LiveViews.researchTiming(Data.raw()?.timing));
     const standing = $('#portfolioStanding');
     if (standing) fillStackSlot(standing, standingPanel(Data.raw()?.standing));
+    const risk = $('#portfolioDateRisk');
+    if(risk) fillStackSlot(risk, holdingsContext().forward ? dateRiskPanel(holdingsContext().projection) : '');
+    const head = $('#portfolioHeader');
+    if(head) fillStackSlot(head, portfolioHead());
     $$('[data-session-label]').forEach((x) => (x.textContent = app.session));
     const sessionControl = $('#holdingsSession');
     refreshSessionReading();
@@ -628,17 +634,38 @@ const Portfolio = (() => {
       : html`<div class="caption metric-basis">${icon('lock')}<span>${hint(reportSpan(), reportNote())}</span></div>`;
     return html`<div id="portfolioPerformance">${controls}<section class="panel performance-surface" aria-label="${t('Historical portfolio performance')}" data-box="figure">${metrics}${basis}${chartToolbar()}<div id="performanceChart">${chartBlock()}</div>${Inspect.observationDock()}<div class="chart-under"><span>${chartUnder()}</span>${btn(t('Underlying values'), 'chart-data', '', 'text-btn')}</div></section></div>`;
   }
-  function page() {
+  function portfolioHead() {
     const subject=Data.subject(), sessions=Data.sessions(), recorded=Data.history().find((x)=>x.task_id===subject.task_id&&['portfolio.policy-development','INSTALLED_RESULT'].includes(x.raw.kind));
-    if(typeof queueMicrotask==='function') queueMicrotask(()=>void LiveActivation.ensure(subject));
+    const context=holdingsContext(), date=positionsDate();
     const headFacts=[[t('Declared as-of'),subject.input_date],[t('Report'),dateRange(sessions[0],sessions.at(-1))],[t('trading|Sessions'),count(sessions.length)],[t('Recorded'),recorded?.recordedAt ? when(recorded.recordedAt) : ''],[t('Input'),subject.input_id || Data.raw()?.research_input_id || '']];
-    const title=subject.source_kind==='INSTALLED_RESULT' ? LiveViews.studyFacts(null,{kind:'INSTALLED_RESULT',strategy_package_id:subject.title}).words : subject.title ? codeWords(subject.title) : LiveViews.bookWords(subject.policy) || t('Portfolio study');
+    const title=bookTitle();
+    const selector=context.forward ? context.projection?.review_selector : Data.raw()?.reviewSelector, review=context.forward ? context.projection?.review_standing : Data.raw()?.review_standing;
+    const standing=review?.status ? stateLine(review.status,{word:codeWords(review.status),next:''}) : '';
+    return objectHead(date ? t('Positions for {date}',{date}) : title, html`<p class="lede">${title} · ${Data.notice()}</p>`, selector ? link(html`${t('Review evidence')}${icon('arrow')}`, 'evidence', 'button', {review_selector: JSON.stringify(selector)}) : '', standing, LiveViews.bookTools(subject), {object:true,id:subject.task_id,facts:headFacts});
+  }
+  function page() {
+    const subject=Data.subject(), context=holdingsContext();
+    if(typeof queueMicrotask==='function') queueMicrotask(()=>void LiveActivation.ensure(subject));
     return (
-      html`${objectHead(title, html`<p class="lede">${Data.notice()}</p>`, Data.raw()?.reviewSelector ? link(html`${t('Review evidence')}${icon('arrow')}`, 'evidence', 'button primary', {review_selector: JSON.stringify(Data.raw().reviewSelector)}) : '', badge('historical'), LiveViews.bookTools(subject), {object:true,id:subject.task_id,facts:headFacts})}${LiveTasks.currentGroup?.() || ''}
+      html`${stackSlot('portfolioHeader',portfolioHead())}${LiveTasks.currentGroup?.() || ''}
+ <section class="panel portfolio-detail-surface section-gap"${Data.portfolioReading() ? ' aria-busy="true"' : ''}>${tabs()}<div class="holdings-toolbar">${holdingsToolbar()}</div><div id="portfolioDetail">${details()}</div></section>${stackSlot('portfolioDateRisk',context.forward ? dateRiskPanel(context.projection) : '')}
  ${performancePanel()}${rollingOpenPeriods()}
- ${stackSlot('bookActivation', LiveActivation.panel(subject))}${stackSlot('portfolioStanding', standingPanel(Data.raw()?.standing))}${stackSlot('portfolioTiming', LiveViews.researchTiming(Data.raw()?.timing))}
- <section class="panel portfolio-detail-surface section-gap"${Data.portfolioReading() ? ' aria-busy="true"' : ''}>${tabs()}<div class="holdings-toolbar">${holdingsToolbar()}</div><div id="portfolioDetail">${details()}</div></section>`
+ ${stackSlot('bookActivation', LiveActivation.panel(subject))}${stackSlot('portfolioStanding', standingPanel(Data.raw()?.standing))}${stackSlot('portfolioTiming', LiveViews.researchTiming(Data.raw()?.timing))}`
     );
+  }
+  function bookTitle() {
+    const subject=Data.subject();
+    return subject.source_kind==='INSTALLED_RESULT' ? LiveViews.studyFacts(null,{kind:'INSTALLED_RESULT',strategy_package_id:subject.title}).words : subject.title ? codeWords(subject.title) : LiveViews.bookWords(subject.policy) || t('Portfolio study');
+  }
+  function dateRiskPanel(positions) {
+    const risk=positions?.date_risk;
+    if (!risk) return '';
+    const facts=risk.risk_as_of ? kv([[t('Risk as-of'),risk.risk_as_of]]) : '';
+    const tiles=[...(risk.risk_status==='EVALUATED' ? [['volatility_per_session','Ex-ante volatility per session'],['volatility_annualized','Ex-ante volatility annualized'],['systematic_share','Factor share'],['specific_share','Specific share']] : []),['sessions_before_the_positions','Risk gap to positions (sessions)'],['covered_weight','Covered weight']].filter(([key])=>risk[key]!=null);
+    const figures=tiles.length ? html`<div class="stat-strip rail">${tiles.map(([key,label])=>stat(t(label),html`<span data-risk="${key}">${key==='sessions_before_the_positions' ? count(risk[key]) : pctFraction(risk[key])}</span>`,''))}</div>` : '';
+    if(risk.risk_status!=='EVALUATED') return panel(t('Risk for {date}',{date:positions.entry_session || ''}),'',html`<div data-date-risk="${risk.risk_status}" data-reason="${risk.reason || ''}">${stateLine('metadata',{word:codeWords(risk.risk_status),next:''})}${risk.reason ? html`<p>${declaredCodeWord(risk.reason) ? codeWords(risk.reason) : coded(risk.reason)}</p>` : ''}${facts}${figures}</div>`);
+    const contributors=table([{label:t('Alias'),type:'text'},{label:t('Name'),type:'text',absorb:true},{label:t('Weight'),type:'num'},{label:t('Risk contribution'),type:'num'}],(risk.top_contributors || []).map(r=>tr([r.alias || '',r.name || r.listing_id,pctFraction(r.weight),pctFraction(r.share)])),'',{report:true,countLine:false});
+    return panel(t('Risk for {date}',{date:positions.entry_session || ''}),t('Owner-reported predicted risk; report only, never used to choose weights.'),html`<div data-date-risk="EVALUATED">${figures}${facts}${contributors}</div>`);
   }
   function comparePage() {
     return LiveViews.comparePage();

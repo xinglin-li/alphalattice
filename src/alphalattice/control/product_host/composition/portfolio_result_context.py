@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
     TRADING_SESSIONS_PER_YEAR,
 )
+from alphalattice.control.product_host.composition.committee import holdings
 from alphalattice.control.product_host.composition.decision_advancement import (
     DecisionAdvancementPlan,
 )
@@ -553,19 +554,23 @@ def read_portfolio(
             base = base_rows.get(row["formation_session"], {})
             row["benchmark"] = base.get("benchmark")
             row["benchmarkDaily"] = base.get("benchmarkDaily")
+        context_fields = ("date_risk", "review_selector", "review_standing", "committee_context")
         view = {
             **view,
             "rolling_performance": rolling,
-            "forward_holdings": forward_holdings_view(
-                checkpoint=checkpoint,
-                publication=publication,
-                history=history,
-                source_book_task_id=str(task_id),
-                strategy_package_id=package,
-                reading_task_id=update["task_id"],
-                publication_is_previous=update.get("publication_is_previous", False),
-                sectors=sectors,
-            ),
+            "forward_holdings": {
+                **forward_holdings_view(
+                    checkpoint=checkpoint,
+                    publication=publication,
+                    history=history,
+                    source_book_task_id=str(task_id),
+                    strategy_package_id=package,
+                    reading_task_id=update["task_id"],
+                    publication_is_previous=update.get("publication_is_previous", False),
+                    sectors=sectors,
+                ),
+                **{key: update[key] for key in context_fields if key in update},
+            },
         }
         if performance != "latest":
             return view
@@ -734,6 +739,13 @@ def _unevaluated(reason: str, covered: float = 0.0) -> dict[str, Any]:
     return {"risk_status": "NOT_EVALUATED", "reason": reason, "covered_weight": covered}
 
 
+def _risk_session_gap(start: date, through: date) -> int:
+    return sum(
+        start < point.formation_session <= through
+        for point in planned_local_qa_schedule(start, through)
+    )
+
+
 def _date_risk(
     workspace: Path,
     manifest: ResearchWorkspaceManifest,
@@ -794,15 +806,26 @@ def _date_risk(
     ).surface
     w = np.asarray([0.0 if v in missing else held.get(v, 0.0) for v in listings])
     variance, shares = float(model.book_variance(w)), model.variance_shares(w)
+    systematic, specific = model.variance_split(w)
+    names = {row["listing_id"]: row for row in holdings(readback)}
     value = {
         "risk_status": "EVALUATED",
         "risk_as_of": formation.isoformat(),
-        "sessions_before_the_positions": len(gap) - len(forward),
+        "sessions_before_the_positions": _risk_session_gap(
+            formation, positions.schedule.entry_session
+        ),
         "volatility_per_session": float(np.sqrt(variance)),
         "volatility_annualized": float(np.sqrt(variance * TRADING_SESSIONS_PER_YEAR)),
-        "systematic_share": float(model.variance_split(w)[0]) / variance,
+        "systematic_share": float(systematic) / variance,
+        "specific_share": float(specific) / variance,
         "top_contributors": [
-            {"listing_id": listings[i], "weight": float(w[i]), "share": float(shares[i])}
+            {
+                "listing_id": listings[i],
+                "alias": names[listings[i]]["alias"],
+                "name": names[listings[i]]["name"],
+                "weight": float(w[i]),
+                "share": float(shares[i]),
+            }
             for i in np.argsort(-shares, kind="stable")[:5]
             if w[i]
         ],

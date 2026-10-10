@@ -26,6 +26,7 @@ from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.interface.local_application.cli_contract import RequestProvenance
 from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.interface.local_application.labels import label as installed_label
 from alphalattice.interface.local_application.portfolio_research import (
     CommitteeMessage,
     PortfolioResearchOperationRequest,
@@ -119,11 +120,13 @@ def open_floor(
     nothing behind.
     """
     task, held = str(readback["task_id"]), holdings(readback)
+    label = installed_label(str(readback.get("strategy_package_id") or ""))
     proposal = readback["publication"].get("pending_proposal") or {}
     opened = {
         "update_task_id": task,
         "selector": dict(readback["review_selector"]),
         "strategy_package_id": readback.get("strategy_package_id"),
+        "labels": readback.get("labels") or (label.model_dump() if label else {}),
         "schedule": proposal.get("schedule"),
         "stances_close_at": (now + timedelta(minutes=STANCE_MINUTES)).isoformat(),
         "closes_at": (now + timedelta(minutes=FLOOR_MINUTES)).isoformat(),
@@ -258,6 +261,20 @@ def submit(
         return number
 
 
+def context(floor: Floor, now: datetime) -> dict[str, Any]:
+    """The exact publication's committee session and standing, without member credentials."""
+    return {
+        "goal_id": str(floor.goal_id),
+        "update_task_id": floor.opened["update_task_id"],
+        "review_selector": dict(floor.opened["selector"]),
+        "native_host": floor.opened["session"][0],
+        "native_session_id": floor.opened["session"][1],
+        "stage": floor.stage(now),
+        "verdict": verdict(floor, now),
+        "specialists": [CARDS[r] for r in ROLES[1:]],
+    }
+
+
 def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str, Any]:
     """The floor as a member, or the person's page, reads it after `seen` messages.
 
@@ -265,7 +282,8 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
     addressed to the reader: the revealed stances, a challenge for the PM, a reply or ruling on
     its message, or the close.
     """
-    stage, held = floor.stage(now), floor.opened["holdings"]
+    summary = context(floor, now)
+    stage, held = summary["stage"], floor.opened["holdings"]
     authors = {m["id"]: m["role"] for m in floor.messages}
     visible = [m for m in floor.messages if stage != "STANCES" or m["role"] == role]
 
@@ -274,18 +292,34 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
         pm = role == "PM" and m["kind"] == "CHALLENGE"
         return stage == "CLOSED" or m["kind"] == "STANCE" or pm or role in aimed
 
-    answers = {m["reply_to"]: m["text"] for m in floor.messages if m["kind"] == "PERSON_ANSWER"}
+    answers = {m["reply_to"]: m for m in floor.messages if m["kind"] == "PERSON_ANSWER"}
     items = [m for m in floor.messages if m.get("outcome") == "FOR_THE_PERSON"]
     return {
-        **{k: floor.opened[k] for k in ("update_task_id", "strategy_package_id", "schedule")},
+        **summary,
+        **{k: floor.opened[k] for k in ("strategy_package_id", "schedule")},
         **{k: floor.opened[k] for k in ("stances_close_at", "closes_at", "holdings")},
+        "session": floor.opened["session"],
+        "labels": floor.opened.get("labels") or {},
         "holdings_count": sum(1 for h in held if h["weight"] > 0),
-        "stage": stage,
-        "verdict": verdict(floor, now),
         "stances_in": sum(1 for m in floor.messages if m["kind"] == "STANCE"),
+        "member_count": len(ROLES),
         "members": {r: _member(floor, r, stage) for r in ROLES},
-        "tension_points": _points(floor),
-        "messages": [{**m, "text": render(m["text"], held)} for m in visible],
+        "member_cards": dict(CARDS),
+        "member_agents": {r: member_agent(floor, r) for r in ROLES},
+        "tension_points": _points(floor, stage),
+        "messages": [
+            {
+                **m,
+                "text": render(m["text"], held),
+                "target_text": render(", ".join(m["targets"]), held),
+                "row": floor_row(floor, m),
+            }
+            for m in visible
+        ],
+        "message_count": len(visible),
+        "first_message_at": visible[0]["at"] if visible else None,
+        "last_message_at": visible[-1]["at"] if visible else None,
+        "standing_dissents": [m["id"] for m in standing_dissents(floor)],
         "for_you": [
             m["id"]
             for m in visible
@@ -294,9 +328,10 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
         "person_items": [
             {
                 "id": m["id"],
-                "question": m["text"],
+                "question": render(m["text"], held),
                 "asked_at": m["at"],
-                "answer": answers.get(m["id"]),
+                "answer": answers.get(m["id"], {}).get("text"),
+                "answer_at": answers.get(m["id"], {}).get("at"),
             }
             for m in items
         ],
@@ -316,6 +351,12 @@ def verdict(floor: Floor, now: datetime) -> dict[str, Any] | None:
     return None
 
 
+def member_agent(floor: Floor, role: str) -> str:
+    """The recorded member's native identity under the session that opened its floor."""
+    session = floor.opened["session"][1]
+    return str(session) if role == "PM" else f"{session}:{CARDS[role]}"
+
+
 def floor_row(floor: Floor, message: Mapping[str, Any]) -> dict[str, Any]:
     """One revealed message as the goal conversation row the Team page reads.
 
@@ -324,10 +365,11 @@ def floor_row(floor: Floor, message: Mapping[str, Any]) -> dict[str, Any]:
     vendor, session = floor.opened["session"]
     answered = {m["id"]: m["role"] for m in floor.messages}.get(str(message.get("reply_to")))
 
-    def agent(role: str) -> str:
-        return str(session) if role == "PM" else f"{session}:{CARDS[role]}"
-
-    reply = {"reply_to": message["reply_to"], "recipient_id": agent(answered)} if answered else {}
+    reply = (
+        {"reply_to": message["reply_to"], "recipient_id": member_agent(floor, answered)}
+        if answered
+        else {}
+    )
     task = floor.opened["update_task_id"]
     return {
         "event_kind": "NATIVE_COORDINATION_MESSAGE",
@@ -339,7 +381,7 @@ def floor_row(floor: Floor, message: Mapping[str, Any]) -> dict[str, Any]:
         "subject": {
             "native_host": vendor,
             "native_session_id": session,
-            "native_agent_id": agent(message["role"]),
+            "native_agent_id": member_agent(floor, message["role"]),
             "role": CARDS[message["role"]],
             "message_kind": str(message["kind"]).lower(),
             "message_id": message["id"],
@@ -358,7 +400,19 @@ def unfiled(floor: Floor, now: datetime) -> list[dict[str, Any]]:
     return [floor_row(floor, m) for m in floor.messages if m["id"] not in floor.filed]
 
 
-def commentary(floor: Floor, now: datetime) -> list[dict[str, str]] | None:
+def standing_dissents(floor: Floor) -> list[dict[str, Any]]:
+    """The CRO challenges no ruling adopted, including a challenge on a holding directly."""
+    rulings = {m["reply_to"]: m["outcome"] for m in floor.messages if m["kind"] == "RULING"}
+    return [
+        m
+        for m in floor.messages
+        if m["kind"] == "CHALLENGE"
+        and m["role"] == "CRO"
+        and rulings.get(m["id"], "REJECT") == "REJECT"
+    ]
+
+
+def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
     """The closed floor as the delivery's commentary; None while it is open.
 
     The verdict first, then each standing CRO dissent in the CRO's own words, each member's
@@ -367,45 +421,77 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, str]] | None:
     closed = verdict(floor, now)
     if closed is None:
         return None
-    rulings = {m["reply_to"]: m["outcome"] for m in floor.messages if m["kind"] == "RULING"}
-    dissents = [
-        m
-        for m in floor.messages
-        if m["kind"] == "CHALLENGE"
-        and m["role"] == "CRO"
-        and rulings.get(m["id"], "REJECT") == "REJECT"
-    ]
     said = {m["role"]: m["text"] for m in floor.messages if m["kind"] in _VIEWS}
     answers = {m["reply_to"]: m["text"] for m in floor.messages if m["kind"] == "PERSON_ANSWER"}
-    items = [
-        (f"Committee verdict: {closed['outcome']}", closed["text"]),
+    refs = {p["alias"]: [p["alias"], *p["targets"]] for p in floor.opened["tension_points"]}
+    refs |= {
+        m["id"]: [*m["targets"], *([m["reply_to"]] if m["reply_to"] else [])]
+        for m in floor.messages
+    }
+
+    def targets(message: Mapping[str, Any]) -> str:
+        pending, named = [message["id"]], dict[str, None]()
+        for alias in pending:
+            if alias not in named:
+                named[alias] = None
+                pending.extend(refs.get(alias, ()))
+        return render(
+            ", ".join(a for a in named if not a.startswith("M")), floor.opened["holdings"]
+        )
+
+    named = {m["id"]: targets(m) for m in floor.messages}
+    items: list[tuple[str, dict[str, str], str, dict[str, Any]]] = [
+        ("Committee verdict: {outcome}", {"outcome": closed["outcome"]}, closed["text"], {}),
         *(
             (
-                f"CRO dissent stands ({m['id']}"
-                + (f" on {', '.join(m['targets'])}" if m["targets"] else "")
-                + ")",
+                "CRO dissent stands on {targets}" if named[m["id"]] else "CRO dissent stands",
+                {"message": m["id"], "targets": named[m["id"]]},
                 m["text"],
+                {},
             )
-            for m in dissents
+            for m in standing_dissents(floor)
         ),
-        *((f"{r}, final view", said.get(r, "Not addressed.")) for r in ROLES),
+        *(
+            ("{member}, final view", {"member": r}, said.get(r, "Not addressed."), {})
+            for r in ROLES
+        ),
         *(
             (
-                f"Handed to the person ({m['id']})",
+                "Handed to the person: {targets}" if named[m["id"]] else "Handed to the person",
+                {"message": m["id"], "targets": named[m["id"]]},
                 f"{m['text']} The person's answer, relayed by the PM: "
                 + answers.get(m["id"], "not yet given."),
+                {
+                    "question": render(m["text"], floor.opened["holdings"]),
+                    "answer": answers.get(m["id"]),
+                    "answer_present": m["id"] in answers,
+                },
             )
             for m in floor.messages
             if m.get("outcome") == "FOR_THE_PERSON"
         ),
         *(
-            (f"PM ruling on {m['reply_to']}: {m['outcome']}", m["text"])
+            (
+                "PM ruling on {targets}: {outcome}" if named[m["id"]] else "PM ruling: {outcome}",
+                {"message": m["reply_to"], "targets": named[m["id"]], "outcome": m["outcome"]},
+                m["text"],
+                {},
+            )
             for m in floor.messages
             if m["kind"] == "RULING"
         ),
     ]
     held = floor.opened["holdings"]
-    return [{"attribution": a, "text": render(t, held)} for a, t in items]
+    return [
+        {
+            "attribution": word.format(**words),
+            "text": render(text, held),
+            "attribution_word": word,
+            "attribution_words": words,
+            **details,
+        }
+        for word, words, text, details in items
+    ]
 
 
 def holdings(readback: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -471,23 +557,48 @@ def tension_points(
         *(
             (
                 "HELD_WITH_ADVERSE_EVIDENCE",
-                f"{a} is held while its Evidence names {n} major negative(s).",
+                "{holding} is held while its Evidence names {n} major negative(s).",
+                {"holding": a, "n": n},
                 [a],
             )
             for a, n in adverse.items()
         ),
-        ("LARGEST_CHANGES", f"The largest changes: {', '.join(moved)}.", moved),
+        (
+            "LARGEST_CHANGES",
+            "The largest changes: {holdings}.",
+            {"holdings": ", ".join(moved)},
+            moved,
+        ),
         (
             "LARGEST_POSITION",
-            "The largest position, H1, and the five largest together.",
+            "The largest position, {holding}, and the five largest together.",
+            {"holding": "H1"},
             [h["alias"] for h in held[:5]],
         ),
         *_risk_point(held, risk),
-        *([("EVIDENCE_GAP", f"No Evidence stands for these positions: {gap}.", [])] if gap else []),
+        *(
+            [
+                (
+                    "EVIDENCE_GAP",
+                    "No Evidence stands for these positions: {reason}.",
+                    {"reason": gap},
+                    [],
+                )
+            ]
+            if gap
+            else []
+        ),
     ]
     return [
-        {"alias": f"T{n}", "kind": kind, "text": text, "targets": targets}
-        for n, (kind, text, targets) in enumerate(points, 1)
+        {
+            "alias": f"T{n}",
+            "kind": kind,
+            "text": word.format(**words),
+            "word": word,
+            "words": words,
+            "targets": targets,
+        }
+        for n, (kind, word, words, targets) in enumerate(points, 1)
     ]
 
 
@@ -610,7 +721,7 @@ def render(text: str, held: Sequence[Mapping[str, Any]]) -> str:
 
 def _risk_point(
     held: Sequence[Mapping[str, Any]], risk: Mapping[str, Any] | None
-) -> list[tuple[str, str, list[str]]]:
+) -> list[tuple[str, str, dict[str, Any], list[str]]]:
     """The date's largest risk contributors as a point, or the reason no predicted risk stands."""
     if risk is None:
         return []
@@ -621,9 +732,23 @@ def _risk_point(
         if c["listing_id"] in alias
     ]
     if risk.get("risk_status") == "EVALUATED" and top:
-        return [("TOP_RISK_CONTRIBUTORS", f"The largest risk contributors: {', '.join(top)}.", top)]
+        return [
+            (
+                "TOP_RISK_CONTRIBUTORS",
+                "The largest risk contributors: {holdings}.",
+                {"holdings": ", ".join(top)},
+                top,
+            )
+        ]
     reason = risk.get("reason") or "none of the held names contributes"
-    return [("RISK_GAP", f"No predicted risk stands for these positions: {reason}.", [])]
+    return [
+        (
+            "RISK_GAP",
+            "No predicted risk stands for these positions: {reason}.",
+            {"reason": reason},
+            [],
+        )
+    ]
 
 
 def _risk_view(risk: Mapping[str, Any] | None, held: Sequence[Mapping[str, Any]]) -> str:
@@ -660,13 +785,14 @@ def _concentration(held: Sequence[Mapping[str, Any]]) -> str:
     )
 
 
-def _points(floor: Floor) -> list[dict[str, Any]]:
+def _points(floor: Floor, stage: str) -> list[dict[str, Any]]:
     """Each tension point with its last ruling's state.
 
     A CRO challenge on it that is rejected or never ruled leaves its dissent standing
     (`dissents`, the challenges' ids).
     """
     rulings = {m["reply_to"]: m for m in floor.messages if m["kind"] == "RULING"}
+    standing = {m["id"] for m in standing_dissents(floor)}
     states = {"ADOPT": "ADOPTED", "REJECT": "REJECTED", "FOR_THE_PERSON": "FOR_THE_PERSON"}
     out = []
     for point in floor.opened["tension_points"]:
@@ -674,16 +800,19 @@ def _points(floor: Floor) -> list[dict[str, Any]]:
             m for m in floor.messages if m["kind"] == "CHALLENGE" and point["alias"] in m["targets"]
         ]
         ruled = [rulings[c["id"]] for c in aimed if c["id"] in rulings]
-        dissents = [
-            c["id"]
-            for c in aimed
-            if c["role"] == "CRO" and rulings.get(c["id"], {}).get("outcome", "REJECT") == "REJECT"
-        ]
+        dissents = [c["id"] for c in aimed if c["id"] in standing]
         last = ruled[-1] if ruled else {}
         out.append(
             {
                 **point,
-                "state": states.get(last.get("outcome", ""), "OPEN"),
+                "target_text": render(", ".join(point["targets"]), floor.opened["holdings"]),
+                "words": {
+                    k: render(v, floor.opened["holdings"]) if isinstance(v, str) else v
+                    for k, v in point.get("words", {}).items()
+                },
+                "state": states.get(
+                    last.get("outcome", ""), "NOT_ADDRESSED" if stage == "CLOSED" else "OPEN"
+                ),
                 "ruling_id": last.get("id"),
                 "dissent_stands": bool(dissents),
                 "dissents": dissents,

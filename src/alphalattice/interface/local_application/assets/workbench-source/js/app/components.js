@@ -1,6 +1,4 @@
-/* Markup builders shared by every page. They return HTML strings; text passed in is already
- * localized by the caller (t()). Builders add the control-contract attributes (data-control,
- * data-size, data-ui-role, data-box) that the stylesheet keys on. */
+/* Shared HTML builders: callers localize text; control attributes select the shared CSS. */
 
 /* ---- control contract ---- */
 const CONTROL_KINDS = [
@@ -1333,7 +1331,7 @@ const Lobby = (() => {
       return html`${head}${shown.map((x) => spec.row(x, d))}${rest}`;
     };
     const search = spec.words ? html`<div class="search-field lobby-search">${icon('search')}<input id="lobby-q-${name}" class="search-input" type="search" data-lobby-query="${name}" value="${now.query}" placeholder="${spec.placeholder || t('Search')}" aria-label="${spec.placeholder || t('Search')}" autocomplete="off"></div>` : '';
-    const tools = html`<div class="lobby-tools">${search}${fields.length ? filterBar(fields, {pending: st.pending ? `lobby-${name}-${st.pending}` : '', clear: 'lobby-clear', clearValue: name}) : ''}${displayOptions(name, displaySpec(spec))}</div>`;
+    const tools = spec.tools === false ? '' : html`<div class="lobby-tools">${search}${fields.length ? filterBar(fields, {pending: st.pending ? `lobby-${name}-${st.pending}` : '', clear: 'lobby-clear', clearValue: name}) : ''}${displayOptions(name, displaySpec(spec))}</div>`;
     const hidden = spec.items.length - items.length;
     const body = items.length ? html`<div class="card-list lines lobby-list slotted${d.density === 'compact' ? ' density-compact' : ''}${spec.cls ? ' ' + spec.cls : ''}">${ordered.map(block)}</div>${hidden ? listFoot(hidden, btnAttrs(t('Clear filters'), 'lobby-clear', name, 'text-btn')) : ''}`
       : emptyState(t('No match for this search and these filters'), btnAttrs(t('Clear filters'), 'lobby-clear', name, 'text-btn'), '', 'nomatch');
@@ -1786,6 +1784,15 @@ function pctText(s, threshold = null) {
    exports), a count with its noun, a session id told apart from its neighbours, an instant as a
    reader sees it. Nothing here changes a value; the owner's exact strings stay in the details. */
 const CODE_WORDS = {
+  "EVIDENCE_AUTHORITY_NOT_ADMITTED": "Evidence authority not admitted",
+  "risk_research.installed_risk_surface_absent": "Installed risk surface not available",
+  "risk_research.date_risk_unavailable": "Risk for this date not available",
+  "risk_research.return_surface_short_of_the_date": "Return history does not reach this date",
+  "risk_research.positions_outside_the_risk_axis": "Positions are outside the risk model coverage",
+
+  PM:'Main PM', CRO:'CRO',
+  STANCES:'Blind stances', DEBATE:'Debate', CLOSED:'Closed', NOT_YET:'Not yet received', ADOPTED:'Adopted', ADOPT:'Adopt', REJECT:'Rejected', FOR_THE_PERSON:'For you', PROCEED:'Proceed', PROCEED_WITH_NOTES:'Proceed with notes',
+  RESEARCH_DELIVERY_EXPORTED:'Delivery exported', COMMITTEE_FLOOR:'Committee floor', CONDITIONAL_ESTIMATE:'Conditional estimated weights',
   UNRECOVERABLE: 'Unrecoverable execution',
   SETTLE_EVIDENCE_CONTINUATION: 'Settle evidence continuation',
   SELECT_ANALYSIS: 'Choose the analysis',
@@ -1843,6 +1850,7 @@ const CODE_WORDS = {
   "NOTE": "Note",
   "NOT_ACTIVE": "Not active",
   "NOT_REVIEWED": "Not reviewed",
+  "UNREADABLE": "Unreadable",
   "NOT_SELECTED": "Not selected",
   "NO_CURRENT_STRATEGY_ACTIVATION": "No current strategy activation",
   "NO_PROSPECTIVE_VALIDATION": "No prospective validation",
@@ -2508,12 +2516,10 @@ const param = (name) => PARAMETER_VALUES[name];
 const mono = (v, n = SHORT.hash) => v ? html`<span class="mono">${short(v, n)}</span>` : ''; // the same as a mono span; a missing identity is a dash
 function signed(value, kind = 'percent', places = 2) {
   if (value == null || !Number.isFinite(Number(value))) return '';
-  const v = Number(value), sign = v > 0 ? '+' : v < 0 ? '−' : '';
-  const magnitude = Math.abs(v);
+  const v = Number(value), magnitude = Math.abs(v), text = kind === 'percent' ? pctNumber(magnitude) : kind === 'bps' ? count(magnitude) : fmt(magnitude, places);
+  const sign = /[1-9]/.test(text) ? v > 0 ? '+' : '−' : '';
   if (kind === 'percent') return html`${sign}${num(magnitude, 'percent')}`;
-  if (kind === 'pp') return html`${sign}${fmt(magnitude, places)} ${unit('pp')}`;
-  if (kind === 'bps') return html`${sign}${count(magnitude)} ${unit('bps')}`;
-  return sign + fmt(magnitude, places);
+  return kind === 'pp' || kind === 'bps' ? html`${sign}${text} ${unit(kind)}` : sign + text;
 }
 const pluralText = (n, one, many, args = {}) => t(Number(n) === 1 ? one : many, args); // a noun by its count (round 90: no `(s)` anywhere); the count is in the args or said before
 const countText = (n, one, many) => pluralText(n, one, many, {n: count(n)});

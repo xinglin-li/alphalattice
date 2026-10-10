@@ -236,15 +236,11 @@ class EvidenceCroProjector:
             explanation = projection.explanation
             if not managed and (refresh or review):
                 explanation = explanation + " " + MANAGED_WORK_NOTE
-            # The actions a state offers are the requests it offers, never a list of
-            # its own: a book awaiting its analysis offers no CRO review (V198).
+            # Requests determine actions; pending analysis offers no CRO review (V198).
             offered = tuple(
                 action
-                for action, available in (
-                    ("REFRESH_EVIDENCE", managed and refresh),
-                    ("REVIEW_WITH_CRO", managed and review),
-                )
-                if available
+                for action, enabled in (("REFRESH_EVIDENCE", refresh), ("REVIEW_WITH_CRO", review))
+                if managed and enabled
             )
             return replace(
                 projection,
@@ -254,25 +250,23 @@ class EvidenceCroProjector:
             )
 
         if publication_hash is not None:
-            # The existing export owner verifies exact book/receipt/source agreement,
-            # including old authority and expiry readback. Do not rewrite its export; read
-            # on the review it verified (V151).
+            # Read the owner's verified export without rewriting it (V151).
+            read_context: dict[str, object] = {}
             snapshot, verified, analyses = self.delivery.verified_read_view(
-                chosen, publication_hash
+                chosen, publication_hash, read_context=read_context
             )
             assert verified is not None, "an export of a named review verifies it"
-            historical_view = verified
-            historical_subject = historical_view.publication.experiment_subject
+            historical_subject = verified.publication.experiment_subject
             projected = project_published_review(
-                recommendation=historical_view.recommendation,
-                dossier=historical_view.dossier,
-                receipt=historical_view.receipt,
+                recommendation=verified.recommendation,
+                dossier=verified.dossier,
+                receipt=verified.receipt,
                 percent=format_book_weight,
                 change=format_book_change,
                 book=book_projection(
-                    authority=historical_view.publication.book_authority,
-                    result_hash=historical_view.publication.result_hash,
-                    held_count=historical_view.dossier.held_count,
+                    authority=verified.publication.book_authority,
+                    result_hash=verified.publication.result_hash,
+                    held_count=verified.dossier.held_count,
                     formation_session=None
                     if historical_subject is None
                     else historical_subject.portfolio_session.isoformat(),
@@ -280,6 +274,9 @@ class EvidenceCroProjector:
                         dict[str, object] | None, snapshot.get("experiment_subject")
                     ),
                     update_subject=cast(dict[str, object] | None, snapshot.get("update_subject")),
+                    committee_context=cast(
+                        dict[str, object] | None, read_context.get("committee_context")
+                    ),
                 ),
             )
             # The older dossier did not seal the detailed position breakdown.
@@ -288,7 +285,7 @@ class EvidenceCroProjector:
                 projected,
                 review_publication_hash=publication_hash,
                 published_reading=self.delivery.published_reading(
-                    historical_view,
+                    verified,
                     verified=analyses,
                     entity_id=entity_id,
                     topic=topic,
@@ -303,7 +300,7 @@ class EvidenceCroProjector:
                     "Detailed position-scope breakdown was not sealed in this record.",
                     *(
                         ()
-                        if historical_view.under_installed_policy
+                        if verified.under_installed_policy
                         else (
                             "It was sealed under an earlier CRO review policy; "
                             "it reads as recorded.",
@@ -315,7 +312,10 @@ class EvidenceCroProjector:
                 },
             )
         if not self.app.has_evidence_authority:
-            return evidence_authority_not_admitted()
+            return replace(
+                evidence_authority_not_admitted(),
+                book=self.app._book_projection(self.app._open_book(self.app.inputs(), chosen)),
+            )
         try:
             resolved = self.app.resolve_book(chosen)
         except PortfolioReviewInputIncomplete as error:

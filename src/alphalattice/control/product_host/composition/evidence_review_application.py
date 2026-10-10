@@ -90,7 +90,6 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     SecIssuerRegistrySnapshot,
     matter_selection_retired,
     seal_contract,
-    validate_contract_identity,
 )
 from alphalattice.evidence.alternative_evidence.publication.analysis import (
     AlternativeEvidenceAnalysisPublicationService,
@@ -153,8 +152,12 @@ from alphalattice.interface.local_application.evidence_cro import (
     book_projection,
 )
 from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.interface.local_application.labels import title
 from alphalattice.investment.portfolio_strategy_lab.application.finalization import (
     ValidatedPortfolioHandoff,
+)
+from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
+    FrozenStrategyPackage,
 )
 from alphalattice.investment.portfolio_strategy_lab.publication.finalization_ledger import (
     PortfolioFinalizationStore,
@@ -169,6 +172,7 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.sealing import validate_hash_compatible
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     CarriedReading,
@@ -787,6 +791,7 @@ class AlternativeEvidenceRefreshCommand:
     continuation: EvidenceContinuation | None = None
     run: AlternativeEvidenceCoverageRun | None = None
     subject: BookSelector | None = None
+    subject_book: SealedBook | None = None
     subject_explicit: bool = True
     _task_id: UUID | None = field(default=None, init=False, repr=False)
 
@@ -818,7 +823,11 @@ class AlternativeEvidenceRefreshCommand:
         ).record
         if self.subject is not None:
             self.application.record_task_admission(
-                record.task_id, self.subject, now=now, explicit=self.subject_explicit
+                record.task_id,
+                self.subject,
+                now=now,
+                explicit=self.subject_explicit,
+                book=self.subject_book,
             )
         self._task_id = record.task_id
         return CommandAdmission(task_id=record.task_id, lifecycle=record.lifecycle.value)
@@ -969,6 +978,15 @@ an analysis is published at or after its cutoff, so one published before now les
 has expired, and a reader of current analyses reads no older record (Z2)."""
 
 
+class EvidenceTaskContext(AlternativeEvidenceContract):
+    """The admission's display facts, captured from its verified book."""
+
+    name: str | None = None
+    name_zh: str | None = None
+    date: str | None = Field(default=None, pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    policy: dict[str, object] | None = None
+
+
 class EvidenceTaskAdmission(AlternativeEvidenceContract):
     """The book admitted onto reusable issuer work, outside its computation identity."""
 
@@ -976,6 +994,7 @@ class EvidenceTaskAdmission(AlternativeEvidenceContract):
     admitted_at: datetime
     selector: dict[str, str]
     selection: Literal["EXPLICIT", "DEFAULT"]
+    context: EvidenceTaskContext | None = None
     admission_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
@@ -985,7 +1004,9 @@ class EvidenceTaskAdmission(AlternativeEvidenceContract):
         TypeAdapter(BookSelector).validate_python(self.selector)
         if self.admitted_at.tzinfo is None:
             raise ValueError("alternative_evidence.artifact_tampered")
-        validate_contract_identity(self, "admission_hash")
+        validate_hash_compatible(
+            self, "admission_hash", code="alternative_evidence.artifact_tampered"
+        )
         return self
 
 
@@ -1000,7 +1021,13 @@ class EvidenceReviewApplication:
         return refused("evidence_review.replan_book_selection_required")
 
     def record_task_admission(
-        self, task_id: UUID, selector: BookSelector, *, now: datetime, explicit: bool
+        self,
+        task_id: UUID,
+        selector: BookSelector,
+        *,
+        now: datetime,
+        explicit: bool,
+        book: SealedBook | None = None,
     ) -> None:
         """Keep each admission's book beside the reusable Evidence computation."""
         record = seal_contract(
@@ -1010,9 +1037,38 @@ class EvidenceReviewApplication:
             admitted_at=now,
             selector=selector.request_fields(),
             selection="EXPLICIT" if explicit else "DEFAULT",
+            context=None if book is None else self.book_context(book),
         )
         self.session.task_control_registry.record_admission_subject(
             task_id, record.model_dump(mode="json"), observed_at=now
+        )
+
+    def book_context(self, book: SealedBook) -> EvidenceTaskContext:
+        """Name the already verified book without opening it again on a progress read."""
+        package_id: str | None
+        shown: str | None
+        if book.update_subject is not None:
+            package_id, shown = (
+                book.update_subject.strategy_package_id,
+                book.update_subject.entry_session,
+            )
+        elif book.report is not None and self.ledger is not None:
+            program = self.ledger.load_program(book.report.program_hash)
+            package = self.installed_packages().get(program.strategy_package_hash or "")
+            package_id = None if package is None else package.strategy_id
+            shown = book.report.window_end_book.formation_session.isoformat()
+        else:
+            package_id = None
+            shown = (
+                None
+                if book.experiment_subject is None
+                else book.experiment_subject.portfolio_session.isoformat()
+            )
+        return EvidenceTaskContext(
+            name=None if package_id is None else title(package_id),
+            name_zh=None if package_id is None else title(package_id, chinese=True),
+            date=shown,
+            policy=book.policy,
         )
 
     def task_subject(self, task: TaskRecord) -> dict[str, object]:
@@ -1020,11 +1076,14 @@ class EvidenceReviewApplication:
         from alphalattice.control.product_host.composition.plain_refusals import refused
 
         scope: dict[str, object] = {}
-        context: dict[str, str] = {}
+        context: dict[str, object] = {}
         subjects: list[dict[str, object]] = []
+        contexts: dict[str, EvidenceTaskContext] = {}
         if task.task_kind == AlternativeEvidenceDocumentTaskAdapter.task_kind:
             for document in self.session.task_control_registry.admission_subjects(task.task_id):
                 record = EvidenceTaskAdmission.model_validate(document)
+                if record.context is not None:
+                    contexts[canonical_hash(record.selector)] = record.context
                 subjects.append(
                     {
                         "operation": "EVIDENCE_CRO",
@@ -1069,7 +1128,12 @@ class EvidenceReviewApplication:
                 )
                 context["evidence_as_of"] = dossier.evidence_as_of.isoformat()
                 if dossier.update_subject is not None:
-                    context["date"] = dossier.update_subject.formation_session
+                    package_id = dossier.update_subject.strategy_package_id
+                    context.update(
+                        name=title(package_id),
+                        name_zh=title(package_id, chinese=True),
+                        date=dossier.update_subject.entry_session,
+                    )
         else:
             return {}
         unique = {}
@@ -1080,7 +1144,11 @@ class EvidenceReviewApplication:
             unique[canonical_hash(fields)] = fields
         body: dict[str, object] = {"subjects": subjects}
         if len(unique) == 1:
-            body["next_requests"] = {"subject": next(iter(unique.values()))}
+            subject = next(iter(unique.values()))
+            body["next_requests"] = {"subject": subject}
+            key = canonical_hash({k: v for k, v in subject.items() if k != "operation"})
+            if captured := contexts.get(key):
+                context.update(captured.model_dump(mode="json", exclude_none=True))
         elif not subjects:
             body["subject_refusal"] = refused("evidence_review.replan_book_selection_required")
         if scope:
@@ -1134,6 +1202,7 @@ class EvidenceReviewApplication:
     read_update: Callable[[UUID, str], dict[str, object]] | None = None
     installed_temporal_statements: Callable[[date, date], tuple[str, ...]] | None = None
     read_experiment: Callable[[UUID, str], dict[str, object]] | None = None
+    installed_packages: Callable[[], Mapping[str, FrozenStrategyPackage]] = dict
     campaign_summary: Callable[[], dict[str, object]] | None = None
     network_access: NetworkAccess | None = None
     """The official source's admission reading; runtime data, never a run binding."""
@@ -1177,8 +1246,7 @@ class EvidenceReviewApplication:
         adapter = self.evidence_task_adapter
         if adapter is None or self.recorded_policy is None:
             return
-        # The resources and the policy change together, under the source turn; a request read
-        # across the change binds neither and is refused at its run by the moved binding.
+        # Policy/resources bind one source turn; a mixed read is refused at execution.
         adapter.resources, self.evidence_policy = (
             (replace(adapter.resources, live_source=None), self.recorded_policy)
             if admission is None
@@ -1203,12 +1271,12 @@ class EvidenceReviewApplication:
         if not self._source_turn.acquire(blocking=False):
             return False
         try:
-            # The previous source's campaign ownership goes before the next admission takes it.
+            # Release previous campaign ownership before admitting the next source.
             self.close_source(held=True)
             try:
                 admission = self.official_source()
             except (ValueError, OSError, RuntimeError) as error:
-                # The package stays recorded, the refusal is said, and the next read tries again.
+                # Keep the package; say the refusal and retry on the next read.
                 self._use_source(None)
                 self._source_failure = public_failure(
                     error, "evidence_review.source_admission_failed"
@@ -1271,7 +1339,7 @@ class EvidenceReviewApplication:
                 "cro-review-publications", "published_at"
             ).note
 
-    # ------------------------------------------------------ deterministic half
+    # Deterministic readers.
 
     @property
     def has_evidence_authority(self) -> bool:
@@ -1548,7 +1616,7 @@ class EvidenceReviewApplication:
             self._unit_obligation_cache[key] = cached
         return cached
 
-    # ------------------------------------------------------------- evidence
+    # Evidence.
 
     def _publication_question(
         self, *, resolved: ResolvedBookScope, publication: AlternativeEvidenceAnalysisPublication
@@ -2437,7 +2505,13 @@ class EvidenceReviewApplication:
         if coverage.prepare_only:
             completed = adapter.completed_run(run, now=now)
             if completed is not None:
-                self.record_task_admission(completed.task_id, selector, now=now, explicit=explicit)
+                self.record_task_admission(
+                    completed.task_id,
+                    selector,
+                    now=now,
+                    explicit=explicit,
+                    book=coverage.resolved.book,
+                )
                 return ReviewOutcome(
                     disposition="REUSED_EXACT",
                     detail=f"This preparation of {len(run.units)} units is already complete; "
@@ -2470,7 +2544,13 @@ class EvidenceReviewApplication:
         in_flight = self._refresh_in_flight(coverage, identity=envelope.input_hash)
         if in_flight is not None:
             if in_flight.task_id is not None:
-                self.record_task_admission(in_flight.task_id, selector, now=now, explicit=explicit)
+                self.record_task_admission(
+                    in_flight.task_id,
+                    selector,
+                    now=now,
+                    explicit=explicit,
+                    book=coverage.resolved.book,
+                )
             return in_flight
         network_refusal = self._source_acquisition_refusal(
             evidence_as_of=run.evidence_as_of, caller=caller
@@ -2484,6 +2564,7 @@ class EvidenceReviewApplication:
             prepare_only=coverage.prepare_only,
             subject=selector,
             subject_explicit=explicit,
+            subject_book=coverage.resolved.book,
         )
         submitted = _submitted(dispatcher.submit(command))
         return replace(submitted, evidence_as_of=run.evidence_as_of)
@@ -2652,6 +2733,7 @@ class EvidenceReviewApplication:
             admission=authority.admission,
             subject=chosen,
             subject_explicit=selector is not None,
+            subject_book=resolved.book,
             continuation=EvidenceContinuation(
                 prepared_task_id=task_id,
                 prepared_unit_id=unit_id,
@@ -2665,7 +2747,11 @@ class EvidenceReviewApplication:
         completed = self._completed_task(envelope.input_hash, plan.plan_hash)
         if completed is not None:
             self.record_task_admission(
-                completed.task_id, chosen, now=self.clock(), explicit=selector is not None
+                completed.task_id,
+                chosen,
+                now=self.clock(),
+                explicit=selector is not None,
+                book=resolved.book,
             )
             return ReviewOutcome(
                 disposition="REUSED_EXACT",
@@ -2773,7 +2859,7 @@ class EvidenceReviewApplication:
             raise PortfolioEvidenceReviewError("product_host.evidence_task_adapter_absent")
         # The packet this request verified serves the screening and the admission's check;
         # the Task verifies it again at execution, since the materials may change between.
-        packet, context, *_ = self._book_packet(chosen, task_id=task_id, unit_id=unit_id)
+        packet, context, resolved, *_ = self._book_packet(chosen, task_id=task_id, unit_id=unit_id)
         if context["analysis_context_hash"] != context_hash:
             raise PortfolioEvidenceReviewError(
                 "alternative_evidence.external_analysis_binding_changed"
@@ -2830,6 +2916,7 @@ class EvidenceReviewApplication:
                 command.submitted_analysis = submitted
                 command.subject = chosen
                 command.subject_explicit = selector is not None
+                command.subject_book = resolved.book
             else:
                 # One unit's answer is admitted as the request, question and
                 # admission that unit was prepared under, so the same answer to
@@ -2844,12 +2931,17 @@ class EvidenceReviewApplication:
                     submitted_analysis=submitted,
                     subject=chosen,
                     subject_explicit=selector is not None,
+                    subject_book=resolved.book,
                 )
             envelope, _, plan = command.contract()
             published = self._completed_task(envelope.input_hash, plan.plan_hash)
             if published is not None:
                 self.record_task_admission(
-                    published.task_id, chosen, now=self.clock(), explicit=selector is not None
+                    published.task_id,
+                    chosen,
+                    now=self.clock(),
+                    explicit=selector is not None,
+                    book=resolved.book,
                 )
                 publication = adapter.published_analysis(published.task_id, now=self.clock())
                 return {
@@ -4565,21 +4657,24 @@ class EvidenceReviewApplication:
 
         return None if self.campaign_summary is None else self.campaign_summary()
 
-    def _book_projection(self, resolved: ResolvedBookScope) -> EvidenceCroBook:
+    def _book_projection(self, resolved: ResolvedBookScope | SealedBook) -> EvidenceCroBook:
+        mapped = resolved if isinstance(resolved, ResolvedBookScope) else None
+        book = resolved.book if isinstance(resolved, ResolvedBookScope) else resolved
         return book_projection(
-            authority=resolved.book.authority,
-            result_hash=resolved.book.result_hash,
-            formation_session=resolved.projection.formation_session,
-            held_count=resolved.projection.held_count,
+            authority=book.authority,
+            result_hash=book.result_hash,
+            formation_session=None if mapped is None else mapped.projection.formation_session,
+            held_count=None if mapped is None else mapped.projection.held_count,
             update_subject=None
-            if resolved.book.update_subject is None
-            else resolved.book.update_subject.model_dump(mode="json"),
+            if book.update_subject is None
+            else book.update_subject.model_dump(mode="json"),
             experiment_subject=None
-            if resolved.book.experiment_subject is None
-            else resolved.book.experiment_subject.model_dump(mode="json"),
+            if book.experiment_subject is None
+            else book.experiment_subject.model_dump(mode="json"),
+            committee_context=book.committee_context,
         )
 
-    # --------------------------------------------------------------- internals
+    # Publication and document readers.
 
     def _publication_days(self) -> RecordDays | None:
         """The analysis publications' dated index, where the Evidence runtime keeps one."""

@@ -149,7 +149,7 @@ function routeObject(q = hashParams()) {
  * pushed choices and pending reads use this same grammar, including the object's context. */
 function readingAddress(q = hashParams()) {
   const page = q.get('page') || app.page;
-  const keys = ['input', 'session', 'task', 'reference', 'team', 'actor', 'event', ...(OBJECT_KEYS[page]?.clears || [])];
+  const keys = ['input', 'session', 'task', 'reference', 'team', 'actor', 'event', 'committee', 'committee_point', ...(OBJECT_KEYS[page]?.clears || [])];
   if (page === 'lab') keys.push('plan', 'origin', 'draft_source', 'research_input', 'input_binding', 'experiment_kind');
   if (['evidence', 'evidence-stream', 'evidence-reading', 'report', 'handoff'].includes(page)) keys.push('book', 'prepared_task', 'prepared_unit', 'work');
   return JSON.stringify([page, routeObject(q), ...[...new Set(keys)].map(key => q.get(key) || '')]);

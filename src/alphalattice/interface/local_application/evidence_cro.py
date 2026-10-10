@@ -101,6 +101,7 @@ class EvidenceCroBook:
     held_count: int | None = None
     update_subject: dict[str, object] | None = None
     experiment_subject: dict[str, object] | None = None
+    committee_context: dict[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -623,6 +624,7 @@ def book_projection(
     held_count: int | None = None,
     update_subject: dict[str, object] | None = None,
     experiment_subject: dict[str, object] | None = None,
+    committee_context: dict[str, object] | None = None,
 ) -> EvidenceCroBook:
     """Describe a sealed book without changing its authority or identity."""
     key = str(authority)
@@ -639,6 +641,7 @@ def book_projection(
         held_count=held_count,
         update_subject=update_subject,
         experiment_subject=experiment_subject,
+        committee_context=committee_context,
     )
 
 
@@ -2280,8 +2283,7 @@ def render_review_export(snapshot: dict[str, object], base_html: str | None) -> 
 
 def evidence_cro_body(projection: EvidenceCroProjection) -> dict[str, object]:
     """One JSON shape for every state, so a client has no branch to get wrong."""
-    coverage = projection.coverage
-    book = projection.book
+    coverage, book = projection.coverage, projection.book
     return {
         "state": projection.state,
         "explanation": projection.explanation,
@@ -2305,6 +2307,7 @@ def evidence_cro_body(projection: EvidenceCroProjection) -> dict[str, object]:
                     if book.experiment_subject is not None
                     else {}
                 ),
+                "committee_context": book.committee_context,
             }
         ),
         "portfolio_report_link": projection.portfolio_report_link,

@@ -89,7 +89,7 @@ function context(initial,{address='#page=overview&follow='+scope,typing=false,di
   p.Window.closeInspector=()=>{const onClose=shown.onClose;Object.assign(shown,{mode:null,by:null,onClose:null});onClose?.();return true;};
   p.Window.closeDetail=()=>{};p.LiveResearch.ready=()=>{};
   p.readRoute();
-  return {c,p,shown,dialog,requests,moves,toasts,renders,checkpoint:name=>{checkpoint=clone(phase(name));},feed:name=>p.LiveActivity.absorbPage(clone(phase(name).activity)),
+  return {c,p,shown,dialog,nodes,requests,moves,toasts,renders,checkpoint:name=>{checkpoint=clone(phase(name));},feed:name=>p.LiveActivity.absorbPage(clone(phase(name).activity)),
     setNarrative:value=>{overrideNarrative=value;},setDecisions:value=>{overrideDecisions=value;},
     hold:route=>{let release;const held={promise:new Promise(r=>{release=r;}),entered:false,release:()=>release()};gates.set(route,held);return held;},
     connect:async()=>{await p.Data.connect();assert.equal(p.Data.workspaceStatus,'ready',p.Data.workspaceError);await settle();},
@@ -132,6 +132,9 @@ async function check(name,fn){await fn();checks.push(name);}
     assert.deepEqual(rows.map(v=>v.run.id),[fixture.factor]);assert.equal(rows[0].run.current,owner.current_stage);assert.equal(rows[0].run.state,owner.lifecycle);assert.equal(durationOf(rows[0].run.object),recordedDuration);
     assert.equal(rows[0].options.pinned,true);assert.ok(!verbs.some(v=>v.action==='activity-follow-again'));
     assert.ok(!String(ctx.p.LiveActivity.section()).includes('data-action="activity-follow-again"'));
+    const slot=element();ctx.nodes.set('#currentWork',slot);let writes=0;ctx.c.fillStackSlot=target=>{writes++;target.innerHTML='normalized SVG';};
+    ctx.p.LiveTasks.paintActivity();ctx.p.LiveTasks.paintActivity();assert.equal(writes,1);
+    ctx.nodes.delete('#currentWork');
     await ctx.p.dispatchAction('task',fixture.factor);await settle();assert.equal(ctx.shown.by?.[1],fixture.factor);
     ctx.p.LiveTasks.close();assert.equal(ctx.shown.mode,null);assert.equal(ctx.p.LiveTasks.selected(),null);assert.equal(ctx.p.Data.tasks().find(v=>v.task_id===fixture.factor).lifecycle,owner.lifecycle);
     rows.length=0;ctx.c.Date=class extends Date{static now(){return 9999999999999;}};ctx.p.LiveTasks.currentGroup();

@@ -330,7 +330,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   html=TM.section();
   assert.ok(html.includes('1 Task completion · 1 owner-verified result')&&html.includes('just-verified')&&html.includes('id="teamProductFacts"'),'the compatible owner verification is the verified arrival, said on the workroom and shown on the evidence view');
   TM.markSeen();html=TM.section();assert.ok(!html.includes('Task completion')&&!html.includes('owner-verified result'),'mark seen clears both counts');
-  // Goal revisions, reader choice and attributed participants share the rendered owner facts.
+  // Goal question rendering.
   const S5='sess-parent-5',H1='3'.repeat(64),H2='4'.repeat(64),H3='6'.repeat(64),H4='8'.repeat(64),refitCase='case:'+H1,turnoverCase='case:'+H2,G1='11111111-1111-4111-8111-111111111111',G2='22222222-2222-4222-8222-222222222222';
   const narratives={[H1]:{id:G1,revision:1,title:'Sector-neutral refit',question:'Sector question'},[H2]:{id:G2,revision:1,title:'Turnover budget',question:'Turnover question'},[H3]:{id:G1,revision:2,title:'Corrected refit',question:'Corrected question'}},narrativeReads=[],folds=[],was5={factsRef:c.factsRef,t:c.t};
   c.factsRef=(key,body)=>{folds.push({key,body});return 'FOLD('+key+')';};c.t=(key,args)=>was5.t(key==='Goal {ref}'?'GOALREF({ref})':key,args);
@@ -340,20 +340,20 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const attributed=(row,goal=G1)=>{row.payload.subject.goal_id=goal;return row;},bound=(ref)=>{const row=attributed(message(S5,S5,'research_lead','session_bound','Fixture binding',{reference:ref}));row.payload.subject.input_channel='PRODUCT_OPERATION';return row;};
   const oldMember=attributed(message(S5,'old-member','alphalattice_cro','answer','Earlier workspace answer'),G2),usageOnly=attributed(external('NATIVE_AGENT_USAGE',{native_session_id:S5,native_agent_id:'old-member',role:'alphalattice_cro',model:'fixture-model',input_channel:'CODEX_SESSION_FILE',last_at:'2026-09-30T12:00:00Z'},'Fixture session-wide usage'));
   A.absorbPage(page('CONTINUED',[oldMember,usageOnly,bound(refitCase)]));hash.value='#page=team&team='+S5;c.app.page='team';TM.refresh();TM.section();await new Promise(r=>setImmediate(r));let sum=TM.summary();html=TM.section();
-  assert.equal(sum.question.title,narratives[H1].title);assert.equal(sum.question.goalId,G1);assert.equal(sum.participants,1);assert.ok(html.includes(narratives[H1].title));
+  assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H1].question)&&html.includes(narratives[H1].title));assert.equal(sum.question.goalId,G1);assert.equal(sum.participants,1);
   assert.deepEqual(narrativeReads,[H1]);assert.ok(TM.recordOf(S5).includes(oldMember.payload.summary));
   A.absorbPage(page('CONTINUED',[bound('case:'+H3)]));TM.refresh();await new Promise(r=>setImmediate(r));sum=TM.summary();html=TM.section();const head5=()=>TM.section().split('</header>')[0];
-  assert.equal(sum.question.title,narratives[H3].title);assert.equal(sum.question.goalId,G1);assert.equal(sum.question.choice,false);assert.equal(sum.question.groups.length,1);
+  assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H3].question)&&!html.includes('<team-question:'));assert.equal(sum.question.goalId,G1);assert.equal(sum.question.groups.length,1);
   assert.ok(head5().includes(narratives[H3].title)&&!head5().includes(H1.slice(0,8)));assert.ok(folds.some(f=>f.key===c.t('{n} earlier revision',{n:1})&&f.body.includes(H1.slice(0,8))));
   const currentMember=attributed(message(S5,'current-member','alphalattice_alpha','answer','Current Goal answer',{reference:turnoverCase}));A.absorbPage(page('CONTINUED',[currentMember]));await TM.resolve(turnoverCase);await TM.verify(turnoverCase);sum=TM.summary();
-  assert.equal(sum.participants,2);assert.equal(sum.question.title,narratives[H3].title);assert.ok(head5().includes('FACT('+c.t('Participants')+'=2)'));
+  assert.equal(sum.participants,2);assert.ok(TM.section().includes('team-question-related')&&TM.section().includes(narratives[H3].question));assert.ok(head5().includes('FACT('+c.t('Participants')+'=2)'));
   A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Second Goal',{reference:turnoverCase}))]));sum=TM.summary();html=TM.section();
-  assert.equal(sum.question.kind,'choice');assert.equal(sum.question.count,2);assert.equal(sum.question.text,c.t('{n} goals declared by Main PM',{n:2}));assert.ok(head5().includes(narratives[H2].title));
-  TM.chooseQuestion(turnoverCase);sum=TM.summary();assert.equal(sum.question.goalId,G2);assert.equal(sum.question.title,narratives[H2].title);assert.ok(TM.section().includes(narratives[H2].question));
-  A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Unread Goal',{reference:'case:'+H4}))]));TM.refresh();assert.equal(TM.summary().question.ref,turnoverCase);await new Promise(r=>setImmediate(r));
+  assert.ok(html.includes('data-question="choice"')&&html.includes('<team-question:'+turnoverCase+'>')&&head5().includes(c.t('{n} goals declared by Main PM',{n:2})));assert.equal(sum.question.count,2);
+  TM.chooseQuestion(turnoverCase);sum=TM.summary();html=TM.section();assert.equal(sum.question.goalId,G2);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H2].question)&&html.includes('[ready:'+c.t('chosen')+']'));
+  A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Unread Goal',{reference:'case:'+H4}))]));TM.refresh();assert.ok(TM.section().includes(narratives[H2].question));await new Promise(r=>setImmediate(r));
   assert.equal(TM.resolved().get('case:'+H4).failure,'goal.revision_unknown');assert.equal(TM.summary().question.ref,turnoverCase);const readCount5=narrativeReads.length;TM.section();TM.summary();assert.equal(narrativeReads.length,readCount5);
-  TM.chooseQuestion('case:'+H4);sum=TM.summary();assert.equal(sum.question.kind,'case-declared');assert.equal(sum.question.text,c.t('Goal {ref}',{ref:H4.slice(0,c.SHORT.hash)}));
-  TM.chooseQuestion('');assert.equal(TM.summary().question.text,c.t('Choose a Goal reference'));Object.assign(c,was5);
+  TM.chooseQuestion('case:'+H4);html=TM.section();assert.ok(html.includes('data-question="case-declared"')&&head5().includes(c.t('Goal {ref}',{ref:H4.slice(0,c.SHORT.hash)}))&&html.includes('[ready:'+c.t('chosen')+']'));
+  TM.chooseQuestion('');html=TM.section();assert.ok(html.includes('data-question="choice"')&&head5().includes(c.t('Choose a Goal reference')));Object.assign(c,was5);
   const S6='sess-parent-6';
   A.absorbPage(page('CONTINUED',[
     message(S6,S6,'research_lead','assignment','Screen the August universe.',{recipient:'a6',message_id:'as-6a'}),
@@ -363,9 +363,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   hash.value='#page=team&team='+S6;TM.section();sum=TM.summary();
   assert.equal(sum.question.kind,'assignment');assert.equal(sum.question.text,'Screen the August universe.');assert.equal(sum.question.count,2);
   assert.equal(sum.question.related[0].ref,refitCase);
-  // 11. A global entry through the production routeUrl returns to the retained selection; explicit
-  //     keys override it; "Choose a session" gives it up (Sessions, law 123); a selection the window dropped stays
-  //     visibly unavailable, and the Overview says so instead of showing the newest.
+  // Retained selection, explicit entry and an unavailable selection keep their addresses.
   const routerCtx={URLSearchParams,PREVIEW_STATES:[],ROUTES:{tasks:[],team:[],history:[]},Data:{live:true,sessions:()=>[]},app:{inputs:[],page:'history',input:'',book:'',session:'',historyQuery:'',historyKind:'all',historyMode:'all',historySort:'source'},location:{hash:'#page=history'},history:{replaceState(_a,_b,url){routerCtx.location.hash=url;}},LiveReview:{pages:new Set(),routeContext:()=>({})},LiveStudy:{pages:new Set(),routeContext:()=>({})},LiveResearch:{routeContext:()=>({})},LiveTeam:c.TM};
   routerCtx.Data.readVisits = [];
   routerCtx.Data.visitPage = page => routerCtx.Data.readVisits.push(['visit',page]);

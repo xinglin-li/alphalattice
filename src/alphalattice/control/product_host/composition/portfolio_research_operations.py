@@ -467,10 +467,8 @@ class PortfolioRunCommand:
         try:
             self.application.execute(admitted, expected_task_hash=expected_task_hash)
         except ValueError as error:
-            # Cancellation may win between the application's QUEUED read and
-            # the runner's claim. Task Control owns that outcome; it is not a
-            # failed worker. Keep the synchronous application's strict result
-            # contract and never hide an unrelated error beside a cancellation.
+            # Task Control owns cancellation between the QUEUED read and the runner's claim.
+            # Keep the strict result contract; never hide an unrelated error.
             lifecycle = self.application.session.task_control_registry.task(task_id).lifecycle
             if lifecycle in {TaskLifecycle.CANCEL_REQUESTED, TaskLifecycle.CANCELLED} and str(
                 error
@@ -650,8 +648,6 @@ class PortfolioResearchOperations:
             clock=self.dispatcher.clock,
         )
         self.dispatcher.on_idle = self._worker_idle
-        # A trial the Host was running when it stopped moves on when it starts again, and a
-        # data update's backup it never took is taken.
         self.trials.advance_all()
         self._take_backup()
         self._packages = {}
@@ -671,9 +667,8 @@ class PortfolioResearchOperations:
             packages=lambda: self._packages,
             clock=self.dispatcher.clock,
         )
-        self.calibration = StrategyCalibrationApplication(
-            scoring=self.scoring, clock=self.dispatcher.clock
-        )
+        clock = self.dispatcher.clock
+        self.calibration = StrategyCalibrationApplication(scoring=self.scoring, clock=clock)
         self.updates = PortfolioUpdateApplication(
             application=self.application,
             calibration=self.calibration,
@@ -682,7 +677,6 @@ class PortfolioResearchOperations:
         )
         if self.data_update is not None:
             self.data_update.portfolio_obligations = self.updates.valuation_obligations
-        if self.data_update is not None:
             self.research_updates = DecisionAdvancementApplication(self.updates, self.data_update)
         manifests = self.manifests
         assert manifests is not None
@@ -698,6 +692,7 @@ class PortfolioResearchOperations:
             hold=self._hold_activation,
         )
         self.review.read_update = self._read_review_update
+        self.review.installed_packages = self.application.resolver.installed_packages
         self.review.installed_temporal_statements = partial(
             installed_temporal_statements, self.workspace_session.workspace, self.workspace_manifest
         )
@@ -1141,9 +1136,8 @@ class PortfolioResearchOperations:
         )
         try:
             recovery = self._recovery_context(request)
-            # One operation proves each lifecycle admission it reads, and verifies
-            # each Evidence record it loads, once; the proof is released with the
-            # operation, never kept across requests.
+            # Prove each lifecycle admission and Evidence record once per operation.
+            # Release the proof with the operation, never retain it across requests.
             if isinstance(recovery, dict):
                 body = recovery
             else:
@@ -1163,8 +1157,7 @@ class PortfolioResearchOperations:
                                 "PORTFOLIO_READBACK",
                                 "RESEARCH_UPDATE_READBACK",
                                 "PORTFOLIO_UPDATE_READBACK",
-                                # A review's submit and readback rebuild its dossier several
-                                # times, each reading the reviewed update whole.
+                                # Dossier rebuilds otherwise reread the reviewed update.
                                 "CRO_REVIEW_SUBMIT",
                                 "AGENT_ANSWER_SUBMIT",
                                 "EVIDENCE_CRO",
@@ -1247,8 +1240,7 @@ class PortfolioResearchOperations:
                     self._observe(
                         lambda: observer.refused(request.operation, raised, caller=caller)
                     )
-                # Observing a refusal cannot turn its raised transport response into
-                # an operation return. The entry boundary maps the original exception.
+                # Observation preserves the original transport exception for the entry boundary.
                 raise
         if observer is not None and span is not None:
             self._observe(lambda: observer.returned(span, body))
@@ -3360,9 +3352,8 @@ class PortfolioResearchOperations:
                 confirmed = request.expected_task_hash
                 retry: dict[str, object] | None = None
                 if before["lifecycle"] == "BLOCKED":
-                    # A BLOCKED Task is reopened only by its owner's judgement,
-                    # against the version the person confirmed, and only when
-                    # the refusal was an artifact that can have been repaired.
+                    # The owner reopens only the confirmed BLOCKED version, when its
+                    # refusal names a repairable artifact.
                     record = self.workspace_session.task_control_registry.task(request.task_id)
                     raised = _runner_retry_reason(record) is not None
                     if record.task_kind != RESEARCH_EXPERIMENT_TASK_KIND and not raised:
@@ -3381,9 +3372,8 @@ class PortfolioResearchOperations:
                                 }
                             },
                         }
-                    # The confirmed version travels into Task Control's write;
-                    # a Task that moved while its plan was re-checked is refused
-                    # there, as stale, with nothing applied.
+                    # Task Control checks the confirmed version again at the write;
+                    # a Task that moved during plan validation is refused as stale.
                     retry = (
                         self._reopen_runner_block(record, confirmed)
                         if raised
@@ -3404,8 +3394,7 @@ class PortfolioResearchOperations:
                         }
                     if retry.get("disposition") != "RETRY_ADMITTED":
                         return {**before, **retry}
-                    # The reopened version, the direct successor of the confirmed
-                    # one, is what the resume below is confirmed against.
+                    # Resume confirms the reopened version, the confirmed version's successor.
                     confirmed = str(retry["task_record_hash"])
                     before = self.status(request.task_id)
                 if before["lifecycle"] not in {"RECOVERY_REQUIRED", "QUEUED"}:
@@ -3505,19 +3494,15 @@ class PortfolioResearchOperations:
             ),
             ("tasks", PortfolioResearchOperationRequest(operation="TASKS")),
             ("data_update", PortfolioResearchOperationRequest(operation="DATA_UPDATE_READBACK")),
-            # Whether the workspace is prepared, preparing or unprepared, read
-            # once with the session so an entry page can say so and name the
-            # next step without a second request.
+            # Read preparation state and its next step once with the session.
             (
                 "preparation",
                 PortfolioResearchOperationRequest(operation="WORKSPACE_PREPARE_READBACK"),
             ),
         )
-        # Six readers over two stores: one read boundary holds each store's
-        # instance across them instead of an engine open per reader. If a Data
-        # writer already holds the gate, do not block the entry page behind it:
-        # saved-input/Task metadata uses its ordinary owners, while mutable Data
-        # discovery stays explicitly unread, not empty or cached as ready.
+        # Share each store across six readers. A Data writer never blocks entry:
+        # saved-input/Task metadata uses its owners; mutable Data discovery stays
+        # explicitly unread, never empty or cached as ready.
         with self.workspace_session.reads(timeout_seconds=0.05) as batched:
             for name, request in requests:
                 if not batched and name == "data_update":
@@ -3582,9 +3567,8 @@ class PortfolioResearchOperations:
         include_context: bool = False,
         caller: OperationCaller = "HUMAN",
     ) -> dict[str, object]:
-        # Context executes its readers inside one read scope; their first
-        # operation refreshes the manifest there. A separate refresh here
-        # reopened Task Control twice before that same scope.
+        # Context's first reader refreshes the manifest inside its shared scope.
+        # Refreshing here would reopen Task Control before that scope.
         """Read session mode, capacity and installed strategy context.
 
         Args:
@@ -4193,19 +4177,17 @@ class PortfolioResearchOperations:
 
     def _positions(self, body: dict[str, Any]) -> dict[str, object]:
         """An update's readback with its position rows, read against this Host's clock."""
-        return _position_rows(
+        body = _position_rows(
             body, review=self.review, risk=self._date_risk, now=self.dispatcher.clock()
         )
+        body.pop("committee_context", None)
+        floor = committee.floor_of(self.goals.store, str(body.get("task_id")))
+        if floor is not None and floor.opened["selector"] == body.get("review_selector"):
+            body["committee_context"] = committee.context(floor, self.dispatcher.clock())
+        return body
 
     def _research_update_way(self, task_id: UUID, read: dict[str, Any]) -> dict[str, Any]:
-        """A research update's read, a stopped or deferred one with its way on.
-
-        A stop its plan's rerun resumes offers that rerun (V600). A deferral -- the provider's
-        wait in its data stage -- says why, when and how it resumes, as a data update's does: the
-        same plan sent again once `retry_after_at` has passed (V601). The read is the owner's,
-        taken where the door reads it (V595). A cancelled one keeps its stop and offers only
-        the recorded Task, without a run or replan.
-        """
+        """Read the owner's stop or timed deferral; cancellation retains its stop and Task."""
         assert self.research_updates is not None
         if read.get("status") == "CANCELLED":
             task = self.workspace_session.task_control_registry.task(task_id)
@@ -4252,12 +4234,8 @@ class PortfolioResearchOperations:
         }
 
     def _inputs_way(self, answer: dict[str, Any]) -> dict[str, Any]:
-        """A refusal while the workspace's inputs are not ready, named by their state, with the
-        request that settles them (V604): the update that holds the running place with its data
-        stage, whose status names its way on (a deferral resumes once due); with none, a data
-        update, which settles a provider's deferral a cancelled update left and names any data
-        case. Another kind holding the place, the verification sweep among them, holds no
-        inputs."""
+        """Name the update that settles inputs and its timed way on, or a data update with its
+        case; another kind holding the running place cannot claim to hold these inputs."""
         code = str(answer.get("failure_code") or "")
         if code != "strategy_score.workspace_inputs_not_ready":
             return answer
@@ -5378,9 +5356,7 @@ class PortfolioResearchOperations:
         return body
 
     def report(self, result_hash: str, portfolio_session: str | None = None) -> dict[str, object]:
-        # One opened result for the whole answer: the readouts are derived from
-        # the report already in hand rather than re-derived from the hash, which
-        # is what made a single REPORT open the result and the report twice each.
+        # Derive every readout from the report in hand; do not reopen its result.
         """Open one exact research result and project its report and declared positions.
 
         Args:
@@ -5637,8 +5613,7 @@ class PortfolioResearchOperations:
         }
 
     def export(self, result_hash: str) -> dict[str, object]:
-        # The spec check and the manifest both need this result; opening it once
-        # is the difference between four reads and eight.
+        # The spec check and manifest share one result read.
         """Read the exact result export manifest without recomputing research.
 
         Args:
@@ -5714,9 +5689,18 @@ class PortfolioResearchOperations:
             found = [v for v in producers if v is not None]
             if len(found) != 1:
                 raise ValueError("product_host.evidence_review_publication_origin_unavailable")
-            # A later Task can display this parent; it must not give the exact
-            # same publication a new review identity or buy duplicate cognition.
+            # A displayed parent keeps its original review identity and exact reuse.
             return self._read_review_update(found[0], publication_hash)
+        body.pop("committee_context", None)
+        floor = committee.floor_of(self.goals.store, str(task_id))
+        if floor is not None and all(
+            floor.opened["selector"].get(k) == v
+            for k, v in (
+                ("update_task_id", str(task_id)),
+                ("update_publication_hash", publication_hash),
+            )
+        ):
+            body["committee_context"] = committee.context(floor, self.dispatcher.clock())
         return body
 
     def evidence_refresh(
@@ -6528,6 +6512,7 @@ def _position_rows(
             for v in cast(list[object], body.get("history", []))
         )
         positions = portfolio_update_positions(value, history)
+        body["schedule"] = positions.schedule.model_dump(mode="json")
         weights, changes = positions.weights, positions.changes
         previous = positions.preceding or weights
         labels = cast(dict[str, str], body["listing_labels"])

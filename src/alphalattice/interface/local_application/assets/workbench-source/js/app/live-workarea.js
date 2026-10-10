@@ -24,6 +24,7 @@ const LiveWorkArea = (() => {
   /* The stage the area follows: the Task's current stage while it has one; for a settled
    * Task the stage it stopped at (the first not verified), or the last when all are. */
   const shownStageOf=(v)=>v.status.current_stage || (v.stages.find(s=>s.lifecycle!=='VERIFIED') || v.stages.at(-1))?.stage_id || '';
+  const moving=(v,state,current=true)=>current && v?.lifecycle==='RUNNING' && v.liveness.status==='OBSERVED' && !state.stale;
 
   /* The area's state for the one Task it shows: the viewer's choices, the activity ring, what
    * was last painted (for the meter's move, the settle and the one-time accent), and the stage
@@ -90,12 +91,12 @@ const LiveWorkArea = (() => {
 
   /* ---- shells ---- */
   function logRail(latest, state, reading=true) {
-    return html`<section class="ui-log-rail prep-log-rail" aria-label="${t('Latest unit and reading state')}"><div><span>${latest.label}</span><strong class="${state.stale ? 'is-stale' : ''}">${latest.value}</strong></div>${reading ? html`<div><span>${t('Reading')}</span><strong>${A.follow ? t('Following latest') : t('Reading held')}</strong></div>` : ''}</section>`;
+    return html`<section class="ui-log-rail prep-log-rail" aria-label="${t('Latest unit and reading state')}"><div><span>${latest.label}</span><strong class="${state.stale ? 'is-stale' : ''}">${latest.value}</strong></div>${reading ? html`<div data-reading><span>${t('Reading')}</span><strong>${A.follow ? t('Following latest') : t('Reading held')}</strong></div>` : ''}</section>`;
   }
   /* The scene's log is the one log (round 72): the shell from `runLog`, the follow control as its
    * tool, the scene's own rows as its lines. */
-  function logShell(spec, {label, title, caption, history, moving, rows, empty, status, rail, controls=true}) {
-    const control=controls && stateMoving(spec.view()?.lifecycle) ? html`<button type="button" class="text-btn" data-action="workspace-follow" aria-pressed="${!A.follow}" aria-label="${A.follow ? t('Hold the current reading position') : t('Resume following new units')}">${A.follow ? t('Hold reading') : t('Resume following')}</button>` : '';
+  function logShell(spec, {label, title, caption, history, moving, rows, empty, status, rail, controls=moving}) {
+    const control=controls ? html`<button type="button" class="text-btn" data-action="workspace-follow" aria-pressed="${!A.follow}" aria-label="${A.follow ? t('Hold the current reading position') : t('Resume following new units')}">${A.follow ? t('Hold reading') : t('Resume following')}</button>` : '';
     // R14 (WD4): a log that no longer moves is its work's record -- folded to its title and status line, its units a
     // press away (a blocked update's 60 units were 800 words of the first screen); a moving one is read live
     const fold=Boolean(history) && !moving;
@@ -154,7 +155,7 @@ const LiveWorkArea = (() => {
   }
   function parallelFacts(spec,p) {
     const scope=p.scope, packing=scope?.packing_rules_id ? t('The run packs holdings from its admitted source counts. Holdings with nothing new and carried readings are outside these groups; the preview is an estimate.') : '';
-    return html`<section class="execution-record panel-body" data-parallel-groups="${p.total}"><div class="stat-strip">${stat(t('Done'),html`${p.done} / ${p.total}`)}${stat(t('Running'),p.running)}${stat(t('Waiting'),p.waiting)}${stat(t('Blocked'),p.blocked)}${stat(t('Failed'),p.failed)}${scope ? html`${stat(t('Issuers'),scope.issuers_total)}${stat(t('Nothing filed'),scope.issuers_nothing_filed)}${stat(t('Carried'),scope.issuers_carried)}` : ''}</div>${packing ? html`<p class="caption">${packing}</p>` : ''}${factsRef(t('Each group'),spec.parallelTable(p.groups))}</section>`;
+    return html`<section class="execution-record panel-body" data-parallel-groups="${p.total}"><div class="stat-strip">${stat(t('Done'),html`${p.done} / ${p.total}`)}${stat(t('Running'),p.running)}${stat(t('Waiting'),p.waiting)}${stat(t('Blocked'),p.blocked)}${stat(t('Failed'),p.failed)}${scope ? html`${stat(t('Admitted issuers'),scope.issuers_total)}${stat(t('Nothing filed'),scope.issuers_nothing_filed)}${stat(t('Carried'),scope.issuers_carried)}` : ''}</div>${packing ? html`<p class="caption">${packing}</p>` : ''}${factsRef(t('Each group'),spec.parallelTable(p.groups))}</section>`;
   }
   function workArea(spec, b, v, state) {
     const area=areaFor(spec, v.task_id), current=shownStageOf(v);
@@ -162,10 +163,10 @@ const LiveWorkArea = (() => {
     // are rebuilt from the scene's retained response, as a paint, never as arrivals.
     if(!area.log && b) spec.absorb(b,state,area);
     const shown=area.inspect && area.inspect!==current && v.stages.some(s=>s.stage_id===area.inspect) ? area.inspect : current;
-    const moving=v.lifecycle==='RUNNING' && v.liveness.status==='OBSERVED' && !state.stale;
-    const head=html`<header class="prep-area-head"><div class="prep-area-title">${icon('task')}<span>${t(spec.title)}</span>${area.folded ? foldedSummary(spec,b,v,state,current,moving) : ''}</div><button type="button" class="text-btn prep-fold" data-action="workspace-fold" aria-expanded="${!area.folded}" aria-controls="prepAreaBody">${icon(area.folded ? 'chevron' : 'close')}${area.folded ? t('Expand') : t('Collapse')}</button></header>`;
-    const body=area.folded ? '' : html`${v.parallel ? parallelFacts(spec,v.parallel) : ''}${rail(spec,v,shown,v.parallel ? '' : current,moving)}<div class="fv-body prep-body" id="prepAreaBody">${stageBody(spec,b,v,state,shown,current,moving)}${spec.aside(b,v,state,shown,shown===current) || stageRecord(spec,v,shown)}</div>`;
-    return html`<section class="fv-surface prep-area" data-box="workspace" data-scene="${spec.key}" data-folded="${area.folded}" data-shown="${shown}" data-moving="${moving}">${head}${body}</section>`;
+    const moves=moving(v,state);
+    const head=html`<header class="prep-area-head"><div class="prep-area-title">${icon('task')}<span>${t(spec.title)}</span>${area.folded ? foldedSummary(spec,b,v,state,current,moves) : ''}</div><button type="button" class="text-btn prep-fold" data-action="workspace-fold" aria-expanded="${!area.folded}" aria-controls="prepAreaBody">${icon(area.folded ? 'chevron' : 'close')}${area.folded ? t('Expand') : t('Collapse')}</button></header>`;
+    const body=area.folded ? '' : html`${v.parallel ? parallelFacts(spec,v.parallel) : ''}${rail(spec,v,shown,v.parallel ? '' : current,moves)}<div class="fv-body prep-body" id="prepAreaBody">${stageBody(spec,b,v,state,shown,current,moves)}${spec.aside(b,v,state,shown,shown===current) || stageRecord(spec,v,shown)}</div>`;
+    return html`<section class="fv-surface prep-area" data-box="workspace" data-scene="${spec.key}" data-folded="${area.folded}" data-shown="${shown}" data-moving="${moves}">${head}${body}</section>`;
   }
 
   /* ---- the viewer's explicit choices. None of them reads, submits or changes a Task. ---- */
@@ -196,7 +197,7 @@ const LiveWorkArea = (() => {
     if(typeof document==='undefined') return;
     const button=document.querySelector('[data-action="workspace-follow"]');
     if(button){button.textContent=A.follow ? t('Hold reading') : t('Resume following');button.setAttribute('aria-pressed',String(!A.follow));}
-    for(const strong of document.querySelectorAll('.prep-log-rail>div:last-child strong')) strong.textContent=A.follow ? t('Following latest') : t('Reading held');
+    for(const strong of document.querySelectorAll('.prep-log-rail>[data-reading] strong')) strong.textContent=A.follow ? t('Following latest') : t('Reading held');
   });
   /* After a paint of the area's page: the meter moves from its previous reported fraction to
    * the new one (one transition between two real counts, never an invented intermediate), rows
@@ -272,5 +273,5 @@ const LiveWorkArea = (() => {
     setInterval(tick,1000);
   }
   const area=()=>({task:A.task,scene:A.spec?.key || null,folded:A.folded,inspect:A.inspect,follow:A.follow,shown:A.shown,rows:A.log ? A.log.rows.size : 0,snapshot:A.log?.snapshot || null,arrived:A.arrived.size,kept:[...KEPT.keys()],logTop:A.logTop});
-  return {A,LOG_RETAIN,short,clockText,readAge,staleFor,sinceWhen,clockOf,shownStageOf,areaFor,entryFor,remember,noteTransition,freshLog,liveRead,retain,logRail,logShell,factsShell,stageRecord,workArea,fold,inspect,follow,heldByScroll,afterPaint,bind,area};
+  return {A,LOG_RETAIN,short,clockText,readAge,staleFor,sinceWhen,clockOf,shownStageOf,moving,areaFor,entryFor,remember,noteTransition,freshLog,liveRead,retain,logRail,logShell,factsShell,stageRecord,workArea,fold,inspect,follow,heldByScroll,afterPaint,bind,area};
 })();

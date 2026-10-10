@@ -1752,9 +1752,23 @@ def test_current_performance_follows_exact_books_daily_publications_and_keeps_hi
             live.application.ledger.publish_decision_update(previous)
             prefix.append(previous)
             publications.append(
-                live.operations.updates.publication_body(
-                    n.checkpoint, previous, tuple(prefix), task_id=UUID(int=offset + 1)
-                )
+                {
+                    **live.operations.updates.publication_body(
+                        n.checkpoint, previous, tuple(prefix), task_id=UUID(int=offset + 1)
+                    ),
+                    "date_risk": {
+                        "risk_status": "NOT_EVALUATED",
+                        "reason": "risk_research.installed_risk_surface_absent",
+                    },
+                    "review_selector": {
+                        "update_task_id": str(UUID(int=offset + 1)),
+                        "update_publication_hash": previous.content_hash,
+                        "position_basis": "CONDITIONAL_ESTIMATE"
+                        if previous.pending_proposal
+                        else "OBSERVED_RESEARCH_ENTRY",
+                    },
+                    "review_standing": {"status": "NOT_REVIEWED"},
+                }
             )
         current = publications[3]
         original = PortfolioResearchOperations.execute
@@ -1822,6 +1836,8 @@ def test_current_performance_follows_exact_books_daily_publications_and_keeps_hi
         assert first["forward_holdings"]["source_book_task_id"] == str(book.task_id)
         assert first["forward_holdings"]["formation_session"] != first["subject"]["session"]
         assert first["forward_holdings"]["holdings"] != first["holdings"]
+        for key in ("date_risk", "review_selector", "review_standing"):
+            assert first["forward_holdings"][key] == current[key]
         current = publications[4]
         second = _json(live, path + "&performance=latest")
         assert len(second["forward_performance"]["series"]) == 3
@@ -1837,6 +1853,7 @@ def test_current_performance_follows_exact_books_daily_publications_and_keeps_hi
             second["forward_holdings"]["observed_through"]
             != first["forward_holdings"]["observed_through"]
         )
+        assert second["forward_holdings"]["review_selector"] == current["review_selector"]
         reopened = _json(live, path)
         for key in ("subject", "holdings", "holdings_basis", "position", "metrics", "series"):
             assert second[key] == reopened[key] == pinned[key]

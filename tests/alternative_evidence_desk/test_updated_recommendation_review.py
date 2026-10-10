@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 import numpy as np
 import pytest
 
+from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.portfolio_updates import (
     PortfolioUpdatePlan,
     _implementation_hash,
@@ -26,7 +27,7 @@ from alphalattice.control.task_control.contracts import (
     TaskStageReceipt,
 )
 from alphalattice.interface.local_application.portfolio_research import (
-    PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
+    PortfolioResearchRequestDocument as Request,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     PortfolioObservedSettlement,
@@ -220,51 +221,71 @@ def updated(tmp_path, numerical):
         context.service.session.stop()
 
 
-def test_updated_book_uses_exact_source_not_the_default_result(updated):
+def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypatch):
     c = updated
     service = c.service
-    # The update's positions offer their own review, bound to the update, so an agent's
-    # `evidence preview --from <update answer>` reads them, never the default book.
+    task = c.selector["update_task_id"]
+    update_url = f"/api/portfolio-update?task_id={task}"
+    evidence_url = "/api/evidence-cro?" + urlencode(c.selector)
+    # Every continuation retains this update's exact review subject.
     from alphalattice.interface.local_application.client import continued
 
-    readback = service.get(f"/api/portfolio-update?task_id={c.selector['update_task_id']}")
-    # An exact reuse names the Task that ran the plan it reused, which its read follows, so
-    # `portfolio-update show --from <the reuse>` reads that update, never another.
+    readback = service.get(update_url)
+    # Exact reuse names its original publication Task.
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         reused_read,
     )
 
     reused = reused_read(service.registry, c.value.plan_hash, "PORTFOLIO_UPDATE_READBACK")
-    assert reused["publication_task_id"] == c.selector["update_task_id"]
-    assert continued("PORTFOLIO_UPDATE_READBACK", reused, {}, frozenset({"task_id"})) == {
-        "operation": "PORTFOLIO_UPDATE_READBACK",
-        "task_id": c.selector["update_task_id"],
-    }
+    assert reused["publication_task_id"] == task
+    expected = {"operation": "PORTFOLIO_UPDATE_READBACK", "task_id": task}
+    assert continued("PORTFOLIO_UPDATE_READBACK", reused, {}, frozenset({"task_id"})) == expected
     assert reused_read(service.registry, "0" * 64, "READ") == {}
-    # A study's read of a Task that is not a study names its kind and the read that takes it,
-    # not a bare code (daily scene).
-    refused = service.agent(
-        PortfolioResearchAgentRequest(
-            operation="EXPERIMENT_READBACK", task_id=UUID(c.selector["update_task_id"])
-        )
-    )
+    # A non-study names its kind and the owner read that takes it.
+    refused = service.agent(Request(operation="EXPERIMENT_READBACK", task_id=UUID(task)))
     assert refused["failure_code"] == "research_experiment.task_kind_mismatch", refused
     assert refused["detail"] and refused["task_kind"], refused
-    assert refused["next_requests"] == {
-        "task": {"operation": "STATUS", "task_id": c.selector["update_task_id"]}
-    }
+    assert refused["next_requests"] == {"task": {"operation": "STATUS", "task_id": task}}
     allowed = frozenset(c.selector)
     for operation in ("EVIDENCE_PREVIEW", "EVIDENCE_CRO", "CRO_REVIEW_DOSSIER"):
-        assert continued(operation, readback, {}, allowed) == {
-            "operation": operation,
-            **c.selector,
-        }
-    section = service.get("/api/evidence-cro?" + urlencode(c.selector))
+        assert continued(operation, readback, {}, allowed) == {"operation": operation, **c.selector}
+    section = service.get(evidence_url)
     assert section["book"]["authority"] == "CONDITIONAL_RESEARCH_PROPOSAL"
     subject = section["book"]["update_subject"]
     assert subject["strategy_package_id"] == c.n.checkpoint.package.strategy_id
     assert subject["position_hash"] == c.value.pending_proposal.content_hash
     assert section["book"]["result_hash"] is None
+    goal_id = uuid4()
+    declaration = {
+        "title": "Positions",
+        "objective": "Review positions",
+        "kind": "RESEARCH",
+        "criteria": [{"criterion_id": "positions", "text": "Positions stand."}],
+    }
+    service.agent(
+        Request(
+            operation="GOAL_OPEN",
+            goal_id=goal_id,
+            change_reason="Review positions",
+            goal_declaration=declaration,
+        )
+    )
+    floor = committee.open_floor(
+        service.session.operations.goals.store,
+        goal_id,
+        readback,
+        section,
+        session=("claude-code", "committee-reader"),
+        now=_NOW,
+    )
+    context = committee.context(floor, _NOW)
+    assert service.get(update_url)["committee_context"] == context
+    assert service.get(evidence_url)["book"]["committee_context"] == context
+    with monkeypatch.context() as missing:
+        missing.setattr(service.review, "registry", None)
+        cold = service.get(evidence_url)
+        assert cold["state"] == "EVIDENCE_AUTHORITY_NOT_ADMITTED"
+        assert cold["book"]["committee_context"] == context
     initial = len(service.registry.tasks())
     for replacement, refused in (
         ({"update_publication_hash": "0" * 64}, "portfolio_update.publication_not_bound_to_task"),
@@ -279,8 +300,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated):
         # Refused by name and worded with the way on.
         assert (code, body["failure_code"]) == (400, refused), body
         assert body["detail"] and body["next_action"], body
-    # A second book beside the update's is refused in words, with the history to choose one
-    # from.
+    # An ambiguous selector names the history-based way on.
     code, body = service.request(
         "/api/evidence-cro?" + urlencode({**c.selector, "result_hash": service.result_hash()})
     )
@@ -294,11 +314,24 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated):
     refreshed = service.post("/api/evidence-refresh", c.selector)
     assert refreshed["disposition"] == "ADMITTED"
     service.drain()
-    recovery = service.get("/api/tasks/recovery?task_id=" + refreshed["task_id"])
+    with monkeypatch.context() as progress:
+        progress.setattr(service.review, "read_update", lambda *_: pytest.fail("book reread"))
+        recovery = service.get("/api/tasks/recovery?task_id=" + refreshed["task_id"])
     assert recovery["next_requests"]["subject"] == {"operation": "EVIDENCE_CRO", **c.selector}
-    assert service.post("/api/cro-review", c.selector)["disposition"] == "ADMITTED"
+    from alphalattice.interface.local_application.labels import title
+
+    assert recovery["subject_context"]["name"] == title(c.n.checkpoint.package.strategy_id)
+    assert recovery["subject_context"]["name_zh"] == title(
+        c.n.checkpoint.package.strategy_id, chinese=True
+    )
+    entry = c.value.pending_proposal.schedule.entry_session.isoformat()
+    assert recovery["subject_context"]["date"] == entry
+    cro = service.post("/api/cro-review", c.selector)
+    assert cro["disposition"] == "ADMITTED"
     service.drain()
-    published = service.get("/api/evidence-cro?" + urlencode(c.selector))
+    cro_context = service.get("/api/tasks/recovery?task_id=" + cro["task_id"])["subject_context"]
+    assert cro_context["date"] == entry
+    published = service.get(evidence_url)
     assert published["state"] == "REVIEW_PUBLISHED", published
     assert published["review_publication_hash"]
     export_selector = {
@@ -306,6 +339,9 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated):
         "review_publication_hash": published["review_publication_hash"],
     }
     exported = service.get("/api/evidence-cro/export?" + urlencode(export_selector))
+    pinned = service.get("/api/evidence-cro?" + urlencode(export_selector))
+    assert pinned["book"]["committee_context"] == context
+    assert "committee_context" not in exported and "committee_context" not in exported["portfolio"]
     assert exported["portfolio"]["publication"] == c.value.model_dump(mode="json")
     assert exported["review"]["dossier"]["report_hash"] is None
     assert exported["review"]["dossier"]["update_subject"] == subject
@@ -314,12 +350,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated):
     assert exported["export_hash"] == canonical_hash(
         {k: v for k, v in exported.items() if k != "export_hash"}
     )
-    assert (
-        service.agent(
-            PortfolioResearchAgentRequest(operation="EVIDENCE_CRO_EXPORT", **export_selector)
-        )
-        == exported
-    )
+    assert service.agent(Request(operation="EVIDENCE_CRO_EXPORT", **export_selector)) == exported
     calls, tasks = (
         len(service.review.review_actor.observed_deadlines),
         len(service.registry.tasks()),
