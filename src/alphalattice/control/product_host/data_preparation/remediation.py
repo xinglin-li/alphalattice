@@ -19,6 +19,9 @@ from alphalattice.control.data_platform.contracts import (
 from alphalattice.control.data_platform.delegation import DataIssueDelegation
 from alphalattice.control.guanyin.data.workspace_maintenance import maintenance_failure_detail
 from alphalattice.control.product_host.composition.plain_refusals import task_record_refusal
+from alphalattice.control.product_host.composition.research_workspace import (
+    read_research_workspace_manifest,
+)
 from alphalattice.foundation.feature_engine.inputs.contracts import ListingQuarantine
 from alphalattice.foundation.feature_engine.inputs.gateway import (
     FeatureInputAgentCase,
@@ -48,6 +51,8 @@ from alphalattice.protocols.actor_execution import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from alphalattice.control.product_host.composition.application_session import (
         WorkspaceApplicationSession,
     )
@@ -83,14 +88,59 @@ def superseded_preparations(
         for task in tasks
         if task.task_kind == "workspace_preparation"
         and task.input.payload.get("source_task_id")
-        and (
-            task.lifecycle is not TaskLifecycle.CANCELLED
-            or any(
-                item.lifecycle is WorkItemLifecycle.VERIFIED
-                for item in registry.work_items(task.task_id)
-            )
-        )
+        and (task.lifecycle is not TaskLifecycle.CANCELLED or _holds_a_stage(registry, task))
     )
+
+
+def _holds_a_stage(registry: DuckDbTaskControlRegistry, task: TaskRecord) -> bool:
+    return any(
+        item.lifecycle is WorkItemLifecycle.VERIFIED for item in registry.work_items(task.task_id)
+    )
+
+
+def preparation_replan_refusal(
+    registry: DuckDbTaskControlRegistry, workspace: Path, task: TaskRecord
+) -> str | None:
+    """Why no plan can resume this stopped preparation, or None.
+
+    The one rule its plan, its recovery view and its data decisions' continuation read, so none
+    offers a resuming plan that the plan refuses or answers with another predecessor.
+    """
+    if task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED:
+        return "workspace_preparation.resume_in_place"
+    if task.lifecycle not in {TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED}:
+        return "workspace_preparation.resume_scope_changed"
+    if read_research_workspace_manifest(workspace).experiment_inputs:
+        return "workspace_preparation.inputs_already_published"
+    if str(task.task_id) in superseded_preparations(registry, registry.tasks()):
+        return "workspace_preparation.resume_scope_changed"
+    if task.lifecycle is TaskLifecycle.CANCELLED and not _holds_a_stage(registry, task):
+        return "workspace_preparation.nothing_captured_to_resume"
+    return None
+
+
+def _reread_issues(code: str) -> dict[str, object]:
+    """A decision the case no longer takes, refused with the read of where it stands now."""
+    return {
+        "status": "REFUSED",
+        "failure_code": code,
+        "next_action": "DATA_ISSUES",
+        "next_requests": {"issues": {"operation": "DATA_ISSUES"}},
+        "effect_applied": False,
+    }
+
+
+def _decided_elsewhere(
+    run: Callable[[Callable[[], dict[str, object]]], dict[str, object]],
+    accept: Callable[[], dict[str, object]],
+) -> dict[str, object]:
+    """Run a decision; one the case's recorded decision conflicts with reads where it stands."""
+    try:
+        return run(accept)
+    except ValueError as error:
+        if not str(error).startswith("feature_input.resolution_conflict"):
+            raise
+        return _reread_issues(str(error))
 
 
 def _choice_request(
@@ -202,6 +252,21 @@ class WorkspaceDataIssueApplication:
                 ):
                     return False
         return True
+
+    def _continuation(self, task: TaskRecord) -> tuple[str, str, dict[str, str]] | None:
+        """The request that continues one stopped Task, or None where no plan can resume it."""
+        plan = task.input.payload["plan"]
+        if task.task_kind != "workspace_preparation":
+            run = {"update_plan_hash": plan["content_hash"]}
+            return "DATA_UPDATE_RUN", "/api/data-update/run", run
+        if task.lifecycle.value != "BLOCKED" or task.failure_code != "data.truth_review_required":
+            confirm = {"preparation_plan_hash": plan["plan_hash"]}
+            return "WORKSPACE_PREPARE_CONFIRM", "/api/workspace/preparation/confirm", confirm
+        registry = self.session.task_control_registry
+        if preparation_replan_refusal(registry, self.session.workspace, task):
+            return None
+        recovery = {"recovery_task_id": str(task.task_id), "recovery_task_hash": task.record_hash}
+        return "WORKSPACE_PREPARE_PLAN", "/api/workspace/preparation/plan", recovery
 
     def _governance(self) -> FeatureInputGovernanceService:
         """The same judgement owner the maintenance cycle uses, over the same stores."""
@@ -415,32 +480,9 @@ class WorkspaceDataIssueApplication:
         continuations = []
         next_requests: dict[str, dict[str, str]] = {}
         for task in tasks:
-            plan = task.input.payload["plan"]
-            if (
-                task.task_kind == "workspace_preparation"
-                and task.lifecycle.value == "BLOCKED"
-                and task.failure_code == "data.truth_review_required"
-            ):
-                operation, endpoint, payload = (
-                    "WORKSPACE_PREPARE_PLAN",
-                    "/api/workspace/preparation/plan",
-                    {
-                        "recovery_task_id": str(task.task_id),
-                        "recovery_task_hash": task.record_hash,
-                    },
-                )
-            elif task.task_kind == "workspace_preparation":
-                operation, endpoint, payload = (
-                    "WORKSPACE_PREPARE_CONFIRM",
-                    "/api/workspace/preparation/confirm",
-                    {"preparation_plan_hash": plan["plan_hash"]},
-                )
-            else:
-                operation, endpoint, payload = (
-                    "DATA_UPDATE_RUN",
-                    "/api/data-update/run",
-                    {"update_plan_hash": plan["content_hash"]},
-                )
+            if (way := self._continuation(task)) is None:
+                continue
+            operation, endpoint, payload = way
             next_requests[f"continue:{task.task_id}"] = {"operation": operation, **payload}
             continuations.append(
                 {
@@ -818,13 +860,7 @@ class WorkspaceDataIssueApplication:
         except ValueError as error:
             if str(error) != "feature_input.case_no_longer_pending":
                 raise
-            return {
-                "status": "REFUSED",
-                "failure_code": "feature_input.case_no_longer_pending",
-                "next_action": "DATA_ISSUES",
-                "next_requests": {"issues": {"operation": "DATA_ISSUES"}},
-                "effect_applied": False,
-            }
+            return _reread_issues(str(error))
         return {
             "status": "CONFIRMATION_REQUIRED",
             "confirmation": "HUMAN" if delegated_by is None else "FIRST_USE_DELEGATION",
@@ -1147,4 +1183,4 @@ class WorkspaceDataIssueApplication:
                 },
             }
 
-        return self.session.mutation_gate.run(accept)
+        return _decided_elsewhere(self.session.mutation_gate.run, accept)

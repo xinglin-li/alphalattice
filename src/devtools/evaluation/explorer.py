@@ -64,6 +64,17 @@ def _under(value: Any, key: str, depth: int = 0) -> Iterator[tuple[str, Any]]:
             yield from _under(part, key, depth + 1)
 
 
+def _way(answer: dict[str, Any]) -> str:
+    """How a step stood: its outcome, stop and the names of the ways on it offered."""
+    names = sorted(name for name, _ in offers(answer)) + sorted(n for n, _ in commands(answer))
+    code = answer.get("failure_code") or _data(answer).get("failure_code")
+    return json.dumps([answer.get("outcome"), code, _state(answer), names])
+
+
+def _unhashed(request: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in request.items() if not key.endswith("_hash")}
+
+
 def offers(answer: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     """The request documents an answer offers, each once, by the name it gives them."""
     found: dict[str, tuple[str, dict[str, Any]]] = {}
@@ -100,19 +111,21 @@ class Explorer:
     work: Path
     time_box: float = 120.0
     heal: Callable[[], object] | None = None
-    steps: int = 400
-    """The walk's step budget: past it, every path ends as a horizon."""
     """An injected fault's end, applied once at its first stop: the person's fix, after which
     the offered way on must go on."""
+    steps: int = 400
+    """The walk's step budget: past it, every path ends as a horizon."""
     events: list[TraceEvent] = field(default_factory=list)
     observer: RoundTripObserver = field(default_factory=RoundTripObserver)
     sent: set[str] = field(default_factory=set)
     """Every request and command this walk has sent: a step's subtree is walked once."""
+    again: set[str] = field(default_factory=set)
+    """Each failed step sent once more where it was offered again, to see whether it moved."""
 
     def explore(self, starts: list[list[str]]) -> tuple[Grade, Trace]:
         """Walk every path from each start; the grade names each broken path and its part."""
         for argv in starts:
-            self._follow(self._send(argv, " ".join(argv)), (" ".join(argv),), set())
+            self._follow(self._send(argv, " ".join(argv)), (" ".join(argv),), {})
         trace = Trace(tuple(self.events))
         text = "\n".join(json.dumps(e.attributes, ensure_ascii=False) for e in self.events)
         for group in self.scenario.expected_route:
@@ -145,7 +158,7 @@ class Explorer:
     def _problem(self, reason: str, part: IssuePart) -> None:
         self.observer.problems.setdefault(reason, part)
 
-    def _follow(self, answer: dict[str, Any], path: tuple[str, ...], seen: set[str]) -> None:
+    def _follow(self, answer: dict[str, Any], path: tuple[str, ...], seen: dict[str, str]) -> None:
         where = " > ".join(path)
         settled = self._settled(answer, where)
         if settled is None:
@@ -157,9 +170,10 @@ class Explorer:
         if stops and (heal := self.heal) is not None:
             self.heal = None
             heal()
-        # A fresh plan hash is the same step; a choice to fill or an end of work is no way on.
+        # A fresh hash is the same step and another Task's is not; a choice to fill or an end
+        # of work is no way on.
         steps: list[tuple[str, str, dict[str, Any] | str]] = [
-            (name, f"{name}|{request['operation']}", request)
+            (name, f"{name}|{json.dumps(_unhashed(request), sort_keys=True)}", request)
             for name, request in offers(settled)
             if not _CHOICE.search(json.dumps(request))
             and "choices" not in request
@@ -171,17 +185,32 @@ class Explorer:
             # One answer per decision (`<kind>:<id>:<choice>`), and each request walked once.
             decision, sent_as = name.rpartition(":")[0], json.dumps(step, sort_keys=True)
             if key in seen:
-                self._problem(
-                    f"`{name}` offered again after it failed the same way at {where}", "feedback"
-                )
-            elif (decision.count(":") and decision in decided) or sent_as in self.sent:
+                if (sent := self._again(name, step, where, seen[key])) is None:
+                    continue
+            elif (
+                (decision.count(":") and decision in decided)
+                or sent_as in self.sent
+                or (sent := self._step(name, step, where)) is None
+            ):
                 continue
-            elif (sent := self._step(name, step, where)) is not None:
-                decided.add(decision)
-                self.sent.add(sent_as)
-                # A loop is a step that failed and is offered again; a step that went on is not.
-                failed = sent.get("outcome") in {"REFUSED", "FAILED"} or _state(sent) in STOPPED
-                self._follow(sent, (*path, name), seen | ({key} if failed else set()))
+            decided.add(decision)
+            self.sent.add(sent_as)
+            failed = sent.get("outcome") in {"REFUSED", "FAILED"} or _state(sent) in STOPPED
+            self._follow(sent, (*path, name), {**seen, key: _way(sent)} if failed else seen)
+
+    def _again(
+        self, name: str, step: dict[str, Any] | str, where: str, failed: str
+    ) -> dict[str, Any] | None:
+        """A failed step offered again, sent once more: a loop when it fails the same way, and
+        followed when it moved since (another stop, another way on)."""
+        sent_as = json.dumps(step, sort_keys=True)
+        if sent_as in self.again or (sent := self._step(name, step, where)) is None:
+            return None
+        self.again.add(sent_as)
+        if _way(sent) != failed:
+            return sent
+        self._problem(f"`{name}` offered again after it failed the same way at {where}", "feedback")
+        return None
 
     def _horizon(self, path: tuple[str, ...], code: str, answer: dict[str, Any]) -> bool:
         """A step limit, the walk's budget, or a way on that waits for its time."""

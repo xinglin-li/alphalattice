@@ -1483,7 +1483,7 @@ class PortfolioResearchOperations:
                             entry["detail"] = stop_detail(
                                 record.task_kind, record.failure_code, "TASK_CONTROL"
                             )
-                            if self._task_replan(record) is not None:
+                            if self._offers_replan(record):
                                 entry["stop_next"] = LEDGER_REBUILT_NEXT
                 return answer
             except (ValueError, KeyError, OSError) as error:
@@ -4584,17 +4584,20 @@ class PortfolioResearchOperations:
             if not choices
             else cast(dict[str, object], cast(Any, owner).replan_request(task))
         )
-        if task.lifecycle in {
-            TaskLifecycle.BLOCKED,
-            TaskLifecycle.CANCELLED,
-            TaskLifecycle.RECOVERY_REQUIRED,
-        }:
+        if task.lifecycle in _RECOVERY_SOURCES:
+            # Its owner may refuse the resume; then the unbound plan reads on.
+            if code := getattr(owner, "replan_refusal", lambda _: None)(task):
+                refused = {"failure_code": code, **refusal_words(code)}
+                return {**refused, "next_requests": {"plan": request}}
             return {
                 **request,
                 "recovery_task_id": str(task.task_id),
                 "recovery_task_hash": task.record_hash,
             }
         return request
+
+    def _offers_replan(self, task: TaskRecord) -> bool:
+        return "operation" in (self._task_replan(task) or {})
 
     def _task_replan_owner(self, task: TaskRecord) -> tuple[TaskReplan, Any] | None:
         """Find the owner behind the current composed replan declaration."""
@@ -4653,11 +4656,7 @@ class PortfolioResearchOperations:
             raise
         if source.record_hash != source_hash:
             return self._stale_recovery_context(source_id)
-        if source.lifecycle not in {
-            TaskLifecycle.BLOCKED,
-            TaskLifecycle.CANCELLED,
-            TaskLifecycle.RECOVERY_REQUIRED,
-        }:
+        if source.lifecycle not in _RECOVERY_SOURCES:
             return self._stale_recovery_context(
                 source_id, code="portfolio_research.recovery_request_not_offered"
             )
@@ -4782,12 +4781,6 @@ class PortfolioResearchOperations:
         self, source: TaskRecord, declaration: TaskReplan, body: dict[str, object]
     ) -> dict[str, object]:
         """Persist each actual filled admission request and carry its exact source pair."""
-        if declaration.preview == "WORKSPACE_PREPARE_PLAN" and body.get(
-            "predecessor_task_id"
-        ) != str(source.task_id):
-            return self._stale_recovery_context(
-                source.task_id, code="portfolio_research.recovery_request_not_offered"
-            )
         next_requests = body.get("next_requests")
         if next_requests is None:
             return body
@@ -5165,7 +5158,7 @@ class PortfolioResearchOperations:
             **(
                 {"stop_next": LEDGER_REBUILT_NEXT}
                 if value.latest_failure_code == "task_control.ledger_rebuilt"
-                and "operation" in (self._task_replan(record) or {})
+                and self._offers_replan(record)
                 else {}
             ),
             "resume_refusal": self._resume_refusal(value),
@@ -6872,6 +6865,9 @@ deferred one is not on its way: its plan confirmed again goes to its owner, whic
 before the retry time and resumes the same Task after (V375; answered here as in flight,
 the offered `resume` never reached the owner)."""
 _FINISHED_LIFECYCLES = frozenset({TaskLifecycle.SUCCEEDED, TaskLifecycle.CANCELLED})
+_RECOVERY_SOURCES = frozenset(
+    {TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED, TaskLifecycle.RECOVERY_REQUIRED}
+)
 _PORTFOLIO_TASK_KINDS = frozenset(
     {
         PORTFOLIO_RUN_COMMAND,

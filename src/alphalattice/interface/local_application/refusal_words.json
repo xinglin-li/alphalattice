@@ -1542,5 +1542,25 @@
  "workspace_preparation.resume_scope_changed": {
   "detail": "The preparation this resume names has moved on since it was offered: its Task is no longer stopped, or a newer preparation replaced it. Read the workspace's current preparation and follow the way on it offers.",
   "next_action": "READ_THE_CURRENT_PREPARATION"
+ },
+ "workspace_preparation.resume_in_place": {
+  "detail": "This preparation was interrupted, not stopped, so it resumes as itself rather than through a new plan. Recover the Task where its view offers it.",
+  "next_action": "RECOVER_THE_SAME_TASK"
+ },
+ "workspace_preparation.inputs_already_published": {
+  "detail": "This preparation published the workspace's research input before it stopped, so a new plan has nothing of it left to resume. Follow the stopped Task's own way on, or the workspace's next research step.",
+  "next_action": "READ_THE_TASK"
+ },
+ "workspace_preparation.nothing_captured_to_resume": {
+  "detail": "This preparation was cancelled before it captured its sources, so nothing of it can be resumed. Plan a new preparation.",
+  "next_action": "PLAN_A_NEW_PREPARATION"
+ },
+ "feature_input.case_no_longer_pending": {
+  "detail": "This case is no longer waiting for a decision, so nothing was applied. Read the data issues for where it stands now and follow its offer.",
+  "next_action": "DATA_ISSUES"
+ },
+ "feature_input.resolution_conflict": {
+  "detail": "Another decision for this case is already recorded, so this one conflicts with it and was not applied. Read the data issues for where the case stands now and follow its offer.",
+  "next_action": "DATA_ISSUES"
  }
 }

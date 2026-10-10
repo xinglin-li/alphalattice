@@ -54,6 +54,7 @@ from alphalattice.control.product_host.data_preparation.host import (
 )
 from alphalattice.control.product_host.data_preparation.remediation import (
     WorkspaceDataIssueApplication,
+    preparation_replan_refusal,
     superseded_preparations,
 )
 from alphalattice.control.product_host.maintenance.data_update import (
@@ -751,6 +752,20 @@ class WorkspacePreparationApplication:
             else None,
         }
 
+    def replan_refusal(self, task: TaskRecord) -> str | None:
+        """Why no plan can resume this stopped preparation, as the Host's recovery view reads it.
+
+        Args:
+            task: The stopped preparation Task a recovery would resume.
+
+        Returns:
+            The refusal code that names why, or None when a plan resumes it.
+        """
+        refused: str | None = preparation_replan_refusal(
+            self.session.task_control_registry, self.session.workspace, task
+        )
+        return refused
+
     def plan(
         self,
         *,
@@ -780,8 +795,8 @@ class WorkspacePreparationApplication:
         )
         if recovery is not None:
             self._stored_plan(recovery)
-            if recovery.lifecycle not in {TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED}:
-                raise ValueError("workspace_preparation.resume_scope_changed")
+            if (refused := self.replan_refusal(recovery)) is not None:
+                raise ValueError(refused)
         manifest = read_research_workspace_manifest(self.session.workspace)
         if manifest.experiment_inputs:
             return {
@@ -791,8 +806,6 @@ class WorkspacePreparationApplication:
             }
         tasks = self.tasks()
         superseded = superseded_preparations(self.session.task_control_registry, tasks)
-        if recovery_task_id is not None and str(recovery_task_id) in superseded:
-            raise ValueError("workspace_preparation.resume_scope_changed")
         if recovery is not None:
             tasks = (recovery,)
         unfinished = [
