@@ -22,7 +22,10 @@ def serve(arguments: list[str]) -> int:
         RESEARCH_WORKSPACE_MANIFEST_NAME,
         read_research_workspace_manifest,
     )
-    from alphalattice.interface.local_application.retrieval_environment import interpreter_path
+    from alphalattice.interface.local_application.retrieval_environment import (
+        fill_command,
+        interpreter_path,
+    )
 
     from .web_launcher import main as start
 
@@ -49,17 +52,8 @@ def serve(arguments: list[str]) -> int:
                         "status": "REFUSED",
                         "failure_code": "local_client.retrieval_environment_required",
                         "next_action": "CREATE_DECLARED_RETRIEVAL_ENVIRONMENT",
-                        "setup_command": [
-                            sys.executable,
-                            "-m",
-                            "alphalattice.interface.local_application.retrieval_environment",
-                            "--offline",
-                        ],
-                        "network_setup_command": [
-                            sys.executable,
-                            "-m",
-                            "alphalattice.interface.local_application.retrieval_environment",
-                        ],
+                        "setup_command": fill_command(),
+                        "network_setup_command": fill_command(offline=False),
                         "explanation": "Offline setup requires cached pinned packages. "
                         "Use network_setup_command only with dependency-download permission; "
                         "neither command supplies model or issuer authority.",

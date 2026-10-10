@@ -6,33 +6,154 @@ import html
 import json
 from typing import Any
 
-from alphalattice.interface.local_application.cli_contract import worded
+from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
+from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
+    DECISION_WORDS,
+    format_book_change,
+    format_book_weight,
+)
+
+_DISPLAY_WORDS = {
+    **DECISION_WORDS,
+    "NOT_SELECTED": "Not selected",
+    "NOT_RECORDED": "Not recorded",
+    "NOT_PUBLISHED": "Not published",
+    "EXPERIMENT_PUBLISHED": "Published",
+    "HOST": "Host",
+    "COMMITTEE_FLOOR": "Committee floor",
+    "ALPHA": "Alpha",
+    "RISK": "Risk",
+    "CALLER_SUPPLIED": "Caller supplied",
+    "EXTERNAL_AUTOMATION": "Agent · API",
+    "PROCEED": "Proceed",
+    "PROCEED_WITH_NOTES": "Proceed with notes",
+    "FOR_THE_PERSON": "For you",
+    "ADOPT": "Adopt",
+    "REJECT": "Rejected",
+    "CONDITIONAL_ESTIMATE": "Conditional estimated weights",
+    "OBSERVED_RESEARCH_ENTRY": "Observed research entry",
+    "EXPERIMENT_DELIVERY_EXPORT": "Delivery export",
+    "CALLER_SUPPLIED_NOT_VERIFIED_HOST_IDENTITIES": "Caller supplied; identities not verified",
+    "PROVIDED_FOR_THIS_DELIVERY_NOT_ORIGINAL_EXPERIMENT_INTENT": "Provided for this delivery",
+    "PRESENT": "present",
+    "INCOMPATIBLE": "refused by the owner",
+    "HISTORICAL_REVIEW": "historical review",
+    "EXPIRED": "review present but expired",
+    "HOLD": "hold",
+    "REBALANCE": "rebalance",
+    "HOLDINGS": "Holdings",
+    "CONCENTRATION": "Concentration",
+    "TURNOVER": "Turnover",
+    "COST": "Cost",
+    "PERFORMANCE": "Performance",
+    "POSITIVE_OOS_EVIDENCE": "Positive out-of-sample evidence",
+    "MIXED_OOS_EVIDENCE": "Mixed out-of-sample evidence",
+    "NO_DETECTABLE_EFFECT": "No detectable effect",
+    "NEGATIVE_OOS_EVIDENCE": "Negative out-of-sample evidence",
+    "INSUFFICIENT_EVIDENCE": "Insufficient evidence",
+    "DIRECTIONALLY_POSITIVE_BY_CONFIRMED": "Positive in direction · confirmed under "
+    "Benjamini\u2013Yekutieli FDR",
+    "DIRECTIONALLY_POSITIVE_NOT_BY_CONFIRMED": "Positive in direction · not confirmed under "
+    "Benjamini\u2013Yekutieli FDR",
+    "DIRECTIONALLY_NEGATIVE_BY_CONFIRMED": "Negative in direction · confirmed under "
+    "Benjamini\u2013Yekutieli FDR",
+    "NONPOSITIVE_DIRECTION_NOT_BY_CONFIRMED": "Not positive in direction · not confirmed under "
+    "Benjamini\u2013Yekutieli FDR",
+    "MIXED_OOS_DIRECTION": "Mixed direction out of sample",
+}
+_FRACTIONS = {
+    "Cash",
+    "cash",
+    "weight",
+    "weights",
+    "target",
+    "targets",
+    "one_way_turnover",
+    "gross_simple_return",
+    "net_simple_return",
+    "benchmark_simple_return",
+    "fraction",
+    "annualized_volatility_median",
+    "gross_decile_spread",
+    "mean_gross_decile_spread",
+    "validation_pair_coverage_mean",
+    "validation_rank_turnover_mean",
+    "fold_coverage_mean",
+    "annualized_return",
+    "annualized_volatility",
+    "tracking_error",
+    "zero_cash_jensen_alpha",
+    "maximum_drawdown",
+    "benchmark_maximum_drawdown",
+    "portfolio weight",
+    "portfolio fraction",
+    "annualized fraction",
+}
+_CODE_FIELDS = {
+    "code",
+    "status",
+    "availability",
+    "State",
+    "Status",
+    "Question provenance",
+    "role",
+    "attribution",
+    "submitted_by",
+    "basis",
+    "position_basis",
+    "operation",
+    "audit_boundary",
+    "decision_mode",
+    "dimension",
+    "classification",
+    "reason_codes",
+}
+_BPS = {"cost_bps", "platform_one_way_cost_bps", "bps", "bps on platform one-way turnover"}
 
 
 def _attribution(item: dict[str, Any]) -> str:
     """Read a keyed product attribution; participant-authored attribution stays verbatim."""
     key = item.get("attribution_word")
-    labels = {
-        "PROCEED": "Proceed",
-        "PROCEED_WITH_NOTES": "Proceed with notes",
-        "FOR_THE_PERSON": "For you",
-        "ADOPT": "Adopt",
-        "REJECT": "Rejected",
-    }
     if not key:
         return str(item["attribution"])
     return (worded(key) or key).format(
-        **{
-            k: worded(labels.get(v, v)) if k == "outcome" else v
-            for k, v in item.get("attribution_words", {}).items()
-        }
+        **{k: _display(v, "code") for k, v in item.get("attribution_words", {}).items()}
     )
 
 
-def _text(value: object) -> str:
-    """Escape owner values consistently; unavailable is never a numeric zero."""
+def _display(value: Any, kind: str = "") -> Any:
+    """Format recorded values by declared field kind; authored words stay verbatim."""
     if isinstance(value, dict) and "availability" in value:
+        kind = kind if value.get("value") is not None else "availability"
         value = value.get("value") if value.get("value") is not None else value["availability"]
+    if isinstance(value, dict):
+        return {k: _display(v, k) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_display(v, kind) for v in value]
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        if kind in _FRACTIONS:
+            return format_book_weight(value, precision=2)
+        if kind in {"cost_fraction", "weight_change"}:
+            return format_book_change(value).removeprefix("+") + " bps"
+        if kind in _BPS:
+            return f"{value:.2f}"
+        if isinstance(value, float):
+            if value != 0 and abs(value) < 0.00005:
+                mantissa, exponent = f"{value:.2e}".split("e")
+                return f"{mantissa} \u00d7 10^{int(exponent)}"
+            return f"{value:.4f}"
+    return (
+        worded(_DISPLAY_WORDS.get(value, value))
+        if isinstance(value, str) and kind in _CODE_FIELDS
+        else value
+    )
+
+
+def _text(value: object, kind: str = "", *, unit_in_cell: bool = True) -> str:
+    """Escape presented owner values; unavailable is never a numeric zero."""
+    value = _display(value, kind)
+    if not unit_in_cell and isinstance(value, str):
+        value = value.removesuffix("%") if kind in _FRACTIONS else value.removesuffix(" bps")
     if isinstance(value, dict | list):
         value = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
     return html.escape("Not available" if value is None else str(value))
@@ -42,7 +163,8 @@ def _facts(values: dict[str, Any]) -> str:
     return (
         "<dl>"
         + "".join(
-            f"<dt>{_text(label)}</dt><dd>{_text(value)}</dd>" for label, value in values.items()
+            f"<dt>{_text(label)}</dt><dd>{_text(value, label)}</dd>"
+            for label, value in values.items()
         )
         + "</dl>"
     )
@@ -374,7 +496,9 @@ def risk_report_section(body: dict[str, Any], projection: dict[str, Any] | None 
         for start, end, count in scope_facts
     )
     rows = "".join(
-        "<tr>" + "".join(f"<td>{_text(row.get(k))}</td>" for k in fields) + "</tr>"
+        "<tr>"
+        + "".join(f"<td>{_text(row.get(k), k, unit_in_cell=False)}</td>" for k in fields)
+        + "</tr>"
         for row in evaluations
     )
     return (
@@ -392,7 +516,10 @@ def risk_report_section(body: dict[str, Any], projection: dict[str, Any] | None 
         "<th>First formation</th><th>Last formation</th><th>Assets</th></tr></thead><tbody>"
         + scope_rows
         + '</tbody></table><div class="table-scroll"><table><thead><tr>'
-        + "".join(f"<th>{html.escape(k.replace('_', ' '))}</th>" for k in fields)
+        + "".join(
+            f"<th>{html.escape(k.replace('_', ' '))}{' (%)' if k in _FRACTIONS else ''}</th>"
+            for k in fields
+        )
         + "</tr></thead><tbody>"
         + rows
         + "</tbody></table></div></section>"
@@ -468,7 +595,12 @@ def _portfolio_report(body: dict[str, Any]) -> str:
         **body["result"],
     }
     holdings = "".join(
-        "<tr>" + "".join(f"<td>{_text(v)}</td>" for v in (listing, target, weight)) + "</tr>"
+        "<tr>"
+        + "".join(
+            f"<td>{_text(v, k, unit_in_cell=False)}</td>"
+            for k, v in zip(("listing", "target", "weight"), (listing, target, weight), strict=True)
+        )
+        + "</tr>"
         for listing, target, weight in zip(
             body.get("listing_labels") or source["ordered_listing_ids"],
             position["targets"],
@@ -480,7 +612,7 @@ def _portfolio_report(body: dict[str, Any]) -> str:
     series = "".join(
         "<tr>"
         + "".join(
-            f"<td>{_text(row[k])}</td>"
+            f"<td>{_text(row[k], k, unit_in_cell=False)}</td>"
             for k in (
                 "session",
                 "decision_mode",
@@ -504,18 +636,18 @@ def _portfolio_report(body: dict[str, Any]) -> str:
         "<h1>Portfolio development replay</h1><p>Observed development evidence, "
         "not independent validation or a live recommendation. No Risk model, covariance forecast, "
         "model decomposition or strategy activation. Undefined ratios remain unavailable.</p>"
-        "<p>Returns and weights are fractions; the eligible-universe equal-weight benchmark "
+        "<p>Returns and weights are percentages; the eligible-universe equal-weight benchmark "
         "is a descriptive reference, not an investable benchmark.</p>"
         + _study_context(body)
-        + "<dl>"
-        + "".join(f"<dt>{_text(k)}</dt><dd>{_text(v)}</dd>" for k, v in facts.items())
-        + "</dl>"
-        '<div class="table-scroll"><table><caption>Selected session holdings</caption>'
-        "<tr><th>Listing</th><th>Target</th><th>Executed</th></tr>" + holdings + "</table></div>"
+        + _facts(facts)
+        + '<div class="table-scroll"><table><caption>Selected session holdings</caption>'
+        "<tr><th>Listing</th><th>Target (%)</th><th>Executed (%)</th></tr>"
+        + holdings
+        + "</table></div>"
         '<div class="table-scroll"><table><caption>Continuous economic calendar, '
-        "including embargo HOLD sessions</caption>"
-        "<tr><th>Session</th><th>Mode</th><th>Gross</th><th>Net</th><th>Benchmark</th>"
-        "<th>One-way turnover</th><th>Cost fraction</th></tr>"
+        "including embargo hold sessions</caption>"
+        "<tr><th>Session</th><th>Mode</th><th>Gross (%)</th><th>Net (%)</th><th>Benchmark (%)</th>"
+        "<th>One-way turnover (%)</th><th>Cost (bps)</th></tr>"
         + series
         + "</table></div><p>"
         + _text("; ".join(body["limitations"]))
@@ -564,7 +696,7 @@ def factor_report_section(body: dict[str, Any]) -> str:
     rows = "".join(
         "<tr>"
         + "".join(
-            f"<td>{_text(item.get(key))}</td>"
+            f"<td>{_text(item.get(key), key, unit_in_cell=False)}</td>"
             for key in (
                 "factor_id",
                 "classification",
@@ -574,7 +706,9 @@ def factor_report_section(body: dict[str, Any]) -> str:
                 "validation_rank_turnover_mean",
             )
         )
-        + f"<td>{_text('; '.join(item.get('reason_codes', [])))}</td></tr>"
+        + "<td>"
+        + _text("; ".join(_display(item.get("reason_codes", []), "reason_codes")))
+        + "</td></tr>"
         for item in report.get("items", [])
         if item.get("factor_id") in selected
     )
@@ -583,7 +717,7 @@ def factor_report_section(body: dict[str, Any]) -> str:
         "<p>Development evidence only. No Foundation admission, strategy activation"
         " or timely advice.</p>"
         + _study_context(body)
-        + f"<dl><dt>Status</dt><dd>{_text(body.get('status'))}</dd>"
+        + f"<dl><dt>Status</dt><dd>{_text(body.get('status'), 'status')}</dd>"
         f"<dt>Method</dt><dd>{_text(program.get('kind'))}</dd>"
         f"<dt>Program</dt><dd>{_text(program.get('program_hash'))}</dd>"
         f"<dt>Full statistical context</dt><dd>{_text(report.get('hypothesis_count'))} factors</dd>"
@@ -594,7 +728,7 @@ def factor_report_section(body: dict[str, Any]) -> str:
         '<div class="table-scroll"><table><caption>Selected Factor evidence, '
         "as reported by its owner</caption>"
         "<thead><tr><th>Factor</th><th>Classification</th><th>Oriented rank IC</th>"
-        "<th>BY q value</th><th>Pair coverage</th><th>Rank turnover</th>"
+        "<th>BY q value</th><th>Pair coverage (%)</th><th>Rank turnover (%)</th>"
         "<th>Reasons</th></tr></thead>"
         f"<tbody>{rows}</tbody></table></div>"
         + quality_content
@@ -690,14 +824,17 @@ def alpha_report_section(body: dict[str, Any]) -> str:
     metrics = ("mae", "mse", "zero_relative_oos_r2", "rank_ic", "gross_decile_spread")
     rows = "".join(
         f"<tr><td>{_text(fold['fold_index'])}</td>"
-        + "".join(f"<td>{_text((fold.get('metrics') or {}).get(key))}</td>" for key in metrics)
+        + "".join(
+            f"<td>{_text((fold.get('metrics') or {}).get(key), key, unit_in_cell=False)}</td>"
+            for key in metrics
+        )
         + "</tr>"
         for fold in body["fold_results"]
     )
     summary = "".join(
         "<tr>"
         + "".join(
-            f"<td>{_text(candidate.get(key))}</td>"
+            f"<td>{_text(candidate.get(key), key, unit_in_cell=False)}</td>"
             for key in (
                 "candidate_id",
                 "pooled_oos_r2",
@@ -714,17 +851,16 @@ def alpha_report_section(body: dict[str, Any]) -> str:
         "<p>Development measurement only. A named research Foundation is not strategy activation, "
         "independent scientific validation or timely advice. No winner is selected.</p>"
         + _study_context(body)
-        + "<dl>"
-        + "".join(f"<dt>{_text(k)}</dt><dd>{_text(v)}</dd>" for k, v in facts.items())
-        + "</dl><p>Counts describe the completing execution; verified children may come "
+        + _facts(facts)
+        + "<p>Counts describe the completing execution; verified children may come "
         "from earlier interrupted work. An exact replay performs no new numerical calls.</p>"
         '<div class="table-scroll"><table><caption>Recorded candidate summary</caption>'
         "<tr><th>Candidate</th><th>OOS R²</th><th>Rank IC</th>"
-        "<th>Gross spread</th><th>Coverage</th></tr>"
+        "<th>Gross spread (%)</th><th>Coverage (%)</th></tr>"
         + summary
         + '</table></div><div class="table-scroll"><table><caption>Verified folds</caption>'
         "<tr><th>Fold</th><th>MAE</th><th>MSE</th><th>OOS R²</th>"
-        "<th>Rank IC</th><th>Gross spread</th></tr>"
+        "<th>Rank IC</th><th>Gross spread (%)</th></tr>"
         + rows
         + "</table></div><p>Companion JSON contains exact receipts, child identities, "
         "full metrics and fold windows; YAML preserves the authored declaration.</p>"
@@ -736,108 +872,112 @@ def render_research_delivery(snapshot: dict[str, Any]) -> str:
     """Compose existing verified content; commentary stays escaped and non-authoritative."""
     from alphalattice.interface.local_application.evidence_cro import render_review_export
 
-    sections = snapshot["sections"]
-    if "positions" in sections:
-        # A date's published positions: their own page, the review and the commentary.
-        return _delivered(
-            str(sections["positions"]["value"]["html"]),
+    token = ANSWER_LANGUAGE.set("en")
+    try:
+        sections = snapshot["sections"]
+        if "positions" in sections:
+            # A date's published positions: their own page, the review and the commentary.
+            return _delivered(
+                str(sections["positions"]["value"]["html"]),
+                '<section id="delivery-context"><h2>Research delivery</h2><p>'
+                + _text(snapshot["claim"])
+                + "</p>"
+                + _facts({"Question for this delivery": snapshot["question"], **snapshot["input"]})
+                + "</section>",
+                [],
+                snapshot,
+                render_review_export,
+            )
+        primary = _portfolio_report(sections["portfolio"]["value"])
+        notice = (
             '<section id="delivery-context"><h2>Research delivery</h2><p>'
             + _text(snapshot["claim"])
             + "</p>"
-            + _facts({"Question for this delivery": snapshot["question"], **snapshot["input"]})
-            + "</section>",
-            [],
-            snapshot,
-            render_review_export,
-        )
-    primary = _portfolio_report(sections["portfolio"]["value"])
-    notice = (
-        '<section id="delivery-context"><h2>Research delivery</h2><p>'
-        + _text(snapshot["claim"])
-        + "</p>"
-        + _facts(
-            {
-                "Question for this delivery": snapshot["question"],
-                "Question provenance": snapshot["question_status"],
-                **snapshot["input"],
-            }
-        )
-        + '<nav><a href="#delivery-comparison">Comparison</a> · '
-        '<a href="#delivery-risk">Risk reference</a> · '
-        '<a href="#delivery-evidence-state">Evidence/CRO state</a> · '
-        '<a href="#delivery-commentary">Attributed commentary</a></nav></section>'
-    )
-    parts = []
-    for name, renderer in (("factor", factor_report_section), ("alpha", alpha_report_section)):
-        content = renderer(sections[name]["value"])
-        for anchor in ("study-context", "research-next-steps"):
-            content = content.replace(f'id="{anchor}"', f'id="{name}-{anchor}"')
-        content = content.replace("<h1>", "<h2>", 1).replace("</h1>", "</h2>", 1)
-        parts.append(
-            f'<details id="delivery-{name}"><summary>{name.title()} evidence</summary>'
-            + content
-            + "</details>"
-        )
-    foundation = sections["foundation"]
-    parts.append(
-        '<section id="delivery-foundation"><h2>Research Foundation</h2>'
-        + _facts(foundation)
-        + "</section>"
-    )
-    comparison = sections["comparison"]
-    parts.append('<section id="delivery-comparison"><h2>Declared comparison</h2>')
-    if comparison["status"] == "PRESENT":
-        value = comparison["value"]
-        parts.append(
-            "<p>"
-            + _text(value["claim"])
-            + "</p>"
             + _facts(
                 {
-                    "Left Task": value["left"]["task_id"],
-                    "Right Task": value["right"]["task_id"],
+                    "Question for this delivery": snapshot["question"],
+                    "Question provenance": snapshot["question_status"],
+                    **snapshot["input"],
                 }
             )
+            + '<nav><a href="#delivery-comparison">Comparison</a> · '
+            '<a href="#delivery-risk">Risk reference</a> · '
+            '<a href="#delivery-evidence-state">Evidence/CRO state</a> · '
+            '<a href="#delivery-commentary">Attributed commentary</a></nav></section>'
         )
-        rows = "".join(
-            "<tr>"
-            + "".join(
-                f"<td>{_text(v)}</td>"
-                for v in (
-                    group["dimension"],
-                    metric["label"],
-                    metric["unit"],
-                    metric["left"],
-                    metric["right"],
+        parts = []
+        for name, renderer in (("factor", factor_report_section), ("alpha", alpha_report_section)):
+            content = renderer(sections[name]["value"])
+            for anchor in ("study-context", "research-next-steps"):
+                content = content.replace(f'id="{anchor}"', f'id="{name}-{anchor}"')
+            content = content.replace("<h1>", "<h2>", 1).replace("</h1>", "</h2>", 1)
+            parts.append(
+                f'<details id="delivery-{name}"><summary>{name.title()} evidence</summary>'
+                + content
+                + "</details>"
+            )
+        foundation = sections["foundation"]
+        parts.append(
+            '<section id="delivery-foundation"><h2>Research Foundation</h2>'
+            + _facts(foundation)
+            + "</section>"
+        )
+        comparison = sections["comparison"]
+        parts.append('<section id="delivery-comparison"><h2>Declared comparison</h2>')
+        if comparison["status"] == "PRESENT":
+            value = comparison["value"]
+            parts.append(
+                "<p>"
+                + _text(value["claim"])
+                + "</p>"
+                + _facts(
+                    {
+                        "Left Task": value["left"]["task_id"],
+                        "Right Task": value["right"]["task_id"],
+                    }
                 )
             )
-            + "</tr>"
-            for group in value["dimensions"]
-            for metric in group["metrics"]
-        )
-        parts.append(
-            '<div class="table-scroll"><table><tr><th>Dimension</th><th>Metric</th>'
-            "<th>Unit</th><th>Left</th><th>Right</th></tr>" + rows + "</table></div>"
-        )
-    else:
-        parts.append(_facts(comparison))
-    parts.append('</section><section id="delivery-risk"><h2>Risk report reference</h2>')
-    risk = sections["risk"]
-    if risk["status"] == "PRESENT":
-        value = risk["value"]
-        parts.append(
-            "<p>This linked Risk model did not change Portfolio sizing. "
-            "Its coverage may be shorter than the Portfolio study.</p>"
-            + _facts(
-                {"Selected holdings date covered by Risk": risk.get("selected_session_covered")}
+            rows = "".join(
+                "<tr>"
+                + "".join(
+                    f"<td>{_text(v, unit, unit_in_cell=False)}</td>"
+                    for v, unit in (
+                        (group["dimension"], "dimension"),
+                        (metric["label"], ""),
+                        ("%" if metric["unit"] in _FRACTIONS else metric["unit"], ""),
+                        (metric["left"], metric["unit"]),
+                        (metric["right"], metric["unit"]),
+                    )
+                )
+                + "</tr>"
+                for group in value["dimensions"]
+                for metric in group["metrics"]
             )
-            + _facts(value["link"])
-            + risk_report_section(value["risk"], value.get("report_projection"))
-        )
-    else:
-        parts.append(_facts(risk))
-    parts.append("</section>")
-    return _delivered(primary, notice, parts, snapshot, render_review_export)
+            parts.append(
+                '<div class="table-scroll"><table><tr><th>Dimension</th><th>Metric</th>'
+                "<th>Unit</th><th>Left</th><th>Right</th></tr>" + rows + "</table></div>"
+            )
+        else:
+            parts.append(_facts(comparison))
+        parts.append('</section><section id="delivery-risk"><h2>Risk report reference</h2>')
+        risk = sections["risk"]
+        if risk["status"] == "PRESENT":
+            value = risk["value"]
+            parts.append(
+                "<p>This linked Risk model did not change Portfolio sizing. "
+                "Its coverage may be shorter than the Portfolio study.</p>"
+                + _facts(
+                    {"Selected holdings date covered by Risk": risk.get("selected_session_covered")}
+                )
+                + _facts(value["link"])
+                + risk_report_section(value["risk"], value.get("report_projection"))
+            )
+        else:
+            parts.append(_facts(risk))
+        parts.append("</section>")
+        return _delivered(primary, notice, parts, snapshot, render_review_export)
+    finally:
+        ANSWER_LANGUAGE.reset(token)
 
 
 def _delivered(
@@ -857,7 +997,11 @@ def _delivered(
     )
     parts.append(
         '<section id="delivery-commentary"><h2>Attributed commentary, not authority</h2>'
-        + _facts(snapshot["commentary_provenance"])
+        + "<p>"
+        + " · ".join(
+            _text(v, "code") for v in snapshot["commentary_provenance"].values() if v is not None
+        )
+        + "</p>"
     )
     for item in snapshot["commentary"]:
         parts.append(

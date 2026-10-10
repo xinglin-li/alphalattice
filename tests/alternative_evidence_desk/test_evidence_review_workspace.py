@@ -235,18 +235,33 @@ def test_an_installed_package_is_served_before_the_runtime_it_replaced_closes(tm
 
 
 def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(tmp_path, monkeypatch):
-    """requirement: a Host without the retrieval runtime cannot serve a package, so its
-    install blocks at its first stage by name and the package bound before stays bound."""
+    """requirement: a Host without the retrieval runtime blocks its install by name, the package
+    bound before stays bound, and the declared environment filled afterwards is read in place."""
+    from alphalattice.interface.local_application import retrieval_environment
+
+    environment, (major, minor, micro) = tmp_path / "declared-retrieval", sys.version_info[:3]
+    site = environment / (
+        "Lib/site-packages" if os.name == "nt" else f"lib/python{major}.{minor}/site-packages"
+    )
     found = importlib.util.find_spec
+    monkeypatch.setattr(retrieval_environment, "ENVIRONMENT", environment)
+    monkeypatch.setattr(sys, "path", [*sys.path])
     monkeypatch.setattr(
         importlib.util,
         "find_spec",
-        lambda name, *rest: None if name == "fastembed" else found(name, *rest),
+        lambda name, *rest: (
+            found(name, *rest) if name != "fastembed" or str(site) in sys.path else None
+        ),
     )
     served: list[bool] = []
     task, before, after = _install(tmp_path, served=served)
     assert task.lifecycle.value == "BLOCKED" and served == [] and after == before
     assert task.failure_code == "evidence_review.retrieval_environment_not_loaded"
+    (site / "fastembed").mkdir(parents=True)
+    (site / "fastembed" / "__init__.py").write_text("", encoding="utf-8")
+    config = f"version_info = {major}.{minor}.{micro}\n"
+    (environment / "pyvenv.cfg").write_text(config, encoding="utf-8")
+    assert retrieval_environment.load() and str(site) == sys.path[-1]
 
 
 def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path, monkeypatch):
@@ -390,8 +405,11 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
             "probe_hybrid_retrieval_capabilities",
             lambda *_: SimpleNamespace(status="UNAVAILABLE"),
         )
-        with pytest.raises(RuntimeError, match="semantic_capability_not_ready"):
+        with pytest.raises(RuntimeError, match="semantic_capability_not_ready") as raised:
             setup.materialize(args)
+    # Its way on fills the runtime and reads the packs, never the same check again.
+    ways = setup.setup_refusal(args, raised.value)["next_commands"]
+    assert set(ways) == {"environment", "packs"} and "--offline" in ways["environment"]
     assert transport.calls == []
     args.preflight = False
     with pytest.raises(ValueError, match="explicit_sec_network_consent_required"):

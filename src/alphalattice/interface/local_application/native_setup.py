@@ -67,9 +67,27 @@ def command_readiness(command: list[str], *, timeout: int = 30) -> dict[str, Any
     return result
 
 
-def codex_queue_readiness() -> dict[str, Any]:
+def codex_command(path: str | None = None) -> tuple[str | None, str]:
+    """An admitted client executable, otherwise this process's PATH."""
+    offered = None if not path else Path(path)
+    if (
+        offered is not None
+        and offered.is_absolute()
+        and offered.is_file()
+        and offered.name.lower() in {"codex", "codex.exe", "codex.cmd"}
+    ):
+        return str(offered), "CLIENT_PATH"
+    found = shutil.which("codex")
+    return (None if found is None else str(Path(found).absolute())), "HOST_PATH"
+
+
+def codex_queue_readiness(path: str | None = None) -> dict[str, Any]:
     """Whether this process can start the background queue the Host must deliver through."""
-    return command_readiness(["codex", "queue", "--help"], timeout=5)
+    command, source = codex_command(path)
+    return {
+        **command_readiness([command or "codex", "queue", "--help"], timeout=5),
+        "command_source": source,
+    }
 
 
 def _installed_leg() -> dict[str, Any]:
@@ -153,7 +171,7 @@ HOST_DEPENDENCIES = {
     "background_notices": (
         "Continue after background work ends",
         "Ask once to install the Codex CLI outside the lock; the agent installs it "
-        "and checks codex queue --help. Restart its idle Host to refresh the check. "
+        "and checks codex queue --help, then sends the same request again. "
         "Until available, WAIT_IN_THE_TURN occupies this turn until work ends.",
         "PERSON",
     ),

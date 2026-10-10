@@ -44,7 +44,8 @@ class WorkspaceWriterLease:
             Held lease; the caller must close it when the writable runtime ends.
 
         Raises:
-            RuntimeError: The workspace already has a writer owner.
+            RuntimeError: `workspace_runtime.writer_already_owned`, the workspace already has
+                a writer owner, such as its running Host.
         """
         workspace.mkdir(parents=True, exist_ok=True)
         path = workspace / ".alphalattice-writer.lock"
@@ -66,7 +67,7 @@ class WorkspaceWriterLease:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
             handle.close()
-            raise RuntimeError("workspace runtime writer is already owned") from exc
+            raise RuntimeError("workspace_runtime.writer_already_owned") from exc
         keep_file_facts(workspace)
         return cls(_handle=handle, _workspace=workspace)
 

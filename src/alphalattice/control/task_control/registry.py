@@ -1917,16 +1917,15 @@ class DuckDbTaskControlRegistry:
         return tuple(wakes.values())
 
     def register_wake(
-        self, task_id: UUID, thread_id: str, read_command: str, *, observed_at: datetime
+        self,
+        task_id: UUID,
+        thread_id: str,
+        read_command: str,
+        *,
+        observed_at: datetime,
+        codex_path: str | None = None,
     ) -> dict[str, Any]:
-        """Hold one Codex wake in the Task's journal, beside its sealed record (WAKE).
-
-        The thread's pending wake is the one held, its read replaced when it changed; a settled
-        wake whose Task has not moved since is answered again, so one state is sent once.
-
-        Raises:
-            TaskNotFoundError: No such Task.
-        """
+        """Hold one wake; update a pending command/path, reuse a settled lifecycle."""
         self._db_time(observed_at)
 
         def operation(connection):  # type: ignore[no-untyped-def]
@@ -1935,7 +1934,9 @@ class DuckDbTaskControlRegistry:
             held = [w for w in self._wakes_from(connection, task_id) if w["thread_id"] == thread_id]
             if held:
                 last = held[-1]
-                if last["state"] == "PENDING" and last["read_command"] != read_command:
+                if last["state"] == "PENDING" and (
+                    last["read_command"] != read_command or last.get("codex_path") != codex_path
+                ):
                     registration_id = last["registration_id"]
                 elif last["state"] == "PENDING" or last["lifecycle"] == task.lifecycle.value:
                     return last
@@ -1948,6 +1949,7 @@ class DuckDbTaskControlRegistry:
                     "registration_id": registration_id,
                     "thread_id": thread_id,
                     "read_command": read_command,
+                    "codex_path": codex_path,
                     "lifecycle": task.lifecycle.value,
                 },
                 observed_at=observed_at,

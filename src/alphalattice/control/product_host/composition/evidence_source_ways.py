@@ -154,12 +154,12 @@ def evidence_setup(
         f"{RECIPE_MINILM_CPU} --network",
     }
     if installed:
-        entry = f"{python} -m alphalattice.control.product_host.composition.retrieval_pack_setup"
-        pack["check"] = f"{entry} --status"
-        pack["install"] = f"{entry} --install {RECIPE_MINILM_CPU} --network"
-        pack["environment"] = (
-            f"{python} -m alphalattice.interface.local_application.retrieval_environment --offline"
-        )
+        from alphalattice.control.product_host.composition.retrieval_pack_setup import pack_command
+        from alphalattice.interface.local_application.retrieval_environment import fill_command
+
+        pack["check"] = join(pack_command("--status"), shell())
+        pack["install"] = join(pack_command("--install", RECIPE_MINILM_CPU, "--network"), shell())
+        pack["environment"] = join(fill_command(), shell())
     elif not (resolve_playpen_root(Path(__file__)) / retrieval).is_file():
         pack["environment"] = f"{python} scripts/create_retrieval_environment.py --offline"
     scope = " ".join(

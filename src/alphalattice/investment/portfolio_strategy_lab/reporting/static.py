@@ -52,6 +52,16 @@ if TYPE_CHECKING:
     )
 
 
+DECISION_WORDS = {
+    "PROPOSAL_PUBLISHED": "Proposal published",
+    "ENTRY_SETTLED": "Entry settled",
+    "OUTCOME_SETTLED": "Outcome settled",
+    "CLOSE_MARKED_ESTIMATE_NOT_EXECUTION_TARGET": "Close-marked estimates, not execution targets",
+    "OBSERVED_RESEARCH_ENTRY_WEIGHTS": "Observed research entry weights",
+    "POST_OBSERVED_QA_NOT_TIMELY_ADVICE": "Observed research, not timely advice",
+}
+
+
 def render_decision_update(
     checkpoint: PortfolioDecisionCheckpoint, history: tuple[PortfolioUpdatePublication, ...]
 ) -> str:
@@ -71,12 +81,15 @@ def render_decision_update(
         zip(checkpoint.ordered_listing_ids, checkpoint.listing_labels, weights, strict=True)
     ):
         delta = (
-            "Not available in this historical artifact" if changes is None else str(changes[index])
+            "Not available in this historical artifact"
+            if changes is None
+            else format_book_change(changes[index])
         )
         if weight > 0 or previous[index] > 0:
             rows.append(
                 f"<tr><td>{html.escape(label)}</td><td>{html.escape(listing)}</td>"
-                f"<td>{weight:.8f}</td><td>{delta}</td></tr>"
+                f"<td>{format_book_weight(weight, precision=2).removesuffix('%')}</td>"
+                f"<td>{delta}</td></tr>"
             )
     events = []
     seen_proposals: set[str] = set()
@@ -88,17 +101,29 @@ def render_decision_update(
             p = publication.pending_proposal
             seen_proposals.add(p.content_hash)
             events.append(
-                f"<tr><td>{p.schedule.formation_session}</td><td>PROPOSAL_PUBLISHED</td>"
+                f"<tr><td>{p.schedule.formation_session}</td><td>{DECISION_WORDS['PROPOSAL_PUBLISHED']}</td>"
                 f"<td>{p.schedule.entry_session}</td><td>Pending</td><td>Pending</td>"
                 "<td>Pending</td><td>Pending</td></tr>"
             )
         for event in publication.events:
-            returns = "Pending" if event.gross_return is None else str(event.gross_return)
-            net5 = "Pending" if event.net_return_5bps is None else str(event.net_return_5bps)
-            net10 = "Pending" if event.net_return_10bps is None else str(event.net_return_10bps)
+            returns = (
+                "Pending"
+                if event.gross_return is None
+                else _pct(event.gross_return).removesuffix("%")
+            )
+            net5 = (
+                "Pending"
+                if event.net_return_5bps is None
+                else _pct(event.net_return_5bps).removesuffix("%")
+            )
+            net10 = (
+                "Pending"
+                if event.net_return_10bps is None
+                else _pct(event.net_return_10bps).removesuffix("%")
+            )
             events.append(
-                f"<tr><td>{event.formation_session}</td><td>{event.phase}</td>"
-                f"<td>{event.entry.schedule.entry_session}</td><td>{event.turnover}</td>"
+                f"<tr><td>{event.formation_session}</td><td>{DECISION_WORDS[event.phase]}</td>"
+                f"<td>{event.entry.schedule.entry_session}</td><td>{_pct(event.turnover).removesuffix('%')}</td>"
                 f"<td>{returns}</td><td>{net5}</td><td>{net10}</td></tr>"
             )
     label = (
@@ -111,10 +136,11 @@ def render_decision_update(
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>Portfolio decision and settlement QA</title><style>{_STYLE}</style><main>"
         "<h1>Portfolio decision and settlement QA</h1>"
-        f"<p>{html.escape(checkpoint.package.strategy_id)} · {current.claim}</p>"
+        f"<p>{html.escape(checkpoint.package.strategy_id)} · {DECISION_WORDS[current.claim]}</p>"
         f"<p>Observed through {current.observed_through}; "
         f"published {current.published_at.isoformat()}</p>"
-        f"<p>{label}. Weights are portfolio fractions, not account holdings or orders.</p>"
+        f"<p>{DECISION_WORDS[label]}. Weights are portfolio percentages, "
+        "not account holdings or orders.</p>"
         "<p>Final weights evaluate the original sealed inputs against observed entry prices. "
         "Daily observations do not imply real-time execution. "
         "Risk and CRO: not evaluated for this proposal. "
@@ -130,12 +156,12 @@ def render_decision_update(
             else ""
         )
         + '<div class="scroll"><table><thead><tr><th>Name</th><th>Listing</th>'
-        "<th>Weight (fraction)</th><th>Change from close (fraction)</th></tr></thead><tbody>"
+        "<th>Weight (%)</th><th>Change (bps)</th></tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table></div><h2>As-issued history and observed settlement</h2>"
         '<div class="scroll"><table><thead><tr><th>Decision</th><th>Phase</th>'
-        "<th>Entry</th><th>One-way turnover</th><th>Gross return</th>"
-        "<th>Net, 5 bps/side</th><th>Net, 10 bps/side</th></tr></thead><tbody>"
+        "<th>Entry</th><th>One-way turnover (%)</th><th>Gross return (%)</th>"
+        "<th>Net, 5 bps/side (%)</th><th>Net, 10 bps/side (%)</th></tr></thead><tbody>"
         + "".join(events)
         + "</tbody></table></div></main></html>"
     )
@@ -191,7 +217,7 @@ a[href]::after{content:""}}
 
 
 def _pct(value: float) -> str:
-    return f"{value * 100:.2f}%"
+    return format_book_weight(value, precision=2)
 
 
 def _rows(cells: list[tuple[str, str]]) -> str:
@@ -267,18 +293,14 @@ def _boundary_label(book: PortfolioWindowEndBook) -> str:
     return html.escape(session)
 
 
-def format_book_weight(value: float) -> str:
-    """A share of the book, to a thousandth of a percent.
-
-    Two decimals would print a real position of four basis points as `0.00%`,
-    and a holdings table that renders a held name as nothing is worse than one
-    that is hard to skim.
+def format_book_weight(value: float, *, precision: int = 3) -> str:
+    """A share of the book; three decimals unless the surface declares another precision.
 
     Public because the sealed page is not the only consumer: the local product
     projects the same book as JSON, and a weight written one way here and
     another way there would be two presentations of one number.
     """
-    return f"{value * 100:.3f}%"
+    return f"{value * 100:.{precision}f}%"
 
 
 def format_book_change(value: float) -> str:

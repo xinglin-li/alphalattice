@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import functools
 import re
-import shutil
 import subprocess
 import threading
 from collections.abc import Callable, Mapping
@@ -299,6 +298,7 @@ class WorkspaceActivity:
                 claimed["thread_id"],
                 _wake_line(event, status.task_kind, lifecycle, status.latest_failure_code)
                 + f" Read and verify it with {claimed['read_command']}",
+                claimed.get("codex_path"),
             )
             registry.finish_wake(held["registration_id"], task, result, observed_at=self.clock())
             self._record_wake({**claimed, "result": result})
@@ -1059,14 +1059,22 @@ class WorkspaceActivity:
             tasks[str(task_id)] = body
         return tasks
 
-    def wake_readiness(self) -> dict[str, object]:
-        """Probe the queue command once per Host, shared by reads and admission."""
-        from alphalattice.interface.local_application.native_setup import codex_queue_readiness
+    def wake_readiness(self, path: str | None = None) -> dict[str, object]:
+        """Share successful queue probes; retry a supplied path after failure."""
+        from alphalattice.interface.local_application.native_setup import (
+            codex_command,
+            codex_queue_readiness,
+        )
 
         with self._lock:
-            if self._wake_capability is None:
-                self._wake_capability = codex_queue_readiness()
-            return dict(self._wake_capability)
+            command, source = codex_command(path)
+            if (
+                self._wake_capability is None
+                or self._wake_capability.get("command") != command
+                or (path and not self._wake_capability.get("present"))
+            ):
+                self._wake_capability = codex_queue_readiness(path)
+            return {**self._wake_capability, "command_source": source}
 
     def observer_state(self) -> dict[str, object]:
         """Whether recording is trustworthy right now and whether anything was lost.
@@ -1242,7 +1250,7 @@ def _wake_line(event: str, kind: str, lifecycle: str, failure: str | None) -> st
     return f"Host: {task} {happened}" + (f": {words.rstrip('.')}." if words else ".")
 
 
-def _queue_wake(thread: str, message: str) -> dict[str, Any]:
+def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str, Any]:
     """Queue one line to a Codex thread, once, and name the outcome.
 
     A queued message arrives as a user message, so it carries no event body and no instruction:
@@ -1250,8 +1258,15 @@ def _queue_wake(thread: str, message: str) -> dict[str, Any]:
     line in its queue, not that the model read it: Codex takes its queue while the thread is idle,
     and an active goal's next turn starts first.
     """
-    result: dict[str, Any] = {"channel": "codex-queue", "delivered": False}
-    codex = shutil.which("codex")
+    from alphalattice.interface.local_application.native_setup import codex_command
+
+    codex, source = codex_command(path)
+    result: dict[str, Any] = {
+        "channel": "codex-queue",
+        "delivered": False,
+        "command": codex,
+        "command_source": source,
+    }
     if codex is None:
         return {**result, "failure": "CODEX_COMMAND_MISSING"}
     try:

@@ -728,21 +728,20 @@ const LiveTeam = (() => {
   }
   // said once for the session, in the thread's (i), where no member's host events were observed
   const hostWords = (s) => ([...s.participants.values()].every((pt) => !pt.hooks.length) ? ' ' + t('No host event was observed for any member; each is as it declared.') : '');
-  /* The session's facts, the head's one context line (C4 items 2 and 6): its lead, its span from the first
-   * exchange to the latest as one fact, where its question comes from; its id the head's own. */
-  function sessionFacts(s, stated, q) {
+  /* C4 items 2 and 6: session facts retain the lead, span, question and exact references. */
+  function sessionFacts(s, stated, q, shownTask='') {
     const lead = [...s.participants.values()].find((pt) => isLead(pt, s));
     const at = stated.map((e) => e.at).filter(Boolean).sort(), a = at.length ? clock(at[0]) : '', b = at.length ? clock(at.at(-1)) : '';
     const sameDay = a.split(' ').slice(0, -1).join(' ') === b.split(' ').slice(0, -1).join(' ');
     const span = !a ? '' : a === b ? a : `${a} → ${sameDay ? b.split(' ').at(-1) : b}`;
-    // the second Team review (2026-09-24): the references the exchanges declare, each the way to the exchange that first declared it -- declared, not produced (law 17); an objection naming one and an owner's verification are said where recorded
-    const references = referencesOf(stated).map(group => revisionRefs(group, e => {
+    // Law 17: references lead to their first declaration; the head already names its bound Task.
+    const references = referencesOf(stated).filter(group => group[0].qualified.kind !== 'task' || group[0].qualified.ref !== shownTask).map(group => revisionRefs(group, e => {
       const ref = e.qualified.ref, owner = S.resolved.get(e.reference);
       const objected = stated.some((x) => x.messageKind === 'objection' && x.qualified?.ref === ref), verified = S.resolved.get(e.reference)?.level === 'verified';
       const word = [objected ? t('objected') : '', verified ? t('verified by its owner') : ''].filter(Boolean).join(' · ');
       return btn(html`${owner?.title ? html`<span class="owner-text">${owner.title}</span>` : e.qualified.kind === 'task' ? t('Task') : e.qualified.kind === 'case' ? t('Goal') : t('Reference')} <span class="mono">${short(String(ref).split(':').at(-1), SHORT.id)}</span>${owner?.revision ? html` · ${t('revision {n}', {n: owner.revision})}` : ''}${word ? html` <span class="muted">· ${word}</span>` : ''}`, 'team-reveal', e.id, 'text-btn team-reference');
     }));
-    const goals = [...s.goals].map((id) => link(html`${t('Goal')} <span class="mono">${short(id, SHORT.id)}</span>`, 'goal', 'text-btn', {goal: id}));
+    const goals = [...s.goals].map((id) => link(html`<span class="mono">${short(id, SHORT.id)}</span>`, 'goal', 'text-btn', {goal: id}));
     // U51: the models and tokens are the Participants folder's, by member and model, the session's totals at its foot
     return [[t('Lead'), lead ? actorName(s, lead.id) : html`<span class="muted">${t('no main PM declared')}</span>`], ...(span ? [[t('Span'), span]] : []), ...(goals.length ? [[t('Goals'), html`${goals}`]] : []), ...(s.goalScope ? [[t('Participants'), hint(s.participants.size, t('Only contributions attributed to this Goal count as participation; session-wide usage alone does not.'))]] : []), ...(q.kind !== 'none' ? [[t('Question'), questionSource(q)]] : []), ...(references.length ? [[t('Declared references'), html`${references}`]] : [])];
   }
@@ -1003,7 +1002,7 @@ const LiveTeam = (() => {
     const pending = stated.filter((e) => e.messageKind === 'objection' && !e.pmResponses.length), awaiting = pending.length;
     // T2 (the Team review, 2026-09-24): the awaiting objection is the head's way to it -- the Conversation, the first one read in place
     const marks = html`<span class="team-live" data-feed="${feed[0]}"><i class="live-dot" aria-hidden="true"></i><span class="state-word">${feed[1]}</span></span>${conversation && awaiting ? html`<span class="team-objection-status">${btn(stateLine('review_pending', {word: countText(awaiting, '{n} objection awaiting the Main PM', '{n} objections awaiting the Main PM'), next: ''}), 'team-reveal', pending[0].id, 'text-btn')}</span>` : ''}`;
-    const view_ = html`<section class="team-scene" id="teamScene" data-view="${view}">${objectHead(conversation ? titleOf(conversation) : t(ROUTES[view]?.[1] || ROUTES.team[1]), html`<p class="lede">${t(view === 'team-committee' ? 'The committee’s recorded floor on these positions.' : LEDES[view] || LEDES.team)}${INFO[view] ? ' ' + t(INFO[view]) : ''}</p>`, floorActions, marks, [], {cls: 'team-head', headingId: 'teamSceneHeading', object: Boolean(conversation), facts: [...floorFacts, ...(conversation ? sessionFacts(chosen, stated, conversation) : [])], id: conversation ? chosen.id : '', scope: chosen && view !== 'team-sessions' ? {name: titleOf(questionOf(chosen, stated)), href: routeUrl('team', {team: chosen.id, actor: '', event: ''}), self: view === 'team'} : null})}
+    const view_ = html`<section class="team-scene" id="teamScene" data-view="${view}">${objectHead(conversation ? titleOf(conversation) : t(ROUTES[view]?.[1] || ROUTES.team[1]), html`<p class="lede">${t(view === 'team-committee' ? 'The committee’s recorded floor on these positions.' : LEDES[view] || LEDES.team)}${INFO[view] ? ' ' + t(INFO[view]) : ''}</p>`, floorActions, marks, [], {cls: 'team-head', headingId: 'teamSceneHeading', object: Boolean(conversation), facts: [...floorFacts, ...(conversation ? sessionFacts(chosen, stated, conversation, floor?.update_task_id) : [])], id: conversation ? chosen.id : '', scope: chosen && view !== 'team-sessions' ? {name: titleOf(questionOf(chosen, stated)), href: routeUrl('team', {team: chosen.id, actor: '', event: ''}), self: view === 'team'} : null})}
       ${state.error || state.notice || state.stale || ['RESET', 'UNAVAILABLE'].includes(state.disposition) ? noteLine(t('Activity visibility limited'), state.error || state.notice || t('Retained observations are not current host state.'), 'warning') : ''}
       ${readback}${usageFailure}${body}${unknown.length ? noteLine(t('Events outside any declared session'), countText(unknown.length, '{n} external event without a native session id or with an unretained payload is listed in the activity feed, not here.', '{n} external events without a native session id or with an unretained payload are listed in the activity feed, not here.'), 'neutral') : ''}</section>`;
     // An arrival flashes once, on the view that shows it: the workroom consumes the exchanges'

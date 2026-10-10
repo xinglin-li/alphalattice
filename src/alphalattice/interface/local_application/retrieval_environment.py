@@ -19,6 +19,8 @@ lacks a pinned package offline, uv missing, or a checkout it cannot write.
 from __future__ import annotations
 
 import argparse
+import importlib
+import importlib.util
 import json
 import os
 import subprocess
@@ -26,6 +28,7 @@ import sys
 from pathlib import Path
 
 from alphalattice.interface.local_application.failure_codes import setup_failure
+from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PLAYPEN: Path = resolve_playpen_root(Path(__file__))
@@ -44,6 +47,41 @@ def interpreter_path() -> Path:
     if not (PLAYPEN / "pyproject.toml").is_file():
         return Path(sys.executable)
     return ENVIRONMENT / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
+def fill_command(*, offline: bool = True) -> list[str]:
+    """The agent's fill of this product's retrieval runtime, typed from any folder.
+
+    A checkout builds the declared environment beside its lock; an installed distribution takes
+    the pinned additions into its own environment. Either is the lock's own dependency; offline
+    reads the local cache only, and the network form needs the download permission.
+    """
+    module = "alphalattice.interface.local_application.retrieval_environment"
+    return [sys.executable, "-m", module, *(["--offline"] if offline else [])]
+
+
+def load() -> bool:
+    """Whether FastEmbed imports in this process, reading the declared environment it lacks.
+
+    A Host started before the environment was filled reads it with no restart: its site
+    packages follow this interpreter's own, and only while it serves this Python version.
+    """
+    importlib.invalidate_caches()
+    running = str(recorded_environment()["python"]).split(".")
+    config, version = ENVIRONMENT / "pyvenv.cfg", ".".join(running[:2])
+    site = ENVIRONMENT / (
+        "Lib/site-packages" if os.name == "nt" else f"lib/python{version}/site-packages"
+    )
+    if importlib.util.find_spec("fastembed") is None and site.is_dir() and config.is_file():
+        lines = config.read_text(encoding="utf-8").splitlines()
+        cfg = {
+            key.strip(): value.strip() for key, _, value in (line.partition("=") for line in lines)
+        }
+        served = cfg.get("version_info") or cfg.get("version") or ""
+        if served.startswith(version + ".") and str(site) not in sys.path:
+            sys.path.append(str(site))
+            importlib.invalidate_caches()
+    return importlib.util.find_spec("fastembed") is not None
 
 
 def create(*, offline: bool) -> Path:

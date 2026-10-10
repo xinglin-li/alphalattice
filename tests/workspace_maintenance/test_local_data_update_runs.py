@@ -1273,7 +1273,7 @@ def test_plan_and_binding_refusals_preserve_portfolio(qualified, tmp_path):
     )
     service.start()
     try:
-        with pytest.raises(RuntimeError, match="writer is already owned"):
+        with pytest.raises(RuntimeError, match="writer_already_owned"):
             bind_existing_data_workspace(workspace)
         plan = _json(service, "/api/data-update/plan", method="POST", payload={})
         market = MarketDataRepository(workspace)

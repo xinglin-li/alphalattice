@@ -25,7 +25,7 @@ from typing import Any
 from uuid import UUID
 
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
-from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell
 from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
@@ -1154,6 +1154,27 @@ def readiness(project: Path, binding: NativeResearchBinding | None) -> dict[str,
         "missing": missing,
         "research_nonblocking": True,
     }
+
+
+def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, Any]:
+    """An agent Session's setup: its binding preflight, and the retrieval runtime it lacks.
+
+    Outside a Session there is no binding to check. The retrieval runtime is the lock's own
+    dependency, the agent's to fill before the Evidence setup meets it.
+    """
+    from alphalattice.interface.local_application.retrieval_environment import fill_command, load
+
+    answer: dict[str, Any] = {"status": "NO_AGENT_SESSION"}
+    if session is not None:
+        try:
+            binding = NativeResearchBinding.read(project, session=session)
+        except (OSError, ValueError):
+            binding = None
+        answer = attachment_preflight(project, binding)
+    if not load():
+        command = join(fill_command(), shell())
+        answer["retrieval_runtime"] = {"present": False, "who_decides": "AGENT", "command": command}
+    return answer
 
 
 def attachment_preflight(

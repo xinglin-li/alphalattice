@@ -410,6 +410,7 @@ def register_wake(
     *,
     observed_at: datetime,
     observer: OperationObserver | None = None,
+    codex_path: str | None = None,
 ) -> dict[str, object]:
     """Hold a lead's wake on a Task that still moves by itself (WAKE).
 
@@ -420,7 +421,7 @@ def register_wake(
     from alphalattice.interface.local_application.cli_contract import STOPPED_STATES
 
     task_id, thread, read = wake
-    if observer is None or not observer.wake_readiness()["present"]:
+    if observer is None or not observer.wake_readiness(codex_path)["present"]:
         return {
             **refused("local_client.codex_queue_unavailable"),
             "next_action": "WAIT_IN_THE_TURN",
@@ -434,7 +435,9 @@ def register_wake(
                 "lifecycle": state,
                 "next_requests": {"read": {"operation": "STATUS", "task_id": str(task_id)}},
             }
-        held = registry.register_wake(task_id, thread, read, observed_at=observed_at)
+        held = registry.register_wake(
+            task_id, thread, read, observed_at=observed_at, codex_path=codex_path
+        )
     except TaskNotFoundError:
         return refused("task_control.task_not_found")
     return {"status": "WAKE_REGISTERED", "task_id": str(task_id), "wake": held}

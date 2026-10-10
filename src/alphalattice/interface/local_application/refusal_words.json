@@ -304,8 +304,8 @@
   "next_action": "INSTALL_AGAIN"
  },
  "evidence_review.retrieval_environment_not_loaded": {
-  "detail": "This Host runs without the retrieval environment, so it cannot serve an Evidence package. Create the environment, then restart the idle Host once; it runs in it from then on.",
-  "next_action": "CREATE_THE_RETRIEVAL_ENVIRONMENT_AND_RESTART_ONCE"
+  "detail": "This Host runs without the retrieval environment, so it cannot serve an Evidence package. Fill the environment with the command `next_commands` offers, then run the install or its check again; the running Host reads it with no restart.",
+  "next_action": "FILL_THE_RETRIEVAL_ENVIRONMENT_AND_CHECK_AGAIN"
  },
  "evidence_review.explicit_sec_network_consent_required": {
   "detail": "SEC acquisition was not explicitly consented to by this command. Run preflight, then add --network-consent only with the person's permission; the workspace network control must also allow acquisition.",
@@ -1072,7 +1072,7 @@
   "next_action": "READ_TASKS_OR_CHANGE_TASKS_WAITING"
  },
  "local_client.codex_queue_unavailable": {
-  "detail": "Background wakes need a Codex thread and a runnable `codex queue` on the Host. Run `python -m alphalattice.interface.local_application.native_setup doctor`; ask once before installing the Codex CLI outside the lock, then the agent installs it and restarts its idle Host. Until it is available, wait inside this turn without `--notify`.",
+  "detail": "Background wakes need a Codex thread and a runnable `codex queue`. Run `python -m alphalattice.interface.local_application.native_setup doctor`; ask once before installing the Codex CLI outside the lock, then the agent installs it and sends the same request again. Until it is available, wait inside this turn without `--notify`.",
   "next_action": "WAIT_IN_THE_TURN"
  },
  "alpha_modeling.lightgbm_thread_canary_mismatch": {

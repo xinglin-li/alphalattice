@@ -6105,8 +6105,7 @@ class PortfolioResearchOperations:
                 )
             return self.set_cpu_budget(request.cpu_budget, chosen_by=chosen_by)
         if operation == "WAKE_REGISTER":
-            # A Codex turn ends its shell's children, so the Host holds the lead's wake in the
-            # Task's journal and the activity sends it (R1, WAKE).
+            # The Task's journal holds the wake after the client's turn ends.
             assert request.task_id is not None
             assert request.wake_thread is not None and request.wake_read is not None
             return register_wake(
@@ -6114,6 +6113,7 @@ class PortfolioResearchOperations:
                 (request.task_id, request.wake_thread, request.wake_read),
                 observed_at=self.dispatcher.clock(),
                 observer=self.observer,
+                codex_path=request.wake_codex_path,
             )
         if operation not in {"ACTIVITY_LIST", "ACTIVITY_RECENT", "EVENT_DECLARE"}:
             return None
@@ -6523,7 +6523,7 @@ def _position_rows(
             {
                 "listing_id": listing,
                 "name": label,
-                "weight": format_book_weight(weights[i]),
+                "weight": format_book_weight(weights[i], precision=2),
                 "change": "Not an estimate" if changes is None else format_book_change(changes[i]),
                 "basis": position_basis(positions.basis, positions.schedule.entry_open_at, now),
             }
@@ -6535,7 +6535,7 @@ def _position_rows(
             "update_publication_hash": value.content_hash,
             "position_basis": positions.basis,
         }
-        # The day's positions go on to their own review, never the default book's (V483).
+        # Review the dated positions, never the default book (V483).
         body["next_requests"] = {
             **cast(dict[str, object], body.get("next_requests") or {}),
             **review_requests(cast(dict[str, str], body["review_selector"])),

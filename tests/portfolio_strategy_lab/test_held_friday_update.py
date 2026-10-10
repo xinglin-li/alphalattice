@@ -49,7 +49,7 @@ def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status,
         ops,
         "portfolio_update_positions",
         lambda *_args: SimpleNamespace(
-            weights=(1.0,),
+            weights=(0.00684997,),
             changes=None,
             preceding=None,
             basis="CONDITIONAL_ESTIMATE",
@@ -94,6 +94,7 @@ def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status,
         **answer["review_selector"],
     }
     assert len(answer["position_rows"]) == 1
+    assert answer["position_rows"][0]["weight"] == "0.68%"
     if broken:
         assert answer["review_standing"]["status"] == "UNREADABLE"
         assert answer["review_standing"]["failure_code"] == failure

@@ -303,6 +303,7 @@ def test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired(
     """A golden that disagrees with its sidecar is refused not repaired."""
 
     key = _golden_key(fresh_workspace.feature_catalog, fresh_workspace.feature_kernels, SYMBOLS)
+    build_real_risk_workspace(tmp_path / "published")  # publishes the golden when absent
     private_root = tmp_path / "goldens"
     golden = private_root / key
     shutil.copytree(_GOLDEN_ROOT / key, golden)

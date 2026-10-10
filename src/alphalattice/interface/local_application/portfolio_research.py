@@ -427,7 +427,7 @@ delegation. A paid action or a real order never joins it."""
 
 @dataclass(frozen=True, slots=True)
 class PortfolioResearchOperationRequest:
-    """Actor-neutral request shared by browser and optional Agent adapter."""
+    """The browser and agent's shared request."""
 
     operation: PortfolioResearchOperation
     goal_id: UUID | None = None
@@ -609,6 +609,7 @@ class PortfolioResearchOperationRequest:
     event: dict[str, Any] | None = None
     wake_thread: str | None = None
     wake_read: str | None = None
+    wake_codex_path: str | None = None
     storage_cap_bytes: str | None = None
     """Automatic workspace capacity or a positive whole byte count, never a sealed input."""
     cpu_budget: str | None = None
@@ -1211,7 +1212,7 @@ class PortfolioResearchOperationRequest:
             ),
             "WAKE_REGISTER": (
                 frozenset({"task_id", "wake_thread", "wake_read"}),
-                frozenset({"task_id", "wake_thread", "wake_read"}),
+                frozenset({"task_id", "wake_thread", "wake_read", "wake_codex_path"}),
             ),
             "SESSION_USAGE_READ": (frozenset(), frozenset()),
             "USAGE_READING": (frozenset(), frozenset()),
@@ -1541,10 +1542,7 @@ class PortfolioResearchOperationRequest:
 
 
 class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
-    """One typed external document for the existing actor-neutral operation request.
-
-    Each field's meaning is its docstring, which `alphalattice schema show` prints (SC3).
-    """
+    """Actor-neutral document; field docstrings feed `alphalattice schema show` (SC3)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, use_attribute_docstrings=True)
 
@@ -1843,12 +1841,15 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     event: dict[str, Any] | None = None
     """The event this client declares about its own work (`ExternalActivityEventDocument`)."""
     wake_thread: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{8,128}$")
-    """The Codex thread the Host queues a Task's wake to, by its id (`CODEX_THREAD_ID`)."""
+    """The Codex thread to wake (`CODEX_THREAD_ID`)."""
     wake_read: str | None = Field(
         default=None, min_length=1, max_length=4096, pattern=r"^[^\x00-\x1f\x7f]+$"
     )
-    """The exact command the wake names for the lead to read or re-run: the Task's `task show`,
-    or the agent verb that registered it, its `--output` moved to the next free path."""
+    """The exact read or rerun command, with its next free output path."""
+    wake_codex_path: str | None = Field(
+        default=None, max_length=4096, pattern=r"^[^\x00-\x1f\x7f]+$"
+    )
+    """The client's Codex executable; the Host validates it or uses its PATH."""
     storage_cap_bytes: str | None = Field(default=None, min_length=1, max_length=32)
     """`auto`, or a positive whole byte cap for managed writes; changes no result identity."""
     cpu_budget: str | None = Field(default=None, min_length=1, max_length=16)

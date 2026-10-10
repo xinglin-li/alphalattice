@@ -1,13 +1,13 @@
 name: Verify
 
 # Both legs a person can install: the source checkout and the built wheel. Runs only in a public
-# repository, for its main branch and pull requests against it; actions are pinned to the commit
+# repository, for main and next and pull requests against either; actions are pinned to the commit
 # of the named release.
 on:
   push:
-    branches: [main]
+    branches: [main, next]
   pull_request:
-    branches: [main]
+    branches: [main, next]
   workflow_dispatch:
 
 permissions:

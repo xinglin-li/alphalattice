@@ -238,19 +238,7 @@ class LocalResearchClient:
         include_context: bool = False,
         timeout: float | None = None,
     ) -> dict[str, Any]:
-        """Send an operation, or read the session.
-
-        The session is the operations (`OPERATION_LIST`), or the workspace with its context
-        (`WORKSPACE_SHOW`).
-
-        Args:
-            document: The operation document, or ``None`` for the session.
-            include_context: Whether a session read is the workspace with its context.
-            timeout: A shorter HTTP wait than the client's, for a waiter's remaining time.
-
-        Returns:
-            The Host owner's unaltered answer body.
-        """
+        """Send an operation or session read; return the owner's answer unchanged."""
         return self.exchange(document, include_context=include_context, timeout=timeout)[0]
 
     def exchange(
@@ -260,9 +248,14 @@ class LocalResearchClient:
         include_context: bool = False,
         timeout: float | None = None,
     ) -> tuple[dict[str, Any], bytes]:
-        """One request returns both display data and its unaltered transport bytes."""
+        """Return the owner's answer and exact transport bytes."""
         if document is None:
             document = {"operation": "WORKSPACE_SHOW" if include_context else "OPERATION_LIST"}
+        if document.get("operation") == "WAKE_REGISTER" and "wake_codex_path" not in document:
+            from alphalattice.interface.local_application.native_setup import codex_command
+
+            if (path := codex_command()[0]) is not None:
+                document = {**document, "wake_codex_path": path}
         return self._exchange("/api/client/operations", document, timeout=timeout)
 
     def activity(
@@ -2464,9 +2457,7 @@ _UNIT_NAME = re.compile(r"[^A-Za-z0-9_-]+")
 
 @dataclass
 class _Chain:
-    """The requests one agent verb sends, in their order, each Task followed under its one
-    deadline (AGENT-TIME). The first answer that stops it is the verb's answer, beside the steps
-    it took under ``name``; nothing runs beyond the call."""
+    """One verb's requests and Task waits under one deadline (AGENT-TIME), until its first stop."""
 
     client: LocalResearchClient
     name: str
@@ -2538,8 +2529,15 @@ def _chain(client: LocalResearchClient, args: argparse.Namespace, name: str) -> 
     deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
     wake = None
     if getattr(args, "notify", None) == "codex-queue":
+        from alphalattice.interface.local_application.native_setup import (
+            codex_command,
+            codex_queue_readiness,
+        )
+
         observer = client.activity().get("observer", {})
-        if not observer.get("codex_queue", {}).get("present"):
+        path = codex_command()[0]
+        ready = codex_queue_readiness(path) if path else observer.get("codex_queue", {})
+        if not ready.get("present"):
             raise LocalResearchClientError("local_client.codex_queue_unavailable")
         wake = (_codex_thread(), join([*_entry_of(client), *_rerun(args)], shell()))
     return _Chain(client, name, deadline, wake=wake)
@@ -2958,20 +2956,10 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
 
 
 def _setup() -> dict[str, Any]:
-    """Read this agent Session's binding preflight; outside one, there is nothing to check."""
-    from alphalattice.interface.local_application.native_bridge import (
-        NativeResearchBinding,
-        attachment_preflight,
-    )
+    """Read this agent Session's setup (`session_setup`)."""
+    from alphalattice.interface.local_application.native_bridge import session_setup
 
-    session = agent_session(os.environ)
-    if session is None:
-        return {"status": "NO_AGENT_SESSION"}
-    try:
-        binding = NativeResearchBinding.read(Path.cwd(), session=session)
-    except (OSError, ValueError):
-        binding = None
-    return attachment_preflight(Path.cwd(), binding)
+    return session_setup(Path.cwd(), agent_session(os.environ))
 
 
 def _prepared(

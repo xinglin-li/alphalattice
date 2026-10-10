@@ -667,7 +667,7 @@ def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(tmp_path
             workspace_manifest=_manifest("qa-bounded"),
             resolver=_Resolver(_resolved()),
         )
-        with pytest.raises(RuntimeError, match="writer is already owned"):
+        with pytest.raises(RuntimeError, match="writer_already_owned"):
             contender.start()
         release.set()
         session.stop()

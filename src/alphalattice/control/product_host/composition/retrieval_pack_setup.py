@@ -115,24 +115,20 @@ _WORDS: dict[str, tuple[str, str]] = {
 reaches the Host."""
 
 
-def _status_command(store: Path) -> list[str]:
-    """The installer's read-only check of this store, as the person runs it (V590)."""
+def pack_command(*arguments: str) -> list[str]:
+    """This installer with these arguments, as the person runs it (V590).
+
+    The checkout's script, or the installed module.
+    """
     if (PLAYPEN / "pyproject.toml").is_file():
-        return [
-            sys.executable,
-            "scripts/install_retrieval_pack.py",
-            "--status",
-            "--store",
-            str(store),
-        ]
-    return [
-        sys.executable,
-        "-m",
-        "alphalattice.control.product_host.composition.retrieval_pack_setup",
-        "--status",
-        "--store",
-        str(store),
-    ]
+        return [sys.executable, "scripts/install_retrieval_pack.py", *arguments]
+    module = "alphalattice.control.product_host.composition.retrieval_pack_setup"
+    return [sys.executable, "-m", module, *arguments]
+
+
+def _status_command(store: Path) -> list[str]:
+    """The installer's read-only check of this store, as the person runs it."""
+    return pack_command("--status", "--store", str(store))
 
 
 def _refused(code: str, store: Path, error: Exception) -> int:

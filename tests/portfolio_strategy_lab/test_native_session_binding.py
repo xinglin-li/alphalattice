@@ -494,6 +494,7 @@ def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_co
     """A fresh clone binds a workspace kept outside it after the documented configure."""
     from scripts import native_research
 
+    monkeypatch.setattr(native_research, "ROOT", native_research.ROOT)
     clone = tmp_path / "fresh-clone"
     (clone / ".codex").mkdir(parents=True)
     (clone / ".codex/config.toml").write_bytes((ROOT / ".codex/config.toml").read_bytes())

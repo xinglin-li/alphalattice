@@ -234,13 +234,19 @@ def test_a_backup_refuses_an_unwritable_root_by_name_and_words_it(tmp_path: Path
             "setup.unexpected_failure:RuntimeError",
             "UNEXPECTED",
         ),
+        (
+            RuntimeError("workspace_runtime.writer_already_owned"),
+            "workspace_runtime.writer_already_owned",
+            "PRODUCT",
+        ),
     ],
 )
 def test_the_evidence_setup_preserves_its_cause_and_offers_a_read_only_way_on(
     failure, code, kind, monkeypatch, capsys, tmp_path
 ) -> None:
     """regression: setup keeps any owner's code and sanitized causes, with the exact binding
-    and issuer scope for its next preflight; arbitrary text, headers and tokens stay private."""
+    and issuer scope for its next preflight, through the Host that holds the workspace;
+    arbitrary text, headers and tokens stay private."""
     from scripts import materialize_evidence_cro_authority as setup
 
     from alphalattice.interface.local_application.cli_contract import command_table
@@ -280,6 +286,8 @@ def test_the_evidence_setup_preserves_its_cause_and_offers_a_read_only_way_on(
     command = payload["next_commands"]["preflight"]
     assert "--preflight" in command and "--network-consent" in command
     assert binding in command and "FIXTURE" in command and "--install" not in command
+    held = code == "workspace_runtime.writer_already_owned"
+    assert ("evidence install" in command and "--setup=" in command) is held
     shown = json.dumps(payload)
     assert "NEVER-PRINT-ME" not in shown and "secret-file" not in shown
     assert "explicit_sec_network_consent_required" not in shown

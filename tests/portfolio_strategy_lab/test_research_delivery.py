@@ -229,16 +229,71 @@ def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(m
 
 def test_delivery_renderer_keeps_units_gaps_and_escapes_commentary(monkeypatch):
     from alphalattice.interface.local_application import experiment_report
-    from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
+    from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE
+    from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
+        DECISION_WORDS,
+        format_book_weight,
+    )
 
-    monkeypatch.setattr(
-        experiment_report, "_portfolio_report", lambda _: "<html><h1>Portfolio</h1></html>"
+    portfolio = _reports()[2][UUID(int=1)]
+    portfolio["portfolio_source"]["target_recipe_id"] = "target"
+    portfolio["position"].update(targets=[0.02], weights=[0.00700001349], cash=0.0032)
+    portfolio["document"]["portfolio"] = {"concentration": 0.123456789}
+    portfolio["execution_preview"] = {"score_session_count": 1, "hold_session_count": 0}
+    portfolio["series"] = [
+        {
+            "session": "2024-08-12",
+            "decision_mode": "HOLD",
+            "gross_simple_return": 0.032,
+            "net_simple_return": 0.0123456789,
+            "benchmark_simple_return": -0.003,
+            "one_way_turnover": 0.02,
+            "cost_fraction": 0.000034567,
+        }
+    ]
+    portfolio["result"].update(sharpe=0.0000012345, sortino=0.123456789)
+    factor_classes = {
+        "POSITIVE_OOS_EVIDENCE": "Positive out-of-sample evidence",
+        "MIXED_OOS_EVIDENCE": "Mixed out-of-sample evidence",
+        "NO_DETECTABLE_EFFECT": "No detectable effect",
+        "NEGATIVE_OOS_EVIDENCE": "Negative out-of-sample evidence",
+        "INSUFFICIENT_EVIDENCE": "Insufficient evidence",
+    }
+    factor_reasons = (
+        "DIRECTIONALLY_POSITIVE_BY_CONFIRMED",
+        "DIRECTIONALLY_POSITIVE_NOT_BY_CONFIRMED",
+        "DIRECTIONALLY_NEGATIVE_BY_CONFIRMED",
+        "NONPOSITIVE_DIRECTION_NOT_BY_CONFIRMED",
+        "MIXED_OOS_DIRECTION",
     )
-    monkeypatch.setattr(
-        experiment_report,
-        "factor_report_section",
-        lambda _: '<h1>Factor</h1><section id="study-context"></section>',
-    )
+    factor = _reports()[2][UUID(int=3)]
+    factor["document"] = {"factor": {"factor_ids": [f"factor-{i}" for i in range(7)]}}
+    factor["result"] = {
+        "evidence_report": {
+            "items": [
+                {
+                    "factor_id": f"factor-{i}",
+                    "classification": classification,
+                    "reason_codes": [reason],
+                }
+                for i, (classification, reason) in enumerate(
+                    zip(
+                        (
+                            "POSITIVE_OOS_EVIDENCE",
+                            "POSITIVE_OOS_EVIDENCE",
+                            "NEGATIVE_OOS_EVIDENCE",
+                            "NO_DETECTABLE_EFFECT",
+                            "MIXED_OOS_EVIDENCE",
+                            "INSUFFICIENT_EVIDENCE",
+                            "OWNER_FUTURE_CLASS",
+                        ),
+                        (*factor_reasons, "OWNER_FUTURE_REASON", "OWNER_FUTURE_REASON"),
+                        strict=True,
+                    )
+                )
+            ]
+        }
+    }
     monkeypatch.setattr(
         experiment_report,
         "alpha_report_section",
@@ -248,10 +303,15 @@ def test_delivery_renderer_keeps_units_gaps_and_escapes_commentary(monkeypatch):
         "claim": "No winner",
         "question": None,
         "question_status": "NOT_RECORDED",
-        "input": {},
+        "input": {
+            "operation": "EXPERIMENT_DELIVERY_EXPORT",
+            "position_basis": "CONDITIONAL_ESTIMATE",
+            "audit_boundary": "POST_OBSERVED_QA_NOT_TIMELY_ADVICE",
+            "future": {"availability": "OWNER_FUTURE_CODE", "value": None},
+        },
         "sections": {
-            "portfolio": {"value": {}},
-            "factor": {"value": {}},
+            "portfolio": {"value": portfolio},
+            "factor": {"value": factor},
             "alpha": {"value": {}},
             "foundation": {"status": "NOT_PUBLISHED"},
             "risk": {"status": "NOT_SELECTED"},
@@ -269,7 +329,7 @@ def test_delivery_renderer_keeps_units_gaps_and_escapes_commentary(monkeypatch):
                                 {
                                     "label": "platform cost",
                                     "unit": "bps on platform one-way turnover",
-                                    "left": 10,
+                                    "left": 10.23456789123,
                                     "right": None,
                                 }
                             ],
@@ -278,7 +338,7 @@ def test_delivery_renderer_keeps_units_gaps_and_escapes_commentary(monkeypatch):
                 },
             },
         },
-        "commentary_provenance": {"attribution": "CALLER_SUPPLIED"},
+        "commentary_provenance": {"submitted_by": "HOST", "attribution": "COMMITTEE_FLOOR"},
         "commentary": [
             {"attribution": "<script>actor</script>", "text": "<script>alert(1)</script>"},
             {
@@ -286,6 +346,14 @@ def test_delivery_renderer_keeps_units_gaps_and_escapes_commentary(monkeypatch):
                 "attribution_words": {"outcome": "PROCEED_WITH_NOTES"},
                 "text": "kept verdict",
             },
+            *(
+                {
+                    "attribution_word": "{member}, final view",
+                    "attribution_words": {"member": role},
+                    "text": "kept view",
+                }
+                for role in ("ALPHA", "RISK")
+            ),
             {
                 "attribution": "Person",
                 "text": "unused composed text",
@@ -296,26 +364,83 @@ def test_delivery_renderer_keeps_units_gaps_and_escapes_commentary(monkeypatch):
             },
         ],
     }
+    sealed = deepcopy(body)
     rendered = experiment_report.render_research_delivery(body)
     assert "<script>" not in rendered and "&lt;script&gt;" in rendered
     assert "bps on platform one-way turnover" in rendered and "Not available" in rendered
-    assert "NOT_SELECTED" in rendered and "NOT_RECORDED" in rendered
+    for code, words in {
+        "NOT_SELECTED": "Not selected",
+        "NOT_RECORDED": "Not recorded",
+        "HOST": "Host",
+        "COMMITTEE_FLOOR": "Committee floor",
+        "ALPHA": "Alpha",
+        "RISK": "Risk",
+        "EXPERIMENT_DELIVERY_EXPORT": "Delivery export",
+        "CONDITIONAL_ESTIMATE": "Conditional estimated weights",
+        "POST_OBSERVED_QA_NOT_TIMELY_ADVICE": DECISION_WORDS["POST_OBSERVED_QA_NOT_TIMELY_ADVICE"],
+        "HOLD": "hold",
+        "COST": "Cost",
+    }.items():
+        assert code not in rendered and words in rendered
+    assert "OWNER_FUTURE_CODE" in rendered
+    assert (
+        body["commentary"][1]["attribution_word"].format(outcome="Proceed with notes") in rendered
+    )
+    assert body["commentary"][-1]["relay_word"] in rendered
+    for code, words in factor_classes.items():
+        assert code not in rendered and words in rendered
+    assert all(reason not in rendered for reason in factor_reasons)
+    assert all(
+        term in rendered
+        for term in (
+            "Positive in direction",
+            "Negative in direction",
+            "Not positive in direction",
+            "Mixed direction",
+        )
+    )
+    assert rendered.count("Benjamini\u2013Yekutieli FDR") == 4
+    assert "OWNER_FUTURE_CLASS" in rendered and "OWNER_FUTURE_REASON" in rendered
+    for section, code, words in (
+        ("foundation", "PRESENT", "present"),
+        ("comparison", "INCOMPATIBLE", "refused by the owner"),
+        ("evidence_cro", "HISTORICAL_REVIEW", "historical review"),
+        ("evidence_cro", "EXPIRED", "review present but expired"),
+    ):
+        state = deepcopy(body)
+        state["sections"][section] = {"status": code}
+        assert f">{words}<" in experiment_report.render_research_delivery(state)
+    state = deepcopy(body)
+    state["sections"]["portfolio"]["value"]["series"][0]["decision_mode"] = "REBALANCE"
+    assert ">rebalance<" in experiment_report.render_research_delivery(state)
+    for code, words in (
+        ("HOLDINGS", "Holdings"),
+        ("CONCENTRATION", "Concentration"),
+        ("TURNOVER", "Turnover"),
+        ("PERFORMANCE", "Performance"),
+    ):
+        state = deepcopy(body)
+        state["sections"]["comparison"]["value"]["dimensions"][0]["dimension"] = code
+        assert f">{words}<" in experiment_report.render_research_delivery(state)
+    for value in (0.00700001349, 0.123456789, 0.0123456789, 10.23456789123, 0.0000012345):
+        assert str(value) not in rendered
+    assert all(
+        f">{figure}<" in rendered
+        for figure in ("0.70", "2.00", "3.20", "1.23", "10.23", "0.1235", "1.23 \u00d7 10^-6")
+    )
+    assert format_book_weight(portfolio["position"]["cash"], precision=2) in rendered
     assert 'id="factor-study-context"' in rendered and 'id="alpha-study-context"' in rendered
     assert rendered.count("<h1>") == 1
     for language in ("en", "zh"):
         token = ANSWER_LANGUAGE.set(language)
         try:
-            rendered = experiment_report.render_research_delivery(body)
-            assert (
-                worded("Committee verdict: {outcome}").format(outcome=worded("Proceed with notes"))
-                in rendered
-            )
-            assert (
-                "PROCEED_WITH_NOTES" not in rendered and worded("Relayed by the agent") in rendered
-            )
+            assert experiment_report.render_research_delivery(body) == rendered
+            assert ANSWER_LANGUAGE.get() == language
+            assert "PROCEED_WITH_NOTES" not in rendered
             assert "Keep 5%." in rendered and "unused composed text" not in rendered
         finally:
             ANSWER_LANGUAGE.reset(token)
+    assert body == sealed
 
 
 def test_each_explained_refusal_keeps_its_code_and_asks_only_operations_the_host_accepts():

@@ -12230,6 +12230,27 @@
    "successor": "22d29079ffc10b3db212a5e0ab8bd0e17328a6d9e9fceb58ea4248892461f327",
    "change": "Acceptance fixes and the dependency check (2026-10-09)",
    "reason": "The preparation's recovery keeps its named predecessor and a blocked plan keeps its own; the readiness check reaches through its declared seam. The workspace preparation closure changed through these shared modules, and every value it produces is equal."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "bd3a114d8dfdb08b1788994af4498b90dc43c6cd413b8fa8278536941b59fe0e",
+   "successor": "a1be1e46062e899422e7d7d42339a5c707947be29e142fc55c1ee0f3794c26e1",
+   "change": "Delivery export words (2026-10-10)",
+   "reason": "The delivery export reads in the product's numbers and words, its change column in basis points, and the committee head names its Task once. These closures moved through the shared report renderer and the research operations composition; every computed value they produce is equal, and only the rendered export's words and number formatting changed."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "66663988b89eaf9fd2f9a9b4263cbb8e00a73ab2cee211f8c490b4c98da5927a",
+   "successor": "e13c0f600e2438f818f2cae305f279de9d855a799a88a6291dd36072c5f38cc8",
+   "change": "Delivery export words (2026-10-10)",
+   "reason": "The delivery export reads in the product's numbers and words, its change column in basis points, and the committee head names its Task once. These closures moved through the shared report renderer and the research operations composition; every computed value they produce is equal, and only the rendered export's words and number formatting changed."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "0194f43c9ef9a31c5a37a46f81db4c8215495a8986de5e149b20ba8c08e6c381",
+   "successor": "c5c4de7c1eb74aef4d83749cb0d2d4d67102dcebd7eb466d6783ee12d0972766",
+   "change": "Delivery export words (2026-10-10)",
+   "reason": "The delivery export reads in the product's numbers and words, its change column in basis points, and the committee head names its Task once. These closures moved through the shared report renderer and the research operations composition; every computed value they produce is equal, and only the rendered export's words and number formatting changed."
   }
  ]
 }

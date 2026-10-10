@@ -26,6 +26,14 @@ import pytest
 
 from alphalattice.interface.local_application.cli_contract import AGENT_SESSION_VARIABLES
 from devtools.architecture.evidence_roots import EvidenceRoots
+from devtools.evaluation.round_trip import (
+    AdmissionPolicy,
+    RoundTripObserver,
+    TruthFacts,
+)
+from devtools.evaluation.round_trip import (
+    plan_admission_problem as observed_plan_admission_problem,
+)
 
 # Every test runs outside an agent session: a vendor's session variable would otherwise ride
 # into each request the tests send, and into its activity (LAWS OP13). A test that needs one
@@ -55,21 +63,10 @@ def evidence_roots() -> EvidenceRootRequests:
     return EvidenceRootRequests(EvidenceRoots.load())
 
 
-_unheld: list[str] = []
-"""Each answer this test received that its published model does not hold (V410)."""
-_untyped: list[str] = []
-"""Each failure without a product code an operation gave this test, answered or raised (V449)."""
-_unworded: list[str] = []
-"""Each refusal an operation raised whose code the Host answers without words (V456)."""
-_resent: set[str] = set()
-"""Each offer this test sent back as it stood, once."""
-_sending: list[bool] = []
-"""Set while an offer is sent back: its answers send none back themselves."""
 _ROUND_TRIP_REPORT = os.environ.get("ALPHALATTICE_ROUND_TRIP_REPORT")
 """Discovery: each offer is sent back whole, a preview's body included, and what it finds is
 written to this file. A sent preview records its link, so this never runs by default."""
-_trips: list[str] = []
-"""In discovery, what the offers sent back found, written down at the test's end."""
+_observer = RoundTripObserver(report=bool(_ROUND_TRIP_REPORT))
 
 
 def truth_problems(host, operation, body, admits):
@@ -85,7 +82,6 @@ def truth_problems(host, operation, body, admits):
     from alphalattice.interface.local_application.answers import stopped_problem
     from alphalattice.interface.local_application.cli_contract import offered_requests
     from alphalattice.interface.local_application.failure_codes import public_failure
-    from alphalattice.interface.local_application.goals import target_sessions
     from alphalattice.interface.local_application.portfolio_research import (
         PortfolioResearchRequestDocument,
     )
@@ -95,27 +91,27 @@ def truth_problems(host, operation, body, admits):
         actual = host.workspace_session.task_control_registry.task(UUID(str(named))).lifecycle
     except (AttributeError, LookupError, TypeError, ValueError):
         actual = None
-    # A command's answer names a Task its own act still moves: only a wait on it is wrong here.
-    if actual is not None and (problem := stopped_problem(body, actual.value, way_on=False)):
-        yield f"{operation}: {problem}"
-    offers = offered_requests(body)
     # A preview that is its own admission writes its link while checked: it is left out.
     previews = {item.preview for item in host.replans().values() if item.preview != item.admitting}
-    for name, offer in offers.items():
-        key = json.dumps(offer, sort_keys=True, default=str)
-        if "recovery_task_id" not in offer or offer["operation"] not in previews or key in _resent:
-            continue
-        _resent.add(key)
-        try:
-            answer = admits(
-                PortfolioResearchRequestDocument.model_validate(offer).to_operation_request()
-            )
-            code = str(answer.get("failure_code") or "") if isinstance(answer, dict) else ""
-        except Exception as error:
-            code = public_failure(error, "operation.raised")
-        base = code.partition(":")[0]
-        if "not_offered" in base or base.endswith("_invalid") or "operation_field" in base:
-            yield f"{operation} offers `{name}`, which sent back as it stands is refused: {code}"
+    yield from _observer.truth(
+        operation,
+        body,
+        TruthFacts(lifecycle=None if actual is None else actual.value, previews=previews),
+        offered_requests=offered_requests,
+        stopped_problem=stopped_problem,
+        make_request=lambda offer: PortfolioResearchRequestDocument.model_validate(
+            offer
+        ).to_operation_request(),
+        admits=admits,
+        failure_code=lambda error: public_failure(error, "operation.raised"),
+        dated_facts=lambda: _dated_truth_facts(host),
+    )
+
+
+def _dated_truth_facts(host):
+    """Read delegation after admissions, which report mode can execute."""
+    from alphalattice.interface.local_application.goals import target_sessions
+
     first_use = getattr(getattr(host, "goals", None), "first_use", lambda: None)()
     date = None if first_use is None else first_use.declaration.target_date
     if date is not None and host.goals.first_use_delegation(first_use)["active"]:
@@ -123,18 +119,12 @@ def truth_problems(host, operation, body, admits):
             formation = str(target_sessions(date)["formation_session"])
         except ValueError:
             formation = None
-        for name, offer in offers.items():
-            dated = offer.get("observed_through")
-            if offer.get("operation") == "RESEARCH_UPDATE_PLAN" and (
-                formation is None or dated != formation
-            ):
-                yield f"{operation} offers `{name}`, an update that is not the first use's date"
+        return "RESEARCH_UPDATE_PLAN", formation
+    return None, None
 
 
 def plan_admission_problem(operation, body, replans, routes):
     """Hold observed re-PLAN answers to the composed owners' admission declarations."""
-    from uuid import UUID
-
     from alphalattice.control.task_control.contracts import TaskLifecycle
     from alphalattice.interface.local_application.cli_contract import (
         choices,
@@ -146,76 +136,42 @@ def plan_admission_problem(operation, body, replans, routes):
         PortfolioResearchRequestDocument,
     )
 
-    expected = {
-        item.admitting
-        for item in replans.values()
-        if item.preview == operation and item.preview != item.admitting
-    }
-    if not expected or not isinstance(body, dict):
-        return None
-    status = body.get("status")
-    if operation == "DATA_UPDATE_PLAN" and status == "CONFIRMATION_REQUIRED":
-        expected = {"DATA_CHANGE_CONFIRM"}  # Human consent precedes the existing run.
-    offers = [q for q in offered_requests(body).values() if q.get("operation") in expected]
-    if not offers:
-        existing_work = False
-        if operation in {"RESEARCH_INPUT_PLAN", "WORKSPACE_PREPARE_PLAN"}:
-            try:
-                UUID(str(body.get("task_id")))
-                existing_work = status in (
-                    {state.value for state in TaskLifecycle}
-                    if operation == "WORKSPACE_PREPARE_PLAN"
-                    else {
-                        "QUEUED",
-                        "RUNNING",
-                        "DEFERRED",
-                        "REVIEW_PENDING",
-                        "CANCEL_REQUESTED",
-                        "RECOVERY_REQUIRED",
-                    }
-                )
-            except ValueError:
-                pass
-        # These public states have no new runnable plan. Unknown states fail closed;
-        # deleting both a PLANNED answer's hash and offer cannot escape this check.
-        if (
-            (
-                refused(body)
-                and status
-                not in {
-                    "PLANNED",
-                    "CONFIRMATION_REQUIRED",
-                    "DEFINITION_PLANNED",
-                    "AVAILABLE",
-                }
-            )
-            or (operation, status)
-            in {
+    return observed_plan_admission_problem(
+        operation,
+        body,
+        ((item.preview, item.admitting) for item in replans.values()),
+        routes,
+        AdmissionPolicy(
+            confirmation_admissions={
+                ("DATA_UPDATE_PLAN", "CONFIRMATION_REQUIRED"): {"DATA_CHANGE_CONFIRM"}
+            },
+            existing_work_states={
+                "WORKSPACE_PREPARE_PLAN": {state.value for state in TaskLifecycle},
+                "RESEARCH_INPUT_PLAN": {
+                    "QUEUED",
+                    "RUNNING",
+                    "DEFERRED",
+                    "REVIEW_PENDING",
+                    "CANCEL_REQUESTED",
+                    "RECOVERY_REQUIRED",
+                },
+            },
+            no_plan_states={
                 ("RESEARCH_INPUT_PLAN", "REUSED_EXACT"),
                 ("WORKSPACE_PREPARE_PLAN", "ALREADY_PREPARED"),
                 ("RESEARCH_UPDATE_PLAN", "OBSERVATIONS_PENDING"),
                 ("PORTFOLIO_UPDATE_PLAN", "OBSERVATIONS_PENDING"),
-            }
-            or (
-                operation == "WORKSPACE_PREPARE_PLAN"
-                and status == "CONFIRMATION_REQUIRED"
-                and body.get("confirmation_available") is False
-                and body.get("source_access_failure")
-            )
-            or (operation == "EVIDENCE_PREVIEW" and status == "EVIDENCE_PREREQUISITES_MISSING")
-            or existing_work
-        ):
-            return None
-        return f"{operation} offers no filled admission among {sorted(expected)}"
-    for offer in offers:
-        problem = request_problem(offer)
-        if problem or choices(offer):
-            return f"{operation} admission is unfilled or invalid: {problem or choices(offer)}"
-        PortfolioResearchRequestDocument.model_validate(offer)
-        route = routes.get(offer["operation"])
-        if not route or route["method"] != "POST" or not route["path"]:
-            return f"{operation} admission has no session POST route: {offer['operation']}"
-    return None
+                ("EVIDENCE_PREVIEW", "EVIDENCE_PREREQUISITES_MISSING"),
+            },
+            runnable_states={"PLANNED", "CONFIRMATION_REQUIRED", "DEFINITION_PLANNED", "AVAILABLE"},
+            inaccessible_confirmation=("WORKSPACE_PREPARE_PLAN", "CONFIRMATION_REQUIRED"),
+        ),
+        offered_requests=offered_requests,
+        request_problem=request_problem,
+        choices=choices,
+        validate_request=PortfolioResearchRequestDocument.model_validate,
+        refused=refused,
+    )
 
 
 @pytest.fixture
@@ -228,6 +184,30 @@ def plan_admission_check():
 def truth_check():
     """The answer-truth observer every executed operation meets, for its planted cases."""
     return truth_problems
+
+
+def _host_plan_admission(host, owner, operation, body):
+    """Project the observed composer's public declarations and session routes."""
+    replans = host.replans()
+    if not any(
+        item.preview == operation and item.preview != item.admitting for item in replans.values()
+    ):
+        return None
+    # Load the composer beside the observed Host only for its previews. A static route-module
+    # import would select every test for any owner Local Web composes (TE7).
+    import importlib
+
+    session_module = importlib.import_module(
+        owner.__module__.rsplit(".", 1)[0] + ".local_web_session"
+    )
+    routes = {
+        op: {"method": method, "path": path}
+        for method, path, op in (
+            *session_module.OPERATION_ROUTES,
+            *session_module.HANDLED_OPERATION_ROUTES,
+        )
+    }
+    return plan_admission_problem(operation, body, replans, routes)
 
 
 @pytest.fixture(autouse=True)
@@ -284,93 +264,67 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
                 # A raised failure without a product code is a crash the caller meets as a
                 # bare fingerprint (V449: AX15's review IndexError).
                 code = public_failure(error, "operation.raised")
-                if untyped_failure(code):
-                    _untyped.append(f"{request.operation} raised {code}")
-                elif refusal_words(code) is None:
-                    # The Host answers a raised refusal with its code's words from the table
-                    # (OP4); one without them reaches the caller as a bare code (V456).
-                    _unworded.append(f"{request.operation} raised {code}")
+                _observer.raised(
+                    request.operation,
+                    code,
+                    untyped_failure=untyped_failure,
+                    refusal_words=refusal_words,
+                )
                 raise
             given = (
                 {item.name: getattr(request, item.name) for item in fields(request)}
                 if is_dataclass(request)
                 else {}
             )
-            problem = answer_problem(request.operation, body, given)
-            if problem is not None:
-                _unheld.append(problem)
-            if isinstance(body, dict) and not _sending:
-                _sending.append(True)
+
+            def truth():
                 admits = self._recovery_context
                 if _ROUND_TRIP_REPORT:
                     admits = lambda sent: original(self, sent)  # noqa: E731
-                try:
-                    found = truth_problems(self, request.operation, body, admits)
-                    (_trips if _ROUND_TRIP_REPORT else _unheld).extend(found)
-                finally:
-                    _sending.pop()
-            replans = self.replans()
-            if any(
-                item.preview == request.operation and item.preview != item.admitting
-                for item in replans.values()
-            ):
-                # Load the composer beside the observed Host only for its previews.
-                # A static route-module import here would make the impact walk
-                # select every test for any owner that Local Web composes (TE7).
-                import importlib
+                return truth_problems(self, request.operation, body, admits)
 
-                session_module = importlib.import_module(
-                    owner.__module__.rsplit(".", 1)[0] + ".local_web_session"
-                )
-                routes = {
-                    op: {"method": method, "path": path}
-                    for method, path, op in (
-                        *session_module.OPERATION_ROUTES,
-                        *session_module.HANDLED_OPERATION_ROUTES,
-                    )
-                }
-                if problem := plan_admission_problem(request.operation, body, replans, routes):
-                    _unheld.append(problem)
-            if isinstance(body, dict):
-                code = str(body.get("failure_code") or body.get("refused") or "")
-                if untyped_failure(code):
-                    _untyped.append(f"{request.operation} answered {code}")
+            _observer.answered(
+                request.operation,
+                body,
+                given,
+                answer_problem=answer_problem,
+                untyped_failure=untyped_failure,
+                truth=truth,
+                plan_admission=lambda: _host_plan_admission(self, owner, request.operation, body),
+            )
             return body
 
         execute.held = 1  # type: ignore[attr-defined]
         owner.execute = execute
     yield
-    _resent.clear()
-    if _ROUND_TRIP_REPORT and _trips:
+    report = os.environ.get("ALPHALATTICE_UNWORDED_REPORT")
+    observed = _observer.finish(
+        allow_untyped=request.node.get_closest_marker("untyped_failure") is not None,
+        report_unworded=bool(report),
+    )
+    if _ROUND_TRIP_REPORT and observed.trips:
         with open(_ROUND_TRIP_REPORT, "a", encoding="utf-8") as kept:
-            kept.writelines(f"{line}\t{request.node.nodeid}\n" for line in _trips)
-        _trips.clear()
-    untyped = list(dict.fromkeys(_untyped))
-    _untyped.clear()
-    if untyped and request.node.get_closest_marker("untyped_failure") is None:
-        _unheld.clear()
+            kept.writelines(
+                f"{issue['reason']}\t{request.node.nodeid}\n" for issue in observed.trips
+            )
+    if observed.failure_kind == "untyped":
         pytest.fail(
             "an operation failed without a product code, a crash or a failure naming no rule "
             "(V449; a test that causes one on purpose is marked `untyped_failure`): "
-            + "; ".join(untyped[:5]),
+            + "; ".join(issue["reason"] for issue in observed.failures[:5]),
             pytrace=False,
         )
-    unworded = list(dict.fromkeys(_unworded))
-    _unworded.clear()
-    report = os.environ.get("ALPHALATTICE_UNWORDED_REPORT")
-    if unworded and report:
+    if observed.unworded and report:
         # Discovery: every such code a run meets, written down rather than failed (V456).
         with open(report, "a", encoding="utf-8") as kept:
-            kept.writelines(f"{line}\t{request.node.nodeid}\n" for line in unworded)
-    elif unworded:
-        _unheld.extend(f"{line} without words or a way on" for line in unworded)
-    if _unheld:
-        found = list(dict.fromkeys(_unheld))
-        _unheld.clear()
+            kept.writelines(
+                f"{issue['reason']}\t{request.node.nodeid}\n" for issue in observed.unworded
+            )
+    if observed.failure_kind == "answer":
         pytest.fail(
             "an answer does not hold its published model, offers a request the Host does not "
             "accept as it stands, or refuses without words and a way on (V410, V449, OP4): "
-            + "; ".join(found[:5]),
+            + "; ".join(issue["reason"] for issue in observed.failures[:5]),
             pytrace=False,
         )
 

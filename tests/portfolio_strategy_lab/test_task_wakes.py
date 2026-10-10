@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -40,7 +41,7 @@ def codex(tmp_path, monkeypatch):
         "import json, os, sys\n"
         "if sys.argv[1:] == ['queue', '--help']:\n"
         "    with open(os.environ['FAKE_CODEX_PROBES'], 'a') as out: out.write('probe\\n')\n"
-        "    sys.exit(0)\n"
+        "    sys.exit(int(os.environ.get('FAKE_CODEX_PROBE_EXIT', '0')))\n"
         "with open(os.environ['FAKE_CODEX_CALLS'], 'a', encoding='utf-8') as out:\n"
         "    out.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         "sys.exit(int(os.environ.get('FAKE_CODEX_EXIT', '0')))\n",
@@ -57,6 +58,7 @@ def codex(tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_CODEX_PROBES", str(tmp_path / "codex-probes.txt"))
     return SimpleNamespace(
         folder=folder,
+        command=Path(shutil.which("codex")),
         probes=lambda: (tmp_path / "codex-probes.txt").read_text().splitlines(),
         calls=lambda: (
             [json.loads(line) for line in calls.read_text("utf-8").splitlines()]
@@ -73,7 +75,7 @@ def _task(live, salt: str):  # type: ignore[no-untyped-def]
     ).record
 
 
-def _register(live, task) -> dict:  # type: ignore[no-untyped-def,type-arg]
+def _register(live, task, *, env=None) -> dict:  # type: ignore[no-untyped-def,type-arg]
     """The lead's call: a real CLI process that answers and exits before the Task ends."""
     done = subprocess.run(
         [
@@ -86,6 +88,7 @@ def _register(live, task) -> dict:  # type: ignore[no-untyped-def,type-arg]
         text=True,
         encoding="utf-8",
         timeout=120,
+        env=env,
     )
     assert done.returncode == 0, done.stdout + done.stderr
     answer = json.loads(done.stdout)["data"]
@@ -162,7 +165,12 @@ def test_the_host_sends_a_wake_once_after_the_cli_has_gone(live, codex) -> None:
     task = _task(live, "ended")
     wake = _register(live, task)
     assert codex.calls() == []
-    assert _run(live, task)["result"] == {"channel": "codex-queue", "delivered": True}
+    assert _run(live, task)["result"] == {
+        "channel": "codex-queue",
+        "delivered": True,
+        "command": str(codex.command),
+        "command_source": "CLIENT_PATH",
+    }
     ((*queue, message),) = codex.calls()
     assert queue == ["queue", "--thread", THREAD, "--message"]
     # The line names the Task and what happened before the command that reads it.
@@ -251,7 +259,12 @@ def test_a_wake_the_host_cannot_send_is_named_in_the_tasks_activity_and_not_retr
         _register(live, task)
         monkeypatch.setenv("PATH", str(path))
         monkeypatch.setenv("FAKE_CODEX_EXIT", "17")
+        parked = codex.command.with_suffix(".held")
+        if salt == "missing":
+            codex.command.rename(parked)
         wake = _run(live, task)
+        if salt == "missing":
+            parked.rename(codex.command)
         assert (wake["state"], wake["result"]["failure"]) == ("UNDELIVERED", failure)
         live.activity.command_returned("factor_research", task.task_id, None)
         live.activity.drain_wakes()
@@ -271,19 +284,34 @@ def test_a_missing_queue_refuses_before_the_host_holds_a_wake(live, codex, monke
     task = _task(live, "queue-unavailable")
     client = LocalResearchClient(live.workspace)
     assert client.activity()["observer"]["codex_queue"]["present"] is False
-    answer = client.request(
-        {
-            "operation": "WAKE_REGISTER",
-            "task_id": str(task.task_id),
-            "wake_thread": THREAD,
-            "wake_read": "task show",
-        }
-    )
+    registration = {
+        "operation": "WAKE_REGISTER",
+        "task_id": str(task.task_id),
+        "wake_thread": THREAD,
+        "wake_read": "task show",
+    }
+    answer = client.request(registration)
     assert answer["failure_code"] == "local_client.codex_queue_unavailable"
     assert answer["next_action"] == "WAIT_IN_THE_TURN" and answer["detail"]
     assert client.request(answer["next_requests"]["read"])["task_id"] == str(task.task_id)
     assert live.session.task_control_registry.wake_registrations(task.task_id) == ()
     assert codex.calls() == []
+    monkeypatch.setenv("FAKE_CODEX_PROBE_EXIT", "17")
+    refused = client.request({**registration, "wake_codex_path": str(codex.command)})
+    assert refused["failure_code"] == "local_client.codex_queue_unavailable"
+    assert live.session.task_control_registry.wake_registrations(task.task_id) == ()
+    monkeypatch.delenv("FAKE_CODEX_PROBE_EXIT")
+    # The same Host receives the fresh client's PATH; it never restarts.
+    wake = _register(live, task, env={**os.environ, "PATH": str(codex.folder)})
+    assert wake["codex_path"] == str(codex.command)
+    delivered = _run(live, task)["result"]
+    assert delivered == {
+        "channel": "codex-queue",
+        "delivered": True,
+        "command": str(codex.command),
+        "command_source": "CLIENT_PATH",
+    }
+    assert len(codex.calls()) == 1 and len(codex.probes()) == 2
 
 
 def test_concurrent_reads_probe_the_queue_once_per_host(live, codex):
@@ -362,6 +390,7 @@ def test_an_agent_verb_registers_its_running_task_and_its_rerun_keeps_every_answ
     trained = {"operation": "MODEL_TRAINING_INPUT_PREPARE", "experiment_plan_hash": "p"}
     route = {"operation": "MODEL_TRAINING_INPUT_PLAN", "component_id": "G2"}
     answers = {
+        "ACTIVITY_LIST": {"observer": {"codex_queue": {"present": False}}},
         "CONTROLS": {"status": "CONTROLS", "template": {}},
         "RUN": running,
         "AGENT_ANSWER_SUBMIT": {**running, "status": "ACCEPTED"},

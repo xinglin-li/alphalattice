@@ -704,8 +704,9 @@
   "view_to": "The last day read, as YYYY-MM-DD.",
   "view_topic": "Only this topic's Evidence.",
   "wait_seconds": "How long a Task's status may wait for the Task to move on; at most 20 seconds.",
-  "wake_read": "The exact command the wake names for the lead to read or re-run: the Task's `task show`, or the agent verb that registered it, its `--output` moved to the next free path.",
-  "wake_thread": "The Codex thread the Host queues a Task's wake to, by its id (`CODEX_THREAD_ID`).",
+  "wake_codex_path": "The client's Codex executable; the Host validates it or uses its PATH.",
+  "wake_read": "The exact read or rerun command, with its next free output path.",
+  "wake_thread": "The Codex thread to wake (`CODEX_THREAD_ID`).",
   "watch": "Tasks, by id, whose current projection the activity page joins; a short id the compact display gave reads as its whole id.",
   "window_limit": "The most windows the continued chain may read."
  },
@@ -2260,6 +2261,7 @@
   "WAKE_REGISTER": {
    "allowed": [
     "task_id",
+    "wake_codex_path",
     "wake_read",
     "wake_thread"
    ],
@@ -2458,6 +2460,7 @@
   "view_to": "view-to",
   "view_topic": "view-topic",
   "wait_seconds": "wait-seconds",
+  "wake_codex_path": "wake-codex-path",
   "wake_read": "read",
   "wake_thread": "thread",
   "watch": "watch",
@@ -3560,6 +3563,9 @@
   ],
   "wait_seconds": [
    "number"
+  ],
+  "wake_codex_path": [
+   "string"
   ],
   "wake_read": [
    "string"

@@ -9564,10 +9564,6 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/investment/portfolio_strategy_lab/reporting/static.py::_pct::100": {
-"class": "METHOD",
-"count": 1
-},
 "src/alphalattice/investment/portfolio_strategy_lab/reporting/static.py::_sparkline::120.0": {
 "class": "METHOD",
 "count": 1
@@ -9591,6 +9587,14 @@
 "src/alphalattice/investment/portfolio_strategy_lab/reporting/static.py::format_book_weight::100": {
 "class": "METHOD",
 "count": 1
+},
+"src/alphalattice/investment/portfolio_strategy_lab/reporting/static.py::format_book_weight::3": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/investment/portfolio_strategy_lab/reporting/static.py::precision::2": {
+"class": "METHOD",
+"count": 2
 },
 "src/alphalattice/investment/portfolio_strategy_lab/reporting/static.py::ladder::2": {
 "class": "METHOD",

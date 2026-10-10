@@ -12,11 +12,11 @@ from __future__ import annotations
 import argparse
 import errno
 import hashlib
-import importlib.util
 import json
 import math
 import os
 import re
+import shlex
 import sys
 from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import contextmanager
@@ -48,6 +48,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
     update_research_workspace_manifest,
 )
+from alphalattice.control.product_host.composition.retrieval_pack_setup import pack_command
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     read_factor_bundle,
 )
@@ -126,6 +127,10 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import setup_failure
+from alphalattice.interface.local_application.retrieval_environment import (
+    fill_command,
+    load,
+)
 from alphalattice.investment.portfolio_strategy_lab.application.resolution import (
     _risk_surface,
     _sector_map,
@@ -142,7 +147,10 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.persistence import replace_with_retry
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.project_layout import (
+    command_prefix,
+    resolve_playpen_root,
+)
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTicker,
     AdmittedListingTickerAuthority,
@@ -496,7 +504,7 @@ class EvidenceInstall:
         held = self._outputs(task)
         arguments = setup_arguments(task.input.payload["arguments"], self.session.workspace)
         try:
-            if stage == "environment" and importlib.util.find_spec("fastembed") is None:
+            if stage == "environment" and not load():
                 raise ValueError("evidence_review.retrieval_environment_not_loaded")
             answer = _step(
                 _Setup(
@@ -682,7 +690,11 @@ class _Setup:
         )
 
     def capability(self) -> tuple[str, str]:
-        """The recipe's packs bound into the workspace, and their capability: its root, its hash."""
+        """The recipe's packs bound into the workspace, and their capability: its root, its hash.
+
+        A retrieval runtime filled after this process started is read first (`load`).
+        """
+        load()
         arguments, workspace, recipe = self.arguments, self.workspace, self.recipe
         semantic_root = _semantic_root(arguments, workspace=workspace, recipe=recipe)
         try:
@@ -1648,6 +1660,7 @@ def _acquisition_command(
     evidence_as_of: str | None,
     *,
     preflight: bool,
+    host: bool = False,
 ) -> str:
     """The official acquisition of these issuers at this cutoff, as the person types it.
 
@@ -1655,7 +1668,7 @@ def _acquisition_command(
     the acquisition itself with what shapes the package and its installation as asked (V587).
     The person's consent is carried only where they gave it.
     """
-    parts = [*_setup_entry(), "--workspace", str(arguments.workspace), "--acquire-sec"]
+    parts = ["--acquire-sec"]
     if preflight:
         parts.append("--preflight")
     shaping: tuple[tuple[str, object], ...] = (
@@ -1694,16 +1707,16 @@ def _acquisition_command(
         parts.append("--network-consent")
     if not preflight and arguments.install:
         parts.append("--install")
-    return join(parts, shell())
+    return _typed(arguments, parts, host)
 
 
-def _import_command(arguments: argparse.Namespace, root: Path) -> str:
+def _import_command(arguments: argparse.Namespace, root: Path, host: bool = False) -> str:
     """The recorded import's own check at this root, as the person types it (V590).
 
     Bound to the workspace, the research input, the source set and the issuers given: it reads
     and judges what the install would read, offline, and installs nothing.
     """
-    parts = [*_setup_entry(), "--workspace", str(arguments.workspace)]
+    parts: list[str] = []
     for flag, value in (
         ("--research-input-id", arguments.research_input_id),
         ("--research-input-hash", arguments.research_input_hash),
@@ -1720,13 +1733,35 @@ def _import_command(arguments: argparse.Namespace, root: Path) -> str:
     if arguments.entities:
         parts += ["--entities", *arguments.entities]
     parts.append("--preflight")
-    return join(parts, shell())
+    return _typed(arguments, parts, host)
 
 
-def setup_refusal(arguments: argparse.Namespace, error: Exception) -> dict[str, Any]:
+def _typed(arguments: argparse.Namespace, options: list[str], host: bool) -> str:
+    """The setup with these options as the person types it: through the running Host, which
+    holds the workspace, or the script while no Host runs."""
+    if host:
+        setup = "--setup=" + shlex.join(options)
+        workspace = str(arguments.workspace)
+        return join(
+            [*command_prefix(), "--workspace", workspace, "evidence", "install", setup], shell()
+        )
+    return join([*_setup_entry(), "--workspace", str(arguments.workspace), *options], shell())
+
+
+_RUNTIME_REFUSALS = (
+    "evidence_review.semantic_capability_not_ready",
+    "evidence_review.retrieval_environment_not_loaded",
+)
+"""The retrieval runtime or its packs are not ready: filling them is the way on."""
+
+
+def setup_refusal(
+    arguments: argparse.Namespace, error: Exception, *, script: bool = False
+) -> dict[str, Any]:
     """A setup refusal whole.
 
-    Its code and words, its context, the option it refused on and the commands of its way on.
+    Its code and words, its context, the option it refused on and the commands of its way on:
+    the running Host's route, or the script's where the script runs with no Host (`script`).
     """
     payload = setup_failure(error)
     payload["context"] = {
@@ -1740,23 +1775,11 @@ def setup_refusal(arguments: argparse.Namespace, error: Exception) -> dict[str, 
         "source_set_hash": arguments.source_set_hash,
         "network_consent": arguments.network_consent,
     }
-    # Each way on fits the mode (V590): an acquisition's read-only preflight keeps its exact
-    # binding, scope and explicit consent, and only an acquisition is offered the network
-    # decision; a recorded import's way on is its own check, offline.
+    # A script that met a running Host is sent to that Host's route.
+    host = not script or str(error) == "workspace_runtime.writer_already_owned"
     if arguments.acquire_sec:
         payload["next_requests"] = {"network": {"operation": "NETWORK_ACCESS"}}
-        payload["next_commands"] = {
-            "preflight": _acquisition_command(
-                arguments, arguments.entities or (), arguments.evidence_as_of, preflight=True
-            )
-        }
-    elif arguments.source_artifact_root is not None and arguments.source_set_hash:
-        root = arguments.source_artifact_root
-        if isinstance(error, SourceFileUnavailable) and error.option == "source_artifact_root":
-            root = _holding_root(root.resolve(), arguments.source_set_hash) or root
-        payload["next_commands"] = {"preflight": _import_command(arguments, root)}
-    else:
-        payload["next_commands"] = {"help": join([*_setup_entry(), "--help"], shell())}
+    payload["next_commands"] = _ways_on(arguments, error, host)
     if isinstance(error, OptionRefused):
         # The option it refused on and what that option must hold, as the offer states it
         # (V591, V592); a file under a root option, by its place there (V590).
@@ -1776,8 +1799,12 @@ def setup_refusal(arguments: argparse.Namespace, error: Exception) -> dict[str, 
         # stays uncounted -- checked first (V587).
         cutoff, entities = error.evidence_as_of.isoformat(), error.entities
         payload["next_commands"] = {
-            "preflight": _acquisition_command(arguments, entities, cutoff, preflight=True),
-            "acquire": _acquisition_command(arguments, entities, cutoff, preflight=False),
+            "preflight": _acquisition_command(
+                arguments, entities, cutoff, preflight=True, host=host
+            ),
+            "acquire": _acquisition_command(
+                arguments, entities, cutoff, preflight=False, host=host
+            ),
         }
     if (
         arguments.acquire_sec
@@ -1793,13 +1820,39 @@ def setup_refusal(arguments: argparse.Namespace, error: Exception) -> dict[str, 
     return payload
 
 
+def _ways_on(arguments: argparse.Namespace, error: Exception, host: bool) -> dict[str, str]:
+    """A refusal's commands: what fills a retrieval runtime that is not ready, else the mode's
+    check (V590). An acquisition's read-only preflight keeps its exact binding, scope and
+    explicit consent; a recorded import's way on is its own check, offline."""
+    if str(error) in _RUNTIME_REFUSALS:
+        # Never the same check again: the runtime's fill and the packs' status come first.
+        return {
+            "environment": join(fill_command(), shell()),
+            "packs": join(pack_command("--status"), shell()),
+        }
+    if arguments.acquire_sec:
+        cutoff, entities = arguments.evidence_as_of, arguments.entities or ()
+        return {
+            "preflight": _acquisition_command(
+                arguments, entities, cutoff, preflight=True, host=host
+            )
+        }
+    if arguments.source_artifact_root is not None and arguments.source_set_hash:
+        root = arguments.source_artifact_root
+        if isinstance(error, SourceFileUnavailable) and error.option == "source_artifact_root":
+            root = _holding_root(root.resolve(), arguments.source_set_hash) or root
+        return {"preflight": _import_command(arguments, root, host)}
+    entry = [*command_prefix(), "evidence", "install"] if host else _setup_entry()
+    return {"help": join([*entry, "--help"], shell())}
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the declared command and return its exit status."""
     arguments = _parser().parse_args(argv)
     try:
         result = materialize(arguments)
     except Exception as error:
-        print(json.dumps(setup_refusal(arguments, error)))
+        print(json.dumps(setup_refusal(arguments, error, script=True)))
         return 2
     print(json.dumps(result, indent=2, default=str))
     return 0

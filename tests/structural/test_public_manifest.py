@@ -46,6 +46,8 @@ from release.public_manifest import (
         ("config/alpha-arm-control.yaml", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("config/dynamic-panel-risk.yaml", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("tests/agent_eval/test_one.py", "PRIVATE", "PRIVATE_TEST"),
+        ("src/devtools/evaluation/forms.py", "PUBLIC", "PUBLIC_VERIFICATION"),
+        ("tests/evaluation/test_forms.py", "PUBLIC", "PUBLIC_TEST"),
         (
             "tests/portfolio_strategy_lab/test_native_answer_route_class.py",
             "PRIVATE",
@@ -499,6 +501,10 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public():
     """A renamed or split test file cannot leave the public CI running a path that is gone."""
     root = Path(__file__).resolve().parents[2]
     workflow = (root / ".github/workflows/ci.yml").read_text("utf-8")
+    triggers = workflow.split("permissions:", 1)[0]
+    for event in ("push", "pull_request"):
+        declared = re.search(rf"  {event}:\s+branches: \[([^]]+)\]", triggers)
+        assert declared and {value.strip() for value in declared[1].split(",")} == {"main", "next"}
     named = set(re.findall(r"tests/[\w/]+\.py", workflow))
     assert named
     assert sorted(path for path in named if not (root / path).is_file()) == []

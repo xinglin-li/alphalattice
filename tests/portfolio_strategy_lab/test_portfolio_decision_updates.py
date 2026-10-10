@@ -38,7 +38,11 @@ from alphalattice.investment.portfolio_strategy_lab.policies.post_observed_autho
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
-from alphalattice.investment.portfolio_strategy_lab.reporting.static import render_decision_update
+from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
+    DECISION_WORDS,
+    format_book_weight,
+    render_decision_update,
+)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import TEST_PACKAGE
 from tests.portfolio_strategy_lab.synthetic_numerical import (
@@ -645,7 +649,15 @@ def test_publication_commit_recovers_an_orphan_and_retains_exact_html(numerical,
     path.unlink()  # Only this test's materialized content; commit remains durable.
     assert store.decision_history(n.checkpoint.content_hash) == (value,)
     assert path.read_bytes() == original
-    assert "CLOSE_MARKED_ESTIMATE" in store.load_html(page)
+    rendered = store.load_html(page)
+    for code in ("CLOSE_MARKED_ESTIMATE_NOT_EXECUTION_TARGET", "PROPOSAL_PUBLISHED", value.claim):
+        assert DECISION_WORDS[code] in rendered and code not in rendered
+    assert value.pending_proposal is not None
+    assert all(
+        f">{format_book_weight(weight, precision=2).removesuffix('%')}<" in rendered
+        for weight in value.pending_proposal.estimated_weights
+        if weight > 0
+    )
     payload = json.loads(original)
     payload["observed_through"] = "2026-07-24"
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -743,6 +755,17 @@ def test_captured_prefix_and_tail_first_publication(numerical, tmp_path):
         assert store.decision_history(n.checkpoint.content_hash) == ()
     store.publish_decision_update(branch[0])
     assert store.decision_history(n.checkpoint.content_hash) == tuple(branch)
+    rendered = store.load_html(branch[-1].html_hash)
+    for event in (event for publication in branch for event in publication.events):
+        assert DECISION_WORDS[event.phase] in rendered and event.phase not in rendered
+        for value in (
+            event.turnover,
+            event.gross_return,
+            event.net_return_5bps,
+            event.net_return_10bps,
+        ):
+            if value is not None:
+                assert f">{format_book_weight(value, precision=2).removesuffix('%')}<" in rendered
 
 
 def _captured_rows_snapshot(*, quote="normal", actions=()):

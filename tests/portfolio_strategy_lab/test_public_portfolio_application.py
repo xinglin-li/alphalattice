@@ -162,7 +162,7 @@ def test_only_one_application_session_can_own_a_workspace(tmp_path: Path) -> Non
             workspace / "runtime" / "research-task-control.duckdb"
         )
         assert session.runtime_path.parent == workspace / "runtime"
-        with pytest.raises(RuntimeError, match="already owned"):
+        with pytest.raises(RuntimeError, match="writer_already_owned"):
             WorkspaceApplicationSession.acquire(workspace)
 
 

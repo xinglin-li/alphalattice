@@ -23,6 +23,7 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.interface.local_application import client as client_module
+from alphalattice.interface.local_application import retrieval_environment
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.cli_contract import AGENT_HOST_WAITS, outcome_of
 from alphalattice.interface.local_application.portfolio_research import (
@@ -1330,6 +1331,7 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
     monkeypatch.chdir(tmp_path)  # a project with no declaration for this session's host
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.setenv("CODEX_THREAD_ID", "thread-1")
+    monkeypatch.setattr(retrieval_environment, "load", lambda: False)
     answer = _first_use(_FirstUseHost(tmp_path / "workspace", prepared=True))
 
     # A Saturday names no session: the positions enter on Monday, decided at Friday's close.
@@ -1348,6 +1350,11 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
     assert "SEC_USER_AGENT" not in asked
     assert "not recorded" in answer["first_use"]["sentence"]
     assert "project_declaration" in answer["first_use"]["setup"]["missing"]
+    runtime = answer["first_use"]["setup"]["retrieval_runtime"]
+    assert (
+        runtime["who_decides"] == "AGENT"
+        and "retrieval_environment --offline" in runtime["command"]
+    )
 
 
 @pytest.mark.parametrize(

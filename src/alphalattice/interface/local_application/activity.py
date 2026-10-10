@@ -501,7 +501,7 @@ class OperationObserver(Protocol):
         """Read one bounded page of the feed (`activity list`)."""
         ...
 
-    def wake_readiness(self) -> dict[str, object]:
+    def wake_readiness(self, path: str | None = None) -> dict[str, object]:
         """Whether this Host can deliver a Codex queue wake."""
         ...
 

@@ -521,7 +521,13 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
 def test_codex_queue_check_names_its_bounded_probe_result(tmp_path, monkeypatch, outcome, reason):
     """Queue readiness distinguishes absence, exit failure, timeout and failure to start."""
     executable = str(tmp_path / "codex")
-    monkeypatch.setattr(shutil, "which", lambda _: None if outcome == "missing" else executable)
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda command: (
+            None if outcome == "missing" else executable if command == "codex" else command
+        ),
+    )
     calls = []
 
     def run(argv, **options):
@@ -539,6 +545,21 @@ def test_codex_queue_check_names_its_bounded_probe_result(tmp_path, monkeypatch,
     if calls:
         argv, options = calls[0]
         assert argv == [executable, "queue", "--help"] and 0 < options["timeout"] <= 30
+    if outcome == "ready":
+        assert result["command_source"] == "HOST_PATH"
+        for name in ("codex", "codex.exe", "codex.cmd"):
+            candidate = tmp_path / "client" / name
+            candidate.parent.mkdir(exist_ok=True)
+            candidate.touch()
+            selected = setup.codex_queue_readiness(str(candidate))
+            assert selected["command"] == str(candidate)
+            assert selected["present"] and selected["command_source"] == "CLIENT_PATH"
+        wrong = tmp_path / "other"
+        wrong.touch()
+        for path in ("codex", str(wrong), str(tmp_path), str(tmp_path / "absent/codex")):
+            fallback = setup.codex_queue_readiness(path)
+            assert fallback["command"] == executable
+            assert fallback["present"] and fallback["command_source"] == "HOST_PATH"
 
 
 def test_claude_code_host_binding_is_kept_apart_from_codex(tmp_path):
