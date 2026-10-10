@@ -764,7 +764,7 @@ wide, Light / Dark, en / zh, 100 / 125 %) and in the maintainer's window (1673 x
 with the classic scrollbar the maintainer's Windows shows (the kit's default; Playwright hides it, and
 a value's roll or a picker's cut title that looked clean in a still grew a bar in that window,
 2026-09-25/26).
-The glass is judged in real Chrome (`QA_CHROME`): the headless shell drops a large element's
+The glass is judged in real Chrome: the headless shell drops a large element's
 frost at device scale 2 and overlays its scrollbars. The matrix judges this desktop workstation's
 widths (PG10, V650); a narrow walk is at 900, and at 1100 for a dense page. *Held by:* the kit's
 stills and `viewport_widths`.
