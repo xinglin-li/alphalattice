@@ -2473,8 +2473,7 @@ class _Chain:
     deadline: float | None
     steps: list[dict[str, Any]] = field(default_factory=list)
     wake: tuple[str, str] | None = None
-    """With `--notify codex-queue`: the Codex thread and this verb's own re-run command, which
-    the Host's wake names when the first running Task this verb reaches ends (WAKE)."""
+    """The Codex thread and this verb's rerun, sent when its first running Task ends."""
 
     def send(self, step: str, document: dict[str, Any]) -> dict[str, Any]:
         body = self.client.request(document)
@@ -2539,14 +2538,15 @@ def _chain(client: LocalResearchClient, args: argparse.Namespace, name: str) -> 
     deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
     wake = None
     if getattr(args, "notify", None) == "codex-queue":
+        observer = client.activity().get("observer", {})
+        if not observer.get("codex_queue", {}).get("present"):
+            raise LocalResearchClientError("local_client.codex_queue_unavailable")
         wake = (_codex_thread(), join([*_entry_of(client), *_rerun(args)], shell()))
     return _Chain(client, name, deadline, wake=wake)
 
 
 def _rerun(args: argparse.Namespace) -> list[str]:
-    """This agent verb's own command line, to send again when its wake comes: the same
-    controls and `--notify`, its `--output` moved to the next free `<name>.wake<n>` path so
-    that no saved answer is overwritten."""
+    """Rerun the verb with its controls and a fresh output path, preserving saved answers."""
     verb = AGENT_VERBS[args.command]
     line = list(verb.words)
     for flag, name in (*verb.fields, ("--max-wait", "max_wait"), ("--notify", "notify")):

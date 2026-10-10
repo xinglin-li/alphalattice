@@ -342,6 +342,8 @@ def refusal_words(code: str, *, workspace: Path | None = None) -> dict[str, Any]
         "detail": found["detail"].replace("{subject}", subject),
         "next_action": found["next_action"],
     }
+    if base == "task_control.queue_full":
+        words["next_requests"] = {"capacity": {"operation": "CPU_BUDGET_SHOW"}}
     if base in NETWORK_ACCESS_REFUSALS:
         from alphalattice.control.workspace_runtime.network_access import network_access
 
@@ -459,7 +461,8 @@ def worded_refusal(body: dict[str, Any], *, workspace: Path | None = None) -> di
             else {"next_action": words["next_action"]}
         ),
     }
-    return {**body, **missing} if missing else body
+    offered = {"next_requests": words["next_requests"]} if "next_requests" in words else {}
+    return {**offered, **body, **missing}
 
 
 def _refusal_body_problem(body: dict[str, Any], *, label: str) -> str | None:
@@ -1324,9 +1327,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         "local_client.codex_queue_unavailable",
         ClientRefusal(
             "INVALID_INPUT",
-            "WAIT_IN_THE_TURN_OR_SET_CODEX_THREAD_ID",
-            "--notify codex-queue needs CODEX_THREAD_ID, the Codex thread the Host is to wake; "
-            "without it, wait inside the turn.",
+            refusal_words("local_client.codex_queue_unavailable")["next_action"],
+            refusal_words("local_client.codex_queue_unavailable")["detail"],
         ),
     ),
     (

@@ -182,6 +182,7 @@ class WorkspaceActivity:
     _dispatcher: LocalBackgroundDispatcher | None = field(default=None, init=False, repr=False)
     _registry: DuckDbTaskControlRegistry | None = field(default=None, init=False, repr=False)
     _wake_sender: ThreadPoolExecutor | None = field(default=None, init=False, repr=False)
+    _wake_capability: dict[str, object] | None = field(default=None, init=False, repr=False)
     _operations: PortfolioResearchOperations | None = field(default=None, init=False, repr=False)
     _artifacts: ArtifactResolver | None = field(default=None, init=False, repr=False)
     _missing: int = field(default=0, init=False)
@@ -1058,6 +1059,15 @@ class WorkspaceActivity:
             tasks[str(task_id)] = body
         return tasks
 
+    def wake_readiness(self) -> dict[str, object]:
+        """Probe the queue command once per Host, shared by reads and admission."""
+        from alphalattice.interface.local_application.native_setup import codex_queue_readiness
+
+        with self._lock:
+            if self._wake_capability is None:
+                self._wake_capability = codex_queue_readiness()
+            return dict(self._wake_capability)
+
     def observer_state(self) -> dict[str, object]:
         """Whether recording is trustworthy right now and whether anything was lost.
 
@@ -1096,6 +1106,7 @@ class WorkspaceActivity:
             "entry_failure_type": entry_type,
             "store_failure": self.store_failure,
             "claim": "OBSERVER_STATE_NOT_EXECUTION_STATE",
+            "codex_queue": self.wake_readiness(),
         }
         if self.native_usage_state is not None:
             try:

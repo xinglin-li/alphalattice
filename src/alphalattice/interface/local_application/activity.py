@@ -501,6 +501,10 @@ class OperationObserver(Protocol):
         """Read one bounded page of the feed (`activity list`)."""
         ...
 
+    def wake_readiness(self) -> dict[str, object]:
+        """Whether this Host can deliver a Codex queue wake."""
+        ...
+
     def recent(self, *, limit: int = 20) -> dict[str, object]:
         """Read the newest requests, by agent session and goal (`activity recent`)."""
         ...

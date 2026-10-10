@@ -744,6 +744,13 @@ class ResearchInputStorage:
                 "status": "CONFIRMATION_REQUIRED",
                 "plan_hash": identity,
                 **values,
+                "next_requests": {
+                    "confirm": {"operation": "STORAGE_CONFIRM", "storage_plan_hash": identity}
+                },
+                "ask_now": (
+                    "May I apply this exact storage cleanup plan, deleting its listed targets "
+                    "and applying its listed model relinks?"
+                ),
                 # Not part of the plan's identity: what this plan could not
                 # offer and why, with the step that would make it offerable.
                 "refusals": [] if refusal is None else [refusal],

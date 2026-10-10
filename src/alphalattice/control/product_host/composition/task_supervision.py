@@ -40,6 +40,7 @@ from alphalattice.control.product_host.composition.task_recovery import (
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord, WorkItemLifecycle
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry, TaskNotFoundError
+from alphalattice.interface.local_application.activity import OperationObserver
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
@@ -404,7 +405,11 @@ def _refused(code: str, request: PortfolioResearchOperationRequest) -> dict[str,
 
 
 def register_wake(
-    registry: DuckDbTaskControlRegistry, wake: tuple[UUID, str, str], *, observed_at: datetime
+    registry: DuckDbTaskControlRegistry,
+    wake: tuple[UUID, str, str],
+    *,
+    observed_at: datetime,
+    observer: OperationObserver | None = None,
 ) -> dict[str, object]:
     """Hold a lead's wake on a Task that still moves by itself (WAKE).
 
@@ -415,6 +420,12 @@ def register_wake(
     from alphalattice.interface.local_application.cli_contract import STOPPED_STATES
 
     task_id, thread, read = wake
+    if observer is None or not observer.wake_readiness()["present"]:
+        return {
+            **refused("local_client.codex_queue_unavailable"),
+            "next_action": "WAIT_IN_THE_TURN",
+            "next_requests": {"read": {"operation": "STATUS", "task_id": str(task_id)}},
+        }
     try:
         if (state := registry.task(task_id).lifecycle.value) in STOPPED_STATES:
             return {

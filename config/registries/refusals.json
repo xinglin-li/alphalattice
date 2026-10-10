@@ -12636,6 +12636,9 @@
 "task_control.projection_unavailable": {
 "owner": "task_control"
 },
+"task_control.queue_full": {
+"owner": "task_control"
+},
 "task_control.queue_setting_unreadable": {
 "owner": "task_control"
 },

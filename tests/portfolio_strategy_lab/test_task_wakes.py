@@ -8,6 +8,7 @@ import os
 import shlex
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -18,6 +19,9 @@ from alphalattice.control.task_control.contracts import TaskEvidence, TaskStageR
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
+from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchOperationRequest as Request,
+)
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from tests.workspace_task_runner.task_control_support import compatibility, task_contract
 
@@ -34,6 +38,9 @@ def codex(tmp_path, monkeypatch):
     recorder = folder / "recorder.py"
     recorder.write_text(
         "import json, os, sys\n"
+        "if sys.argv[1:] == ['queue', '--help']:\n"
+        "    with open(os.environ['FAKE_CODEX_PROBES'], 'a') as out: out.write('probe\\n')\n"
+        "    sys.exit(0)\n"
         "with open(os.environ['FAKE_CODEX_CALLS'], 'a', encoding='utf-8') as out:\n"
         "    out.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         "sys.exit(int(os.environ.get('FAKE_CODEX_EXIT', '0')))\n",
@@ -47,8 +54,10 @@ def codex(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(folder))
     monkeypatch.setenv("CODEX_THREAD_ID", THREAD)
     monkeypatch.setenv("FAKE_CODEX_CALLS", str(calls))
+    monkeypatch.setenv("FAKE_CODEX_PROBES", str(tmp_path / "codex-probes.txt"))
     return SimpleNamespace(
         folder=folder,
+        probes=lambda: (tmp_path / "codex-probes.txt").read_text().splitlines(),
         calls=lambda: (
             [json.loads(line) for line in calls.read_text("utf-8").splitlines()]
             if calls.exists()
@@ -169,10 +178,6 @@ def test_the_host_sends_a_wake_once_after_the_cli_has_gone(live, codex) -> None:
     assert _run(live, stopped, decision=True)["event"] == "NEEDS_DECISION"
     assert len(codex.calls()) == 2 and "needs a decision" in codex.calls()[-1][-1]
     # A stopped Task moves only on a request: a wake on it is refused, with its way on.
-    from alphalattice.interface.local_application.portfolio_research import (
-        PortfolioResearchOperationRequest as Request,
-    )
-
     sent = Request(
         operation="WAKE_REGISTER", task_id=stopped.task_id, wake_thread=THREAD, wake_read="read"
     )
@@ -234,18 +239,18 @@ def test_a_held_wake_outlives_a_restart_and_an_interrupted_send_reads_uncertain(
 def test_a_wake_the_host_cannot_send_is_named_in_the_tasks_activity_and_not_retried(
     live, codex, monkeypatch, tmp_path
 ) -> None:
-    """requirement (WAKE ruling 4): with no `codex` command, or a queue call that fails, the
-    Host names the failure on the Task's activity after one attempt."""
+    """A command lost after admission names the delivery failure and never retries it."""
     empty = tmp_path / "empty"
     empty.mkdir()
-    monkeypatch.setenv("FAKE_CODEX_EXIT", "17")
     for salt, path, failure in (
         ("missing", empty, "CODEX_COMMAND_MISSING"),
         ("failed", codex.folder, "CODEX_QUEUE_FAILED"),
     ):
-        monkeypatch.setenv("PATH", str(path))
+        monkeypatch.setenv("PATH", str(codex.folder))
         task = _task(live, salt)
         _register(live, task)
+        monkeypatch.setenv("PATH", str(path))
+        monkeypatch.setenv("FAKE_CODEX_EXIT", "17")
         wake = _run(live, task)
         assert (wake["state"], wake["result"]["failure"]) == ("UNDELIVERED", failure)
         live.activity.command_returned("factor_research", task.task_id, None)
@@ -258,6 +263,40 @@ def test_a_wake_the_host_cannot_send_is_named_in_the_tasks_activity_and_not_retr
             for row in page["items"]
         )
     assert len(codex.calls()) == 1
+
+
+def test_a_missing_queue_refuses_before_the_host_holds_a_wake(live, codex, monkeypatch):
+    """Missing background wakes refuse admission and offer an in-turn wait."""
+    monkeypatch.setenv("PATH", "")
+    task = _task(live, "queue-unavailable")
+    client = LocalResearchClient(live.workspace)
+    assert client.activity()["observer"]["codex_queue"]["present"] is False
+    answer = client.request(
+        {
+            "operation": "WAKE_REGISTER",
+            "task_id": str(task.task_id),
+            "wake_thread": THREAD,
+            "wake_read": "task show",
+        }
+    )
+    assert answer["failure_code"] == "local_client.codex_queue_unavailable"
+    assert answer["next_action"] == "WAIT_IN_THE_TURN" and answer["detail"]
+    assert client.request(answer["next_requests"]["read"])["task_id"] == str(task.task_id)
+    assert live.session.task_control_registry.wake_registrations(task.task_id) == ()
+    assert codex.calls() == []
+
+
+def test_concurrent_reads_probe_the_queue_once_per_host(live, codex):
+    """Concurrent admission and health reads share one Host-scoped queue probe."""
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        views = list(pool.map(lambda _: LocalResearchClient(live.workspace).activity(), range(8)))
+    assert all(view["observer"]["codex_queue"]["present"] for view in views)
+    task = _task(live, "probe-once")
+    _register(live, task)
+    assert len(codex.probes()) == 1 and codex.calls() == []
+    _restart(live)
+    LocalResearchClient(live.workspace).activity()
+    assert len(codex.probes()) == 2
 
 
 def _cli(arguments: list[str], capsys) -> dict:  # type: ignore[no-untyped-def,type-arg]
@@ -372,3 +411,37 @@ def test_an_agent_verb_registers_its_running_task_and_its_rerun_keeps_every_answ
         tmp_path.resolve() / "receipt.wake2.json"
     )
     assert codex.calls() == []
+
+
+@pytest.mark.parametrize("verb", sorted(_VERB_ARGUMENTS))
+def test_an_agent_verb_refuses_unavailable_wakes_before_any_work(
+    live, codex, monkeypatch, capsys, tmp_path, verb
+):
+    """An unavailable wake stops an agent verb before it changes the workspace."""
+    folder = tmp_path / "answer bundles"
+    folder.mkdir()
+    (folder / "answer.json").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv("PATH", "")
+    sent = []
+    original = LocalResearchClient.request
+
+    def request(client, document=None, **options):
+        sent.append(document["operation"])
+        return original(client, document, **options)
+
+    monkeypatch.setattr(LocalResearchClient, "request", request)
+    line = [
+        "--workspace",
+        str(live.workspace),
+        "--view",
+        "full",
+        *verb.split(),
+        *(("--dir", str(folder)) if verb.endswith(("review", "continue")) else ()),
+        *_VERB_ARGUMENTS[verb],
+        "--notify",
+        "codex-queue",
+    ]
+    answer = _cli(line, capsys)
+    assert answer["failure_code"] == "local_client.codex_queue_unavailable"
+    assert answer["next_action"] == "WAIT_IN_THE_TURN" and answer["detail"]
+    assert sent == ["ACTIVITY_LIST"] and codex.calls() == []

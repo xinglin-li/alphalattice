@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from alphalattice.control.product_host.storage.inventory import RECOVERY_HEADROOM_BYTES
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_DIRECTORY,
@@ -38,6 +43,243 @@ PRODUCT_HOOK_EVENTS = ("SubagentStart", "SubagentStop")
 RESOURCE_ROOT = resolve_playpen_root(Path(__file__))
 INSTALLED = not (RESOURCE_ROOT / "pyproject.toml").is_file()
 ROOT = Path.cwd() if INSTALLED else RESOURCE_ROOT
+
+
+def command_readiness(command: list[str], *, timeout: int = 30) -> dict[str, Any]:
+    """Probe a dependency's public command without installing or changing anything."""
+    executable = shutil.which(command[0])
+    result: dict[str, Any] = {"present": False, "command": executable, "reason": None}
+    if executable is None:
+        return {**result, "reason": "COMMAND_MISSING"}
+    try:
+        completed = subprocess.run(
+            [executable, *command[1:]], capture_output=True, timeout=timeout, check=False
+        )
+    except subprocess.TimeoutExpired:
+        return {**result, "reason": "COMMAND_TIMED_OUT"}
+    except OSError:
+        return {**result, "reason": "COMMAND_START_FAILED"}
+    result.update(
+        present=completed.returncode == 0,
+        reason=None if completed.returncode == 0 else "COMMAND_FAILED",
+    )
+    return result
+
+
+def codex_queue_readiness() -> dict[str, Any]:
+    """Whether this process can start the background queue the Host must deliver through."""
+    return command_readiness(["codex", "queue", "--help"], timeout=5)
+
+
+def _installed_leg() -> dict[str, Any]:
+    """Compare the active distribution with this checkout, naming unproved PATH ownership."""
+    command = shutil.which("alphalattice")
+    expected = None
+    if (RESOURCE_ROOT / "pyproject.toml").is_file():
+        expected = tomllib.loads((RESOURCE_ROOT / "pyproject.toml").read_text("utf-8"))["project"][
+            "version"
+        ]
+    try:
+        distribution = importlib.metadata.distribution("alphalattice")
+        direct = json.loads(distribution.read_text("direct_url.json") or "{}")
+        url = urlsplit(direct.get("url", ""))
+        source = (
+            Path(unquote(url.path).lstrip("/") if os.name == "nt" else unquote(url.path))
+            if url.scheme == "file"
+            else None
+        )
+        matches = (expected is None or distribution.version == expected) and (
+            source is None or source.resolve() == RESOURCE_ROOT.resolve()
+        )
+        paired = command is not None and Path(command).parent == Path(sys.executable).parent
+        return {
+            "present": matches if paired else False if command is None or not matches else None,
+            "command": command,
+            "version": distribution.version,
+            "checkout_version": expected,
+            "source": None if source is None else str(source),
+            "path_owner": "ACTIVE_ENVIRONMENT" if paired else "NOT_PROVED",
+        }
+    except importlib.metadata.PackageNotFoundError:
+        return {"present": False, "command": command, "reason": "DISTRIBUTION_MISSING"}
+
+
+def _host_facts(binding: NativeResearchBinding | None) -> dict[str, Any]:
+    """Read existing Host facts when bound; an absent Host supplies no made-up measurements."""
+    from alphalattice.interface.local_application.client import (
+        LocalResearchClient,
+        LocalResearchClientError,
+    )
+
+    if binding is None:
+        return {"scope": "LOCAL_PROCESS", "reason": "SESSION_NOT_BOUND"}
+    try:
+        client = LocalResearchClient(Path(binding.workspace), timeout=5)
+        return {
+            "scope": "WORKSPACE_HOST",
+            "capacity": client.request({"operation": "STORAGE_CAP_SHOW"}).get("capacity"),
+            "cpu": client.request({"operation": "CPU_BUDGET_SHOW"}),
+            "network": client.request({"operation": "NETWORK_ACCESS"}),
+            "queue": client.activity(limit=1).get("observer", {}).get("codex_queue"),
+        }
+    except LocalResearchClientError as error:
+        return {"scope": "LOCAL_PROCESS", "reason": str(error).partition(":")[0]}
+
+
+HOST_DEPENDENCIES = {
+    "python": ("Run locked Python", "Use Python 3.12 and uv sync --locked; disclose it.", "AGENT"),
+    "uv": (
+        "Install the lock's dependencies",
+        "Ask once to install uv, then the agent installs it; without it the locked "
+        "environment cannot be repaired.",
+        "PERSON",
+    ),
+    "installed_leg": (
+        "Resolve the clean alphalattice command",
+        "Run uv sync --locked and the documented tool install; disclose it. "
+        "Check an unproved PATH owner first.",
+        "AGENT",
+    ),
+    "retrieval_runtime": (
+        "Read Evidence with its retrieval recipe",
+        "Use the retrieval environment setup and install_retrieval_pack "
+        "--install hybrid-v2-minilm; disclose the pinned repair. Keep packs outside "
+        "the workspace; network acquisition still needs its permission.",
+        "AGENT",
+    ),
+    "background_notices": (
+        "Continue after background work ends",
+        "Ask once to install the Codex CLI outside the lock; the agent installs it "
+        "and checks codex queue --help. Restart its idle Host to refresh the check. "
+        "Until available, WAIT_IN_THE_TURN occupies this turn until work ends.",
+        "PERSON",
+    ),
+    "disk": (
+        "Keep admitted data within disk and storage capacity",
+        "Read storage cap show and storage plan; ask once before cleanup or changing "
+        "the cap. Bind/start the Host to measure its cap; free space cannot prove it fits.",
+        "PERSON",
+    ),
+    "cpu": (
+        "Budget Task workers",
+        "Read cpu-budget show; the agent sets workers and tasks_waiting within "
+        "the reported machine budget.",
+        "AGENT",
+    ),
+    "network": (
+        "Know whether acquisition is admitted",
+        "Read network-access show; relay the person's permission before opening "
+        "the network. A closed network remains a valid offline setting.",
+        "PERSON",
+    ),
+    "user_layer": (
+        "Local user tuning",
+        "Use maintenance Skill; disclose the optional layer.",
+        "AGENT",
+    ),
+    "user_backup": (
+        "Recover the person's layer before an upgrade",
+        "Back up the optional user layer before upgrading, using the maintenance "
+        "Skill; disclose it. A missing backup does not refuse research.",
+        "AGENT",
+    ),
+}
+
+
+def host_readiness(
+    project: Path, host: str, binding: NativeResearchBinding | None
+) -> list[dict[str, Any]]:
+    """One advisory dependency list: the measured facts, what they enable and who fills them."""
+    from alphalattice.interface.local_application.retrieval_environment import interpreter_path
+    from alphalattice.kernel.knowledge.model_store import default_store_root, recipe_readiness
+
+    facts = _host_facts(binding)
+    retrieval = command_readiness([str(interpreter_path()), "-c", "import fastembed, onnxruntime"])
+    packs = recipe_readiness(default_store_root(), "hybrid-v2-minilm")
+    queue = (
+        {"present": True, "scope": "HOST_FEATURE"}
+        if host == "claude-code"
+        else {
+            "scope": facts["scope"],
+            **(facts.get("queue") or {"present": None, "reason": "HOST_CHECK_NOT_REPORTED"}),
+        }
+        if facts["scope"] == "WORKSPACE_HOST"
+        else {**codex_queue_readiness(), "scope": "LOCAL_PROCESS"}
+    )
+    capacity = facts.get("capacity")
+    free = shutil.disk_usage(project).free
+    disk_ready = (
+        None
+        if capacity is None
+        else (
+            capacity["measured_data_bytes"] <= capacity["cap_bytes"]
+            and capacity["free_disk_bytes"] >= RECOVERY_HEADROOM_BYTES
+        )
+    )
+    user = project / ".alphalattice/user"
+    backups = sorted(path.name for path in (user / "backups").glob("*") if path.is_dir())
+    specifications = (
+        (
+            "python",
+            sys.version_info[:2] == (3, 12),
+            {"version": sys.version.split()[0], "interpreter": sys.executable},
+        ),
+        ("uv", (uv := command_readiness([os.environ.get("UV", "uv"), "--version"]))["present"], uv),
+        ("installed_leg", (installed := _installed_leg())["present"], installed),
+        (
+            "retrieval_runtime",
+            retrieval["present"] and packs["ready"],
+            {**retrieval, "packs": packs},
+        ),
+        (
+            "background_notices",
+            queue["present"],
+            {"host": host, **queue, "delivery_proved": False},
+        ),
+        (
+            "disk",
+            disk_ready,
+            {"free_disk_bytes": free, "capacity": capacity, "capacity_scope": facts["scope"]},
+        ),
+        (
+            "cpu",
+            (os.cpu_count() or 0) > 0,
+            {
+                "logical_cores": os.cpu_count(),
+                "host": facts.get("cpu"),
+                "host_scope": facts["scope"],
+            },
+        ),
+        (
+            "network",
+            None if facts.get("network") is None else True,
+            {
+                "scope": facts["scope"],
+                "setting": facts.get("network"),
+                "operator_offline": os.environ.get("ALPHALATTICE_NETWORK_DISABLED") == "1",
+            },
+        ),
+        ("user_layer", user.is_dir(), {"path": str(user)}),
+        ("user_backup", bool(backups), {"latest": backups[-1] if backups else None}),
+    )
+    guidance = dict(HOST_DEPENDENCIES)
+    if host == "claude-code":
+        guidance["background_notices"] = (
+            "Continue after background work ends",
+            "Use background Bash completion notices, without another CLI.",
+            "AGENT",
+        )
+    return [
+        {
+            "key": key,
+            "present": present,
+            "what_it_enables": guidance[key][0],
+            "how_to_fill": guidance[key][1],
+            "who_decides": guidance[key][2],
+            "facts": {"scope": "LOCAL_PROCESS", **measured},
+        }
+        for key, present, measured in specifications
+    ]
 
 
 def _absolute_project(value: Path) -> Path:
@@ -692,11 +934,7 @@ def _create_or_match(
 
 
 def main() -> int:
-    """Configure, bind or inspect the native Session binding of the selected project.
-
-    Returns:
-        Zero on success, two on a named refusal.
-    """
+    """Configure, bind or inspect the project: zero on success, two on refusal."""
     global ROOT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -777,6 +1015,7 @@ def main() -> int:
                 "usage_reading": binding.usage if binding is not None else None,
                 "roles": _roles(host),
                 "attachment_preflight": preflight,
+                "host_readiness": host_readiness(ROOT, host, binding),
             }
         print(json.dumps(result))
         return 2 if result["status"] == "REFUSED" else 0

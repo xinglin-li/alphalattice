@@ -3514,6 +3514,18 @@
  "STORAGE_PLAN": {
   "fields": [
    {
+    "name": "next_requests",
+    "kind": "object",
+    "required": true,
+    "meaning": "The exact confirmation request, bound to this plan's identity; send it only after the person's approval."
+   },
+   {
+    "name": "ask_now",
+    "kind": "string",
+    "required": true,
+    "meaning": "The person's one-line question before applying the exact cleanup."
+   },
+   {
     "name": "status",
     "kind": "string",
     "required": true,

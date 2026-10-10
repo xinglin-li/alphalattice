@@ -43,6 +43,8 @@ refusal at its cause; never bypass the check or edit a stored record to make it 
 
 ## Open the workspace
 
+At first use and any refusal naming a missing dependency, run `python -m alphalattice.interface.local_application.native_setup doctor`; follow each `host_readiness` item's `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
+
 If you installed AlphaLattice in this session, continue here: read this guide and
 the research Skill by the paths `configure` printed under `continue_here`, start
 each specialist as a general subagent whose prompt is its card's text, and tell the

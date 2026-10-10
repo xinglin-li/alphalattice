@@ -34,6 +34,9 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 )
 from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.registry import TaskQueueFull
+from alphalattice.interface.local_application import client
+from alphalattice.interface.local_application.answers import continuation_problem
+from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
@@ -507,9 +510,21 @@ def test_a_full_queue_refuses_a_run_before_its_plan(
 
     monkeypatch.setattr(registry, "check_capacity", full)
     monkeypatch.setattr(application, "plan", never)
-    answer = live.operations.run({})
+    answer = _agent(live, PortfolioResearchAgentRequest(operation="RUN", spec={}))
     assert answer["disposition"] == "REFUSED_QUEUE_FULL" and answer["task_id"] is None
     assert "queue_full" in str(answer["refusal_detail"])
+    key = "task_control.queue_full"
+    assert answer["failure_code"] == key and answer["detail"] == refusal_words(key)["detail"]
+    assert "person" not in answer["detail"]
+    capacity = answer["next_requests"]["capacity"]
+    assert capacity == {"operation": "CPU_BUDGET_SHOW"} and continuation_problem(answer) is None
+    shown = _agent(live, PortfolioResearchAgentRequest(**capacity))
+    assert shown["status"] == "CPU_BUDGET"
+    changed = _agent(
+        live, PortfolioResearchAgentRequest(operation="CPU_BUDGET_SET", tasks_waiting="2")
+    )
+    assert changed["task_queue"]["tasks_waiting"] == 2
+    assert changed["task_queue"]["chosen_by"] == "EXTERNAL_AUTOMATION"
 
 
 @pytest.mark.parametrize("unexpected_error", (False, True))
@@ -1675,6 +1690,29 @@ def test_a_route_that_writes_takes_the_write_check(live: LocalPortfolioWebSessio
             assert human["capacity"]["setting"]["chosen_by"] == "HUMAN"
             code, shown, _ = _cli(live.workspace, "storage", "cap")
             assert code == 0 and shown["data"]["capacity"]["cap_bytes"] == 25 * 1024**3
+
+
+def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
+    """A cleanup preview offers its exact confirmation and asks the person once."""
+    from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
+
+    with LocalPortfolioWebSession.from_workspace(tmp_path) as live:
+        plan = _json(live, "/api/workspace/storage/plan", method="POST", payload={})
+        offer = plan["next_requests"]["confirm"]
+        assert offer == {"operation": "STORAGE_CONFIRM", "storage_plan_hash": plan["plan_hash"]}
+        assert plan["ask_now"].count("?") == 1 and "\n" not in plan["ask_now"]
+        chinese = read_in_chinese([plan["ask_now"]], missing="Node is required", required=True)
+        assert chinese["missing"] == [] and chinese["read"][0] != plan["ask_now"]
+        assert continuation_problem(plan) is None
+        continued = client.continued("STORAGE_CONFIRM", plan, {}, frozenset({"storage_plan_hash"}))
+        assert continued == offer
+        applied = _json(
+            live,
+            "/api/workspace/storage/confirm",
+            method="POST",
+            payload={key: value for key, value in continued.items() if key != "operation"},
+        )
+        assert applied["status"] == "COMPLETED" and applied["plan_hash"] == plan["plan_hash"]
 
 
 @pytest.mark.parametrize(

@@ -4010,6 +4010,7 @@ class PortfolioResearchOperations:
         except TaskQueueFull as error:
             return {
                 "disposition": "REFUSED_QUEUE_FULL",
+                "failure_code": "task_control.queue_full",
                 "command_kind": PORTFOLIO_RUN_COMMAND,
                 "task_id": None,
                 "refusal_detail": str(error)[:200],
@@ -6062,11 +6063,7 @@ class PortfolioResearchOperations:
     def _client_operation(
         self, request: PortfolioResearchOperationRequest, *, caller: OperationCaller
     ) -> dict[str, object] | None:
-        """The client's own commands, answered as operations like any other (V266, OP1).
-
-        The workspace, the operations, the activity feed and its event ingress, the CPU budget;
-        None for any other operation.
-        """
+        """Answer client, activity and capacity operations; otherwise None (V266, OP1)."""
         operation = request.operation
         if operation in {"WORKSPACE_SHOW", "OPERATION_LIST"}:
             return self.client_session(request, caller=caller)
@@ -6113,6 +6110,7 @@ class PortfolioResearchOperations:
                 self.workspace_session.task_control_registry,
                 (request.task_id, request.wake_thread, request.wake_read),
                 observed_at=self.dispatcher.clock(),
+                observer=self.observer,
             )
         if operation not in {"ACTIVITY_LIST", "ACTIVITY_RECENT", "EVENT_DECLARE"}:
             return None

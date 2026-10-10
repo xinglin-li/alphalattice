@@ -1068,8 +1068,12 @@
   "next_action": "RETRY_THE_ADMITTED_MODEL_INSTALLATION"
  },
  "task_control.queue_full": {
-  "detail": "Every waiting Task place is occupied. Read `task list`, wait for a queued Task to finish or cancel it, or ask a person to change `tasks_waiting` before submitting another Task.",
+  "detail": "Every waiting Task place is occupied. Read `task list` and `cpu-budget show`; the agent may change `tasks_waiting` with `cpu-budget set --queue <tasks_waiting>` before submitting another Task, or wait for a queued Task to finish or cancel it.",
   "next_action": "READ_TASKS_OR_CHANGE_TASKS_WAITING"
+ },
+ "local_client.codex_queue_unavailable": {
+  "detail": "Background wakes need a Codex thread and a runnable `codex queue` on the Host. Run `python -m alphalattice.interface.local_application.native_setup doctor`; ask once before installing the Codex CLI outside the lock, then the agent installs it and restarts its idle Host. Until it is available, wait inside this turn without `--notify`.",
+  "next_action": "WAIT_IN_THE_TURN"
  },
  "alpha_modeling.lightgbm_thread_canary_mismatch": {
   "detail": "LightGBM on this machine grew other trees at the CPU budget's thread count than the sealed canary, so the study did not fit. Set the workspace's CPU budget to 1 (`cpu-budget set --cores 1`) and run it again: on one thread it fits as the method was sealed.",

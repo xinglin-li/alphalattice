@@ -815,3 +815,36 @@ def _run_to_completion(session: LocalPortfolioWebSession) -> str:
     results = _json(session, "/api/results")["results"]
     assert results
     return str(results[0]["result_hash"])
+
+
+_CATALOG_READER = r"""
+const fs=require('fs'),vm=require('vm');
+const library = require(process.argv[2]);
+const [root,said]=[process.argv[1],JSON.parse(fs.readFileSync(0,'utf8'))];
+const c={window:{},document:{documentElement:{}},console};library.context(c);
+vm.runInContext(fs.readFileSync(root+'/data/zh.js','utf8'),c);
+vm.runInContext(fs.readFileSync(root+'/app/i18n.js','utf8')+';globalThis.I18N=I18N;',c);
+c.I18N.set('zh');
+console.log(JSON.stringify({read:said.map((s)=>c.I18N.t(s)),missing:c.I18N.untranslated()}));
+"""
+
+
+def read_in_chinese(said: list[str], *, missing: str, required: bool) -> dict[str, list[str]]:
+    """The sentences as the Workbench's catalog reads them in Chinese, and any left English.
+
+    The sentences go on stdin: the door's table outgrew a Windows command line (WinError 206).
+    """
+    root = Path(__file__).resolve().parents[2] / (
+        "src/alphalattice/interface/local_application/assets/workbench-source/js"
+    )
+    answer = run_node(
+        ["-e", _CATALOG_READER, str(root), str(Path(__file__).with_name("workbench_library.cjs"))],
+        missing=missing,
+        required=required,
+        input=json.dumps(said),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return json.loads(answer.stdout)

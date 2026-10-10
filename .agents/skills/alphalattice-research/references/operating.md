@@ -3,6 +3,8 @@ Date: 2026-10-08
 
 ## Setup and launch
 
+At first use and any missing-dependency refusal, run `python -m alphalattice.interface.local_application.native_setup doctor`; fill each `host_readiness` item by `who_decides`, disclosing locked repairs and relaying one question before an outside-lock install.
+
 Windows is the certified platform for this source-checkout setup; macOS and Linux are unverified. Use Python 3.12, uv and a browser from the checkout root. Dependency setup needs permission to download locked packages or a local cache; it prepares no research data:
 
 ```powershell

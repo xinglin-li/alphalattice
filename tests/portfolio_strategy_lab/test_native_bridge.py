@@ -1,18 +1,26 @@
 """The native bridge after FLOW-1: Session bindings and Host-read observations, no hooks."""
 
 import ast
+import importlib.metadata
 import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import tomllib
 from dataclasses import asdict
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 
-from alphalattice.interface.local_application.client import LocalResearchClient
+from alphalattice.interface.local_application import native_setup as setup
+from alphalattice.interface.local_application import retrieval_environment
+from alphalattice.interface.local_application.client import (
+    LocalResearchClient,
+    LocalResearchConnection,
+)
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
     NativeBridgeError,
@@ -25,9 +33,22 @@ from alphalattice.interface.local_application.native_setup import (
     declare_project,
     strip_product_hooks,
 )
+from alphalattice.kernel.knowledge import model_store
 from tests.portfolio_strategy_lab.local_web_support import _json
 
 ROOT = Path(__file__).resolve().parents[2]
+READINESS_KEYS = (
+    "python",
+    "uv",
+    "installed_leg",
+    "retrieval_runtime",
+    "background_notices",
+    "disk",
+    "cpu",
+    "network",
+    "user_layer",
+    "user_backup",
+)
 
 
 def _usage(host: str, **changes: object) -> dict[str, object]:
@@ -349,6 +370,9 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
             assert result["session_bound"] is False
             assert result["attachment_preflight"]["missing"] == ["native_session_binding"]
             assert result["research_nonblocking"] is True
+            readiness = {item["key"]: item for item in result["host_readiness"]}
+            assert set(READINESS_KEYS) == readiness.keys()
+            assert readiness["disk"]["present"] is None and readiness["network"]["present"] is None
             assert "native_proof" not in result and "host_trust" not in result
             assert {
                 path: path.read_bytes() for path in project.rglob("*") if path.is_file()
@@ -410,10 +434,107 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     )
     assert report["session_bound"] is True and report["session_id"] == "parent"
     assert report["usage_reading"] == "READ"
+    notices = next(item for item in report["host_readiness"] if item["key"] == "background_notices")
+    assert notices["present"] is True and notices["who_decides"] == "AGENT"
     assert (project / ".codex" / BINDING_NAME).read_bytes() == binding_before_doctor
     assert not (project / ".codex/config.toml").exists()
     # The Codex host still reads its own file, and refuses without it.
     assert run("configure")[1]["status"] == "REFUSED"
+
+
+@pytest.mark.parametrize("missing", (None, *READINESS_KEYS))
+def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeypatch, missing):
+    """Each missing dependency has a way to fill it and Host facts override the caller's PATH."""
+    python = tmp_path / "bin/python"
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "1.2.3"\n')
+    monkeypatch.setattr(setup, "RESOURCE_ROOT", tmp_path)
+    monkeypatch.setattr(setup.sys, "executable", str(python))
+    monkeypatch.setattr(setup.sys, "version_info", (3, 11) if missing == "python" else (3, 12))
+    monkeypatch.setattr(os, "cpu_count", lambda: 0 if missing == "cpu" else 4)
+    monkeypatch.delenv("UV", raising=False)
+
+    def which(name):
+        return None if name == missing else str(python.parent / name)
+
+    monkeypatch.setattr(shutil, "which", which)
+    distribution = SimpleNamespace(
+        version="0" if missing == "installed_leg" else "1.2.3",
+        read_text=lambda _: json.dumps({"url": tmp_path.as_uri()}),
+    )
+    monkeypatch.setattr(importlib.metadata, "distribution", lambda _: distribution)
+    monkeypatch.setattr(retrieval_environment, "interpreter_path", lambda: python)
+    monkeypatch.setattr(model_store, "default_store_root", lambda: tmp_path / "packs")
+    monkeypatch.setattr(model_store, "recipe_readiness", lambda *_: {"ready": True})
+
+    def run(argv, **_):
+        exit_code = int(missing == "retrieval_runtime" and "-c" in argv)
+        return subprocess.CompletedProcess(argv, exit_code)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    user = tmp_path / ".alphalattice/user"
+    if missing != "user_layer":
+        user.mkdir(parents=True)
+        if missing != "user_backup":
+            (user / "backups/2026-10-09").mkdir(parents=True)
+    free = 0 if missing == "disk" else 2 * 1024**3
+    capacity = {"measured_data_bytes": 1, "cap_bytes": 2, "free_disk_bytes": free}
+    replies = {
+        "STORAGE_CAP_SHOW": {"capacity": capacity},
+        "CPU_BUDGET_SHOW": {"status": "CPU_BUDGET", "cores": 4},
+        "NETWORK_ACCESS": None if missing == "network" else {"network_allowed": False},
+    }
+    client = LocalResearchClient
+    monkeypatch.setattr(client, "request", lambda _self, request: replies[request["operation"]])
+    queue = {"present": missing != "background_notices", "reason": None}
+    monkeypatch.setattr(client, "activity", lambda _self, **_: {"observer": {"codex_queue": queue}})
+    workspace = tmp_path / "workspace"
+    connection = LocalResearchConnection(
+        str(workspace), "qa-readiness", "http://127.0.0.1:1", "i" * 16, "t" * 32
+    )
+    descriptor = LocalResearchConnection.path(workspace)
+    descriptor.parent.mkdir(parents=True)
+    descriptor.write_text(connection.to_json(), encoding="utf-8")
+    binding = NativeResearchBinding("parent", workspace, ("alphalattice_cro",))
+    items = {item["key"]: item for item in setup.host_readiness(tmp_path, "codex", binding)}
+    if missing is None:
+        assert all(item["present"] is True for item in items.values())
+    else:
+        assert items[missing]["present"] is (None if missing == "network" else False)
+    assert all(item["what_it_enables"] and item["how_to_fill"] for item in items.values())
+    assert items["network"]["facts"]["scope"] == "WORKSPACE_HOST"
+
+
+@pytest.mark.parametrize(
+    "outcome, reason",
+    (
+        ("ready", None),
+        ("missing", "COMMAND_MISSING"),
+        ("failed", "COMMAND_FAILED"),
+        ("timeout", "COMMAND_TIMED_OUT"),
+        ("start_failed", "COMMAND_START_FAILED"),
+    ),
+)
+def test_codex_queue_check_names_its_bounded_probe_result(tmp_path, monkeypatch, outcome, reason):
+    """Queue readiness distinguishes absence, exit failure, timeout and failure to start."""
+    executable = str(tmp_path / "codex")
+    monkeypatch.setattr(shutil, "which", lambda _: None if outcome == "missing" else executable)
+    calls = []
+
+    def run(argv, **options):
+        calls.append((argv, options))
+        if outcome == "timeout":
+            raise subprocess.TimeoutExpired(argv, options["timeout"])
+        if outcome == "start_failed":
+            raise OSError("private launch detail")
+        return subprocess.CompletedProcess(argv, 1 if outcome == "failed" else 0)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    result = setup.codex_queue_readiness()
+    assert (result["present"], result["reason"]) == (outcome == "ready", reason)
+    assert len(calls) == (0 if outcome == "missing" else 1)
+    if calls:
+        argv, options = calls[0]
+        assert argv == [executable, "queue", "--help"] and 0 < options["timeout"] <= 30
 
 
 def test_claude_code_host_binding_is_kept_apart_from_codex(tmp_path):
