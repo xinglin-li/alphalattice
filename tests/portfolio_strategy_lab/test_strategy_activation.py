@@ -36,6 +36,7 @@ from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
+    PortfolioResearchRequestDocument,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
     ADVANCEMENT_TASK_KIND,
@@ -50,13 +51,11 @@ from tests.portfolio_strategy_lab.activation_review_support import (
     publish_activation_review,
 )
 from tests.portfolio_strategy_lab.local_web_support import _json, _request
-from tests.workspace_maintenance.local_data_provider import (
-    HeldDataProvider,
-    recording_provider,
-)
+from tests.workspace_maintenance.local_data_provider import HeldDataProvider, recording_provider
 from u0_probe import _copy
 
 PACKAGE = "RETURN_G6_MU_ONLY"
+HELD_DATA_CLOCK = datetime(2026, 9, 11, tzinfo=UTC)
 
 
 def test_history_retains_readable_cro_metadata_beside_a_corrupt_peer(tmp_path, monkeypatch):
@@ -142,10 +141,9 @@ def _settled(session: LocalPortfolioWebSession, task_id: str, timeout: float = 1
 def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
     tmp_path: Path, evidence_roots, monkeypatch, capsys, caplog
 ) -> None:
-    """LS1/OW12: activation reuses sealed studies; updates publish positions until stopped."""
-
+    """Activation reuses sealed studies and publishes their held sessions through a real update."""
     from alphalattice.interface.local_application.client import LocalResearchClient
-    from alphalattice.kernel.shared_kernel.spans import collect, readout
+    from alphalattice.kernel.shared_kernel.spans import absorb, collect, readout
 
     root = evidence_roots.require("ls1_daily_flows")
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
@@ -157,7 +155,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
     workspace = tmp_path / "workspace"
     _copy(root, workspace)
     (workspace / "runtime/local-research-connection.json").unlink(missing_ok=True)
-    live = LocalPortfolioWebSession.from_workspace(workspace)
+    live = LocalPortfolioWebSession.from_workspace(workspace, clock=lambda: HELD_DATA_CLOCK)
     live.data_provider = _NoFetch()
     live.start()
     try:
@@ -235,13 +233,57 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
             )
         )
         assert recovery["runs_forward"] == daily["runs_forward"]
-        activated = _json(
-            live,
-            "/api/strategy/activate",
-            method="POST",
-            payload={"task_id": book},
-            timeout=300.0,
-        )
+        assert operations.scoring is not None and operations.research_updates is not None
+        completed = operations.scoring.additional_publications
+        assert completed is not None
+        plan_update = operations.research_updates.plan
+
+        def certify_twice():
+            def certify():
+                with collect() as certification:
+                    value = completed()
+                return value, readout(certification)
+
+            result, first = Context().run(certify)
+            absorb(first)
+            absorb(Context().run(certify)[1])
+            return result
+
+        def completed_budget(ledger):
+            observed = sum(
+                row["count"]
+                for row in readout(ledger)["spans"]
+                if (row["category"], row["detail"]) == ("verify", "completed_scores")
+            )
+            assert observed == 1, (
+                f"COUNT STOP op=completed_scores observed={observed} budget=1 "
+                "way_on=retain_request_certification"
+            )
+
+        def counted_plan(package_id, target=None):
+            for planted in (True, False):
+                with monkeypatch.context() as probe:
+                    if planted:
+                        probe.setattr(operations.scoring, "additional_publications", certify_twice)
+                    with collect() as ledger:
+                        plan = plan_update(package_id, target)
+                    if planted:
+                        with pytest.raises(AssertionError, match="COUNT STOP") as excess:
+                            completed_budget(ledger)
+                        assert "observed=0 " not in str(excess.value)
+                    else:
+                        completed_budget(ledger)
+            return plan
+
+        with monkeypatch.context() as counted:
+            counted.setattr(operations.research_updates, "plan", counted_plan)
+            activated = _json(
+                live,
+                "/api/strategy/activate",
+                method="POST",
+                payload={"task_id": book},
+                timeout=300.0,
+            )
         assert activated["status"] == "ACTIVATED", activated
         assert set(activated["stage_seconds"]) == {"book", "models", "seed", "checkpoint", "bind"}
         assert activated["review_standing"] == review_standing
@@ -324,49 +366,18 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         assert row["first_forward_session"] == "2026-09-09"
         assert PACKAGE in daily["next_requests"]["enable"]["automation_package_ids"]
         assert operations.automation is not None and PACKAGE in operations.automation.installed
-        assert operations.scoring is not None
-        completed = operations.scoring.additional_publications
-        assert completed is not None
-
-        def repeat_certification():
-            result = Context().run(completed)
-            Context().run(completed)
-            return result
-
-        def completed_budget(ledger):
-            observed = sum(
-                row["count"]
-                for row in readout(ledger)["spans"]
-                if (row["category"], row["detail"]) == ("verify", "completed_scores")
-            )
-            assert observed == 1, (
-                f"COUNT STOP op=completed_scores observed={observed} budget=1 "
-                "way_on=retain_request_certification"
-            )
-
-        for planted in (False, True):
-            with monkeypatch.context() as repeated:
-                if planted:
-                    repeated.setattr(
-                        operations.scoring, "additional_publications", repeat_certification
-                    )
-                with collect() as ledger:
-                    plan = operations.execute(
-                        PortfolioResearchOperationRequest(
-                            operation="RESEARCH_UPDATE_PLAN",
-                            strategy_package_id=PACKAGE,
-                            observed_through="2026-09-10",
-                        ),
-                        caller="EXTERNAL_AUTOMATION",
-                    )
-                if planted:
-                    with pytest.raises(AssertionError, match="COUNT STOP") as excess:
-                        completed_budget(ledger)
-                    assert "observed=0 " not in str(excess.value)
-                else:
-                    completed_budget(ledger)
+        plan = operations.execute(
+            PortfolioResearchOperationRequest(
+                operation="RESEARCH_UPDATE_PLAN",
+                strategy_package_id=PACKAGE,
+                observed_through="2026-09-10",
+            ),
+            caller="EXTERNAL_AUTOMATION",
+        )
         assert plan["status"] == "PLANNED", plan
         assert plan["decision_sessions"] == ["2026-09-09", "2026-09-10"]
+        assert plan["target_session"] == "2026-09-10"
+        assert plan["update_plan_hash"] == activated["update"]["plan"]["update_plan_hash"]
         assert plan["next_requests"] == {
             "run": {
                 "operation": "RESEARCH_UPDATE_RUN",
@@ -379,12 +390,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         assert forward["next_requests"] == {
             "update": {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": PACKAGE}
         }
-        sent = operations.execute(
-            PortfolioResearchOperationRequest(
-                operation="RESEARCH_UPDATE_RUN", update_plan_hash=plan["update_plan_hash"]
-            ),
-            caller="EXTERNAL_AUTOMATION",
-        )
+        sent = activated["update"]["run"]
         assert sent["status"] == "ADMITTED", sent
         assert _settled(live, str(sent["task_id"])) == "SUCCEEDED"
         assert operations.activations is not None and operations.research_updates is not None
@@ -445,10 +451,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
             proposal["schedule"]["formation_close_at"]
         ) < datetime.fromisoformat(proposal["schedule"]["entry_open_at"])
         assert any(weight > 0 for weight in proposal["estimated_weights"])
-        from alphalattice.interface.local_application.portfolio_research import (
-            PortfolioResearchRequestDocument,
-        )
-
         offered_preview = result["next_requests"]["evidence_preview"]
         assert offered_preview == {"operation": "EVIDENCE_PREVIEW", **result["review_selector"]}
         preview = operations.execute(
