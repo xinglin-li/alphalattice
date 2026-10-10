@@ -13,9 +13,9 @@ from tests.researcher_methodology_surface.real_workspace import (
 )
 
 
-def unexplained_move() -> tuple[SeededWalkProvider, tuple[str, ...]]:
-    """A 120-listing provider whose first listing's close doubles once, with no event for it."""
-    symbols = tuple(f"F{i:03d}" for i in range(120))
+def unexplained_move(count: int = 120) -> tuple[SeededWalkProvider, tuple[str, ...]]:
+    """A `count`-listing provider whose first listing's close doubles once, with no event for it."""
+    symbols = tuple(f"F{i:03d}" for i in range(count))
     schedule = materialize_calendar_schedule(
         ("XNAS",), start=HISTORY_START, end=AS_OF, as_of_timestamp=OBSERVED_AT
     )

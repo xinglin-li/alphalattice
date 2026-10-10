@@ -100,10 +100,14 @@ class Explorer:
     work: Path
     time_box: float = 120.0
     heal: Callable[[], object] | None = None
+    steps: int = 400
+    """The walk's step budget: past it, every path ends as a horizon."""
     """An injected fault's end, applied once at its first stop: the person's fix, after which
     the offered way on must go on."""
     events: list[TraceEvent] = field(default_factory=list)
     observer: RoundTripObserver = field(default_factory=RoundTripObserver)
+    sent: set[str] = field(default_factory=set)
+    """Every request and command this walk has sent: a step's subtree is walked once."""
 
     def explore(self, starts: list[list[str]]) -> tuple[Grade, Trace]:
         """Walk every path from each start; the grade names each broken path and its part."""
@@ -148,27 +152,41 @@ class Explorer:
             return  # the Task outlived the scenario's time box: a horizon, not a failure
         code = str(settled.get("failure_code") or "")
         stops = self._grade(settled, where, code)
-        if len(path) >= DEPTH or ("not_due" in code and "retry_after_at" in json.dumps(settled)):
-            return  # a step limit, or a way on that waits for its time: a horizon
+        if self._horizon(path, code, settled):
+            return
         if stops and (heal := self.heal) is not None:
             self.heal = None
             heal()
         # A fresh plan hash is the same step; a choice to fill or an end of work is no way on.
         steps: list[tuple[str, str, dict[str, Any] | str]] = [
-            (name, f"{name}|{request['operation']}|{code}", request)
+            (name, f"{name}|{request['operation']}", request)
             for name, request in offers(settled)
             if not _CHOICE.search(json.dumps(request))
             and "choices" not in request
             and not str(request["operation"]).endswith(_ENDING)
         ]
-        steps += [(name, line + code, line) for name, line in commands(settled)]
+        steps += [(name, line, line) for name, line in commands(settled)]
+        decided: set[str] = set()
         for name, key, step in steps:
+            # One answer per decision (`<kind>:<id>:<choice>`), and each request walked once.
+            decision, sent_as = name.rpartition(":")[0], json.dumps(step, sort_keys=True)
             if key in seen:
                 self._problem(
                     f"`{name}` offered again after it failed the same way at {where}", "feedback"
                 )
+            elif (decision.count(":") and decision in decided) or sent_as in self.sent:
+                continue
             elif (sent := self._step(name, step, where)) is not None:
-                self._follow(sent, (*path, name), seen | {key})
+                decided.add(decision)
+                self.sent.add(sent_as)
+                # A loop is a step that failed and is offered again; a step that went on is not.
+                failed = sent.get("outcome") in {"REFUSED", "FAILED"} or _state(sent) in STOPPED
+                self._follow(sent, (*path, name), seen | ({key} if failed else set()))
+
+    def _horizon(self, path: tuple[str, ...], code: str, answer: dict[str, Any]) -> bool:
+        """A step limit, the walk's budget, or a way on that waits for its time."""
+        timed = "not_due" in code and "retry_after_at" in json.dumps(answer)
+        return len(path) >= DEPTH or len(self.events) >= self.steps or timed
 
     def _settled(self, answer: dict[str, Any], where: str) -> dict[str, Any] | None:
         """The answer once its admitted Task has ended or stopped; None past the time box."""

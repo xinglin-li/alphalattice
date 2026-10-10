@@ -1530,5 +1530,17 @@
  "research_update.target_not_completed": {
   "detail": "The update's session has not completed with its data yet: a date's positions wait for its formation close and the data settling after it. Under a first use the Host holds the update and runs it once at the time `held_until` names, so keep your goal wait running; otherwise plan it again after that time.",
   "next_action": "WAIT_FOR_THE_DATED_UPDATE"
+ },
+ "model_training.complete_model_history_unavailable": {
+  "detail": "No formation session has every model vintage it needs: each vintage's refit lacked the history or training support it requires, so no model lifecycle stands on this input. Widen the universe, or plan on an input with more listings and history.",
+  "next_action": "EDIT_DECLARATION_AND_PLAN"
+ },
+ "model_training.interior_model_support_gap": {
+  "detail": "The model vintages this input supports leave a gap inside its formation sessions, so the model's history is not continuous. Widen the universe, or plan on an input with more listings and history.",
+  "next_action": "EDIT_DECLARATION_AND_PLAN"
+ },
+ "workspace_preparation.resume_scope_changed": {
+  "detail": "The preparation this resume names has moved on since it was offered: its Task is no longer stopped, or a newer preparation replaced it. Read the workspace's current preparation and follow the way on it offers.",
+  "next_action": "READ_THE_CURRENT_PREPARATION"
  }
 }
