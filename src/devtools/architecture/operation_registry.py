@@ -60,6 +60,374 @@ def _route_operations(root: Path) -> set[str]:
     return found
 
 
+UI_ONLY_ACTIONS: Final[dict[str, str]] = {}
+"""Named action/request exceptions, with reasons; an addition needs an agent route instead."""
+
+
+def _decorated_routes(node: ast.FunctionDef) -> list[tuple[str, str, bool]]:
+    """Literal Host routes with their external-client admission."""
+    found: list[tuple[str, str, bool]] = []
+    for decorator in node.decorator_list:
+        match decorator:
+            case ast.Call(
+                func=ast.Attribute(attr="route"),
+                args=[
+                    ast.Constant(value=("GET" | "POST") as method),
+                    ast.Constant(value=str(path)),
+                    *_,
+                ],
+                keywords=keywords,
+            ):
+                external = any(
+                    key.arg == "external_client"
+                    and isinstance(key.value, ast.Constant)
+                    and key.value.value is True
+                    for key in keywords
+                )
+                found.append((method, path, external))
+    return found
+
+
+def _literal_requests(node: ast.AST) -> set[str]:
+    """Typed operation literals reached by a Host handler."""
+    found = set()
+    bindings = {
+        ast.unparse(target): part.value
+        for part in ast.walk(node)
+        if isinstance(part, ast.Assign)
+        for target in part.targets
+    }
+    for part in ast.walk(node):
+        match part:
+            case ast.Call(
+                func=ast.Attribute(value=ast.Name(id="operations"), attr="execute"),
+                args=[request, *_],
+            ):
+                if isinstance(request, ast.Name):
+                    request = bindings.get(request.id, request)
+                match request:
+                    case ast.Call(
+                        func=ast.Name(id="PortfolioResearchOperationRequest"), keywords=keywords
+                    ):
+                        for key in keywords:
+                            match key:
+                                case ast.keyword(
+                                    arg="operation", value=ast.Constant(value=str(operation))
+                                ):
+                                    found.add(operation)
+    return found
+
+
+def _ui_host_routes(root: Path) -> tuple[dict[str, set[str]], set[str]]:
+    tree = source_syntax_tree(
+        root / "src/alphalattice/control/product_host/composition/local_web_session.py"
+    )
+    found: dict[str, set[str]] = {}
+    external: set[str] = set()
+    for node in ast.walk(tree):
+        match node:
+            case ast.Tuple(
+                elts=[
+                    ast.Constant(value="GET" | "POST"),
+                    ast.Constant(value=str(path)),
+                    ast.Constant(value=str(operation)),
+                ]
+            ):
+                found.setdefault(path, set()).add(operation)
+            case ast.FunctionDef():
+                operations = _literal_requests(node)
+                decorated = _decorated_routes(node)
+                external.update(path for _method, path, admitted in decorated if admitted)
+                if operations:
+                    for _method, path, _external in decorated:
+                        found.setdefault(path, set()).update(operations)
+    return found, external
+
+
+def _ui_client_paths(root: Path) -> set[str]:
+    tree = source_syntax_tree(root / "src/alphalattice/interface/local_application/client.py")
+    found = set()
+    client = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "LocalResearchClient"
+    )
+    for node in client.body:
+        if not isinstance(node, ast.FunctionDef) or node.name.startswith("_"):
+            continue
+        for call in ast.walk(node):
+            match call:
+                case ast.Call(
+                    func=ast.Attribute(value=ast.Name(id="self"), attr="_exchange"),
+                    args=[ast.Constant(value=str(path)), _, *_],
+                ):
+                    found.add(path)
+    return found
+
+
+def _ui_requests(
+    row: dict[str, Any], routes: dict[str, set[str]], client_paths: set[str]
+) -> set[str]:
+    operations, paths = set(row.get("operations", ())), set(row.get("paths", ()))
+    offered = "@offered" in operations | paths
+    requests = operations - {"@offered"}
+    paths.discard("@offered")
+    requests.update(op for path in paths for op in routes.get(path, ()))
+    if offered:
+        requests.update(op for values in routes.values() for op in values)
+    requests.update(paths - routes.keys() - client_paths)
+    requests.update(row.get("unbounded", ()))
+    return requests
+
+
+def _relay_forms(forms: dict[str, set[str]]) -> list[str]:
+    from alphalattice.interface.local_application.operations import fields
+    from alphalattice.interface.local_application.portfolio_research import PERSON_DECISIONS
+
+    return [
+        f"person relay => {operation}; add the CLI form or the relay"
+        for operation in PERSON_DECISIONS
+        if "person_confirmation" not in fields(operation)[1]
+        or not {"--person-said", "--asked"} <= forms.get(operation, set())
+    ]
+
+
+def ui_agent_parity(
+    root: Path,
+    inventory: dict[str, Any],
+    *,
+    gaps: dict[str, str] | None = None,
+    previous_gaps: dict[str, str] | None = None,
+) -> list[str]:
+    """Refuse a Workbench mutation without a parsed CLI form, client verb or person relay."""
+    from alphalattice.interface.local_application.operations import COMMANDS
+
+    options = _cli_options()
+    forms = {op: options[form] for form, ops in COMMANDS.items() if form in options for op in ops}
+    routes, external = _ui_host_routes(root)
+    client_paths = _ui_client_paths(root) & external
+    allowed = UI_ONLY_ACTIONS if gaps is None else gaps
+    previous = {} if previous_gaps is None else previous_gaps
+    out = [
+        f"{key}: a new UI-only census row; add the CLI form or the relay"
+        for key in allowed.keys() - previous.keys()
+    ]
+    out.extend(
+        f"{action}: no Workbench handler; add the CLI form or the relay"
+        for action in inventory.get("unhandled", ())
+    )
+    out.extend(_relay_forms(forms))
+    unresolved: set[str] = set()
+    for row in (*inventory.get("actions", ()), *inventory.get("posts", ())):
+        for request in _ui_requests(row, routes, client_paths) - forms.keys():
+            key = f"{row['action']} => {request}"
+            unresolved.add(key)
+            if not allowed.get(key):
+                out.append(f"{row.get('source', '')}: {key}; add the CLI form or the relay")
+    out.extend(
+        f"{key}: its agent route exists; lower the UI-only census"
+        for key in allowed.keys() - unresolved
+    )
+    return sorted(set(out))
+
+
+def _relayed_authority(expression: ast.expr | None) -> bool:
+    match expression:
+        case ast.IfExp(
+            body=ast.Constant(value="HUMAN"),
+            orelse=ast.Name(id="caller"),
+            test=ast.BoolOp(
+                op=ast.And(),
+                values=[
+                    ast.Compare(
+                        left=ast.Name(id=subject),
+                        ops=[ast.IsNot()],
+                        comparators=[ast.Constant(value=None)],
+                    ),
+                    ast.BoolOp(
+                        op=ast.Or(),
+                        values=[
+                            ast.Attribute(value=ast.Name(id=left), attr=first),
+                            ast.Attribute(value=ast.Name(id=right), attr=second),
+                        ],
+                    ),
+                ],
+            ),
+        ):
+            return subject == left == right and {first, second} == {"delegation", "relayed"}
+    return False
+
+
+def _relay_dispatch(observed: ast.FunctionDef | None) -> bool:
+    if observed is None:
+        return False
+    assignments = {
+        ast.unparse(target): node.value
+        for node in ast.walk(observed)
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+    }
+    dispatch = False
+    for node in ast.walk(observed):
+        match node:
+            case ast.Call(func=ast.Attribute(attr="_execute_within_memory"), keywords=keywords):
+                dispatch = any(
+                    key.arg == "caller" and ast.unparse(key.value) == "authority"
+                    for key in keywords
+                )
+                if not dispatch:
+                    return False
+    return dispatch and _relayed_authority(assignments.get("authority"))
+
+
+def _relay_boundary_checks(nodes: list[ast.FunctionDef]) -> list[str]:
+    out = []
+    for node in nodes:
+        for check in (
+            part
+            for part in ast.walk(node)
+            if isinstance(part, ast.If | ast.IfExp | ast.Assert | ast.Call)
+        ):
+            text = ast.unparse(check.func if isinstance(check, ast.Call) else check.test)
+            if ("HUMAN" in text and re.search(r"\bcaller\b", text)) or any(
+                word in text
+                for word in ("'UI'", "'BROWSER'", "browser_session", "ui_origin", "'WORKBENCH'")
+            ):
+                out.append(f"{node.name}:{check.lineno}: raw caller refuses the person relay")
+    return out
+
+
+def _provenance_aliases(tree: ast.Module) -> set[str]:
+    """Direct raw-context aliases, distinct from an owner's computed actor or authority."""
+    assignments = [
+        (target, node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign | ast.AnnAssign) and node.value is not None
+        for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+    ]
+    raw: set[str] = set()
+    while True:
+        expanded = raw | {
+            ast.unparse(target)
+            for target, value in assignments
+            if ast.unparse(value).startswith("REQUEST_PROVENANCE.get()")
+            or (
+                isinstance(value, ast.Name | ast.Attribute | ast.Subscript)
+                and any(ast.unparse(part) in raw for part in ast.walk(value))
+            )
+        }
+        if expanded == raw:
+            return raw
+        raw = expanded
+
+
+def _raw_provenance_checks(name: str, tree: ast.Module) -> list[str]:
+    raw = _provenance_aliases(tree)
+    out = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If | ast.IfExp | ast.Assert | ast.Compare):
+            continue
+        check = node if isinstance(node, ast.Compare) else node.test
+        text = ast.unparse(check)
+        bypass = (
+            any(
+                ast.unparse(node) in raw
+                or (
+                    isinstance(node, ast.Attribute)
+                    and node.attr in {"caller", "origin", "browser_session"}
+                    and ast.unparse(node.value) in raw
+                )
+                for node in ast.walk(check)
+            )
+            or "REQUEST_PROVENANCE.get()" in text
+        )
+        if bypass and any(
+            word in text for word in ("HUMAN", "'UI'", "'BROWSER'", "browser_session", "ui_origin")
+        ):
+            out.append(f"{name}:{check.lineno}: raw provenance bypasses relay authority")
+    return out
+
+
+def _relay_owner_forwards(methods: dict[str, ast.FunctionDef]) -> list[str]:
+    positions = {
+        name: index - 1
+        for name, node in methods.items()
+        for index, argument in enumerate([*node.args.posonlyargs, *node.args.args])
+        if argument.arg == "caller"
+    }
+    out = []
+    for name, node in methods.items():
+        parameters = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+        if name in {"execute", "_execute_observed"} or not any(
+            arg.arg == "caller" for arg in parameters
+        ):
+            continue
+        for call in (part for part in ast.walk(node) if isinstance(part, ast.Call)):
+            values = [key.value for key in call.keywords if key.arg in {"caller", "chosen_by"}]
+            match call.func:
+                case ast.Attribute(value=ast.Name(id="self"), attr=target):
+                    position = positions.get(target)
+                    if position is not None and position < len(call.args):
+                        values.append(call.args[position])
+            for value in values:
+                if ast.unparse(value) not in {"caller", "chosen_by"}:
+                    out.append(
+                        f"{name}:{call.lineno}: preserve normalized caller for the person relay"
+                    )
+    return out
+
+
+def relay_authority_problems(root: Path, *, sources: dict[str, str] | None = None) -> list[str]:
+    """Relay admission uses normalized authority, never a browser-only or raw-caller gate."""
+    base = "src/alphalattice/control/product_host/composition/"
+
+    def read(name: str) -> ast.Module:
+        return (
+            ast.parse(sources[name])
+            if sources is not None
+            else source_syntax_tree(root / base / name)
+        )
+
+    host, service = read("local_web_session.py"), read("portfolio_research_operations.py")
+    external = [
+        node
+        for node in ast.walk(host)
+        if isinstance(node, ast.FunctionDef)
+        and any(
+            path == "/api/client/operations" and admitted
+            for _method, path, admitted in _decorated_routes(node)
+        )
+    ]
+    methods = {node.name: node for node in ast.walk(service) if isinstance(node, ast.FunctionDef)}
+    out = [] if external else ["person relay: /api/client/operations needs external_client=True"]
+    if not _relay_dispatch(methods.get("_execute_observed")):
+        out.append("person relay: dispatch needs normalized delegation/relayed authority")
+    out.extend(
+        _relay_boundary_checks(
+            [
+                *external,
+                *(methods[name] for name in ("execute", "_execute_observed") if name in methods),
+            ]
+        )
+    )
+    trees = {"local_web_session.py": host, "portfolio_research_operations.py": service}
+    if sources is not None:
+        trees.update({name: ast.parse(text) for name, text in sources.items() if name not in trees})
+    else:
+        trees.update(
+            {
+                path.relative_to(root).as_posix(): source_syntax_tree(path)
+                for path in (root / "src/alphalattice").rglob("*.py")
+                if path.name not in trees and b"REQUEST_PROVENANCE" in path.read_bytes()
+            }
+        )
+    return (
+        out
+        + _relay_owner_forwards(methods)
+        + [issue for name, tree in trees.items() for issue in _raw_provenance_checks(name, tree)]
+    )
+
+
 def _goal_set_operations(root: Path) -> dict[str, set[str]]:
     """The goal owner's sets (``*_OPERATIONS``), read from source: the Host is not imported."""
 

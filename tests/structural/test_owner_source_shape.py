@@ -9,6 +9,8 @@ import textwrap
 from pathlib import Path
 from typing import get_args
 
+import pytest
+
 from alphalattice.control.product_host.composition import saved_object_readback
 from alphalattice.control.product_host.composition.evidence_source_ways import SETUP_OPTIONS
 from alphalattice.control.task_control.registry import TASK_CONTROL_DATABASE_FILENAME
@@ -36,6 +38,7 @@ from tests.structural.source_shape_samples import (
     evidence_review_refusal_samples,
     evidence_unit_failure_codes,
     specialist_answer_bound_samples,
+    workbench_request_inputs,
     workbench_source_inputs,
 )
 
@@ -917,6 +920,199 @@ def test_the_workbench_harnesses_pass_source_shape() -> None:
     """Workbench retention and Goal inputs enumerate their original source declarations."""
 
     workbench_source_inputs()
+
+
+def test_every_workbench_write_has_an_agent_route(tmp_path: Path, monkeypatch) -> None:
+    """The complete Workbench source graph takes seconds to prove agent and relay reach."""
+    from devtools.architecture.operation_registry import relay_authority_problems, ui_agent_parity
+
+    monkeypatch.setenv("UI_QA_STATE", str(tmp_path / "ui-qa"))
+    inventory = workbench_request_inputs(ROOT)
+    assert inventory["posts"] and inventory["handlers"]
+    assert ui_agent_parity(ROOT, inventory) + relay_authority_problems(ROOT) == []
+
+
+def test_a_new_workbench_write_needs_the_same_agent_request(tmp_path: Path, monkeypatch) -> None:
+    """Reading the full source graph holds planted writes at the actual harness seam."""
+    from devtools.architecture.operation_registry import ui_agent_parity
+
+    monkeypatch.setenv("UI_QA_STATE", str(tmp_path / "ui-qa"))
+    actions = (
+        ROOT
+        / "src/alphalattice/interface/local_application/assets/workbench-source/js/app/actions.js"
+    )
+    planted = (
+        actions.read_text(encoding="utf-8")
+        + """
+Object.assign(ACTIONS, {
+  'synthetic-clean': () => Data.post('/api/workspace/cpu-budget', {cpu_budget: 4}),
+  'synthetic-missing': () => Data.post('/api/synthetic-missing', {}),
+  'synthetic-direct': () => {
+    const options = {method: 'POST', body: '{}'};
+    return fetch('/api/synthetic-direct', options);
+  },
+  'synthetic-bounded': () => {const path = '/api/workspace/cpu-budget'; return path;},
+  'synthetic-shadowed': () => Data.post(path, {}),
+  'synthetic-branch': () => Data.post(choose ? '/api/workspace/cpu-budget' : unknown(), {}),
+});
+"""
+    )
+    inventory = workbench_request_inputs(ROOT, {"actions.js": planted})
+    failures = ui_agent_parity(ROOT, inventory)
+    assert not any("synthetic-clean" in line for line in failures)
+    for action in ("synthetic-missing", "synthetic-direct"):
+        assert any(
+            f"{action} => /api/{action}" in line and "CLI" in line and "relay" in line
+            for line in failures
+        )
+    for action in ("synthetic-shadowed", "synthetic-branch"):
+        assert any(row["action"] == action and row["unbounded"] for row in inventory["actions"])
+        assert any(f"{action} =>" in line for line in failures)
+    host = tmp_path / "src/alphalattice/control/product_host/composition/local_web_session.py"
+    client = tmp_path / "src/alphalattice/interface/local_application/client.py"
+    host.parent.mkdir(parents=True)
+    client.parent.mkdir(parents=True)
+    client.write_text("class LocalResearchClient: pass\n", encoding="utf-8")
+    declaration = "PortfolioResearchOperationRequest(operation='STATUS')"
+    for name, body in (
+        ("used", f"return operations.execute({declaration})"),
+        ("unused", f"unused = {declaration}\n    return mutate_without_request()"),
+    ):
+        host.write_text(
+            f"@app.route('POST', '/api/{name}')\ndef send():\n    {body}\n",
+            encoding="utf-8",
+        )
+        rows = {"posts": [{"action": name, "paths": [f"/api/{name}"]}]}
+        assert bool(ui_agent_parity(tmp_path, rows)) is (name == "unused")
+
+
+@pytest.mark.parametrize(
+    "allowed,previous,refused",
+    [
+        ({}, {}, False),
+        ({"synthetic => UNKNOWN": "retained missing owner"}, {}, True),
+        (
+            {"synthetic => UNKNOWN": "retained missing owner"},
+            {"synthetic => UNKNOWN": "retained missing owner"},
+            False,
+        ),
+        ({}, {"synthetic => UNKNOWN": "retained missing owner"}, True),
+    ],
+)
+def test_the_ui_only_census_is_an_exact_shrinking_set(allowed, previous, refused) -> None:
+    """A named gap cannot be added or erased while it remains an unhandled request."""
+    from devtools.architecture.operation_registry import ui_agent_parity
+
+    inventory = {
+        "posts": [
+            {"action": "synthetic", "operations": ["UNKNOWN" if allowed or previous else "STATUS"]}
+        ]
+    }
+    assert bool(ui_agent_parity(ROOT, inventory, gaps=allowed, previous_gaps=previous)) is refused
+    if allowed:
+        fixed = {"posts": [{"action": "synthetic", "operations": ["STATUS"]}]}
+        assert ui_agent_parity(ROOT, fixed, gaps=allowed, previous_gaps=previous)
+        assert ui_agent_parity(ROOT, fixed, gaps={}, previous_gaps=previous) == []
+
+
+@pytest.mark.parametrize(
+    "defect",
+    (
+        "caller",
+        "browser",
+        "boolean",
+        "condition",
+        "normalization",
+        "dispatch",
+        "raw-owner",
+        "alias",
+        "annotated",
+        "forward",
+        "alias-chain",
+        "raw-browser",
+        "assertion",
+    ),
+)
+def test_relay_owned_decisions_cannot_require_a_ui_origin(defect: str) -> None:
+    """Validated relay authority reaches owners without a raw caller or browser barrier."""
+    from devtools.architecture.operation_registry import relay_authority_problems
+
+    sources = {
+        "local_web_session.py": (
+            "@app.route('POST', '/api/client/operations', external_client=True)\n"
+            "def external(): pass\n"
+        ),
+        "portfolio_research_operations.py": """
+def execute(request, caller):
+    return _execute_observed(request, caller)
+def _execute_observed(request, caller):
+    provenance = REQUEST_PROVENANCE.get()
+    authority = ('HUMAN' if provenance is not None and
+                 (provenance.delegation or provenance.relayed) else caller)
+    return self._execute_within_memory(request, caller=authority)
+def _execute_within_memory(self, request, caller):
+    return self.owner.act(request, caller=caller)
+""",
+    }
+    assert relay_authority_problems(ROOT, sources=sources) == []
+    if defect in {"caller", "browser", "boolean", "assertion"}:
+        field, value = ("caller", "HUMAN") if defect == "caller" else ("ui_origin", "UI")
+        condition = "not browser_session" if defect == "boolean" else f"{field} != '{value}'"
+        gate = (
+            f"assert {field} == '{value}'"
+            if defect == "assertion"
+            else f"if {condition}: raise Refused()"
+        )
+        sources["portfolio_research_operations.py"] = sources[
+            "portfolio_research_operations.py"
+        ].replace(
+            "    return _execute_observed",
+            f"    {gate}\n    return _execute_observed",
+        )
+    elif defect == "condition":
+        sources["portfolio_research_operations.py"] = sources[
+            "portfolio_research_operations.py"
+        ].replace(" else caller)", " and browser_session else caller)")
+    elif defect == "normalization":
+        sources["portfolio_research_operations.py"] = sources[
+            "portfolio_research_operations.py"
+        ].replace(" or provenance.relayed", " and provenance.relayed")
+    elif defect == "dispatch":
+        sources["portfolio_research_operations.py"] = sources[
+            "portfolio_research_operations.py"
+        ].replace("caller=authority", "caller=caller")
+    elif defect == "raw-owner":
+        sources["new_owner.py"] = (
+            "def act():\n    p = REQUEST_PROVENANCE.get()\n"
+            "    if p.caller != 'HUMAN': raise Refused()\n"
+        )
+    elif defect == "alias":
+        sources["new_owner.py"] = (
+            "def act():\n    caller = REQUEST_PROVENANCE.get().caller\n"
+            "    if caller != 'HUMAN': raise Refused()\n"
+        )
+    elif defect == "annotated":
+        sources["new_owner.py"] = (
+            "def act():\n    p: Provenance = REQUEST_PROVENANCE.get()\n"
+            "    if p.caller != 'HUMAN': raise Refused()\n"
+        )
+    elif defect == "alias-chain":
+        sources["new_owner.py"] = (
+            "def act():\n    p = REQUEST_PROVENANCE.get()\n    q = p\n"
+            "    if q.caller != 'HUMAN': raise Refused()\n"
+        )
+    elif defect == "raw-browser":
+        sources["new_owner.py"] = (
+            "def act():\n    p = REQUEST_PROVENANCE.get()\n"
+            "    if not p.browser_session: raise Refused()\n"
+        )
+    else:
+        sources["portfolio_research_operations.py"] = sources[
+            "portfolio_research_operations.py"
+        ].replace(
+            "self.owner.act(request, caller=caller)", "self.owner.act(request, caller='AGENT')"
+        )
+    assert relay_authority_problems(ROOT, sources=sources)
 
 
 def test_seam_fixture_round_trips_one_native_shaped_event_and_one_product_event_source_shape() -> (
