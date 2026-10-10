@@ -1524,7 +1524,7 @@
   "next_action": "SEND_THE_OFFERED_SELECTOR"
  },
  "committee.message_refused": {
-  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias. Read the floor with `committee show`.",
+  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias. Read the floor with `committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
   "next_action": "READ_THE_FLOOR"
  },
  "committee.session_required": {

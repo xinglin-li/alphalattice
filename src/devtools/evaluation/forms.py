@@ -112,6 +112,7 @@ class Scenario:
     evidence: tuple[str, ...] = ()
     starting_state: str = ""
     feedback: dict[str, Any] | None = None
+    committee: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         _version(self.version)
@@ -124,6 +125,12 @@ class Scenario:
         _timestamp(self.now)
         _samples(self.samples)
         _feedback(self.feedback)
+        if self.committee is not None:
+            if self.feedback is not None or not isinstance(self.committee, dict):
+                raise ValueError("invalid_committee_context")
+            _choice(self.committee.get("role"), {"ALPHA", "RISK", "CRO", "PM"}, "committee_role")
+            _choice(self.committee.get("phase"), {"stance", "decision"}, "committee_phase")
+            _attributes({"alphalattice.committee": self.committee})
         _choice(self.decider, DECIDERS, "invalid_decision")
         _choice(self.capability, {"reached", "missing"}, "invalid_capability")
         if type(self.ask_required) is not bool or (
@@ -331,7 +338,7 @@ class Trace:
         return {}
 
 
-IssuePart = Literal["harness", "cli", "system", "feedback", "agent", "host"]
+IssuePart = Literal["harness", "cli", "system", "feedback", "agent", "host", "evaluator"]
 
 
 class GradingIssue(TypedDict):

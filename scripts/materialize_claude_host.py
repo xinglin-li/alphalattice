@@ -752,6 +752,10 @@ def card_text(path: Path) -> str:
         if len(bounds) != 1:
             raise MaterializationError(f"role_card.boundaries_missing:{path.name}")
         paragraphs[bounds[0]] = STAGE_BOUNDARIES
+        if path.stem == "alphalattice_risk":
+            paragraphs[bounds[0]] = STAGE_BOUNDARIES.replace(
+                "- Cite the actual", "- Outside the committee, cite the actual"
+            )
     if current:
         paragraphs[current[0]] = block
     else:

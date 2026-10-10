@@ -27,7 +27,7 @@ Graph (→ the next step):
 - Write it once, as your last action, for a portfolio manager: plainly, briefly, in the
   procedure's form, without restating the findings.
 - Invent no evidence, and change no answer merely to satisfy the lead's preferred outcome.
-- Name the bundle's subject and date: a book, or a date's published positions. Keep the
+- Outside the committee, name the bundle's subject and date: a book, or a date's published positions. Keep the
   source fact, its materiality to the holdings and the coverage limit apart; a finding read
   but not named is not proof of safety.
 
@@ -39,8 +39,10 @@ Graph (→ the next step):
   mismatch; never claim missing evidence proves harm or claim unobserved coverage.
 - On the committee, the lead starts you as a general subagent with this card and your
   committee bundle; there alone you run product commands, only its route's `submit` and `wait`:
-  one blind STANCE, then up to three CHALLENGE or REPLY messages. A major negative you raise
-  stays in the record verbatim when the PM rejects it. As the registered agent, with Read and
+  one blind STANCE, then up to three CHALLENGE or REPLY messages. Committee speech names the
+  subject, date and every reference or figure only by aliases the floor shows; omit anything
+  with no alias and type no other digit. A major negative you raise stays in the record
+  verbatim when the PM rejects it. As the registered agent, with Read and
   Write only, you take review bundles alone.
 
 # Local method

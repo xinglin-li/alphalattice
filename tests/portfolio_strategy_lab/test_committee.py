@@ -31,7 +31,11 @@ from alphalattice.interface.local_application.activity import (
     ExternalActivityEventDocument,
     ExternalActivityReadQuery,
 )
-from alphalattice.interface.local_application.cli_contract import RequestProvenance, worded
+from alphalattice.interface.local_application.cli_contract import (
+    RequestProvenance,
+    worded,
+    worded_refusal,
+)
 from alphalattice.interface.local_application.labels import Label
 from alphalattice.interface.local_application.portfolio_research import CommitteeMessage
 from alphalattice.interface.local_application.portfolio_research import (
@@ -341,6 +345,11 @@ def test_the_floor_answers_a_member_only_with_its_own_key(
         for k, m in sent
     ] + [ask("COMMITTEE_READ", committee_role="ALPHA", committee_key=k) for k in (None, "0" * 32)]
     assert [c["failure_code"].rsplit(":")[-1] for c in codes] == ["ROLE", "NUMBER", "ROLE", "ROLE"]
+    codes[1] = worded_refusal(codes[1])
+    assert {"resubmit", "same", "message", "figure", "reference", "alias"} <= set(
+        codes[1]["detail"].split()
+    )
+    assert codes[1]["next_action"] == "READ_THE_FLOOR"
     stance = ask(
         "COMMITTEE_SUBMIT",
         committee_role="PM",
