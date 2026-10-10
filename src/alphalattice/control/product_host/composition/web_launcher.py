@@ -35,6 +35,15 @@ from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
 
+STOPPING: dict[str, object] = {
+    "status": "HOST_STOPPING",
+    "detail": "This Host stops once its running work has ended: it answers this, lets its Tasks "
+    "finish, joins its workers and releases the workspace; nothing is cancelled. Serve it again "
+    "when work needs it.",
+    "next_action": "SERVE_AGAIN_WHEN_WORK_NEEDS_IT",
+}
+"""The answer to `host stop`, given before the Host begins to stop."""
+
 
 def _windows_stdin(descriptor: int) -> tuple[Any, Any, int]:
     import ctypes
@@ -151,22 +160,35 @@ def main(argv: list[str] | None = None) -> int:
         # a script or the QA kit takes it from this line.
         url = session.launch_url
         tied = arguments.stop_on_stdin and _stdin_ties()
+        stop = threading.Event()
+
+        def stopping() -> dict[str, object]:
+            stop.set()
+            return dict(STOPPING)
+
+        def watched() -> None:
+            _wait_for_stop_on_stdin()
+            stop.set()
+
+        if session.operations is not None:
+            session.operations.stop_host = stopping
         print(f"Portfolio Research workspace: {url}")
         print(
-            "Loopback only. Send 'stop' or close stdin to stop."
+            "Loopback only. Send 'stop' or close stdin, or run `alphalattice host stop`, to stop."
             if tied
-            else "Loopback only. No standard input holds this Host, so it serves until its "
-            "process ends."
+            else "Loopback only. No standard input holds this Host, so it serves until "
+            "`alphalattice host stop` or its process ends."
             if arguments.stop_on_stdin
-            else "Loopback only. Ctrl-C to stop.",
+            else "Loopback only. Ctrl-C or `alphalattice host stop` to stop.",
             flush=True,
         )
         if not arguments.no_browser:
             webbrowser.open(url)
         if tied:
-            _wait_for_stop_on_stdin()
-        else:
-            threading.Event().wait()
+            # Either way of stopping ends the wait: the input's own, or `host stop`.
+            threading.Thread(target=watched, daemon=True).start()
+        while not stop.wait(1):  # a timed wait keeps Ctrl-C heard
+            pass
     except KeyboardInterrupt:
         print("\nStopping.")
     finally:

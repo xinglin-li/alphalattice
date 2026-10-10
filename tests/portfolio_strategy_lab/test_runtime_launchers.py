@@ -64,6 +64,7 @@ def test_attached_launcher_stops_on_explicit_stdin_or_eof(tmp_path, monkeypatch,
 
     class Session:
         launch_url = "http://127.0.0.1:12345/launch?key=k"  # printed and opened (HB)
+        operations = None
 
         def start(self):
             calls.append("start")

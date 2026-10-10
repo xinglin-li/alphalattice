@@ -693,8 +693,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "REFUSED",
             "STOP_THE_HOST_THEN_SANDBOX",
-            "A sandbox copies the workspace at rest: stop the Host that serves it, run the "
-            "sandbox, and start the Host again.",
+            "A sandbox copies the workspace at rest: stop the Host that serves it (`host stop`), "
+            "run the sandbox, and start the Host again.",
         ),
     ),
     (

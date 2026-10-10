@@ -52,7 +52,7 @@ Start the Host on an explicit workspace, a new directory for new research; the l
 alphalattice --workspace "workspaces/my-research" serve --no-browser --stop-on-stdin
 ```
 
-Run it in the background. Where your shell holds the launch's standard input open, the Host is tied to it: sending `stop` to it, or closing it, stops the Host after its workers join; a client disconnect does not. This is the launcher's input, not a CLI verb. An agent's background shell usually gives a launch no standard input (the NUL device, or a pipe closed at once); then nothing ties the Host, its ready lines say so, and it serves until its process ends. Reuse the Host already serving a workspace, never start a second writer, and never stop someone else's service. An installation upgrade does not authorize stopping or restarting a running Host; take any required transition from the upgrade or readiness answer.
+Run it in the background. `alphalattice host stop` stops it once its running work has ended: it lets its Tasks finish, joins its workers and releases the workspace, cancelling nothing; a client disconnect does not stop it. Where your shell holds the launch's standard input open, the Host is also tied to it: sending `stop` to it, or closing it, does the same. An agent's background shell usually gives a launch no standard input (the NUL device, or a pipe closed at once); then nothing ties the Host, its ready lines say so, and it serves until `host stop`. Reuse the Host already serving a workspace, never start a second writer, and never stop someone else's service. An installation upgrade does not authorize stopping or restarting a running Host; take any required transition from the upgrade or readiness answer, and stop your own Host with `host stop` where it asks for that.
 
 ## Command contract
 
@@ -83,7 +83,7 @@ Keep the original Goal, Task and error, and tell a malformed request, a permissi
 1. Correct a malformed request's named command, document or field. A permission refusal is a stop, not a bug; a code fix grants no authority and never weakens a scientific or integrity check.
 2. Take a data decision through its offered preview and confirmation ([pipeline issues](pipeline-issues.md)).
 3. After a timeout or lost connection, read the known Task before repeating anything: no answer does not prove no work was admitted.
-4. Reproduce a product defect, fix its existing owner and add a regression. For changed source, restart only an idle Host you own and open its new link.
+4. Reproduce a product defect, fix its existing owner and add a regression. For changed source, stop only an idle Host you own with `host stop`, serve it again and open its new link.
 5. Take the stopped Task's offered resume yourself and say so in one line; replan or cancel only when none is offered. Changed method or input needs new evidence: keep the earlier result and follow the owner's new plan, never rewriting stored bindings.
 
 Reuse completed research; never rebuild data, retrain or rewrite an identity to display or export it. For exact reuse, `task_id: null` means no new Task: read the named publication.

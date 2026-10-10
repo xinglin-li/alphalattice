@@ -531,6 +531,8 @@ class PortfolioResearchOperations:
 
     read_native_usage: Callable[[], dict[str, object]] | None = None
     """Reads the bound Sessions' usage now (`NativeUsageReader.read`); None without a Host."""
+    stop_host: Callable[[], dict[str, object]] | None = None
+    """The served Host's own stop (`host stop`), set by its launcher; None without one."""
     native_projects: set[Path] = field(default_factory=set)
     """Agent projects this Host admitted a Session binding from, for a workspace kept outside
     them; found again after a restart by the next bind or milestone (FLOW-1)."""
@@ -6063,8 +6065,9 @@ class PortfolioResearchOperations:
         operation = request.operation
         if operation in {"WORKSPACE_SHOW", "OPERATION_LIST"}:
             return self.client_session(request, caller=caller)
-        if operation == "CPU_BUDGET_SHOW":
-            return self.cpu_budget()
+        answered = {"CPU_BUDGET_SHOW": self.cpu_budget, "HOST_STOP": self.stop_host}
+        if (answer := answered.get(operation)) is not None:
+            return answer()
         if operation == "USAGE_READING":
             return usage_reading_answer(self.workspace_session.workspace)
         if operation == "USAGE_READING_SET":
@@ -6118,15 +6121,8 @@ class PortfolioResearchOperations:
         try:
             if operation == "ACTIVITY_RECENT":
                 return observer.recent(limit=20 if request.limit is None else request.limit)
-            # The feed's own parser reads the page as its query names it.
-            query: dict[str, list[str]] = {}
-            if request.after is not None:
-                query["after"] = [request.after]
-            if request.limit is not None:
-                query["limit"] = [str(request.limit)]
-            if request.watch:
-                query["watch"] = [",".join(str(task) for task in request.watch)]
-            return observer.read(ActivityReadQuery.from_query(query))
+            read = ActivityReadQuery.from_request(request.after, request.limit, request.watch or ())
+            return observer.read(read)
         except TaskQueueHeadAuthorityError as error:
             return self.task_queue_authority_refusal(error)
         except ValueError as error:

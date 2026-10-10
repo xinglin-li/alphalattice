@@ -95,7 +95,7 @@ count before and after; there is no separate ledger.
 
 1. Before: copy `.alphalattice/user/` (without `backups/`) and each shipped file that
    `git status --porcelain` shows modified into `.alphalattice/user/backups/<YYYY-MM-DD>/`.
-2. Upgrade: inspect the current installation and use its existing checkout branch (`git pull`) or release-wheel install route, following the upgrade and readiness answers. Ask about a version only when the installation and request leave the target unresolved. Neither route touches `.alphalattice/user/`.
+2. Upgrade: inspect the current installation and use its existing checkout branch (`git pull`) or release-wheel install route, following the upgrade and readiness answers. Ask about a version only when the installation and request leave the target unresolved. A Host serving from the installation holds its files: stop your own with `alphalattice host stop` before installing, and serve it again after. Neither route touches `.alphalattice/user/`.
 3. After: compare the layer with its backup; it must be unchanged. A local edit to a shipped file
    that the upgrade replaced moves into its user file, rewritten for the new version. Then CLEAN
    in full against the new version. Keep the last three backups.

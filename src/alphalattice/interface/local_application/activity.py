@@ -14,7 +14,7 @@ any reference still goes through that reference's own readback route.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, fields
 from datetime import datetime
 from typing import Any, Protocol, Self
@@ -202,6 +202,7 @@ OBSERVED_OPERATIONS: frozenset[str] = frozenset(
         "EVIDENCE_INSTALL",
         "USAGE_READING_SET",
         "CPU_BUDGET_SET",
+        "HOST_STOP",
         "WORKSPACE_BACKUP",
         "MODEL_ACTIVATE",
         "MODEL_DEACTIVATE",
@@ -637,6 +638,18 @@ class ActivityReadQuery:
             except ValueError as exc:
                 raise LocalWebError("activity.watch_invalid") from exc
         return cls(after=after, limit=limit, watch=watch)
+
+    @classmethod
+    def from_request(
+        cls, after: str | None, limit: int | None, watch: Iterable[object]
+    ) -> ActivityReadQuery:
+        """The same read from a request's typed fields, checked as its query would be."""
+        query = {"after": [after]} if after is not None else {}
+        if limit is not None:
+            query["limit"] = [str(limit)]
+        if watched := ",".join(str(task) for task in watch):
+            query["watch"] = [watched]
+        return cls.from_query(query)
 
 
 @dataclass(frozen=True, slots=True)

@@ -10718,6 +10718,28 @@
    }
   ]
  },
+ "HOST_STOP": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "`HOST_STOPPING`: the Host answered and now stops once its running work has ended."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": true,
+    "meaning": "What the stop waits for and what it leaves: Tasks finish, nothing is cancelled."
+   },
+   {
+    "name": "next_action",
+    "kind": "string",
+    "required": true,
+    "meaning": "`SERVE_AGAIN_WHEN_WORK_NEEDS_IT`: start the Host again for the next work."
+   }
+  ]
+ },
  "WORKSPACE_BACKUP": {
   "fields": [
    {

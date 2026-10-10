@@ -319,6 +319,7 @@ type PortfolioResearchOperation = Literal[
     "USAGE_READING_SET",
     "CPU_BUDGET_SHOW",
     "CPU_BUDGET_SET",
+    "HOST_STOP",
     "WORKSPACE_BACKUP",
     "WORKSPACE_BACKUPS",
     "MODEL_EXTENSIONS",
@@ -834,7 +835,6 @@ class PortfolioResearchOperationRequest:
             }
         )
         requirements = {
-            "GOAL_SCHEMA": (frozenset(), frozenset()),
             "GOAL_LIST": (
                 frozenset(),
                 frozenset({"agent_session", "history_limit", "history_cursor"}),
@@ -954,8 +954,6 @@ class PortfolioResearchOperationRequest:
                 frozenset({"task_id", "candidate_id"}),
                 frozenset({"task_id", "candidate_id"}),
             ),
-            "EXPERIMENT_FOUNDATIONS": (frozenset(), frozenset()),
-            "EXPERIMENT_VERIFY_ALL": (frozenset(), frozenset()),
             "EXPERIMENT_FOUNDATION_PREVIEW": (
                 frozenset(
                     {"task_id", "curation_receipt_hash", "research_input_id", "input_binding_hash"}
@@ -977,7 +975,6 @@ class PortfolioResearchOperationRequest:
                     "EXPERIMENT_FOUNDATION_DRAFT",
                 )
             },
-            "RESEARCH_INPUTS": (frozenset(), frozenset()),
             "RESEARCH_INPUT_PLAN": (
                 frozenset({"research_input_id"}),
                 frozenset({"research_input_id"}),
@@ -993,11 +990,8 @@ class PortfolioResearchOperationRequest:
             ),
             "EXPERIMENT_PROMOTE": (frozenset({"task_id"}), frozenset({"task_id"})),
             "EXPERIMENT_CONTINUE": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "NETWORK_ACCESS": (frozenset(), frozenset()),
-            "PENDING_DECISIONS": (frozenset(), frozenset()),
             "ACTIVITY_REFUSALS": (frozenset(), frozenset({"view_last_days"})),
             "NETWORK_ACCESS_SET": (frozenset({"network_enabled"}), frozenset({"network_enabled"})),
-            "EVIDENCE_CONSENT": (frozenset(), frozenset()),
             "EVIDENCE_INSTALL": (frozenset({"evidence_setup"}), frozenset({"evidence_setup"})),
             "EVIDENCE_CONSENT_SET": (
                 frozenset({"evidence_documents_per_issuer"}),
@@ -1010,15 +1004,11 @@ class PortfolioResearchOperationRequest:
                 ),
             ),
             "WORKSPACE_PREPARE_READBACK": (frozenset(), frozenset({"task_id"})),
-            "WORKSPACE_PREPARE_PLAN": (frozenset(), frozenset()),
             "WORKSPACE_PREPARE_CONFIRM": (
                 frozenset({"preparation_plan_hash"}),
                 frozenset({"preparation_plan_hash", "data_issue_grant_hash"}),
             ),
-            "STORAGE_CAP_SHOW": (frozenset(), frozenset()),
             "STORAGE_CAP_SET": (frozenset({"storage_cap_bytes"}), frozenset({"storage_cap_bytes"})),
-            "STORAGE_READBACK": (frozenset(), frozenset()),
-            "STORAGE_PLAN": (frozenset(), frozenset()),
             "STORAGE_CONFIRM": (frozenset({"storage_plan_hash"}), frozenset({"storage_plan_hash"})),
             "STORAGE_PIN": (
                 frozenset({"input_binding_hash", "input_pinned"}),
@@ -1058,7 +1048,6 @@ class PortfolioResearchOperationRequest:
                 frozenset({"feature_trial_id"}),
                 frozenset({"feature_trial_id"}),
             ),
-            "FEATURE_TRIALS": (frozenset(), frozenset()),
             "FEATURE_REVIEW": (
                 frozenset({"feature_plan_hash", "feature_factor_id"}),
                 frozenset({"feature_plan_hash", "feature_factor_id"}),
@@ -1091,7 +1080,6 @@ class PortfolioResearchOperationRequest:
                 frozenset({"experiment_document"}),
                 frozenset({"experiment_document"}),
             ),
-            "RESEARCH_STRATEGY_CONTROLS": (frozenset(), frozenset()),
             "RESEARCH_STRATEGY_PREPARE": (
                 frozenset({"experiment_plan_hash"}),
                 frozenset({"experiment_plan_hash"}),
@@ -1140,7 +1128,6 @@ class PortfolioResearchOperationRequest:
                 frozenset({"experiment_plan_hash"}),
                 frozenset({"experiment_plan_hash"}),
             ),
-            "EXPERIMENTS": (frozenset(), frozenset()),
             "EXPERIMENT_SUMMARY": (frozenset({"task_id"}), frozenset({"task_id"})),
             "EXPERIMENT_READBACK": (
                 frozenset({"task_id"}),
@@ -1173,7 +1160,6 @@ class PortfolioResearchOperationRequest:
                 frozenset({"update_plan_hash"}),
                 frozenset({"update_plan_hash"}),
             ),
-            "RESEARCH_UPDATE_AUTOMATION_READBACK": (frozenset(), frozenset()),
             "RESEARCH_UPDATE_AUTOMATION_CONFIGURE": (
                 frozenset({"automation_enabled", "automation_package_ids"}),
                 frozenset({"automation_enabled", "automation_package_ids"}),
@@ -1192,7 +1178,6 @@ class PortfolioResearchOperationRequest:
                 frozenset({"task_id", "strategy_package_id"}),
             ),
             # The client's own commands, operations like any other (V266, OP1).
-            "WORKSPACE_SHOW": (frozenset(), frozenset()),
             "OPERATION_LIST": (frozenset(), frozenset({"strategy_package_id"})),
             "ACTIVITY_LIST": (frozenset(), frozenset({"after", "limit", "watch"})),
             "ACTIVITY_RECENT": (frozenset(), frozenset({"limit"})),
@@ -1214,13 +1199,10 @@ class PortfolioResearchOperationRequest:
                 frozenset({"task_id", "wake_thread", "wake_read"}),
                 frozenset({"task_id", "wake_thread", "wake_read", "wake_codex_path"}),
             ),
-            "SESSION_USAGE_READ": (frozenset(), frozenset()),
-            "USAGE_READING": (frozenset(), frozenset()),
             "USAGE_READING_SET": (
                 frozenset({"usage_reading_enabled"}),
                 frozenset({"usage_reading_enabled"}),
             ),
-            "CPU_BUDGET_SHOW": (frozenset(), frozenset()),
             # One of the three, which the owner holds to: a setting a request (V100).
             "CPU_BUDGET_SET": (
                 frozenset(),
@@ -1229,8 +1211,6 @@ class PortfolioResearchOperationRequest:
             # The held state's backup outside the workspace (V209); its restore is the
             # client's own, with no Host (V328).
             "WORKSPACE_BACKUP": (frozenset(), frozenset({"backup_generations_kept"})),
-            "WORKSPACE_BACKUPS": (frozenset(), frozenset()),
-            "MODEL_EXTENSIONS": (frozenset(), frozenset()),
             "MODEL_ACTIVATE": (frozenset({"model_id"}), frozenset({"model_id"})),
             "MODEL_DEACTIVATE": (frozenset({"model_id"}), frozenset({"model_id"})),
             # A person runs a reviewed research book's strategy forward, or stops it (LS1).
@@ -1272,7 +1252,6 @@ class PortfolioResearchOperationRequest:
             "STRATEGY_SCORE_RUN": (frozenset({"score_plan_hash"}), frozenset({"score_plan_hash"})),
             # A Task, or a strategy's latest, never another strategy's (V595).
             "STRATEGY_SCORE_READBACK": (frozenset(), frozenset({"task_id", "strategy_package_id"})),
-            "DATA_UPDATE_PLAN": (frozenset(), frozenset()),
             "DATA_UPDATE_RUN": (frozenset({"update_plan_hash"}), frozenset({"update_plan_hash"})),
             "DATA_UPDATE_READBACK": (frozenset(), frozenset({"task_id"})),
             "CONTROLS": (frozenset(), frozenset({"strategy_package_id"})),
@@ -1280,8 +1259,6 @@ class PortfolioResearchOperationRequest:
             "RUN": (frozenset({"spec"}), frozenset({"spec"})),
             "STATUS": (frozenset({"task_id"}), frozenset({"task_id", "wait_seconds"})),
             "TASK_RECOVERY": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "TASK_GUARDIAN": (frozenset(), frozenset()),
-            "TASK_INCIDENTS": (frozenset(), frozenset()),
             "TASK_REMEDIATE": (
                 frozenset({"task_id", "incident_key", "remedy"}),
                 frozenset({"task_id", "incident_key", "remedy", "expected_task_hash"}),
@@ -1293,7 +1270,6 @@ class PortfolioResearchOperationRequest:
                 frozenset(),
                 frozenset({"agent_session", "history_limit", "history_cursor"}),
             ),
-            "UPGRADE_OVERVIEW": (frozenset(), frozenset()),
             "UPGRADE_ACKNOWLEDGE": (
                 frozenset({"upgrade_set_hash"}),
                 frozenset({"upgrade_set_hash"}),
@@ -1508,7 +1484,8 @@ class PortfolioResearchOperationRequest:
                 frozenset({"analysis_publication_hash", "result_hash", "handoff_hash"}),
             ),
         }
-        required, allowed = requirements[operation]
+        # An operation the table does not name takes no field.
+        required, allowed = requirements.get(operation, (frozenset(), frozenset()))
         if operation in {
             "EVIDENCE_CRO",
             "EVIDENCE_PREPARE",
