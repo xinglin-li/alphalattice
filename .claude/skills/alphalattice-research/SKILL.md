@@ -25,7 +25,7 @@ Begin at the person's own target (a date's positions, a named request), else at 
 - **A book**: `book draft` → `study plan` → `study run` → `study show` ([research contract](references/research-contract.md)).
 - **A formula factor**: `feature controls` → its offered plan, trial and review.
 - **A data issue**: `issue list` → its offered `request` ([pipeline issues](references/pipeline-issues.md)).
-- **Report a problem**: `problem report --output "<out>/report.json"` → show the report → ask before sending ([reporting](references/operating.md#report-a-problem)).
+- **Report a problem**: `problem report --output "<out>/report.json"` → show the report → ask before sending (the “Report a problem” section of the [operating contract](references/operating.md)).
 
 Before activating, read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
 Activation admits the first update in the same act: follow it at once, then review its published positions on their own publication.

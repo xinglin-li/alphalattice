@@ -229,9 +229,9 @@ def test_research_plan_names_the_same_source_need_its_stage_refuses(due, missing
     assert words["network_access"]["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
     assert not words["network_access"]["network_allowed"]
     assert not words["network_access"]["next_requests"]
-    assert words["next_action"] == "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
+    assert words["next_action"] == "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
     assert "ALPHALATTICE_NETWORK_DISABLED=1" in words["detail"]
-    assert "restart the idle Host" in words["detail"]
+    assert "restart" not in words["detail"]
     assert "network set" not in words["detail"]
     assert words["next_requests"] == {"network": {"operation": "NETWORK_ACCESS"}}
     from alphalattice.control.task_control.contracts import FAILURE_CODE_MAX_LENGTH

@@ -304,9 +304,9 @@ def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_n
         access = refusal["data"]["network_access"]
         assert access["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
         assert not access["network_allowed"] and not access["next_requests"]
-        assert refusal["data"]["next_action"] == "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
+        assert refusal["data"]["next_action"] == "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
         assert "ALPHALATTICE_NETWORK_DISABLED=1" in refusal["detail"]
-        assert "restart the idle Host" in refusal["detail"]
+        assert "restart" not in refusal["detail"]
         assert "network set" not in refusal["detail"]
         assert refusal["next_requests"]["network"] == {"operation": "NETWORK_ACCESS"}
         record_property("missing_target", missing["data"]["target_session"])

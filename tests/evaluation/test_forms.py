@@ -74,6 +74,11 @@ def test_scenario_yaml_round_trips_route_alternatives_and_metadata():
             samples=3,
             owner="Status reader",
             evidence=["guide:1"],
+            feedback={
+                "state": {"answer_file": "answer.json"},
+                "answer": {"outcome": "COMPLETED"},
+                "expected": {"decision": "stop", "unusable_offers": {"retry": "refused"}},
+            },
             starting_state="Selected retained result.",
         )
     )
@@ -162,6 +167,22 @@ def test_runner_configuration_requires_model_specs_and_positive_sample_counts(co
         {"capability": "unknown"},
         {"evidence": [False]},
         {"owner": 1},
+        {"feedback": {}},
+        {"feedback": {"state": {}, "answer": {}, "expected": {"decision": "send"}}},
+        {
+            "feedback": {
+                "state": {"answer_file": "answer.json"},
+                "answer": {},
+                "expected": {"decision": "wait"},
+            }
+        },
+        {
+            "feedback": {
+                "state": {"answer_file": "answer.json"},
+                "answer": {},
+                "expected": {"decision": "stop", "unusable_offers": {"retry": ""}},
+            }
+        },
     ],
 )
 def test_scenario_rejects_invalid_fields(changes):

@@ -61,12 +61,12 @@ class NetworkAccess:
         words = {
             "RUN_HELD_OFFLINE": "A research run holds its reads offline while it runs. "
             "Wait for that run to finish; changing the workspace control cannot lift its hold.",
-            "OPERATOR_OFFLINE_SWITCH": f"{NETWORK_SWITCH}=1 keeps this process offline. "
-            + (
-                "Ask the person who starts the Host to remove that switch from its launch "
-                "environment and restart the idle Host; workspace settings cannot lift it."
+            "OPERATOR_OFFLINE_SWITCH": (
+                f"Tell the person in one line that the operator's {NETWORK_SWITCH}=1 "
+                "setting keeps network off and blocks network-dependent work."
                 if for_refusal
-                else "Network-dependent steps refuse; steps with already admitted recorded "
+                else f"{NETWORK_SWITCH}=1 keeps this process offline. "
+                "Network-dependent steps refuse; steps with already admitted recorded "
                 "or captured sources may proceed. Follow the plan's next action; workspace "
                 "settings cannot lift the switch."
             ),
@@ -85,7 +85,7 @@ class NetworkAccess:
                 else words[self.decided_by]
             ),
             "next_action": (
-                "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
+                "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
                 if self.decided_by == "OPERATOR_OFFLINE_SWITCH" and for_refusal
                 else "FOLLOW_THE_PLAN_NEXT_ACTION"
                 if self.decided_by == "OPERATOR_OFFLINE_SWITCH"

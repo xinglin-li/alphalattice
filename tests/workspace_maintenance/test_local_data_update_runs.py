@@ -37,6 +37,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
     _json,
     _manifest,
+    _request,
     _resolved,
     _Resolver,
 )
@@ -843,6 +844,9 @@ def test_raw_move_review_reopens_and_resumes_the_same_data_task(qualified, tmp_p
             value.get("data_issue_case_token") == case["case_token"]
             for value in pending["next_requests"].values()
         )
+        # The preview offered before the decision, sent now, refuses as the list does.
+        held = _request(live, "/api/workspace/data-issues/preview", method="POST", payload=choice)
+        assert json.loads(held[2])["failure_code"] == "feature_input.case_already_decided", held
         resumed = _json(live, "/api/data-update/run", method="POST", payload=request)
         assert resumed["task_id"] == admitted["task_id"]
         live.dispatcher.drain_for_tests(timeout=180)

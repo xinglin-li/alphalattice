@@ -1574,5 +1574,9 @@
  "feature_input.resolution_conflict": {
   "detail": "Another decision for this case is already recorded, so this one conflicts with it and was not applied. Read the data issues for where the case stands now and follow its offer.",
   "next_action": "DATA_ISSUES"
+ },
+ "feature_input.case_already_decided": {
+  "detail": "A decision for this case is already recorded and stands, so it takes no other choice now. Read the data issues for where it stands and follow its offer.",
+  "next_action": "DATA_ISSUES"
  }
 }

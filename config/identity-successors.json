@@ -12251,6 +12251,13 @@
    "successor": "c5c4de7c1eb74aef4d83749cb0d2d4d67102dcebd7eb466d6783ee12d0972766",
    "change": "Delivery export words (2026-10-10)",
    "reason": "The delivery export reads in the product's numbers and words, its change column in basis points, and the committee head names its Task once. These closures moved through the shared report renderer and the research operations composition; every computed value they produce is equal, and only the rendered export's words and number formatting changed."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "22d29079ffc10b3db212a5e0ab8bd0e17328a6d9e9fceb58ea4248892461f327",
+   "successor": "c7452c50b62d204c9c1a3a6a199c48f1ffc9900141f8ee7e79f11db1bcea6670",
+   "change": "Recovery offers read one rule (2026-10-10)",
+   "reason": "A stopped preparation's recovery view, its plan and a data decision's continue now read one owner rule for whether a plan may resume it; the workspace preparation closure moved through data_preparation/application.py and remediation.py, and every value it produces is equal."
   }
  ]
 }

@@ -72,6 +72,26 @@ def _strings(value: object) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _feedback(value: object) -> None:
+    if value is None:
+        return
+    if not isinstance(value, dict) or set(value) != {"state", "answer", "expected"}:
+        raise ValueError("invalid_feedback_context")
+    if any(not isinstance(part, dict) for part in value.values()):
+        raise ValueError("invalid_feedback_context")
+    if value["state"].get("answer_file") != "answer.json":
+        raise ValueError("invalid_feedback_answer_file")
+    expected = value["expected"]
+    if set(expected) - {"decision", "unusable_offers"}:
+        raise ValueError("invalid_feedback_expectation")
+    _choice(expected.get("decision"), {"send", "ask", "stop"}, "invalid_feedback_decision")
+    unusable = expected.get("unusable_offers", {})
+    if not isinstance(unusable, dict):
+        raise ValueError("invalid_unusable_offers")
+    _strings((*unusable, *unusable.values()))
+    _attributes({"alphalattice.feedback": value})
+
+
 @dataclass(frozen=True)
 class Scenario:
     """Each route group requires one of its alternatives; all groups are required."""
@@ -91,6 +111,7 @@ class Scenario:
     owner: str | None = None
     evidence: tuple[str, ...] = ()
     starting_state: str = ""
+    feedback: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         _version(self.version)
@@ -102,6 +123,7 @@ class Scenario:
             raise ValueError("invalid_starting_state")
         _timestamp(self.now)
         _samples(self.samples)
+        _feedback(self.feedback)
         _choice(self.decider, DECIDERS, "invalid_decision")
         _choice(self.capability, {"reached", "missing"}, "invalid_capability")
         if type(self.ask_required) is not bool or (

@@ -297,8 +297,7 @@ c.objectRow=publicBuilders.objectRow;
   w.dismissConfirmation();markup=w.page();
   assert.ok(markup.includes('Preparation scope · preview') && markup.includes('Confirm preparation:workspace-preview:reoffer'),'the retained preview stays on the page with its own confirm');
   modal=null;const plans=posts.length;await w.preview('reoffer');assert.equal(posts.length,plans,'re-offering the retained preview plans nothing again');assert.ok(modal.content.includes('plan-1'));
-  // a preview refused its sources (CLI-15): the workspace's network control in Settings, then preview again, no
-  // restart; only the operator's offline switch names a start command, the root entry without the switch
+  // A refused preview reads its network owner; workspace controls retain their Settings route.
   const netRefused=(by,allowed=false)=>({...bodies['/api/workspace/preparation/plan'],confirmation_available:false,source_access_failure:'workspace_preparation.source_access_not_admitted',
     source_access:{status:'NETWORK_CONTROL_REQUIRED',network_access:{status:'NETWORK_ACCESS',network_allowed:allowed,decided_by:by,detail:'owner words'},authorization_required:true,restart_only_when_idle:true,workspace_path:'C:/qa/ws',verified_source_checkpoint_retained:false,network_requests:'UNKNOWN_UNTIL_EXECUTION'}});
   const confirmable=bodies['/api/workspace/preparation/plan'];
@@ -311,8 +310,8 @@ c.objectRow=publicBuilders.objectRow;
   bodies['/api/workspace/preparation/plan']=netRefused('WORKSPACE_CONTROL');await w.preview('prepare');markup=w.page();
   assert.ok(markup.includes("Off by this workspace's network control.") &&markup.includes('LINK:Allow network access in Settings'),'a control set off points to the same control');
   bodies['/api/workspace/preparation/plan']=netRefused('OPERATOR_OFFLINE_SWITCH');await w.preview('prepare');markup=w.page();
-  assert.ok(markup.includes('Start command for this workspace') && markup.includes('python scripts/run_alphalattice.py --workspace "C:/qa/ws" serve --no-browser'),'the offline switch alone names the start command, the root entry');
-  assert.ok(markup.includes('start it again without <code class="literal">ALPHALATTICE_NETWORK_DISABLED=1</code>') && !markup.includes('LINK:Allow network access'),'it is started again without the switch, a literal to type; the held control is not offered');
+  assert.ok(!markup.includes('Start command') && !markup.includes('serve --no-browser'),'the operator hold offers no start command');
+  assert.ok(!markup.includes('start it again') && !markup.includes('LINK:Allow network access'),'the operator hold offers no restart or Settings action');
   for(const old of ['run_local_research','NETWORK_DISABLED=0','required_policy'])assert.ok(!markup.includes(old),'the older launcher and its switch are never named: '+old);
   // V620 (U93): a hold the person cannot lift here reads in the network owner's words (who lifts it, how); the page
   // recreates no permission advice for it

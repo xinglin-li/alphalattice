@@ -72,6 +72,7 @@
         "operation": "STATUS",
         "task_id": "<task uuid>"
       },
+      "offered_requests": [],
       "latency_milliseconds": 0
     }
   },

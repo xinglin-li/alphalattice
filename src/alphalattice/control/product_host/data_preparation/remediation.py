@@ -577,7 +577,7 @@ class WorkspaceDataIssueApplication:
             if (
                 continuation is None
                 and case.options_current_at(now)
-                and (resolution is None or refused or elapsed)
+                and not self._decided(resolution, now)
             ):
                 for option in case.options:
                     if self._confirmable(option):
@@ -791,6 +791,15 @@ class WorkspaceDataIssueApplication:
             now.astimezone(UTC)
         )
 
+    @classmethod
+    def _decided(cls, resolution: dict[str, object] | None, now: datetime) -> bool:
+        """Whether a decision stands for the case, so it takes no other choice now: one is
+        recorded, its effect was not refused, and it is no wait whose time has passed. The issues
+        list offers it no choice and its preview refuses, as a different confirm conflicts."""
+        effect = (resolution or {}).get("effect")
+        refused = isinstance(effect, dict) and bool(effect.get("failure_reasons"))
+        return resolution is not None and not refused and not cls._wait_elapsed(resolution, now)
+
     @staticmethod
     def _confirmable(option: RemediationOption) -> bool:
         return option.policy_args.action in {
@@ -850,6 +859,8 @@ class WorkspaceDataIssueApplication:
             Human confirmation preview or case-no-longer-pending refusal; execution revalidates the
             source.
         """
+        if self._decided(self.panel.feature_input_resolution(case_token), self.clock()):
+            return _reread_issues("feature_input.case_already_decided")
         try:
             case, option = self._selection(
                 case_token=case_token,

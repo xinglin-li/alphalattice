@@ -1284,9 +1284,9 @@ def test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names(
                     if operator:
                         assert access["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
                         assert not access["network_allowed"] and not access["next_requests"]
-                        assert body["next_action"] == "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
+                        assert body["next_action"] == "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
                         assert "ALPHALATTICE_NETWORK_DISABLED=1" in detail
-                        assert "restart the idle Host" in detail and "network set" not in detail
+                        assert "restart" not in detail and "network set" not in detail
                     elif not enabled:
                         assert access["decided_by"] == "WORKSPACE_CONTROL"
                         assert not access["network_allowed"] and "network set" in detail
@@ -1323,7 +1323,7 @@ def test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names(
         assert "missing market data through session 2026-09-11" in stopped["detail"], seen
         assert (code, stopped["failure_code"]) == (2, stopped_code), seen
         assert stopped["data"]["network_access"]["decided_by"] == "OPERATOR_OFFLINE_SWITCH", seen
-        assert "restart the idle Host" in stopped["detail"], seen
+        assert stopped["data"]["next_action"] == "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
         assert "network set" not in stopped["detail"], seen
         # Its read names the way its words give, bound to the stopped Task's own plan.
         assert stopped["data"]["next_requests"]["resume"] == {

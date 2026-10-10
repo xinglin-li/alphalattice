@@ -520,7 +520,6 @@ const LiveWorkspace = (() => {
   /* The workspace's network control (CLI-15, OP5) in words: what decides it, its code on hover (WD2); read
    * by the preparation's refusal and by Settings, which holds the control */
   const NETWORK = {WORKSPACE_CONTROL_ALLOWED:'Allowed by this workspace\'s network control.', WORKSPACE_CONTROL_OFF:'Off by this workspace\'s network control.', DEFAULT:'Off: the workspace sets no network control, so the network stays off.'};
-  const SWITCH=String(html`<code class="literal">ALPHALATTICE_NETWORK_DISABLED=1</code>`); // the operator's switch: a literal the person types
   function networkWords(n) {
     // U70 (V452): an opening the first-use goal made holds until its own end, named in the control itself (`set_by`); past
     // its end the control reads closed with no write
@@ -544,14 +543,9 @@ const LiveWorkspace = (() => {
   function planPreview(p) {
     const refused=p.confirmation_available===false;
     const access=p.source_access || {}, net=access.network_access || {};
-    // a refused confirmation says its way once (ST6). Sources need the network (CLI-15): the workspace's own
-    // control in Settings allows it and the preview is asked again, the Host running on; only the operator's
-    // offline switch needs the Host started again, without it
-    const offline=refused && net.decided_by==='OPERATOR_OFFLINE_SWITCH';
-    const start=offline && access.workspace_path ? codeRef(t('Start command for this workspace'), 'python scripts/run_alphalattice.py --workspace "'+access.workspace_path+'" serve --no-browser') : '';
-    const next=!refused ? undefined : offline ? raw(t('stop the idle Host and start it again without {switch}, then preview again; research execution keeps its offline policy',{switch:SWITCH})) : html`${link(html`${t('Allow network access in Settings')}${icon('arrow')}`,'settings','text-btn',{row:'networkAccess'})} ${t('then preview again; the Host keeps running')}`;
+    const next=refused && net.decided_by!=='OPERATOR_OFFLINE_SWITCH' ? html`${link(html`${t('Allow network access in Settings')}${icon('arrow')}`,'settings','text-btn',{row:'networkAccess'})} ${t('then preview again; the Host keeps running')}` : '';
     const why=refused ? html`${t('Its sources need the network.')} ${networkWords(net)} ${t(access.verified_source_checkpoint_retained ? 'The verified source checkpoint remains recorded.' : 'No source checkpoint was captured yet.')} ${t('Nothing was admitted.')}` : '';
-    return html`<section class="panel prep-preview" data-box="decision">${sectionHead(t('Preparation scope · preview'), t('Recorded by the owner as a plan; nothing has been admitted. Confirming is a separate step.'), refused ? badge('blocked', t('Confirmation unavailable')) : stateLine('planned', {word: t('Awaiting confirmation')}))}<div class="panel-body">${kv(preparationSummary(p).map(([k,v])=>[t(k),typeof v==='string'?v:v]))}${refused ? refusal({code:p.source_access_failure || '',reason:why},'warning',{word:t('Confirmation unavailable'),next,more:start}) : ''}<div class="flow">${refused ? '' : action('Confirm preparation','preview','reoffer')}${action('Preview again','preview','prepare')}</div>${detail(p)}</div></section>`;
+    return html`<section class="panel prep-preview" data-box="decision">${sectionHead(t('Preparation scope · preview'), t('Recorded by the owner as a plan; nothing has been admitted. Confirming is a separate step.'), refused ? badge('blocked', t('Confirmation unavailable')) : stateLine('planned', {word: t('Awaiting confirmation')}))}<div class="panel-body">${kv(preparationSummary(p).map(([k,v])=>[t(k),typeof v==='string'?v:v]))}${refused ? refusal({code:p.source_access_failure || '',reason:why},'warning',{word:t('Confirmation unavailable'),next}) : ''}<div class="flow">${refused ? '' : action('Confirm preparation','preview','reoffer')}${action('Preview again','preview','prepare')}</div>${detail(p)}</div></section>`;
   }
   const readiness = (b) => b.status==='LOCAL_DATA_PRESENT' ? t('Local market data is present but no research input is published. The preview reuses qualified local data without downloading; its qualification is checked there.') : t('This workspace holds no research input. One explicit preparation captures the current index members, acquires their daily history, builds Features and publishes one verified input. Opening this page starts nothing.');
   /* First use before a Task (round 74): the PLAN preview when one was offered, the workspace's

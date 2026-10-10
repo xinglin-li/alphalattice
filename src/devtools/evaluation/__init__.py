@@ -1,5 +1,6 @@
 """Liftable evaluation contracts and deterministic intent grading."""
 
+from .feedback import FeedbackGrader, collect_feedback
 from .forms import (
     Decider,
     Environment,
@@ -22,6 +23,7 @@ __all__ = [
     "Decider",
     "Environment",
     "EvaluationDataset",
+    "FeedbackGrader",
     "Grade",
     "Grader",
     "GradingIssue",
@@ -33,6 +35,7 @@ __all__ = [
     "Scenario",
     "Trace",
     "TraceEvent",
+    "collect_feedback",
     "command_errors",
     "contains",
     "grade",

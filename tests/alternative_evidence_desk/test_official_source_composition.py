@@ -582,7 +582,7 @@ def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
         access = later["network_access"]
         assert access["network_allowed"] is False
         assert access["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
-        assert access["next_action"] == "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
+        assert access["next_action"] == "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
         assert later["next_requests"]["network"] == {"operation": "NETWORK_ACCESS"}
         assert "prepare" not in later["next_requests"]
         tasks_before = service.registry.tasks()

@@ -342,12 +342,15 @@ def test_the_evidence_setup_names_the_network_hold_without_offering_to_override_
     assert payload["context"]["network_consent"] is True
     assert payload["network_access"]["network_allowed"] is False
     assert payload["network_access"]["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
+    assert not payload["network_access"]["next_requests"]
     assert payload["next_requests"] == {"network": {"operation": "NETWORK_ACCESS"}}
     assert "command gave SEC consent" in payload["detail"]
-    assert payload["next_action"] == "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
+    assert payload["next_action"] == "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
     assert "ALPHALATTICE_NETWORK_DISABLED=1" in payload["detail"]
-    assert "restart the idle Host" in payload["detail"]
-    assert "network set" not in payload["detail"]
+    assert {"person", "operator's", "off", "blocks"} <= set(payload["detail"].split())
+    assert not any(
+        token in payload["detail"].lower() for token in ("ask", "remov", "restart", "network set")
+    )
 
     # V620: with no operator hold, the actual workspace control's way works.
     from alphalattice.control.workspace_runtime.network_access import set_network_access
