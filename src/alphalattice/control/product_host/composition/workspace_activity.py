@@ -1061,7 +1061,7 @@ class WorkspaceActivity:
 
     def wake_readiness(self, path: str | None = None) -> dict[str, object]:
         """Share successful queue probes; retry a supplied path after failure."""
-        from alphalattice.interface.local_application.native_setup import (
+        from alphalattice.interface.local_application.native_bridge import (
             codex_command,
             codex_queue_readiness,
         )
@@ -1258,7 +1258,7 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
     line in its queue, not that the model read it: Codex takes its queue while the thread is idle,
     and an active goal's next turn starts first.
     """
-    from alphalattice.interface.local_application.native_setup import codex_command
+    from alphalattice.interface.local_application.native_bridge import codex_command
 
     codex, source = codex_command(path)
     result: dict[str, Any] = {

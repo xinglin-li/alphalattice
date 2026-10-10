@@ -8,7 +8,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tomllib
 from datetime import UTC, datetime
@@ -31,6 +30,8 @@ from alphalattice.interface.local_application.native_bridge import (
     NativeBridgeError,
     NativeResearchBinding,
     attachment_preflight,
+    codex_queue_readiness,
+    command_readiness,
     declares_product,
     session_project,
 )
@@ -44,50 +45,6 @@ PRODUCT_HOOK_EVENTS = ("SubagentStart", "SubagentStop")
 RESOURCE_ROOT = resolve_playpen_root(Path(__file__))
 INSTALLED = not (RESOURCE_ROOT / "pyproject.toml").is_file()
 ROOT = Path.cwd() if INSTALLED else RESOURCE_ROOT
-
-
-def command_readiness(command: list[str], *, timeout: int = 30) -> dict[str, Any]:
-    """Probe a dependency's public command without installing or changing anything."""
-    executable = shutil.which(command[0])
-    result: dict[str, Any] = {"present": False, "command": executable, "reason": None}
-    if executable is None:
-        return {**result, "reason": "COMMAND_MISSING"}
-    try:
-        completed = subprocess.run(
-            [executable, *command[1:]], capture_output=True, timeout=timeout, check=False
-        )
-    except subprocess.TimeoutExpired:
-        return {**result, "reason": "COMMAND_TIMED_OUT"}
-    except OSError:
-        return {**result, "reason": "COMMAND_START_FAILED"}
-    result.update(
-        present=completed.returncode == 0,
-        reason=None if completed.returncode == 0 else "COMMAND_FAILED",
-    )
-    return result
-
-
-def codex_command(path: str | None = None) -> tuple[str | None, str]:
-    """An admitted client executable, otherwise this process's PATH."""
-    offered = None if not path else Path(path)
-    if (
-        offered is not None
-        and offered.is_absolute()
-        and offered.is_file()
-        and offered.name.lower() in {"codex", "codex.exe", "codex.cmd"}
-    ):
-        return str(offered), "CLIENT_PATH"
-    found = shutil.which("codex")
-    return (None if found is None else str(Path(found).absolute())), "HOST_PATH"
-
-
-def codex_queue_readiness(path: str | None = None) -> dict[str, Any]:
-    """Whether this process can start the background queue the Host must deliver through."""
-    command, source = codex_command(path)
-    return {
-        **command_readiness([command or "codex", "queue", "--help"], timeout=5),
-        "command_source": source,
-    }
 
 
 def _installed_leg() -> dict[str, Any]:

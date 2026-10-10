@@ -248,11 +248,11 @@ class LocalResearchClient:
         include_context: bool = False,
         timeout: float | None = None,
     ) -> tuple[dict[str, Any], bytes]:
-        """Return the owner's answer and exact transport bytes."""
+        """Return the answer and exact transport bytes."""
         if document is None:
             document = {"operation": "WORKSPACE_SHOW" if include_context else "OPERATION_LIST"}
         if document.get("operation") == "WAKE_REGISTER" and "wake_codex_path" not in document:
-            from alphalattice.interface.local_application.native_setup import codex_command
+            from alphalattice.interface.local_application.native_bridge import codex_command
 
             if (path := codex_command()[0]) is not None:
                 document = {**document, "wake_codex_path": path}
@@ -2529,7 +2529,7 @@ def _chain(client: LocalResearchClient, args: argparse.Namespace, name: str) -> 
     deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
     wake = None
     if getattr(args, "notify", None) == "codex-queue":
-        from alphalattice.interface.local_application.native_setup import (
+        from alphalattice.interface.local_application.native_bridge import (
             codex_command,
             codex_queue_readiness,
         )
