@@ -660,6 +660,61 @@ def test_an_admission_refusal_names_its_blocking_task_and_offers_read_and_wait(o
         _assert_request(request, request)
 
 
+def test_a_stopped_tasks_answer_offers_its_way_on_never_a_wait_on_it() -> None:
+    """requirement (answer truth): an answer about a BLOCKED, CANCELLED or RECOVERY_REQUIRED Task
+    offers its way on; a wait or wake on that Task, or no offer at all, is refused."""
+    from alphalattice.interface.local_application.answers import stopped_problem
+
+    task = str(uuid4())
+    wait = {"operation": "STATUS", "task_id": task, "wait_seconds": 20}
+    wake = {"operation": "WAKE_REGISTER", "task_id": task}
+    way = {"operation": "WORKSPACE_PREPARE_PLAN", "recovery_task_id": task}
+
+    def asked(lifecycle: str, **offers: object) -> str | None:
+        return stopped_problem({"task_id": task, "lifecycle": lifecycle, "next_requests": offers})
+
+    assert asked("BLOCKED", wait=wait) and asked("CANCELLED", w=wake) and asked("RECOVERY_REQUIRED")
+    assert asked("BLOCKED", replan=way) is None and asked("RUNNING", wait=wait) is None
+    assert asked("CANCELLED") is None  # a cancel was the request: it needs no way on
+    # The Task's record outranks an answer that names no state, as a refusal's blocker does.
+    assert stopped_problem({"blocking_task_id": task, "next_requests": {"wait": wait}}, "BLOCKED")
+
+
+def test_an_offer_sent_back_as_it_stands_is_admitted_and_keeps_the_first_uses_date(
+    truth_check,
+) -> None:
+    """requirement (answer truth): a recovery-bound offer sent back verbatim is never refused as
+    not offered, and an update offered under a dated first use keeps that date."""
+    task = str(uuid4())
+    record = SimpleNamespace(lifecycle=SimpleNamespace(value="BLOCKED"))
+    goal = SimpleNamespace(declaration=SimpleNamespace(target_date=date(2026, 10, 10)))
+    host = SimpleNamespace(
+        replans=lambda: {
+            "prep": SimpleNamespace(
+                preview="WORKSPACE_PREPARE_PLAN", admitting="WORKSPACE_PREPARE_CONFIRM"
+            )
+        },
+        workspace_session=SimpleNamespace(
+            task_control_registry=SimpleNamespace(task=lambda _: record)
+        ),
+        goals=SimpleNamespace(
+            first_use=lambda: goal, first_use_delegation=lambda _: {"active": True}
+        ),
+    )
+
+    def answer(digit: str, **update: object) -> dict[str, object]:
+        replan = {"operation": "WORKSPACE_PREPARE_PLAN", "recovery_task_id": task}
+        update = {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": "BAL", **update}
+        offers = {"replan": {**replan, "recovery_task_hash": digit * 64}, "update": update}
+        return {"task_id": task, "lifecycle": "BLOCKED", "next_requests": offers}
+
+    code = "portfolio_research.recovery_request_not_offered"
+    planted = list(truth_check(host, "STATUS", answer("a"), lambda _: {"failure_code": code}))
+    assert [line.rsplit(" ", 1)[-1] for line in planted] == [code, "date"]
+    dated = answer("b", observed_through="2026-10-09")
+    assert list(truth_check(host, "STATUS", dated, lambda _: {"status": "PLANNED"})) == []
+
+
 def test_a_full_training_plan_keeps_its_hash_and_a_light_one_names_its_lifecycle() -> None:
     """A FULL training plan keeps its existing hash, while a LIGHT plan names its lifecycle."""
     from alphalattice.kernel.shared_kernel.identity import canonical_hash

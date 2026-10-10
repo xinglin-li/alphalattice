@@ -637,6 +637,8 @@ def answer_problem(
         return f"{operation}: {declaration}"
     if (continuation := continuation_problem(body)) is not None:
         return f"{operation}: {continuation}"
+    if (stopped := stopped_problem(body)) is not None:
+        return f"{operation}: {stopped}"
     if is_refusal or model is None:
         return None
     if (exited := exit_problem(body)) is not None:
@@ -647,6 +649,42 @@ def answer_problem(
         named = named_read({**(request or {}), "operation": operation}, body)
         return _rereads(operation, named, table)
     return None
+
+
+def stopped_problem(
+    body: Mapping[str, Any], lifecycle: str | None = None, *, way_on: bool = True
+) -> str | None:
+    """Whether an answer about a stopped Task offers a wait on it, or no way on.
+
+    Args:
+        body: The answer; its Task is `task_id`, or the `blocking_task_id` a refusal names.
+        lifecycle: The Task's state as its record holds it; else the answer's own.
+        way_on: Whether a missing way on counts: it does for the answer's own state, not for a
+            command's answer about a Task its act is still moving.
+
+    Returns:
+        None when the Task is not stopped or its answer offers its way on; else what is wrong.
+    """
+    from .cli_contract import STOPPED_STATES, offered_requests, refused, task_state
+
+    task = body.get("task_id") or body.get("blocking_task_id")
+    state = lifecycle or task_state(dict(body))
+    # A resubmitted recovery moves its Task out of its stop by this very act.
+    if task is None or state not in STOPPED_STATES or body.get("status") == "RECOVERY_RESUBMITTED":
+        return None
+    offers = offered_requests(dict(body))
+    waits = sorted(
+        name
+        for name, offer in offers.items()
+        if str(offer.get("task_id")) == str(task)
+        and (offer.get("operation") == "WAKE_REGISTER" or offer.keys() & {"wait_seconds", "watch"})
+    )
+    if waits:
+        return f"a {state} Task's answer offers a wait on it: {', '.join(waits)}"
+    # A refusal's way on is its catalogued action, as its words carry it (OP4).
+    # A cancel was the request itself; a Task that waits on a request must be offered one.
+    held = offers or refused(dict(body)) or not way_on or state == "CANCELLED"
+    return None if held else f"a {state} Task's answer offers no way on"
 
 
 def declaration_problem(operation: str, body: Mapping[str, Any]) -> str | None:

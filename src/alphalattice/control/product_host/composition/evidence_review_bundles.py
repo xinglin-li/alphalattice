@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING, Final, get_args
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -186,6 +186,17 @@ def sealed_bounds_exceeded(error: ValidationError) -> tuple[dict[str, object], .
     return tuple(found)
 
 
+ANSWER_FILE: Final = (
+    'Write one JSON answer: {"text": "your interpretation", "references": []}.',
+    "Text is nonempty and at most 4000 characters; references are at most 64 exact strings "
+    "listed in the material. The product checks format, size and binding, never scientific "
+    "quality. You may add `read` with the listed files read whole.",
+    "Write the final structured answer only to the nominated answer file. Return `written` to "
+    "your lead; the lead submits it. Never submit the answer yourself.",
+)
+"""A specialist bundle's final action, unless a committee floor gives its route instead."""
+
+
 class EvidenceReviewBundles:
     """Every agent bundle the section hands out, over the application it serves."""
 
@@ -207,6 +218,7 @@ class EvidenceReviewBundles:
         unit_id: str | None = None,
         dispatcher: LocalBackgroundDispatcher | None = None,
         view: list[str] | None = None,
+        route: tuple[str, ...] | None = None,
     ) -> dict[str, object] | ReviewOutcome:
         """Prepare one exact role-specific agent bundle and retained submission association.
 
@@ -226,7 +238,7 @@ class EvidenceReviewBundles:
             raise PortfolioEvidenceReviewError("agent_bundle.directory_not_absolute")
         if role not in TASK_PROCEDURES or view is not None:
             return self.prepare_specialist_bundle(
-                role=role, directory=directory, task_id=task_id, view=view
+                role=role, directory=directory, task_id=task_id, view=view, route=route
             )
         chosen = self.app._review_selector(selector)
         if isinstance(chosen, ReviewOutcome):
@@ -309,10 +321,12 @@ class EvidenceReviewBundles:
         directory: str,
         task_id: UUID | None,
         view: list[str] | None = None,
+        route: tuple[str, ...] | None = None,
     ) -> dict[str, object]:
         """Prepare one interpretation from exact retained Task metadata and references.
 
-        When the Task published a date's positions, the role's view of them comes with it.
+        When the Task published a date's positions, the role's view of them comes with it; on a
+        committee floor its `route` is the one final action, in place of the answer file.
         """
         if task_id is None:
             raise PortfolioEvidenceReviewError("agent_bundle.specialist_task_required")
@@ -375,15 +389,10 @@ class EvidenceReviewBundles:
                 "",
                 READING_RULE,
                 "",
-                'Write one JSON answer: {"text": "your interpretation", "references": []}.',
-                "Text is nonempty and at most 4000 characters; references are at most 64 exact "
-                "strings listed in the material. The product checks format, size and binding, "
-                "never scientific quality. You may add `read` with the listed files read whole.",
-                "Write the final structured answer only to the nominated answer file. Return "
-                "`written` to your lead; the lead submits it. Never submit the answer yourself.",
+                *(ANSWER_FILE if route is None else route),
                 "Keep the loaded role card's stage and network permissions: product CLI reads "
                 "in ANALYZE/REVIEW, and only authorized EXECUTE outputs in its assigned out "
-                "directory. This final answer file does not authorize other writes.",
+                "directory. This final action does not authorize other writes.",
                 "",
                 PACKING_RULE,
                 "",

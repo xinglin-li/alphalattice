@@ -1094,16 +1094,19 @@ def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path
 def test_the_first_intent_is_the_way_forward_and_names_it_in_words() -> None:
     "First-use intent offers strategy preparation or the installed strategy's book."
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
+    from alphalattice.control.product_host.composition.strategy_activation import (
         INSTALLED_BOOK_WORDS,
         RUN_FORWARD_WORDS,
-        PortfolioResearchOperations,
     )
 
     forward = PortfolioResearchOperations._forward_intents
-    empty = SimpleNamespace(_packages={}, activations=None, installed=lambda: False)
+    shut = SimpleNamespace(first_use=lambda: None)
+    empty = SimpleNamespace(_packages={}, activations=None, installed=lambda: False, goals=shut)
     (none,) = forward(empty)
     assert none["status"] == "NO_RESEARCH_STRATEGY_INSTALLED"
-    assert none["detail"] == RUN_FORWARD_WORDS and "need no Factor study" in RUN_FORWARD_WORDS
+    assert none["detail"] == RUN_FORWARD_WORDS[False] and "need no Factor study" in none["detail"]
     assert none["next_requests"] == {
         "strategy_controls": {"operation": "RESEARCH_STRATEGY_CONTROLS"}
     }
@@ -1112,9 +1115,14 @@ def test_the_first_intent_is_the_way_forward_and_names_it_in_words() -> None:
         installed=lambda: True,
         activations=object(),
         _activation_offer=lambda _package: {"status": "INACTIVE"},
+        goals=shut,
     )
     (bookless,) = forward(installed)
-    assert (bookless["status"], bookless["detail"]) == ("NO_BOOK_YET", INSTALLED_BOOK_WORDS)
+    assert (bookless["status"], bookless["detail"]) == ("NO_BOOK_YET", INSTALLED_BOOK_WORDS[False])
+    # Under an open first use, the book is its numerical check, never a review before activation.
+    road = SimpleNamespace(first_use=object, first_use_delegation=lambda _goal: {"active": True})
+    installed.goals = road
+    assert forward(installed)[0]["detail"] == INSTALLED_BOOK_WORDS[True]
     assert bookless["next_requests"] == {
         "books": {"operation": "CONTROLS", "strategy_package_id": "PKG"}
     }

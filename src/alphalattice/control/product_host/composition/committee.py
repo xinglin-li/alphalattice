@@ -562,11 +562,31 @@ def role_lines(
     )
     if floor is None or role == "DATA":
         return [head, *view]
+    return [head, *(f"{p['alias']}: {p['text']}" for p in floor.opened["tension_points"]), *view]
+
+
+def bundle_parts(
+    role: str,
+    dated: tuple[dict[str, Any], dict[str, Any]] | None,
+    store: GoalStore,
+    now: datetime,
+) -> tuple[list[str] | None, tuple[str, ...] | None]:
+    """A role's view of a date's positions and, on an open floor, its route (`bundle prepare`)."""
+    if dated is None:
+        return None, None
+    floor = floor_of(store, str(dated[0]["task_id"]))
+    return role_lines(role, *dated, floor, now), route(role, floor, now)
+
+
+def route(role: str, floor: Floor | None, now: datetime) -> tuple[str, ...] | None:
+    """How a member speaks on an open floor: its bundle's one final action, with its own key.
+
+    None with no open floor or for a role with no seat; the bundle then ends in its answer file.
+    """
+    if floor is None or role not in ROLES[1:] or floor.stage(now) == "CLOSED":
+        return None
     task, key = floor.opened["update_task_id"], floor.key(role)
-    return [
-        head,
-        *(f"{p['alias']}: {p['text']}" for p in floor.opened["tension_points"]),
-        *view,
+    return (
         f"On the committee's floor you are {role}. Send one STANCE first (the round is blind); "
         "its position on each point is about the date's positions: SUPPORT, they may stand; "
         "OBJECT, they should not stand as they are; RESERVE, this bundle cannot tell.",
@@ -575,8 +595,11 @@ def role_lines(
         "YAML file (kind, text, positions, targets, reply_to), send it with `committee submit "
         f"--update {task} --role {role} --key {key} --file <message.yaml>` and follow what is "
         f"addressed to you with `committee wait --update {task} --role {role} --key {key} "
-        "--seen <seen>`, in place of the answer file. The key is yours alone.",
-    ]
+        "--seen <seen>`. The key is yours alone.",
+        "This route is the bundle's only final action: there is no answer file and nothing for "
+        "the lead to submit. It runs these two commands, so the lead starts you as a general "
+        "subagent.",
+    )
 
 
 def render(text: str, held: Sequence[Mapping[str, Any]]) -> str:

@@ -168,6 +168,17 @@ def test_the_host_sends_a_wake_once_after_the_cli_has_gone(live, codex) -> None:
     _register(live, stopped)
     assert _run(live, stopped, decision=True)["event"] == "NEEDS_DECISION"
     assert len(codex.calls()) == 2 and "needs a decision" in codex.calls()[-1][-1]
+    # A stopped Task moves only on a request: a wake on it is refused, with its way on.
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest as Request,
+    )
+
+    sent = Request(
+        operation="WAKE_REGISTER", task_id=stopped.task_id, wake_thread=THREAD, wake_read="read"
+    )
+    refused = live.operations.execute(sent)
+    assert refused["failure_code"] == "task_control.wake_task_stopped:RECOVERY_REQUIRED"
+    assert refused["next_requests"]["read"]["task_id"] == str(stopped.task_id)
 
 
 def test_a_held_wake_outlives_a_restart_and_an_interrupted_send_reads_uncertain(

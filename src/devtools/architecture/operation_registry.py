@@ -98,6 +98,7 @@ def _offered(root: Path) -> dict[str, set[str]]:
 
 
 _NAMING_TEXTS = (
+    "AGENTS.md",
     "src/alphalattice",
     ".agents/skills",
     ".claude/skills",
@@ -108,6 +109,12 @@ _NAMING_TEXTS = (
     "README.md",
 )
 """The texts a person or an agent reads for how to run the product; the plans are history."""
+_OUTSIDE_TOOLS = frozenset({"git", "uv", "pip", "python", "codex", "claude"})
+"""Commands outside the product that a guide names beside its own."""
+_OUTSIDE_NAMES = ("ANTHROPIC_",)
+"""Name prefixes that belong to a host, not the product, such as its environment variables."""
+_NAME = re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b")
+"""A product name in capitals: an operation, a status, an action or a code."""
 
 _NAMED = re.compile(
     r"`(alphalattice |python scripts/run_alphalattice\.py )?(?:--[a-z][a-z-]* \S+ )*"
@@ -155,6 +162,8 @@ def named_commands(root: Path) -> list[str]:
 
     options = _cli_options()
     nouns = {noun for noun, _verb in options}
+    verbs = {verb for _noun, verb in options if verb}
+    names = _code_names(root)
     out: list[str] = []
     for base in _NAMING_TEXTS:
         start = root / base
@@ -166,11 +175,13 @@ def named_commands(root: Path) -> list[str]:
             if "`" not in text:
                 continue
             relative = path.relative_to(root).as_posix()
+            guide = path.suffix != ".py"
+            out.extend(_retired_names(relative, text, names) if guide else ())
             for match in _NAMED.finditer(text):
-                prefix, noun, verb, rest = match.groups()
+                _prefix, noun, verb, rest = match.groups()
                 flags = [token.split("=", 1)[0] for token in rest.split() if token.startswith("--")]
                 if noun not in nouns:
-                    if prefix or (verb is None and rest.lstrip().startswith("--")):
+                    if _a_command(match.groups(), guide=guide, verbs=verbs):
                         out.append(f"{relative} names `{noun}`, a command the CLI does not have")
                     continue
                 command = (noun, verb or "")
@@ -182,6 +193,37 @@ def named_commands(root: Path) -> list[str]:
                         named = f"{noun} {verb} {flag}" if verb else f"{noun} {flag}"
                         out.append(f"{relative} names `{named}`, a flag the CLI does not have")
     return out
+
+
+def _code_names(root: Path) -> set[str]:
+    """Every capitalised name the code has; a guide naming another names a retired one."""
+    return {
+        name
+        for code in (root / "src", root / "scripts")
+        for path in (code.rglob("*") if code.is_dir() else ())
+        if path.suffix in {".py", ".json", ".js", ".cjs"} and "__pycache__" not in path.parts
+        for name in _NAME.findall(path.read_text(encoding="utf-8", errors="replace"))
+    }
+
+
+def _retired_names(relative: str, text: str, names: set[str]) -> list[str]:
+    """Each capitalised name a guide gives in backticks that the code no longer has."""
+    return [
+        f"{relative} names `{name}`, a name the product does not have"
+        for name in sorted(set(re.findall(r"`([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)`", text)))
+        if name not in names and not name.startswith(_OUTSIDE_NAMES)
+    ]
+
+
+def _a_command(phrase: tuple[str, ...], *, guide: bool, verbs: set[str]) -> bool:
+    """Whether a phrase whose first word is no CLI noun still reads as a command.
+
+    With the root command's prefix, or a word and then a flag, it does; in a guide, a noun and
+    a CLI verb with no prefix does too, unless the noun is a tool outside the product.
+    """
+    prefix, noun, verb, rest = phrase
+    retired = guide and verb in verbs and noun not in _OUTSIDE_TOOLS
+    return bool(prefix) or retired or (verb is None and rest.lstrip().startswith("--"))
 
 
 def incomplete_offers(root: Path) -> list[str]:

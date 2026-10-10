@@ -1476,12 +1476,12 @@
   "next_action": "ASK_THE_PERSON_AGAIN"
  },
  "research_update.refused": {
-  "detail": "The update could not be planned or admitted, and the strategy's activation stands. Plan the update again with `research-update plan --package <package>`.",
+  "detail": "The update could not be planned or admitted, and the strategy's activation stands. Plan it again from the offered `update` request, or with `research-update plan --package <package>`, adding `--through <session>` for a named date's update.",
   "next_action": "PLAN_THE_UPDATE_AGAIN"
  },
  "first_use.date_outside_calendar": {
-  "detail": "The first use's date is one the exchange calendars do not plan, so no update was planned for it, and the activation stands. Plan the update with `research-update plan --package <package>`.",
-  "next_action": "PLAN_THE_UPDATE_AGAIN"
+  "detail": "The first use's date is not a session the exchange calendars plan, so its positions cannot be made for that date, and the activation stands. The goal's date never changes: tell the person, then close the goal by its procedure or start a new first use on a session date.",
+  "next_action": "TELL_THE_PERSON_THE_DATE_IS_NOT_A_SESSION"
  },
  "committee.not_open": {
   "detail": "No committee is open on this update; open it with `committee open --update <task>`.",
@@ -1518,5 +1518,9 @@
  "model_training.finish_or_recover_existing_task": {
   "detail": "An unfinished Task ({subject}) prevents preparing model training inputs. Read or wait for that Task before preparing the inputs.",
   "next_action": "READ_OR_WAIT_FOR_THE_EXISTING_TASK"
+ },
+ "task_control.wake_task_stopped": {
+  "detail": "The Task is {subject}, so it moves only on a request and a wake would never come. Read its way on with `task show <task>` and follow the recovery it offers.",
+  "next_action": "READ_THE_TASKS_WAY_ON"
  }
 }

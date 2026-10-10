@@ -61,6 +61,74 @@ _untyped: list[str] = []
 """Each failure without a product code an operation gave this test, answered or raised (V449)."""
 _unworded: list[str] = []
 """Each refusal an operation raised whose code the Host answers without words (V456)."""
+_resent: set[str] = set()
+"""Each offer this test sent back as it stood, once."""
+_sending: list[bool] = []
+"""Set while an offer is sent back: its answers send none back themselves."""
+_ROUND_TRIP_REPORT = os.environ.get("ALPHALATTICE_ROUND_TRIP_REPORT")
+"""Discovery: each offer is sent back whole, a preview's body included, and what it finds is
+written to this file. A sent preview records its link, so this never runs by default."""
+_trips: list[str] = []
+"""In discovery, what the offers sent back found, written down at the test's end."""
+
+
+def truth_problems(host, operation, body, admits):
+    """What an answer says against its Task's record or its own offers (ANSWER-TRUTH).
+
+    A stopped Task's answer, by its record, offers no wait on it; each recovery-bound preview it
+    offers, sent back as it stands, passes its owner's admission check (`admits`, which writes
+    nothing), never refused as not offered or invalid; and an update offered under a dated first
+    use keeps that date.
+    """
+    from uuid import UUID
+
+    from alphalattice.interface.local_application.answers import stopped_problem
+    from alphalattice.interface.local_application.cli_contract import offered_requests
+    from alphalattice.interface.local_application.failure_codes import public_failure
+    from alphalattice.interface.local_application.goals import target_sessions
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchRequestDocument,
+    )
+
+    named = body.get("task_id") or body.get("blocking_task_id")
+    try:
+        actual = host.workspace_session.task_control_registry.task(UUID(str(named))).lifecycle
+    except (AttributeError, LookupError, TypeError, ValueError):
+        actual = None
+    # A command's answer names a Task its own act still moves: only a wait on it is wrong here.
+    if actual is not None and (problem := stopped_problem(body, actual.value, way_on=False)):
+        yield f"{operation}: {problem}"
+    offers = offered_requests(body)
+    # A preview that is its own admission writes its link while checked: it is left out.
+    previews = {item.preview for item in host.replans().values() if item.preview != item.admitting}
+    for name, offer in offers.items():
+        key = json.dumps(offer, sort_keys=True, default=str)
+        if "recovery_task_id" not in offer or offer["operation"] not in previews or key in _resent:
+            continue
+        _resent.add(key)
+        try:
+            answer = admits(
+                PortfolioResearchRequestDocument.model_validate(offer).to_operation_request()
+            )
+            code = str(answer.get("failure_code") or "") if isinstance(answer, dict) else ""
+        except Exception as error:
+            code = public_failure(error, "operation.raised")
+        base = code.partition(":")[0]
+        if "not_offered" in base or base.endswith("_invalid") or "operation_field" in base:
+            yield f"{operation} offers `{name}`, which sent back as it stands is refused: {code}"
+    first_use = getattr(getattr(host, "goals", None), "first_use", lambda: None)()
+    date = None if first_use is None else first_use.declaration.target_date
+    if date is not None and host.goals.first_use_delegation(first_use)["active"]:
+        try:
+            formation = str(target_sessions(date)["formation_session"])
+        except ValueError:
+            formation = None
+        for name, offer in offers.items():
+            dated = offer.get("observed_through")
+            if offer.get("operation") == "RESEARCH_UPDATE_PLAN" and (
+                formation is None or dated != formation
+            ):
+                yield f"{operation} offers `{name}`, an update that is not the first use's date"
 
 
 def plan_admission_problem(operation, body, replans, routes):
@@ -156,6 +224,12 @@ def plan_admission_check():
     return plan_admission_problem
 
 
+@pytest.fixture
+def truth_check():
+    """The answer-truth observer every executed operation meets, for its planted cases."""
+    return truth_problems
+
+
 @pytest.fixture(autouse=True)
 def _memory_checks_read_no_host(monkeypatch: pytest.MonkeyPatch) -> None:
     """The early memory refusal reads unknown memory, and skips, unless a test sets it.
@@ -225,6 +299,16 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
             problem = answer_problem(request.operation, body, given)
             if problem is not None:
                 _unheld.append(problem)
+            if isinstance(body, dict) and not _sending:
+                _sending.append(True)
+                admits = self._recovery_context
+                if _ROUND_TRIP_REPORT:
+                    admits = lambda sent: original(self, sent)  # noqa: E731
+                try:
+                    found = truth_problems(self, request.operation, body, admits)
+                    (_trips if _ROUND_TRIP_REPORT else _unheld).extend(found)
+                finally:
+                    _sending.pop()
             replans = self.replans()
             if any(
                 item.preview == request.operation and item.preview != item.admitting
@@ -256,6 +340,11 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
         execute.held = 1  # type: ignore[attr-defined]
         owner.execute = execute
     yield
+    _resent.clear()
+    if _ROUND_TRIP_REPORT and _trips:
+        with open(_ROUND_TRIP_REPORT, "a", encoding="utf-8") as kept:
+            kept.writelines(f"{line}\t{request.node.nodeid}\n" for line in _trips)
+        _trips.clear()
     untyped = list(dict.fromkeys(_untyped))
     _untyped.clear()
     if untyped and request.node.get_closest_marker("untyped_failure") is None:

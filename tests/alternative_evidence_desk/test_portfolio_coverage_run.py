@@ -730,7 +730,7 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
 
 
 def test_a_book_its_sources_cannot_cover_says_so_with_its_ways_on(
-    book: Any, tmp_path: Path
+    book: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A book its sources cannot cover says so with its ways on."""
 
@@ -752,6 +752,15 @@ def test_a_book_its_sources_cannot_cover_says_so_with_its_ways_on(
         short = preview["coverage"]["units_short_of_sources"]
         assert [value["unit_id"] for value in short] == [value["unit_id"] for value in units]
         assert "package" not in preview["source_ways"]
+        # Under a first use's delegation, the default budget is the agent's to give (F11).
+        with monkeypatch.context() as delegating:
+            review = service.session.operations.review
+            delegating.setattr(review, "network_delegation", lambda _caller: "first-use")
+            delegated = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        assert delegated["next_action"] == "ACQUIRE_UNDER_THE_FIRST_USE_DELEGATION"
+        consent = delegated["source_ways"]["next_requests"]["consent"]
+        assert consent["evidence_documents_per_issuer"] == 3
+        assert "delegation" in delegated["source_ways"]["official"]["before"]
 
         # A run sent anyway, as a preview saved before would send it, fails each unit by name.
         sent = _run_one(

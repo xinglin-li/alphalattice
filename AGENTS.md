@@ -143,7 +143,8 @@ alphalattice bundle prepare --role ALPHA --task <task> --dir "<out>/committee/al
 On a date's published positions, you, the PM, convene the investment committee
 with Alpha, Risk and the CRO. `committee open` offers each specialist's bundle: its
 view of the date's positions and its `submit` and `wait` on the floor. Prepare the
-three (ALPHA, RISK, CRO), then in one turn start them as general subagents, each
+three (ALPHA, RISK, CRO), then in one turn start them as general subagents (the
+registered CRO card runs no command, and each bundle's route runs two), each
 prompt its card's text and its bundle's path, and submit your own stance after
 reading `committee show --update <task>`. The open's answer gives your PM key
 (`pm_key`), and your session's later open gives it again: pass it as `--key` with

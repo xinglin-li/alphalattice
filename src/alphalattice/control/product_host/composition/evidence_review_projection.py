@@ -76,9 +76,9 @@ from .evidence_review_application import (
     ResolvedBookScope,
     ReviewOutcome,
     _CurrentEvidenceSelection,
-    source_ways,
 )
 from .evidence_review_delivery import EvidenceReviewDelivery
+from .evidence_source_ways import source_ways
 from .plain_refusals import SOURCE_SHORT_CODES, STALE_PACKET, unit_failure_words
 
 if TYPE_CHECKING:

@@ -51,7 +51,8 @@ Graph (→ the next step; what carries over):
   a proposal was evaluated.
 - Your committee bundle holds the date's concentration and the proposal's Risk status: a
   proposal not evaluated is named so, never estimated.
-- On the committee, run only your bundle's `submit` and `wait`: one blind STANCE on the
+- On the committee, your bundle's route is your one final action, in place of an answer
+  file: run only its `submit` and `wait`, one blind STANCE on the
   tension points, then up to three CHALLENGE or REPLY messages, each naming its targets by
   alias (T2, H3, M4); the Host renders every number.
 

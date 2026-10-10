@@ -16,7 +16,7 @@ Delegate a distinct professional question when separate context helps; you remai
 A stage role (Data, Factor, Alpha, Risk, Portfolio) gets the question, checkout root, absolute workspace, goal id, exact references, permitted operations, launch budget, knowledge cutoff and the complete evidence, adverse facts included. An executor in its own session takes the goal first. For its answer, prepare the retained Task with `bundle prepare --role <ROLE> --task <task-id> --dir "<out>/bundle"`. Evidence Analysts and CROs get only their bundle, file list and answer path: no workspace, question, authority or credentials.
 
 1. Start the card with the host's subagent tool. In the session that installed AlphaLattice, start a general subagent whose prompt is the card's text (`.claude/agents/<card>.md`, or `developer_instructions` in `.codex/agents/<card>.toml`); its tool limits then hold by instruction. Keep the cards' shipped models.
-2. The child reads README.md and the listed files, writes the answer file and returns one line: written.
+2. The child reads README.md and the listed files, writes the answer file and returns one line: written. A committee bundle's README gives its route instead, `committee submit` and `committee wait` with the member's key, and no answer file: the child speaks on the floor itself, so you submit nothing for it.
 3. You submit it: run the preparation's `submit_command`, or `review continue` for Analysts and the CRO. On `CORRECT`, send the named items back to the same child, at most twice; a correction never changes judgment.
 4. Read the publication from its owner, never from the answer file. A bundle answers only the Task it was prepared for; a new Task needs a new bundle.
 

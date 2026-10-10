@@ -117,6 +117,23 @@ class GoalDeclaration(GoalContract):
         return cast(dict[str, Any], self.model_dump(mode="json", exclude={"title"}))
 
 
+def update_offers(update: object, named: date | None, task: object) -> dict[str, object]:
+    """An activation's update offers: its status once admitted, else the update to plan.
+
+    Under a first use the update keeps the goal's named date, which never changes, and a date no
+    session reads offers none, since the latest session's update is not the goal's.
+    """
+    if task:
+        return {"update_status": {"operation": "STATUS", "task_id": str(task)}}
+    if named is None or not isinstance(update, dict):
+        return {} if update is None else {"update": update}
+    try:
+        formation = str(target_sessions(named)["formation_session"])
+    except ValueError:
+        return {}
+    return {"update": {**update, "observed_through": formation}}
+
+
 def target_sessions(named: date) -> dict[str, object]:
     """The sessions a named date's positions stand on, from the exchange calendars alone.
 

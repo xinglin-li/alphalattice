@@ -24,12 +24,22 @@ def test_a_command_a_text_names_is_one_the_cli_has(tmp_path: Path) -> None:
         "Prose such as `uv sync --locked` is no command.\n",
         encoding="utf-8",
     )
+    guide = tmp_path / "AGENTS.md"  # a guide: a retired command or name, beside outside ones
+    guide.write_text(
+        "`capabilities show`, `WORKSPACE_PREPARE_PLANZ`; `git show HEAD`, `ANTHROPIC_MODEL`, "
+        "`WORKSPACE_PREPARE_PLAN`.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "names.py").write_text('PLAN = "WORKSPACE_PREPARE_PLAN"\n', "utf-8")
     found = named_commands(tmp_path)
-    assert [line.split(" names ")[1] for line in found] == [
+    assert [line.split(" names ")[1] for line in found if line.startswith("case-study")] == [
         "`capabilities`, a command the CLI does not have",
         "`study frobnicate`, a command the CLI does not have",
         "`study show --sectoin`, a flag the CLI does not have",
     ]
+    named = [line.split("`")[1] for line in found if line.startswith("AGENTS.md")]
+    assert named == ["WORKSPACE_PREPARE_PLANZ", "capabilities"]
 
 
 def test_every_documented_command_line_parses(

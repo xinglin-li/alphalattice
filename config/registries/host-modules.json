@@ -12,6 +12,7 @@
     "src/alphalattice/control/product_host/composition/evidence_review_delivery.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/evidence_review_projection.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/evidence_review_workspace.py": "COMPOSITION",
+    "src/alphalattice/control/product_host/composition/evidence_source_ways.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/feature_trials.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/foundation_summary.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/goal_case_routes.py": "COMPOSITION",

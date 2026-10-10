@@ -420,7 +420,7 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     tmp_path: Path, readback: dict[str, Any]
 ) -> None:
     """requirement (the bundles): a specialist bundle on a date's update holds the role's view of
-    the positions, and while a floor is open, how that role speaks on it with its key."""
+    the positions, and while a floor is open, its route with its key as the one final action."""
     alpha = committee.role_lines("ALPHA", readback, EVIDENCE, None, NOW) or []
     assert any("scores at formation" in line for line in alpha)
     assert any(
@@ -433,7 +433,9 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     assert floor is not None
     cro = committee.role_lines("CRO", readback, EVIDENCE, floor, NOW) or []
     assert any("No Evidence stands" in line for line in cro)
-    assert f"--role CRO --key {floor.key('CRO')}" in cro[-1]
+    way = committee.route("CRO", floor, NOW) or ()
+    assert f"--role CRO --key {floor.key('CRO')}" in way[1] and "only final action" in way[-1]
+    assert committee.route("CRO", None, NOW) is None  # no floor: the answer file stands
     exited = [{**h, "weight": 0.0} for h in floor.opened["holdings"]]
     emptied = replace(floor, opened={**floor.opened, "holdings": exited})
     assert any(

@@ -263,6 +263,28 @@ def admit_decision_checkpoint(
         raise ValueError("portfolio_update.checkpoint_listing_authority_mismatch")
 
 
+RUN_FORWARD_WORDS: Final = {
+    False: "A book that runs forward to next positions comes from the research strategy: its "
+    "controls name the required Alpha and Risk studies over their whole support, which need no "
+    "Factor study; then prepare and install it, run its whole-support book and review that "
+    "book. A Lab book is research only and is never activated.",
+    True: "A book that runs forward to next positions comes from the research strategy: its "
+    "controls name the required Alpha and Risk studies over their whole support, which need no "
+    "Factor study; then prepare and install it and run its whole-support book, the first use's "
+    "numerical check. Activation then makes the first use's date's update, and those positions "
+    "are reviewed. A Lab book is research only and is never activated.",
+}
+"""The first use's shortest way, ahead of the inputs' Lab flows, by whether a first
+use is open: its book is then the numerical check, and its date's positions are reviewed."""
+INSTALLED_BOOK_WORDS: Final = {
+    False: "The installed strategy runs its whole-support historical book from its controls; "
+    "review that book, then read its exact activation offer.",
+    True: "The installed strategy runs its whole-support historical book from its controls, "
+    "the first use's numerical check; then read its activation offer, which makes the first "
+    "use's date's update in the same act.",
+}
+
+
 class StrategyActivation:
     """Own a person's activation and deactivation of an installed research strategy's book."""
 

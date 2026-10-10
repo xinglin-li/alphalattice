@@ -379,10 +379,16 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
     }
     ((task, thread, read),) = wakes
     assert (task, thread) == (UUID(int=9), "thread-1") and read.endswith(f"task show {UUID(int=9)}")
-    # A date the calendars do not plan leaves the committed activation standing (the review).
+    # A refused plan's offered update keeps the named date, never the latest session's (F10).
+    refusing = SimpleNamespace(**{**vars(owner), "execute": lambda _request: {"status": "REFUSED"}})
+    kept = PortfolioResearchOperations._first_update(refusing, activated, None)  # type: ignore[arg-type]
+    assert kept["next_requests"]["update"]["observed_through"] == "2026-10-09"
+    # A date the calendars do not plan leaves the committed activation standing (the review),
+    # and offers no update at all.
     goal.declaration.target_date = datetime(2099, 1, 2).date()
-    update = PortfolioResearchOperations._first_update(owner, activated, None)["update"]  # type: ignore[arg-type]
-    assert update["plan"]["failure_code"] == "first_use.date_outside_calendar"
+    outside = PortfolioResearchOperations._first_update(owner, activated, None)  # type: ignore[arg-type]
+    assert outside["update"]["plan"]["failure_code"] == "first_use.date_outside_calendar"
+    assert "update" not in outside["next_requests"]
 
 
 def test_a_first_use_is_the_one_before_the_first_preparation(

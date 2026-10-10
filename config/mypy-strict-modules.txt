@@ -142,6 +142,7 @@ src/alphalattice/control/product_host/composition/evidence_review_application.py
 src/alphalattice/control/product_host/composition/evidence_review_delivery.py
 src/alphalattice/control/product_host/composition/evidence_review_projection.py
 src/alphalattice/control/product_host/composition/evidence_review_bundles.py
+src/alphalattice/control/product_host/composition/evidence_source_ways.py
 src/alphalattice/control/product_host/maintenance/data_update.py
 src/alphalattice/control/product_host/composition/strategy_scoring.py
 src/alphalattice/control/product_host/composition/strategy_score_inputs.py

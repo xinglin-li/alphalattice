@@ -16,6 +16,7 @@ afterwards. It adds no power: what a person or an agent may do is what the recov
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from threading import Event, Lock, Thread
 from typing import Literal, Protocol, cast
 from uuid import UUID
@@ -38,7 +39,7 @@ from alphalattice.control.product_host.composition.task_recovery import (
     task_attention,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord, WorkItemLifecycle
-from alphalattice.control.task_control.registry import TaskNotFoundError
+from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry, TaskNotFoundError
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
@@ -400,3 +401,29 @@ def _refused(code: str, request: PortfolioResearchOperationRequest) -> dict[str,
         "next_requests": {"incidents": {"operation": "TASK_INCIDENTS"}},
         "task_id": None if request.task_id is None else str(request.task_id),
     }
+
+
+def register_wake(
+    registry: DuckDbTaskControlRegistry, wake: tuple[UUID, str, str], *, observed_at: datetime
+) -> dict[str, object]:
+    """Hold a lead's wake on a Task that still moves by itself (WAKE).
+
+    A stopped Task moves only on a request, so its wake is refused with the read that names its
+    way on; an unknown Task is refused by name.
+    """
+    from alphalattice.control.product_host.composition.plain_refusals import refused
+    from alphalattice.interface.local_application.cli_contract import STOPPED_STATES
+
+    task_id, thread, read = wake
+    try:
+        if (state := registry.task(task_id).lifecycle.value) in STOPPED_STATES:
+            return {
+                **refused(f"task_control.wake_task_stopped:{state}"),
+                "task_id": str(task_id),
+                "lifecycle": state,
+                "next_requests": {"read": {"operation": "STATUS", "task_id": str(task_id)}},
+            }
+        held = registry.register_wake(task_id, thread, read, observed_at=observed_at)
+    except TaskNotFoundError:
+        return refused("task_control.task_not_found")
+    return {"status": "WAKE_REGISTERED", "task_id": str(task_id), "wake": held}

@@ -45,6 +45,10 @@ from alphalattice.control.product_host.composition.application_session import (
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     on_official_source,
 )
+from alphalattice.control.product_host.composition.evidence_source_ways import (
+    SHORT_SOURCE_ACTION,
+    source_ways,
+)
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -129,7 +133,6 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     coverage_run_task_contract,
 )
 from alphalattice.evidence.alternative_evidence.sources.admission import (
-    DEFAULT_SOURCE_CONSENT,
     OfficialSourceAdmission,
     acquisition_scope,
     evidence_source_consent,
@@ -448,75 +451,6 @@ _INSTALLED_AUTHORITY = (
     "official_source",
 )
 """What an installed package gives the review (`adopt`); its runtime state is its own."""
-
-
-def source_ways(
-    workspace: Path,
-    *,
-    entities: tuple[str, ...] | None,
-    book: BookSelector | None,
-    for_refusal: bool = False,
-    refusal: str | None = None,
-    delegation: str | None = None,
-) -> dict[str, object]:
-    """The lawful ways on when the recorded package holds too few sources (V541, V546).
-
-    Official SEC acquisition first, the person's decision: with their consent and the network
-    open, the running Host reads every holding's filing index at one cutoff, names those that
-    filed nothing in the window and fetches the rest, so every unit stands at that cutoff and
-    the book is reviewed whole. A recorded package is offered only where one covers every unit's
-    issuers, a book of one unit (`PACKAGE_RULE`).
-
-    Args:
-        workspace: The workspace's folder.
-        entities: Every issuer of the book, when one package covers them all; else None.
-        book: The book, whose research input the package names when a study authored it.
-        for_refusal: Whether official acquisition has actually been refused for network access.
-        refusal: Why the official source is not admitted though consented, said first.
-        delegation: Network authority validated by the first-use owner.
-
-    Returns:
-        The ``official`` consent command with what it needs first, the package rule, and the
-        ``package`` steps with the issuers filled where one package covers the book.
-    """
-    # The person's own consent, in their shell: it names the workspace on either leg (V568, V429).
-    ways: dict[str, object] = {
-        "official": {
-            "command": f'{" ".join(command_prefix())} --workspace "{workspace}" evidence-consent '
-            f"set --per-issuer {DEFAULT_SOURCE_CONSENT.documents_per_issuer}",
-            "before": str(
-                network_access(workspace).body(for_refusal=for_refusal, delegation=delegation)[
-                    "detail"
-                ]
-            )
-            + " "
-            "The person's decision: their consent to acquire SEC filings from the "
-            "official endpoints, within the budget it names, and the workspace's network open; "
-            "the product names itself to the SEC by its own contact. Both take effect at once, "
-            "with no restart; then preview and prepare again, which reads every unit at one "
-            "cutoff.",
-        },
-        "package_rule": PACKAGE_RULE,
-    }
-    if refusal is not None:
-        official = cast(dict[str, object], ways["official"])
-        official["refusal_code"] = refusal
-        official["before"] = f"{refusal_words(refusal).get('detail', refusal)} {official['before']}"
-    if entities is None:
-        return ways
-    setup = evidence_setup(workspace, authored=_authored(book))
-    authority = cast(dict[str, Any], setup["authority"])
-    named = "--entities " + " ".join(entities)
-    ways["package"] = {
-        "entities": list(entities),
-        "check": str(authority["check"]).replace("--entities <TICKER> ...", named),
-        "install": str(authority["install"]).replace("--entities <TICKER> ...", named),
-        "choose": [value for value in authority["choose"] if value["arg"] != "--entities"],
-        "before": authority["before"],
-        "covers": "Every issuer of this book, in place of the installed package; an issuer that "
-        "filed nothing in the window holds no document in a package.",
-    }
-    return ways
 
 
 DOSSIER_STANDINGS = frozenset({"REFUSED_EVIDENCE_CUTOFFS_DIFFER", "REFUSED_DOSSIER_INVALID"})
@@ -2372,7 +2306,7 @@ class EvidenceReviewApplication:
                 # The book cannot be reviewed under these sources: said, with its ways on.
                 ways |= {
                     "failure_code": "alternative_evidence.book_sources_short",
-                    "next_action": "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE",
+                    "next_action": SHORT_SOURCE_ACTION[bool(self.network_delegation(caller))],
                 }
         network_refusal = self._source_acquisition_refusal(
             evidence_as_of=run.evidence_as_of, caller=caller

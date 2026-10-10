@@ -127,6 +127,8 @@ from alphalattice.control.product_host.composition.resource_estimates import (
     gate_for,
 )
 from alphalattice.control.product_host.composition.strategy_activation import (
+    INSTALLED_BOOK_WORDS,
+    RUN_FORWARD_WORDS,
     StrategyActivation,
 )
 from alphalattice.control.product_host.composition.strategy_calibration import (
@@ -155,7 +157,10 @@ from alphalattice.control.product_host.composition.task_recovery import (
     build_task_recovery_view,
     stop_detail,
 )
-from alphalattice.control.product_host.composition.task_supervision import TaskSupervisor
+from alphalattice.control.product_host.composition.task_supervision import (
+    TaskSupervisor,
+    register_wake,
+)
 from alphalattice.control.product_host.composition.upgrade_overview import (
     acknowledge_upgrade,
     installed_study_identities,
@@ -308,6 +313,7 @@ from alphalattice.interface.local_application.goals import (
     GoalAcceptedAnswerReceipt,
     GoalSession,
     target_sessions,
+    update_offers,
 )
 from alphalattice.interface.local_application.native_bridge import (
     HOSTS,
@@ -487,19 +493,6 @@ def _read_at(request: PortfolioResearchOperationRequest) -> datetime | None:
     return (
         None if request.review_read_at is None else datetime.fromisoformat(request.review_read_at)
     )
-
-
-RUN_FORWARD_WORDS: Final = (
-    "A book that runs forward to next positions comes from the research strategy: its "
-    "controls name the required Alpha and Risk studies over their whole support, which need no "
-    "Factor study; then prepare and install it, run its whole-support book and review that "
-    "book. A Lab book is research only and is never activated."
-)
-"""The first use's shortest way, ahead of the inputs' Lab flows (FLOW-3)."""
-INSTALLED_BOOK_WORDS: Final = (
-    "The installed strategy runs its whole-support historical book from its controls; review "
-    "that book, then read its exact activation offer."
-)
 
 
 @dataclass(slots=True)
@@ -2212,6 +2205,9 @@ class PortfolioResearchOperations:
                 # A role's view of a date's positions, and of its committee floor when one is
                 # open: one owner for both.
                 dated = None if request.task_id is None else self._dated(str(request.task_id))
+                parts = committee.bundle_parts(
+                    request.agent_role, dated, self.goals.store, self.dispatcher.clock()
+                )
                 try:
                     prepared = EvidenceReviewBundles(self.review).prepare_agent_bundle(
                         role=request.agent_role,
@@ -2220,14 +2216,8 @@ class PortfolioResearchOperations:
                         task_id=request.task_id,
                         unit_id=request.evidence_unit_id,
                         dispatcher=self.dispatcher,
-                        view=None
-                        if dated is None
-                        else committee.role_lines(
-                            request.agent_role,
-                            *dated,
-                            committee.floor_of(self.goals.store, str(request.task_id)),
-                            self.dispatcher.clock(),
-                        ),
+                        view=parts[0],
+                        route=parts[1],
                     )
                 except (PortfolioEvidenceReviewError, ValueError) as error:
                     code = public_failure(error, "agent_bundle.refused")
@@ -2962,9 +2952,7 @@ class PortfolioResearchOperations:
                             observed_at=self.dispatcher.clock(),
                         )
         offered = dict(cast(dict[str, object], activated.get("next_requests") or {}))
-        if task:
-            offered.pop("update", None)
-            offered["update_status"] = {"operation": "STATUS", "task_id": str(task)}
+        offered |= update_offers(offered.pop("update", None), named, task)
         return {
             "update": {
                 "plan": {
@@ -3911,6 +3899,9 @@ class PortfolioResearchOperations:
         activation, a person's, with the book it would activate or the book it holds. A default
         installation's packages have no activation and are not listed.
         """
+        road = (first := self.goals.first_use()) is not None and bool(
+            self.goals.first_use_delegation(first)["active"]
+        )
         if not self.installed():
             # No strategy is installed: the way forward begins at the research strategy's
             # controls, which name each missing component's first step (V505, RR5). It is the
@@ -3919,7 +3910,7 @@ class PortfolioResearchOperations:
                 {
                     "flow": "RUN_FORWARD",
                     "status": "NO_RESEARCH_STRATEGY_INSTALLED",
-                    "detail": RUN_FORWARD_WORDS,
+                    "detail": RUN_FORWARD_WORDS[road],
                     "next_requests": {
                         "strategy_controls": {"operation": "RESEARCH_STRATEGY_CONTROLS"}
                     },
@@ -3941,7 +3932,7 @@ class PortfolioResearchOperations:
                         "flow": "RUN_FORWARD",
                         "strategy_package_id": package_id,
                         "status": "NO_BOOK_YET",
-                        "detail": INSTALLED_BOOK_WORDS,
+                        "detail": INSTALLED_BOOK_WORDS[road],
                         "next_requests": {
                             "books": {"operation": "CONTROLS", "strategy_package_id": package_id}
                         },
@@ -6211,16 +6202,11 @@ class PortfolioResearchOperations:
             # Task's journal and the activity sends it (R1, WAKE).
             assert request.task_id is not None
             assert request.wake_thread is not None and request.wake_read is not None
-            try:
-                wake = self.workspace_session.task_control_registry.register_wake(
-                    request.task_id,
-                    request.wake_thread,
-                    request.wake_read,
-                    observed_at=self.dispatcher.clock(),
-                )
-            except TaskNotFoundError:
-                return refused("task_control.task_not_found")
-            return {"status": "WAKE_REGISTERED", "task_id": str(request.task_id), "wake": wake}
+            return register_wake(
+                self.workspace_session.task_control_registry,
+                (request.task_id, request.wake_thread, request.wake_read),
+                observed_at=self.dispatcher.clock(),
+            )
         if operation not in {"ACTIVITY_LIST", "ACTIVITY_RECENT", "EVENT_DECLARE"}:
             return None
         observer = self.observer

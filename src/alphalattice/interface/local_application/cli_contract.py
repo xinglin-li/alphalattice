@@ -238,6 +238,8 @@ _PENDING_STATES: Final = frozenset(
     {"QUEUED", "RUNNING", "DEFERRED", "REVIEW_PENDING", "CANCEL_REQUESTED", "RECOVERY_REQUIRED"}
 )
 _REFUSED_STATES: Final = frozenset({"BLOCKED", "CANCELLED"})
+STOPPED_STATES: Final = _REFUSED_STATES | {"RECOVERY_REQUIRED"}
+"""A Task that moves only on a request: its answer offers that way on, never a wait or a wake."""
 ACTION_STATES: Final = frozenset({"REVIEW_PENDING", "RECOVERY_REQUIRED"})
 """Pending states that wait on a request, not on time: a review to decide, a Task to recover."""
 WAIT_EXITS: Final[Mapping[str, str]] = {
