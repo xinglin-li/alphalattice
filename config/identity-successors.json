@@ -12223,6 +12223,13 @@
    "successor": "7dc615bf058fcb3a4a7db2b2dd4fcc82ab9c31a95a3f051b2dc22b56068d117b",
    "change": "Count seams and guards (2026-10-09)",
    "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "e3e021b06f6bd743f80b9b28b6b5a0b3d5855c5127fd20825513bb4cf6662302",
+   "successor": "22d29079ffc10b3db212a5e0ab8bd0e17328a6d9e9fceb58ea4248892461f327",
+   "change": "Acceptance fixes and the dependency check (2026-10-09)",
+   "reason": "The preparation's recovery keeps its named predecessor and a blocked plan keeps its own; the readiness check reaches through its declared seam. The workspace preparation closure changed through these shared modules, and every value it produces is equal."
   }
  ]
 }
