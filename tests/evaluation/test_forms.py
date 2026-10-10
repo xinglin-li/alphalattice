@@ -74,6 +74,7 @@ def test_scenario_yaml_round_trips_route_alternatives_and_metadata():
             samples=3,
             owner="Status reader",
             evidence=["guide:1"],
+            starting_state="Selected retained result.",
         )
     )
     runner = RunnerConfig(
@@ -90,6 +91,8 @@ def test_scenario_yaml_round_trips_route_alternatives_and_metadata():
     assert row.to_dict()["version"] == 1
     assert rebuilt.scenarios[0].samples == 3
     assert Scenario.from_dict(scenario()).samples == 1
+    assert Scenario.from_dict(scenario()).starting_state == ""
+    assert rebuilt.scenarios[0].starting_state == row.starting_state
     assert rebuilt.runner == runner
     assert EvaluationDataset((row,)).runner is None
 
@@ -135,6 +138,9 @@ def test_runner_configuration_requires_model_specs_and_positive_sample_counts(co
         {"id": 0},
         {"id": "bad id"},
         {"sentence": ""},
+        {"starting_state": " "},
+        {"starting_state": None},
+        {"starting_state": False},
         {"now": "2026-01-02T10:00:00"},
         {"now": "invalid"},
         {"now": None},

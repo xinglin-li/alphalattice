@@ -1,5 +1,5 @@
 # Operating the CLI
-Date: 2026-10-08
+Date: 2026-10-10
 
 ## Setup and launch
 
@@ -38,7 +38,7 @@ Start the Host on an explicit workspace, a new directory for new research; the l
 alphalattice --workspace "workspaces/my-research" serve --no-browser --stop-on-stdin
 ```
 
-Keep it attached to stdin; `stop` or a closed stream stops it after its workers join, and a client disconnect does not. Reuse the Host already serving a workspace, never start a second writer, and never stop someone else's service. After a restart, open the new launch link.
+Keep it attached to stdin; sending `stop` to that launch process's stdin, or closing the stream, stops it after its workers join; a client disconnect does not. This is the launcher's input, not a CLI verb. Reuse the Host already serving a workspace, never start a second writer, and never stop someone else's service. An installation upgrade does not authorize stopping or restarting a running Host; take any required transition from the upgrade or readiness answer.
 
 ## Command contract
 

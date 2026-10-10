@@ -100,6 +100,7 @@ def test_every_documented_command_line_parses(
     dummy_id = "00000000-0000-4000-8000-000000000001"
     values = dict.fromkeys(
         [
+            "alpha-kind",
             "alpha-task-id",
             "alpha_task",
             "analyst-bundle-name",
@@ -122,12 +123,14 @@ def test_every_documented_command_line_parses(
             "model",
             "out",
             "package",
+            "plan-hash",
             "prepared-task",
             "preview_request",
             "returned-action-name",
             "risk-kind",
             "risk-task-id",
             "risk_task",
+            "session-id",
             "task",
             "task-id",
             "trial",
@@ -144,7 +147,9 @@ def test_every_documented_command_line_parses(
     values.update(
         {
             "binding": "1" * 64,
+            "alpha-kind": "alpha.model-development",
             "feature_plan_hash": "1" * 64,
+            "plan-hash": "1" * 64,
             "key": "1" * 32,
             "risk-kind": "risk-covariance-development",
             "tickers": "AAPL",

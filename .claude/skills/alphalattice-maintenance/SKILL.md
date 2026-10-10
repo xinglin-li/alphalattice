@@ -4,7 +4,7 @@ description: Keep the person's AlphaLattice user layer (.alphalattice/user/), th
 ---
 
 # AlphaLattice Maintenance
-Date: 2026-10-09
+Date: 2026-10-10
 
 The checkout ships the guide, the Skills and the cards. The person's tuning lives beside them in
 `.alphalattice/user/`, which no release contains or writes. Each shipped file reads its matching
@@ -33,7 +33,7 @@ The shipped [research Skill](../alphalattice-research/SKILL.md) reads its matchi
 
 - At a goal's end, and after a critical handoff once the date's positions are published (never
   before them): start the maintainer to RECORD.
-- On the person's correction: RECORD at once, with their own words.
+- On the person's correction or requested language or reporting preference: RECORD at once, with their own words. The agent starts `alphalattice_maintainer` to update the matching memory and its `.alphalattice/user/memory/MEMORY.md` index; no extra choice about whether or where to remember it is needed.
 - Before an upgrade: back up (below). After it: CLEAN in full.
 - When a bound is reached: CLEAN before adding; one in, one out.
 
@@ -95,7 +95,7 @@ count before and after; there is no separate ledger.
 
 1. Before: copy `.alphalattice/user/` (without `backups/`) and each shipped file that
    `git status --porcelain` shows modified into `.alphalattice/user/backups/<YYYY-MM-DD>/`.
-2. Upgrade: `git pull`, or the new version's install. Neither touches `.alphalattice/user/`.
+2. Upgrade: inspect the current installation and use its existing checkout branch (`git pull`) or release-wheel install route, following the upgrade and readiness answers. Ask about a version only when the installation and request leave the target unresolved. Neither route touches `.alphalattice/user/`.
 3. After: compare the layer with its backup; it must be unchanged. A local edit to a shipped file
    that the upgrade replaced moves into its user file, rewritten for the new version. Then CLEAN
    in full against the new version. Keep the last three backups.

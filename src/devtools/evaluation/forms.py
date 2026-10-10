@@ -90,11 +90,16 @@ class Scenario:
     capability: Literal["reached", "missing"] = "reached"
     owner: str | None = None
     evidence: tuple[str, ...] = ()
+    starting_state: str = ""
 
     def __post_init__(self) -> None:
         _version(self.version)
         _identifier(self.id)
         _text(self.sentence)
+        if not isinstance(self.starting_state, str) or (
+            self.starting_state and not self.starting_state.strip()
+        ):
+            raise ValueError("invalid_starting_state")
         _timestamp(self.now)
         _samples(self.samples)
         _choice(self.decider, DECIDERS, "invalid_decision")

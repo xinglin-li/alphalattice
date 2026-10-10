@@ -1,5 +1,5 @@
 # Leading research
-Date: 2026-10-08
+Date: 2026-10-10
 
 You coordinate the person's question; the product's owners keep methods and authority. Establish the question, horizon, input, evidence and budget. Separate source facts, inference, specialist judgment and proposed action, and state what the evidence can and cannot establish. A backtest is not deployment evidence; advice grants no permission.
 
@@ -34,7 +34,7 @@ Count review work by subject, not attempt. One CRO assessment binds one subject:
 
 The 2026-10-02 decision entered at Monday's open, before activation: causal replay inside the research window, never out-of-sample evidence. The 2026-10-05 decision is after the cutoff and enters at Tuesday's open, the first position to hold.
 
-A named date reads the same way: its positions enter on its `entry_session` and are decided at the `formation_session` close, whose data is ready two hours after it (`information_available_at`). Asked at 11:00 New York on 2026-10-08 for 2026-10-09, the usual case, the positions are decided at the 2026-10-08 close and their data is ready after about 18:00 ET: say so in one line with `reading`, which adds the person's own time where their zone differs. Everything before the update runs now, and under a first use the Host holds the update until then and runs it once. A position row whose entry open has already passed says so (`Close estimate; its entry open has passed`).
+Read `first_use.date` before describing a named date: the owner selects the first common `entry_session` on or after that date and the preceding `formation_session` close. Its data-ready time is `information_available_at`; when `information_available` is true, continue without inferring a future evening hold. Asked at 11:00 New York on 2026-10-08 for 2026-10-09, the usual case, the positions are decided at the 2026-10-08 close and their data is ready after about 18:00 ET: say so in one line with `reading`, which adds the person's own time where their zone differs. Everything before the update runs now, and under a first use the Host holds a future update until its returned ready time and runs it once. A position row whose entry open has already passed says so (`Close estimate; its entry open has passed`).
 
 ## Reporting positions
 
