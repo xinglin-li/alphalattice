@@ -24,6 +24,7 @@ from uuid import UUID, uuid5
 
 from pydantic import ValidationError
 
+from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
 from alphalattice.control.product_host.composition.goal_check import missing_items
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.publication.goals import GoalStore, sessions_of
@@ -55,6 +56,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     decision_hash,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.protocols.actor_execution import ActorKind
 from alphalattice.protocols.actor_execution.bundles import bundle_directory_key, bundle_slot
 
 GOAL_NAMESPACE = UUID("8f1d6c63-3c3e-4f5f-9f0e-5c4b2a7e8d10")
@@ -532,6 +534,48 @@ class GoalApplication:
         the goal, rather than asking the person for a grant.
         """
         return None if goal is None else self.delegation(goal, "DATA_ISSUE_CONFIRM", caller)
+
+    def recorded_data_confirmation(self, receipt: DataRemediationExecutionReceipt) -> bool:
+        """Read the original accepted first-use authority for an exact retained decision.
+
+        The receipt's rationale selects the goal; only its owned declaration and accepted
+        request record prove delegation. That historical authority survives the goal's end.
+        """
+        actor = receipt.actor_submission
+        rationale = receipt.submission.proposal.rationale
+        if actor.actor_kind is not ActorKind.EXTERNAL_AUTOMATION or not rationale.startswith(
+            "first-use-goal:"
+        ):
+            return False
+        try:
+            goal = self.store.head(UUID(rationale.removeprefix("first-use-goal:")))
+            if (
+                goal is None
+                or goal.declaration.kind != "FIRST_USE"
+                or rationale != f"first-use-goal:{goal.goal_id}"
+            ):
+                return False
+            for entry in self.store.attributed(goal.goal_id):
+                if (
+                    entry.get("operation") == "DATA_ISSUE_CONFIRM"
+                    and entry.get("status") == "CONFIRMED_PENDING_REVALIDATION"
+                    and entry.get("delegation") == rationale
+                    and entry.get("case_token") == receipt.submission.proposal.case_token
+                    and entry.get("option_id") == receipt.submission.proposal.option_id
+                    and isinstance(vendor := entry.get("agent_vendor"), str)
+                    and isinstance(session := entry.get("agent_session"), str)
+                    and vendor
+                    and session
+                    and actor.actor_id == f"{vendor}:{session}"
+                    and isinstance(recorded_at := entry.get("recorded_at"), str)
+                    and goal.intent_registered_at
+                    <= datetime.fromisoformat(recorded_at)
+                    < self.delegation_ends(goal)
+                ):
+                    return True
+        except (KeyError, OSError, TypeError, ValueError):
+            return False
+        return False
 
     def _own_preparation_stopped(self, goal: Goal) -> bool:
         """Whether a preparation this first use admitted is stopped, its data decisions owed.

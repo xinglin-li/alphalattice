@@ -457,6 +457,10 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
 
         # The person delegates the decision, on the Workbench's route.
         issues = _json(live, "/api/workspace/data-issues")
+        agent = LocalResearchClient(root)
+        pending = agent.request(issues["next_requests"][f"continue:{stopped.task_id}"])
+        assert pending.get("predecessor_task_id") == str(stopped.task_id), pending
+        assert pending["next_requests"] == {"issues": {"operation": "DATA_ISSUES"}}
         offers = {
             name: value
             for name, value in issues["next_requests"].items()
@@ -473,7 +477,6 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
         grant = delegated["grant"]["grant_hash"]
 
         # The agent decides it under the grant, then plans and confirms the successor.
-        agent = LocalResearchClient(root)
         decided = agent.request(delegated["next_requests"]["confirm"])
         assert decided.get("failure_code") is None, decided
         continuation = decided["next_requests"][f"continue:{stopped.task_id}"]
@@ -1355,12 +1358,42 @@ def test_a_preparation_answer_names_its_own_plan_whatever_its_owner_holds_last(
         assert "f" * 64 not in json.dumps(answer, default=str)
 
 
-def test_empty_start_and_actor_boundary_without_strategy_or_data_authority(tmp_path: Path):
+@pytest.mark.parametrize("injected", (False, True))
+def test_empty_start_and_actor_boundary_without_strategy_or_data_authority(
+    tmp_path: Path, injected, monkeypatch
+):
+    from unittest.mock import Mock
+
+    from alphalattice.evidence.alternative_evidence.sources.admission import admit_official_source
+    from tests.alternative_evidence_desk.sec_fixture_transport import SecFixtureTransport
+
+    source = admit_official_source(
+        network_consent=True,
+        transport=SecFixtureTransport() if injected else None,
+        workspace_root=tmp_path,
+    )
     with pytest.raises(ValueError, match="operation_hash_invalid"):
         PortfolioResearchOperationRequest(
             operation="STORAGE_CONFIRM", storage_plan_hash="../outside"
         )
-    with LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT) as live:
+    with LocalPortfolioWebSession.from_workspace(
+        tmp_path, clock=lambda: OBSERVED_AT, official_source=source
+    ) as live:
+        assert live.operations.official_source is source
+        assert live.operations.evidence_install.official_source is source
+        with monkeypatch.context() as missing:
+            missing.setattr(
+                "alphalattice.control.product_host.composition.portfolio_research_operations.run_setup",
+                Mock(side_effect=FileNotFoundError("risk.json")),
+            )
+            refusal = live.operations.execute(
+                PortfolioResearchOperationRequest(
+                    operation="EVIDENCE_INSTALL",
+                    evidence_setup="--acquire-sec --entities AAPL --preflight",
+                ),
+                caller="HUMAN",
+            )
+            assert refusal["status"] == "REFUSED" and refusal["failure_code"]
         projection = _json(live, "/api/session")
         assert projection["strategy"] is None and projection["installed_strategies"] == []
         assert not live.operations.installed()
@@ -1666,19 +1699,19 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
 
 
 @pytest.mark.parametrize(
-    ("terminal", "failure_code", "decisions_ready"),
+    ("terminal", "failure_code", "decisions_ready", "same_binding"),
     [
-        ("CANCELLED", None, None),
-        ("BLOCKED", "data.preparation_fixture_fix_required", None),
-        ("BLOCKED", "data.truth_review_required", False),
-        ("BLOCKED", "data.truth_review_required", True),
+        ("CANCELLED", None, None, False),
+        ("BLOCKED", "data.preparation_fixture_fix_required", None, False),
+        ("BLOCKED", "data.preparation_fixture_fix_required", None, True),
+        ("BLOCKED", "data.truth_review_required", False, False),
+        ("BLOCKED", "data.truth_review_required", True, False),
     ],
 )
 def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
-    tmp_path, monkeypatch, terminal, failure_code, decisions_ready
+    tmp_path, monkeypatch, terminal, failure_code, decisions_ready, same_binding
 ):
 
-    from alphalattice.control.product_host.composition.resource_estimates import gate_for
     from alphalattice.control.product_host.data_preparation import application as preparation_owner
     from alphalattice.control.product_host.data_preparation.remediation import (
         WorkspaceDataIssueApplication,
@@ -1688,7 +1721,8 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
 
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("cancel"))
     provider = recording_provider()
-    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+    with LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT) as live:
+        session = live.session
 
         def cancel_before_raw_work(app):
             perform = app._perform
@@ -1721,7 +1755,7 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
         task = first.confirm(original["plan_hash"], caller="HUMAN")
         first.execute(task.task_id)
         assert session.task_control_registry.task(task.task_id).lifecycle.value == terminal
-        if terminal == "BLOCKED":
+        if terminal == "BLOCKED" and not same_binding:
             monkeypatch.setattr(preparation_owner, "_implementation", lambda: "f" * 64)
         if decisions_ready is not None:
             monkeypatch.setattr(
@@ -1761,7 +1795,18 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
             source_loader=no_discovery,
         )
         cancel_before_raw_work(retry)
-        proposed = retry.plan()
+        if same_binding:
+            assert retry.plan()["task_id"] == str(task.task_id)
+        live.operations.preparation = retry
+        recovery = live.operations.recovery_view(task.task_id)["next_requests"]["replan"]
+        proposed = live.operations.execute(
+            PortfolioResearchAgentRequest.model_validate(recovery).to_operation_request()
+        )
+        assert proposed.get("failure_code") is None, proposed
+        assert (
+            session.task_control_registry.task(task.task_id).record_hash
+            == recovery["recovery_task_hash"]
+        )
         assert proposed["predecessor_task_id"] == str(task.task_id)
         assert proposed["resume_from_cancelled_task"] == (
             str(task.task_id) if terminal == "CANCELLED" else None
@@ -1777,7 +1822,6 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
         ]
         assert work["sources_may_be_accessed"] == ["yfinance"]
         assert proposed["candidate_count"] == 2
-        gate_for(tmp_path).plan_answered("WORKSPACE_PREPARE_PLAN", proposed)
         estimate = proposed["resource_estimate"]
         assert (estimate["wall_seconds"], estimate["wall_status"], estimate["elapsed_scope"]) == (
             None,
@@ -1785,11 +1829,22 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
             "REMAINING_WORK",
         )
         assert estimate["memory_scope"] == "FULL_TASK_CONSERVATIVE"
-        resumed = retry.confirm(proposed["plan_hash"], caller="HUMAN")
+        confirmation = live.operations.execute(
+            PortfolioResearchAgentRequest.model_validate(
+                proposed["next_requests"]["confirm"]
+            ).to_operation_request()
+        )
+        resumed = session.task_control_registry.task(UUID(confirmation["task_id"]))
+        assert (
+            session.task_control_registry.recovery_links(task.task_id)[-1].successor_task_id
+            == resumed.task_id
+        )
+        with pytest.raises(ValueError, match=r"workspace_preparation\.resume_scope_changed"):
+            retry.plan(recovery_task_id=task.task_id)
         assert (
             resumed.task_id != task.task_id
         )  # Cancellation is terminal; Human requested a new task.
-        retry.execute(resumed.task_id)
+        live.dispatcher.drain_for_tests()
         assert session.task_control_registry.task(resumed.task_id).lifecycle.value == terminal
         assert provider.calls == []
         assert (

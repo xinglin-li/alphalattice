@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
 from alphalattice.control.data_platform.maintenance.contracts import AgentExecutionBudget
 from alphalattice.control.data_platform.maintenance.coordinator import (
     WorkspaceMaintenanceCoordinator,
@@ -378,6 +379,7 @@ class WorkspaceRuntime:
         diagnose: Any | None = None,
         agent_budget: AgentExecutionBudget | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None,
     ) -> WorkspaceMaintenanceCoordinator:
         """Compose the concrete task-plane coordinator without another graph."""
         governance = FeatureInputGovernanceService(
@@ -403,6 +405,7 @@ class WorkspaceRuntime:
             feature_input=governance,
             snapshot_publisher=self.panel_snapshot_publisher(),
             diagnose=diagnose,
+            recorded_data_confirmation=recorded_data_confirmation,
             publish_adjusted_return_revision=adjusted_return_revisions.refresh,
             clock=clock,
             agent_budget=agent_budget or AgentExecutionBudget(),

@@ -13,6 +13,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
 from alphalattice.control.data_platform.delegation import DataIssueDelegation
 from alphalattice.control.data_platform.maintenance.contracts import (
     MaintenanceStatus,
@@ -497,6 +498,7 @@ class WorkspacePreparationApplication:
         clock: Callable[[], datetime],
         provider: MarketDataProvider | None = None,
         source_loader: SourceLoader | None = None,
+        recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None,
     ):
         """Wire retained preparation authority, optional sources and task telemetry.
 
@@ -505,9 +507,11 @@ class WorkspacePreparationApplication:
             clock: Explicit observed-time source.
             provider: Optional admitted market data provider.
             source_loader: Optional admitted source capture loader.
+            recorded_data_confirmation: Owner proof of a retained first-use data decision.
         """
         self.session, self.clock = session, clock
         self.provider, self.source_loader = provider, source_loader
+        self.recorded_data_confirmation = recorded_data_confirmation
         self.last_plan: WorkspacePreparationPlan | None = None
         # The newest plan, sealed on disk: a confirm after a restart finds it, and a newer
         # plan removes it, one preparation running at a time (V525).
@@ -747,7 +751,12 @@ class WorkspacePreparationApplication:
             else None,
         }
 
-    def plan(self, *, network_delegation: str | None = None) -> dict[str, Any]:
+    def plan(
+        self,
+        *,
+        network_delegation: str | None = None,
+        recovery_task_id: UUID | None = None,
+    ) -> dict[str, Any]:
         """Preview preparation or exact checkpoint recovery without acquiring new sources.
 
         Qualified local inputs are reused without download. Unfinished tasks retain their authority;
@@ -755,6 +764,7 @@ class WorkspacePreparationApplication:
 
         Args:
             network_delegation: Active first-use authority validated by the Host.
+            recovery_task_id: The exact stopped Task whose offered continuation is being read.
 
         Returns:
             Existing preparation state or explicit confirmation preview with source-access refusal,
@@ -763,6 +773,15 @@ class WorkspacePreparationApplication:
         Raises:
             ValueError: Existing local data lacks an explicit qualified binding.
         """
+        recovery = (
+            self.session.task_control_registry.task(recovery_task_id)
+            if recovery_task_id is not None
+            else None
+        )
+        if recovery is not None:
+            self._stored_plan(recovery)
+            if recovery.lifecycle not in {TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED}:
+                raise ValueError("workspace_preparation.resume_scope_changed")
         manifest = read_research_workspace_manifest(self.session.workspace)
         if manifest.experiment_inputs:
             return {
@@ -772,6 +791,10 @@ class WorkspacePreparationApplication:
             }
         tasks = self.tasks()
         superseded = superseded_preparations(self.session.task_control_registry, tasks)
+        if recovery_task_id is not None and str(recovery_task_id) in superseded:
+            raise ValueError("workspace_preparation.resume_scope_changed")
+        if recovery is not None:
+            tasks = (recovery,)
         unfinished = [
             t
             for t in tasks
@@ -795,6 +818,10 @@ class WorkspacePreparationApplication:
                 or self._load(previous.task_id, STAGES[0], optional=True) is None
                 or (
                     same_binding
+                    and (
+                        recovery_task_id is None
+                        or previous.failure_code == "data.truth_review_required"
+                    )
                     and not (
                         previous.failure_code == "data.truth_review_required"
                         and WorkspaceDataIssueApplication(
@@ -803,7 +830,14 @@ class WorkspacePreparationApplication:
                     )
                 )
             ):
-                return self.readback()
+                return (
+                    {
+                        **self.readback(previous.task_id),
+                        "predecessor_task_id": str(previous.task_id),
+                    }
+                    if recovery is not None
+                    else self.readback()
+                )
             resume = previous.task_id
         existing_inputs = None
         predecessor_plan = None
@@ -1711,7 +1745,11 @@ class WorkspacePreparationApplication:
                     progress=True,
                 )
                 runtime.prepare_feature_closure()
-                coordinator = runtime.maintenance_coordinator(readiness_gate=gate, clock=self.clock)
+                coordinator = runtime.maintenance_coordinator(
+                    readiness_gate=gate,
+                    clock=self.clock,
+                    recorded_data_confirmation=self.recorded_data_confirmation,
+                )
                 request = WorkspaceMaintenanceRequest.create(
                     market_profile_id=plan.binding.market_profile_id,
                     target_market_session=plan.target_session,

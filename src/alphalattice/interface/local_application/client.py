@@ -2545,12 +2545,12 @@ def _chain(client: LocalResearchClient, args: argparse.Namespace, name: str) -> 
     return _Chain(client, name, deadline, wake=wake)
 
 
-def _rerun(args: argparse.Namespace) -> list[str]:
-    """Rerun the verb with its controls and a fresh output path, preserving saved answers."""
+def _rerun(args: argparse.Namespace, *, continuation: dict[str, Any] | None = None) -> list[str]:
+    """Rerun the verb with its controls, a fresh output path and its admitted continuation."""
     verb = AGENT_VERBS[args.command]
     line = list(verb.words)
     for flag, name in (*verb.fields, ("--max-wait", "max_wait"), ("--notify", "notify")):
-        value = getattr(args, name, None)
+        value = (continuation or {}).get(name, getattr(args, name, None))
         if value is not None:
             line += [flag, str(Path(value).resolve() if isinstance(value, Path) else value)]
     if args.output:
@@ -2627,10 +2627,31 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
     preview_request = chain.offered(readback, "evidence_preview")
     if preview_request is None:
         return chain.stop("update" if update else "book_readback", readback)
-    preview = chain.send("evidence_preview", preview_request)
-    prepare = chain.offered(preview, "prepare")
-    if preview.get("status") != "EVIDENCE_PREPARATION_READY" or prepare is None:
-        return chain.stop("evidence_preview", preview)
+    captured = {
+        field: getattr(args, field, None)
+        for field in ("evidence_as_of", "preparation_binding_hash")
+    }
+    preview: dict[str, Any] = {}
+    prepare: dict[str, Any] | None
+    if any(captured.values()):
+        if not all(captured.values()):
+            raise LocalResearchClientError("local_client.request_invalid")
+        # Resume only the named preparation. Its owner rechecks this publication,
+        # cutoff and binding; a new preview would declare a different run.
+        prepare = {**preview_request, "operation": "EVIDENCE_PREPARE", **captured}
+    else:
+        preview = chain.send("evidence_preview", preview_request)
+        prepare = chain.offered(preview, "prepare")
+        if preview.get("status") != "EVIDENCE_PREPARATION_READY" or prepare is None:
+            return chain.stop("evidence_preview", preview)
+    if chain.wake is not None:
+        continuation = {field: prepare.get(field) for field in captured}
+        if not all(continuation.values()):
+            raise LocalResearchClientError("local_client.request_invalid")
+        chain.wake = (
+            chain.wake[0],
+            join([*_entry_of(client), *_rerun(args, continuation=continuation)], shell()),
+        )
     prepared = chain.send("evidence", prepare)
     pending = outcome_of(prepared) == "PENDING"
     if (ended := chain.followed("evidence", prepared)) is not None:
@@ -2657,7 +2678,7 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         "evidence": {
             "status": current.get("status") or current.get("disposition"),
             "evidence_as_of": current.get("evidence_as_of") or prepared.get("evidence_as_of"),
-            "coverage": preview.get("coverage"),
+            "coverage": current.get("coverage") or preview.get("coverage"),
             "prepared_task_id": prepared.get("task_id"),
         },
         "analyst_bundles": bundles,
@@ -3258,6 +3279,8 @@ AGENT_VERBS: Final[dict[str, _Verb]] = {
             ("--package", "strategy_package_id"),
             ("--dir", "bundle_root"),
             ("--update", "update_task_id"),
+            ("--as-of", "evidence_as_of"),
+            ("--preparation", "preparation_binding_hash"),
         ),
         _review_steps,
     ),

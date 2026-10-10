@@ -98,18 +98,28 @@ def installed_source_binding(workspace: Path, manifest: ResearchWorkspaceManifes
         The input's binding hash, or None when no installed authority is kept.
     """
     try:
-        installed = _installed_authority(workspace, manifest)
+        installed = installed_authority(workspace, manifest)
     except (ValueError, OSError, KeyError):
         return None
     return None if installed is None else str(installed[1].input_binding_hash)
 
 
-def _installed_authority(
+def installed_authority(
     workspace: Path, manifest: ResearchWorkspaceManifest, expected: str | None = None
 ) -> tuple[Path, LifecyclePortfolioAuthority] | None:
     """The installed strategy's lifecycle authority and its artifact root, if one is kept.
 
-    `expected`, when given, is the authority a saved book names; another refuses before a read.
+    Args:
+        workspace: The Host's workspace.
+        manifest: Its research workspace manifest.
+        expected: The authority a saved book names, when required.
+
+    Returns:
+        The admitted artifact root and verified authority, or None when no binding is kept.
+
+    Raises:
+        ValueError: A bound path escapes the workspace, names another authority, or fails readback.
+        OSError: The bound artifact cannot be read.
     """
     reference = next(
         (a for a in manifest.strategy_artifacts if a.artifact_key == ARTIFACT_KEY), None
@@ -117,6 +127,12 @@ def _installed_authority(
     if reference is None:
         return None
     path = confined(workspace, reference.relative_path)
+    if (
+        path.suffix != ".json"
+        or path.parent.name != CATEGORY
+        or path.parent.parent.name != "portfolio-strategy-lab"
+    ):
+        raise ValueError("portfolio_application.lifecycle_manifest_path_invalid")
     if expected is not None and path.stem != expected:
         raise ValueError("portfolio_application.saved_source_not_installed")
     return path.parents[2], PortfolioResearchArtifactStore(path.parents[2]).load(
@@ -190,7 +206,7 @@ def saved_portfolio_context(
             ),
         }
     try:
-        installed = _installed_authority(workspace, manifest, program.alpha_evidence_manifest_hash)
+        installed = installed_authority(workspace, manifest, program.alpha_evidence_manifest_hash)
         if installed is None:
             return context
         root, authority = installed
@@ -276,7 +292,7 @@ def saved_portfolio_sectors(
     Missing or mismatched sources remain explicitly unavailable.
     """
     try:
-        installed = _installed_authority(workspace, manifest, program.alpha_evidence_manifest_hash)
+        installed = installed_authority(workspace, manifest, program.alpha_evidence_manifest_hash)
         if installed is None:
             return {"status": "UNAVAILABLE", "by_listing": {}}
         root, authority = installed
@@ -725,7 +741,7 @@ def _date_risk(
     positions: PortfolioUpdatePositions,
 ) -> dict[str, Any]:
     session = positions.schedule.formation_session
-    installed = _installed_authority(workspace, manifest)
+    installed = installed_authority(workspace, manifest)
     if installed is None:
         raise ValueError("risk_research.installed_risk_surface_absent")
     root, authority = installed

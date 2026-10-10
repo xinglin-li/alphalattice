@@ -355,6 +355,7 @@ class WorkspaceMaintenanceCoordinator:
     quality_evaluator: FeatureInputQualityEvaluator | None = None
     diagnose: DataEngineerDiagnoser | None = None
     publish_adjusted_return_revision: Callable[[], object] | None = None
+    recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None
     agent_budget: AgentExecutionBudget = field(default_factory=AgentExecutionBudget)
     historical_revision_detection: str = "EVIDENCE_TRIGGERED_NO_PROVIDER_CHANGE_FEED"
     _session_authority_cache: dict[tuple[date, date], tuple[datetime, TradingSessionAuthority]] = (
@@ -3097,9 +3098,17 @@ class WorkspaceMaintenanceCoordinator:
                         or (
                             chosen is not None
                             and actor_submission.actor_kind is ActorKind.EXTERNAL_AUTOMATION
-                            and DataIssueDelegation(
-                                self.market_data.path.parent
-                            ).recorded_human_authorization(actor_submission.actor_id, case, option)
+                            and (
+                                DataIssueDelegation(
+                                    self.market_data.path.parent
+                                ).recorded_human_authorization(
+                                    actor_submission.actor_id, case, option
+                                )
+                                or (
+                                    self.recorded_data_confirmation is not None
+                                    and self.recorded_data_confirmation(chosen)
+                                )
+                            )
                         )
                     ),
                 )

@@ -12,6 +12,7 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import duckdb
 
+from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
 from alphalattice.control.data_platform.maintenance.contracts import (
     ListingMarketDataChange,
     MaintenanceStatus,
@@ -528,6 +529,7 @@ class WorkspaceDataUpdateApplication:
     """The re-plan of the Task kind this owner admits, which the recovery view offers
     (V188)."""
     portfolio_obligations: Callable[[], BookObligations] | None = None
+    recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None
 
     @property
     def manifest(self) -> ResearchWorkspaceManifest:
@@ -2182,7 +2184,11 @@ class WorkspaceDataUpdateApplication:
                 gate = self._readiness(runtime.market_data)
                 # A catalog an activation made opens its own closure before its first build.
                 runtime.prepare_feature_closure()
-                coordinator = runtime.maintenance_coordinator(readiness_gate=gate, clock=self.clock)
+                coordinator = runtime.maintenance_coordinator(
+                    readiness_gate=gate,
+                    clock=self.clock,
+                    recorded_data_confirmation=self.recorded_data_confirmation,
+                )
                 while True:
                     if cancelled():
                         return self._cancelled(plan)

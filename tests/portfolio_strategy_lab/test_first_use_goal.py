@@ -457,6 +457,7 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
     from alphalattice.control.product_host.composition.local_web_session import (
         LocalPortfolioWebSession,
     )
+    from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputExecutionStatus
     from alphalattice.foundation.market_data_ops.runtime.remediation import canonical_hash
     from alphalattice.protocols.actor_execution import ActorKind
     from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT, _source_loader_for
@@ -578,6 +579,52 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
             **common, actor_kind=ActorKind.HUMAN, actor_id=delegation
         )
         assert _cli(live, "goal", "take", opened["goal_id"], session=OTHER_SESSION)[0] == 0
+        goals = live.operations.goals
+        assert goals.recorded_data_confirmation(receipt)
+        assert not goals.recorded_data_confirmation(legacy)
+        foreign = remediation_case.seal_validated_data_remediation_execution(
+            **receipt.model_dump(exclude={"kind", "actor_submission", "receipt_hash"}),
+            actor_kind=ActorKind.EXTERNAL_AUTOMATION,
+            actor_id=f"claude-code:{OTHER_SESSION}",
+        )
+        assert not goals.recorded_data_confirmation(foreign)
+        accepted = next(
+            e
+            for e in goals.store.attributed(UUID(opened["goal_id"]))
+            if e.get("status") == "CONFIRMED_PENDING_REVALIDATION"
+        )
+        for wrong in (
+            {},
+            *(
+                {**accepted, key: value}
+                for key, value in (
+                    ("operation", "DATA_ISSUE_PREVIEW"),
+                    ("status", "REFUSED"),
+                    ("case_token", "0" * 64),
+                    ("option_id", "other"),
+                    ("agent_session", OTHER_SESSION),
+                    ("delegation", "other"),
+                    ("recorded_at", (OBSERVED_AT - timedelta(seconds=1)).isoformat()),
+                    ("recorded_at", (OBSERVED_AT + timedelta(hours=FIRST_USE_HOURS)).isoformat()),
+                )
+            ),
+        ):
+            with monkeypatch.context() as proof:
+                proof.setattr(goals.store, "attributed", lambda _, entry=wrong: (entry,))
+                assert not goals.recorded_data_confirmation(receipt), wrong
+        head = goals.store.head(UUID(opened["goal_id"]))
+        unrelated = head.model_copy(
+            update={"declaration": head.declaration.model_copy(update={"kind": "RESEARCH"})}
+        )
+        with monkeypatch.context() as proof:
+            proof.setattr(goals.store, "head", lambda _: unrelated)
+            assert not goals.recorded_data_confirmation(receipt)
+        with monkeypatch.context() as proof:
+            proof.setattr(goals, "clock", lambda: OBSERVED_AT + timedelta(days=2))
+            proof.setattr(
+                goals.store, "head", lambda _: head.model_copy(update={"state": "ABANDONED"})
+            )
+            assert goals.recorded_data_confirmation(receipt)
         panel = live.operations.data_issues.panel
         for retained in (receipt, legacy):
             with monkeypatch.context() as readers:
@@ -608,6 +655,17 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         code, successor = send(successor_plan["next_requests"]["confirm"])
         assert successor["status"] == "ADMITTED", successor
         assert UUID(str(successor["task_id"])) != stopped.task_id
+        live.dispatcher.drain_for_tests(timeout=900)
+        continued = registry.task(UUID(str(successor["task_id"])))
+        assert continued.lifecycle.value == "SUCCEEDED", continued.failure_code
+        applied = panel.feature_input_resolution(decided["case_token"])
+        assert applied["receipt"] == resolution["receipt"]
+        assert applied["effect"]["status"] == FeatureInputExecutionStatus.RAW_VALUE_RETAINED.value
+        pending = live.operations.data_issues.readback()
+        assert not any(
+            r.get("data_issue_case_token") == decided["case_token"]
+            for r in pending["next_requests"].values()
+        )
 
         code, shown = _cli(live, "goal", "show", opened["goal_id"])
         step = next(

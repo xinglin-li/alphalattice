@@ -272,6 +272,7 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
     DEFAULT_SOURCE_CONSENT,
     NOT_GRANTED,
     EvidenceSourceConsent,
+    OfficialSourceAdmission,
     evidence_source_consent,
     record_evidence_source_consent,
 )
@@ -520,6 +521,8 @@ class PortfolioResearchOperations:
     """The service's own composition of an Evidence package an install Task just bound
     (`LocalPortfolioWebSession.serve_installed_review`), answering the runtime it replaced;
     None outside a Host."""
+    official_source: OfficialSourceAdmission | None = None
+    """The Host's admitted source, shared by Evidence installation and review."""
     resume_refusal: Callable[[TaskRecord], str | None] | None = None
     """Why a Task cannot resume under what is installed now, asked before any resume; the
     service's own check (`LocalPortfolioWebSession.resume_refusal`). Nothing is written."""
@@ -588,6 +591,7 @@ class PortfolioResearchOperations:
             session=self.workspace_session,
             clock=self.dispatcher.clock,
             installed=self._evidence_installed,
+            official_source=self.official_source,
         )
         self.sweep = StudyVerificationSweep(
             session=self.workspace_session,
@@ -610,7 +614,10 @@ class PortfolioResearchOperations:
             clock=self.dispatcher.clock,
             provider=self.data_update.provider if self.data_update else None,
             source_loader=self.data_update.source_loader if self.data_update else None,
+            recorded_data_confirmation=self.goals.recorded_data_confirmation,
         )
+        if self.data_update is not None:
+            self.data_update.recorded_data_confirmation = self.goals.recorded_data_confirmation
         self.storage = ResearchInputStorage(
             self.workspace_session,
             evidence=self._evidence_storage_binding(),
@@ -1142,7 +1149,8 @@ class PortfolioResearchOperations:
             else:
                 execution_request = (
                     request
-                    if recovery is None or request.operation == "DATA_UPDATE_PLAN"
+                    if recovery is None
+                    or request.operation in {"DATA_UPDATE_PLAN", "WORKSPACE_PREPARE_PLAN"}
                     else replace(request, recovery_task_id=None, recovery_task_hash=None)
                 )
                 with (
@@ -2696,8 +2704,13 @@ class PortfolioResearchOperations:
             return refused("local_client.request_invalid")
         if arguments.preflight:
             try:
-                return run_setup(arguments, self.workspace_session)
-            except (ValueError, RuntimeError) as error:
+                return run_setup(
+                    arguments,
+                    self.workspace_session,
+                    official_source=self.official_source,
+                    clock=self.dispatcher.clock,
+                )
+            except (ValueError, RuntimeError, OSError) as error:
                 return setup_refusal(arguments, error)
         if not arguments.install:
             return refused("local_client.request_invalid")
@@ -3151,7 +3164,10 @@ class PortfolioResearchOperations:
             case "WORKSPACE_PREPARE_READBACK":
                 return self._preparation_readback(request.task_id)
             case "WORKSPACE_PREPARE_PLAN":
-                return self.preparation.plan(network_delegation=self._network_delegation(caller))
+                return self.preparation.plan(
+                    network_delegation=self._network_delegation(caller),
+                    recovery_task_id=request.recovery_task_id,
+                )
             case "WORKSPACE_PREPARE_CONFIRM":
                 assert request.preparation_plan_hash is not None
                 self.preparation.require_confirmation_caller(

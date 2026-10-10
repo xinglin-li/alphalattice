@@ -23,6 +23,7 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.interface.local_application import client as client_module
+from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.cli_contract import AGENT_HOST_WAITS, outcome_of
 from alphalattice.interface.local_application.portfolio_research import (
     LocalApplicationError,
@@ -870,6 +871,7 @@ class _ScriptedHost:
         self.prerequisites = prerequisites
         self.previews = 0
         self.prepares = 0
+        self.prepared_request: dict[str, Any] | None = None
 
     def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
         self.sent.append(document)
@@ -923,6 +925,8 @@ class _ScriptedHost:
                         "next_requests": {"setup": {"operation": "EVIDENCE_SETUP"}},
                     }
                 subject = {k: v for k, v in document.items() if k != "operation"}
+                subject["evidence_as_of"] = f"2026-10-12T12:{self.previews:02d}:00+00:00"
+                subject["preparation_binding_hash"] = "c" * 64
                 return {
                     "status": "EVIDENCE_PREPARATION_READY",
                     "coverage": {"unit_count": 2},
@@ -930,8 +934,10 @@ class _ScriptedHost:
                 }
             case "EVIDENCE_PREPARE" if not self.prepares:
                 self.prepares += 1
+                self.prepared_request = document
                 return {"status": "ADMITTED", "task_id": "t-evidence", "lifecycle": "QUEUED"}
             case "EVIDENCE_PREPARE":
+                assert document == self.prepared_request
                 # The same preparation asked again: reused, its own units offered.
                 subject = {k: v for k, v in document.items() if k != "operation"}
                 units = {
@@ -946,6 +952,8 @@ class _ScriptedHost:
                     for unit in ("u1", "u2")
                 }
                 return {"status": "REUSED_EXACT", "task_id": "t-evidence", "next_requests": units}
+            case "WAKE_REGISTER":
+                return {"status": "WAKE_REGISTERED", "task_id": document["task_id"]}
             case "AGENT_BUNDLE_PREPARE":
                 return {
                     "status": "AGENT_BUNDLE_READY",
@@ -1027,11 +1035,26 @@ def test_a_book_review_stops_at_the_first_answer_that_needs_another_step(tmp_pat
     assert not (tmp_path / "analysts").exists()
 
 
-def test_a_review_of_a_dates_positions_binds_their_publication(tmp_path: Path) -> None:
-    """requirement (the review on the date's positions): with an update, the review reads its
-    published positions and prepares their Evidence bound by the publication's hash."""
+def test_a_review_of_a_dates_positions_binds_their_publication(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A date review's wake resumes its exact preparation despite an advancing preview clock."""
     host = _ScriptedHost(tmp_path / "workspace")
-    answer = client_module._review_steps(host, _review_args(tmp_path / "analysts", "t-update"))  # type: ignore[arg-type]
+    monkeypatch.setenv("CODEX_THREAD_ID", str(uuid4()))
+    monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
+    monkeypatch.setattr(client_module, "LocalResearchClient", lambda *a, **k: host)
+    host.selected_url = lambda *_: ""  # type: ignore[attr-defined]
+    line = [
+        *("--workspace", str(host.workspace), "--view", "full", "strategy-book", "review"),
+        *("--package", "pkg", "--dir", str(tmp_path / "analysts"), "--update", "t-update"),
+        *("--notify", "codex-queue", "--output", str(tmp_path / "review.json")),
+    ]
+    assert main(line, serve=lambda _: 0) == 0
+    capsys.readouterr()
+    wake = next(d for d in host.sent if d["operation"] == "WAKE_REGISTER")
+    assert wake["task_id"] == "t-evidence"
+    assert main([*shlex.split(wake["wake_read"])[1:], "--view", "full"], serve=lambda _: 0) == 0
+    answer = json.loads(capsys.readouterr().out)["data"]
 
     assert answer["status"] == "BOOK_REVIEW_READY"
     assert answer["positions"]["review_selector"]["update_publication_hash"] == "p" * 64
@@ -1039,6 +1062,8 @@ def test_a_review_of_a_dates_positions_binds_their_publication(tmp_path: Path) -
     assert [d["update_publication_hash"] for d in previews] == ["p" * 64]
     assert not any(d["operation"] in {"CONTROLS", "RUN"} for d in host.sent)
     assert [bundle["unit"] for bundle in answer["analyst_bundles"]] == ["u1", "u2"]
+    assert host.previews == 1 and host.prepares == 1
+    assert answer["evidence"]["prepared_task_id"] == "t-evidence"
 
 
 class _ReviewHost:

@@ -882,6 +882,7 @@ class LocalPortfolioWebSession:
             recoverable_task_kinds=self.recoverable_task_kinds,
             resume_refusal=self.resume_refusal,
             install_review=self.serve_installed_review,
+            official_source=self._official_source,
             heartbeats=TaskHeartbeatReader(
                 session.runtime_path,
                 *([self.review.runner_runtime_path()] if self.review is not None else []),

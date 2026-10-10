@@ -40,6 +40,9 @@ from alphalattice.control.product_host.composition.evidence_source_ways import (
     PACKAGE_RULE,
     SETUP_OPTIONS,
 )
+from alphalattice.control.product_host.composition.portfolio_result_context import (
+    installed_authority,
+)
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceEvidenceReview,
     read_research_workspace_manifest,
@@ -98,8 +101,9 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
     DEFAULT_SOURCE_CONSENT,
     NOT_GRANTED,
     EvidenceSourceConsent,
+    OfficialSourceAdmission,
+    admit_official_source,
     seal_live_setup_admission,
-    sec_request_rate,
     sec_user_agent,
 )
 from alphalattice.evidence.alternative_evidence.sources.contracts import (
@@ -112,10 +116,10 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
 from alphalattice.evidence.alternative_evidence.sources.recorded import (
     RecordedEvidenceDocument,
 )
-from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
-    HttpxSecOfficialTransport,
-    SecEdgarSource,
+from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
+    PanelClosureArtifactStore,
 )
+from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
@@ -126,6 +130,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.resolution impor
     _risk_surface,
     _sector_map,
 )
+from alphalattice.investment.risk_research.surfaces.returns import RiskReturnArtifactStore
 from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid import (
     probe_hybrid_retrieval_capabilities,
@@ -425,9 +430,11 @@ class EvidenceInstall:
         session: WorkspaceApplicationSession,
         clock: Callable[[], datetime],
         installed: Callable[[], None],
+        official_source: OfficialSourceAdmission | None = None,
     ) -> None:
         """Bind the install to the Host's session, its clock and how it serves a new package."""
         self.session, self.clock, self.installed = session, clock, installed
+        self.official_source = official_source
 
     def admit(self, argv: Sequence[str]) -> CommandAdmission:
         """Admit one install of the setup's command line."""
@@ -492,7 +499,9 @@ class EvidenceInstall:
             if stage == "environment" and importlib.util.find_spec("fastembed") is None:
                 raise ValueError("evidence_review.retrieval_environment_not_loaded")
             answer = _step(
-                _Setup(arguments, self.session),
+                _Setup(
+                    arguments, self.session, official_source=self.official_source, clock=self.clock
+                ),
                 stage,
                 held,
                 cancelled=lambda: (
@@ -628,7 +637,14 @@ class _Setup:
     (`EvidenceInstall`).
     """
 
-    def __init__(self, arguments: argparse.Namespace, session: WorkspaceApplicationSession) -> None:
+    def __init__(
+        self,
+        arguments: argparse.Namespace,
+        session: WorkspaceApplicationSession,
+        *,
+        official_source: OfficialSourceAdmission | None = None,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
         """Read the workspace, its research input, universe and recipe, and the model profile."""
         workspace = arguments.workspace.resolve()
         input_id = getattr(arguments, "research_input_id", None)
@@ -651,6 +667,8 @@ class _Setup:
             raise ValueError("evidence_review.retrieval_recipe_unsupported")
 
         self.arguments, self.session, self.workspace = arguments, session, workspace
+        self.official_source = official_source
+        self.clock = clock
         self.universe, self.recipe, self.research_input = universe, recipe, (input_id, input_hash)
         self.profile = (
             None
@@ -703,7 +721,7 @@ class _Setup:
             consent = bool(arguments.network_consent)
             network_enabled = network_access(workspace).allowed
             user_agent = sec_user_agent()
-            cutoff = _acquisition_cutoff(arguments)
+            cutoff = _acquisition_cutoff(arguments, self.clock())
             scopes = _accession_scopes(arguments, requested)
             if arguments.preflight:
                 return {
@@ -724,14 +742,11 @@ class _Setup:
                 }
             if not consent:
                 raise ValueError("evidence_review.explicit_sec_network_consent_required")
-            if not network_enabled:
-                raise ValueError("evidence_review.workspace_network_not_allowed")
-            if user_agent is None:
-                raise ValueError("evidence_review.sec_contact_not_configured")
             source_root, source_hash, acquisition = _acquire_sec_sources(
                 arguments,
                 requested,
-                user_agent,
+                official_source=self.official_source,
+                clock=self.clock,
                 cutoff=cutoff,
                 accession_scopes=scopes,
                 cancelled=cancelled,
@@ -972,10 +987,17 @@ class _Setup:
 
 
 def run_setup(
-    arguments: argparse.Namespace, session: WorkspaceApplicationSession
+    arguments: argparse.Namespace,
+    session: WorkspaceApplicationSession,
+    *,
+    official_source: OfficialSourceAdmission | None = None,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> dict[str, object]:
     """Run the setup on a session the caller holds: its preflight answer or its installation."""
-    setup, held = _Setup(arguments, session), dict[str, Any]()
+    setup, held = (
+        _Setup(arguments, session, official_source=official_source, clock=clock),
+        dict[str, Any](),
+    )
     for stage in INSTALL_STAGES:
         held[stage] = _step(setup, stage, held)
         if held[stage].get("status") == "EVIDENCE_SOURCE_PREFLIGHT":
@@ -1307,7 +1329,7 @@ def _matter_selection(arguments: argparse.Namespace) -> MatterSelectionPolicy:
     )
 
 
-def _acquisition_cutoff(arguments: argparse.Namespace) -> datetime | None:
+def _acquisition_cutoff(arguments: argparse.Namespace, now: datetime) -> datetime | None:
     """The declared, timezone-aware disclosure cutoff, at or before now: the
     filings selected are those the official source accepted by then, whenever
     they are downloaded. Absent, the run's own clock is the cutoff.
@@ -1321,7 +1343,7 @@ def _acquisition_cutoff(arguments: argparse.Namespace) -> datetime | None:
         raise OptionRefused("evidence_review.evidence_as_of_invalid", "evidence_as_of") from error
     if value.tzinfo is None or value.utcoffset() is None:
         raise OptionRefused("evidence_review.evidence_as_of_invalid", "evidence_as_of")
-    if value > datetime.now(UTC):
+    if value > now:
         raise OptionRefused("evidence_review.evidence_as_of_in_the_future", "evidence_as_of")
     return value.astimezone(UTC)
 
@@ -1348,49 +1370,80 @@ def _accession_scopes(
 def _acquire_sec_sources(
     arguments: argparse.Namespace,
     entities: tuple[str, ...],
-    user_agent: str,
     *,
+    official_source: OfficialSourceAdmission | None = None,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     cutoff: datetime | None = None,
     accession_scopes: dict[str, frozenset[str]] | None = None,
     cancelled: Callable[[], bool] | None = None,
 ) -> tuple[Path, str, dict[str, object]]:
-    now = datetime.now(UTC)
-    request = seal_contract(
-        AlternativeEvidenceRequest,
-        "request_hash",
-        ordered_entity_ids=entities,
-        evidence_as_of=now if cutoff is None else cutoff,
-        acquisition_deadline=now + timedelta(minutes=15),
-        evidence_classes=(AlternativeEvidenceClass.SEC_FILING,),
-        source_policy=AlternativeEvidenceSourcePolicy(
-            maximum_documents_per_issuer=arguments.maximum_documents_per_issuer,
-            maximum_document_bytes=arguments.maximum_document_bytes,
-        ),
-        ttl_seconds=86400,
-        mode=AlternativeEvidenceMode.LIVE_OFFICIAL,
-    )
-    admission = seal_live_setup_admission(request.request_hash, now)
     workspace = arguments.workspace.resolve()
-    recipe = arguments.recipe or RECIPE_MINILM_CPU
-    runtime = AlternativeEvidenceDocumentIntelligenceRuntime(
-        artifact_root=workspace / "runtime" / "artifacts",
-        workspace_root=workspace / "runtime" / "evidence-knowledge",
-        model_root=_semantic_root(arguments, workspace=workspace, recipe=recipe),
-        retrieval_recipe=recipe,
+    owned = official_source is None
+    official_source = official_source or admit_official_source(
+        network_consent=bool(arguments.network_consent),
+        workspace_root=workspace,
+        maximum_document_bytes=arguments.maximum_document_bytes,
     )
+    source = official_source.source
+    runtime = None
     try:
-        with HttpxSecOfficialTransport(
-            user_agent=user_agent, requests_per_second=sec_request_rate()
-        ) as transport:
-            source = SecEdgarSource(transport)
-            _registry, snapshot, source_set = runtime.acquire_live(
-                request=request,
-                admission=admission,
-                source=source,
-                published_at=now,
-                accession_scopes=accession_scopes or None,
-                should_cancel=cancelled,
+        if not official_source.network_consent:
+            raise ValueError("evidence_review.explicit_sec_network_consent_required")
+        if official_source.transport_origin != "INJECTED" and not network_access(workspace).allowed:
+            raise ValueError("evidence_review.workspace_network_not_allowed")
+        if official_source.refusal_code or source is None:
+            raise ValueError(
+                official_source.refusal_code or "evidence_review.sec_contact_not_configured"
             )
+        if (
+            arguments.maximum_documents_per_issuer > official_source.maximum_documents_per_issuer
+            or (
+                official_source.maximum_document_bytes is not None
+                and arguments.maximum_document_bytes > official_source.maximum_document_bytes
+            )
+        ):
+            raise ValueError("evidence_review.budget_exceeds_consent")
+        now = clock()
+        request = seal_contract(
+            AlternativeEvidenceRequest,
+            "request_hash",
+            ordered_entity_ids=entities,
+            evidence_as_of=now if cutoff is None else cutoff,
+            acquisition_deadline=now + timedelta(minutes=15),
+            evidence_classes=(AlternativeEvidenceClass.SEC_FILING,),
+            source_policy=AlternativeEvidenceSourcePolicy(
+                maximum_documents_per_issuer=arguments.maximum_documents_per_issuer,
+                maximum_document_bytes=arguments.maximum_document_bytes,
+            ),
+            ttl_seconds=86400,
+            mode=AlternativeEvidenceMode.LIVE_OFFICIAL,
+        )
+        admission = seal_live_setup_admission(request.request_hash, now)
+        recipe = arguments.recipe or RECIPE_MINILM_CPU
+        runtime = AlternativeEvidenceDocumentIntelligenceRuntime(
+            artifact_root=workspace / "runtime" / "artifacts",
+            workspace_root=workspace / "runtime" / "evidence-knowledge",
+            model_root=_semantic_root(arguments, workspace=workspace, recipe=recipe),
+            retrieval_recipe=recipe,
+        )
+        transport = getattr(source, "_transport", None)
+        counters = {
+            "http_attempts": "request_count",
+            "retries": "retry_count",
+            "rate_limited": "rate_limited_count",
+            "response_bytes": "response_bytes",
+        }
+        before = {key: getattr(transport, field, None) for key, field in counters.items()}
+        network_before = source.network_call_count
+        _registry, snapshot, source_set = runtime.acquire_live(
+            request=request,
+            admission=admission,
+            source=source,
+            published_at=now,
+            accession_scopes=accession_scopes or None,
+            should_cancel=cancelled,
+            clock=clock,
+        )
         return (
             runtime.artifacts.root,
             source_set.source_set_hash,
@@ -1398,11 +1451,11 @@ def _acquire_sec_sources(
                 "mode": "LIVE_OFFICIAL",
                 "evidence_as_of": request.evidence_as_of.isoformat(),
                 "acquired_at": now.isoformat(),
-                "network_calls": source.network_call_count,
-                "http_attempts": getattr(transport, "request_count", None),
-                "retries": getattr(transport, "retry_count", None),
-                "rate_limited": getattr(transport, "rate_limited_count", None),
-                "response_bytes": getattr(transport, "response_bytes", None),
+                "network_calls": source.network_call_count - network_before,
+                **{
+                    key: None if before[key] is None else getattr(transport, field) - before[key]
+                    for key, field in counters.items()
+                },
                 "snapshot_status": snapshot.status.value,
                 "snapshot_hash": snapshot.snapshot_hash,
                 "source_document_count": len(source_set.documents),
@@ -1410,7 +1463,10 @@ def _acquire_sec_sources(
             },
         )
     finally:
-        runtime.close()
+        if runtime is not None:
+            runtime.close()
+        if owned and source is not None:
+            source.close()
 
 
 def _research_universe_listing_ids(workspace: Path, binding_hash: str) -> dict[str, str]:
@@ -1439,11 +1495,26 @@ def _universe_listing_ids(workspace: Path) -> dict[str, str]:
     authority bound to a different universe revision than the book would fail
     the same way and be much harder to see.
     """
-    artifact_root = workspace / "runtime" / "artifacts"
-    surface = _risk_surface(artifact_root)
-    classification = _sector_map(
-        artifact_root, manifest_revision=surface.epoch.universe_manifest_revision
-    )
+    installed = installed_authority(workspace, read_research_workspace_manifest(workspace))
+    if installed is None:
+        artifact_root = workspace / "runtime" / "artifacts"
+        surface = _risk_surface(artifact_root)
+        classification = _sector_map(
+            artifact_root, manifest_revision=surface.epoch.universe_manifest_revision
+        )
+    else:
+        artifact_root, authority = installed
+        surface = RiskReturnArtifactStore(artifact_root).load_manifest(
+            authority.risk_return_surface_hash
+        )
+        classification = PanelClosureArtifactStore(ArtifactResolver(artifact_root)).load_model(
+            category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
+        )
+        if (
+            surface.surface_hash != authority.risk_return_surface_hash
+            or classification.manifest_revision != surface.epoch.universe_manifest_revision
+        ):
+            raise ValueError("portfolio_application.saved_source_binding_mismatch")
     return {entry.provider_symbol: entry.listing_id for entry in classification.entries}
 
 

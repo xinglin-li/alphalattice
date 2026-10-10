@@ -366,6 +366,8 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             help="Review this update Task's published positions, bound by their publication, "
             "in place of the strategy's whole-support book.",
         )
+        for field in ("evidence_as_of", "preparation_binding_hash"):
+            child.add_argument(flag(field), dest=field, help=command_table()["descriptions"][field])
     elif (noun, verb) == ("review", "continue"):
         child.add_argument(
             "--dir",

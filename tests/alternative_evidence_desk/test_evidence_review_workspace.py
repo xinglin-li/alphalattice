@@ -10,7 +10,6 @@ import re
 import shlex
 import subprocess
 import sys
-from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -117,7 +116,7 @@ def acquisition(monkeypatch: pytest.MonkeyPatch, installer_universe: dict[str, s
     """An SEC acquisition the install can run offline, its probes counted: the fixture transport."""
     from scripts import materialize_evidence_cro_authority as setup
 
-    from alphalattice.control.workspace_runtime.network_access import network_access
+    from alphalattice.evidence.alternative_evidence.sources.admission import admit_official_source
     from tests.alternative_evidence_desk.sec_fixture_transport import SecFixtureTransport
 
     installer_universe.update({"AAPL": "US-AAPL"})
@@ -131,9 +130,10 @@ def acquisition(monkeypatch: pytest.MonkeyPatch, installer_universe: dict[str, s
             or SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH)
         ),
     )
-    monkeypatch.setattr(setup, "HttpxSecOfficialTransport", lambda **_: nullcontext(transport))
     monkeypatch.setattr(
-        setup, "network_access", lambda workspace: network_access(workspace, environment={})
+        setup,
+        "admit_official_source",
+        lambda **options: admit_official_source(transport=transport, **options),
     )
     found = importlib.util.find_spec
     monkeypatch.setattr(
@@ -249,11 +249,14 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(tmp_p
     assert task.failure_code == "evidence_review.retrieval_environment_not_loaded"
 
 
-def test_source_setup_preflights_acquires_and_preserves_prior_authority(
-    tmp_path, monkeypatch, installer_universe
-):
+def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path, monkeypatch):
+    """Build a real Evidence package to verify installed scope, capture time and prior authority."""
     from scripts import materialize_evidence_cro_authority as setup
 
+    from alphalattice.control.product_host.composition import portfolio_result_context
+    from alphalattice.control.product_host.composition.application_session import (
+        WorkspaceApplicationSession,
+    )
     from alphalattice.control.product_host.composition.evidence_review_workspace import (
         EvidenceReviewWorkspaceManifest,
         RecordedEvidenceDocumentBundle,
@@ -262,28 +265,72 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
         PACKAGE_RULE,
     )
     from alphalattice.control.product_host.composition.research_workspace import (
+        ResearchWorkspaceArtifact,
         publish_research_workspace_manifest,
     )
+    from alphalattice.evidence.alternative_evidence.sources.admission import admit_official_source
     from tests.alternative_evidence_desk.sec_fixture_transport import SecFixtureTransport
 
+    root = tmp_path / "installed-input"
+    authority_hash, risk_hash, sector_hash = "a" * 64, "b" * 64, "c" * 64
+    classification = SimpleNamespace(
+        manifest_revision="d" * 64,
+        entries=tuple(
+            SimpleNamespace(provider_symbol=symbol, listing_id=f"US-{symbol}")
+            for symbol in ("AAPL", "MSFT")
+        ),
+    )
+    surface = SimpleNamespace(
+        surface_hash=risk_hash, epoch=SimpleNamespace(universe_manifest_revision="d" * 64)
+    )
+
+    def load_authority(store, **options):
+        assert store.root == root / "portfolio-strategy-lab"
+        assert options == dict(
+            category=portfolio_result_context.CATEGORY,
+            content_hash=authority_hash,
+            model=portfolio_result_context.LifecyclePortfolioAuthority,
+            identity_field="authority_hash",
+        )
+        return SimpleNamespace(risk_return_surface_hash=risk_hash, sector_map_hash=sector_hash)
+
+    def load_risk(store, content_hash):
+        assert (store.root, content_hash) == (root / "data-operations/risk-returns", risk_hash)
+        return surface
+
+    def load_sector(store, **options):
+        assert store.root == root / "feature-panel/closure"
+        assert options == dict(
+            category="sector-maps", content_hash=sector_hash, model=setup.SectorRevisionMap
+        )
+        return classification
+
+    monkeypatch.setattr(
+        portfolio_result_context.PortfolioResearchArtifactStore, "load", load_authority
+    )
+    monkeypatch.setattr(setup.RiskReturnArtifactStore, "load_manifest", load_risk)
+    monkeypatch.setattr(setup.PanelClosureArtifactStore, "load_model", load_sector)
     old_binding, _ = _package(tmp_path)
     original = ResearchWorkspaceManifest.create(
         workspace_id="source-setup",
         default_strategy_package_id="fixture-package",
         default_score_source_mode="HISTORICAL_ARRAY_REPLAY",
-        strategy_artifacts=(),
+        strategy_artifacts=(
+            ResearchWorkspaceArtifact(
+                artifact_key=portfolio_result_context.ARTIFACT_KEY,
+                relative_path=f"installed-input/portfolio-strategy-lab/{portfolio_result_context.CATEGORY}/{authority_hash}.json",
+            ),
+        ),
     ).with_bindings(evidence_review=old_binding)
     publish_research_workspace_manifest(tmp_path, original)
     old_path = tmp_path / old_binding.relative_path
     old_bytes = old_path.read_bytes()
     transport = SecFixtureTransport()
-    installer_universe.update({"AAPL": "US-AAPL", "MSFT": "US-MSFT"})
     monkeypatch.setattr(
         setup,
         "probe_hybrid_retrieval_capabilities",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
-    monkeypatch.setattr(setup, "HttpxSecOfficialTransport", lambda **_: nullcontext(transport))
     args = setup._parser().parse_args(
         [
             "--workspace",
@@ -302,6 +349,28 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
     preview = setup.materialize(args)
     assert preview["status"] == "EVIDENCE_SOURCE_PREFLIGHT" and not preview["acquisition_performed"]
     assert preview["evidence_as_of"] is None and preview["accession_scopes"] == {}
+    redirected = original.strategy_artifacts[0].model_copy(
+        update={
+            "relative_path": original.strategy_artifacts[0].relative_path.replace(
+                portfolio_result_context.CATEGORY, "wrong-category"
+            )
+        }
+    )
+    values = original.model_dump(exclude={"kind", "manifest_schema", "manifest_hash"})
+    values["strategy_artifacts"] = (redirected,)
+    values["evidence_review"] = old_binding
+    publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.create(**values))
+    with pytest.raises(ValueError, match="lifecycle_manifest_path_invalid"):
+        setup.materialize(args)
+    publish_research_workspace_manifest(tmp_path, original)
+    surface.surface_hash = "f" * 64
+    with pytest.raises(ValueError, match="saved_source_binding_mismatch"):
+        setup.materialize(args)
+    surface.surface_hash = risk_hash
+    classification.manifest_revision = "e" * 64
+    with pytest.raises(ValueError, match="saved_source_binding_mismatch"):
+        setup.materialize(args)
+    classification.manifest_revision = "d" * 64
     args.entities = ["AAPL", "MSFT"]
     args.accessions = ["0000320193-26-000001"]
     with pytest.raises(ValueError, match="accession_scope_requires_one_entity"):
@@ -331,36 +400,53 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
     with pytest.raises(ValueError, match="workspace_network_not_allowed"):
         setup.materialize(args)
     assert transport.calls == []
-    from alphalattice.control.workspace_runtime.network_access import (
-        network_access,
-        set_network_access,
-    )
-
-    set_network_access(tmp_path, enabled=True)
-    # Exercise the typed control with a fixture transport while the test process stays offline.
-    monkeypatch.setattr(
-        setup, "network_access", lambda workspace: network_access(workspace, environment={})
-    )
-    args.network_consent = True
     # The cutoff is declared, timezone-aware and never in the future; named
     # accessions need exactly one issuer and the official accession form.
     for invalid in ("2026-08-12", "2026-08-12T00:00:00", "not-a-time"):
         args.evidence_as_of = invalid
         with pytest.raises(ValueError, match="evidence_as_of_invalid"):
             setup.materialize(args)
-    args.evidence_as_of = (datetime.now(UTC) + timedelta(days=1)).isoformat()
-    with pytest.raises(ValueError, match="evidence_as_of_in_the_future"):
-        setup.materialize(args)
     args.evidence_as_of = "2026-08-12T00:00:00+00:00"
     args.accessions = ["0000320193-26-000001", "bad"]
     with pytest.raises(ValueError, match="accession_scope_invalid"):
         setup.materialize(args)
     args.accessions = None
     assert transport.calls == []
-    started = datetime.now(UTC)
-    result = setup.materialize(args)
+    started = datetime(2026, 8, 12, 14, tzinfo=UTC)
+    args.maximum_document_bytes = 2_000_000
+    official = admit_official_source(
+        network_consent=True,
+        transport=transport,
+        workspace_root=tmp_path,
+        maximum_document_bytes=args.maximum_document_bytes,
+    )
+    assert official.transport_origin == "INJECTED" and official.source is not None
+    closes = []
+    monkeypatch.setattr(transport, "close", lambda: closes.append(True), raising=False)
+    documents_per_issuer = official.source.documents_per_issuer
+
+    def request_cap(request):
+        assert request.source_policy.maximum_documents_per_issuer == 3
+        assert request.source_policy.maximum_document_bytes == official.maximum_document_bytes
+        return documents_per_issuer(request)
+
+    monkeypatch.setattr(official.source, "documents_per_issuer", request_cap)
+    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        args.evidence_as_of = (started + timedelta(days=1)).isoformat()
+        with pytest.raises(ValueError, match="evidence_as_of_in_the_future"):
+            setup.run_setup(args, session, official_source=official, clock=lambda: started)
+        args.evidence_as_of = "2026-08-12T00:00:00+00:00"
+        for field in ("maximum_documents_per_issuer", "maximum_document_bytes"):
+            bound = getattr(args, field)
+            setattr(args, field, bound + 1)
+            with pytest.raises(ValueError, match="budget_exceeds_consent"):
+                setup.run_setup(args, session, official_source=official, clock=lambda: started)
+            setattr(args, field, bound)
+        result = setup.run_setup(args, session, official_source=official, clock=lambda: started)
+    assert closes == []
     assert len(transport.calls) == 3  # Registry, submissions and one recorded filing.
     assert result["installed"] and result["model_profile_hash"] is None
+    assert result["acquisition"]["acquired_at"] == started.isoformat()
     assert result["acquisition"]["evidence_as_of"] == "2026-08-12T00:00:00+00:00"
     assert result["acquisition"]["http_attempts"] is None  # the fixture transport counts nothing
     manifest_path = tmp_path / result["binding"]["relative_path"]
@@ -368,7 +454,7 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
     documents_path = tmp_path / manifest.recorded_documents.relative_path
     bundle = RecordedEvidenceDocumentBundle.model_validate_json(documents_path.read_bytes())
     document = bundle.documents[0]
-    assert document.captured_at >= started
+    assert document.captured_at == started
     assert document.available_at >= document.captured_at > document.published_at
     # The recorded import keeps the original's acceptance and date precision
     # beside its capture-bounded availability: the guard stands, the
@@ -504,10 +590,7 @@ def _rr5f_book(
     from alphalattice.control.product_host.composition.research_workspace import (
         publish_research_workspace_manifest,
     )
-    from alphalattice.control.workspace_runtime.network_access import (
-        network_access,
-        set_network_access,
-    )
+    from alphalattice.evidence.alternative_evidence.sources.admission import admit_official_source
     from tests.alternative_evidence_desk.sec_scenario_transport import (
         ScenarioFiling,
         SecScenarioTransport,
@@ -560,10 +643,11 @@ def _rr5f_book(
         "probe_hybrid_retrieval_capabilities",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
-    monkeypatch.setattr(setup, "HttpxSecOfficialTransport", lambda **_: nullcontext(transport))
-    set_network_access(workspace, enabled=True)
-    # The typed control with a fixture transport while the test process stays offline.
-    monkeypatch.setattr(setup, "network_access", lambda at: network_access(at, environment={}))
+    monkeypatch.setattr(
+        setup,
+        "admit_official_source",
+        lambda **options: admit_official_source(transport=transport, **options),
+    )
     monkeypatch.setenv("SEC_USER_AGENT", "Recorded protocol QA fixture@example.invalid")
     monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
 
