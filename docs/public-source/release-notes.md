@@ -82,3 +82,39 @@ keeps its copied cards; set `model_reasoning_effort` in its `.codex/agents/` fil
 **Contributions and security**
 
 - Contribution and governance policies are available; contributions open once the CLA bot is active. Report vulnerabilities privately through GitHub's Security tab.
+
+## 0.1.4
+
+**Your date, in one sentence**
+
+- The first use runs to the date you name: that date's reviewed positions, their Risk and a delivery report.
+- A date whose information is not yet complete is the usual case during the US session. The agent prepares everything now, and the Host finishes the update itself once the data is ready, about two hours after the close. The ready time is given in New York time and in yours.
+- A decision only you can make, activation included, is asked in one line and relayed in your words. It never needs a Workbench click. Each relayed yes answers one request, once.
+- Answers are checked to tell the truth:
+  - a next step the product offers is accepted when sent as offered;
+  - a stopped task's answer names its way on and never asks the agent to wait.
+
+**The agent and your machine**
+
+- The agent reads one readiness list with `doctor` and fills what is missing: the product's own dependencies itself, other software after one question to you. A background wake that cannot be delivered is refused up front, and the agent then waits within its turn.
+- On Codex, while a goal is active the agent waits inside its turn instead of ending it for a queued wake. In goal mode the Codex app holds queued messages until you press Steer (reported upstream as openai/codex#52705).
+- Independent studies and the Evidence install run side by side within the CPU budget. Results are byte-equal to running them one at a time, and Alpha studies still run alone.
+
+**Evidence**
+
+- SEC filings are fetched under your consent with the product's own contact; you are never asked for a personal name or email. Within the default budget of three filings per issuer, the agent proceeds and tells you in one line.
+- The Evidence retrieval runtime installs inside the running Host as a task you can follow, cancel and resume. No restart is needed.
+
+**Previews**
+
+These are new and still being proven. 0.2.0 will promote them once they run end to end without a fix.
+
+- **Investment committee.** After a date's positions, the lead agent chairs a committee as portfolio manager, with the Alpha, Risk and CRO specialists. Stances are blind until all are in. Figures are quoted, never typed. The CRO's dissent appears verbatim in the delivery report. The committee changes no number.
+- **Your own agent layer.** `.alphalattice/user/` holds your memories, a local guide and additions to the cards and Skills. Releases never overwrite it, and it is backed up before an upgrade. The agent keeps it current and prunes stale or duplicate memories.
+- **The Workbench reads as your date.** Home and Portfolio lead with the positions date, the date's Risk and the committee. Activate is a secondary control beside the sentence to tell your agent.
+
+**Known limits**
+
+- The delivery export is English and still shows some raw figures and codes. Words and number formatting follow in 0.1.5.
+- The decision schedule is fixed: decided at the official close, entered at the next official open. Other schedules are a recorded feature request.
+- Claude specialists use the `haiku` alias at high effort. On Bedrock, Vertex or Foundry, pin the alias with `ANTHROPIC_DEFAULT_HAIKU_MODEL`. A project configured from 0.1.3 keeps its copied cards, as earlier notes describe.

@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
                             "install",
                             "--python",
                             sys.executable,
-                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.1.3",
+                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.1.4",
                         ]
                     ),
                     "interpreter": sys.executable
