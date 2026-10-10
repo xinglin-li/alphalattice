@@ -47,7 +47,9 @@ jobs:
       - name: Run the offline Local Web and Evidence tests
         run: >-
           uv run python -m pytest
-          tests/portfolio_strategy_lab/test_local_web_product.py
+          tests/portfolio_strategy_lab/test_local_web_service.py
+          tests/portfolio_strategy_lab/test_local_web_client.py
+          tests/portfolio_strategy_lab/test_research_flow_answers.py
           tests/alternative_evidence_desk/test_evidence_review_http_route.py
           tests/structural/test_local_web_build.py
           -n auto -m "not real_evidence"

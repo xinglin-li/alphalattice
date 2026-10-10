@@ -2,8 +2,10 @@
 
 import hashlib
 import json
+import re
 import subprocess
 from collections import Counter
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -490,3 +492,16 @@ def test_private_browser_dependencies_keep_their_callers_private(path, reason):
     assert found[:2] == ("PRIVATE", "PRIVATE_TEST") and found[2]
     if reason is not None:
         assert found[2] == reason
+
+
+def test_every_test_path_the_public_ci_runs_exists_and_is_public():
+    """A renamed or split test file cannot leave the public CI running a path that is gone."""
+    root = Path(__file__).resolve().parents[2]
+    named = set(
+        re.findall(r"tests/[\w/]+\.py", (root / ".github/workflows/ci.yml").read_text("utf-8"))
+    )
+    manifest = json.loads((root / "config/release/public-manifest.json").read_text("utf-8"))
+    public = {row["path"] for row in manifest["public"]}
+    assert named
+    assert sorted(path for path in named if not (root / path).is_file()) == []
+    assert sorted(named - public) == []
