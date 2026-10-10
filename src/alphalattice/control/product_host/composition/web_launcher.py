@@ -29,10 +29,58 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+from typing import Any
 
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
+
+
+def _windows_stdin(descriptor: int) -> tuple[Any, Any, int]:
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    handle = wintypes.HANDLE(msvcrt.get_osfhandle(descriptor))
+    return kernel32, handle, kernel32.GetFileType(handle)
+
+
+def _stdin_ties() -> bool:
+    """Whether something holds standard input open, so `--stop-on-stdin` can tie the Host's life
+    to it: a console, or a pipe whose writer is still there.
+
+    An agent's background shell gives a launch none (the NUL device, a pipe closed at once), and
+    a Host that took that end for a stop would stop as it started. With nothing held there is no
+    tie: the Host serves until its process ends, as without the option.
+    """
+    try:
+        descriptor = sys.stdin.fileno()
+    except (AttributeError, OSError, ValueError):  # a stream handed in, read as it comes
+        return True
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32, handle, kind = _windows_stdin(descriptor)
+        if kind == 3:  # FILE_TYPE_PIPE: PeekNamedPipe fails once the writer is gone
+            return bool(kernel32.PeekNamedPipe(handle, None, 0, None, None, None))
+        # FILE_TYPE_CHAR: a console takes a console mode; the NUL device does not.
+        return kind == 2 and bool(kernel32.GetConsoleMode(handle, ctypes.byref(wintypes.DWORD())))
+    if os.isatty(descriptor):
+        return True
+    import fcntl
+    import select
+    import stat
+    import struct
+    import termios
+
+    if not stat.S_ISFIFO(os.fstat(descriptor).st_mode):
+        return False
+    if not select.select([descriptor], [], [], 0)[0]:
+        return True  # open and quiet
+    waiting = fcntl.ioctl(descriptor, termios.FIONREAD, bytes(4))
+    return bool(struct.unpack("i", waiting)[0])  # readable with nothing waiting is the end
 
 
 def _wait_for_stop_on_stdin() -> None:
@@ -49,12 +97,10 @@ def _wait_for_stop_on_stdin() -> None:
         descriptor = None
     if sys.platform == "win32" and descriptor is not None:
         import ctypes
-        import msvcrt
         from ctypes import wintypes
 
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        handle = wintypes.HANDLE(msvcrt.get_osfhandle(descriptor))
-        if kernel32.GetFileType(handle) == 3:  # FILE_TYPE_PIPE
+        kernel32, handle, kind = _windows_stdin(descriptor)
+        if kind == 3:  # FILE_TYPE_PIPE
             waiting, pending = wintypes.DWORD(), b""
             while kernel32.PeekNamedPipe(handle, None, 0, None, ctypes.byref(waiting), None):
                 if not waiting.value:
@@ -86,7 +132,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--stop-on-stdin",
         action="store_true",
-        help="For an attached host: stop on a 'stop' line or EOF; join Tasks before exit.",
+        help="For an attached host: stop on a 'stop' line or EOF; join Tasks before exit. With "
+        "no standard input held open, nothing ties it and it serves until its process ends.",
     )
     arguments = parser.parse_args(argv)
 
@@ -103,16 +150,20 @@ def main(argv: list[str] | None = None) -> int:
         # The launch URL gives the browser that opens it the session, and only it (HB):
         # a script or the QA kit takes it from this line.
         url = session.launch_url
+        tied = arguments.stop_on_stdin and _stdin_ties()
         print(f"Portfolio Research workspace: {url}")
         print(
             "Loopback only. Send 'stop' or close stdin to stop."
+            if tied
+            else "Loopback only. No standard input holds this Host, so it serves until its "
+            "process ends."
             if arguments.stop_on_stdin
             else "Loopback only. Ctrl-C to stop.",
             flush=True,
         )
         if not arguments.no_browser:
             webbrowser.open(url)
-        if arguments.stop_on_stdin:
+        if tied:
             _wait_for_stop_on_stdin()
         else:
             threading.Event().wait()

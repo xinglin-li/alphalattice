@@ -52,7 +52,7 @@ Start the Host on an explicit workspace, a new directory for new research; the l
 alphalattice --workspace "workspaces/my-research" serve --no-browser --stop-on-stdin
 ```
 
-Keep it attached to stdin; sending `stop` to that launch process's stdin, or closing the stream, stops it after its workers join; a client disconnect does not. This is the launcher's input, not a CLI verb. Reuse the Host already serving a workspace, never start a second writer, and never stop someone else's service. An installation upgrade does not authorize stopping or restarting a running Host; take any required transition from the upgrade or readiness answer.
+Run it in the background. Where your shell holds the launch's standard input open, the Host is tied to it: sending `stop` to it, or closing it, stops the Host after its workers join; a client disconnect does not. This is the launcher's input, not a CLI verb. An agent's background shell usually gives a launch no standard input (the NUL device, or a pipe closed at once); then nothing ties the Host, its ready lines say so, and it serves until its process ends. Reuse the Host already serving a workspace, never start a second writer, and never stop someone else's service. An installation upgrade does not authorize stopping or restarting a running Host; take any required transition from the upgrade or readiness answer.
 
 ## Command contract
 

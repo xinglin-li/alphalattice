@@ -55,7 +55,9 @@ Use a new workspace for new research:
 alphalattice --workspace "workspaces/my-research" serve --no-browser --stop-on-stdin
 ```
 
-Keep the service attached to stdin; `stop` closes it after its workers join. If
+Run it in the background. Where your shell holds its standard input open, `stop`
+on it closes it after its workers join; a background shell that gives it none
+leaves it serving until its process ends, as its ready lines say. If
 your host has a browser tool, open the printed launch link once so the person can
 watch; otherwise print the link and go on. Never navigate or click the Workbench
 to show work. Your Session binds itself when it first works on the workspace, and
