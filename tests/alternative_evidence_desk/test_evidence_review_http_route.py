@@ -1,14 +1,4 @@
-"""The Evidence & CRO actions over real HTTP, on a development result.
-
-Every test goes through a running `LocalPortfolioWebSession` -- bound socket,
-session token, CSRF origin check, the one background dispatcher -- so the two
-buttons are proved rather than the application underneath them. The generic
-Agent tool answers through the same operation owner, and one test says so.
-
-The Portfolio half is real: a development path executed by the Strategy Lab
-harness and published to a real ledger. Recorded fixtures, a citing automation
-actor and a Submitted review actor; no Provider, no network beyond loopback.
-"""
+"""Evidence and CRO bindings, submission and recovery through the real HTTP Host."""
 
 from __future__ import annotations
 
@@ -524,7 +514,6 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
     ]
     assert (refused["answer"]["number"], refused["answer"]["rounds_left"]) == (2, 1)
     assert client.request({**document, "caller": "HUMAN"})["status"] == "REFUSED"
-    # Two answers counted durably; nothing admitted.
     assert len(service.registry.tasks()) == count
     assert service.review.artifacts.write_count == writes + 2
     original_contract = service.review.review_task_contract
@@ -538,11 +527,9 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
     with monkeypatch.context() as patch:
         patch.setattr(service.review, "review_task_contract", changed_contract)
         assert "external_review_binding_changed" in client.request(document)["refused"]
-    # A refused request spends none of the bundle's answers.
     assert len(service.registry.tasks()) == count
     assert service.review.artifacts.write_count == writes + 2
-    # Admit two different answers without running them. Recovery must
-    # rebuild each from its immutable input, not the last command in a kind map.
+    # Recovery uses each immutable answer, not the last command of its kind.
     workspace = ["--workspace", str(service.session.workspace), "--view", "full"]
     prepare = [
         *("bundle", "prepare", "--role", "CRO"),
@@ -555,6 +542,8 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
         json.dumps({**submission, "read": read}), encoding="utf-8"
     )
     contract_calls = []
+    capacity = client.request({"operation": "CPU_BUDGET_SET", "tasks_waiting": "1"})
+    assert capacity["task_queue"]["tasks_waiting"] == 1
 
     def counted_contract(**facts):
         contract_calls.append(1)
@@ -566,8 +555,16 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
         assert main(["--view", "full", *bundle["submit_arguments"]], serve=lambda _: 99) == 3
         first = json.loads(capsys.readouterr().out)["data"]
         second_submission = {**submission, "summary": "A second reading of the same findings."}
-        second = client.request({**document, "review_answer": second_submission})
-    assert len(contract_calls) == 2  # One frozen contract per command, including admission.
+        second_document = {**document, "review_answer": second_submission}
+        full = client.request(second_document)
+        assert full["disposition"] == "REFUSED_QUEUE_FULL" and "task_id" not in full
+        assert full["failure_code"] == "task_control.queue_full" and full["detail"]
+        capacity = client.request(full["next_requests"]["capacity"])
+        assert capacity["task_queue"]["tasks_waiting"] == 1
+        capacity = client.request({"operation": "CPU_BUDGET_SET", "tasks_waiting": "2"})
+        assert capacity["task_queue"]["tasks_waiting"] == 2
+        second = client.request(second_document)
+    assert len(contract_calls) == 3  # One frozen contract per attempt, including the refusal.
     ids = (UUID(first["task_id"]), UUID(second["task_id"]))
     assert first["status"] == "ACCEPTED" and first["receipt"]["task_id"] == first["task_id"]
     assert second["disposition"] == "ADMITTED" and ids[0] != ids[1]
@@ -576,7 +573,6 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
         assert task.input.payload["prepared_answer"] == answer
         assert task.input.payload["actor_kind"] == "EXTERNAL_AUTOMATION"
         assert task.input.payload["actor_id"] == "local-research-external"
-    # Close the queued commands, then reopen the real session/registry with no actor.
     service.session.stop()
     service.session.review_authority = replace(
         service.session.review_authority, model_authority_admitted=False, review_actor=None

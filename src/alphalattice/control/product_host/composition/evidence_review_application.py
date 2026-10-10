@@ -539,8 +539,7 @@ class ReviewOutcome:
     evidence_unit_id: str | None = None
     """The coverage unit a submitted answer was for, when it was for one."""
     answer: dict[str, object] | None = None
-    """How the Host received the answer this admitted: its verdict
-    (`ACCEPTED` or `DONE`), its number, the items accepted and dropped."""
+    """The admitted answer's verdict, number, accepted and dropped items."""
     network_access: dict[str, object] | None = None
     """The effective network owner's reading when source acquisition was refused."""
     source_network_access: dict[str, object] | None = None
@@ -550,11 +549,7 @@ class ReviewOutcome:
 
     @property
     def reused(self) -> bool:
-        """Read whether review disposition reused exact retained evidence.
-
-        Returns:
-            True exactly for REUSED_EXACT.
-        """
+        """Whether this outcome reused exact retained evidence."""
         return self.disposition == "REUSED_EXACT"
 
 
@@ -766,6 +761,9 @@ def _answer_correction(code: str, record: AgentAnswerRecord) -> dict[str, object
 def _submitted(submission: CommandSubmission) -> ReviewOutcome:
     return ReviewOutcome(
         disposition=submission.disposition,
+        failure_code="task_control.queue_full"
+        if submission.disposition == "REFUSED_QUEUE_FULL"
+        else None,
         detail=submission.refusal_detail or "One Task was admitted.",
         task_id=submission.task_id,
         lifecycle=submission.lifecycle,
