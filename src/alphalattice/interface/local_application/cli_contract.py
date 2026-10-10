@@ -52,6 +52,16 @@ AGENT_SESSION_VARIABLES: Final = (
 """Where each vendor names its session in the command environment (read on 2026-09-28; not a
 documented promise, so a missing one only leaves a request without an agent session)."""
 
+AGENT_HOST_WAITS: Final = {
+    "claude-code": "on Claude Code, run this command with the Bash tool's run_in_background and "
+    "act on its completion notice; never read its output or check its Task before the notice",
+    "codex": "on Codex with no active goal, register the wake with --notify codex-queue (activity "
+    "wait --task, or an agent verb) and end your turn; the Host's queued line wakes you. Under an "
+    "active goal (get_goal), keep this one call and read its output again at each yield: the "
+    "goal's next turn starts before a queued line is taken",
+}
+"""Each vendor's own way to wait for a follow, which its first line names."""
+
 _SESSION_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 

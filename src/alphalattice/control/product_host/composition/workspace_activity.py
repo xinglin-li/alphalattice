@@ -303,7 +303,7 @@ class WorkspaceActivity:
             self._record_wake({**claimed, "result": result})
 
     def _record_wake(self, held: Mapping[str, Any]) -> None:
-        """Name a wake's outcome in its Task's activity: delivered, or its failure."""
+        """Name a wake's outcome in its Task's activity: queued, or its failure."""
         task_id = str(held["task_id"])
         result = held["result"]
         self._append(
@@ -1235,7 +1235,9 @@ def _queue_wake(thread: str, message: str) -> dict[str, Any]:
     """Queue one line to a Codex thread, once, and name the outcome.
 
     A queued message arrives as a user message, so it carries no event body and no instruction:
-    only what happened and the command that reads it.
+    only what happened and the command that reads it. The command's success means Codex stored the
+    line in its queue, not that the model read it: Codex takes its queue while the thread is idle,
+    and an active goal's next turn starts first.
     """
     result: dict[str, Any] = {"channel": "codex-queue", "delivered": False}
     codex = shutil.which("codex")
@@ -1254,6 +1256,8 @@ def _queue_wake(thread: str, message: str) -> dict[str, Any]:
         return {**result, "failure": "CODEX_QUEUE_TIMED_OUT"}
     except OSError:
         return {**result, "failure": "CODEX_QUEUE_START_FAILED"}
+    # `delivered` is the stored spelling of queued: it and WAKE_DELIVERED and task.wake_delivered
+    # sit in people's activity ledgers, so they stay, and every word a reader sees says queued.
     return {**result, "delivered": True}
 
 

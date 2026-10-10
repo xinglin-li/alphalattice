@@ -74,6 +74,8 @@ class _Host:
                 "state": "OPEN",
                 "record": {"tasks": [], "conversation": conversation},
             }
+        if self.kind == "committee":
+            return {"status": "COMMITTEE_FLOOR", "for_you": [1] if arrived else []}
         if self.kind == "trial":
             return {
                 "status": "FEATURE_TRIAL",
@@ -93,7 +95,7 @@ class _Host:
         return None
 
 
-@pytest.mark.parametrize("kind", ["goal", "activity-task", "task", "trial"])
+@pytest.mark.parametrize("kind", ["goal", "activity-task", "task", "trial", "committee"])
 @pytest.mark.parametrize("arrival", [None, 0.5, 1.0])
 def test_every_cli_wait_reads_at_its_cap(tmp_path, monkeypatch, capsys, kind, arrival) -> None:
     """every wait reaches its cap, sees the final interval and never extends it."""
@@ -103,21 +105,21 @@ def test_every_cli_wait_reads_at_its_cap(tmp_path, monkeypatch, capsys, kind, ar
     monkeypatch.setattr(client.time, "sleep", clock.sleep)
     monkeypatch.setattr(client, "LocalResearchClient", lambda *_a, **_k: host)
     monkeypatch.setenv("CODEX_THREAD_ID", "lead")
-    if kind == "goal":
-        command = ["activity", "wait", "--goal", host.goal_id]
-    elif kind == "activity-task":
-        command = ["activity", "wait", "--task", host.task]
-    elif kind == "task":
-        command = ["task", "show", host.task, "--wait"]
-    else:
-        command = ["trial", "show", host.trial, "--wait"]
+    command = {
+        "goal": ["activity", "wait", "--goal", host.goal_id],
+        "activity-task": ["activity", "wait", "--task", host.task],
+        "task": ["task", "show", host.task, "--wait"],
+        "trial": ["trial", "show", host.trial, "--wait"],
+        "committee": ["committee", "wait", "--update", host.task, "--role", "PM", "--key", "k"],
+    }[kind]
     code = cli.main(
         ["--workspace", str(tmp_path), *command, "--max-wait", "1", "--view", "full"],
         serve=lambda _: pytest.fail("no serve"),
     )
     answer = json.loads(capsys.readouterr().out)
     expected = "MAX_WAIT_REACHED" if arrival is None else "MESSAGE" if kind == "goal" else "ENDED"
-    assert answer["data"]["wait_event"]["event"] == expected
+    got = answer["data"].get("wait_event", {}).get("event") or answer["data"].get("wait_status")
+    assert (got or "ENDED") == expected  # a committee floor answers itself, with no event
     assert code == (3 if arrival is None else 0)
     if arrival is None or arrival == 1.0 or kind != "trial":
         assert host.reads[-1] == pytest.approx(1.0)

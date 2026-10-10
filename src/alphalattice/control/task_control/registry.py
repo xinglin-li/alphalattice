@@ -84,7 +84,7 @@ _WAKE_STATES = {
 """A Codex wake's journal events and the state each leaves it in (WAKE). They sit beside the
 Task's record and change none of it."""
 WAKE_UNCERTAIN = "CODEX_WAKE_DELIVERY_UNCERTAIN"
-"""The failure of a send the Host began and did not finish: it may or may not have arrived."""
+"""The failure of a send the Host began and did not finish: whether it was queued is unknown."""
 
 _ACTIVE_TASKS = frozenset(
     {
@@ -2011,7 +2011,7 @@ class DuckDbTaskControlRegistry:
     def finish_wake(
         self, registration_id: str, task_id: UUID, result: dict[str, Any], *, observed_at: datetime
     ) -> None:
-        """Record an attempted wake's one outcome: delivered, or its named failure."""
+        """Record an attempted wake's one outcome: queued, or its named failure."""
         self._db_time(observed_at)
 
         def operation(connection):  # type: ignore[no-untyped-def]

@@ -42,6 +42,7 @@ def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:
         "_wait_for_goal",
         "_wait",
         "_chain",
+        "_committee_wait",
     }, capped
     assert sleeps == {"_sleep_before_read"}, sleeps
     # A Codex wake is sent by the Host from the Task's journal, never by the client. An agent
@@ -99,6 +100,7 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
             # AGENT-TIME verbs 2 and 3: one deadline bounds every follow of a verb's Tasks.
             "_chain",
             "followed",
+            "_committee_wait",
         )
     }
     # Status and lock acquisition both re-read after their bounded pause. Joins inspect
@@ -108,6 +110,7 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
             ("control/product_host/composition/portfolio_research_operations.py", "_moved_on"),
             ("control/workspace_runtime/database.py", "_acquire"),
             ("control/workspace_runtime/database.py", "wait"),
+            ("interface/local_application/dispatcher.py", "close"),
             ("interface/local_application/web.py", "join_request_threads"),
             ("interface/local_application/web.py", "stop"),
             (

@@ -96,7 +96,8 @@ wait or an agent verb in the background (the Bash tool's `run_in_background`)
 and act on its completion notice. On Codex, they accept `--notify codex-queue` to
 return at the first running Task while the Host keeps its notification; a notice
 names the continuation when the Task ends, needs a decision or is deferred, and
-delivery failures appear in Task activity.
+failures to queue it appear in Task activity. Under an active Codex goal, wait inside
+the turn instead: the goal's next turn starts before a queued notice is taken.
 
 With `--wait --output`, admission is saved first and replaced by the final
 answer; save failure does not undo admission. Request documents are limited to

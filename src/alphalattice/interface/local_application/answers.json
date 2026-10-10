@@ -10292,7 +10292,7 @@
     "name": "wake",
     "kind": "object",
     "required": true,
-    "meaning": "The wake: its `registration_id`, `thread_id` and `read_command`, the Task's `lifecycle`, its `state` (`PENDING`, `ATTEMPTED`, `DELIVERED` or `UNDELIVERED`) and, once sent, its `event` and `result` (`delivered`, or the named `failure`). The same thread's pending wake is the one held; a settled one is answered again while the Task has not moved."
+    "meaning": "The wake: its `registration_id`, `thread_id` and `read_command`, the Task's `lifecycle`, its `state` (`PENDING`, `ATTEMPTED`, `DELIVERED` -- queued to the thread, which Codex takes while the thread is idle -- or `UNDELIVERED`) and, once sent, its `event` and `result` (`delivered`: queued, or the named `failure`). The same thread's pending wake is the one held; a settled one is answered again while the Task has not moved."
    }
   ]
  },

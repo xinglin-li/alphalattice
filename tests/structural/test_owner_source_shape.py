@@ -567,15 +567,15 @@ def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy_source
     assert isinstance(table, ast.Dict)
     assert {ast.literal_eval(key) for key in table.keys if key is not None} == readbacks
 
+    # A branch may read through the Host's own `_<kind>_readback`, as a research update's does.
+    own = {f.name: f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef)}
+    own = {name: f for name, f in own.items() if name.endswith("_readback")}
+
     def readers(node: ast.AST) -> set[str]:
-        return {
-            call.func.value.attr
-            for call in ast.walk(node)
-            if isinstance(call, ast.Call)
-            and isinstance(call.func, ast.Attribute)
-            and call.func.attr == "readback"
-            and isinstance(call.func.value, ast.Attribute)
-        }
+        calls = [c for c in ast.walk(node) if isinstance(c, ast.Call)]
+        named = [c.func for c in calls if isinstance(c.func, ast.Attribute)]
+        found = {f.value.attr for f in named if f.attr == "readback" and hasattr(f.value, "attr")}
+        return found.union(*(readers(own[f.attr]) for f in named if f.attr in own))
 
     owners: dict[str, set[str]] = {}
     for node in ast.walk(tree):

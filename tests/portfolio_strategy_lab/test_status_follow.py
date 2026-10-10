@@ -23,7 +23,7 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.interface.local_application import client as client_module
-from alphalattice.interface.local_application.cli_contract import outcome_of
+from alphalattice.interface.local_application.cli_contract import AGENT_HOST_WAITS, outcome_of
 from alphalattice.interface.local_application.portfolio_research import (
     LocalApplicationError,
     PortfolioResearchOperationRequest,
@@ -97,6 +97,9 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
     first = json.loads(capsys.readouterr().err.splitlines()[0])
     assert first["follow"]["operation"] == "STATUS" and "do not poll" in first["returns"]
     assert "run_in_background" in first["returns"]
+    # On Codex it names both ways: the queued wake when idle, this one call under a goal.
+    codex = AGENT_HOST_WAITS["codex"]
+    assert "--notify codex-queue" in codex and "get_goal" in codex
 
 
 @pytest.mark.parametrize(

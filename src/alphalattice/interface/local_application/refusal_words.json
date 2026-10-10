@@ -1432,19 +1432,19 @@
   "next_action": "READ_THE_SAME_TASK"
  },
  "CODEX_QUEUE_FAILED": {
-  "detail": "The codex queue command failed, so the Codex wake was not delivered. Read the same Task; its work is unchanged.",
+  "detail": "The codex queue command failed, so the Codex wake was not queued. Read the same Task; its work is unchanged.",
   "next_action": "READ_THE_SAME_TASK"
  },
  "CODEX_QUEUE_TIMED_OUT": {
-  "detail": "The codex queue command timed out, so the Codex wake may or may not have arrived. Read the same Task; its work is unchanged.",
+  "detail": "The codex queue command timed out, so the Codex wake may or may not have been queued. Read the same Task; its work is unchanged.",
   "next_action": "READ_THE_SAME_TASK"
  },
  "CODEX_QUEUE_START_FAILED": {
-  "detail": "The Host could not start the codex queue command, so the Codex wake was not delivered. Read the same Task; its work is unchanged.",
+  "detail": "The Host could not start the codex queue command, so the Codex wake was not queued. Read the same Task; its work is unchanged.",
   "next_action": "READ_THE_SAME_TASK"
  },
  "CODEX_WAKE_DELIVERY_UNCERTAIN": {
-  "detail": "The Host stopped while sending the Codex wake, so it may or may not have arrived; it is not sent again. Read the same Task; its work is unchanged.",
+  "detail": "The Host stopped while queuing the Codex wake, so it may or may not have been queued; it is not sent again. Read the same Task; its work is unchanged.",
   "next_action": "READ_THE_SAME_TASK"
  },
  "data.maintenance_stale_payload": {

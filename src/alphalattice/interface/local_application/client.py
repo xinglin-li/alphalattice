@@ -20,6 +20,7 @@ from typing import Any, Final, Literal, NamedTuple, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from alphalattice.interface.local_application.cli_contract import (
+    AGENT_HOST_WAITS,
     AGENT_SESSION_HEADER,
     AGENT_VENDOR_HEADER,
     ANSWER_LANGUAGE,
@@ -2170,19 +2171,11 @@ def _entry_of(client: LocalResearchClient) -> tuple[str, ...]:
 _FOLLOW_RETURNS = "when the Task ends, needs a decision or recovery, or is deferred; "
 """What a follow tells the agent at its start (AGENT-TIME R1), before its host's way to wait."""
 
-_HOST_WAITS: Final = {
-    "claude-code": "on Claude Code, run this command with the Bash tool's run_in_background and "
-    "act on its completion notice; never read its output or check its Task before the notice",
-    "codex": "on Codex, register the wake with --notify codex-queue (activity wait --task, or an "
-    "agent verb) and end your turn; the Host's queued line wakes you",
-}
-"""Each agent host's own way to wait, by the vendor `agent_session` names."""
-
 
 def _follow_returns() -> str:
     """When a follow returns and how this host waits for it, never by polling."""
     session = agent_session(os.environ)
-    way = _HOST_WAITS.get(session[0]) if session else None
+    way = AGENT_HOST_WAITS.get(session[0]) if session else None
     way = way or "let your shell wait or run this in the background"
     return f"{_FOLLOW_RETURNS}{way}, and do not poll it"
 
@@ -3231,14 +3224,16 @@ def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> di
         "committee_seen": int(args.committee_seen or 0),
     }
     deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
-    delay = 1.0
+    delay, body = 1.0, dict[str, Any]()
     while True:
-        body = client.request(document)
-        if outcome_of(body) != "OK" or body.get("for_you") or body.get("stage") == "CLOSED":
+        client, read = _read_through_restarts(client, document, deadline)
+        body = body if read is None else read
+        if read is not None and (
+            outcome_of(body) != "OK" or body.get("for_you") or body.get("stage") == "CLOSED"
+        ):
             return body
-        if deadline is not None and time.monotonic() >= deadline:
+        if read is None or not _sleep_before_read(delay, deadline):
             return {**body, "wait_status": "MAX_WAIT_REACHED"}
-        time.sleep(delay)
         delay = min(delay * 1.5, 10.0)
 
 
