@@ -19,8 +19,8 @@ uv tool install --python 3.12 --editable . --with-requirements .venv/alphalattic
 For a release wheel, use a separate directory; no checkout is needed. Extract its runtime lock, then install the wheel with it as requirements and constraints:
 
 ```powershell
-python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.1.4-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
-uv tool install --python 3.12 ./alphalattice-0.1.4-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
+python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.2.0.dev0-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
+uv tool install --python 3.12 ./alphalattice-0.2.0.dev0-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
 ```
 
 Configure the shipped guidance with the tool environment's own interpreter, beneath `uv tool dir` (not the checkout's `.venv`):
