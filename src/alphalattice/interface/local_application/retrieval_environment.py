@@ -78,7 +78,7 @@ def load() -> bool:
             key.strip(): value.strip() for key, _, value in (line.partition("=") for line in lines)
         }
         served = cfg.get("version_info") or cfg.get("version") or ""
-        if served.startswith(version + ".") and str(site) not in sys.path:
+        if (served == version or served.startswith(version + ".")) and str(site) not in sys.path:
             sys.path.append(str(site))
             importlib.invalidate_caches()
     return importlib.util.find_spec("fastembed") is not None

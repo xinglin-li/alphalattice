@@ -239,7 +239,7 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(tmp_p
     bound before stays bound, and the declared environment filled afterwards is read in place."""
     from alphalattice.interface.local_application import retrieval_environment
 
-    environment, (major, minor, micro) = tmp_path / "declared-retrieval", sys.version_info[:3]
+    environment, (major, minor) = tmp_path / "declared-retrieval", sys.version_info[:2]
     site = environment / (
         "Lib/site-packages" if os.name == "nt" else f"lib/python{major}.{minor}/site-packages"
     )
@@ -259,7 +259,7 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(tmp_p
     assert task.failure_code == "evidence_review.retrieval_environment_not_loaded"
     (site / "fastembed").mkdir(parents=True)
     (site / "fastembed" / "__init__.py").write_text("", encoding="utf-8")
-    config = f"version_info = {major}.{minor}.{micro}\n"
+    config = f"version_info = {major}.{minor}\n"  # as uv writes it, with no patch number
     (environment / "pyvenv.cfg").write_text(config, encoding="utf-8")
     assert retrieval_environment.load() and str(site) == sys.path[-1]
 
