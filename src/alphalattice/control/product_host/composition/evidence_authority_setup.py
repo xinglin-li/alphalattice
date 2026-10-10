@@ -29,16 +29,16 @@ from uuid import UUID
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
-from alphalattice.control.product_host.composition.evidence_review_application import (
-    PACKAGE_RULE,
-    SETUP_OPTIONS,
-)
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     EvidenceReviewArtifactBinding,
     EvidenceReviewModelProfile,
     EvidenceReviewWorkspaceManifest,
     RecordedEvidenceDocumentBundle,
     verify_evidence_review_workspace,
+)
+from alphalattice.control.product_host.composition.evidence_source_ways import (
+    PACKAGE_RULE,
+    SETUP_OPTIONS,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceEvidenceReview,

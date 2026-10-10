@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import get_args
 
 from alphalattice.control.product_host.composition import saved_object_readback
-from alphalattice.control.product_host.composition.evidence_review_application import SETUP_OPTIONS
+from alphalattice.control.product_host.composition.evidence_source_ways import SETUP_OPTIONS
 from alphalattice.control.task_control.registry import TASK_CONTROL_DATABASE_FILENAME
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.feature_engine.panels.semantic_index import (

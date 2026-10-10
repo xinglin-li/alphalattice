@@ -195,7 +195,7 @@ def test_a_recipe_binds_only_from_installed_verified_packs(tmp_path: Path) -> No
 def test_the_store_root_is_the_users(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The variable, else the store packs were last installed into, else the platform's; the
     Evidence setup says where it reads them and what a download takes."""
-    from alphalattice.control.product_host.composition.evidence_review_application import (
+    from alphalattice.control.product_host.composition.evidence_source_ways import (
         evidence_setup,
     )
 

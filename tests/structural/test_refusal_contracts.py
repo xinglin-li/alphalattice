@@ -77,10 +77,10 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ("control/product_host/composition/evidence_authority_setup.py", "_import_command"): (
             "the source setup script's own command: a recorded import's check and way on"
         ),
-        ("control/product_host/composition/evidence_review_application.py", "evidence_setup"): (
+        ("control/product_host/composition/evidence_source_ways.py", "evidence_setup"): (
             "the source setup's script commands"
         ),
-        ("control/product_host/composition/evidence_review_application.py", "source_ways"): (
+        ("control/product_host/composition/evidence_source_ways.py", "source_ways"): (
             "the official consent way: the person's own command, in their shell"
         ),
         ("control/product_host/composition/goals.py", "goal_prompt.command"): (

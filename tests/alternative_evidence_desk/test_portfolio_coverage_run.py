@@ -24,7 +24,7 @@ from uuid import UUID
 import pytest
 
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressProjection
-from alphalattice.control.product_host.composition.evidence_review_application import PACKAGE_RULE
+from alphalattice.control.product_host.composition.evidence_source_ways import PACKAGE_RULE
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.evidence.alternative_evidence.analysis.contracts import EvidenceTopic
 from alphalattice.evidence.alternative_evidence.publication.contracts import (

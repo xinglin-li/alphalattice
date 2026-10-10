@@ -18,12 +18,12 @@ from typing import Any
 
 import pytest
 
-from alphalattice.control.product_host.composition.evidence_review_application import (
-    SETUP_OPTIONS,
-    evidence_setup,
-)
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     admit_evidence_review_workspace,
+)
+from alphalattice.control.product_host.composition.evidence_source_ways import (
+    SETUP_OPTIONS,
+    evidence_setup,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceError,
@@ -254,12 +254,12 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
 ):
     from scripts import materialize_evidence_cro_authority as setup
 
-    from alphalattice.control.product_host.composition.evidence_review_application import (
-        PACKAGE_RULE,
-    )
     from alphalattice.control.product_host.composition.evidence_review_workspace import (
         EvidenceReviewWorkspaceManifest,
         RecordedEvidenceDocumentBundle,
+    )
+    from alphalattice.control.product_host.composition.evidence_source_ways import (
+        PACKAGE_RULE,
     )
     from alphalattice.control.product_host.composition.research_workspace import (
         publish_research_workspace_manifest,
