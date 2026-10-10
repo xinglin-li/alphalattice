@@ -38,7 +38,6 @@ from tests.structural.source_shape_samples import (
     evidence_review_refusal_samples,
     evidence_unit_failure_codes,
     specialist_answer_bound_samples,
-    workbench_request_inputs,
     workbench_source_inputs,
 )
 
@@ -920,70 +919,6 @@ def test_the_workbench_harnesses_pass_source_shape() -> None:
     """Workbench retention and Goal inputs enumerate their original source declarations."""
 
     workbench_source_inputs()
-
-
-def test_every_workbench_write_has_an_agent_route(tmp_path: Path, monkeypatch) -> None:
-    """The complete Workbench source graph takes seconds to prove agent and relay reach."""
-    from devtools.architecture.operation_registry import relay_authority_problems, ui_agent_parity
-
-    monkeypatch.setenv("UI_QA_STATE", str(tmp_path / "ui-qa"))
-    inventory = workbench_request_inputs(ROOT)
-    assert inventory["posts"] and inventory["handlers"]
-    assert ui_agent_parity(ROOT, inventory) + relay_authority_problems(ROOT) == []
-
-
-def test_a_new_workbench_write_needs_the_same_agent_request(tmp_path: Path, monkeypatch) -> None:
-    """Reading the full source graph holds planted writes at the actual harness seam."""
-    from devtools.architecture.operation_registry import ui_agent_parity
-
-    monkeypatch.setenv("UI_QA_STATE", str(tmp_path / "ui-qa"))
-    actions = (
-        ROOT
-        / "src/alphalattice/interface/local_application/assets/workbench-source/js/app/actions.js"
-    )
-    planted = (
-        actions.read_text(encoding="utf-8")
-        + """
-Object.assign(ACTIONS, {
-  'synthetic-clean': () => Data.post('/api/workspace/cpu-budget', {cpu_budget: 4}),
-  'synthetic-missing': () => Data.post('/api/synthetic-missing', {}),
-  'synthetic-direct': () => {
-    const options = {method: 'POST', body: '{}'};
-    return fetch('/api/synthetic-direct', options);
-  },
-  'synthetic-bounded': () => {const path = '/api/workspace/cpu-budget'; return path;},
-  'synthetic-shadowed': () => Data.post(path, {}),
-  'synthetic-branch': () => Data.post(choose ? '/api/workspace/cpu-budget' : unknown(), {}),
-});
-"""
-    )
-    inventory = workbench_request_inputs(ROOT, {"actions.js": planted})
-    failures = ui_agent_parity(ROOT, inventory)
-    assert not any("synthetic-clean" in line for line in failures)
-    for action in ("synthetic-missing", "synthetic-direct"):
-        assert any(
-            f"{action} => /api/{action}" in line and "CLI" in line and "relay" in line
-            for line in failures
-        )
-    for action in ("synthetic-shadowed", "synthetic-branch"):
-        assert any(row["action"] == action and row["unbounded"] for row in inventory["actions"])
-        assert any(f"{action} =>" in line for line in failures)
-    host = tmp_path / "src/alphalattice/control/product_host/composition/local_web_session.py"
-    client = tmp_path / "src/alphalattice/interface/local_application/client.py"
-    host.parent.mkdir(parents=True)
-    client.parent.mkdir(parents=True)
-    client.write_text("class LocalResearchClient: pass\n", encoding="utf-8")
-    declaration = "PortfolioResearchOperationRequest(operation='STATUS')"
-    for name, body in (
-        ("used", f"return operations.execute({declaration})"),
-        ("unused", f"unused = {declaration}\n    return mutate_without_request()"),
-    ):
-        host.write_text(
-            f"@app.route('POST', '/api/{name}')\ndef send():\n    {body}\n",
-            encoding="utf-8",
-        )
-        rows = {"posts": [{"action": name, "paths": [f"/api/{name}"]}]}
-        assert bool(ui_agent_parity(tmp_path, rows)) is (name == "unused")
 
 
 @pytest.mark.parametrize(

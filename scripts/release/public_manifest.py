@@ -175,6 +175,7 @@ RULES = [
             "tests/portfolio_strategy_lab/workbench_review_publication.cjs",
             "tests/portfolio_strategy_lab/workbench_shared_readers.cjs",
             "tests/structural/test_public_release_closure.py",
+            "tests/structural/test_workbench_agent_parity.py",
             "tests/workspace_maintenance/test_workspace_backup.py",
             "tests/researcher_methodology_surface/panel_value_parity_probe.py",
             "tests/researcher_methodology_surface/test_dogfood_authority_probe.py",
@@ -283,6 +284,7 @@ RULES = [
             "tests/portfolio_strategy_lab/test_workbench_shared_readers.py": (
                 "runs the private shared-reader controls and stack harness"
             ),
+            "tests/structural/test_workbench_agent_parity.py": "needs the private UI QA kit",
             "tests/structural/test_public_release_closure.py": (
                 "needs the private release inventory"
             ),

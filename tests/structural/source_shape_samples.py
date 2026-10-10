@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 import inspect
-import json
 import re
 from pathlib import Path
 
@@ -230,28 +229,6 @@ def workbench_source_inputs():
         )
     )
     return retention_roots, goal_reference_operations, goal_comparison_refusals
-
-
-def workbench_request_inputs(root: Path, replacements: dict[str, str] | None = None):
-    """Read action and POST edges through the existing Workbench source harness."""
-    from tests.portfolio_strategy_lab.local_web_support import run_node
-
-    reader = root / "scripts/ui_qa/checks/detail_routes_probe.cjs"
-    script = (
-        "const fs=require('node:fs'),q=JSON.parse(fs.readFileSync(0,'utf8'));"
-        "console.log(JSON.stringify(require(q.reader).requestInventory(q.root,q.sources)));"
-    )
-    answer = run_node(
-        ["-e", script],
-        required=True,
-        cwd=root,
-        capture_output=True,
-        text=True,
-        input=json.dumps({"reader": str(reader), "root": str(root), "sources": replacements or {}}),
-        timeout=55,
-    )
-    assert answer.returncode == 0, answer.stderr
-    return json.loads(answer.stdout.strip().splitlines()[-1])
 
 
 def generated_evidence_sentences():

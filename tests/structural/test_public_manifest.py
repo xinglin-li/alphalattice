@@ -446,6 +446,7 @@ def test_private_test_trees_keep_all_file_kinds_out_of_public_scope():
         "tests/portfolio_strategy_lab/test_workbench_owner_words.py",
         "tests/portfolio_strategy_lab/workbench_dom.cjs",
         "tests/portfolio_strategy_lab/workbench_minor_ui.cjs",
+        "tests/structural/test_workbench_agent_parity.py",
     ],
 )
 def test_workbench_verification_needs_the_private_ui_qa_kit(path):
