@@ -3281,6 +3281,7 @@ window.ALPHA_ZH = {
   "Day": "按天",
   "Updates": "更新",
   "Stopped at": "停止于",
+  "Stop the Host": "停止 Host",
   "Before preparation": "准备之前",
   "Listings the owner will check again at the next update; nothing is needed from you.": "所有者会在下次更新时再次检查的标的；目前不需要你做什么。",
   "Preparing the workspace": "正在准备工作区",

@@ -242,7 +242,7 @@ function picker(id, choices, {placeholder = '', disabled = false, action = 'pick
   const count = multiple ? chosen.size : 0;
   const title = face ? face : multiple ? html`<span class="filter-chip-label">${placeholder}</span>${count ? html`<i></i><strong>${count}</strong>` : ''}`
     : kind === 'chip' ? html`<span class="filter-chip-label">${placeholder}</span>${current ? html`<i></i><strong>${current.title}</strong>` : ''}`
-    : glyphWord(current?.glyph, current?.trigger || current?.title || placeholder || (empty ? t('None available') : '')); // round 84: the pill holds the value's glyph (Codex's `Cursor ⌄`)
+    : glyphWord(current?.glyph, current?.trigger || current?.title || placeholder || (empty ? t('None available') : '')); // the pill holds the value's glyph (Codex's `Cursor ⌄`)
   const windowed = !multiple && rows.length > PICKER_WINDOW;
   let shown = rows, more = 0;
   if (windowed) {
@@ -362,7 +362,7 @@ function menuRow({ic = '', word = '', note = '', key = '', title = '', action = 
 }
 function railTools(extra = []) {
   const focus = typeof Inspect !== 'undefined' && Inspect.focus;
-  // round 92: Facts and Record are the panel's tabs, opened from the ⓘ chip and Ctrl ]; a panel is a part of the view, not a command
+  // Facts and Record are the panel's tabs, opened from the ⓘ chip and Ctrl ]; a panel is a part of the view, not a command
   const items = [...extra, {ic: 'link', action: 'copy-link', word: t('Copy link'), why: t('The address of exactly this view'), key: 'L'},
     {ic: 'fork', action: 'research-map', word: t('Map'), why: t('Open research map')},
     {ic: 'eye', action: 'focus-toggle', word: focus ? t('Exit Focus') : t('Focus'), why: focus ? t('Exit Focus mode') : t('Enter Focus mode'), pressed: Boolean(focus)},
@@ -467,9 +467,9 @@ function propertyChip(label, value, {icon: ic = '', key = '', rows = [], context
   const cap = key ? keycap(key.toUpperCase()) : '';
   const face = html`${ic ? icon(ic) : ''}<span class="filter-chip-label">${label}</span>${value ? html`<i></i><strong>${value}</strong>` : ''}${cap}`;
   if (press) return html`<span class="filter-chip property-chip is-active"${key ? html` data-property="${key}"` : ''}>${btnAttrs(face, press, '', 'filter-chip-main')}</span>`; // a chip that goes somewhere, no menu
-  // round 91: a chip with choices is the one picker (the chip face, the top layer, the rules); a chip with a note alone keeps its note
+  // a chip with choices is the one picker (the chip face, the top layer, the rules); a chip with a note alone keeps its note
   if (rows.length) return html`<span class="filter-chip property-chip${value ? ' is-active' : ''}"${id ? html` id="${id}"` : ''}${key ? html` data-property="${key}"` : ''}>${picker('prop-' + (id || key || textHash(String(label))), rows.map((r) => ({value: r.value, title: r.title, meta: r.meta || ''})), {kind: 'chip', action, selected: current, placeholder: label, label: t('Change {label}', {label}), face, context, searchThreshold: 7})}</span>`;
-  // round 93: a read-only chip is not a menu; its note (and its context) is the tooltip's
+  // a read-only chip is not a menu; its note (and its context) is the tooltip's
   return html`<span class="filter-chip property-chip${value ? ' is-active' : ''} is-read"${id ? html` id="${id}"` : ''}${key ? html` data-property="${key}"` : ''}><span class="filter-chip-main" data-tip="${[context, note || t('Recorded by the owner; not editable here.')].filter(Boolean).join(' · ')}" tabindex="0">${face}</span></span>`;
 }
 /* Round 57: display options (Linear's Shift V). Everything about how a list is shown lives in one
@@ -570,7 +570,7 @@ const Picker = (() => {
     /* A picker is the open face of its trigger, not a second component with its own measure.
      * Long labels wrap inside that measure. This keeps Lab, Team and the theme chooser aligned
      * at every responsive width instead of widening or narrowing them by content kind. */
-    // round 91: the list is at least the xs width and at most the md width (or the viewport), never a wall of wrapped words;
+    // the list is at least the xs width and at most the md width (or the viewport), never a wall of wrapped words;
     // a pop-up in a form row (round 83) hangs from the pill's right edge; below 640 the list is a sheet from the foot
     const sheet = vw < BREAKPOINTS.window.phone;
     if (sheet) { pop.dataset.sheet = 'true'; pop.style.removeProperty('--picker-left'); pop.style.removeProperty('--picker-top'); pop.style.setProperty('--picker-width', `${Math.max(0, vw - edge * 2)}px`); pop.style.setProperty('--picker-max', `${Math.round(vh * 0.6)}px`); pop.dataset.side = 'sheet'; return; }
@@ -843,7 +843,7 @@ function stepList(items, o = {}) {
 function runLog({id = 'runLog', title, caption = '', lines = [], empty = '', status = '', controls = '', search = false, rail = '', cls = '', linesCls = '', notes = '', attrs = '', fold = false, count = null, summary = '', open = true}) {
   const field = search ? html`<input type="search"  class="search-input log-search" data-filter=".log-line" data-filter-scope=".run-log" placeholder="${t('Filter the log')}" aria-label="${t('Filter the log')}">` : '';
   const titles = html`<div class="panel-label"><h3>${title}${count !== null ? html` <span>${count}</span>` : ''}</h3>${infoMark(caption)}</div>`; // N6 (law 121): the log's sentence is its label's (i)
-  // round 83: a fold with a `summary` reads as Codex's one grey line (`Worked for 3 min · 4 ›`) until opened
+  // a fold with a `summary` reads as Codex's one grey line (`Worked for 3 min · 4 ›`) until opened
   const folded = summary ? html`<summary class="run-log-head run-log-fold"><span class="run-log-summary">${summary}${count !== null ? html` · ${count}` : ''}</span></summary>` : html`<summary class="run-log-head">${titles}</summary>`;
   const head = fold ? html`${folded}${field || controls ? html`<div class="run-log-tools">${field}${controls}</div>` : ''}` : html`<header class="run-log-head">${titles}${field}${controls}</header>`;
   const body = html`${rail}${head}${notes}<div class="run-log-lines${linesCls ? ' ' + linesCls : ''}" id="${id}" role="log" aria-live="off" tabindex="0" aria-label="${title}">${lines.length ? lines : empty}</div>${status ? html`<div class="run-log-status">${status}</div>` : ''}`;
@@ -1044,13 +1044,13 @@ const coverageBar = (segments, o = {}) => meter({kind: 'share', segments, ...o})
 function objectRow({lead: ic = '', state = null, name = '', why = '', ref = '', to = null, cls = ''} = {}, slots = null) {
   // a run's row (round 71): the dot leads, the state's word and duration are its first fact
   const lead = state ? statusDot(typeof state === 'string' ? state : state.lifecycle ?? state.state ?? state.status) : typeof ic === 'string' ? (ic ? html`<span class="feature-icon">${icon(ic)}</span>` : '') : ic;
-  // round 94: the row says what leads it (a glyph, a dot, a mark) so the facts line's indent needs no :has()
+  // the row says what leads it (a glyph, a dot, a mark) so the facts line's indent needs no :has()
   const leadKind = state ? 'dot' : typeof ic === 'string' ? (ic ? 'icon' : '') : /class="mark\b/.test(String(ic)) ? 'mark' : /class="row-dot\b/.test(String(ic)) ? 'dot' : /class="feature-icon\b/.test(String(ic)) ? 'icon' : '';
   if (state) slots = {...(slots || {}), props: [stateLine(state, {dot: false, next: '', until: slots?.until, word: slots?.word}), ...(slots?.props || [])], columns: slots?.columns ? ['state', ...slots.columns] : null}; // the next action is the row's second line, not the slot's
   const copy = html`<strong>${name}</strong>${why ? html`<span class="list-row-why">${why}</span>` : ''}`;
   // a dense row's title keeps one line (law 136) and reads whole on hover or focus where the line cuts it -- on the row's main part, which takes the pointer (the clip census, 2026-09-24: the hidden part was readable nowhere)
   const main = !to ? html`<span class="list-row-main" data-tip="@overflow">${copy}</span>` : to.page ? html`<a class="list-row-main" data-tip="@overflow" href="${routeUrl(to.page, to.extra || {})}">${copy}</a>` : html`<button type="button" class="list-row-main" data-tip="@overflow" data-action="${to.action}" data-value="${to.value}">${copy}</button>`;
-  // round 90: every fact keeps its slot (an absent one an empty span, hidden unless the list sizes its slots), so the columns align across rows
+  // every fact keeps its slot (an absent one an empty span, hidden unless the list sizes its slots), so the columns align across rows
   const facts = slots?.columns || slots?.props?.filter(Boolean).length ? (slots?.props || []).map((p, i) => {
     const column = slots?.columns ? html` data-column="${slots.columns[i]}"` : '';
     return !p ? html`<span data-empty${column}></span>` : Array.isArray(p) ? html`<span${column}${p[2] === 'drop' ? ' data-drop' : ''}>${p[0] ? icon(p[0]) : ''}${p[1]}</span>` : html`<span${column}>${p}</span>`;
@@ -1111,7 +1111,7 @@ function noteLine(title, text = '', tone = 'info', action = '', ic = '') {
  * is a text link, its body travels inert in a template beside it and is shown in the Facts mode. */
 const textHash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36); };
 function factsRef(title, body, cls = '') {
-  // round 92: a document is never a Facts body; a page that tries throws into the render boundary
+  // a document is never a Facts body; a page that tries throws into the render boundary
   if (/<pre[\s>]/.test(String(body))) throw new Error('factsRef: a document (a <pre>) is a code dialog (codeRef), never a Facts body: ' + String(title).replace(/<[^>]+>/g, '').slice(0, 60));
   const id = 'facts-' + textHash(String(title) + String(body));
   return html`<p class="facts-ref${cls ? ' ' + cls : ''}">${btnAttrs(html`${title}${icon('arrow')}`, 'facts-open', id, 'text-btn')}<template data-facts-id="${id}">${body}</template></p>`;
@@ -1165,7 +1165,7 @@ function objectHead(name, meta, actions = '', state = '', tools = [], details = 
   const after = m ? String(meta).slice(m[0].length).trim() : '';
   const rest = m ? (after ? raw(after) : '') : typeof meta === 'string' ? '' : meta;
   const identity=details.id ? html`<span class="object-id"><code>${details.id}</code>${btnAttrs(icon('copy'),'copy-text',details.id,'icon-btn code-copy',html`aria-label="${t('Copy object ID')}" data-tip="${t('Copy object ID')}"`)}</span>` : '';
-  // round 53: a record opened from a list steps through that list — its position and the pair
+  // a record opened from a list steps through that list — its position and the pair
   const step = typeof Inspect !== 'undefined' && Inspect.stepping ? Inspect.stepping() : null;
   const stepper = step ? html`<span class="object-step"><b class="num">${count(step.index + 1)} / ${count(step.total)}</b>${btnAttrs(icon('chevron'),'step-prev','','icon-btn compact step-up',html`aria-label="${t('Previous record in the list')}" data-tip="${t('Previous record in the list')}" data-tip-key="["${step.prev ? '' : html` aria-disabled="true"`}`)}${btnAttrs(icon('chevron'),'step-next','','icon-btn compact',html`aria-label="${t('Next record in the list')}" data-tip="${t('Next record in the list')}" data-tip-key="]"${step.next ? '' : html` aria-disabled="true"`}`)}</span>` : '';
   const ident = stepper ? html`<span class="object-ident">${stepper}</span>` : '';
@@ -1990,6 +1990,7 @@ const CODE_WORDS = {
   GOAL_SHOW: "Read Goal",
   GOAL_SUBMIT: "Submit Goal completion",
   GOAL_TAKE: "Take Goal",
+  HOST_STOP: "Stop the Host",
   MODEL_ACTIVATE: "Activate Alpha model",
   MODEL_DEACTIVATE: "Deactivate Alpha model",
   MODEL_EXTENSIONS: "Alpha models",
@@ -2252,7 +2253,7 @@ Object.assign(CODE_WORDS, {
   'alternative_evidence.artifact_unavailable': 'Evidence artifact unavailable',
   'task_control.task_not_found': 'Task record missing',
   'storage.cap_setting_invalid': 'Storage cap invalid', 'storage.cap_setting_unreadable': 'Storage cap unreadable',
-  // round 90: the limitations a curation decision acknowledges, said as the acknowledgement
+  // the limitations a curation decision acknowledges, said as the acknowledgement
   ALPHA_SCIENTIFIC_STOP_PRESERVED: 'The Alpha scientific stop is preserved', SEALED_HOLDOUT_UNREAD: 'The sealed holdout stays unread', RISK_RESEARCH_NOT_ADMITTED: 'Risk research is not admitted',
   ROLLING: 'rolling', EXPANDING: 'expanding', DAILY: 'daily',
   // N6 (law 80): the data owner's stops and a unit's refusals, said in words on every data state
@@ -2306,7 +2307,7 @@ const CODE_LINES = {
     'external_submission_entry_required':'Only a person or an external automation may submit this; the product never submits an answer to itself.',
     'local_web.session_renewed':'The request was sent and refused before dispatch: its session token was not accepted and nothing was admitted. The session was renewed; confirm again to send it.',
     'local_web.session_renewal_failed':'The request was sent and refused before dispatch: its session token was not accepted and nothing was admitted. Renewing the session failed; reload the page for a new session, then confirm again.',
-    'feature.baseline_qualified_population_insufficient':'Too few listings passed the quality floor for a baseline Feature panel; the universe is below the population the owner requires, so nothing was built.', // round 93: the first-use fixture's stop, said in words beside the owner's detail
+    'feature.baseline_qualified_population_insufficient':'Too few listings passed the quality floor for a baseline Feature panel; the universe is below the population the owner requires, so nothing was built.', // the first-use fixture's stop, said in words beside the owner's detail
     'workspace_backup.root_inside_workspace':'The backup root lies inside the workspace, so no generation was made. Name a root outside it with ALPHALATTICE_BACKUP_ROOT, then back up again.',
     'workspace_backup.object_changed_while_copied':'A held file changed while it was copied, so no generation was kept. Back up again once the running work settles.',
     'research_workspace.manifest_from_newer_build':'A newer build of the product wrote this workspace: its manifest holds what this build does not know, named after the code. Nothing was changed.',
