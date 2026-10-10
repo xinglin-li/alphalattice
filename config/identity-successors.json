@@ -12146,6 +12146,83 @@
    "successor": "bd3a114d8dfdb08b1788994af4498b90dc43c6cd413b8fa8278536941b59fe0e",
    "change": "The date's Risk on the dated readback (2026-10-09)",
    "reason": "The Risk owners' per-listing return derivation, decomposition inputs and variance shares were extracted for the date's Risk to share; each is the same computation, the producer's reference test, the sectors-in-force test and the publisher's window tests pass unchanged, and every published value is equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "5bf929e513a035dc128199108f74b032798b83a2bde2fe12d5ed4614372f3277",
+   "successor": "3f963f183e69a8aedb0d6951e5383127495d170d17b1f8de023fa1152ab74076",
+   "change": "Count seams and guards (2026-10-09)",
+   "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "5bf929e513a035dc128199108f74b032798b83a2bde2fe12d5ed4614372f3277",
+   "successor": "3f963f183e69a8aedb0d6951e5383127495d170d17b1f8de023fa1152ab74076",
+   "change": "Count seams and guards (2026-10-09)",
+   "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "a497fd06c9bcfe1f1f56cb28ba282a5798ea2b7cc62c2c515b277ef993f42ef9",
+   "successor": "23ebb11113e0cd0d0b74a8b3ab898c1f4a1e6ed987eae242fbeb0288c8d620dc",
+   "change": "Count seams and guards (2026-10-09)",
+   "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "cc5c4c3f68db3b77add34da35de69f6773f9aa476873de7f66855b5147e59a09",
+   "successor": "7fa71f995994ee254e05ccfb47946260c4b13e10fb94c11f8c2a48f22f3f9f36",
+   "change": "Count seams and guards (2026-10-09)",
+   "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "c5190c53807474a8c499c533101a1ba46273c290b071aaa0f7954eb2659a2120",
+   "successor": "714917dba8eb64efcf50c786d966e5443a4ab42952db0eaf0073e709b4df6891",
+   "change": "Count seams and guards (2026-10-09)",
+   "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "71e0b9edc1e0922cb31b3ed0c30a4ba871c3043d37a561a5d749ba1f3d4277a4",
+   "successor": "66663988b89eaf9fd2f9a9b4263cbb8e00a73ab2cee211f8c490b4c98da5927a",
+   "change": "Count seams and guards (2026-10-09)",
+   "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "eae71eea8b199dbeaee63c52456526edfd00109d2696b45fc5c7721fe5c4b094",
+   "successor": "884b1fe2d899d59750196239809d3651cc8699461eaeb22c6a903f2caa470697",
+   "change": "Count seams and guards (2026-10-09)",
+   "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "d5786cf0aabb7a9c2fdc07c39ed6f6eb9d03f9a1dec80d6a9814870730be0432",
+   "successor": "986e4f3be50ccae0dc40c3bbd700f90ff02ca2c990f0b7771c248fae48b1bb99",
+   "change": "Count seams and guards (2026-10-09)",
+   "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "23460db9285e9260b97f5ff9088ab1b9996709c0be6cce1451295b3a50089d06",
+   "successor": "436b4da670042958b641cf6da8fb13267453e838c9a221dd2f395d9e3a43364d",
+   "change": "Count seams and guards (2026-10-09)",
+   "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "0d80f3fbe4cce8d18e462f7cdb6bb8630db81698c3de181752cce8d436eef80f",
+   "successor": "0194f43c9ef9a31c5a37a46f81db4c8215495a8986de5e149b20ba8c08e6c381",
+   "change": "Count seams and guards (2026-10-09)",
+   "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "a25f68e2493840e877f8fc20545e4adfa0fd004dabbf5cf014f254721fbb1327",
+   "successor": "7dc615bf058fcb3a4a7db2b2dd4fcc82ab9c31a95a3f051b2dc22b56068d117b",
+   "change": "Count seams and guards (2026-10-09)",
+   "reason": "Pinned count budgets measure work at existing owner seams (the Sector count seam among them) and the release review's words changed; these closures moved through shared modules, and the count fixtures keep identical numeric arrays, so every value is equal."
   }
  ]
 }
