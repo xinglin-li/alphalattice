@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable, Iterator
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -101,6 +103,64 @@ def _state(answer: dict[str, Any]) -> str:
     return str(data.get("lifecycle") or answer.get("status") or data.get("status") or "")
 
 
+def mutations(
+    request: dict[str, Any], required: list[str]
+) -> Iterator[tuple[str, dict[str, Any], str]]:
+    """Single deterministic edits of a live offer; no authority is widened."""
+    for key in sorted(k for k in request if k != "operation" and request[k] is not None):
+        value = request[key]
+        if key in required:
+            yield "drop-field", {k: v for k, v in request.items() if k != key}, key
+        if isinstance(value, str) and re.search(r"\b[HTM]\d+\b", value):
+            alias = re.sub(r"\b[HTM](\d+)\b", r"\1", value, count=1)
+            yield "alias-number", {**request, key: alias}, key
+        if not isinstance(value, str) or key.endswith(("_id", "_hash", "_session")):
+            yield "value-change", {**request, key: "?"}, key
+        if key.endswith("_id"):
+            yield "wrong-id", {**request, key: "00000000-0000-0000-0000-000000000000"}, key
+    if isinstance(request.get("committee_message"), dict):
+        for kind, values, rule in (
+            ("shape", {"outcome": "ADOPT", "reply_to": None}, "SHAPE"),
+            ("target", {"targets": ["H9999"]}, "TARGET"),
+            ("reply", {"reply_to": "M9999"}, "REPLY_TO"),
+            (
+                "alias-number",
+                json.loads(
+                    re.sub(
+                        r"\b[HTM](\d+)\b", r"\1", json.dumps(request["committee_message"]), count=1
+                    )
+                ),
+                "NUMBER",
+            ),
+        ):
+            changed = deepcopy(request)
+            changed["committee_message"].update(values)
+            yield kind, changed, rule
+
+
+def _refusal_rule(answer: dict[str, Any], expected: str) -> tuple[bool, str, bool]:
+    """Name the actual typed rule separately from the words explaining it."""
+    data = _data(answer)
+    code = str(answer.get("failure_code") or data.get("failure_code") or "")
+    reasons = json.dumps(answer.get("reasons") or data.get("reasons") or {}, ensure_ascii=False)
+    fields = (answer.get(k) or data.get(k) for k in ("detail", "message", "reasons", "usage_error"))
+    words = json.dumps(list(fields), ensure_ascii=False)
+    generic = re.search(
+        r"request_invalid|invalid_request|usage_invalid|\.refused|cli_failed|handler_failed|unexpected_failure",
+        code,
+    )
+    located = re.search(r"(?:\w+\.)+\w+(?::[A-Z_]+)?", reasons)
+    typed = (located.group() if located else "") if generic else code
+    suffix = typed.partition(":")[2]
+    actual = suffix if suffix == expected or re.fullmatch(r"[A-Z_]+", suffix) else typed or expected
+    named = bool(typed) or expected in (reasons if "request_invalid" in code else words)
+    stated = actual.casefold() in words.casefold() or (
+        (answer.get("rule") or data.get("rule")) == actual
+        and bool(answer.get("detail") or data.get("detail"))
+    )
+    return named, actual, stated
+
+
 @dataclass
 class Explorer:
     """One scenario's walk: the CLI and shell it is given, and what it has seen so far."""
@@ -121,13 +181,183 @@ class Explorer:
     """Every request and command this walk has sent: a step's subtree is walked once."""
     again: set[str] = field(default_factory=set)
     """Each failed step sent once more where it was offered again, to see whether it moved."""
+    request_fields: dict[str, dict[str, list[str]]] = field(default_factory=dict)
+    mutation_owners: dict[str, str] = field(default_factory=dict)
+    read_operations: set[str] = field(default_factory=set)
+    mutation_budget: float = 0.0
+    mutation_seconds: float = 0.0
+    mutation_checks: list[dict[str, Any]] = field(default_factory=list)
+    findings: list[dict[str, Any]] = field(default_factory=list)
+    mutated: set[str] = field(default_factory=set)
+
+    def inject(
+        self,
+        request: dict[str, Any],
+        where: str,
+        baseline: dict[str, Any] | None = None,
+        kinds: set[str] | list[str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Probe offered-request mistakes through the same CLI, recording feedback defects."""
+        if self.mutation_seconds >= self.mutation_budget:
+            return None
+        started = time.monotonic()
+        operation = str(request["operation"])
+        required = self.request_fields.get(operation, {}).get("required", [])
+        variants = [v for v in mutations(request, required) if v[1] != request]
+        variants += [("misspell-flag", request, "--flie")]
+        if baseline is not None:
+            variants = [("duplicate", request, "same admission")]
+        elif kinds is None and variants:
+            variants = [variants[len(self.mutation_checks) % len(variants)]]
+        for kind, changed, rule in (v for v in variants if kinds is None or v[0] in kinds):
+            if self.mutation_seconds + time.monotonic() - started >= self.mutation_budget:
+                break
+            document = self.work / f"mistake-{len(self.events)}.json"
+            document.write_text(json.dumps(changed), encoding="utf-8")
+            flag = "--flie" if kind == "misspell-flag" else "--file"
+            answer = self._send(["request", flag, str(document)], where + " > " + kind)
+            self.events[-1].attributes["alphalattice.mutation"] = kind
+            row, corrected = self._mistake_answer(request, answer, kind, rule, where, baseline)
+            self.mutation_checks.append(row)
+            if row["reason"]:
+                self.findings.append({**row, "loop_part": "feedback"})
+            if corrected is not None:
+                self.mutation_seconds += time.monotonic() - started
+                return corrected
+        self.mutation_seconds += time.monotonic() - started
+        return None
+
+    def _mistake_answer(
+        self,
+        request: dict[str, Any],
+        answer: dict[str, Any],
+        kind: str,
+        rule: str,
+        where: str,
+        baseline: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        """A refusal names its rule and recovery; a duplicate preserves its admission."""
+        operation = str(request["operation"])
+        named, actual, words_state_rule = _refusal_rule(answer, rule)
+        refused = answer.get("outcome") not in {"OK", "PENDING"}
+        reason, corrected = None, None
+        if not refused:
+            if kind != "duplicate":
+                reason = "changed request accepted without equivalence proof"
+        elif not named:
+            reason = "refusal loses the broken rule"
+        else:
+            content = kind in {"drop-field", "alias-number", "value-change", "wrong-id", "target"}
+            reason, corrected = self._correction(
+                request, answer, where, content and words_state_rule, baseline
+            )
+        if kind == "duplicate" and (not refused or corrected is not None):
+            before = _data(baseline or {})
+            keys = ("task_id", "message_id", "plan_hash", "result_hash")
+            identities = {k: before[k] for k in keys if before.get(k) is not None}
+            repeated = _data(corrected or answer)
+            same = identities and all(repeated.get(k) == v for k, v in identities.items())
+            if operation not in self.read_operations and not same:
+                reason, corrected = "duplicate admission differs or has no identity proof", None
+        row = {
+            "state": where,
+            "mutation": kind,
+            "answer": answer,
+            "rule_named": named,
+            "actual_rule": actual,
+            "words_state_rule": words_state_rule,
+            "owner": self.mutation_owners.get(
+                "syntax" if kind == "misspell-flag" else operation, operation
+            ),
+            "reason": reason,
+        }
+        return row, corrected
+
+    def _bound_read(
+        self,
+        original: dict[str, Any],
+        request: dict[str, Any],
+        sent: dict[str, Any],
+        baseline: dict[str, Any] | None = None,
+    ) -> bool:
+        """A recovery read exposes the same owner's original selector context."""
+        bindings = {
+            k: v
+            for k, v in original.items()
+            if k.endswith(("_id", "_hash")) and request.get(k) == v
+        }
+        owner = self.mutation_owners.get(str(original["operation"]))
+        bound = bool(
+            owner
+            and bindings
+            and owner == self.mutation_owners.get(str(request["operation"]))
+            and all(_data(sent).get(k) == v for k, v in bindings.items())
+        )
+        if baseline:
+            return bool(
+                bound
+                and request["operation"] == "COMMITTEE_READ"
+                and any(
+                    item.get("id") == _data(baseline).get("message_id")
+                    for item in _data(sent).get("messages", [])
+                )
+            )
+        return bound
+
+    def _correction(
+        self,
+        original: dict[str, Any],
+        answer: dict[str, Any],
+        where: str,
+        edit: bool = False,
+        baseline: dict[str, Any] | None = None,
+    ) -> tuple[str | None, dict[str, Any] | None]:
+        """An offered read is an aid; only the corrected bound request ends recovery."""
+        seen: set[str] = set()
+        read = False
+        for _ in range(2):
+            candidates = [(n, r) for n, r in offers(answer) if not _CHOICE.search(json.dumps(r))]
+            if edit and read:
+                candidates = [("agent-edit", original)]
+            if not candidates:
+                return "refusal has no filled way back", None
+            name, request = next((p for p in candidates if p[1] == original), candidates[0])
+            if request != original and request["operation"] not in self.read_operations:
+                return "correction re-admits wrong work", None
+            key = json.dumps(request, sort_keys=True)
+            if key in seen:
+                return "offered correction loops", None
+            seen.add(key)
+            correct = request == original
+            document = self.work / f"correction-{len(self.events)}.json"
+            document.write_text(json.dumps(request), encoding="utf-8")
+            sent = self._send(["request", "--file", str(document)], where + " > correct:" + name)
+            self.events[-1].attributes["alphalattice.mutation"] = "correction"
+            if sent.get("outcome") in {"OK", "PENDING"}:
+                if correct:
+                    return None, sent
+                if baseline and self._bound_read(original, request, sent, baseline):
+                    return None, baseline
+                if sent.get("outcome") == "PENDING":
+                    return "correction re-admits wrong work", None
+                if edit and not self._bound_read(original, request, sent):
+                    return "read does not expose the original bound context", None
+                read = True
+            elif _way(sent) == _way(answer):
+                return "offered correction repeats refusal", None
+            answer = sent
+        return "way back never reaches the corrected bound request", None
 
     def explore(self, starts: list[list[str]]) -> tuple[Grade, Trace]:
         """Walk every path from each start; the grade names each broken path and its part."""
         for argv in starts:
             self._follow(self._send(argv, " ".join(argv)), (" ".join(argv),), {})
         trace = Trace(tuple(self.events))
-        text = "\n".join(json.dumps(e.attributes, ensure_ascii=False) for e in self.events)
+        text = "\n".join(
+            json.dumps(e.attributes, ensure_ascii=False)
+            for e in self.events
+            if "alphalattice.mutation" not in e.attributes
+        )
         for group in self.scenario.expected_route:
             if not any(contains(text, route) for route in group):
                 self._problem("route never reached: " + " | ".join(group), "system")
@@ -195,8 +425,41 @@ class Explorer:
                 continue
             decided.add(decision)
             self.sent.add(sent_as)
+            self._confirm_probe(settled, sent, step, where)
             failed = sent.get("outcome") in {"REFUSED", "FAILED"} or _state(sent) in STOPPED
             self._follow(sent, (*path, name), {**seen, key: _way(sent)} if failed else seen)
+
+    def _confirm_probe(
+        self,
+        answer: dict[str, Any],
+        sent: dict[str, Any],
+        step: dict[str, Any] | str,
+        where: str,
+    ) -> None:
+        """A refused plan cannot offer a confirmation that re-admits its work."""
+        if (
+            self.mutation_budget
+            and answer.get("outcome") == "REFUSED"
+            and sent.get("outcome") == "PENDING"
+            and isinstance(step, dict)
+            and str(step["operation"]).endswith("_CONFIRM")
+        ):
+            operation = str(step["operation"])
+            named, actual, words_state_rule = _refusal_rule(answer, operation)
+            self.findings.append(
+                {
+                    "state": where,
+                    "mutation": "refused-confirm",
+                    "answer": answer,
+                    "correction": sent,
+                    "rule_named": named,
+                    "actual_rule": actual,
+                    "words_state_rule": words_state_rule,
+                    "owner": self.mutation_owners.get(operation, operation),
+                    "reason": "refused plan offers a confirmation that re-admits",
+                    "loop_part": "feedback",
+                }
+            )
 
     def _again(
         self, name: str, step: dict[str, Any] | str, where: str, failed: str
@@ -215,7 +478,8 @@ class Explorer:
     def _horizon(self, path: tuple[str, ...], code: str, answer: dict[str, Any]) -> bool:
         """A step limit, the walk's budget, or a way on that waits for its time."""
         timed = "not_due" in code and "retry_after_at" in json.dumps(answer)
-        return len(path) >= DEPTH or len(self.events) >= self.steps or timed
+        walked = sum("alphalattice.mutation" not in e.attributes for e in self.events)
+        return len(path) >= DEPTH or walked >= self.steps or timed
 
     def _settled(self, answer: dict[str, Any], where: str) -> dict[str, Any] | None:
         """The answer once its admitted Task has ended or stopped; None past the time box."""
@@ -254,7 +518,16 @@ class Explorer:
             return self._send([step], where + f" > {name}", run=lambda argv: self.shell(argv[0]))
         document = self.work / f"offer-{len(self.events)}.json"
         document.write_text(json.dumps(step), encoding="utf-8")
-        sent = self._send(["request", "--file", str(document)], where + f" > {name}")
+        corrected = None
+        if self.mutation_budget and json.dumps(step, sort_keys=True) not in self.mutated:
+            self.mutated.add(json.dumps(step, sort_keys=True))
+            corrected = self.inject(step, where + " > " + name)
+        if corrected is not None:
+            self.events[-1].attributes.pop("alphalattice.mutation", None)
+            self.events[-1].attributes["alphalattice.corrected_original"] = True
+        sent = corrected or self._send(["request", "--file", str(document)], where + f" > {name}")
+        if self.mutation_budget and sent.get("outcome") not in {"REFUSED", "FAILED"}:
+            self.inject(step, where + " > " + name, baseline=sent)
         refused = str(sent.get("failure_code") or "").partition(":")[0]
         if any(mark in refused for mark in ("not_offered", "_invalid", "operation_field")):
             self._problem(

@@ -12258,6 +12258,13 @@
    "successor": "c7452c50b62d204c9c1a3a6a199c48f1ffc9900141f8ee7e79f11db1bcea6670",
    "change": "Recovery offers read one rule (2026-10-10)",
    "reason": "A stopped preparation's recovery view, its plan and a data decision's continue now read one owner rule for whether a plan may resume it; the workspace preparation closure moved through data_preparation/application.py and remediation.py, and every value it produces is equal."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "c7452c50b62d204c9c1a3a6a199c48f1ffc9900141f8ee7e79f11db1bcea6670",
+   "successor": "1e01bbe0ee87720e94218c4d1159c8877b348eedbf0beb081d521028934ba252",
+   "change": "PLAN-REFUSAL-OFFERS",
+   "reason": "A refused plan offers only the way on its next action names; the preparation's values are equal"
   }
  ]
 }

@@ -29,4 +29,4 @@ The restore receipt identifies the generation and limitations: market tables are
 
 ## Storage
 
-`storage show` describes storage; `storage plan` estimates retention and bytes before deletion. Current and rollback Panels and explicit pins are protected. A person confirms the exact plan in Local Web; CLI and agents cannot confirm it. Review its scope and recovery status through the product controls. File bindings determine what can be rebuilt.
+`storage show` describes storage; `storage plan` estimates retention and bytes before deletion. Current and rollback Panels and explicit pins are protected. A person decides whether to confirm the exact plan. They can confirm it in Local Web or answer the agent's one-line question; the agent then relays their words through `storage confirm` with `person_confirmation`. Review its scope and recovery status through the product controls. File bindings determine what can be rebuilt.

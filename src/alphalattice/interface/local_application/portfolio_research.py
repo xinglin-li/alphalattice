@@ -132,7 +132,8 @@ class CommitteeMessage(BaseModel):  # type: ignore[misc]
     targets: tuple[str, ...] = Field(default=(), max_length=16)
     """The tension points (T1), holdings (H3) or messages (M4) it is about."""
     reply_to: str | None = Field(default=None, pattern=r"^M[0-9]{1,4}$")
-    """The message it answers: a REPLY's, a RULING's challenge, a PERSON_ANSWER's item."""
+    """The message it answers, which a REPLY (any message), a RULING (a challenge not yet
+    ruled) and a PERSON_ANSWER (an item the PM handed the person) name, and no other kind."""
     positions: dict[str, Literal["SUPPORT", "OBJECT", "RESERVE"]] = Field(
         default_factory=dict, max_length=32
     )
@@ -140,24 +141,9 @@ class CommitteeMessage(BaseModel):  # type: ignore[misc]
     outcome: (
         Literal["ADOPT", "REJECT", "FOR_THE_PERSON", "PROCEED", "PROCEED_WITH_NOTES"] | None
     ) = None
-    """A RULING's (ADOPT, REJECT, FOR_THE_PERSON) or the VERDICT's (PROCEED,
-    PROCEED_WITH_NOTES, FOR_THE_PERSON)."""
-
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
-    def shaped_by_kind(self) -> Self:
-        """A ruling and the verdict name an outcome of their own.
-
-        A reply, a ruling and the person's answer name the message they answer; no other
-        message takes either.
-        """
-        outcomes = {
-            "RULING": {"ADOPT", "REJECT", "FOR_THE_PERSON"},
-            "VERDICT": {"PROCEED", "PROCEED_WITH_NOTES", "FOR_THE_PERSON"},
-        }.get(self.kind, {None})
-        answers = self.kind in {"REPLY", "RULING", "PERSON_ANSWER"}
-        if self.outcome not in outcomes or (self.reply_to is not None) != answers:
-            raise ValueError("committee.message_refused:SHAPE")
-        return self
+    """Required of a RULING (ADOPT, REJECT, FOR_THE_PERSON) and the VERDICT (PROCEED,
+    PROCEED_WITH_NOTES, FOR_THE_PERSON); no other kind takes one. The floor refuses a message
+    its kind's shape does not fit by name, with the same message corrected."""
 
 
 type PortfolioResearchOperation = Literal[

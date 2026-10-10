@@ -8,6 +8,7 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
+from alphalattice.control.product_host.composition.committee import misshapen
 from alphalattice.interface.local_application.portfolio_research import CommitteeMessage
 from devtools.evaluation import Scenario, Trace, TraceEvent
 from devtools.evaluation.committee import CommitteeGrader, committee_problems
@@ -262,12 +263,12 @@ def test_a_missing_output_contract_does_not_blame_the_reader(supplied, part):
     ],
 )
 def test_portable_shape_matches_the_owner(change):
-    """Recorded contract shapes agree with the real owner without an evaluation dependency."""
+    """Recorded contract shapes agree with the real owner, its message model and its floor's
+    shape rule for each kind, without an evaluation dependency."""
     scenario, context, parts, answer = recorded()
     answer["message"].update(change)
     try:
-        CommitteeMessage.model_validate(answer["message"])
-        accepted = True
+        accepted = not misshapen(CommitteeMessage.model_validate(answer["message"]))
     except ValidationError:
         accepted = False
     reasons = {issue["reason"] for issue in judged(scenario, context, parts, answer)["reasons"]}

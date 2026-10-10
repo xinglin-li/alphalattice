@@ -677,7 +677,7 @@ class WorkspacePreparationApplication:
                         }
                     }
                     if latest is not None
-                    and latest.lifecycle is TaskLifecycle.BLOCKED
+                    and self._resumable(latest)
                     and not replan
                     and not truth_review_pending
                     else {}
@@ -765,6 +765,19 @@ class WorkspacePreparationApplication:
             self.session.task_control_registry, self.session.workspace, task
         )
         return refused
+
+    def _resumable(self, task: TaskRecord) -> bool:
+        """Whether a stopped preparation's confirm can make progress: BLOCKED, and the rule
+        `replan_refusal` reads refuses no resume of it."""
+        return task.lifecycle is TaskLifecycle.BLOCKED and self.replan_refusal(task) is None
+
+    def _resume_progress(self, task: TaskRecord) -> dict[str, Any]:
+        """A stopped preparation's progress, its confirm refused by name where no resume can make
+        progress, by the rule its readback offers the confirm by."""
+        if task.lifecycle is TaskLifecycle.BLOCKED and (refused := self.replan_refusal(task)):
+            raise ValueError(refused)
+        progress: dict[str, Any] = self._load(task.task_id, "progress", optional=True) or {}
+        return progress
 
     def plan(
         self,
@@ -1148,7 +1161,7 @@ class WorkspacePreparationApplication:
                     and task.lifecycle is not TaskLifecycle.CANCELLED
                 ):
                     if task.lifecycle in {TaskLifecycle.DEFERRED, TaskLifecycle.BLOCKED}:
-                        progress = self._load(task.task_id, "progress", optional=True) or {}
+                        progress = self._resume_progress(task)
                         retry = progress.get("retry_after_at")
                         if retry and self.clock() < datetime.fromisoformat(retry):
                             raise ValueError("workspace_preparation.retry_not_due")

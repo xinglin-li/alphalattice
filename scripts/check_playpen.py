@@ -10,6 +10,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"
@@ -304,6 +305,21 @@ def _check_identity_reach(*, staged: bool) -> bool:
     return result.returncode == 0
 
 
+def shrink_only_growth(path: str, before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    """A declared finding set only loses keys; its owners stay bound to their findings."""
+    keys = before.get("shrink_only_set")
+    if not keys:
+        return []
+    if after.get("shrink_only_set") != keys:
+        return [f"{path}:1: shrink-only keys changed; restore the registered finding key"]
+    old = {(*[r[k] for k in keys], r["owner"]) for r in before["entries"]}
+    new = {(*[r[k] for k in keys], r["owner"]) for r in after["entries"]}
+    return [
+        f"{path}:1: shrink-only findings grew; fix the owner or ask the Lead: {row}"
+        for row in sorted(new - old)
+    ]
+
+
 def _check_registries(*, staged: bool) -> bool:
     """Refuse a change that adds to a registry without registering it (binding plan G0).
 
@@ -311,13 +327,10 @@ def _check_registries(*, staged: bool) -> bool:
     import can only be added where a file changed, so the check costs what the change costs.
     """
 
-    changed = sorted(
-        path
-        for path in _git_lines(
-            "diff", "--cached" if staged else "HEAD", "--name-only", "--diff-filter=ACMR"
-        )
-        if path.endswith(".py")
+    paths = _git_lines(
+        "diff", "--cached" if staged else "HEAD", "--name-only", "--diff-filter=ACMR"
     )
+    changed = sorted(path for path in paths if path.endswith(".py"))
     started = perf_counter()
     sys.path.insert(0, str(ROOT / "src"))
     try:
@@ -329,9 +342,9 @@ def _check_registries(*, staged: bool) -> bool:
     # private import by hand passes the scan above, never this (LAWS.md TE5, V16).
     ratchet = "config/registries/test-private.json"
 
-    def shown(revision: str) -> str | None:
+    def shown(revision: str, path: str = ratchet) -> str | None:
         result = subprocess.run(
-            ["git", "show", f"{revision}:{ratchet}"],
+            ["git", "show", f"{revision}:{path}"],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -343,6 +356,12 @@ def _check_registries(*, staged: bool) -> bool:
     current = shown("") if staged else (ROOT / ratchet).read_text(encoding="utf-8")
     if base is not None and current is not None:
         found += private_test_growth(json.loads(base)["entries"], json.loads(current)["entries"])
+    for path in paths:
+        if path.startswith("config/") and path.endswith(".json"):
+            base = shown("HEAD", path)
+            current = shown("", path) if staged else (ROOT / path).read_text(encoding="utf-8")
+            if base is not None and current is not None:
+                found += shrink_only_growth(path, json.loads(base), json.loads(current))
     for line in found:
         print(f"REGISTRY {line}", flush=True)
     print(f"PLAYPEN_GATE_TIMING registries {perf_counter() - started:.3f}s", flush=True)

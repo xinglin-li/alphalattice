@@ -168,7 +168,9 @@ each challenge as it arrives (ADOPT, REJECT or FOR_THE_PERSON), then give the
 verdict. The stances are blind until all four are in, each specialist has three
 challenges or replies after its stance, and the floor closes at its time box
 whoever is silent. Messages name holdings, points and messages by alias and type
-no other digit. The committee changes no number. Ask the person
+no other digit. A refused message names the rule it broke and, where only its shape
+is wrong, offers the same message corrected: send that as it stands. The committee
+changes no number. Ask the person
 about each item it hands them in one line, and relay their words as a
 PERSON_ANSWER. Then export the report from the closed floor:
 

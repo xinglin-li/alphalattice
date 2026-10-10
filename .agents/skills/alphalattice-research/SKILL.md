@@ -18,7 +18,7 @@ Begin at the person's own target (a date's positions, a named request), else at 
 - **Orient**: `workspace show` → the first intent's offered request.
 - **Run an installed research strategy forward**: `strategy-book controls` → activation, which admits its update → `research-update show` → `strategy-book review --update` → `review continue` ([leading research](references/research-lead.md)).
 - **Evidence and CRO review of a date's positions**: `strategy-book review --update`, then `review continue` after the Analysts and again after the CRO; without `--update`, of the whole-support book when asked ([specialists](references/specialist-handoff.md)).
-- **The committee on a date's positions**: `committee open --update` → `bundle prepare` for Alpha, Risk and the CRO → start them → your stance with the open's `pm_key` → `committee wait --role PM --key`, rulings and the verdict → `committee show` → its offered report ([guide](../../../AGENTS.md)).
+- **The committee on a date's positions**: `committee open --update` → `bundle prepare` for Alpha, Risk and the CRO → start them → your stance with the open's `pm_key` → `committee wait --role PM --key`, rulings and the verdict → `committee show` → its offered report; a resent message answers with its first admission, and a refusal's offered way back is sent as it stands ([guide](../../../AGENTS.md)).
 - **A Factor study**: `study controls` → `study plan` → `study run` → `study show`.
 - **An Alpha study from a Factor study**: the Factor study's offered curation, then the handoff it offers → `study plan` → `study run`.
 - **A Risk study**: `study controls --kind risk.covariance-development` → `study plan` → `study run`.

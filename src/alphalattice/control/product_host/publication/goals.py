@@ -255,6 +255,11 @@ class GoalStore:
         held: dict[str, str] = json.loads(path.read_bytes())
         return held
 
+    def committee_tasks(self) -> tuple[str, ...]:
+        """The updates whose committee floor this store holds, by Task id."""
+        folder = self.content.root / "committees"
+        return tuple(sorted(path.stem for path in folder.glob("*.json")))
+
     def attribute(self, goal_id: UUID, entry: Mapping[str, object]) -> None:
         """Keep one request or event a goal's work made: one immutable file each.
 

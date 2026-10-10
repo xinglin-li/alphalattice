@@ -259,12 +259,14 @@ class WorkspaceDataIssueApplication:
         if task.task_kind != "workspace_preparation":
             run = {"update_plan_hash": plan["content_hash"]}
             return "DATA_UPDATE_RUN", "/api/data-update/run", run
+        registry = self.session.task_control_registry
+        if task.lifecycle.value == "BLOCKED" and preparation_replan_refusal(
+            registry, self.session.workspace, task
+        ):
+            return None
         if task.lifecycle.value != "BLOCKED" or task.failure_code != "data.truth_review_required":
             confirm = {"preparation_plan_hash": plan["plan_hash"]}
             return "WORKSPACE_PREPARE_CONFIRM", "/api/workspace/preparation/confirm", confirm
-        registry = self.session.task_control_registry
-        if preparation_replan_refusal(registry, self.session.workspace, task):
-            return None
         recovery = {"recovery_task_id": str(task.task_id), "recovery_task_hash": task.record_hash}
         return "WORKSPACE_PREPARE_PLAN", "/api/workspace/preparation/plan", recovery
 

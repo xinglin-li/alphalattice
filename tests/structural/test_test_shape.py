@@ -1,9 +1,22 @@
 """The fast guard holds tests/README.md's writing rules on what a change adds."""
 
 import check_test_shape as shape
+from check_playpen import shrink_only_growth
 from check_test_shape import problems
 
 PATH = "tests/owner/test_example.py"
+
+
+def test_a_declared_finding_set_only_loses_keys_and_keeps_its_owners() -> None:
+    """New finding keys or swapped owners refuse, while retained and fixed findings pass."""
+    row = dict(state="floor", mutation="shape", refusal_code="shape", owner="committee.py")
+    before = dict(shrink_only_set=["state", "mutation", "refusal_code"], entries=[row])
+    assert not shrink_only_growth("config/findings.json", before, before)
+    assert not shrink_only_growth("config/findings.json", before, {**before, "entries": []})
+    assert shrink_only_growth("config/findings.json", before, {"entries": []})
+    for field in ("state", "owner"):
+        added = {**row, field: "different"}
+        assert shrink_only_growth("config/findings.json", before, {**before, "entries": [added]})
 
 
 def _git_backend(texts, paths, state=None):

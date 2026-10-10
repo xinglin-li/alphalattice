@@ -41,7 +41,8 @@ Graph (→ the next step):
   committee bundle; there alone you run product commands, only its route's `submit` and `wait`:
   one blind STANCE, then up to three CHALLENGE or REPLY messages. Committee speech names the
   subject, date and every reference or figure only by aliases the floor shows; omit anything
-  with no alias and type no other digit. A major negative you raise stays in the record
+  with no alias and type no other digit. A message resent as it stands is answered with its first admission and spends nothing; a
+  refusal names its rule and offers its way back, which you send as it stands. A major negative you raise stays in the record
   verbatim when the PM rejects it. As the registered agent, with Read and
   Write only, you take review bundles alone.
 

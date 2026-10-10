@@ -3,6 +3,8 @@ Date: 2026-10-08
 
 AlphaLattice is a local quantitative research workstation for people using Codex or Claude Code to investigate investment ideas.
 
+The [design principles](docs/public-source/design-principles.md) explain how the agent, the software and the person share the work.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/workbench-dark.webp">
   <img src="docs/images/workbench-light.webp" alt="AlphaLattice Workbench showing a recorded historical Portfolio report and its performance curve." width="1470">

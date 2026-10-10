@@ -345,6 +345,9 @@ def test_the_floor_answers_a_member_only_with_its_own_key(
         for k, m in sent
     ] + [ask("COMMITTEE_READ", committee_role="ALPHA", committee_key=k) for k in (None, "0" * 32)]
     assert [c["failure_code"].rsplit(":")[-1] for c in codes] == ["ROLE", "NUMBER", "ROLE", "ROLE"]
+    # Each names its own rule and a way on; a key not the member's reads the floor as anyone.
+    assert all(c["rule"] in c["failure_code"] and c["next_requests"]["floor"] for c in codes)
+    assert "committee_key" not in codes[0]["next_requests"]["floor"]
     codes[1] = worded_refusal(codes[1])
     assert {"resubmit", "same", "message", "figure", "reference", "alias"} <= set(
         codes[1]["detail"].split()
@@ -382,10 +385,12 @@ def test_a_specialist_speaks_three_times_after_its_stance_and_only_the_pm_rules(
         _say(store, now, "CRO", "CHALLENGE", targets=("T1",), text="H999 is weak.")
     challenge = _say(store, now, "CRO", "CHALLENGE", targets=("T1",))
     assert challenge in _read(store, now, "PM", 4)["for_you"]
-    for _ in range(2):
-        _say(store, now, "CRO", "REPLY", reply_to=challenge)
+    # Resent as it stands, it answers with its first admission and spends none of the three.
+    assert _say(store, now, "CRO", "CHALLENGE", targets=("T1",)) == challenge
+    for said in ("Agreed.", "Still so."):  # distinct replies; a resend spends nothing
+        _say(store, now, "CRO", "REPLY", reply_to=challenge, text=said)
     with pytest.raises(ValueError, match=r"message_refused:CAP"):
-        _say(store, now, "CRO", "REPLY", reply_to=challenge)
+        _say(store, now, "CRO", "REPLY", reply_to=challenge, text="Once more.")
     with pytest.raises(ValueError, match=r"message_refused:SHAPE"):
         _say(store, now, "PM", "RULING", reply_to=challenge)
 

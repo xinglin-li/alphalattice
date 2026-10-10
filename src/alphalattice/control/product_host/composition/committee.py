@@ -49,6 +49,37 @@ RULES: Final[dict[str, tuple[tuple[str, ...], frozenset[str], str | None]]] = {
 }
 """The round state machine: each kind's senders, the stages it is sent in, and what it answers
 (a challenge, any message, or an item the PM handed to the person)."""
+OUTCOMES: Final = {
+    "RULING": frozenset({"ADOPT", "REJECT", "FOR_THE_PERSON"}),
+    "VERDICT": frozenset({"PROCEED", "PROCEED_WITH_NOTES", "FOR_THE_PERSON"}),
+}
+"""Each kind's outcomes; a kind not named takes none (SHAPE, with what it answers)."""
+RULE_WORDS: Final = {
+    "ROLE": "Only its senders send this kind, each with the key in its own bundle: a STANCE or "
+    "REPLY any member, a CHALLENGE a specialist, a RULING, VERDICT or PERSON_ANSWER the PM.",
+    "STANCES": "The floor is in its blind first round, which takes only one STANCE from each "
+    "member; follow `committee wait` until the stances are revealed.",
+    "DEBATE": "The floor is past its stances; it takes challenges, replies, rulings and the "
+    "verdict, not a STANCE.",
+    "CLOSED": "The floor is closed; it takes only the PM's answer relayed from the person to "
+    "an item handed to them. Export the report from it.",
+    "STANCE_IN": "This member's stance is on the floor already, one each; speak again by a "
+    "CHALLENGE or REPLY once the stances are revealed.",
+    "CAP": "This member has sent its three challenges or replies after its stance; the floor "
+    "takes no more from it.",
+    "TARGET": "A target, position or alias names nothing on the floor; name only the tension "
+    "points, holdings and messages `committee show` lists.",
+    "REPLY_TO": "The message named in reply_to cannot be answered by this kind: a REPLY answers "
+    "any message, a RULING a challenge not yet ruled, a PERSON_ANSWER an item handed to the "
+    "person. Send the corrected message the answer offers.",
+    "SHAPE": "This kind's shape does not fit: a REPLY, RULING or PERSON_ANSWER names in "
+    "reply_to the message it answers and no other kind does; a RULING's or the VERDICT's "
+    "outcome is required and no other kind takes one. Send the corrected message the answer "
+    "offers.",
+    "NUMBER": "A digit is typed outside an alias, and the Host renders every number: resubmit "
+    "the same message with each typed figure or reference replaced by its alias on the floor.",
+}
+"""Each floor rule's own words, as its refusal says them."""
 _VIEWS: Final = frozenset({"STANCE", "CHALLENGE", "REPLY"})
 ALIAS: Final = re.compile(r"\b[HTM][0-9]{1,4}\b")
 """A floor alias: a holding (H3), a tension point (T2) or a message (M4)."""
@@ -203,7 +234,10 @@ def operate(
             raise ValueError("committee.message_refused:ROLE")
     except ValueError as error:
         code = public_failure(error, "committee.refused")
-        return {"status": "REFUSED", "failure_code": code, "refused": code, **explain(code)}
+        refused = {"status": "REFUSED", "failure_code": code, "refused": code, **explain(code)}
+        if code == "committee.not_open":
+            return refused | _elsewhere(store, request, now)
+        return refused | _corrected(store, request, code.rpartition(":")[2])
     with suppress(ValueError, OSError):  # a time box's reveal reaches the Team page on read
         file_floor()
     read = state(found, role, request.committee_seen or 0, now)
@@ -231,14 +265,15 @@ def submit(
         if floor is None:
             raise ValueError("committee.not_open")
         (role, key), (senders, stages, answers) = member, RULES[message.kind]
+        # A member's message resent as it stands answers with its first admission, spending nothing.
+        if floor.admits(role, key) and (same := _same(floor, role, message)):
+            return same
         stage, mine = floor.stage(now), [m for m in floor.messages if m["role"] == role]
         known = {p["alias"] for p in floor.opened["tension_points"]}
         known |= {h["alias"] for h in floor.opened["holdings"]} | {m["id"] for m in floor.messages}
         target = next((m for m in floor.messages if m["id"] == message.reply_to), None)
         fits = target is not None and answers in {"ANY", target["kind"], target.get("outcome")}
-        ruled = message.kind == "RULING" and any(
-            m["kind"] == "RULING" and m["reply_to"] == message.reply_to for m in floor.messages
-        )
+        ruled = _ruled(floor, message)
         spoken = sum(m["kind"] != "STANCE" for m in mine)
         named = (*message.targets, *message.positions, *ALIAS.findall(message.text))
         typed = any(c.isnumeric() for c in ALIAS.sub("", message.text))
@@ -248,7 +283,8 @@ def submit(
             ("STANCE_IN", message.kind == "STANCE" and any(m["kind"] == "STANCE" for m in mine)),
             ("CAP", message.kind != "STANCE" and role != "PM" and spoken >= MESSAGE_CAP),
             ("TARGET", any(t not in known for t in named)),
-            ("REPLY_TO", answers is not None and (not fits or ruled)),
+            ("SHAPE", misshapen(message)),
+            ("REPLY_TO", answers is not None and (not fits or ruled is not None)),
             # The Host renders every number; the person's own relayed words keep theirs.
             ("NUMBER", message.kind != "PERSON_ANSWER" and typed),
         ):
@@ -260,6 +296,110 @@ def submit(
             floor.goal_id, {"committee_message": {**entry, **message.model_dump(mode="json")}}
         )
         return number
+
+
+def _same(floor: Floor, role: str, message: CommitteeMessage) -> str | None:
+    """The id of this member's message already on the floor exactly as sent, if any."""
+    sent = message.model_dump(mode="json")
+    mine = (m for m in floor.messages if m["role"] == role)
+    return next((m["id"] for m in mine if all(m.get(k) == v for k, v in sent.items())), None)
+
+
+def _ruled(floor: Floor | None, message: CommitteeMessage | None) -> dict[str, Any] | None:
+    """The ruling already on the floor for the challenge a RULING answers; None otherwise."""
+    if floor is None or message is None or message.kind != "RULING":
+        return None
+    rulings = (m for m in floor.messages if m["kind"] == "RULING")
+    return next((m for m in rulings if m["reply_to"] == message.reply_to), None)
+
+
+def _elsewhere(
+    store: GoalStore, request: PortfolioResearchOperationRequest, now: datetime
+) -> dict[str, Any]:
+    """Where a request naming no open committee goes: the one open floor its member's key
+    admits, the same request filled with that update; else each open floor's read."""
+    floors = [floor_of(store, task) for task in store.committee_tasks()]
+    open_ = [f for f in floors if f is not None and f.stage(now) != "CLOSED"]
+    role, key, message = request.committee_role, request.committee_key, request.committee_message
+    admitting = [f for f in open_ if role is not None and f.admits(role, key)]
+    tasks = [str(f.opened["update_task_id"]) for f in open_]
+    if len(admitting) != 1:
+        reads = {
+            f"floor:{task}": {"operation": "COMMITTEE_READ", "update_task_id": task}
+            for task in tasks
+        }
+        return {"open_committees": tasks, "next_requests": reads}
+    given = {
+        "committee_role": role,
+        "committee_key": key,
+        "committee_message": message.model_dump(mode="json") if message else None,
+        "committee_seen": request.committee_seen,
+    }
+    same = {"operation": request.operation, "update_task_id": admitting[0].opened["update_task_id"]}
+    same |= {name: value for name, value in given.items() if value is not None}
+    return {
+        "open_committees": tasks,
+        "next_action": "SEND_THE_CORRECTED_MESSAGE",
+        "next_requests": {"corrected": same},
+    }
+
+
+def _read_fields(request: PortfolioResearchOperationRequest, rule: str) -> dict[str, Any]:
+    """The member's own fields for its floor read; a key not the member's reads as anyone."""
+    given = {"committee_role": request.committee_role, "committee_key": request.committee_key}
+    member = {"update_task_id": str(request.update_task_id)}
+    return member if rule == "ROLE" else member | {k: v for k, v in given.items() if v}
+
+
+def misshapen(message: CommitteeMessage) -> bool:
+    """Whether a message takes an outcome or reply its kind does not, or lacks one it must."""
+    answers = RULES[message.kind][2] is not None
+    return (
+        message.outcome not in OUTCOMES.get(message.kind, {None})
+        or (message.reply_to is None) == answers
+    )
+
+
+def _corrected(
+    store: GoalStore, request: PortfolioResearchOperationRequest, rule: str
+) -> dict[str, Any]:
+    """A refused message's own rule in its words and, where only its shape is wrong, the same
+    message corrected: once for each message its kind may answer and each outcome it takes."""
+    if rule not in RULE_WORDS:
+        return {}
+    # A rule no field fixes: the member's own read of the floor, where its stage and aliases are.
+    member = _read_fields(request, rule)
+    floor_read = {"floor": {"operation": "COMMITTEE_READ", **member}}
+    words: dict[str, Any] = {"detail": RULE_WORDS[rule], "rule": rule}
+    words |= {"next_action": "READ_THE_FLOOR", "next_requests": floor_read}
+    message, floor = request.committee_message, floor_of(store, str(request.update_task_id))
+    if (ruling := _ruled(floor, message)) is not None:
+        # The challenge is ruled already: the ruling stands, and no correction changes it.
+        return words | {"ruled_by": ruling["id"]}
+    if rule not in {"SHAPE", "REPLY_TO"} or message is None or floor is None:
+        return words
+    answers, sent = RULES[message.kind][2], message.model_dump(mode="json")
+    ruled = {m["reply_to"] for m in floor.messages if m["kind"] == "RULING"}
+    open_to = [
+        m["id"]
+        for m in floor.messages
+        if answers in {"ANY", m["kind"], m.get("outcome")}
+        and not (message.kind == "RULING" and m["id"] in ruled)
+    ]
+    outcomes: list[str | None] = [*sorted(OUTCOMES.get(message.kind, ()))] or [None]
+    taken = [message.outcome] if message.outcome in outcomes else outcomes
+    answered: list[str | None] = [None] if answers is None else list(open_to)
+    request_of = {"operation": "COMMITTEE_SUBMIT", **member}
+    words["next_action"] = "SEND_THE_CORRECTED_MESSAGE"
+    words["next_requests"] = {
+        ":".join(("corrected", *(str(part) for part in (to, outcome) if part))): {
+            **request_of,
+            "committee_message": {**sent, "reply_to": to, "outcome": outcome},
+        }
+        for to in answered
+        for outcome in taken
+    }
+    return words
 
 
 def context(floor: Floor, now: datetime) -> dict[str, Any]:
@@ -724,7 +864,8 @@ def route(role: str, floor: Floor | None, now: datetime) -> tuple[str, ...] | No
         "YAML file (kind, text, positions, targets, reply_to), send it with `committee submit "
         f"--update {task} --role {role} --key {key} --file <message.yaml>` and follow what is "
         f"addressed to you with `committee wait --update {task} --role {role} --key {key} "
-        "--seen <seen>`. The key is yours alone.",
+        "--seen <seen>`. The key is yours alone. A refused message names its rule; where only "
+        "its shape is wrong, send the corrected message the refusal offers.",
         "This route is the bundle's only final action: there is no answer file and nothing for "
         "the lead to submit. It runs these two commands, so the lead starts you as a general "
         "subagent.",
