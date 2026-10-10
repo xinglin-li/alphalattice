@@ -497,11 +497,9 @@ def test_private_browser_dependencies_keep_their_callers_private(path, reason):
 def test_every_test_path_the_public_ci_runs_exists_and_is_public():
     """A renamed or split test file cannot leave the public CI running a path that is gone."""
     root = Path(__file__).resolve().parents[2]
-    named = set(
-        re.findall(r"tests/[\w/]+\.py", (root / ".github/workflows/ci.yml").read_text("utf-8"))
-    )
-    manifest = json.loads((root / "config/release/public-manifest.json").read_text("utf-8"))
-    public = {row["path"] for row in manifest["public"]}
+    workflow = (root / ".github/workflows/ci.yml").read_text("utf-8")
+    named = set(re.findall(r"tests/[\w/]+\.py", workflow))
     assert named
     assert sorted(path for path in named if not (root / path).is_file()) == []
-    assert sorted(named - public) == []
+    kinds = {path: classify(path, set(), set(), set())[0] for path in named}
+    assert {path: kind for path, kind in kinds.items() if kind != "PUBLIC"} == {}
