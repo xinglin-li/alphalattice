@@ -69,6 +69,8 @@ STRICT_READERS = {
         "plan confirm admit admit",
     ),
     PREPARATION + "model_training.py": ("ModelTrainingInputApplication", "prepare admit"),
+    # Replan admission needs complete authority to decide whether a successor supersedes it.
+    PREPARATION + "remediation.py": ("", "preparation_replan_refusal"),
     PREPARATION + "research_strategy.py": ("ResearchStrategyPreparation", "plan prepare admit"),
     "control/product_host/maintenance/data_update.py": (
         "WorkspaceDataUpdateApplication",

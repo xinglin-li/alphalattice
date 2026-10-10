@@ -44,6 +44,16 @@ STOPPED = "stopped and owed a way on; a deferral has its own branch (V507)"
 
 REGISTER: dict[tuple[str, str, str], str] = {
     (
+        "control/product_host/composition/portfolio_research_operations.py",
+        "_RECOVERY_SOURCES",
+        "BLOCKED,CANCELLED,RECOVERY_REQUIRED",
+    ): "the stopped lifecycles the recovery view and its admission both accept",
+    (
+        "control/product_host/data_preparation/remediation.py",
+        "preparation_replan_refusal",
+        "BLOCKED,CANCELLED",
+    ): "the preparation lifecycles a plan may resume, subject to source and stage authority",
+    (
         "control/product_host/composition/model_sandbox.py",
         "_TERMINAL",
         "BLOCKED,CANCELLED,RECOVERY_REQUIRED,SUCCEEDED",
@@ -140,19 +150,6 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): RESUMABLE,
     (
         "control/product_host/composition/portfolio_research_operations.py",
-        "PortfolioResearchOperations._task_replan",
-        "BLOCKED,CANCELLED,RECOVERY_REQUIRED",
-    ): "a distinct replan carries the exact blocked, cancelled or interrupted source id and "
-    "record hash (P3a); moving, deferred, review and succeeded states gain no stopped-source "
-    "provenance",
-    (
-        "control/product_host/composition/portfolio_research_operations.py",
-        "PortfolioResearchOperations._recovery_context",
-        "BLOCKED,CANCELLED,RECOVERY_REQUIRED",
-    ): "a recovery preview or its offered admission requires the current blocked, cancelled "
-    "or interrupted source version (P3a); every other lifecycle refuses that provenance",
-    (
-        "control/product_host/composition/portfolio_research_operations.py",
         "_LIVE_LIFECYCLES",
         "CANCEL_REQUESTED,DEFERRED,QUEUED,RUNNING",
     ): "a status long poll waits for these to move; a deferral moves when its resume is sent",
@@ -239,11 +236,6 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "WorkspacePreparationApplication.plan",
         "CANCELLED,SUCCEEDED",
     ): "an unfinished preparation is one not succeeded or cancelled",
-    (
-        "control/product_host/data_preparation/application.py",
-        "WorkspacePreparationApplication.plan",
-        "BLOCKED,CANCELLED",
-    ): "a stopped preparation stays the named predecessor of its recovery plan",
     (
         "control/product_host/data_preparation/application.py",
         "WorkspacePreparationApplication.confirm",

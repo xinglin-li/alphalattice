@@ -456,6 +456,7 @@ class WorkspaceActivity:
                 lifecycle=safe_enum_token(body.get("lifecycle")),
                 subject=subject,
                 read=next_read(span.operation, body),
+                offered_requests=body.get("next_requests") or {},
             )
 
         self._isolated(record)
@@ -548,6 +549,7 @@ class WorkspaceActivity:
         lifecycle: str | None = None,
         subject: dict[str, Any] | None = None,
         read: dict[str, str] | None = None,
+        offered_requests: Mapping[str, Any] | None = None,
     ) -> None:
         payload: dict[str, Any] = {
             "operation": span.operation,
@@ -570,6 +572,12 @@ class WorkspaceActivity:
             payload["task_lifecycle"] = lifecycle
         if read is not None:
             payload["next_read"] = read
+        if offered_requests is not None:
+            payload["offered_requests"] = sorted(
+                name
+                for name in offered_requests
+                if isinstance(name, str) and re.fullmatch(r"[a-z][a-z_]{0,47}", name)
+            )[:16]
         correlations = {span.operation_ref}
         if subject is not None and isinstance(subject.get("conversation_observation_id"), str):
             correlations.add(subject["conversation_observation_id"])
@@ -825,6 +833,14 @@ class WorkspaceActivity:
                         "status": payload.get("status"),
                         "task_id": payload.get("task_id"),
                         "read": payload.get("next_read"),
+                        "failure_code": payload.get("failure_code"),
+                        "next_action": subject.get("next_action"),
+                        "offered_requests": payload.get("offered_requests"),
+                        "identifier_kinds": sorted(
+                            name
+                            for name in subject
+                            if name.endswith(("_id", "_hash", "_reference"))
+                        ),
                     }
                 )
         return {

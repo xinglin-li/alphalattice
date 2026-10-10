@@ -2,6 +2,9 @@
  * English phrase is worded differently in another part of the product. Generated data; edit
  * translations here, never in the templates. */
 window.ALPHA_ZH = {
+  "Review this redacted report. Ask the person before sending it to the developers; without their yes, keep it local.": "请查看这份已脱敏的报告。发送给开发者前先征得人的同意；没有明确同意，就只保留在本机。",
+  "The report accepts only the safe sentence template: Report the <OPERATION> problem to the developers. Use a registered operation name, or omit --sentence for a generated summary. Conversation text is not exported.": "报告只接受安全句式：Report the <OPERATION> problem to the developers. 请填入已注册的操作名，或省略 --sentence 使用生成的摘要。不会导出对话文本。",
+  "The expected route accepts registered operation names only. Read operation list, or omit --expected-route to leave the report untriaged; no request values are exported.": "预期路径只接受已注册的操作名。请读取 operation list，或省略 --expected-route 将报告留待分诊；不会导出请求值。",
   "committee|Floor": "讨论现场",
   "committee|Received": "已收到",
   "none of the held names contributes": "持仓中没有标的产生风险贡献",

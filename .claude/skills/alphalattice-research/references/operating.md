@@ -1,6 +1,20 @@
 # Operating the CLI
 Date: 2026-10-10
 
+## Report a problem
+
+Run `alphalattice problem report --output "<out>/report.json"`; optionally name the
+expected operations with `--expected-route <operation>`. Use only the admitted
+sentence form `Report the <OPERATION> problem to the developers.` with a registered
+operation for `--sentence`, never a conversation excerpt. The report lists its
+included fields and contains no workspace paths, holdings, figures or file contents.
+Show the whole report, then ask: "May I send this report to the developers?"
+Without the person's yes, send nothing. After yes, run `gh auth status`; if signed
+in, run `gh issue create --repo xinglin-li/alphalattice --title "[Bug]: Product problem" --label bug --body-file "<out>/report.json"`
+with the exact file the person reviewed. If gh is unavailable or signed out, give
+the report's prefilled `issue_url` for that same repository. Never add raw diagnostics,
+conversation text or private data to either form.
+
 ## Setup and launch
 
 At first use and any missing-dependency refusal, run `python -m alphalattice.interface.local_application.native_setup doctor`; fill each `host_readiness` item by `who_decides`, disclosing locked repairs and relaying one question before an outside-lock install.

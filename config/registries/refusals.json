@@ -6204,6 +6204,12 @@
 "local_client.response_not_json": {
 "owner": "local_client"
 },
+"local_client.report_route_not_admitted": {
+"owner": "local_client"
+},
+"local_client.report_sentence_not_admitted": {
+"owner": "local_client"
+},
 "local_client.response_not_object": {
 "owner": "local_client"
 },

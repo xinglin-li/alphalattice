@@ -6,6 +6,7 @@ import argparse
 import importlib.metadata
 import json
 import os
+import platform
 import re
 import shutil
 import sys
@@ -13,11 +14,11 @@ import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from alphalattice.interface.local_application.failure_codes import setup_failure
+from alphalattice.interface.local_application.failure_codes import safe_failure_code, setup_failure
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_DIRECTORY,
     BINDING_NAME,
@@ -36,7 +37,11 @@ from alphalattice.interface.local_application.native_bridge import (
     session_project,
 )
 from alphalattice.interface.local_application.native_usage import codex_thread_spawn
-from alphalattice.kernel.shared_kernel.environment import offline, recorded_environment
+from alphalattice.kernel.shared_kernel.environment import (
+    offline,
+    package_versions,
+    recorded_environment,
+)
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PRODUCT_HOOK_MATCHER = "^alphalattice_.*$"
@@ -260,6 +265,153 @@ def host_readiness(
         }
         for key, present, measured in specifications
     ]
+
+
+def _report_operations(activity: dict[str, Any], operations: set[str]) -> list[dict[str, Any]]:
+    """Allow only route tokens and reference kinds out of the activity projection."""
+    rows = sorted(
+        (item for group in activity.get("groups", []) for item in group["items"]),
+        key=lambda item: item["at"],
+        reverse=True,
+    )[:8]
+    recent = []
+    for row in rows:
+        if row.get("operation") not in operations:
+            continue
+        item = {"operation": row["operation"]}
+        for field, pattern in (
+            ("status", r"[A-Z][A-Z_]{0,63}"),
+            ("next_action", r"[A-Z][A-Z_]{0,95}"),
+        ):
+            value = str(row.get(field) or "").partition(":")[0]
+            item[field] = value if re.fullmatch(pattern, value) else None
+        item.update(
+            failure_code=safe_failure_code(str(row.get("failure_code") or "").partition(":")[0]),
+            offered_requests=row.get("offered_requests"),
+            offers_recorded=row.get("offered_requests") is not None,
+            identifier_kinds=row.get("identifier_kinds", []),
+        )
+        recent.append(item)
+    return recent
+
+
+def _report_readiness(
+    project: Path, host: str, binding: NativeResearchBinding | None
+) -> dict[str, Any]:
+    """Retain readiness decisions without paths, measurements, repair text or raw facts."""
+    try:
+        items = [
+            {key: item[key] for key in ("key", "present", "who_decides")}
+            for item in host_readiness(project, host, binding)
+        ]
+        return {"status": "AVAILABLE", "items": items}
+    except Exception as error:
+        code = str(setup_failure(error)["failure_code"]).partition(":")[0]
+        return {"status": "UNAVAILABLE", "failure_code": code}
+
+
+def problem_report(
+    workspace: Path,
+    *,
+    project: Path,
+    sentence: str | None = None,
+    expected_route: tuple[str, ...] | list[str] = (),
+) -> dict[str, Any]:
+    """Project existing readiness and activity into a local, reviewable public report."""
+    from alphalattice.interface.local_application.cli_contract import (
+        agent_session,
+        command_table,
+        refusal_words,
+    )
+    from alphalattice.interface.local_application.client import (
+        LocalResearchClient,
+        LocalResearchClientError,
+    )
+
+    operations = {op for group in command_table()["commands"].values() for op in group}
+    if any(op not in operations for op in expected_route):
+        raise NativeBridgeError("local_client.report_route_not_admitted")
+    if sentence is not None and sentence not in {
+        f"Report the {op} problem to the developers." for op in operations
+    }:
+        raise NativeBridgeError("local_client.report_sentence_not_admitted")
+    session = agent_session(os.environ)
+    binding = None
+    try:
+        found = NativeResearchBinding.find(project, session=session)
+        if found is not None and Path(found[1].workspace).resolve() == workspace.resolve():
+            project, binding = found
+    except NativeBridgeError:
+        pass  # A broken binding must not prevent reporting it; doctor states its readiness.
+    host = session[0] if session else getattr(binding, "host", None)
+    doctor = _report_readiness(project, host or "codex", binding)
+    try:
+        activity = LocalResearchClient(workspace, timeout=5).activity_recent(limit=8)
+    except LocalResearchClientError as error:
+        activity = {
+            "status": "UNAVAILABLE",
+            "failure_code": safe_failure_code(str(error).partition(":")[0]),
+        }
+    recent = _report_operations(activity, operations)
+    last = recent[0]["operation"] if recent else "WORKSPACE_SHOW"
+    report = {
+        "status": "PROBLEM_REPORT",
+        **refusal_words("local_client.problem_report_ready"),
+        "included": [
+            "versions",
+            "host_kind",
+            "os_family",
+            "doctor_readiness",
+            "operation_codes",
+            "offer_names",
+            "identifier_kinds",
+            "scenario_stub",
+        ],
+        "omitted": [
+            "workspace_paths",
+            "holdings",
+            "figures",
+            "file_contents",
+            "conversation",
+            "identifier_values",
+        ],
+        "version": dict(package_versions(("alphalattice",)))["alphalattice"],
+        "host": {
+            "kind": host,
+            "version": None
+            if host is None
+            else command_readiness(
+                [{"claude-code": "claude", "codex": "codex"}[host], "--version"], timeout=5
+            ).get("version"),
+            "version_scope": "CLI_PROBE_NOT_DESKTOP",
+        },
+        "os": platform.system(),
+        "doctor": doctor,
+        "activity": {"status": activity["status"], "failure_code": activity.get("failure_code")},
+        "operations": recent,
+        "scenario": {
+            "id": "reported-problem",
+            "sentence": sentence or f"Report the {last} problem to the developers.",
+            "now": datetime.now(UTC).isoformat(),
+            "injected_faults": [],
+            "expected_route": [[op] for op in expected_route],
+            "decider": "person",
+            "forbidden_acts": ["send_without_consent"],
+        },
+        "route_status": "SUPPLIED" if expected_route else "UNTRIAGED",
+        "observed_route": [
+            {key: item[key] for key in ("operation", "status", "failure_code")} for item in recent
+        ],
+    }
+    report["issue_url"] = "https://github.com/xinglin-li/alphalattice/issues/new?" + urlencode(
+        {
+            "template": "bug_report.yml",
+            "labels": "bug",
+            "title": f"[Bug]: {last}",
+            "report": json.dumps(report, ensure_ascii=False, separators=(",", ":")),
+        }
+    )
+    return report
 
 
 def _absolute_project(value: Path) -> Path:

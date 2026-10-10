@@ -1,4 +1,16 @@
 {
+ "local_client.problem_report_ready": {
+  "detail": "Review this redacted report. Ask the person before sending it to the developers; without their yes, keep it local.",
+  "next_action": "REVIEW_REPORT_AND_ASK_BEFORE_SENDING"
+ },
+ "local_client.report_sentence_not_admitted": {
+  "detail": "The report accepts only the safe sentence template: Report the <OPERATION> problem to the developers. Use a registered operation name, or omit --sentence for a generated summary. Conversation text is not exported.",
+  "next_action": "USE_THE_SAFE_SENTENCE_OR_OMIT_IT"
+ },
+ "local_client.report_route_not_admitted": {
+  "detail": "The expected route accepts registered operation names only. Read operation list, or omit --expected-route to leave the report untriaged; no request values are exported.",
+  "next_action": "USE_REGISTERED_OPERATIONS_OR_OMIT_THE_ROUTE"
+ },
  "REFUSED_ALTERNATIVE_EVIDENCE_EXPIRED": {
   "detail": "The evidence analysis this review would read has expired; prepare the evidence again and have it analysed, then ask for the review.",
   "next_action": "PREVIEW_AND_PREPARE_AGAIN"

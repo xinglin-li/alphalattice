@@ -66,6 +66,10 @@ from alphalattice.interface.local_application.failure_codes import (
 )
 
 CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
+    (
+        "problem",
+        "report",
+    ): "Write a redacted problem report for review; sending needs the person's yes.",
     ("answer", "show"): "Read a saved full answer locally, without a Host or fresh verification.",
     ("schema", "show"): "A command's request schema (each branch of a two-operation command), "
     "its answer's and a YAML template.",
@@ -106,6 +110,7 @@ AGENT_VERBS: Final = {verb.words: name for name, verb in client.AGENT_VERBS.item
 OFFLINE_COMMANDS: Final = frozenset(
     {
         ("answer", "show"),
+        ("problem", "report"),
         ("schema", "show"),
         ("backup", "restore"),
         ("model", "scaffold"),
@@ -250,31 +255,52 @@ def _answers(child: argparse.ArgumentParser, *, declaration: bool = False) -> No
     )
 
 
+def _saved_read_arguments(child: argparse.ArgumentParser) -> None:
+    """A saved-answer read selects a file and exactly one reading view."""
+    child.add_argument(
+        "--file",
+        dest="saved_answer",
+        type=Path,
+        required=True,
+        help="A full owner answer saved by --output, as JSON or YAML (at most 4 MiB).",
+    )
+    reading = child.add_mutually_exclusive_group()
+    reading.add_argument(
+        "--section",
+        metavar="PATH",
+        help="Read one saved part by its dotted path, list index or slice, with its unit.",
+    )
+    reading.add_argument(
+        "--list-sections",
+        action="store_true",
+        help="List the saved answer's root paths.",
+    )
+    child.add_argument("--format", choices=("json", "yaml"), default="json")
+    child.description = (child.description or "") + (
+        " Both views print the selected reading whole. --output saves the full snapshot "
+        "reading, including the original answer; saved next requests are never sent."
+    )
+
+
 def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> None:
-    child.add_argument("--output", type=Path, help="Save the full answer.")
+    child.add_argument(
+        "--output",
+        type=Path,
+        required=(noun, verb) == ("problem", "report"),
+        help="Save the full answer.",
+    )
     if (noun, verb) == ("answer", "show"):
+        _saved_read_arguments(child)
+    elif noun == "problem":
         child.add_argument(
-            "--file",
-            dest="saved_answer",
-            type=Path,
-            required=True,
-            help="A full owner answer saved by --output, as JSON or YAML (at most 4 MiB).",
+            "--sentence", help="Safe template: Report the <OPERATION> problem to the developers."
         )
-        reading = child.add_mutually_exclusive_group()
-        reading.add_argument(
-            "--section",
-            metavar="PATH",
-            help="Read one saved part by its dotted path, list index or slice, with its unit.",
-        )
-        reading.add_argument(
-            "--list-sections",
-            action="store_true",
-            help="List the saved answer's root paths.",
-        )
-        child.add_argument("--format", choices=("json", "yaml"), default="json")
-        child.description = (child.description or "") + (
-            " Both views print the selected reading whole. --output saves the full snapshot "
-            "reading, including the original answer; saved next requests are never sent."
+        child.add_argument(
+            "--expected-route",
+            nargs="+",
+            default=[],
+            metavar="OPERATION",
+            help="Expected registered operation names; omitted means untriaged.",
         )
     elif noun == "schema":
         child.add_argument(
@@ -1500,6 +1526,34 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
     return 0
 
 
+def _problem(args: argparse.Namespace, started: float) -> int:
+    """Write a local report from existing observations; never send it."""
+    from alphalattice.interface.local_application.native_bridge import NativeBridgeError
+    from alphalattice.interface.local_application.native_setup import problem_report
+
+    try:
+        body = problem_report(
+            args.workspace,
+            project=Path.cwd(),
+            sentence=args.sentence,
+            expected_route=args.expected_route,
+        )
+    except NativeBridgeError as error:
+        return _refused(str(error), started)
+    print(
+        json.dumps(
+            envelope(
+                operation="PROBLEM_REPORT",
+                outcome="OK",
+                body=body,
+                elapsed_seconds=time.perf_counter() - started,
+                **_saved(args, body),
+            )
+        )
+    )
+    return 0
+
+
 def _bind(args: argparse.Namespace, started: float) -> int:
     """Bind this agent session to the workspace named (`session bind`, V568): the binding the
     bridge reads and every later command of the session, or of its own specialists,
@@ -1609,6 +1663,8 @@ def _command(
         return _sandbox(args, started, sandbox)
     if getattr(args, "client_command", None) == ("session", "bind"):
         return _bind(args, started)
+    if getattr(args, "client_command", None) == ("problem", "report"):
+        return _problem(args, started)
     if getattr(args, "client_command", None) in {("model", "scaffold"), ("model", "check")}:
         return _model(args, started)
     if getattr(args, "client_command", None) in OFFLINE_COMMANDS:

@@ -597,6 +597,13 @@ _DAMAGED = ClientRefusal(
     "is trusted; restore an earlier generation with --generation.",
 )
 _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
+    *(
+        (code, ClientRefusal("INVALID_INPUT", **refusal_words(code)))
+        for code in (
+            "local_client.report_sentence_not_admitted",
+            "local_client.report_route_not_admitted",
+        )
+    ),
     # First match wins: an exact code before the prefix that also covers it.
     (
         "local_client.saved_answer_invalid",

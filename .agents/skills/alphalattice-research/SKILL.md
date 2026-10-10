@@ -25,6 +25,7 @@ Begin at the person's own target (a date's positions, a named request), else at 
 - **A book**: `book draft` → `study plan` → `study run` → `study show` ([research contract](references/research-contract.md)).
 - **A formula factor**: `feature controls` → its offered plan, trial and review.
 - **A data issue**: `issue list` → its offered `request` ([pipeline issues](references/pipeline-issues.md)).
+- **Report a problem**: `problem report --output "<out>/report.json"` → show the report → ask before sending ([reporting](references/operating.md#report-a-problem)).
 
 Before activating, read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
 Activation admits the first update in the same act: follow it at once, then review its published positions on their own publication.
@@ -34,6 +35,7 @@ Hold positions only from the first actionable session; sessions before it are a 
 
 Each command's exact form; the [Command contract](references/operating.md) covers answers, continuations and waits.
 - `workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
+- `problem report --output "<out>/report.json"`: Writes a redacted local problem report; show it and ask before sending it.
 - `first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09`: Opens the first use from the person's exact sentence and prepares its data; its answer lays out the whole first use.
 - `strategy build`: Runs the strategy's required Alpha and Risk studies on their defaults, then prepares and installs it.
 - `strategy-book controls --package <package>`: The installed strategy's activation, book, horizon and review standing.

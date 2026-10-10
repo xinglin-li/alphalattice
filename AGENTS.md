@@ -114,6 +114,9 @@ For the model lifecycle, follow [leading research](.agents/skills/alphalattice-r
 
 ## Choose the path by intent
 
+For "report a problem", run `alphalattice problem report --output "<out>/report.json"`
+and follow the [reporting procedure](.agents/skills/alphalattice-research/references/operating.md#report-a-problem): show the report and ask before sending it.
+
 The person's own target comes first: a date or a request in their words outranks
 `workspace show`'s first `intents` entry, so a request for a date's positions never
 becomes a new preparation. Otherwise take that first intent. A prepared workspace or

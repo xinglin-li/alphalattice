@@ -65,6 +65,11 @@ def command_readiness(command: list[str], *, timeout: int = 30) -> dict[str, Any
         present=completed.returncode == 0,
         reason=None if completed.returncode == 0 else "COMMAND_FAILED",
     )
+    if result["present"] and command[1:] == ["--version"]:
+        output = getattr(completed, "stdout", None) or b""
+        text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else output
+        version = re.search(r"(?<![\w.])(\d+\.\d+\.\d+(?:[-+][\w.-]+)?)(?![\w.])", text)
+        result["version"] = None if version is None else version[1]
     return result
 
 

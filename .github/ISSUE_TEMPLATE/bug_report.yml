@@ -1,31 +1,39 @@
 name: Bug report
 description: Report a reproducible bug with synthetic or redacted examples.
 title: "[Bug]: "
+labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
         Report vulnerabilities privately as described in SECURITY.md.
         Do not include credentials, private data, provider payloads or conversation text.
+        Paste the reviewed report below, or fill in the manual reproduction, behavior and version fields.
+  - type: textarea
+    id: report
+    attributes:
+      label: Redacted problem report
+      description: Paste the report from alphalattice problem report after reviewing what it includes.
+      render: json
   - type: textarea
     id: reproduction
     attributes:
       label: Steps and minimal reproduction
       description: Include the commands or actions needed to reproduce the bug using synthetic or redacted data.
     validations:
-      required: true
+      required: false
   - type: textarea
     id: behavior
     attributes:
       label: Expected and observed behavior
     validations:
-      required: true
+      required: false
   - type: input
     id: version
     attributes:
       label: Version or commit
     validations:
-      required: true
+      required: false
   - type: textarea
     id: environment
     attributes:

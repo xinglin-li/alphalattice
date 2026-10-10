@@ -20,6 +20,7 @@ import time
 from io import BytesIO, TextIOWrapper
 from pathlib import Path
 from typing import Any, get_args
+from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import pytest
@@ -28,7 +29,7 @@ from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
 from alphalattice.control.product_host.research_authoring.comparison import POSITION_UNITS
-from alphalattice.interface.local_application import cli, client
+from alphalattice.interface.local_application import cli, client, native_setup
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
@@ -38,9 +39,14 @@ from alphalattice.interface.local_application.cli_contract import (
     command_table,
     entry,
     envelope,
+    refusal_words,
 )
 from alphalattice.interface.local_application.failure_codes import FAILURE_DETAIL_WITHHELD
 from alphalattice.interface.local_application.labels import label
+from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchRequestDocument,
+)
+from devtools.evaluation.forms import Scenario
 from tests.portfolio_strategy_lab.cli_support import (
     _agent_project,
     _cli,
@@ -70,6 +76,87 @@ _INTERNAL_CODE = re.compile(
 )
 
 _PRODUCT_WORDS = frozenset({"(CLI)", "(CPU)", "(CRO)", "(ISO)", "(PM)", "(UTC)"})
+
+
+@pytest.mark.parametrize(
+    "failure", ["task_control.queue_full", "TASK_STAGE_RAISED:private-content"]
+)
+def test_problem_report_projects_real_activity_without_private_values(
+    live, tmp_path, monkeypatch, capsys, failure
+) -> None:
+    """A local report keeps replay facts and excludes private ledger and doctor values."""
+    private = [str(live.workspace), "private-holdings", "private-content"]
+    private += [str(uuid4()), "987654.321"]
+    request = PortfolioResearchRequestDocument(operation="PLAN", spec={}).to_operation_request()
+    span = live.activity.entered(request, caller="EXTERNAL_AUTOMATION")
+    assert span is not None
+    answer = dict(status="REFUSED", failure_code=failure, next_action="READ_TASK")
+    answer.update(task_id=private[3], holdings=private[1], figure=float(private[4]))
+    answer.update(file_contents=private[2], conversation=private[2], workspace=private[0])
+    answer["next_requests"] = {"retry": {"operation": "WORKSPACE_SHOW", "file": private[0]}}
+    live.activity.returned(span, answer)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CODEX_THREAD_ID", "test-report-session")
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    readiness = dict(key="disk", present=False, who_decides="PERSON")
+    doctor = readiness | dict(facts={"path": private[0]}, how_to_fill=private[2])
+    monkeypatch.setattr(native_setup, "host_readiness", lambda *_: [doctor])
+    probe = dict(present=True, version="1.2.3", command=private)
+    monkeypatch.setattr(native_setup, "command_readiness", lambda *args, **kwargs: probe)
+    details = []
+    for language in ("en", "zh"):
+        saved = tmp_path / f"report-{language}.json"
+        args = ["--lang", language, "problem", "report", "--output", str(saved)]
+        sentence = "Report the WORKSPACE_SHOW problem to the developers."
+        args += ["--sentence", sentence, "--expected-route", "WORKSPACE_SHOW"]
+        code, shown, _ = _inprocess_cli(live.workspace, *args, capsys=capsys)
+        expected = (0, "PROBLEM_REPORT", "PROBLEM_REPORT")
+        assert (code, shown["operation"], shown["status"]) == expected
+        report = json.loads(saved.read_text("utf-8"))
+        assert not any(json.dumps(value)[1:-1] in json.dumps(report) for value in private)
+        assert report["doctor"]["items"] == [readiness]
+        assert report["host"]["kind"] == "codex" and report["host"]["version"] == "1.2.3"
+        recent = report["operations"][0]
+        fields = ("operation", "status", "failure_code", "next_action")
+        expected = ("PLAN", "REFUSED", failure.partition(":")[0], "READ_TASK")
+        assert tuple(recent[key] for key in fields) == expected
+        assert recent["offered_requests"] == ["retry"] and recent["offers_recorded"] is True
+        assert "task_id" in recent["identifier_kinds"]
+        assert Scenario.from_dict(report["scenario"]).expected_route == (("WORKSPACE_SHOW",),)
+        url = urlparse(report["issue_url"])
+        assert (url.netloc, url.path) == ("github.com", "/xinglin-li/alphalattice/issues/new")
+        query = parse_qs(url.query)
+        assert query["labels"] == ["bug"] and "issue_url" not in json.loads(query["report"][0])
+        assert json.loads(query["report"][0]) == {
+            key: value for key, value in report.items() if key != "issue_url"
+        }
+        details.append(shown["detail"])
+    assert details[0] == refusal_words("local_client.problem_report_ready")["detail"]
+    assert details[1] != details[0] and re.search(r"[\u4e00-\u9fff]", details[1])
+
+
+@pytest.mark.parametrize(
+    "option, value, key",
+    [
+        ("--sentence", "private conversation", "local_client.report_sentence_not_admitted"),
+        ("--expected-route", "private-operation", "local_client.report_route_not_admitted"),
+    ],
+)
+def test_problem_report_refuses_unstructured_text_before_collecting(
+    tmp_path, monkeypatch, capsys, option, value, key
+):
+    """Unsafe report inputs refuse by their door key before any readiness or activity collection."""
+
+    monkeypatch.setattr(native_setup, "host_readiness", lambda *_: pytest.fail("readiness"))
+    for language in ("en", "zh"):
+        args = ["--lang", language, "problem", "report", "--output"]
+        args += [str(tmp_path / "report.json"), option, value]
+        code, shown, _ = _inprocess_cli(tmp_path, *args, capsys=capsys)
+        assert (code, shown["failure_code"]) == (1, key)
+        assert shown["next_action"] == refusal_words(key)["next_action"]
+        assert shown["detail"] and not (tmp_path / "report.json").exists()
+        if language == "zh":
+            assert re.search(r"[\u4e00-\u9fff]", shown["detail"])
 
 
 def test_serve_forwards_its_own_options_to_the_launcher(tmp_path: Path) -> None:

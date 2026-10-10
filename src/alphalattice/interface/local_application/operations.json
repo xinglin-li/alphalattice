@@ -2693,6 +2693,10 @@
      "A saved full answer read locally, without a Host or fresh verification."
     ],
     [
+     "problem",
+     "A redacted local problem report, reviewed before sending."
+    ],
+    [
      "serve",
      "Start the Local Web Host on this workspace."
     ],

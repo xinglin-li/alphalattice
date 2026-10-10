@@ -353,6 +353,10 @@ BUNDLE_ROLES = {
 SKILL_COMMANDS: tuple[RoleCommand, ...] = (
     _WORKSPACE,
     RoleCommand(
+        'problem report --output "<out>/report.json"',
+        "Writes a redacted local problem report; show it and ask before sending it.",
+    ),
+    RoleCommand(
         'first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09',
         "Opens the first use from the person's exact sentence and prepares its data; its answer "
         "lays out the whole first use.",

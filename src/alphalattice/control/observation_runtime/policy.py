@@ -329,6 +329,7 @@ PRODUCT_OPERATION_FIELDS = frozenset(
         "task_lifecycle",
         "subject",
         "next_read",
+        "offered_requests",
         "latency_milliseconds",
         "request_fields",
     }

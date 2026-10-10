@@ -798,6 +798,10 @@ def _client_required(noun: str, verb: str) -> list[str]:
 
 
 _OFFLINE_CASES: Final[dict[tuple[str, str], list[tuple[str, list[str], int, str]]]] = {
+    ("problem", "report"): [
+        ("unsafe summary", ["--output", "x", "--sentence", "private text"], 1, "INVALID_INPUT"),
+        ("a missing field", [], 1, "INVALID_INPUT"),
+    ],
     ("answer", "show"): [
         ("no saved file", ["--file", "absent.answer.json"], 1, "INVALID_INPUT"),
         ("a missing field", [], 1, "INVALID_INPUT"),
