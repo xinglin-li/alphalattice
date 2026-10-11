@@ -15,8 +15,10 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from collections.abc import Mapping
 from hashlib import sha256
 from typing import Final
+from uuid import UUID
 
 FAILURE_DETAIL_WITHHELD = "activity.failure_detail_withheld"
 """Served or persisted in place of any failure text that is not a typed product code."""
@@ -200,7 +202,9 @@ def untyped_failure(code: str) -> bool:
     return bool(_UNTYPED.match(code))
 
 
-def located_failure(error: BaseException, fallback: str) -> dict[str, object]:
+def located_failure(
+    error: BaseException, fallback: str, *, request: Mapping[str, object] | None = None
+) -> dict[str, object]:
     """The code an answer gives for `error`, and each field a contract refused.
 
     One shape at every operation: a document that fails its contract answers the owner's code
@@ -239,18 +243,63 @@ def located_failure(error: BaseException, fallback: str) -> dict[str, object]:
         )
         # A validator's own text is the owner's code or withheld: it may carry the value.
         reason = code or kind
+        if reason.startswith("portfolio_research.operation_field_required:"):
+            missing = reason.partition(":")[2].split(",")
+            fields.extend([[name] for name in missing])
+            reasons.update({name: reason for name in missing})
+            words.append(reason)
+            continue
         fields.append(location)
         reasons[".".join(location)] = reason
         said = reason if kind == "value_error" else str(item.get("msg", kind))
         # An owner's code says what its rule expects, in its own words.
         expected = refusal_words(code).get("detail") if code is not None else None
         words.append(f"{'.'.join(location)}: {said}" + (f" ({expected})" if expected else ""))
-    return {
+    answer: dict[str, object] = {
         "failure_code": fallback,
         "fields": fields,
         "reasons": reasons,
         "message": "; ".join(words)[:600],
     }
+    if request is not None:
+        answer["next_action"] = "READ_CAPABILITIES_SCHEMA"
+        if read := _request_read(reasons, request):
+            answer.update(
+                detail=refusal_words(fallback)["detail"],
+                next_action="READ_VALID_VALUES_AND_CORRECT_THE_NAMED_FIELD",
+                next_requests={"valid_values": read},
+                schema_command=["alphalattice", "schema", "show", request["operation"]],
+            )
+    return answer
+
+
+def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> dict[str, object]:
+    """Read valid values without choosing work or assuming a refused member's credentials."""
+    if "operation" in reasons:
+        return {}
+    if "update_plan_hash" in reasons:
+        return {"operation": "ACTIVITY_LIST", "limit": 200}
+    if "update_task_id" in reasons:
+        return {"operation": "TASKS"}
+    if request.get("operation") in {"TASK_RECOVERY", "RECOVER"} or request.get("recovery_task_id"):
+        field = "recovery_task_id" if request.get("recovery_task_id") else "task_id"
+        if field in reasons:
+            return {"operation": "TASKS"}
+        try:
+            task = str(UUID(str(request.get(field))))
+        except ValueError:
+            return {"operation": "TASKS"}
+        return {"operation": "TASK_RECOVERY", "task_id": task}
+    if any(name.startswith("committee_message") for name in reasons):
+        try:
+            read: dict[str, object] = {
+                "operation": "COMMITTEE_READ",
+                "update_task_id": str(UUID(str(request.get("update_task_id")))),
+            }
+        except ValueError:
+            return {"operation": "TASKS"}
+        return read
+    return {}
 
 
 def typed_failures(body: dict[str, object]) -> dict[str, object]:

@@ -78,6 +78,20 @@ def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(tmp_path:
         "changed-hash",
         "unavailable",
         "walk",
+        "activity-good",
+        "activity-hash",
+        "activity-operation",
+        "activity-phase",
+        "activity-status",
+        "activity-empty",
+        "tasks-good",
+        "tasks-id",
+        "tasks-kind",
+        "tasks-lifecycle",
+        "tasks-empty",
+        "packages-good",
+        "packages-id",
+        "packages-empty",
     ],
 )
 def test_an_injected_refusal_recovers_only_the_original_bound_step(
@@ -92,10 +106,63 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
     required = "plan_hash" if recovery == "changed-hash" else "update_task_id"
     if recovery == "changed-hash":
         request = {"operation": "MODEL_RUN", "plan_hash": "a" * 64}
+    discovery = recovery.startswith(("activity-", "tasks-", "packages-"))
+    read_data = {}
+    if recovery.startswith("packages-"):
+        required = "strategy_package_id"
+        request = {"operation": "RESEARCH_UPDATE_PLAN", required: "installed"}
+        read_data = {
+            "installed_strategies": []
+            if recovery == "packages-empty"
+            else [{"strategy_id": "other" if recovery == "packages-id" else "installed"}]
+        }
+    elif recovery.startswith("activity-"):
+        required = "update_plan_hash"
+        request = {"operation": "RESEARCH_UPDATE_RUN", required: "a" * 64}
+        read_data = {
+            "items": []
+            if recovery == "activity-empty"
+            else [
+                {
+                    "payload": {
+                        "phase": "REQUESTED" if recovery == "activity-phase" else "RETURNED",
+                        "status": "REFUSED" if recovery == "activity-status" else "PLANNED",
+                        "operation": "DATA_UPDATE_PLAN"
+                        if recovery == "activity-operation"
+                        else "RESEARCH_UPDATE_PLAN",
+                        "subject": {
+                            required: "b" * 64 if recovery == "activity-hash" else "a" * 64
+                        },
+                    }
+                }
+            ]
+        }
+    elif recovery.startswith("tasks-"):
+        read_data = {
+            "tasks": []
+            if recovery == "tasks-empty"
+            else [
+                {
+                    "task_id": "task-2" if recovery == "tasks-id" else "task-1",
+                    "task_kind": "portfolio_run"
+                    if recovery == "tasks-kind"
+                    else "portfolio_public_watermark_advancement",
+                    "lifecycle": "RUNNING" if recovery == "tasks-lifecycle" else "SUCCEEDED",
+                }
+            ]
+        }
     sent: list[dict[str, Any]] = []
     repaired = dict(request)
     if recovery in {"wrong-read", "located-read", "owned-read", "empty-read"}:
         repaired = {"operation": "COMMITTEE_READ", "update_task_id": "task-1"}
+    elif discovery:
+        repaired = {
+            "operation": "WORKSPACE_SHOW"
+            if recovery.startswith("packages-")
+            else "ACTIVITY_LIST"
+            if recovery.startswith("activity-")
+            else "TASKS"
+        }
     elif recovery in {"wrong-binding", "wrong-write"}:
         repaired["update_task_id"] = "task-2"
     elif recovery == "changed-hash":
@@ -106,6 +173,8 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
             return {"outcome": "OK", "next_requests": {"submit": request}}
         document = json.loads(Path(argv[-1]).read_text(encoding="utf-8"))
         sent.append(document)
+        if discovery and document == repaired:
+            return {"operation": document["operation"], "outcome": "OK", "data": read_data}
         if document.get(required):
             return {
                 "operation": document["operation"],
@@ -123,7 +192,7 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
             in {"generic", "generic-offer", "located", "located-read", "empty-read", "usage"}
             else "portfolio_research.operation_field_required:" + required,
         }
-        if recovery in {"located", "located-read", "empty-read"}:
+        if recovery in {"located", "located-read", "empty-read"} or discovery:
             answer["reasons"] = {required: "required"}
         if recovery == "owned-read":
             answer.update(
@@ -149,7 +218,7 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         tmp_path,
         request_fields={request["operation"]: {"required": [required], "allowed": list(request)}},
         mutation_owners={request["operation"]: "committee.py", "COMMITTEE_READ": "committee.py"},
-        read_operations={"COMMITTEE_READ"},
+        read_operations={"COMMITTEE_READ", "ACTIVITY_LIST", "TASKS", "WORKSPACE_SHOW"},
         mutation_budget=120,
     )
     if recovery == "walk":
@@ -161,18 +230,32 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         )
     else:
         explorer.inject(request, "committee", kinds={"drop-field"})
-    clean = recovery in {"filled", "located", "located-read", "owned-read", "usage", "walk"}
+    clean = recovery in {
+        "filled",
+        "located",
+        "located-read",
+        "owned-read",
+        "usage",
+        "walk",
+        "activity-good",
+        "tasks-good",
+        "packages-good",
+    }
     assert bool(explorer.findings) != clean
     assert len(explorer.mutation_checks) == (2 if recovery == "walk" else 1)
     assert explorer.mutation_checks[0]["rule_named"] == (
         recovery not in {"generic", "generic-offer"}
     )
     assert explorer.mutation_checks[0]["words_state_rule"] == (
-        recovery in {"located", "located-read", "owned-read", "empty-read", "usage"}
+        recovery in {"located", "located-read", "owned-read", "empty-read", "usage"} or discovery
     )
     assert explorer.mutation_checks[0]["owner"] == "committee.py"
     assert required not in sent[0] and request[required] == (
-        "a" * 64 if recovery == "changed-hash" else "task-1"
+        "installed"
+        if recovery.startswith("packages-")
+        else "a" * 64
+        if recovery == "changed-hash" or recovery.startswith("activity-")
+        else "task-1"
     )
     if clean:
         assert sent[-1] == request
@@ -181,9 +264,65 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
 
 
 @pytest.mark.parametrize(
+    "state", ["SUCCEEDED", "RUNNING", "other-task", "stopped-read", "wrong-read"]
+)
+def test_a_retired_recovery_offer_is_settled_only_by_its_completed_source(tmp_path, state):
+    """A correction keeps its Task and read; old recovery ends only after its source completes."""
+    original = {"operation": "RESEARCH_UPDATE_PLAN", "recovery_task_id": "source"}
+    read = {"operation": "TASK_RECOVERY", "task_id": "source"}
+    code = "portfolio_research.recovery_task_id_invalid"
+    if state in {"stopped-read", "wrong-read"}:
+        original = {"operation": "TASK_RECOVERY", "task_id": "source"}
+        read = {"operation": "TASKS"}
+    refused = {
+        "outcome": "REFUSED",
+        "failure_code": code,
+        "detail": code,
+        "next_requests": {"recovery": read},
+    }
+
+    def call(argv):
+        request = json.loads(Path(argv[-1]).read_text())
+        if state in {"stopped-read", "wrong-read"} and request == original:
+            return {
+                "operation": "TASK_SHOW" if state == "wrong-read" else "TASK_RECOVERY",
+                "outcome": "REFUSED",
+                "failure_code": "execution.memory_insufficient",
+                "data": {"task_id": "source", "lifecycle": "BLOCKED", "read_request": original},
+            }
+        if request != read:
+            return refused
+        if state in {"stopped-read", "wrong-read"}:
+            return {"outcome": "OK", "data": {"tasks": [{"task_id": "source"}]}}
+        return {
+            "operation": "TASK_RECOVERY",
+            "outcome": "OK",
+            "data": {
+                "task_id": "other" if state == "other-task" else "source",
+                "lifecycle": "SUCCEEDED" if state == "other-task" else state,
+            },
+        }
+
+    scenario = Scenario("recovery", "replan", "2026-10-10T15:00:00+00:00", (), (), "agent", ())
+    explorer = Explorer(
+        call,
+        lambda _: {},
+        scenario,
+        tmp_path,
+        read_operations={"TASK_RECOVERY", "TASKS"},
+        mutation_owners={"TASK_RECOVERY": "tasks"},
+        mutation_budget=120,
+    )
+    field = "task_id" if state in {"stopped-read", "wrong-read"} else "recovery_task_id"
+    explorer.inject(original, "recovery", kinds={"value-change"}, fields={field})
+    assert bool(explorer.findings) == (state not in {"SUCCEEDED", "stopped-read"})
+
+
+@pytest.mark.parametrize(
     "identity",
     [
         "same",
+        "update-plan",
         "different",
         "missing",
         "recovered-same",
@@ -202,6 +341,10 @@ def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
     request = {"operation": "MODEL_RUN", "plan_hash": "a" * 64}
     key = "message_id" if identity == "recovered-message" else "task_id"
     baseline = {"operation": "MODEL_RUN", "outcome": "PENDING", "data": {key: "original"}}
+    if identity == "update-plan":
+        request = {"operation": "RESEARCH_UPDATE_PLAN"}
+        key = "update_plan_hash"
+        baseline = {"outcome": "OK", "data": {key: "original"}}
     if identity.startswith("read-"):
         request = {"operation": "COMMITTEE_SUBMIT", "update_task_id": "task-1"}
         baseline = {"outcome": "OK", "data": {"message_id": "original"}}
@@ -237,9 +380,13 @@ def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
         data = (
             {}
             if identity == "missing"
-            else {key: "original" if identity in {"same", "recovered-same"} else "different"}
+            else {
+                key: "original"
+                if identity in {"same", "recovered-same", "update-plan"}
+                else "different"
+            }
         )
-        return {"operation": "MODEL_RUN", "outcome": "PENDING", "data": data}
+        return {"operation": request["operation"], "outcome": "PENDING", "data": data}
 
     scenario = Scenario(
         "duplicate", "run the plan", "2026-10-10T15:00:00+00:00", (), (), "agent", ()
@@ -258,5 +405,7 @@ def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
         assert sent == [request, {"operation": "COMMITTEE_READ", "update_task_id": "task-1"}]
     else:
         assert sent == [request] * (2 if identity.startswith("recovered-") else 1)
-    assert bool(explorer.findings) == (identity not in {"same", "recovered-same", "read-same"})
+    assert bool(explorer.findings) == (
+        identity not in {"same", "recovered-same", "read-same", "update-plan"}
+    )
     assert len(explorer.mutation_checks) == 1

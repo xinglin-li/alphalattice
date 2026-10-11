@@ -76,6 +76,8 @@ RULE_WORDS: Final = {
     "reply_to the message it answers and no other kind does; a RULING's or the VERDICT's "
     "outcome is required and no other kind takes one. Send the corrected message the answer "
     "offers.",
+    "UNRULED": "A verdict closes the floor, so the PM rules on every challenge first and one "
+    "stands unruled; read it, send its ruling in your own words, then the verdict.",
     "NUMBER": "A digit is typed outside an alias, and the Host renders every number: resubmit "
     "the same message with each typed figure or reference replaced by its alias on the floor.",
 }
@@ -157,6 +159,10 @@ def open_floor(
     opened = {
         "update_task_id": task,
         "selector": dict(readback["review_selector"]),
+        # The published review the floor argues on, which its report carries.
+        "review": {"review_publication_hash": standing.get("review_publication_hash")}
+        if (standing := readback.get("review_standing") or {}).get("status") == "REVIEWED"
+        else {},
         "strategy_package_id": readback.get("strategy_package_id"),
         "labels": readback.get("labels") or (label.model_dump() if label else {}),
         "schedule": proposal.get("schedule"),
@@ -285,6 +291,7 @@ def submit(
             ("TARGET", any(t not in known for t in named)),
             ("SHAPE", misshapen(message)),
             ("REPLY_TO", answers is not None and (not fits or ruled is not None)),
+            ("UNRULED", bool(_unruled(floor, message))),
             # The Host renders every number; the person's own relayed words keep theirs.
             ("NUMBER", message.kind != "PERSON_ANSWER" and typed),
         ):
@@ -296,6 +303,36 @@ def submit(
             floor.goal_id, {"committee_message": {**entry, **message.model_dump(mode="json")}}
         )
         return number
+
+
+def _unruled(floor: Floor, message: CommitteeMessage) -> list[str]:
+    """The challenges no ruling answers yet, which a VERDICT waits for; none for another kind."""
+    if message.kind != "VERDICT":
+        return []
+    ruled = {m["reply_to"] for m in floor.messages if m["kind"] == "RULING"}
+    return [m["id"] for m in floor.messages if m["kind"] == "CHALLENGE" and m["id"] not in ruled]
+
+
+def _owed(
+    floor: Floor | None,
+    request: PortfolioResearchOperationRequest,
+    member: dict[str, Any],
+    rule: str,
+) -> dict[str, Any]:
+    """For a verdict refused UNRULED, each ruling it owes as a template: once per unruled
+    challenge and outcome, its words left to the PM."""
+    message = request.committee_message
+    owed = [] if floor is None or message is None or rule != "UNRULED" else _unruled(floor, message)
+    return {
+        f"rule:{challenge}:{outcome}": {
+            "operation": "COMMITTEE_SUBMIT",
+            **member,
+            "committee_message": {"kind": "RULING", "text": None, "reply_to": challenge}
+            | {"outcome": outcome, "targets": [], "positions": {}},
+        }
+        for challenge in owed
+        for outcome in sorted(OUTCOMES["RULING"])
+    }
 
 
 def _same(floor: Floor, role: str, message: CommitteeMessage) -> str | None:
@@ -373,6 +410,7 @@ def _corrected(
     words: dict[str, Any] = {"detail": RULE_WORDS[rule], "rule": rule}
     words |= {"next_action": "READ_THE_FLOOR", "next_requests": floor_read}
     message, floor = request.committee_message, floor_of(store, str(request.update_task_id))
+    words["next_requests"] |= _owed(floor, request, member, rule)
     if (ruling := _ruled(floor, message)) is not None:
         # The challenge is ruled already: the ruling stands, and no correction changes it.
         return words | {"ruled_by": ruling["id"]}
@@ -479,7 +517,11 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
         ],
         # Only others' messages advance it: a member's own may outnumber a stance still withheld.
         "seen": max([seen, *(int(m["id"][1:]) for m in visible if m["role"] != role)]),
-        "delivery": {"operation": "EXPERIMENT_DELIVERY_EXPORT", **floor.opened["selector"]},
+        "delivery": {
+            "operation": "EXPERIMENT_DELIVERY_EXPORT",
+            **floor.opened["selector"],
+            **floor.opened.get("review", {}),
+        },
     }
 
 
@@ -549,14 +591,16 @@ def unfiled(floor: Floor, now: datetime) -> list[dict[str, Any]]:
 
 
 def standing_dissents(floor: Floor) -> list[dict[str, Any]]:
-    """The CRO challenges no ruling adopted, including a challenge on a holding directly."""
+    """The CRO's challenges no ruling adopted, and its stance where it objects to a point."""
     rulings = {m["reply_to"]: m["outcome"] for m in floor.messages if m["kind"] == "RULING"}
     return [
         m
         for m in floor.messages
-        if m["kind"] == "CHALLENGE"
-        and m["role"] == "CRO"
-        and rulings.get(m["id"], "REJECT") == "REJECT"
+        if m["role"] == "CRO"
+        and (
+            (m["kind"] == "CHALLENGE" and rulings.get(m["id"], "REJECT") == "REJECT")
+            or (m["kind"] == "STANCE" and "OBJECT" in m["positions"].values())
+        )
     ]
 
 
@@ -769,6 +813,16 @@ def evidence_gap(evidence: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _review_now(readback: Mapping[str, Any]) -> str:
+    """The review of this proposal as it stands now; the sealed status only when none stands."""
+    standing = readback.get("review_standing") or {}
+    route = (standing.get("cro") or {}).get("route")
+    if standing.get("status") == "REVIEWED":
+        published = standing.get("published_at")
+        return f"Review of this proposal now: REVIEWED, published {published}; CRO route {route}."
+    return f"Review of this proposal at publication: {readback['publication'].get('cro_status')}."
+
+
 def role_lines(
     role: str,
     readback: Mapping[str, Any],
@@ -806,7 +860,7 @@ def role_lines(
     elif role == "CRO":
         gap = evidence_gap(evidence)
         view = [
-            f"Review of this proposal at publication: {publication.get('cro_status')}.",
+            _review_now(readback),
             *(
                 [f"No Evidence stands ({gap}): {evidence.get('explanation') or ''}"]
                 if gap

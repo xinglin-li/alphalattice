@@ -32,6 +32,7 @@ The entry point is ``scripts/run_alphalattice.py`` (it composes the Host, which 
 from __future__ import annotations
 
 import argparse
+import difflib
 import functools
 import json
 import os
@@ -40,6 +41,7 @@ import textwrap
 import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import suppress
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Final, Literal, cast
 
@@ -59,6 +61,7 @@ from alphalattice.interface.local_application.cli_contract import (
     envelope,
     flag,
     offered_requests,
+    worded,
 )
 from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
@@ -179,17 +182,34 @@ def _value(field: str, text: str) -> object:
     return text
 
 
+_PARSER_LINE: ContextVar[tuple[argparse.ArgumentParser, list[str], bool] | None] = ContextVar(
+    "parser_line", default=None
+)
+
+
 class _Parser(argparse.ArgumentParser):
     """Report parsing failures as INVALID_INPUT with exit status 1.
 
     Argparse's own exit status 2 would look like an owner's refusal.
     """
 
+    def parse_args(self, args: Any = None, namespace: Any = None) -> Any:
+        if (line := _PARSER_LINE.get()) is not None and line[2]:
+            return super().parse_args(args, namespace)
+        token = _PARSER_LINE.set((self, list(sys.argv[1:] if args is None else args), False))
+        try:
+            return super().parse_args(args, namespace)
+        finally:
+            _PARSER_LINE.reset(token)
+
     def error(self, message: str) -> Any:
+        if (line := _PARSER_LINE.get()) is not None and line[2]:
+            raise ValueError(message)
         self.print_usage(sys.stderr)
         print(f"{self.prog}: error: {message}", file=sys.stderr)
         code = "local_client.usage_invalid"
         refusal = client_refusal(code)
+        repair = _repair(self, message)
         # What the parser found, its usage and the help that answers it, in the envelope where
         # an agent reads (the review's F5); stderr keeps argparse's own lines.
         print(
@@ -203,11 +223,12 @@ class _Parser(argparse.ArgumentParser):
                     failure_code=code,
                     detail=refusal.detail,
                     next_action=refusal.next_action,
+                    next_requests=repair.pop("next_requests", None),
                     usage_error={
                         "observed": message,
                         "usage": " ".join(self.format_usage().split()),
                         "help": f"{self.prog} --help",
-                        **_repair(message),
+                        **repair,
                     },
                 ),
                 sort_keys=True,
@@ -216,8 +237,66 @@ class _Parser(argparse.ArgumentParser):
         raise SystemExit(EXIT_CODES[refusal.outcome])
 
 
-def _repair(message: str) -> dict[str, str]:
+def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
     """The repair a parser's error names, where one is certain (the review's F5)."""
+    if (state := _PARSER_LINE.get()) is not None:
+        root, arguments, _ = state
+        token = _PARSER_LINE.set((root, arguments, True))
+        try:
+            if "unrecognized arguments: " in message:
+                parsed, unknown = root.parse_known_args(arguments)
+                bad = unknown[0]
+                wrong = bad.partition("=")[0]
+                name = " ".join((root.prog, parsed.noun, getattr(parsed, "verb", ""))).rstrip()
+                owner = next(child for child in _commands_of(root) if child.prog == name)
+                choices = owner._option_string_actions
+            elif "invalid choice: " in message:
+                wrong = message.split("invalid choice: ", 1)[1].split(" (choose from", 1)[0]
+                wrong = wrong.strip("'\"")
+                bad = wrong
+                choices = next(
+                    action.choices
+                    for action in parser._actions
+                    if isinstance(action, argparse._SubParsersAction)
+                )
+            else:
+                raise ValueError(message)
+            nearest = difflib.get_close_matches(wrong, choices, n=2, cutoff=0.75)
+            if (
+                len(nearest) != 1
+                or nearest[0] in {"-h", "--help"}
+                or {"-", "@-", "-h", "--help"}
+                & (set(arguments) | {arg.partition("=")[2] for arg in arguments})
+            ):
+                raise ValueError
+            corrected = list(arguments)
+            corrected[corrected.index(bad)] = nearest[0] + bad[len(wrong) :]
+            repaired = _parser(_named(corrected))
+            args = repaired.parse_args(corrected)
+            if args.noun == "request":
+                args.primary_file = args.file if args.from_response is not None else None
+                args.file = args.choices if args.from_response is not None else args.file
+                request = client._next_request(args)
+            elif args.noun == "serve" or hasattr(args, "client_command"):
+                raise ValueError("cli.not_an_operation_command")
+            else:
+                request = _line_document(repaired, args)()
+            from alphalattice.interface.local_application.portfolio_research import (
+                PortfolioResearchRequestDocument,
+            )
+
+            PortfolioResearchRequestDocument.model_validate(request)
+            return {
+                "repair": worded(
+                    f"Replace {wrong} with {nearest[0]} and send the corrected request."
+                ),
+                "corrected_command": ["alphalattice", *corrected],
+                "next_requests": {"correct": request},
+            }
+        except (ValueError, OSError, StopIteration, client.LocalResearchClientError):
+            pass
+        finally:
+            _PARSER_LINE.reset(token)
     if "--workspace" in message:
         return {
             "repair": "Name the workspace's folder once on the line: alphalattice --workspace "
@@ -1258,8 +1337,6 @@ def _offline(args: argparse.Namespace, started: float) -> int:
     commands = command_table()["commands"]
     args.operation_name = commands[named][0] if named in commands else named
     if args.operation_name not in known:
-        import difflib  # only an unknown name needs it; a call's imports are its cost (W12, V29)
-
         # The registry's nearest names, where argparse answered only READ_HELP (V111).
         refusal = client_refusal("local_client.operation_unknown")
         print(

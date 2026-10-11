@@ -317,6 +317,7 @@ RETURNED_REFERENCE_FIELDS: tuple[str, ...] = (
     "lifecycle",
     "next_action",
     "plan_hash",
+    "update_plan_hash",
     "publication_hash",
     "publication_task_id",
     "report_hash",

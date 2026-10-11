@@ -264,6 +264,38 @@ def kind_words(kind: str) -> str:
     return _KIND_WORDS.get(kind) or kind.partition(".")[0].capitalize()
 
 
+def forward_availability_words(
+    code: str, installed_packages: tuple[str, ...] | None, strategy_package_id: str | None
+) -> dict[str, Any]:
+    """Distinguish an unavailable package selector from an installed inactive strategy."""
+    if (
+        code == "portfolio_update.not_installed"
+        and strategy_package_id is not None
+        and installed_packages is not None
+        and strategy_package_id not in installed_packages
+    ):
+        return {
+            "detail": "`strategy_package_id` does not name an installed strategy. "
+            "Read the offered workspace's installed strategies, put one strategy's "
+            "identifier in this field and send the request again.",
+            "fields": [["strategy_package_id"]],
+            "reasons": {"strategy_package_id": code},
+            "schema_command": ["alphalattice", "schema", "show", "RESEARCH_UPDATE_PLAN"],
+            "next_requests": {"valid_values": {"operation": "WORKSPACE_SHOW"}},
+        }
+    return {
+        "detail": (
+            "This strategy is not active. Read this package's controls for its "
+            "activation offer: under the first use's delegation you activate it; otherwise "
+            "introduce the strategy and ask the person in one line. Once active, "
+            "continue with this package's Forward update. Installation, activation and "
+            "the automatic schedule are separate facts; activation does not enable the "
+            "automatic schedule."
+        ),
+        "next_requests": {"books": {"operation": "CONTROLS"}},
+    }
+
+
 def explain(
     code: str,
     *,
@@ -278,6 +310,7 @@ def explain(
     portfolio: Mapping[str, str | None] | None = None,
     trial: Mapping[str, Any] | None = None,
     installed_packages: tuple[str, ...] | None = None,
+    strategy_package_id: str | None = None,
     workspace: Path | None = None,
 ) -> dict[str, Any]:
     """The words and next requests for one refusal code; empty for a code without them.
@@ -461,19 +494,7 @@ def explain(
             else {},
         }
     if base in _NOT_RUNNING_FORWARD:
-        # The score, calibration or Portfolio update of a strategy not activated, or
-        # one stopped since; the daily update's plan meets them first (OP4, U73).
-        return {
-            "detail": (
-                "This strategy is not active. Read this package's controls for its "
-                "activation offer: under the first use's delegation you activate it; otherwise "
-                "introduce the strategy and ask the person in one line. Once active, "
-                "continue with this package's Forward update. Installation, activation and "
-                "the automatic schedule are separate facts; activation does not enable the "
-                "automatic schedule."
-            ),
-            "next_requests": {"books": {"operation": "CONTROLS"}},
-        }
+        return forward_availability_words(base, installed_packages, strategy_package_id)
     if base in _STRATEGY_ACTIVATION_WORDS:
         return {
             "detail": _STRATEGY_ACTIVATION_WORDS[base].format(

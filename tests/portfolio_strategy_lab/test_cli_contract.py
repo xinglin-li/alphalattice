@@ -255,6 +255,94 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
         "INVALID_INPUT",
         "local_client.usage_invalid",
     )
+    assert not body["next_requests"]
+    code, body, _ = _cli(live.workspace, "task", "list", "--hepl")
+    assert (code, body["outcome"]) == (1, "INVALID_INPUT") and not body["next_requests"]
+    for value in ("-", "@-"):
+        code, body, _ = _cli(live.workspace, "request", f"--flie={value}")
+        assert (code, body["outcome"]) == (1, "INVALID_INPUT") and not body["next_requests"]
+    saved = tmp_path / "tasks.json"
+    saved.write_text('{"operation":"TASKS"}', encoding="utf-8")
+    for line in (
+        ("request", "--flie", str(saved)),
+        ("request", f"--flie={saved}"),
+        ("tas", "list"),
+        ("task", "lsit"),
+    ):
+        code, refusal, _ = _cli(live.workspace, *line)
+        assert code == 1 and refusal["usage_error"]["repair"]
+        correction = refusal["next_requests"]["correct"]
+        assert correction == {"operation": "TASKS"}
+        saved.write_text(json.dumps(correction), encoding="utf-8")
+        code, accepted, _ = _cli(live.workspace, "request", "--file", str(saved))
+        assert (code, accepted["operation"], accepted["outcome"]) == (0, "TASKS", "OK")
+    saved.write_text('{"operation":"DATA_UPDATE_RUN"}', encoding="utf-8")
+    code, body, _ = _cli(live.workspace, "request", "--flie", str(saved))
+    assert (code, body["outcome"]) == (1, "INVALID_INPUT") and not body["next_requests"]
+    saved.write_text('{"update_task_id":"?"}', encoding="utf-8")
+    code, body, _ = _cli(live.workspace, "request", "--file", str(saved))
+    assert (code, body["outcome"]) == (2, "REFUSED") and ["operation"] in body["data"]["fields"]
+    assert "schema_command" not in body["data"]
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        "DATA_UPDATE_RUN",
+        "RESEARCH_UPDATE_RUN",
+        "COMMITTEE_READ",
+        "TASK_RECOVERY",
+        "RECOVER",
+        "RESEARCH_UPDATE_PLAN",
+    ],
+)
+def test_a_missing_or_invalid_selector_offers_an_admitted_discovery_read(
+    read_only_live, tmp_path, operation
+) -> None:
+    """A request's field refusal names its rule and offers a read without choosing another plan."""
+    saved = tmp_path / "request.json"
+    request = {"operation": operation}
+    field = (
+        "strategy_package_id"
+        if operation == "RESEARCH_UPDATE_PLAN"
+        else "task_id"
+        if operation in {"TASK_RECOVERY", "RECOVER"}
+        else "update_task_id"
+        if operation == "COMMITTEE_READ"
+        else "update_plan_hash"
+    )
+    if field.endswith("task_id"):
+        request[field] = "?"
+    if field == "strategy_package_id":
+        request[field] = "NOT_AN_INSTALLED_PACKAGE"
+    saved.write_text(json.dumps(request), encoding="utf-8")
+    code, refusal, _ = _cli(read_only_live.workspace, "request", "--file", str(saved))
+    assert (code, refusal["outcome"]) == (2, "REFUSED")
+    assert [field] in refusal["data"]["fields"]
+    assert field in refusal["data"]["reasons"] and refusal["detail"]
+    schema_line = refusal["data"]["schema_command"]
+    assert schema_line == ["alphalattice", "schema", "show", operation]
+    code, form, _ = _cli(read_only_live.workspace, *schema_line[1:])
+    assert code == 0 and field in form["data"]["properties"]
+    _, chinese, _ = _cli(read_only_live.workspace, "--lang", "zh", "request", "--file", str(saved))
+    assert chinese["detail"] != refusal_words("local_client.request_invalid")["detail"]
+    assert any("一" <= char <= "鿿" for char in chinese["detail"])
+    offer = refusal["next_requests"]["valid_values"]
+    assert offer == (
+        {"operation": "WORKSPACE_SHOW"}
+        if field == "strategy_package_id"
+        else {"operation": "TASKS"}
+        if field.endswith("task_id")
+        else {"operation": "ACTIVITY_LIST", "limit": 200}
+    )
+    saved.write_text(json.dumps(offer), encoding="utf-8")
+    code, accepted, _ = _cli(read_only_live.workspace, "request", "--file", str(saved))
+    assert (code, accepted["outcome"], accepted["operation"]) == (0, "OK", offer["operation"])
+    if field == "strategy_package_id":
+        package = accepted["data"]["installed_strategies"][0]["strategy_id"]
+        saved.write_text(json.dumps({"operation": "CONTROLS", "strategy_package_id": package}))
+        code, controls, _ = _cli(read_only_live.workspace, "request", "--file", str(saved))
+        assert (code, controls["data"]["strategy_package_id"]) == (0, package)
 
 
 def test_no_host_is_exit_four_in_its_own_words(

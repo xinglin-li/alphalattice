@@ -108,7 +108,7 @@
   "next_action": "TELL_YOUR_LEAD"
  },
  "local_client.request_invalid": {
-  "detail": "The request is not one the Host accepts as written; its `location`, when present, names the part. Correct it as `schema show <operation>` states its fields, or as the offer that printed it, and send it again.",
+  "detail": "The request breaks the named field rules in `reasons`. Restore the missing field from the original offer, or read the offered valid values, change the named field and send it again. `schema_command` reads the field's valid form. Never select the latest plan in place of the original.",
   "next_action": "CORRECT_THE_REQUEST"
  },
  "native_bridge.accepted_answer_not_recorded": {

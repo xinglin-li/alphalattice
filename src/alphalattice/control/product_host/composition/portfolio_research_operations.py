@@ -1215,22 +1215,12 @@ class PortfolioResearchOperations:
                 body = {
                     "status": "REFUSED",
                     "failure_code": "task_control.task_not_found",
+                    "rule": "task_control.task_not_found",
                     "refused": "task_control.task_not_found",
                     "task_id": str(error.task_id),
                     "next_action": "DISCOVER_TASK_IN_CURRENT_WORKSPACE",
                     **explain("task_control.task_not_found"),
-                    **(
-                        {
-                            "next_requests": {
-                                "recovery": {
-                                    "operation": "TASK_RECOVERY",
-                                    "task_id": str(error.task_id),
-                                }
-                            }
-                        }
-                        if request.recovery_task_id is not None
-                        else {}
-                    ),
+                    "next_requests": {"tasks": {"operation": "TASKS"}},
                 }
             else:
                 code = owner_failure_code(error)
@@ -1688,8 +1678,6 @@ class PortfolioResearchOperations:
                             "task_id": str(pending.task_id),
                             "lifecycle": pending.lifecycle,
                         }
-                    # A stopped update's Task, reopened where its stop allows, answers as it is now
-                    # (V600).
                     return self._run_answer(
                         self.dispatcher.submit(
                             DecisionAdvancementCommand(self.research_updates, plan)
@@ -1698,11 +1686,12 @@ class PortfolioResearchOperations:
                     )
                 except (ValueError, KeyError, FileNotFoundError) as error:
                     failure = located_failure(error, "research_update.refused")
-                    body = {
-                        "status": "REFUSED",
-                        **failure,
-                        **explain(str(failure["failure_code"])),
-                    }
+                    body = refused(
+                        str(failure["failure_code"]),
+                        installed_packages=tuple(self._packages),
+                        strategy_package_id=request.strategy_package_id,
+                    )
+                    body = {**failure, **body}
                     if (
                         failure["failure_code"] == "portfolio_update.not_installed"
                         and request.strategy_package_id is not None
@@ -3459,21 +3448,25 @@ class PortfolioResearchOperations:
         expected = request.expected_task_hash
         if expected is None:
             return None
+        read = {"recovery": {"operation": "TASK_RECOVERY", "task_id": current["task_id"]}}
         if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
             return {
                 "status": "REFUSED",
                 "failure_code": "local_application.expected_task_hash_invalid",
                 "task_id": current["task_id"],
+                "next_requests": read,
             }
         if expected == current["task_record_hash"]:
             return None
         return {
             "status": "REFUSED",
             "failure_code": "local_application.confirmation_stale",
+            "rule": "local_application.confirmation_stale",
             "task_id": current["task_id"],
             "lifecycle": current["lifecycle"],
             "task_record_hash": current["task_record_hash"],
             "refused_at": "OPERATION_ENTRY",
+            "next_requests": read,
         }
 
     def workspace_context(self, *, caller: OperationCaller) -> dict[str, object]:

@@ -1618,8 +1618,7 @@ def build_local_web_application(
                 )
             return {
                 "status": "REFUSED",
-                **located_failure(error, "local_client.request_invalid"),
-                "next_action": "READ_CAPABILITIES_SCHEMA",
+                **located_failure(error, "local_client.request_invalid", request=payload),
             }
         answer = operations.execute(document.to_operation_request(), caller="EXTERNAL_AUTOMATION")
         references.record(answer)

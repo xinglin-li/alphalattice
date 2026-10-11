@@ -196,6 +196,7 @@ class Explorer:
         where: str,
         baseline: dict[str, Any] | None = None,
         kinds: set[str] | list[str] | None = None,
+        fields: set[str] | None = None,
     ) -> dict[str, Any] | None:
         """Probe offered-request mistakes through the same CLI, recording feedback defects."""
         if self.mutation_seconds >= self.mutation_budget:
@@ -209,7 +210,11 @@ class Explorer:
             variants = [("duplicate", request, "same admission")]
         elif kinds is None and variants:
             variants = [variants[len(self.mutation_checks) % len(variants)]]
-        for kind, changed, rule in (v for v in variants if kinds is None or v[0] in kinds):
+        for kind, changed, rule in (
+            v
+            for v in variants
+            if (kinds is None or v[0] in kinds) and (fields is None or v[2] in fields)
+        ):
             if self.mutation_seconds + time.monotonic() - started >= self.mutation_budget:
                 break
             document = self.work / f"mistake-{len(self.events)}.json"
@@ -253,7 +258,7 @@ class Explorer:
             )
         if kind == "duplicate" and (not refused or corrected is not None):
             before = _data(baseline or {})
-            keys = ("task_id", "message_id", "plan_hash", "result_hash")
+            keys = ("task_id", "message_id", "plan_hash", "update_plan_hash", "result_hash")
             identities = {k: before[k] for k in keys if before.get(k) is not None}
             repeated = _data(corrected or answer)
             same = identities and all(repeated.get(k) == v for k, v in identities.items())
@@ -273,6 +278,61 @@ class Explorer:
         }
         return row, corrected
 
+    def _discovered_binding(
+        self, original: dict[str, Any], request: dict[str, Any], sent: dict[str, Any]
+    ) -> bool:
+        """Discovery proves an exact returned plan or completed update, never a latest guess."""
+        if request["operation"] == "WORKSPACE_SHOW" and original.get("strategy_package_id"):
+            return sent.get("operation") == "WORKSPACE_SHOW" and any(
+                item.get("strategy_id") == original["strategy_package_id"]
+                for item in _data(sent).get("installed_strategies", [])
+                if isinstance(item, dict)
+            )
+        if request["operation"] == "ACTIVITY_LIST" and original["operation"] in {
+            "DATA_UPDATE_RUN",
+            "RESEARCH_UPDATE_RUN",
+        }:
+            return any(
+                payload.get("phase") == "RETURNED"
+                and payload.get("status") == "PLANNED"
+                and payload.get("operation") == original["operation"].removesuffix("_RUN") + "_PLAN"
+                and original.get("update_plan_hash")
+                and original["update_plan_hash"]
+                in {subject.get("plan_hash"), subject.get("update_plan_hash")}
+                for item in _data(sent).get("items", [])
+                if isinstance(item, dict)
+                and isinstance(payload := item.get("payload"), dict)
+                and isinstance(subject := payload.get("subject"), dict)
+            )
+        return request["operation"] == "TASKS" and self._listed_task_binding(original, sent)
+
+    def _listed_task_binding(self, original: dict[str, Any], sent: dict[str, Any]) -> bool:
+        """Task discovery preserves the completed committee source or recovery identity."""
+        if str(original["operation"]).startswith("COMMITTEE_"):
+            return any(
+                task.get("task_id") == original.get("update_task_id")
+                and original.get("update_task_id")
+                and task.get("task_kind") == "portfolio_public_watermark_advancement"
+                and task.get("lifecycle") == "SUCCEEDED"
+                for task in _data(sent).get("tasks", [])
+                if isinstance(task, dict)
+            )
+        if original["operation"] in {"TASK_RECOVERY", "RECOVER"} or original.get(
+            "recovery_task_id"
+        ):
+            task_id = original.get("recovery_task_id") or original.get("task_id")
+            return any(
+                task.get("task_id") == task_id
+                and task_id
+                and (
+                    not original.get("recovery_task_hash")
+                    or task.get("task_record_hash") == original["recovery_task_hash"]
+                )
+                for task in _data(sent).get("tasks", [])
+                if isinstance(task, dict)
+            )
+        return False
+
     def _bound_read(
         self,
         original: dict[str, Any],
@@ -281,6 +341,12 @@ class Explorer:
         baseline: dict[str, Any] | None = None,
     ) -> bool:
         """A recovery read exposes the same owner's original selector context."""
+        if not baseline and self._discovered_binding(original, request, sent):
+            return True
+        if self._recovery_source(original, request, sent):
+            return (
+                any(offer == original for _, offer in offers(sent)) or _state(sent) == "SUCCEEDED"
+            )
         bindings = {
             k: v
             for k, v in original.items()
@@ -294,6 +360,8 @@ class Explorer:
             and all(_data(sent).get(k) == v for k, v in bindings.items())
         )
         if baseline:
+            if request["operation"] == "TASK_RECOVERY":
+                return bound and _data(sent).get("task_id") == _data(baseline).get("task_id")
             return bool(
                 bound
                 and request["operation"] == "COMMITTEE_READ"
@@ -303,6 +371,50 @@ class Explorer:
                 )
             )
         return bound
+
+    @staticmethod
+    def _recovery_source(
+        original: dict[str, Any], request: dict[str, Any], sent: dict[str, Any]
+    ) -> bool:
+        """A recovery read proves its source only when both IDs match the original offer."""
+        task_id = original.get("recovery_task_id")
+        return bool(
+            task_id
+            and request["operation"] == "TASK_RECOVERY"
+            and request.get("task_id") == task_id
+            and _data(sent).get("task_id") == task_id
+        )
+
+    @staticmethod
+    def _correction_offer(
+        original: dict[str, Any], answer: dict[str, Any], edited: bool
+    ) -> tuple[str, dict[str, Any]] | None:
+        """Prefer the original request, then task discovery over unrelated history reads."""
+        candidates = [(n, r) for n, r in offers(answer) if not _CHOICE.search(json.dumps(r))]
+        if edited:
+            return "agent-edit", original
+        if not candidates:
+            return None
+        discovery = {"TASKS"} if any(k.endswith("task_id") for k in original) else set()
+        return min(
+            candidates,
+            key=lambda p: 0 if p[1] == original else 1 if p[1]["operation"] in discovery else 2,
+        )
+
+    def _accepted_correction(
+        self, original: dict[str, Any], request: dict[str, Any], sent: dict[str, Any]
+    ) -> bool:
+        """Reading the exact stopped Task succeeds as a read even when its work was refused."""
+        if sent.get("outcome") in {"OK", "PENDING"}:
+            return True
+        return (
+            request == original
+            and request["operation"] in self.read_operations
+            and sent.get("operation") == request["operation"]
+            and _data(sent).get("read_request") == request
+            and _state(sent) in STOPPED
+            and self._bound_read(original, request, sent)
+        )
 
     def _correction(
         self,
@@ -316,12 +428,10 @@ class Explorer:
         seen: set[str] = set()
         read = False
         for _ in range(2):
-            candidates = [(n, r) for n, r in offers(answer) if not _CHOICE.search(json.dumps(r))]
-            if edit and read:
-                candidates = [("agent-edit", original)]
-            if not candidates:
+            offer = self._correction_offer(original, answer, edit and read)
+            if offer is None:
                 return "refusal has no filled way back", None
-            name, request = next((p for p in candidates if p[1] == original), candidates[0])
+            name, request = offer
             if request != original and request["operation"] not in self.read_operations:
                 return "correction re-admits wrong work", None
             key = json.dumps(request, sort_keys=True)
@@ -332,16 +442,23 @@ class Explorer:
             document = self.work / f"correction-{len(self.events)}.json"
             document.write_text(json.dumps(request), encoding="utf-8")
             sent = self._send(["request", "--file", str(document)], where + " > correct:" + name)
+            if request["operation"] == "TASK_RECOVERY" and original.get("recovery_task_id"):
+                sent = self._settled(sent, where + " > source") or sent
             self.events[-1].attributes["alphalattice.mutation"] = "correction"
-            if sent.get("outcome") in {"OK", "PENDING"}:
+            if self._accepted_correction(original, request, sent):
                 if correct:
                     return None, sent
                 if baseline and self._bound_read(original, request, sent, baseline):
                     return None, baseline
-                if sent.get("outcome") == "PENDING":
+                if sent.get("outcome") == "PENDING" and not self._bound_read(
+                    original, request, sent
+                ):
                     return "correction re-admits wrong work", None
                 if edit and not self._bound_read(original, request, sent):
                     return "read does not expose the original bound context", None
+                if self._recovery_source(original, request, sent) and _state(sent) == "SUCCEEDED":
+                    self.events[-1].attributes["alphalattice.retired_offer"] = True
+                    return None, sent
                 read = True
             elif _way(sent) == _way(answer):
                 return "offered correction repeats refusal", None
@@ -524,9 +641,14 @@ class Explorer:
             corrected = self.inject(step, where + " > " + name)
         if corrected is not None:
             self.events[-1].attributes.pop("alphalattice.mutation", None)
-            self.events[-1].attributes["alphalattice.corrected_original"] = True
+            if not self.events[-1].attributes.get("alphalattice.retired_offer"):
+                self.events[-1].attributes["alphalattice.corrected_original"] = True
         sent = corrected or self._send(["request", "--file", str(document)], where + f" > {name}")
-        if self.mutation_budget and sent.get("outcome") not in {"REFUSED", "FAILED"}:
+        if (
+            self.mutation_budget
+            and sent.get("outcome") not in {"REFUSED", "FAILED"}
+            and not self.events[-1].attributes.get("alphalattice.retired_offer")
+        ):
             self.inject(step, where + " > " + name, baseline=sent)
         refused = str(sent.get("failure_code") or "").partition(":")[0]
         if any(mark in refused for mark in ("not_offered", "_invalid", "operation_field")):

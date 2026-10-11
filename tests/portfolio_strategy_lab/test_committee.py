@@ -405,6 +405,7 @@ def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
     challenge = _say(store, now, "CRO", "CHALLENGE", targets=("H1",), text=dissent)
     untargeted = _say(store, now, "CRO", "CHALLENGE", targets=())
     _say(store, now, "PM", "RULING", reply_to=challenge, outcome="REJECT")
+    _say(store, now, "PM", "RULING", reply_to=untargeted, outcome="REJECT")  # a verdict waits
     asked = _say(store, now, "RISK", "CHALLENGE", targets=("T2",))
     handed = _say(store, now, "PM", "RULING", reply_to=asked, outcome="FOR_THE_PERSON")
     _say(store, now, "PM", "PERSON_ANSWER", reply_to=handed, text="Cap at 5%.")  # their digits
@@ -558,6 +559,11 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     assert floor is not None
     cro = committee.role_lines("CRO", readback, EVIDENCE, floor, NOW) or []
     assert any("No Evidence stands" in line for line in cro)
+    standing = {"status": "REVIEWED", "published_at": "2026-09-11", "cro": {"route": "R"}}
+    reviewed = committee.role_lines(
+        "CRO", {**readback, "review_standing": standing}, {}, floor, NOW
+    )
+    assert any("now: REVIEWED" in line for line in reviewed or [])  # never the sealed status
     way = committee.route("CRO", floor, NOW) or ()
     assert f"--role CRO --key {floor.key('CRO')}" in way[1] and "only final action" in way[-1]
     assert committee.route("CRO", None, NOW) is None  # no floor: the answer file stands
@@ -643,6 +649,11 @@ def test_a_dates_delivery_carries_the_closed_floor_as_its_commentary(
             committee=said,
         )
     assert delivered["commentary_provenance"]["attribution"] == "COMMITTEE_FLOOR"
+    # A floor opened on a published review offers the report that carries it.
+    reviewed = {**readback, "review_standing": {"status": "REVIEWED"}}
+    reviewed["review_standing"]["review_publication_hash"] = "c" * 64
+    store, now = _floor(tmp_path / "reviewed", reviewed)
+    assert _read(store, now, None, 0)["delivery"]["review_publication_hash"] == "c" * 64
     assert delivered["commentary"] == said
     assert delivered["sections"]["positions"]["value"] == {
         "html": readback["html"],
