@@ -320,7 +320,7 @@ const LiveTasks = (() => {
     const runs = Data.runsOf('task');
     const refused = (Data.taskRefusals?.() || []).map(r=>refusal(r,TONE.attention,{catalog:true,more:html`<p>${t('Task')} ${hashCell(r.task_id,SHORT.id)}</p>`,next:prerequisiteWays(r.next_requests)}));
     const list = runs.length ? detailSplit(lobby(Data.groupTaskSuccessors(runs)), 'task') : refused.length ? '' : html`<section class="panel pad">${emptyState(t('No Tasks yet.'),link(t('New experiment'),'lab','button primary'),'page-empty')}</section>`;
-    return html`${objectHead(t('Tasks'),t('Product-owned recorded states'),btnAttrs(icon('refresh'),'task-refresh','','icon-btn',html`aria-label="${t('Refresh task status')}" data-tip="${t('Refresh task status')}"`),'',[{ic:'team',action:'go',value:'team',word:t('Team'),why:t('The retained sessions and their exchanges')}])}${S.error ? notRead(t('Status uncertain'),S.error) : ''}${incidentList()}${refused}${list}`;
+    return html`${objectHead(t('Tasks'),t('Product-owned recorded states'),btnAttrs(icon('refresh'),'task-refresh','','icon-btn',html`aria-label="${t('Refresh task status')}" data-tip="${t('Refresh task status')}"`),'',[{ic:'team',action:'go',value:'team',word:t('Team'),why:t('The retained sessions and their exchanges')}])}${S.error ? notRead(t('Status uncertain'),S.error) : ''}${unrecoverableActions()}${incidentList()}${refused}${list}`;
   }
   /* Repaint what a poll may have changed: the open Task's body in the inspector is replaced only
    * when its markup changed (the markup is the displayed state itself: lifecycle, liveness,
@@ -452,7 +452,7 @@ const LiveTasks = (() => {
         html`${btn(t('Confirm'), 'task-commit', '', 'button primary', true)}`);
     } catch(e) {
       if (Data.navigationCurrent(intent)) S.closureFailures = [{task_id: readingTask.task_id, code: e.body?.failure_code || e.body?.refused || '', reason: e.body?.detail || e.message}];
-    } finally { S.busy = false; if (Data.navigationCurrent(intent) && app.page === 'overview') patchMain(); }
+    } finally { S.busy = false; if (Data.navigationCurrent(intent) && app.page === 'tasks') patchMain(); }
   }
   async function commitUnrecoverable(entries) {
     S.confirming = null; S.busy = true; S.closureFailures = []; closeDialog();
@@ -468,7 +468,7 @@ const LiveTasks = (() => {
     }
     try { await refresh(); await Data.refreshDecisions(); await Data.refreshHistory(); }
     catch(e) { S.closureFailures.push({task_id: entries[0].id, code: e.body?.failure_code || e.body?.refused || '', reason: e.body?.detail || e.message}); }
-    finally { S.busy = false; paint(); if (app.page === 'overview') patchMain(); }
+    finally { S.busy = false; paint(); }
   }
   /* The confirmation is bound to the exact Task version and action it shows: the view is read
    * fresh, the owner's own scope and expected effect are the text, and the version travels with

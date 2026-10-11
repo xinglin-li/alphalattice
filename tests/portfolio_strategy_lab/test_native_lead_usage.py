@@ -282,7 +282,21 @@ def test_lead_reading_from_nested_cwd_is_independent_of_child_stop_and_idempoten
     first = lead_readings(scene.nested, dict(os.environ), workspace=scene.workspace)
     assert first[0]["status"] == "DELIVERED"
     again = lead_readings(scene.nested, dict(os.environ), workspace=scene.workspace)
-    assert again == first
+    assert again[0]["status"] == "DELIVERED"
+    for reading, bytes_read in ((first[0], scene.session.stat().st_size), (again[0], 0)):
+        assert (
+            reading["read_through"],
+            reading["total_bytes"],
+            reading["bytes_read"],
+            reading["rescan"],
+        ) == (scene.session.stat().st_size, scene.session.stat().st_size, bytes_read, False)
+        (member,) = reading["participants"]
+        assert (member["agent_id"], member["role"], member["status"], member["models"]) == (
+            scene.parent,
+            "research_lead",
+            "DELIVERED",
+            1,
+        )
     (row,) = scene.observer.read_external(ExternalActivityReadQuery())["items"]
     assert row["payload"]["event_kind"] == "NATIVE_AGENT_USAGE"
     subject = row["payload"]["subject"]
@@ -473,10 +487,20 @@ def test_a_valid_later_response_block_forms_a_new_snapshot_without_counting_it_t
         assert after["last_at"] == later["timestamp"] and after["last_at"] != before["last_at"]
     else:
         assert after["efforts"] == "xhigh" and after["efforts"] != before.get("efforts")
-    assert (
-        lead_readings(scene.nested, dict(os.environ), workspace=scene.workspace, goal=scene.goal_id)
-        == receipt
+    (warm,) = lead_readings(
+        scene.nested, dict(os.environ), workspace=scene.workspace, goal=scene.goal_id
     )
+    assert warm["status"] == "DELIVERED" and warm["bytes_read"] == 0
+    for reading in (receipt[0], warm):
+        assert reading["read_through"] == reading["total_bytes"] == scene.session.stat().st_size
+        assert reading["rescan"] is False
+        (member,) = reading["participants"]
+        assert (member["agent_id"], member["role"], member["status"], member["models"]) == (
+            scene.parent,
+            "research_lead",
+            "DELIVERED",
+            1,
+        )
     assert scene.observer.read_external(ExternalActivityReadQuery())["items"] == rows
     assert all(row["payload"]["event_kind"] == "NATIVE_AGENT_USAGE" for row in rows)
     assert SECRET not in json.dumps(rows)
@@ -718,10 +742,10 @@ def test_a_child_usage_delivery_failure_is_visible_and_retry_keeps_the_same_read
 
 @pytest.mark.parametrize("lead_scene", ["codex"], indirect=True)
 @pytest.mark.parametrize("mismatch", ["parent", "role", "missing_parent", "missing_role", "id"])
-def test_a_codex_child_usage_refuses_a_missing_or_conflicting_recorded_binding(
+def test_a_codex_child_usage_requires_its_recorded_parent_and_verifies_its_role_separately(
     lead_scene, mismatch
 ):
-    """BEHAVIOUR: a nominated id cannot substitute for its own exact recorded parent and role."""
+    """The child's own parent is required, while specialist verification remains a separate fact."""
     scene = lead_scene
     child, path = _own_child(scene)
     records = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
@@ -738,12 +762,32 @@ def test_a_codex_child_usage_refuses_a_missing_or_conflicting_recorded_binding(
     else:
         meta["id"] = "another-child"
     _write_native(path, records)
-    assert _read_owned_usage(scene, "child", child) == {
-        "agent_id": child,
-        "status": "UNAVAILABLE",
-        "reason": "native_bridge.child_usage_binding_unverified",
-    }
-    assert _rows(scene, child) == []
+    reading = _read_owned_usage(scene, "child", child)
+    if mismatch in {"role", "missing_role"}:
+        role = "alphalattice_factor" if mismatch == "role" else None
+        assert (reading["agent_id"], reading["role"], reading["status"], reading["models"]) == (
+            child,
+            role,
+            "DELIVERED",
+            1,
+        )
+        assert reading["specialist_verified"] is False
+        (row,) = _rows(scene, child)
+        subject = row["payload"]["subject"]
+        assert subject["specialist_verified"] == "false" and "role" not in subject
+        assert subject.get("observed_role") == role
+        assert (subject["responses"], subject["input_tokens"], subject["output_tokens"]) == (
+            "1",
+            "15",
+            "3",
+        )
+    else:
+        assert (reading["agent_id"], reading["status"], reading["reason"]) == (
+            child,
+            "UNAVAILABLE",
+            "native_bridge.child_usage_binding_unverified",
+        )
+        assert _rows(scene, child) == []
 
 
 @pytest.mark.parametrize("lead_scene", ["claude-code"], indirect=True)

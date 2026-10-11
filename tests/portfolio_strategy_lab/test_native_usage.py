@@ -926,9 +926,7 @@ def test_a_reading_differs_from_its_card_by_an_exact_id_an_alias_or_an_effort(
 
 
 def test_a_lone_lead_is_read_by_its_own_command_under_its_binding(tmp_path, monkeypatch, receiver):
-    """regression (V301): a session without subagents recorded no reading, since the bridge read
-    the session files only at a subagent's stop; its own goal and answer commands read the lead
-    through the bridge, for the bound session only and never where the binding reads nothing."""
+    """The lead's own commands read only its bound Session and publish only complete usage."""
 
     from alphalattice.interface.local_application.client import lead_readings
 
@@ -955,13 +953,18 @@ def test_a_lone_lead_is_read_by_its_own_command_under_its_binding(tmp_path, monk
     assert receiver == []
     (receipt,) = lead_readings(project, {"CLAUDE_CODE_SESSION_ID": "lead-session"})
     assert receipt["status"] == "UNAVAILABLE"
-    assert receipt["participants"][0] == {
-        "agent_id": "lead-session",
-        "role": "research_lead",
-        "status": "UNAVAILABLE",
-        "reason": "native_bridge.lead_usage_incomplete",
-        "incomplete": 1,
-    }
+    member = receipt["participants"][0]
+    assert tuple(member[key] for key in ("agent_id", "role", "status", "reason", "incomplete")) == (
+        "lead-session",
+        "research_lead",
+        "UNAVAILABLE",
+        "native_bridge.lead_usage_incomplete",
+        1,
+    )
+    size = lead.stat().st_size
+    assert tuple(
+        member[key] for key in ("read_through", "total_bytes", "bytes_read", "rescan")
+    ) == (size, size, size, False)
     assert receiver == []
     # The parser fixture's final empty-usage response is incomplete. Removing only that
     # synthetic record gives a complete source with the same two actual response counts.
