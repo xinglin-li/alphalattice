@@ -49,13 +49,14 @@ def test_each_role_card_becomes_one_subagent_with_its_sandbox_tools(materialize)
         assert fields["name"] == name
         assert json.loads(fields["description"]) == card["description"]
         tools = {tool.strip() for tool in fields["tools"].split(",")}
-        # No Agent for any card. The two evidence specialists read their bundle whole and
-        # write their own answer file, and run nothing: the lead submits it. The stage roles
-        # run their own commands and write their declarations (V384).
+        # No Agent for any card. The two evidence specialists read their bundle whole, write
+        # their own answer file and run only its route's submit. The stage roles run their own
+        # commands and write their declarations (V384).
         evidence = name in {"alphalattice_evidence_analyst", "alphalattice_cro"}
         assert card["sandbox_mode"] == "workspace-write"
         stage = {"Read", "Grep", "Glob", "Edit", "Write", "Bash"}
-        assert tools == ({"Read", "Write"} if evidence else stage)
+        routed = {"Read", "Write", "Bash(alphalattice bundle submit:*)"}
+        assert tools == (routed if evidence else stage)
         assert (fields["model"], fields["effort"]) == ("haiku", "high")
         assert body.strip().endswith(card["developer_instructions"].strip())
         assert f"`.alphalattice/user/cards/{name}.md`" in card["developer_instructions"]
@@ -86,7 +87,7 @@ def test_each_card_says_its_place_on_the_skills_paths(materialize):
         names = re.findall(r'"([^"]+)"', place.split(". ", 1)[0])
         assert names and set(names) <= paths, (card.name, set(names) - paths)
         if card.stem in materialize.BUNDLE_ROLES:
-            assert "Do not run product commands or network requests" in place, card.name
+            assert "no product command but your route's submit" in place, card.name
         else:
             assert (
                 "- EXECUTE: run only the operations your assignment authorizes"
@@ -118,7 +119,7 @@ def test_each_card_carries_its_capability_and_graph(materialize):
         if bundle:
             assert "ExecCommand only for read-only reads of exact listed paths" in block
             assert "ApplyPatch only on the nominated answer file" in block
-            assert "Read for listed files and Write only for that answer file" in block
+            assert "Bash only for the route's submit" in block  # its one command
             continue
         assert contract_link in block, card.name
         reads, rest = block.split("Reads (ANALYZE, REVIEW):")[1].split("EXECUTE (")

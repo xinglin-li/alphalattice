@@ -1462,10 +1462,9 @@ class PortfolioResearchOperationRequest:
             ),
             "AGENT_ANSWER_SUBMIT": (
                 frozenset({"bundle_directory", "agent_answer"}),
-                frozenset({"bundle_directory", "agent_answer"}),
+                frozenset({"bundle_directory", "agent_answer", "committee_key"}),
             ),
-            # Choosing which analysis a review reads is the one operation that
-            # must name a publication; the book stays optional as above.
+            # Choosing a review's analysis alone must name a publication; the book is optional.
             "EVIDENCE_SELECT": (
                 frozenset({"analysis_publication_hash"}),
                 frozenset({"analysis_publication_hash", "result_hash", "handoff_hash"}),

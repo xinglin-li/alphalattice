@@ -525,6 +525,16 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         directory = Path(bundle["bundle_directory"])
         return {path.name: path.read_text(encoding="utf-8") for path in directory.iterdir()}
 
+    def unrouted(bundle: dict[str, Any]) -> dict[str, str]:
+        """Its files as rendered, the route its README ends with set apart."""
+        cut = "\n\n## Your route"
+        return {k: v.split(cut)[0].rstrip() for k, v in files_of(bundle).items()}
+
+    def keyed(bundle: dict[str, Any]) -> list[str]:
+        """The member's own submit: the bundle's submit with the key its route names."""
+        key = re.search(r"--key ([0-9a-f]{32})", files_of(bundle)["README.md"])
+        return [*bundle["submit_arguments"], "--key", key.group(1) if key else ""]
+
     def skill(path: str) -> str:
         return (REPO_ROOT / "skills" / path / "SKILL.md").read_text(encoding="utf-8")
 
@@ -588,7 +598,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
     view = render_analyst_bundle(
         packet, task_procedure=skill("alternative-evidence/governed-evidence-analysis")
     )
-    assert files_of(analyst) == dict(view.files)
+    assert unrouted(analyst) == {k: v.rstrip() for k, v in view.files}
     readme = files_of(analyst)["README.md"]
     assert "`findings`: at most three an issuer and 32 in one answer" in readme
     full = _CitingActor(topics=topics)(packet=packet).answer.model_dump(mode="json")
@@ -601,7 +611,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
     # answer as provenance, and the answer is read whatever it names.
     read = [item["name"] for item in analyst["files"]]
     answer_file.write_text(json.dumps({**invented, "read": read[:1]}), encoding="utf-8")
-    code, verdict = run(*analyst["submit_arguments"])
+    code, verdict = run(*keyed(analyst))
     assert code == 0 and verdict["status"] == "CORRECT" and "receipt" not in verdict
     bundle = EvidenceReviewBundles(service.review).agent_bundle(str(tmp_path / "analyst"))
     assert bundle is not None
@@ -622,7 +632,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         [1],
     )
     answer_file.write_text(json.dumps({**subset, "read": read}), encoding="utf-8")
-    code, verdict = run(*analyst["submit_arguments"])
+    code, verdict = run(*keyed(analyst))
     # Accepted, its Task pending: the receipt names the Task's state.
     assert code == 3 and verdict["status"] == "ACCEPTED"
     assert verdict["bundle_reference"] == analyst["bundle_reference"]
@@ -665,7 +675,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
     view = render_review_bundle(
         dossier, task_procedure=skill("chief-risk-officer/review-portfolio-evidence")
     )
-    assert files_of(cro) == dict(view.files)
+    assert unrouted(cro) == {k: v.rstrip() for k, v in view.files}
     assert "`risks`: at most 16 in one answer" in files_of(cro)["README.md"]
     risk = {
         "findings": ["F1"],
@@ -691,10 +701,10 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         "text": "F999 is not a finding of this bundle.",
     }
     for rounds_left in (2, 1):
-        code, verdict = run(*cro["submit_arguments"])
+        code, verdict = run(*keyed(cro))
         assert code == 0 and verdict["status"] == "CORRECT"
         assert (verdict["rounds_left"], verdict["problems"]) == (rounds_left, [problem])
-    code, verdict = run(*cro["submit_arguments"])
+    code, verdict = run(*keyed(cro))
     assert code == 3 and verdict["status"] == "DONE" and verdict["dropped"] == [problem]
     assert verdict["bundle_reference"] == cro["bundle_reference"]
     assert verdict["receipt"] == {

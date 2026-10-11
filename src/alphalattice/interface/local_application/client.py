@@ -2675,8 +2675,8 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         "steps": chain.steps,
         "next_action": "DISPATCH_ANALYSTS" if bundles else "READ_EVIDENCE",
         "detail": (
-            "Give each Analyst its bundle directory, file list and answer path; when their answers "
-            "are written, `review continue --dir` submits them all and prepares the CRO's bundle."
+            "Start each Analyst with its bundle: each submits its answer by its route. With their "
+            "receipts back, `review continue --dir` reads them, prepares the CRO's bundle."
             if bundles
             else "Evidence is prepared with no Analyst bundle to answer; read its review state."
         ),
@@ -2817,8 +2817,8 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
         "steps": chain.steps,
         "next_action": "DISPATCH_CRO",
         "detail": (
-            "Give the CRO its bundle directory, file list and answer path; when its answer is "
-            "written, `review continue --dir` on that folder publishes the review."
+            "Start the CRO with its bundle: it submits its answer by its route. With its "
+            "receipt back, `review continue --dir` on that folder publishes the review."
         ),
     }
 
@@ -2861,7 +2861,7 @@ _FIRST_USE_ROAD: Final = (
     (
         "cro",
         ("review", "continue", "--dir", "<out>/analysts", "--cro-dir", "<out>/cro"),
-        "Submits the Analysts' answers and writes the CRO's bundle; start the CRO.",
+        "Reads the Analysts' accepted answers and writes the CRO's bundle; start the CRO.",
     ),
     (
         "publish",

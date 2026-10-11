@@ -35,6 +35,7 @@ from alphalattice.interface.local_application.activity import (
     ExternalActivityReadQuery,
 )
 from alphalattice.interface.local_application.cli_contract import (
+    REQUEST_PROVENANCE,
     RequestProvenance,
     worded,
     worded_refusal,
@@ -51,6 +52,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
 )
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSurfaceError
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
+from devtools.evaluation.committee import thread_findings
 from tests.portfolio_strategy_lab.local_web_support import run_node
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     HASH,
@@ -363,6 +365,66 @@ def test_the_floor_answers_a_member_only_with_its_own_key(
         committee_message=plain,
     )
     assert stance["status"] == "COMMITTEE_MESSAGE_ACCEPTED"
+
+
+def test_a_review_member_answers_its_own_bundle_on_its_thread(
+    tmp_path: Path, readback: dict[str, Any]
+) -> None:
+    """requirement (the exchange): an Analyst's bundle opens its own thread; only its key submits,
+    the Host's correction and acceptance answer it there, and the lead's call reads the receipt."""
+    store, now = _floor(tmp_path, readback)
+    directory = str(tmp_path / "analyst-u01")
+    lead = RequestProvenance(vendor="codex", session="s-1", goal_id=str(UUID(int=7)))
+    token = REQUEST_PROVENANCE.set(lead)
+    filed: list[str] = []
+
+    def file(thread: str, _now: datetime) -> None:
+        filed.append(thread)
+
+    try:
+        route = committee.bundle_parts("ANALYST", None, store, now[0], directory)[1] or ()
+        reference = committee.bundle_slot(directory)
+        ready = {"status": "AGENT_BUNDLE_READY", "agent_role": "ANALYST", "task_id": "T-1"}
+        committee.issued(store, {**ready, "bundle_reference": reference}, now[0], file)
+    finally:
+        REQUEST_PROVENANCE.reset(token)
+    key = route[1].split("--key ")[1][:32]
+    member, other = (("ANALYST", reference, {"findings": f}) for f in ([], [{}]))
+    refused = [committee.admit(store, member, k) for k in (None, "0" * 32)]
+    assert [isinstance(r, dict) and r["rule"] for r in refused] == ["MEMBER", "KEY"]
+    correct = {"status": "CORRECT", "problems": [{}], "rounds_left": 2}
+    for sent, body, k in (
+        (other, correct, key),
+        (member, ACCEPTED_BODY, key),
+        (member, ACCEPTED_BODY, None),
+    ):
+        thread = committee.admit(store, sent, k)
+        assert isinstance(thread, committee.Floor)  # the last, keyless: the accepted answer's read
+        committee.answered(store, thread, sent, body, now[0], file)
+    closed = [committee.admit(store, other, k) for k in (None, key)]  # a different answer
+    assert [isinstance(r, dict) and r["rule"] for r in closed] == ["ENDED", "ENDED"]
+    thread = committee.thread_of(store, committee.thread_id(reference))
+    assert thread is not None and committee.floor_of(store, committee.thread_id(reference)) is None
+    said = [(m["role"], m["kind"], m["reply_to"]) for m in thread.messages]
+    assert said == [
+        ("PM", "ISSUE", None),
+        ("ANALYST", "ANSWER", "M1"),
+        ("HOST", "CORRECTION", "M2"),
+        ("ANALYST", "ANSWER", "M3"),
+        ("HOST", "ACCEPTANCE", "M4"),
+    ]
+    assert thread_findings(thread.messages, "ANALYST") == []
+    forged = [{**m, "role": "PM"} if m["kind"] == "ANSWER" else m for m in thread.messages[:3]]
+    assert thread_findings(forged, "ANALYST") == ["thread.author:M2", "thread.open"]
+    rows = committee.unfiled(thread, now[0])
+    assert {r["subject"]["input_channel"] for r in rows} == {"PRODUCT_REVIEW"}
+    assert rows[1]["subject"]["native_agent_id"] == "s-1:alphalattice_evidence_analyst:T-1"
+    assert rows[-1]["subject"]["recipient_id"] == rows[1]["subject"]["native_agent_id"]
+    assert rows[0]["subject"]["recipient_id"] == rows[1]["subject"]["native_agent_id"]  # issue
+    assert rows[-1]["subject"]["answer_reference"] == "a" * 64 and len(filed) == 3
+
+
+ACCEPTED_BODY = {"status": "ACCEPTED", "answer_reference": "a" * 64, "task_id": "T-2"}
 
 
 def test_concurrent_messages_take_distinct_numbers(

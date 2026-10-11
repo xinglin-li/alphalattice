@@ -429,6 +429,20 @@ def _review_fidelity(standing, cro_view, expected) -> list[str]:
     return problems
 
 
+def thread_findings(messages: list[Mapping[str, Any]], member: str) -> list[str]:
+    """A closed review thread as its record must read: the lead issues, the member alone answers,
+    the Host corrects or accepts an answer, and the last message is the acceptance."""
+    authors = {"ISSUE": "PM", "ANSWER": member, "CORRECTION": "HOST", "ACCEPTANCE": "HOST"}
+    kinds = {m["id"]: m["kind"] for m in messages}
+    found = [f"thread.author:{m['id']}" for m in messages if authors.get(m["kind"]) != m["role"]]
+    found += [
+        f"thread.reply:{m['id']}"
+        for m in messages
+        if m["kind"] in {"CORRECTION", "ACCEPTANCE"} and kinds.get(m.get("reply_to")) != "ANSWER"
+    ]
+    return found + ([] if messages and messages[-1]["kind"] == "ACCEPTANCE" else ["thread.open"])
+
+
 def materials_findings(closed: Mapping[str, Any]) -> list[str]:
     """A question the floor shows no fact for, and each RESERVE that cites no fact: unused
     where the member's own questions hold a fact, missing where only named absences stand."""

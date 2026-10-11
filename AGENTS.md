@@ -140,8 +140,10 @@ alphalattice review continue --dir "<out>/cro"
 The first reads that update's published positions, bound by their publication,
 prepares their Evidence and writes every Analyst bundle; start one Evidence Analyst
 per bundle. Without `--update` it reviews the strategy's whole-support book
-instead, when someone asks for that. The second submits their answers and writes
-the CRO's bundle; the third publishes the review. Each stops at the first answer
+instead, when someone asks for that. Each Analyst, and then the CRO, submits its
+own answer with its bundle's key and takes the Host's corrections itself; once
+they return their receipts, the second reads their accepted answers and writes the
+CRO's bundle, and the third publishes the review. Each stops at the first answer
 that needs another step; follow its `next_action`. Wait for each as the first use
 says.
 

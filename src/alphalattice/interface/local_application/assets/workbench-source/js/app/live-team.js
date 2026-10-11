@@ -9,7 +9,7 @@ const LiveTeam = (() => {
   const NOTE_KINDS = new Set(['plan', 'decision', 'dead_end', 'surprise']);
   const CHANNELS = {CODEX_HOOK: 'Codex hook input · not host-authenticated', CLAUDE_CODE_HOOK: 'Claude Code hook input · not host-authenticated', ACTOR_DECLARED: 'Actor-declared text · not host-verified', PRODUCT_ACCEPTED_ANSWER: 'Accepted structured answer · product record, not a native spoken turn'};
   const PM_ROLE = 'research_lead';
-  /* Product identity fields an operation may name; anything else in a subject is not a reference. */
+  /* Product identity fields an operation may name; nothing else in a subject is a reference. */
   const PRODUCT_KEYS = ['case_hash', 'task_id', 'experiment_task_id', 'publication_task_id', 'existing_task_id', 'update_task_id', 'left_task_id', 'right_task_id', 'development_task_id', 'experiment_plan_hash', 'plan_hash', 'result_hash', 'cached_result_hash', 'review_publication_hash', 'analysis_publication_hash', 'candidate_hash', 'report_hash', 'export_hash', 'foundation_admission_hash', 'publication_hash', 'answer_reference', 'bundle_reference'];
   const MAX_RESOLVED = 64;
   /* A session's shared head serves its conversation, committee and recorded views. */
@@ -69,7 +69,7 @@ const LiveTeam = (() => {
   const clock = (iso) => when(iso); // N3 (law 133): one clock -- the same instant reads as the Sessions list reads it
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, HASH = /^[0-9a-f]{64}$/i;
   const selection = () => ({session: hashParams().get('team') || '', actor: hashParams().get('actor') || '', event: hashParams().get('event') || '', committee: hashParams().get('committee') || '', point: hashParams().get('committee_point') || ''});
-  const ROLE_NAMES = {research_lead: 'Main PM', alphalattice_data: 'Data', alphalattice_factor: 'Factor & Foundation', alphalattice_alpha: 'Alpha Modeling', alphalattice_risk: 'Risk Modeling', alphalattice_portfolio: 'Portfolio', alphalattice_evidence_analyst: 'Alternative Analyst', alternative_analyst: 'Alternative Analyst', alphalattice_cro: 'CRO', independent_cro: 'CRO'};
+  const ROLE_NAMES = {research_lead: 'Main PM', alphalattice_data: 'Data', alphalattice_factor: 'Factor & Foundation', alphalattice_alpha: 'Alpha Modeling', alphalattice_risk: 'Risk Modeling', alphalattice_portfolio: 'Portfolio', alphalattice_evidence_analyst: 'Alternative Analyst', alternative_analyst: 'Alternative Analyst', alphalattice_cro: 'CRO', independent_cro: 'CRO', alphalattice_host: 'Host'};
   const roleName = (role) => (role ? t(ROLE_NAMES[role] || role) : '');
   /* A qualified product reference, or null: a Task id, a 64-hex hash or a History entry id. */
   function qualify(value) {
@@ -228,12 +228,9 @@ const LiveTeam = (() => {
   }
   const recipientName = (s, id) => { const pt = recipientParticipant(s, id); return pt?.roles.size ? actorName(s, pt.id) : t('Unidentified'); };
   /* ---- discovery, resolution and verification through the owners ----
-   * One outcome per reference as the actor wrote it (the display reference is the key): the
-   * level, the owner that answered, and `target` -- the exact qualified object an owner can be
-   * asked about (a `result` hash, a `task` id with its kind, a `plan` hash). Verify reads the
-   * target from the stored outcome and writes the owner's answer back under the same display
-   * reference, so the row the reader asked from is the row that changes; a failed readback keeps
-   * the discovery and names the failure. */
+   * One outcome per written reference (its key): the level, the answering owner and `target`, the
+   * exact object it can be asked about. Verify reads that target and writes the owner's answer back
+   * under the same reference; a failed readback keeps the discovery and names the failure. */
   async function withOutcome(ref, work) {
     if (!ref || S.busy.has(ref)) return;
     S.busy.add(ref); paint();
@@ -347,7 +344,7 @@ const LiveTeam = (() => {
   /* ---- rendering ---- */
   const acceptedAnswer = (e) => e.kind === 'message' && e.messageKind === 'answer' && e.channel === 'PRODUCT_ACCEPTED_ANSWER';
   const acceptedArtifact = (s, e) => acceptedAnswer(e) && e.availability === 'AVAILABLE' && e.actor && e.subject.authorship_basis === 'HOOK' && e.subject.submitted_by === s.id && HASH.test(e.subject.answer_reference || '') && HASH.test(e.subject.bundle_reference || '') && ['TASK_ADMISSION', 'PRODUCT_ACCEPTED_AT'].includes(e.timeKind);
-  // A default relay is a selection candidate; its correlated product receipt verifies content.
+  // A default relay is a candidate; its correlated product receipt verifies it.
   const acceptedRelay = (s, e) => acceptedAnswer(e) && e.availability === 'AVAILABLE' && e.subject.authorship_basis === 'NOT_OBSERVED' && e.actor === s.id && e.role === 'research_lead' && e.subject.submitted_by === s.id && ['codex', 'claude-code'].includes(e.subject.native_host) && ['ALPHA', 'ANALYST', 'CRO', 'DATA', 'FACTOR', 'PORTFOLIO', 'RISK'].includes(e.subject.bundle_role) && HASH.test(e.subject.answer_reference || '') && HASH.test(e.subject.bundle_reference || '') && UUID.test(e.reference || '') && ['TASK_ADMISSION', 'PRODUCT_ACCEPTED_AT'].includes(e.timeKind);
   /* A product receipt opens its sealed contribution independently of optional native credit.
    * It stays a product fact: no participant statement, author or lifecycle is manufactured. */
@@ -359,7 +356,8 @@ const LiveTeam = (() => {
   const readableAnswer = (s, m) => m?.item ? productAcceptedAnswer(s, m) : m && (acceptedArtifact(s, m) || acceptedRelay(s, m));
   const answerObservation = (m) => m?.item?.observation_id || m?.id;
   const selectedAnswerRecord = (s, id) => s?.entries.get(id) || s?.facts.find((f) => f.item.observation_id === id && productAcceptedAnswer(s, f)) || (s && S.committee?.session === s.id && S.committee.task === committeeTask(s) && S.committee.body ? committeeEntries(S.committee.body).find(e => e.id === id) : null);
-  const acceptedArtifacts = (s) => Data.uniqueRows([...s.entries.values()].filter((e) => !e.replayOf && acceptedArtifact(s, e)), (e) => e.subject.answer_reference).sort((a, b) => b.ordinal - a.ordinal);
+  const reviewed = (e) => e.channel === 'PRODUCT_REVIEW' && e.messageKind === 'acceptance' && e.recipient;
+  const acceptedArtifacts = (s) => Data.uniqueRows([...s.entries.values()].filter((e) => !e.replayOf && (acceptedArtifact(s, e) || reviewed(e))), (e) => e.subject.answer_reference).sort((a, b) => b.ordinal - a.ordinal);
   const timeKindWords = (e) => t(e.timeKind === 'TASK_ADMISSION' ? 'Task admission time' : e.timeKind === 'PRODUCT_ACCEPTED_AT' ? 'Answer acceptance time' : e.timeKind === 'BRIDGE_RECEIVED' ? 'bridge receipt time' : 'time kind not declared');
   function identityNote(e) {
     const bits = [];
@@ -1068,11 +1066,12 @@ const LiveTeam = (() => {
   }
   const olderOf = (which, o, words) => (o.next ? Lobby.older(t(words), 'team-outputs-older', which, o.busy) : '');
   const outputRefusals = (o, which) => (o.refusals || []).map(r=>refusal(r,TONE.attention,{catalog:true,more:html`<p>${t(which==='tasks' ? 'Task' : 'Goal')} ${hashCell(r.task_id || r.goal_id,SHORT.id)}</p>`,next:prerequisiteWays(r.next_requests)}));
+  const author = (e) => (reviewed(e) ? e.recipient : e.actor);
   function answersBox(s) {
     const answers = acceptedArtifacts(s);
     if (!answers.length) return '';
     if (S.answers?.session !== s.id) S.answers = {session: s.id, page: 0};
-    const rows = answers.map((e) => tr([link(t('Accepted answer'), 'team', 'text-btn', {team: s.id, actor: '', event: e.id}), html`<span tabindex="0" data-tip="${e.actor}">${recipientName(s, e.actor)}</span>`, html`<span tabindex="0" data-tip="${e.subject.submitted_by}">${recipientName(s, e.subject.submitted_by)}</span>`, hashCell(e.subject.answer_reference, SHORT.hash), hashCell(e.subject.bundle_reference, SHORT.hash), hint(clock(e.at), timeKindWords(e))]));
+    const rows = answers.map((e) => tr([link(t('Accepted answer'), 'team', 'text-btn', {team: s.id, actor: '', event: e.id}), html`<span tabindex="0" data-tip="${author(e)}">${recipientName(s, author(e))}</span>`, html`<span tabindex="0" data-tip="${e.subject.submitted_by || author(e)}">${recipientName(s, e.subject.submitted_by || author(e))}</span>`, hashCell(e.subject.answer_reference, SHORT.hash), hashCell(e.subject.bundle_reference, SHORT.hash), hint(clock(e.at), timeKindWords(e))]));
     const {shown, page, pages} = pageOf(rows, S.answers.page);
     return panel(t('Accepted answers'), '', html`${table([{label: t('Answer'), type: 'text', absorb: true}, {label: t('Agent'), type: 'text'}, {label: t('Submitted by'), type: 'text'}, {label: t('Answer reference'), type: 'id'}, {label: t('Bundle reference'), type: 'id'}, {label: t('Time'), type: 'date'}], shown, '', {report: true, countLine: false, classes: 'compact team-outputs'})}${pager({page, pages, prev: ['team-outputs-page', 'answers:prev'], next: ['team-outputs-page', 'answers:next']})}`, '', 'data-box="table"');
   }

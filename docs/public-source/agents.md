@@ -38,8 +38,9 @@ A Codex Task's registered wake is kept by the Host; Claude Code provides
 background completion notices.
 
 **Team** and **Conversation** show recorded requests, prepared bundles, accepted
-answers, decision notes and observed usage. The lead submits every answer;
-specialist authorship stays `NOT_OBSERVED`. Prepared bundles awaiting answers
+answers, decision notes and observed usage. An Evidence Analyst or CRO submits
+its own answer with its bundle's key and is recorded as its author; a stage role's
+answer the lead submits stays `NOT_OBSERVED`. Prepared bundles awaiting answers
 appear as open assignments and do not block submission. Usage shows each member's
 latest reading separately. [Privacy](privacy.md) explains the reader and
 controls; raw conversation and private reasoning are not published.

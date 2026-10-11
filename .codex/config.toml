@@ -2,7 +2,7 @@
 # ApplyPatch is limited by the card to its nominated answer file. The writable sandbox
 # is needed for that patch; it does not authorize product CLI, shell writes or other paths.
 [agents.alphalattice_cro]
-description = "Challenge one AlphaLattice book against the Analyst's findings in a bundle the lead prepared; write the real major negatives to its answer file for the lead to submit, never a route or weights."
+description = "Challenge one AlphaLattice book against the Analyst's findings in a bundle the lead prepared; write the real major negatives to its answer file and submit it with the bundle's key, never a route or weights."
 config_file = "agents/alphalattice_cro.toml"
 
 [agents.alphalattice_data]
@@ -26,7 +26,7 @@ description = "Analyze exact Portfolio research results and legal construction a
 config_file = "agents/alphalattice_portfolio.toml"
 
 [agents.alphalattice_evidence_analyst]
-description = "Read one AlphaLattice evidence bundle the lead prepared and write cited issuer findings to its answer file for the lead to submit; never a Portfolio judgment."
+description = "Read one AlphaLattice evidence bundle the lead prepared and write cited issuer findings to its answer file and submit it with the bundle's key; never a Portfolio judgment."
 config_file = "agents/alphalattice_evidence_analyst.toml"
 
 # The experience maintainer writes only the person's user layer, .alphalattice/user/.
