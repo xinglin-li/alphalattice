@@ -125,6 +125,7 @@ const LiveTeam = (() => {
       if (sub.goal_id && (!outsideGoal || fullRecord)) s.goals.add(sub.goal_id); // A session-wide reading does not add a Goal contribution.
       if (kind === 'usage') { // U31: the latest cumulative reading per model, never a sum.
         if (sub.native_agent_id && sub.model) { const pt = participant(s, sub.native_agent_id, sub.role), held = pt.usage.get(sub.model), n = (k) => usageNumber(sub[k]);
+          if (['true','false'].includes(sub.specialist_verified) && (!held || held.ordinal < item.ordinal)) pt.specialistVerified = sub.specialist_verified;
           if (!held || held.ordinal < item.ordinal) pt.usage.set(sub.model, {ordinal: item.ordinal, model: sub.model, efforts: String(sub.efforts || '').split(',').filter(Boolean), pinDiffers: String(sub.pin_differs || '').split(',').filter(Boolean), responses: n('responses'), input: n('input_tokens'), output: n('output_tokens'), cacheRead: n('cache_read_tokens'), cacheWrite: n('cache_write_tokens'), source_kind: sub.source_kind || (sub.input_channel === 'CODEX_SESSION_FILE' || sub.input_channel === 'CLAUDE_CODE_SESSION_FILE' ? sub.input_channel : null), sample_time_kind: sub.sample_time_kind || null, last_at: sub.last_at || null}); }
         s.last = Math.max(s.last, item.ordinal); continue;
       }
@@ -969,7 +970,7 @@ const LiveTeam = (() => {
     return html`${o.refused ? refusal(o.refused, TONE.attention, {catalog: true}) : o.error ? notRead(t('Committee not read'), o.error) : ''}${stackSlot('committeeProgress', b.stage === 'STANCES' ? stat(t('Stances received'), html`${b.stances_in} / ${b.member_count}`) : '')}${stackSlot('committeeMembers', members)}${stackSlot('committeeAgenda', html`${sectionHead(t('Agenda'))}${points}`)}${b.person_items.length ? panel(t('For you'), t('Asked in your conversation with the agent'), b.person_items.map(p => html`<p class="owner-text" data-person-item="${p.id}">${p.question}</p><p class="caption">${when(p.asked_at)}</p>${p.answer !== null ? html`<p class="owner-text">${p.answer}</p><p class="caption">${p.relay_word ? html`${t(p.relay_word)} · ` : ''}${when(p.answer_at)}</p>` : ''}`)) : ''}${stackSlot('committeeFloor', html`${sectionHead(t('committee|Floor'))}${selected ? noteLine(html`${t('Showing')} ${selected}`, '', 'neutral', btn(t('Show everything'), 'team-committee-point', '', 'button compact')) : ''}${pill}${floor}`)}`;
   }
   const chooseCommitteePoint = point => { replaceHash({committee_point: selection().point === point ? '' : point, event: ''}); paint(); };
-  // round 90: one lede per page, its own (the sentence budget); member statements and product evidence stay two things
+  // One lede per page; member statements remain separate from product evidence.
   const LEDES = {team: 'The conversation, who is in it and what they cite.', 'team-participants': 'Who took part, the models they ran and the tokens they spent.', 'team-sessions': 'Retained conversations, read back exactly.', 'team-outputs': 'What this session produced: accepted answers, submitted Tasks and their artifacts, and the goals it took.', 'team-evidence': 'The product\'s records about this session.'};
   // N3: what a section's caption said is the page's (i)
   const INFO = {'team-outputs': 'Accepted answers retain their recorded author, submitter and sealed references. Tasks appear only when this session submitted them; goals appear only when bound to it.', 'team-participants': 'Each member\'s latest reading by model: its own so far, never a sum of readings, and not attributed to a goal or a Task.', 'team-evidence': 'Operations and their answers attributed to this session or naming its exact references, with Task Control facts and verified artifacts; the session\'s own work first, a person\'s reads on the Local Web in one line.'};
@@ -989,7 +990,7 @@ const LiveTeam = (() => {
       : !chosen ? noteLine(t('Selected session not retained'), html`<span class="mono">${sessionLabel(sel.session)}</span> ${t('is not in the retained activity window (reset, gap or retention).')}`, 'neutral', btn(t('Choose a session'), 'team-select', '', 'button compact'))
       : view === 'team-committee' ? committeeView(chosen, sel.actor) : view === 'team-evidence' ? evidenceView(chosen) : view === 'team-participants' ? participantsView(chosen) : view === 'team-outputs' ? outputsView(chosen) : sessionView(chosen, sel.actor);
     const state = LiveActivity.state();
-    const usage = LiveActivity.nativeUsageState?.(), usageFailure = usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : '';
+    const usage = LiveActivity.nativeUsageState?.(), usageFailure = usage?.reason === 'native_bridge.usage_catching_up' ? noteLine(t('Reading usage'), html`${t('Usage read through {read} of {total} bytes; the next read continues.', {read: usage.read_through, total: usage.total_bytes})}${usage.detail ? infoMark(t(usage.detail)) : ''}`, 'neutral') : usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : usage?.rescan ? noteLine(t('Usage rescanned'), t('The session file changed; its usage was read again.'), 'neutral') : '';
     // The feed's own condition, said once at the top: current, not current, or unreachable.
     const feed = state.error ? ['unreachable', t('Feed unreachable')] : state.stale || ['RESET', 'UNAVAILABLE'].includes(state.disposition) ? ['stale', t('Feed not current')] : ['live', t('Live feed')];
     // All session tabs share its state and facts; the floor's standing is a fact.
@@ -1014,23 +1015,16 @@ const LiveTeam = (() => {
   function select(sessionId) { S.visible = 50; if (!sessionId) S.retained = null; replaceHash({team: sessionId || '', actor: '', event: '', committee: '', committee_point: ''}); paint(); }
   /* The reader's choice among several PM-declared research cases, per session, in this tab. */
   function chooseQuestion(ref) { const s = selection().session || S.retained?.session || ''; if (!s) return; S.question.set(s, ref || ''); paint(); }
-  /* The Team keys a route carries when the page is entered without explicit context: the
-   * retained selection, so the navigation link, Quick Open and the Overview entry return to it.
-   * Explicit keys in the caller's context override these (routeUrl spreads them after). */
+  // Route keys restore the retained selection; explicit caller keys override them.
   const routeContext = () => (S.retained ? {team: S.retained.session || '', actor: S.retained.actor || '', event: S.retained.event || '', committee: S.retained.committee || '', committee_point: S.retained.point || ''} : {});
-  /* An exchange the head points at -- its awaiting objection (T2), a declared reference's first exchange --
-   * read in place on the Conversation, brought into view once the page has had its frame, from either
-   * tab; only this press moves the reader. */
+  // Only an explicit exchange entry moves the reader, after the page's frame.
   function revealExchange(eventId) {
     const sid = selection().session;
     if (!sid) return;
     navigate(app.page === 'team-committee' ? app.page : 'team', {team: sid, actor: '', event: eventId});
     requestAnimationFrame(() => { const row = document.getElementById('team-event-' + eventId); if (row) { row.scrollIntoView({block: 'center', behavior: 'instant'}); row.focus({preventScroll: true}); } });
   }
-  /* U51 (the user, 2026-09-30): the session's members, one row a member and model -- the role it declared (the lead
-   * marked), its exchanges by kind and its latest one; each model it ran with its efforts and its tokens (its latest
-   * reading by model: never a sum of readings, never a goal's or a Task's), a mark where a reading differs from its
-   * card, the pins its hooks carry. U196 keeps members separate without non-overlap evidence. A member's name opens its exchanges. */
+  // Per member and model: latest usage, never summed or Goal/Task-attributed; roles stay declared and hook pins retain their source.
   function participantsView(s) {
     const all = entriesOf(s).filter((e) => !e.replayOf);
     const members = [...s.participants.values()].sort((a, b) => (isLead(b, s) ? 1 : 0) - (isLead(a, s) ? 1 : 0) || a.last - b.last);
@@ -1040,7 +1034,7 @@ const LiveTeam = (() => {
       for (const e of mine) by.set(e.messageKind || '', (by.get(e.messageKind || '') || 0) + 1);
       const made = [...by].map(([k, n]) => (PLURAL_KINDS[k] ? countText(n, ...PLURAL_KINDS[k]) : countText(n, '{n} message', '{n} messages'))).join(' · ') || t('No exchange retained');
       const latest = mine.at(-1), pins = pinWords(pt);
-      const member = html`<span class="team-member-mark" data-role="${roleTone(s, pt.id)}">${icon(roleIcon(s, pt.id))}</span> ${btnAttrs(actorName(s, pt.id), 'team-member-open', pt.id, 'text-btn')}${isLead(pt, s) ? html` <span class="sub-cell">${t('Lead')}</span>` : ''}`;
+      const member = html`<span class="team-member-mark" data-role="${roleTone(s, pt.id)}">${icon(roleIcon(s, pt.id))}</span> ${btnAttrs(actorName(s, pt.id), 'team-member-open', pt.id, 'text-btn')}${isLead(pt, s) ? html` <span class="sub-cell">${t('Lead')}</span>` : pt.specialistVerified ? html`<span class="sub-cell" data-specialist-verified="${pt.specialistVerified}">${t(pt.specialistVerified === 'true' ? 'Specialist identity verified' : 'Specialist identity not verified')}</span>` : ''}`;
       const exchanges = html`${made}${latest ? html`<span class="sub-cell">${t('latest')} ${clock(latest.at)}</span>` : ''}${s.goalScope && !pt.messages.length && !pt.hooks.length && pt.usage.size ? html`<span class="sub-cell">${t('Session-wide usage only')}</span>` : ''}`;
       const usage = [...pt.usage.values()].sort((a, b) => a.model.localeCompare(b.model));
       if (!usage.length) return [tr([member, exchanges, html`<span class="muted">${pins ? hint(t('no usage read'), pins) : t('no usage read')}</span>`, '', '', '', ''])];
@@ -1055,13 +1049,7 @@ const LiveTeam = (() => {
   }
   function openMember(actorId) { navigate('team', {team: selection().session || '', actor: actorId || '', event: ''}); }
   const turnParticipants = (way) => { S.participantsPage = Math.max(0, (S.participantsPage || 0) + (way === 'next' ? 1 : -1)); paint(); };
-  /* U54: submitted Tasks and goals come from their owners' session-filtered reads, once a
-   * visit (`leaveOutputs`), with older pages from the foot. Accepted answers use the retained
-   * product-authored acceptance event and its sealed refs; a source Task named by that answer
-   * remains a citation. Outputs owns these deliverables; its link opens their full retained
-   * text and exact record in Conversation. Product record owns the operation receipts. */
-  // the two reads by agent session, each a page of `table-rows` by the Host's cursor: the Tasks it submitted (`TASKS`)
-  // and the goals whose record names it (`GOAL_LIST`)
+  // Outputs use session-filtered owner pages once per visit; accepted answers bind sealed receipts, and source Tasks remain citations.
   const OUTPUT_READS = {tasks: ['/api/tasks', 'tasks', 'refusals'], goals: ['/api/goals', 'goals', 'refused']};
   async function readOutputs(sid, which, cursor = '') {
     if (S.outputs?.session === sid && (S.outputs[which]?.busy || (cursor && S.outputs[which]?.next !== cursor))) return;
@@ -1177,7 +1165,7 @@ const LiveTeam = (() => {
     if (onTeam() && app.page !== 'team-sessions') { const s = scene().sessions.find(s => s.id === selection().session); if (s && committeeTask(s)) { const o = S.committee, deadline = o?.body?.stage === 'STANCES' ? o.body.stances_close_at : o?.body?.stage === 'DEBATE' ? o.body.closes_at : ''; const crossed = deadline && Date.now() >= Date.parse(deadline) && o.deadlineRead !== deadline; if (crossed) o.deadlineRead = deadline; void readCommittee(s, crossed); } }
     for (const s of scene().sessions) for (const ref of questionOf(s, entriesOf(s)).declared) if (!S.resolved.has(ref) && !S.busy.has(ref)) void resolve(ref).then(() => verify(ref));
     const a = LiveActivity.state(), usage = LiveActivity.nativeUsageState?.();
-    const key = [a.epoch, a.cursor, a.watermark, a.error, a.stale, a.disposition, usage?.status, usage?.reason].join('|');
+    const key = [a.epoch, a.cursor, a.watermark, a.error, a.stale, a.disposition, usage?.status, usage?.reason, usage?.read_through, usage?.total_bytes, usage?.rescan].join('|');
     if (key !== S.paintKey) { S.paintKey = key; paint(); }
   }
   /* The explicit entry from an activity row, wherever that row lives: the Task Center drawer

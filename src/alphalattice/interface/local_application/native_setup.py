@@ -31,6 +31,7 @@ from alphalattice.interface.local_application.native_bridge import (
     NativeBridgeError,
     NativeResearchBinding,
     attachment_preflight,
+    clear_usage_checkpoints,
     codex_queue_readiness,
     command_readiness,
     declares_product,
@@ -965,6 +966,7 @@ def unbind_session(
     if session_id is not None and binding.session_id != session_id:
         raise NativeBridgeError("native_bridge.session_mismatch")
     binding.record_path(project).unlink()
+    clear_usage_checkpoints(binding.workspace, binding)
     return {
         "status": "DETACHED",
         "project": str(project),

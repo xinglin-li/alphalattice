@@ -406,6 +406,10 @@ class HistoryEntry(_Answer):
     """That input's version."""
     failure_code: str | None
     """Why it failed, as its owner's code, if it did."""
+    final_delivery: bool | None = None
+    """Whether this positions publication is its Task's final output; unused for other entries."""
+    positions_session: str | None = None
+    """The issued positions' entry session, as their publication states it."""
     book_summary: EvidenceBookSummary | None = None
     """Cheap Evidence-owner discovery for an entry naming a Book, without current standing."""
     next_requests: dict[str, dict[str, Any]] = {}

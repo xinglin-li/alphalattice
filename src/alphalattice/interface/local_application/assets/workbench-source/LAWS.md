@@ -108,6 +108,7 @@ guide card was not, and its field and action row touched (the maintainer, 2026-0
 chips, buttons and option boxes is ruled and parameterised). Page cards and their visible stack wrappers belong to
 the same rule and to its census (V685/U138: Reading's bare wrapper had hidden touching boxes).
 Neighbouring boxes keep their shared step through every structural wrapper. The census
+counts only flow content: templates, script/style and hidden children add no stack step.
 measures their actual neighbouring edges across wrappers and grid columns, so a wrapper
 absent from a selector list cannot hide a seam (V694/U142).
 *Held by:* the stack (`04-surfaces`, its steps
@@ -273,7 +274,7 @@ place. Every page showing a strategy's activation, schedule or daily standing fo
 made elsewhere on the ordinary activity cadence, without Reload or a second mutation
 (V676/U131). *Held by:*
 `test_workbench_readback.py::test_listed_task_state_follows_task_control_without_a_reload`,
-`workbench_routes.cjs` (external state changes on Portfolio, the book, Home and Settings;
+`workbench_routes.cjs` (external state changes on Portfolio, the book and Settings;
 the address and sealed reading stay put).
 
 **ST5. Reading in place.** A first read shows a skeleton after the hold, never a spinner or
@@ -495,7 +496,11 @@ the sealed deliverable). *Held by:* review (its round probe: `book_b1_probe` in 
 action per region. The UI at rest is quiet: an unchosen option is text, a Task at rest a row; a
 hover, a selection, activity, a warning or focus lifts a thing. A dated Portfolio reads in this
 order: the date's summary, its performance, then its holdings (the maintainer, 2026-10-10).
-*Held by:* review, `workbench_portfolio_layout.cjs`.
+Home names the current Goal and leads with the dated outcome, then the person's decisions and compact
+running progress. Delivered research, positions and reports appear once; intermediate Tasks
+belong in Tasks and History. A valid authorization or retained Session does not prove running work.
+*Held by:* review, `workbench_portfolio_layout.cjs`, `workbench_home_recent.cjs` and
+`workbench_handoffs.cjs` (the person's decisions).
 
 **PG13. Making new things.** A group's `+` in its head is a menu of what it makes new, in the
 chain's order, each opening its composer preset to its kind; a kind's list says `+ New` in its
@@ -574,10 +579,13 @@ each with its specialists and the way to it; none is said, never guessed (the ma
 the PM, the Alternative analyst and the CRO as ways into Team sessions). *Held by:*
 `collaborationRows`, `LiveTeam.sessionsNaming`, the books scene's Team sessions
 (`team_evidence.py`), the walk.
-Sessions and Participants retain the native reader's exact parent and specialist role as
-session membership, including children with usage alone. A Goal's participation count remains
+Sessions and Participants retain the native reader's exact parent as session membership,
+including children with usage alone. Usage belongs to the thread; specialist identity is a
+separate verified fact. An absent role never hides usage, and a failed parent read never hides
+previously confirmed children (the maintainer, 2026-10-11). A Goal's participation count remains
 its attributed hooks and messages; session-wide usage never becomes a Goal contribution.
-*Held by:* `workbench_team.cjs` (the maintainer, 2026-10-10).
+*Held by:* `workbench_team.cjs`, `test_a_codex_lead_names_its_children_in_its_own_rollout`,
+`test_the_host_reads_the_lead_and_the_children_its_own_session_records`.
 
 ## LY. Layers and glass
 

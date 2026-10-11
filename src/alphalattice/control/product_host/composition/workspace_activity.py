@@ -1141,6 +1141,12 @@ class WorkspaceActivity:
                 state["native_usage"] = {
                     "status": usage_status,
                     "reason": _persisted_code(usage.get("reason")),
+                    **{
+                        key: value
+                        for key in ("read_through", "total_bytes", "bytes_read")
+                        if type(value := usage.get(key)) is int and value >= 0
+                    },
+                    **({"rescan": usage["rescan"]} if type(usage.get("rescan")) is bool else {}),
                 }
             except Exception:
                 state["native_usage"] = {

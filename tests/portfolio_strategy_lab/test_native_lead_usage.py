@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,7 @@ import pytest
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.product_host.publication.goals import GoalStore
+from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application import cli, client, native_bridge
 from alphalattice.interface.local_application.activity import (
@@ -27,8 +29,9 @@ from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
     NativeResearchBinding,
     read_session_usage,
+    set_usage_reading,
 )
-from alphalattice.interface.local_application.native_setup import declare_project
+from alphalattice.interface.local_application.native_setup import declare_project, unbind_session
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
@@ -644,13 +647,15 @@ def test_a_child_usage_snapshot_needs_exact_parent_binding_but_no_lifecycle_hook
     scene = lead_scene
     child, path = _own_child(scene)
     first = _read_owned_usage(scene, "child", child)
-    assert first == {
+    assert {key: first[key] for key in ("agent_id", "role", "status", "models")} == {
         "agent_id": child,
         "role": "alphalattice_risk",
         "status": "DELIVERED",
         "models": 1,
     }
-    assert _read_owned_usage(scene, "child", child) == first
+    warm = _read_owned_usage(scene, "child", child)
+    assert warm == {**first, "bytes_read": 0}
+    assert warm["specialist_verified"] is True
     (row,) = _rows(scene, child)
     assert row["payload"]["event_kind"] == "NATIVE_AGENT_USAGE"
     assert row["authority"] == "AGENT_PROPOSAL"
@@ -671,6 +676,26 @@ def test_a_child_usage_snapshot_needs_exact_parent_binding_but_no_lifecycle_hook
     assert "native_hook_event" not in subject and "authorship_basis" not in subject
     assert SECRET not in json.dumps(row) and str(path) not in json.dumps(row)
     assert subject["goal_id"] == scene.goal_id
+    binding = NativeResearchBinding.read(scene.project)
+    assert binding is not None
+    with ExitStack() as locks:
+        for path in (scene.workspace / "runtime/native-usage").glob("*.lock"):
+            locks.enter_context(WorkspaceLock(path))
+        busy = read_session_usage(scene.project, binding, publish=scene.publish)
+    assert busy["status"] == "BUSY"
+    assert {row["agent_id"] for row in busy["participants"]} == {scene.parent, child}
+    assert all(row["status"] == "BUSY" for row in busy["participants"])
+    assert busy["reason"] == "native_bridge.usage_reader_busy"
+    assert set_usage_reading(scene.workspace, enabled=False)["usage_reading"] == "OFF"
+    cache = scene.workspace / "runtime/native-usage"
+    assert list(cache.iterdir()) == []
+    assert set_usage_reading(scene.workspace, enabled=True)["usage_reading"] == "READ"
+    assert _read_owned_usage(scene, "child", child)["status"] == "DELIVERED"
+    assert (
+        unbind_session(scene.project, session_id=scene.parent, host=scene.host)["status"]
+        == "DETACHED"
+    )
+    assert list(cache.iterdir()) == []
 
 
 def test_a_child_usage_delivery_failure_is_visible_and_retry_keeps_the_same_reading(lead_scene):
@@ -685,7 +710,9 @@ def test_a_child_usage_delivery_failure_is_visible_and_retry_keeps_the_same_read
     assert SECRET not in json.dumps(result)
     scene.failure = None
     first = _read_owned_usage(scene, "child", child)
-    assert first["status"] == "DELIVERED" and _read_owned_usage(scene, "child", child) == first
+    warm = _read_owned_usage(scene, "child", child)
+    assert first["status"] == "DELIVERED" and warm == first
+    assert warm["bytes_read"] == 0
     assert len(_rows(scene, child)) == 1
 
 
@@ -793,7 +820,7 @@ def test_an_optional_usage_snapshot_publishes_all_allowed_models_or_no_overflow_
 def test_an_overbound_native_usage_scan_publishes_none_of_its_complete_prefix(
     lead_scene, monkeypatch, participant, limit
 ):
-    """BEHAVIOUR: both byte limits reject complete prefix counts before the observation owner."""
+    """A prefix publishes no total; an oversized record keeps its exact refusal."""
     scene = lead_scene
     child, path = _own_child(scene) if participant == "child" else (None, scene.session)
     records = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
@@ -807,8 +834,13 @@ def test_an_overbound_native_usage_scan_publishes_none_of_its_complete_prefix(
         1024,
     )
     result = _read_owned_usage(scene, participant, child)
-    assert result["status"] == "UNAVAILABLE" and result["read_limit"] == limit
-    assert result["reason"] == f"native_bridge.{participant}_usage_read_failed"
+    if limit == "max_bytes":
+        assert result["status"] == "PARTIAL"
+        assert result["reason"] == "native_bridge.usage_catching_up"
+        assert result["read_through"] < result["total_bytes"] and result["bytes_read"] <= 1024
+    else:
+        assert result["status"] == "UNAVAILABLE" and result["read_limit"] == limit
+        assert result["reason"] == f"native_bridge.{participant}_usage_read_failed"
     assert "models" not in result
     assert _rows(scene, scene.parent if participant == "lead" else child) == []
     assert path.read_bytes() == original and SECRET not in json.dumps(result)

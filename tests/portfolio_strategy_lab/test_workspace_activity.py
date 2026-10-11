@@ -15,6 +15,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -33,8 +34,10 @@ from alphalattice.control.observation_runtime.policy import (
     ObservationSchemaPolicy,
     default_observation_policies,
 )
+from alphalattice.control.product_host.composition import native_usage_reader as usage_module
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
+    NativeUsageReader,
 )
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
@@ -46,6 +49,8 @@ from alphalattice.interface.local_application.activity import (
 )
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.client import LocalResearchClient
+from alphalattice.interface.local_application.native_bridge import BINDING_NAME
+from alphalattice.interface.local_application.native_setup import declare_project
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
@@ -98,12 +103,83 @@ def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task
         observer.close()
 
 
+def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
+    tmp_path, monkeypatch
+):
+    """One complete binding never erases another binding's pending usage progress."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    projects = [tmp_path / name for name in ("a-project", "b-project")]
+    for project in projects:
+        (project / ".codex").mkdir(parents=True)
+        declare_project(project, "codex")
+        (project / ".codex" / BINDING_NAME).write_text(
+            json.dumps(
+                {
+                    "session_id": project.name,
+                    "host": "codex",
+                    "workspace": str(workspace),
+                    "roles": ["alphalattice_cro"],
+                }
+            ),
+            encoding="utf-8",
+        )
+    clock = [datetime(2026, 10, 11, tzinfo=UTC)]
+    operations = SimpleNamespace(
+        workspace_session=SimpleNamespace(workspace=workspace),
+        dispatcher=SimpleNamespace(clock=lambda: clock[0]),
+        native_projects=projects,
+        goals=SimpleNamespace(attributed_goal=lambda _: None),
+    )
+    progress = {"read_through": 4, "total_bytes": 12, "bytes_read": 4, "rescan": False}
+    pending = {"status": "PARTIAL", "reason": "native_bridge.usage_catching_up", **progress}
+    receipts = [pending, {"status": "DELIVERED"}]
+
+    def read(project, binding, **kwargs):
+        receipt = receipts[projects.index(project)]
+        if isinstance(receipt, Exception):
+            raise receipt
+        return receipt
+
+    monkeypatch.setattr(usage_module, "read_session_usage", read)
+    reader = NativeUsageReader(operations)
+    assert [row["status"] for row in reader.read()["sessions"]] == ["PARTIAL", "DELIVERED"]
+    assert reader.state() == {
+        "status": "OBSERVING",
+        "reason": "native_bridge.usage_catching_up",
+        **progress,
+    }
+    assert [row["status"] for row in reader.read()["sessions"]] == ["RECENT", "RECENT"]
+    assert reader.state() == {"status": "OBSERVING", "reason": pending["reason"]}
+    for first, second in (
+        (pending, {"status": "UNAVAILABLE", "reason": "activity.observer_failed"}),
+        (RuntimeError("unavailable"), {"status": "DELIVERED"}),
+    ):
+        receipts[:] = first, second
+        clock[0] = clock[0].replace(second=clock[0].second + 10)
+        reader.read()
+        assert reader.state() == {
+            "status": "UNAVAILABLE",
+            "reason": second.get("reason", "native_bridge.lead_usage_read_failed"),
+        }
+    cache = workspace / "runtime/native-usage"
+    cache.mkdir(parents=True)
+    (cache / "orphan.lock").touch()
+    monkeypatch.setattr(usage_module, "usage_reading", lambda _: False)
+    assert reader.read() == {"status": "OFF", "sessions": []} and not list(cache.iterdir())
+
+
 @pytest.mark.parametrize("status", ["NOT_BOUND", "OFF", "OBSERVING", "STOPPED", "UNAVAILABLE"])
 def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_path, status):
     """Usage health exposes no callback identity, native path, content or supplied prose."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     calls = []
+    progress = (
+        {"read_through": 4, "total_bytes": 12, "bytes_read": 4, "rescan": False}
+        if status == "OBSERVING"
+        else {}
+    )
 
     def usage_state():
         calls.append("read")
@@ -115,6 +191,7 @@ def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_pat
             "conversation": "PRIVATE-NATIVE-CONVERSATION",
             "detail": "PRIVATE-CALLBACK-DETAIL",
             "next_action": "PRIVATE-CALLBACK-ACTION",
+            **progress,
         }
 
     observer = WorkspaceActivity(
@@ -129,7 +206,8 @@ def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_pat
         assert calls == ["read"]
         usage = state["native_usage"]
         assert usage["status"] == status and usage["reason"] == "activity.observer_failed"
-        assert set(usage) <= {"status", "reason", "detail", "next_action"}
+        assert set(usage) <= {"status", "reason", "detail", "next_action"} | progress.keys()
+        assert {key: usage.get(key) for key in progress} == progress
         words = refusal_words("activity.observer_failed")
         for field in ("detail", "next_action"):
             if field in usage:
@@ -137,6 +215,9 @@ def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_pat
         assert "PRIVATE-" not in json.dumps(state)
         assert state["status"] == state["recording"] == "OK"
         assert state["missing_observations"] == state["appends"] == 0
+        if progress:
+            progress.update(read_through=True, total_bytes=-1, bytes_read=1.5, rescan=0)
+            assert not progress.keys() & observer.observer_state()["native_usage"].keys()
     finally:
         observer.close()
 

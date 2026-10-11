@@ -1,23 +1,10 @@
-"""What a native agent ran and spent, read from its host's own session file (AU, V300).
+"""Bound native usage, resumed through one checked checkpoint per exact file.
 
-This is the only code that opens an agent's transcript, and it keeps a whitelist: each
-response's id, model, the effort it ran at, its token counts and its time, and the file's first
-and last time; and a child's exact parent and role from Codex's first record or Claude Code's
-bounded sidecar and first record. Everything else in the file, the conversation above all,
-is read past and dropped (LAWS OP14: an agent's reading stays in its own context). A file is
-read only when it lies under the host's own session root.
-
-Only the bound Session's own files are opened: its own file, and the children it records
-there. A Codex lead's rollout records each child as a ``SubAgentActivity`` item naming the
-child's thread; a Claude Code lead keeps its children under ``<session>/subagents/``. No other
-Session's file is listed or read. Checked against Codex CLI 0.162.0-alpha.2 and Claude Code
-2.1.293 (2026-10-07); a record of another shape reads as unavailable, never as zero.
-
-Claude Code writes one record per content block, repeating a response's usage under its message
-id, so a response counts once, at its last record; its `input_tokens` are the uncached input.
-Codex names the model and effort in each turn's context and records each response's usage once;
-its `input_tokens` include the cached reads and writes, so the uncached input is what remains.
-Only lines that can hold these facts are decoded (a 400 MB file reads in under a second).
+Only response-id hashes, model/effort, token counts, timestamps and exact-parent child
+locators survive. Conversation bytes are discarded. Complete records advance the cursor;
+source replacement, shrink, same-size modification or a bad checksum rebuild the checkpoint.
+A cumulative mismatch remains named without rescanning an unchanged file. Claude repeats
+response counts by block; Codex includes cached reads/writes in its input counts.
 """
 
 from __future__ import annotations
@@ -27,8 +14,10 @@ import os
 import re
 from collections import deque
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
+from hashlib import sha256
 from pathlib import Path
+from typing import Any, BinaryIO
 from uuid import UUID
 
 HOST_CLAUDE_CODE = "claude-code"
@@ -40,7 +29,7 @@ _MARKERS = {
 
 
 class NativeUsageReadLimitError(ValueError):
-    """A bounded scan stopped before complete cumulative totals could be read."""
+    """One native record exceeds the admitted per-read or per-line byte bound."""
 
     code = "native_usage.read_limit_exceeded"
 
@@ -97,6 +86,11 @@ class SessionUsage:
     last_at: str | None
     children: tuple[str, ...] = ()
     """A Codex lead's children, by thread, in the order its file first names them."""
+    read_through: int = 0
+    total_bytes: int = 0
+    bytes_read: int = 0
+    rescan: bool = False
+    cumulative_mismatch: bool = False
 
     def by_model(self) -> tuple[ModelUsage, ...]:
         """One row per model, in model order.
@@ -305,8 +299,7 @@ def claude_thread_spawn(session_id: str, agent_id: str) -> ThreadSpawn | None:
     meta, record = _record(raw), _record(first)
     role = _text(meta.get("agentType"))
     if (
-        role is None
-        or type(meta.get("spawnDepth")) is not int
+        type(meta.get("spawnDepth")) is not int
         or meta.get("spawnDepth") != 1
         or meta.get("parentAgentId") is not None
         or record.get("sessionId") != session_id
@@ -347,31 +340,131 @@ def read_session(
     host: str,
     max_bytes: int | None = None,
     max_line_bytes: int | None = None,
+    checkpoint: dict[str, Any] | None = None,
+    binding_key: str | None = None,
 ) -> SessionUsage:
-    """The responses a session file records and the span of its recorded times.
+    """Read whitelisted counts, resuming complete records of this exact native file.
 
-    Args:
-        path: An admitted session file (``admitted_session_file``, ``codex_session_file``).
-        host: ``claude-code`` or ``codex``, which decides the file's format.
-        max_bytes: Optional positive byte bound over the whole scan, including discarded lines.
-        max_line_bytes: Optional positive byte bound over each complete native line.
-
-    Returns:
-        The file's responses, each once, and how many usage records could not be counted.
-
-    Raises:
-        OSError: If the admitted file cannot be read.
-        ValueError: If a supplied byte bound is invalid.
-        NativeUsageReadLimitError: If a bound prevents a complete scan; no totals are returned.
+    Byte bounds apply per read and per line; a record that cannot fit raises a read-limit
+    refusal. The optional binding hash associates the checkpoint with its cleanup owner.
     """
+    with path.open("rb") as stream:
+        state = {} if checkpoint is None else checkpoint
+        stat = os.fstat(stream.fileno())
+        rescan = _resume(stream, state, stat)
+        state.update(
+            offset=state.get("offset", 0),
+            size=stat.st_size,
+            identity=[stat.st_dev, stat.st_ino],
+            mtime=stat.st_mtime_ns,
+            binding_key=binding_key,
+        )
+        if not state.get("hashed_ids"):
+            for row in state.get("responses", ()):
+                row["response_id"] = sha256(row["response_id"].encode()).hexdigest()
+            state["hashed_ids"] = True
+        reading = _read_records(stream, host, state, max_bytes, max_line_bytes)
+        through = state.get("offset", stream.tell())
+        cumulative = state.get("cumulative")
+        mismatch = (
+            through == stat.st_size
+            and cumulative is not None
+            and any(
+                sum(getattr(r, key) for r in reading.responses) != value
+                for key, value in cumulative.items()
+            )
+        )
+        state["restart"] = mismatch
+        state["boundary"] = _boundary(stream, through)
+        state["digest"] = _checksum(state)
+        return replace(
+            reading,
+            incomplete=reading.incomplete + int(mismatch),
+            read_through=through,
+            total_bytes=stat.st_size,
+            bytes_read=state["bytes_read"],
+            rescan=rescan,
+            cumulative_mismatch=mismatch,
+        )
+
+
+def _checksum(state: dict[str, Any]) -> str:
+    return sha256(
+        json.dumps(
+            {k: v for k, v in state.items() if k != "digest"}, sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
+
+
+def checkpoint_children(state: dict[str, Any]) -> tuple[str, ...]:
+    """Checked child locators; each still needs its own exact-parent check."""
+    return tuple(state.get("children", ())) if state.get("digest") == _checksum(state) else ()
+
+
+def _boundary(stream: BinaryIO, offset: int) -> list[str]:
+    stream.seek(0)
+    prefix = stream.read(min(offset, 64))
+    stream.seek(max(0, offset - 64))
+    tail = stream.read(min(offset, 64))
+    return [
+        sha256(prefix).hexdigest(),
+        sha256(tail).hexdigest(),
+        str(not offset or tail.endswith(b"\n")),
+    ]
+
+
+def _resume(stream: BinaryIO, state: dict[str, Any], stat: os.stat_result) -> bool:
+    offset = state.get("offset")
+    valid = (
+        state.get("digest") == _checksum(state)
+        and not (
+            state.get("restart")
+            and (state.get("size"), state.get("mtime")) != (stat.st_size, stat.st_mtime_ns)
+        )
+        and state.get("identity") == [stat.st_dev, stat.st_ino]
+        and type(offset) is int
+        and 0 <= offset <= stat.st_size
+        and not (state.get("size") == stat.st_size and state.get("mtime") != stat.st_mtime_ns)
+    )
+    valid = (
+        valid
+        and isinstance(offset, int)
+        and state.get("boundary") == _boundary(stream, offset)
+        and state["boundary"][-1] == "True"
+    )
+    rescan = bool(state) and not valid
+    if not valid:
+        state.clear()
+    stream.seek(state.get("offset", 0))
+    return rescan
+
+
+def _read_records(
+    stream: BinaryIO,
+    host: str,
+    state: dict[str, Any],
+    max_bytes: int | None,
+    max_line_bytes: int | None,
+) -> SessionUsage:
     markers = _MARKERS[host]
-    responses: dict[str, ResponseUsage] = {}
-    incomplete = 0
-    first_at: str | None = None
-    tail: deque[bytes] = deque(maxlen=8)
-    turn: tuple[str | None, str | None] = (None, None)
-    children: dict[str, None] = {}
-    for line in _lines(path, max_bytes=max_bytes, max_line_bytes=max_line_bytes):
+    responses = {row["response_id"]: ResponseUsage(**row) for row in state.get("responses", ())}
+    incomplete = state.get("incomplete", 0)
+    first_at = state.get("first_at")
+    tail = deque(state.get("tail", ()), maxlen=8)
+    turn = tuple(state.get("turn", (None, None)))
+    children = dict.fromkeys(state.get("children", ()))
+    state.update(bytes_read=0, pending=False)
+    lines = (
+        _lines(
+            stream,
+            max_bytes=max_bytes,
+            max_line_bytes=max_line_bytes,
+            checkpoint=state,
+        )
+        if stream.tell() < state["size"]
+        else ()
+    )
+    for line in lines:
         tail.append(line)
         if first_at is None:
             first_at = _text(_record(line).get("timestamp"))
@@ -391,6 +484,7 @@ def read_session(
         else:
             turn = _codex_turn(record, turn)
             response = _codex_response(record, turn)
+            incomplete += _codex_cumulative(record, state)
         if response is None:
             continue
         if isinstance(response, int):
@@ -400,16 +494,39 @@ def read_session(
         responses[response.response_id] = (
             response if known is None else _replace_counts(known, response)
         )
-    return SessionUsage(
-        responses=tuple(responses.values()),
+    stamps = [
+        _text(_record(line).get("timestamp")) if isinstance(line, bytes) else line for line in tail
+    ]
+    state.update(
+        responses=[asdict(r) for r in responses.values()],
         incomplete=incomplete,
         first_at=first_at,
-        last_at=next(
-            (stamp for line in reversed(tail) if (stamp := _text(_record(line).get("timestamp")))),
-            None,
-        ),
+        tail=stamps,
+        turn=turn,
         children=tuple(children),
     )
+    return SessionUsage(
+        responses=tuple(responses.values()),
+        incomplete=incomplete + int(state.get("pending", False)),
+        first_at=first_at,
+        last_at=next((stamp for stamp in reversed(stamps) if stamp), None),
+        children=tuple(children),
+    )
+
+
+def _codex_cumulative(record: Mapping[str, object], state: dict[str, Any]) -> int:
+    payload = record.get("payload")
+    if (
+        record.get("type") != "token_usage_record"
+        or not isinstance(payload, dict)
+        or "thread_token_usage" not in payload
+    ):
+        return 0
+    counts = _codex_counts(payload["thread_token_usage"])
+    if counts is None:
+        return 1
+    state["cumulative"] = counts
+    return 0
 
 
 def _codex_child(record: Mapping[str, object]) -> str | None:
@@ -461,26 +578,42 @@ def _replace_counts(known: ResponseUsage, later: ResponseUsage) -> ResponseUsage
 
 
 def _lines(
-    path: Path, *, max_bytes: int | None = None, max_line_bytes: int | None = None
+    stream: BinaryIO,
+    *,
+    max_bytes: int | None = None,
+    max_line_bytes: int | None = None,
+    checkpoint: dict[str, Any],
 ) -> Iterator[bytes]:
     for bound in (max_bytes, max_line_bytes):
         if bound is not None and (type(bound) is not int or bound <= 0):
             raise ValueError("native_usage_bound_invalid")
-    with path.open("rb") as stream:
-        scanned = 0
-        while True:
-            remaining = max_bytes - scanned if max_bytes is not None else None
-            bounds = [bound for bound in (remaining, max_line_bytes) if bound is not None]
-            line = stream.readline(min(bounds) + 1 if bounds else -1)
-            if not line:
-                break
-            scanned += len(line)
-            if max_bytes is not None and scanned > max_bytes:
+    scanned = 0
+    stream.seek(checkpoint["offset"])
+    while True:
+        remaining = max_bytes - scanned if max_bytes is not None else None
+        remaining = min(
+            remaining if remaining is not None else checkpoint["size"],
+            checkpoint["size"] - stream.tell(),
+        )
+        if remaining <= 0:
+            break
+        line_bound = max_line_bytes + 1 if max_line_bytes is not None else None
+        bounds = [bound for bound in (remaining, line_bound) if bound is not None]
+        line = stream.readline(min(bounds))
+        if not line:
+            break
+        scanned += len(line)
+        if max_line_bytes is not None and len(line) > max_line_bytes:
+            raise NativeUsageReadLimitError("max_line_bytes")
+        checkpoint["bytes_read"] = scanned
+        if not line.endswith(b"\n"):
+            if scanned == len(line) and stream.tell() < checkpoint["size"]:
                 raise NativeUsageReadLimitError("max_bytes")
-            if max_line_bytes is not None and len(line) > max_line_bytes:
-                raise NativeUsageReadLimitError("max_line_bytes")
-            if line.strip():
-                yield line
+            checkpoint["pending"] = stream.tell() == checkpoint["size"]
+            break
+        checkpoint["offset"] = stream.tell()
+        if line.strip():
+            yield line
 
 
 def _record(line: bytes) -> Mapping[str, object]:
@@ -523,7 +656,7 @@ def _claude_response(record: Mapping[str, object]) -> ResponseUsage | int | None
     if uncached is None or read is None or written is None or output is None:
         return 1
     return ResponseUsage(
-        response_id=ident,
+        response_id=sha256(ident.encode()).hexdigest(),
         model=model,
         effort=_text(record.get("effort")),
         input_tokens=uncached,
@@ -552,9 +685,24 @@ def _codex_response(
     ident, usage = payload.get("response_id"), payload.get("usage")
     if turn[0] is None or not isinstance(ident, str) or not isinstance(usage, dict):
         return 1
+    counts = _codex_counts(usage)
+    if counts is None:
+        return 1
+    return ResponseUsage(
+        response_id=sha256(ident.encode()).hexdigest(),
+        model=turn[0],
+        effort=turn[1],
+        **counts,
+        at=_text(record.get("timestamp")),
+    )
+
+
+def _codex_counts(usage: object) -> dict[str, int] | None:
+    if not isinstance(usage, dict):
+        return None
     total, cached, written, output = (
-        _count(usage, key)
-        for key in (
+        _count(usage, k)
+        for k in (
             "input_tokens",
             "cached_input_tokens",
             "cache_write_input_tokens",
@@ -562,19 +710,15 @@ def _codex_response(
         )
     )
     if total is None or cached is None or written is None or output is None:
-        return 1
+        return None
     if total < cached + written:
-        return 1
-    return ResponseUsage(
-        response_id=ident,
-        model=turn[0],
-        effort=turn[1],
-        input_tokens=total - cached - written,
-        cache_read_tokens=cached,
-        cache_write_tokens=written,
-        output_tokens=output,
-        at=_text(record.get("timestamp")),
-    )
+        return None
+    return {
+        "input_tokens": total - cached - written,
+        "cache_read_tokens": cached,
+        "cache_write_tokens": written,
+        "output_tokens": output,
+    }
 
 
 __all__ = [
@@ -585,6 +729,7 @@ __all__ = [
     "ResponseUsage",
     "SessionUsage",
     "admitted_session_file",
+    "checkpoint_children",
     "claude_children",
     "claude_thread_spawn",
     "codex_session_file",

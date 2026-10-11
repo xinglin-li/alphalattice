@@ -1210,14 +1210,25 @@ body[data-page] .performance-surface .stat-strip {
 }
 /* TY4 applies before or after every box in the page's flow. Its owner marks structural
    carriers with data-stack-box: box for a declared box, section for a canvas section, field
-   for a compound field. These stack relations add no material. */
-#main > :is(.panel, .subpanel, .field, .choice-list, [data-box], [data-stack-box]) + :not(.section-gap),
-#main > * + :is(.panel, .subpanel, .field, .choice-list, [data-box], [data-stack-box]):not(.section-gap) { margin-top: var(--stack-box); }
-#main > :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]) + :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]):not(.section-gap) {
+   for a compound field. These stack relations add no material. Metadata and hidden
+   children do not create a flow neighbour. */
+#main > :is(.panel, .subpanel, .field, .choice-list, [data-box], [data-stack-box]):where(:not(template, script, style, [hidden])) + :not(.section-gap):where(
+  :nth-child(n + 2 of :not(template, script, style, [hidden]))
+),
+#main > * + :is(.panel, .subpanel, .field, .choice-list, [data-box], [data-stack-box]):not(.section-gap):where(
+  :nth-child(n + 2 of :not(template, script, style, [hidden]))
+) { margin-top: var(--stack-box); }
+#main > :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]):where(:not(template, script, style, [hidden])) + :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]):not(.section-gap):where(
+  :nth-child(n + 2 of :not(template, script, style, [hidden]))
+) {
   margin-top: var(--gap-block);
 }
-#main > :is([data-box], [data-stack-box="box"]) + :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]):not(.section-gap),
-#main > :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]) + :is([data-box], [data-stack-box="box"]):not(.section-gap) { margin-top: var(--stack-box); }
+#main > :is([data-box], [data-stack-box="box"]):where(:not(template, script, style, [hidden])) + :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]):not(.section-gap):where(
+  :nth-child(n + 2 of :not(template, script, style, [hidden]))
+),
+#main > :is(.panel, .lane-split, [data-box], [data-stack-box="box"], [data-stack-box="section"]):where(:not(template, script, style, [hidden])) + :is([data-box], [data-stack-box="box"]):not(.section-gap):where(
+  :nth-child(n + 2 of :not(template, script, style, [hidden]))
+) { margin-top: var(--stack-box); }
 /* A long saved-object name or identifier breaks inside its own column, never across the next. */
 body[data-page][data-reading][data-work-first] .performance-surface .stat-strip {
   padding-top: var(--space-4);

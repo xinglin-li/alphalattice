@@ -24,9 +24,10 @@ from hashlib import sha256
 from itertools import islice
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
+from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell
 from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
@@ -37,12 +38,14 @@ from alphalattice.interface.local_application.native_usage import (
     ModelUsage,
     NativeUsageReadLimitError,
     SessionUsage,
+    checkpoint_children,
     claude_children,
     claude_thread_spawn,
     codex_thread_spawn,
     read_session,
     session_file,
 )
+from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AnswerVerdict
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
@@ -128,7 +131,7 @@ USAGE_READINGS = ("READ", "OFF")
 """Whether the Host reads this Session's usage from the host's session files (AU): the
 binding's ``usage``, ``READ`` when it names none."""
 USAGE_READ_BYTES = 512 * 1024 * 1024
-"""The complete optional scan's 512 MiB cap leaves room beyond a measured 112 MiB session."""
+"""One optional reading advances its checkpoint by at most 512 MiB."""
 USAGE_LINE_BYTES = 8 * 1024 * 1024
 """The optional scan's 8 MiB line cap admits a measured valid native line larger than 2 MiB."""
 USAGE_MODEL_ROWS = 32
@@ -136,8 +139,6 @@ USAGE_MODEL_ROWS = 32
 PRODUCERS = {"codex": "codex-native", "claude-code": "claude-code-native"}
 USAGE_CHANNELS = {"codex": "CODEX_SESSION_FILE", "claude-code": "CLAUDE_CODE_SESSION_FILE"}
 LEAD_ROLE = "research_lead"
-PRODUCT_ROLE_PREFIX = "alphalattice_"
-"""Every shipped card's name begins so; a child of any other role is its lead's helper."""
 _USAGE_COUNTS = (
     "responses",
     "input_tokens",
@@ -614,7 +615,11 @@ def _usage_content(
     subject = {
         "native_session_id": usage["session_id"],
         "native_agent_id": usage["agent_id"],
-        "role": usage["role"],
+        **(
+            {"role": usage["role"]}
+            if usage["role"] and usage.get("specialist_verified", True)
+            else {}
+        ),
         "native_host": usage["host"],
         "input_channel": USAGE_CHANNELS[usage["host"]],
         "sample_time_kind": "LATEST_USAGE_RECORD_AT"
@@ -625,12 +630,16 @@ def _usage_content(
     }
     if usage["efforts"]:
         subject["efforts"] = ",".join(usage["efforts"])
+    if "specialist_verified" in usage:
+        subject["specialist_verified"] = str(usage["specialist_verified"]).lower()
+        if usage["role"] and not usage["specialist_verified"]:
+            subject["observed_role"] = usage["role"]
     if usage["pin_differs"]:
         subject["pin_differs"] = ",".join(usage["pin_differs"])
     if usage["last_at"] is not None:
         subject["last_at"] = usage["last_at"]
     summary = (
-        f"{usage['role']}: {usage['model']}, {usage['responses']} responses, "
+        f"{usage['role'] or usage['agent_id']}: {usage['model']}, {usage['responses']} responses, "
         f"{usage['input_tokens']} input, {usage['cache_read_tokens']} cache-read, "
         f"{usage['cache_write_tokens']} cache-write and {usage['output_tokens']} output tokens "
         "so far, from the host's session file."
@@ -920,12 +929,60 @@ def deliver_accepted_answer(
         return unavailable("native_bridge.accepted_delivery_failed", "accepted_answer_delivery")
 
 
+def _deliver_usage(
+    project: Path,
+    binding: NativeResearchBinding,
+    member: dict[str, Any],
+    rows: tuple[ModelUsage, ...],
+    publish: Callable[[dict[str, Any]], dict[str, Any]],
+    goal_id: str | None,
+) -> dict[str, Any]:
+    """File each model through the existing observation owner, preserving its refusal."""
+    child, role = member["agent_id"] != binding.session_id, member["role"]
+    pins = (
+        role_pin(project, binding.host, role)
+        if child and role is not None and role in binding.roles
+        else {}
+    )
+    for row in rows:
+        usage = {
+            "session_id": binding.session_id,
+            "agent_id": member["agent_id"],
+            "role": role,
+            "host": binding.host,
+            **({"specialist_verified": member["specialist_verified"]} if child else {}),
+            **asdict(row),
+            "pin_differs": pin_differs(pins, row) if child else [],
+        }
+        filed = file_observation(
+            project,
+            binding,
+            {"source": "native_usage", "usage": usage},
+            publish=publish,
+            usage_goal_id=goal_id,
+        )
+        if filed["status"] != "DELIVERED":
+            return filed
+    return {"status": "DELIVERED", "models": len(rows)}
+
+
+def _usage_checkpoint(path: Path) -> dict[str, Any]:
+    """Read the owner's atomic checkpoint without treating corruption as source evidence."""
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        return state if isinstance(state, dict) else {"invalid": True}
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        return {"invalid": True}
+
+
 def _reading(
     project: Path,
     binding: NativeResearchBinding,
     *,
     agent_id: str,
-    role: str,
+    role: str | None,
     path: Path | None,
     publish: Callable[[dict[str, Any]], dict[str, Any]],
     goal_id: str | None,
@@ -933,37 +990,78 @@ def _reading(
     """One participant's latest reading, filed per model; unavailable rather than wrong."""
     child = agent_id != binding.session_id
     prefix = "child" if child else "lead"
-    member = {"agent_id": agent_id, "role": role}
-    if path is None:
-        return {
-            **member,
-            "status": "UNAVAILABLE",
-            "reason": f"native_bridge.{prefix}_usage_file_missing",
-        }, None
+    member = {
+        "agent_id": agent_id,
+        "role": role,
+        **({"specialist_verified": role in binding.roles} if child else {}),
+    }
+    checkpoint: dict[str, Any] = {}
     try:
-        reading = read_session(
-            path, host=binding.host, max_bytes=USAGE_READ_BYTES, max_line_bytes=USAGE_LINE_BYTES
+        cache = (
+            binding.workspace
+            / "runtime/native-usage"
+            / (_digest([binding.host, binding.session_id, agent_id]) + ".json")
         )
-    except NativeUsageReadLimitError as error:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        with WorkspaceLock(cache.with_suffix(".lock")):
+            checkpoint = _usage_checkpoint(cache)
+            if path is None:
+                return {
+                    **member,
+                    "status": "UNAVAILABLE",
+                    "reason": f"native_bridge.{prefix}_usage_file_missing",
+                }, SessionUsage((), 1, None, None, checkpoint_children(checkpoint))
+            reading = read_session(
+                path,
+                host=binding.host,
+                max_bytes=USAGE_READ_BYTES,
+                max_line_bytes=USAGE_LINE_BYTES,
+                checkpoint=checkpoint,
+                binding_key=_digest([binding.host, binding.session_id]),
+            )
+            staged = cache.with_suffix(f".{uuid4().hex}.tmp")
+            try:
+                staged.write_text(json.dumps(checkpoint) + "\n", encoding="utf-8", newline="\n")
+                replace_shared_file(staged, cache)
+            finally:
+                staged.unlink(missing_ok=True)
+    except (NativeUsageReadLimitError, OSError, ValueError, WorkspaceConflictError) as error:
+        busy = isinstance(error, WorkspaceConflictError)
+        limited = isinstance(error, NativeUsageReadLimitError)
+        if busy:
+            checkpoint = _usage_checkpoint(cache)
+        children = (
+            tuple(checkpoint.get("children", ())) if limited else checkpoint_children(checkpoint)
+        )
         return {
             **member,
-            "status": "UNAVAILABLE",
-            "reason": f"native_bridge.{prefix}_usage_read_failed",
-            "read_limit": error.limit,
-        }, None
-    except (OSError, ValueError):
+            "status": "BUSY" if busy else "UNAVAILABLE",
+            "reason": "native_bridge.usage_reader_busy"
+            if busy
+            else f"native_bridge.{prefix}_usage_read_failed",
+            **({"read_limit": error.limit} if isinstance(error, NativeUsageReadLimitError) else {}),
+        }, SessionUsage((), 1, None, None, children)
+    progress = {
+        name: getattr(reading, name)
+        for name in ("read_through", "total_bytes", "bytes_read", "rescan")
+    }
+    if reading.read_through < reading.total_bytes:
         return {
             **member,
-            "status": "UNAVAILABLE",
-            "reason": f"native_bridge.{prefix}_usage_read_failed",
-        }, None
+            **progress,
+            "status": "PARTIAL",
+            "reason": "native_bridge.usage_catching_up",
+        }, reading
     rows = reading.by_model()
     # An unknown or changed record shape is unavailable, never a partial or zero total.
     if reading.incomplete:
         return {
             **member,
+            **progress,
             "status": "UNAVAILABLE",
-            "reason": f"native_bridge.{prefix}_usage_incomplete",
+            "reason": "native_bridge.usage_cumulative_mismatch"
+            if reading.cumulative_mismatch
+            else f"native_bridge.{prefix}_usage_incomplete",
             "incomplete": reading.incomplete,
         }, reading
     if len(rows) > USAGE_MODEL_ROWS:
@@ -979,26 +1077,10 @@ def _reading(
             "status": "UNAVAILABLE",
             "reason": f"native_bridge.{prefix}_usage_not_observed",
         }, reading
-    pins = role_pin(project, binding.host, role) if child else {}
-    for row in rows:
-        usage = {
-            "session_id": binding.session_id,
-            "agent_id": agent_id,
-            "role": role,
-            "host": binding.host,
-            **asdict(row),
-            "pin_differs": pin_differs(pins, row) if child else [],
-        }
-        filed = file_observation(
-            project,
-            binding,
-            {"source": "native_usage", "usage": usage},
-            publish=publish,
-            usage_goal_id=goal_id,
-        )
-        if filed["status"] != "DELIVERED":
-            return {**member, **filed}, reading
-    return {**member, "status": "DELIVERED", "models": len(rows)}, reading
+    filed = _deliver_usage(project, binding, member, rows, publish, goal_id)
+    if filed["status"] != "DELIVERED":
+        return {**member, **filed}, reading
+    return {**member, **progress, **filed}, reading
 
 
 # A person's workspace switch for reading the bound Sessions' usage, beside the network's.
@@ -1046,6 +1128,38 @@ def usage_reading_answer(workspace: Path) -> dict[str, object]:
     }
 
 
+def clear_usage_checkpoints(workspace: Path, binding: NativeResearchBinding | None = None) -> None:
+    """Remove ephemeral participant checkpoints, retaining the published observations."""
+    directory = workspace / "runtime/native-usage"
+    if not directory.is_dir():
+        return
+    owner = _digest([binding.host, binding.session_id]) if binding is not None else None
+    known: set[str] = set()
+    if binding is not None:
+        lead = _digest([binding.host, binding.session_id, binding.session_id])
+        known.add(lead)
+        children = checkpoint_children(_usage_checkpoint(directory / f"{lead}.json"))
+        if binding.host == "claude-code":
+            children = claude_children(binding.session_id)
+        known.update(_digest([binding.host, binding.session_id, child]) for child in children)
+    paths = set(directory.glob("*.json")) | {directory / f"{key}.json" for key in known}
+    if binding is None:
+        paths.update(path.with_suffix(".json") for path in directory.glob("*.lock"))
+    for path in paths:
+        try:
+            if (
+                binding is not None
+                and path.stem not in known
+                and _usage_checkpoint(path).get("binding_key") != owner
+            ):
+                continue
+            with WorkspaceLock(path.with_suffix(".lock")):
+                path.unlink(missing_ok=True)
+            path.with_suffix(".lock").unlink(missing_ok=True)
+        except (OSError, ValueError, WorkspaceConflictError):
+            continue
+
+
 def set_usage_reading(workspace: Path, *, enabled: bool) -> dict[str, object]:
     """Atomically write a person's setting, then read it back."""
     path = workspace / USAGE_CONTROL_PATH
@@ -1055,6 +1169,8 @@ def set_usage_reading(workspace: Path, *, enabled: bool) -> dict[str, object]:
         json.dumps({"schema": _USAGE_CONTROL_SCHEMA, "version": 1, "reading": enabled}), "utf-8"
     )
     replace_shared_file(staged, path)
+    if not enabled:
+        clear_usage_checkpoints(workspace)
     return usage_reading_answer(workspace)
 
 
@@ -1065,24 +1181,18 @@ def read_session_usage(
     publish: Callable[[dict[str, Any]], dict[str, Any]],
     goal_id: str | None = None,
 ) -> dict[str, object]:
-    """Read the bound Session and the children its own files record, once, at the Host.
+    """Read bound participants independently through the Host's observation owner.
 
-    Only the bound Session's own file is opened, then each child it names: a Codex lead's
-    ``SubAgentActivity`` items, or a Claude Code lead's ``subagents`` directory. A child is
-    read only when its own metadata names this Session as its direct parent and one of the
-    binding's roles. Nothing runs between readings; each participant stands alone, and a
-    failure of one is named beside the others, never a refusal of research.
+    Only the bound Session's file and children named by its Codex ``SubAgentActivity``
+    or Claude ``subagents`` directory are read. Each child's metadata must name this
+    direct parent; specialist verification remains separate. Participant failures never
+    refuse research. ``project`` is admitted, ``binding`` fixes the host and workspace,
+    ``publish`` is the observation owner and ``goal_id`` is the Host-resolved Goal.
 
-    Args:
-        project: The Host's admitted project.
-        binding: The exact parent Session, workspace and roles admitted by that Host.
-        publish: The Host's existing observation owner.
-        goal_id: The exact Goal the Host resolved for this reading.
-
-    Returns:
-        ``DELIVERED``, ``PARTIAL`` or ``UNAVAILABLE`` with one entry per participant.
+    Returns ``DELIVERED``, ``PARTIAL``, ``BUSY`` or ``UNAVAILABLE`` per participant.
     """
     if binding.usage == "OFF" or not usage_reading(binding.workspace):
+        clear_usage_checkpoints(binding.workspace, binding if binding.usage == "OFF" else None)
         return {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}
     members: list[dict[str, object]] = []
     try:
@@ -1107,28 +1217,7 @@ def read_session_usage(
                 if binding.host == "codex"
                 else claude_thread_spawn(binding.session_id, child)
             )
-            if (
-                spawn is not None
-                and spawn.parent_thread_id == binding.session_id
-                and spawn.agent_role is not None
-                and not spawn.agent_role.startswith(PRODUCT_ROLE_PREFIX)
-            ):
-                # The lead's own helper, no product card (a general subagent, or a card started
-                # from its text in the installing session): named, never read, and no failure
-                # of the reading (STOPS-1).
-                members.append(
-                    {
-                        "agent_id": child,
-                        "status": "NOT_READ",
-                        "reason": "native_bridge.child_not_a_specialist",
-                    }
-                )
-                continue
-            if (
-                spawn is None
-                or spawn.parent_thread_id != binding.session_id
-                or spawn.agent_role not in binding.roles
-            ):
+            if spawn is None or spawn.parent_thread_id != binding.session_id:
                 members.append(
                     {
                         "agent_id": child,
@@ -1157,14 +1246,27 @@ def read_session_usage(
         )
     except Exception:
         members.append({"status": "UNAVAILABLE", "reason": "native_bridge.lead_usage_read_failed"})
-    read = [member for member in members if member.get("status") != "NOT_READ"]
-    delivered = sum(1 for member in read if member.get("status") == "DELIVERED")
-    status = "DELIVERED" if delivered == len(read) else "PARTIAL" if delivered else "UNAVAILABLE"
-    first = next((m for m in read if m.get("status") != "DELIVERED"), None)
+    statuses = {member.get("status") for member in members}
+    status = (
+        "DELIVERED"
+        if statuses <= {"DELIVERED"}
+        else "PARTIAL"
+        if statuses & {"DELIVERED", "PARTIAL"}
+        else "BUSY"
+        if statuses == {"BUSY"}
+        else "UNAVAILABLE"
+    )
+    first = next((m for m in members if m.get("status") != "DELIVERED"), None)
+    progress = first or (members[0] if members else {})
     return {
         "status": status,
         "participants": members,
         **({"reason": first["reason"]} if first is not None and "reason" in first else {}),
+        **{
+            name: progress[name]
+            for name in ("read_through", "total_bytes", "bytes_read", "rescan")
+            if name in progress
+        },
     }
 
 

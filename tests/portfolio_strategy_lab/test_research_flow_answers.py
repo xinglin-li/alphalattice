@@ -1385,6 +1385,7 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(li
         task_contract,
     )
     from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
+    from alphalattice.control.task_control.registry import TaskRecordBatch
     from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
         PortfolioUpdatePublication,
         advance_decision_state,
@@ -1413,10 +1414,21 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(li
         published_at=datetime(2026, 10, 2, tzinfo=UTC),
     )
     assert isinstance(publication, PortfolioUpdatePublication)
-    owner.ledger.content.publish_model(
-        category="decision-candidates", value=publication, identity_field="content_hash"
+    prior = PortfolioUpdatePublication.create(
+        **{
+            **{
+                k: getattr(publication, k)
+                for k in type(publication).model_fields
+                if k != "content_hash"
+            },
+            "html_hash": HASH,
+        }
     )
-    owner._commit(plan, STAGES[5], (publication.content_hash,), HASH)
+    for value in (prior, publication):
+        owner.ledger.content.publish_model(
+            category="decision-candidates", value=value, identity_field="content_hash"
+        )
+    owner._commit(plan, STAGES[5], (prior.content_hash, publication.content_hash), HASH)
     envelope, goal, workflow = task_contract(plan)
     recorded_at = datetime(2026, 10, 2, tzinfo=UTC)
     task = TaskRecord.from_identity(
@@ -1435,6 +1447,11 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(li
         version=1,
     )
     monkeypatch.setattr(live.session.task_control_registry, "tasks", lambda: (task,))
+    monkeypatch.setattr(
+        live.session.task_control_registry,
+        "record_collection",
+        lambda: TaskRecordBatch((task,), ()),
+    )
     monkeypatch.setattr(operations.automation, "installed", (package,))
 
     def no_full_read(*_args, **_kwargs):
@@ -1464,6 +1481,9 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(li
         "task_id": str(task.task_id),
     }
     assert "review_standing" not in running
+    history = _json(live, "/api/research-history")["entries"]
+    revisions = {row["book"]["update_publication_hash"]: row["final_delivery"] for row in history}
+    assert revisions == {prior.content_hash: False, publication.content_hash: True}
     stored = owner.ledger.content.root / "decision-candidates" / f"{publication.content_hash}.json"
     payload = json.loads(stored.read_text(encoding="utf-8"))
     payload["published_at"] = "2026-10-03T00:00:00+00:00"

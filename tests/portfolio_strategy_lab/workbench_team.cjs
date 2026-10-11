@@ -472,9 +472,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(at(lastHook)<0&&new RegExp('data-holds="[^"]*'+lastHook+'"').test(html)&&html.includes('data-waypoint="#team-event-'+lastHook+', [data-holds~=\''+lastHook+'\']"')&&html.includes('{{arrow}<span>4 new exchanges</span>}'),'the newest folded into a run of hooks: the run is its place');
   TM.markSeen();html=TM.section();assert.ok(!html.includes('team-new-bar'),'arrivals marked seen leave no pill');
   c.btnAttrs=wasAttrs;
-  // U25, U31: a usage reading is its own kind, never an unknown one, and its latest reading counts; the session names
-  // the goals its rows were filed under and its usage by model; a member's tip says its models and tokens and a card
-  // that differs; a decision note reads as one; a reply names the assignment it answers (reply_to)
+  // Latest usage names its model, goals and card differences; replies name assignments.
   c.link=(label,pg,cls,extra)=>`LINK(${pg} ${JSON.stringify(extra||{})})${label}`; // the goals' links, as the builder takes them
   const S9='sess-parent-9',G9='99999999-9999-4999-8999-999999999999';
   const usage=(agent,role,counts,extra={})=>{
@@ -499,13 +497,13 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.equal(read9[0].source_kind,'CODEX_SESSION_FILE','the source belongs to the latest snapshot, replacing a historical unknown source');
   assert.ok(html.includes('FACT(Goals=')&&html.includes('99999999'),'the session names the goal its rows were filed under: '+html.slice(html.indexOf('FACT('),html.indexOf('FACT(')+600));
   assert.ok(!html.includes('FACT(Usage='),'the head holds no usage: the Participants folder is its one place (U51)');
-  assert.ok(html.includes('gpt-6 (high) · 120 in')&&/differs from its card: [Ee]ffort/.test(html),html.slice(html.indexOf('team-actor:a9'),html.indexOf('team-actor:a9')+600)+'the member\'s tip: its models, tokens and a card that differs');
+  assert.deepEqual([read9[0].model,[...read9[0].efforts],read9[0].responses,read9[0].input,read9[0].output,[...read9[0].pinDiffers]],['gpt-6',['high'],4,120,50,['effort']]);
+  assert.ok(html.includes(c.t('differs from its card: {what}',{what:c.codeWords('effort')})));
   assert.ok(html.includes('Decision')&&!html.includes('Message kind not declared'),'a decision note reads as one');
   const replyId=[...s9.entries.values()].find(e=>e.messageId==='an-9').id,assignId=[...s9.entries.values()].find(e=>e.messageId==='as-9').id;
   const at9=html.indexOf('id="team-event-'+assignId+'"'),ol9=html.indexOf('<ol class="team-replies">',at9),rp9=html.indexOf('id="team-event-'+replyId+'"',ol9);
   assert.ok(at9>=0&&ol9>at9&&rp9>ol9&&html.slice(ol9,rp9).includes('team-reply'),'a reply sits under the assignment its reply_to names');
-  // U51: the session's Participants folder -- a row a member and model: its exchanges, its model and efforts, its
-  // latest reading's tokens, a mark where it differs from its card; U196 keeps parent and child counts separate
+  // Participants retain their exchanges and model readings; parent and child counts stay separate.
   const was51={table:c.table,tr:c.tr,pageOf:c.pageOf,pager:c.pager,page:c.app.page,hint:c.hint,t:c.t,I18N:c.I18N};
   countWords.I18N.set('en');Object.assign(c,{hint:countWords.hint,t:countWords.t,I18N:countWords.I18N});
   c.table=(h,rows,note,o)=>'<table>'+h.map(x=>x.label).join('|')+' '+(Array.isArray(rows)?rows.join(''):rows)+(o&&o.foot?'<tfoot>'+o.foot.map(x=>String(x??'')).join('|')+'</tfoot>':'')+'</table>';
@@ -539,6 +537,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
       ...declared196,
       raw196,
       usage(childB,'alternative_analyst',[2,21,2,0,22],metadata),
+      usage('helper-'+host,null,[1,41,4,0,42],{...metadata,model:'helper-model',specialist_verified:'false',observed_role:'general-purpose'}),
       usage(unknown,'alphalattice_risk',[],{...metadata,model:'unknown-model',input_channel:'UNVERIFIED_SESSION_FILE',sample_time_kind:null,last_at:null}),
     ]));
     hash.value='#page=team-participants&team='+sid;c.app.page='team-participants';
@@ -553,6 +552,9 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
     assert.ok(rows196.filter(row=>row.includes('gpt-6')).every(row=>row.includes(label)&&row.includes('sampled ')),'source and sample');
     const unknown196=rows196.find(row=>row.includes('unknown-model'))||'';
     assert.ok(unknown196.includes('Usage source not observed')&&unknown196.includes('Sample time not observed')&&/\|\|\|\|<\/tr>/.test(unknown196),'unknown reading: '+unknown196);
+    const helper196=rows196.find(row=>row.includes('helper-model'))||'';
+    assert.equal(first196.participants.get('helper-'+host).roles.size,0);
+    assert.ok(helper196.includes('data-specialist-verified="false"')&&helper196.includes(countWords.t('Specialist identity not verified'))&&helper196.includes('|41|42|4|0'));
     assert.ok(!shown196.includes('<tfoot>')&&!shown196.includes('Recorded tokens so far'),'no inferred total');
     A.absorbPage(page('CONTINUED',[usage(childA,'alternative_analyst',[3,31,3,0,32],{...metadata,last_at:'2026-09-14T12:08:00Z'})]));
     const latest196=TM.scene().sessions.find(s=>s.id===sid);
@@ -569,8 +571,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
     assert.ok(TM.usageMetadata(metadata).includes('Sample time not observed'),'unknown sample');
   }
   Object.assign(c,{table:was51.table,tr:was51.tr,pageOf:was51.pageOf,pager:was51.pager,hint:was51.hint,t:was51.t,I18N:was51.I18N});c.app.page=was51.page;
-  // U53: the Product record leads with the session's own work; a person's reads on the Local Web are one line, closed until
-  // pressed; a group whose records differ only in time does not open
+  // Product records lead with the session's work; time-only duplicate groups stay closed.
   const S53='sess-parent-53',P53='5'.repeat(64);
   const originalGroupRow=c.evidenceRow,originalGroupLink=c.link,groupReadings=[],namedLinks=[],unnamedWhys=[];
   let unnamed53;
@@ -602,9 +603,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(namedLinks.some(link=>link.page==='team'&&link.extra?.team===S53&&link.extra?.event===declaration53.id),'the actual reference link still names the declaring exchange');
   c.evidenceRow=originalGroupRow;c.link=originalGroupLink;
   TM.toggleFold('people');c.app.page=was51.page;
-  // U54: the session's 产出 -- the Tasks it submitted and the goals it took, from the Host's two reads by agent session
-  // (never the activity feed): each Task with its final state and its owner's readback, unavailable with the owner's
-  // code; each goal with the Host's check and its deliverables, apart from the artifacts; older pages from each foot
+  // Session outputs use Host Task and Goal readbacks, including refusals and older pages.
   const wasLink54=c.link;c.link=(label,page)=>`<a href="#page=${page}">${label}</a>`;
   const S54=S53,reads54=[],ID54=(n)=>'54540000-0000-4000-8000-00000000000'+n;
   const T54=(n,extra={})=>({task_id:ID54(n),task_kind:'research_experiment',lifecycle:'SUCCEEDED',goal_summary:'Refit '+n,last_activity_at:'2026-09-30T10:0'+n+':00Z',submitted_by:{vendor:'claude',session:S54,goal_id:null},final_state:'SUCCEEDED',artifact:null,...extra});
@@ -654,8 +653,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(refusedTasks54.includes(ID54(5).slice(0,8)),'the refusal names the Task whose projection could not be read: '+refusedTasks54);
   assert.ok(refusedTasks54.includes('href="#page=overview"')&&refusedTasks54.includes('href="#page=storage"'),'the session output offers Workspace and Storage recovery');
   assert.ok(!/undefined\s*\/\s*undefined/.test(refusedTasks54),'a refusal has no fabricated stage counts');
-  // U118 / MA4: the real panel and refusal builders expose mixed collections' box ancestry.
-  // Legacy panel stubs above deliberately print labels only; they cannot hold a nesting rule.
+  // Real builders expose box ancestry; label-only stubs cannot prove nesting.
   const before118={panel:c.panel,sectionHead:c.sectionHead,infoMark:c.infoMark,btnAttrs:c.btnAttrs,tr:c.tr};
   const components118=fs.readFileSync(path.join(root,'components.js'),'utf8');
   const panel118=components118.slice(components118.indexOf('function panel('),components118.indexOf('/* A banner'));
@@ -750,8 +748,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
     }
   }
   Object.assign(c,recipientBefore);
-  // The accepted answer is a product projection of the child's typed deliverable. It is
-  // labelled separately from a spoken turn, with its recorded submitter and admission clock.
+  // Accepted deliverables retain their submitter and admission time, apart from speech.
   const acceptedSession='66000001-0000-4000-8000-000000000001',acceptedChild='66000002-0000-4000-8000-000000000001';
   const acceptedUnknown='66000003-0000-4000-8000-000000000001',acceptedWords=library.words(root),acceptedBefore={t:c.t};
   const acceptedProse='Product accepted deliverable (ACCEPTED): The admitted evidence warrants caution.';
@@ -785,8 +782,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
     }
   }
   Object.assign(c,acceptedBefore);
-  // A nominated file and a parent relay produce no accepted output. An actual owner
-  // Task row and exact returned operation receipt appear independently of citations.
+  // Owner Task and returned-operation receipts prove outputs; nominations and relays do not.
   const outputBefore={read:c.Data.read,link:c.link,btnAttrs:c.btnAttrs,t:c.t,page:c.app.page,hash:hash.value},outputWords=library.words(root);
   const outputLinks=[];
   c.link=(label,page,cls,extra)=>{outputLinks.push({page,extra});return outputBefore.link(label,page,cls,extra);};
@@ -861,8 +857,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   }
   Object.assign(c,{link:outputBefore.link,btnAttrs:outputBefore.btnAttrs,t:outputBefore.t});
   c.Data.read=outputBefore.read;c.app.page=outputBefore.page;hash.value=outputBefore.hash;TM.leaveOutputs();
-  // Full accepted contributions come only from the selected observation's sealed owner.
-  // The excerpt, roles and operations remain unchanged; one detail survives only its selection.
+  // Selected sealed owners supply full contributions without changing excerpts or roles.
   const detailBefore={read:c.Data.read,t:c.t,page:c.app.page,hash:hash.value},detailWords=library.words(root);
   const detailReads=[],detailSession='67000001-0000-4000-8000-000000000001';
   const fullText='The sealed interpretation retains every cited limitation. '.repeat(24)+'END OF SEALED ANSWER';
@@ -970,8 +965,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   detailReads.at(-1).resolve(detailResponse(nextDetail.answer,{text:'RETURNED PAGE ANSWER'},'e2'));await settleDetail();
   assert.ok(selectDetail(nextDetail.answer).includes('RETURNED PAGE ANSWER'),'returning displays the new owner result');
   Object.assign(c,{t:detailBefore.t});c.Data.read=detailBefore.read;c.app.page=detailBefore.page;hash.value=detailBefore.hash;TM.refresh();
-  // V631 (ST2, WD7, TE12): every owner-declared authority and lifecycle uses the real
-  // shared words, in both current projections and retained records. Participant prose stays authored.
+  // Shared words name owner authority and lifecycle; participant prose stays authored.
   const codes=library.codes(),words=library.words(root),session631='session-v631';
   assert.ok(codes.authorities.length && codes.lifecycles.length,'the owners supplied their whole enums');
   Object.assign(c,{t:words.t,codeWords:words.codeWords,stateLine:words.stateLine});
@@ -1009,8 +1003,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
       for(const authority of codes.authorities)assert.ok(!records.includes(authority),'no raw authority: '+authority);
     }
   }
-  // Labelled UI fixtures only: an actual owner return's public shape, not a native run proof.
-  // The sealed content is read from its selected receipt while attribution remains unobserved.
+  // UI fixtures prove selected sealed readback, with native attribution still unobserved.
   const productBefore={read:c.Data.read,t:c.t,page:c.app.page,hash:hash.value,tasks:c.Data.tasks};
   const productWords=library.words(root),productReads=[],productSession='68000001-0000-4000-8000-000000000001';
   const productGoal='68000002-0000-4000-8000-000000000001',productSource='local-web:'+'a'.repeat(32);
@@ -1110,7 +1103,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.notEqual(productReads.at(-1),leavingProduct,'returning uses a fresh exact product selection');
   productReads.at(-1).resolve(productResponse(currentProduct.receipt,{text:productText,references:[TASK]},'product-e2'));await settleProduct();
   assert.ok(!selectProduct(currentProduct.receipt).includes('LEFT PRODUCT PAGE'));
-  // Usage health is an optional observer field, not an activity row or research gate.
+  // Optional usage health.
   const usageCode='native_bridge.lead_usage_read_failed';
   const usageCatalog=JSON.parse(fs.readFileSync(path.join(__dirname,'../../src/alphalattice/interface/local_application/refusal_words.json'),'utf8'))[usageCode];
   const stableFeed={...page('CONTINUED',[]),epoch:'product-e2',cursor:changedProduct.cursor,observer:{status:'OK',native_usage:{status:'OBSERVING',reason:null}}};
@@ -1126,8 +1119,16 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
     assert.ok(shown.includes('END OF PRODUCT ANSWER'),'optional usage failure does not block accepted research content');
     assert.equal(TM.counts().exchanges,2);assert.equal(TM.counts().observations,1);
   }
-  // Default native relays are selection candidates, never HOOK artifacts. The selected
-  // owner answer binds the real correlated RETURNED receipt and keeps native authorship unknown.
+  const usageCalls=[],usageT=c.t,catchingUp={status:'OBSERVING',reason:'native_bridge.usage_catching_up',read_through:4,total_bytes:12,bytes_read:4,rescan:false};
+  c.t=(key,facts)=>{if(facts?.read!=null)usageCalls.push({key,...facts});return usageT(key,facts);};
+  const progress=()=>{A.absorbPage({...stableFeed,observer:{status:'OK',native_usage:catchingUp}});TM.refresh();};
+  progress();assert.ok(selectProduct(currentProduct.receipt).includes(usageT('Reading usage')));
+  assert.deepEqual(usageCalls.at(-1),{key:usageCalls[0].key,read:4,total:12});
+  const usagePaints=renders.length,usageAddress=hash.value,usageNavigations=navigations.length;
+  catchingUp.read_through=8;progress();assert.equal(renders.length,usagePaints+1);
+  assert.equal(hash.value,usageAddress);assert.equal(navigations.length,usageNavigations);
+  selectProduct(currentProduct.receipt);assert.deepEqual(usageCalls.at(-1),{key:usageCalls[0].key,read:8,total:12});c.t=usageT;
+  // Selected relay answers bind their RETURNED receipt while native authorship stays unknown.
   const relayText='Fixture owner content returned for the exact default relay. '.repeat(12)+'END OF RELAY OWNER ANSWER';
   const relayFixture=(host='codex',extra={})=>{
     const assignment=message(productSession,productSession,'research_lead','assignment','Fixture lead assigns the exact relay bundle.',{recipient:'fixture-exact-child',reference:extra.bundle_reference||P1});

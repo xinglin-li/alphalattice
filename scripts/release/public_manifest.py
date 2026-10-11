@@ -152,7 +152,6 @@ RULES = [
             "tests/portfolio_strategy_lab/test_team_scene_producers.py",
             "tests/portfolio_strategy_lab/test_workbench_goal_request_words.py",
             "tests/portfolio_strategy_lab/test_workbench_usage_reading.py",
-            "tests/portfolio_strategy_lab/test_ui_home_forward.py",
             "tests/portfolio_strategy_lab/test_ui_qa_conditions.py",
             "tests/portfolio_strategy_lab/test_ui_qa_launch_session.py",
             "tests/portfolio_strategy_lab/test_ui_goal_composer.py",
@@ -165,7 +164,6 @@ RULES = [
             "tests/portfolio_strategy_lab/test_workbench_shared_readers.py",
             "tests/portfolio_strategy_lab/workbench_dom.cjs",
             "tests/portfolio_strategy_lab/workbench_handoffs.cjs",
-            "tests/portfolio_strategy_lab/workbench_home_forward.cjs",
             "tests/portfolio_strategy_lab/workbench_home_recent.cjs",
             "tests/portfolio_strategy_lab/workbench_hover_witness.cjs",
             "tests/portfolio_strategy_lab/workbench_minor_ui.cjs",
@@ -223,9 +221,6 @@ RULES = [
                 "needs the private UI QA kit"
             ),
             "tests/portfolio_strategy_lab/workbench_handoffs.cjs": "needs the private UI QA kit",
-            "tests/portfolio_strategy_lab/workbench_home_forward.cjs": (
-                "measures Home density with the private UI QA page census"
-            ),
             "tests/portfolio_strategy_lab/workbench_home_recent.cjs": (
                 "reads the private UI QA pinned-browser runtime for native disclosure"
             ),
@@ -244,9 +239,6 @@ RULES = [
             ),
             "tests/portfolio_strategy_lab/test_workbench_owner_words.py": (
                 "needs the private UI QA kit"
-            ),
-            "tests/portfolio_strategy_lab/test_ui_home_forward.py": (
-                "runs the private Home density harness and UI QA page census"
             ),
             "tests/portfolio_strategy_lab/test_ui_qa_conditions.py": (
                 "loads private UI QA checks from embedded Node.js programs"

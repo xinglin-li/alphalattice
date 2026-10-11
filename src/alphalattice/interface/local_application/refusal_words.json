@@ -1351,6 +1351,18 @@
   "detail": "The host could not locate the bound lead Session's usage file. The workspace Host retries while it is running. Check that exact Session in its native host; an absent reading is not zero usage, and research can continue.",
   "next_action": "CHECK_THE_BOUND_LEAD_SESSION_WHILE_THE_HOST_RETRIES"
  },
+ "native_bridge.usage_catching_up": {
+  "detail": "The usage reader is catching up with this Session. Usage totals and the member list remain partial until the reading reaches the file's end; the next read continues from the saved position.",
+  "next_action": "CONTINUE_RESEARCH_WHILE_USAGE_CATCHES_UP"
+ },
+ "native_bridge.usage_cumulative_mismatch": {
+  "detail": "The Session's response counts do not match its cumulative usage. No complete total was published. The saved position is kept while the file is unchanged; a changed file is read again from the beginning. Check this Session's usage records; research can continue.",
+  "next_action": "CHECK_NAMED_SESSION_WHILE_CONTINUING_RESEARCH"
+ },
+ "native_bridge.usage_reader_busy": {
+  "detail": "Another reader is updating this Session's usage checkpoint. Its confirmed members are kept; retry the usage read after that reader finishes. Research can continue.",
+  "next_action": "RETRY_USAGE_READ_AFTER_CURRENT_READER_FINISHES"
+ },
  "native_bridge.lead_usage_read_failed": {
   "detail": "The host could not read or deliver the bound lead's usage. The workspace Host retries while it is running. Check the bound Session file and Host connection; the research command keeps its own result.",
   "next_action": "CHECK_THE_SESSION_AND_HOST_WHILE_THE_HOST_RETRIES"
@@ -1360,7 +1372,7 @@
   "next_action": "CONTINUE_THE_BOUND_SESSION_WHILE_THE_HOST_RETRIES"
  },
  "native_bridge.lead_usage_incomplete": {
-  "detail": "Complete lead usage records were delivered, but some Session records remain incomplete. Keep the delivered readings; the workspace Host retries while it is running. Research can continue.",
+  "detail": "Some lead Session records remain incomplete, so no complete total was published for this read. Previous readings are kept; the workspace Host retries while it is running. Research can continue.",
   "next_action": "KEEP_DELIVERED_READINGS_WHILE_THE_HOST_RETRIES"
  },
  "native_bridge.product_contract_unavailable": {
@@ -1380,11 +1392,7 @@
   "next_action": "KEEP_ONE_ACTIVITY_SELECTOR_THEN_READ_AGAIN"
  },
  "native_bridge.child_usage_binding_unverified": {
-  "detail": "The child's usage could not be linked to the bound parent Session and an admitted role: its own record does not name this Session as its parent with one of the binding's roles. No child identity or usage was invented, and research can continue.",
-  "next_action": "CONTINUE_RESEARCH_THE_CHILD_STAYS_UNREAD"
- },
- "native_bridge.child_not_a_specialist": {
-  "detail": "This child is the Session's own helper, not a product specialist, so its usage is not read; the Session's reading stands without it.",
+  "detail": "The child's own record does not name the bound Session as its parent, so its usage could not be linked. No child identity or usage was invented, and research can continue.",
   "next_action": "CONTINUE_RESEARCH_THE_CHILD_STAYS_UNREAD"
  },
  "native_bridge.child_usage_file_missing": {
@@ -1400,7 +1408,7 @@
   "next_action": "KEEP_RESEARCH_RUNNING_WHILE_THE_HOST_RETRIES"
  },
  "native_bridge.child_usage_incomplete": {
-  "detail": "Complete child usage records were delivered, but some Session records remain incomplete. Keep the delivered readings; the workspace Host retries while it is running. Research can continue.",
+  "detail": "Some child Session records remain incomplete, so no complete total was published for this read. Previous readings are kept; the workspace Host retries while it is running. Research can continue.",
   "next_action": "KEEP_DELIVERED_READINGS_WHILE_THE_HOST_RETRIES"
  },
  "native_bridge.accepted_context_unavailable": {
