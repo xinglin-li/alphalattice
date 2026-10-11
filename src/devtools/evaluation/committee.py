@@ -159,6 +159,8 @@ def _message_issues(
         return ["message_shape"]
     points = {p["alias"] for p in context["dossier"].get("tension_points", [])}
     known = points | {h["alias"] for h in context["dossier"].get("holdings", [])}
+    known |= {f["alias"] for f in context["dossier"].get("facts", [])}
+    known |= {a for h in context["dossier"].get("holdings", []) for a in h.get("scores", {})}
     known |= {m["id"] for m in context.get("stances", []) + context.get("dissents", [])}
     if context["phase"] == "decision":
         shown = context["dossier"].get("floor", {}).get("messages", [])

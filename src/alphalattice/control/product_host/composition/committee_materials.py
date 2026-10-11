@@ -106,10 +106,11 @@ _FACTS: Final = {
         "Largest {w:.2%} against the {cap} cap; top ten {ten:.2%}; {spread}",
     ),
     "covered": ("RISK.reliability", "date_risk", "Covered weight {covered:.0%}, Risk as of {at}."),
+    "card": ("CRO.evidence", "evidence", "{handle} affects {held}; not held here: {outside}."),
     "flagged": (
         "CRO.evidence",
         "evidence",
-        "Names with a major negative hold {flagged:.2%} of the book, across {cards} issue cards.",
+        "The holdings the issue cards affect hold {flagged:.2%} of the book, across {cards} cards.",
     ),
     "scope": (
         "CRO.coverage",
@@ -297,11 +298,21 @@ def _component_values(
 ) -> Said:
     """One component's score moves, rule lines, entry-exit spread and rank curve."""
     score, was, rank, curve, name = c["score"], c["was"], c["rank"], c["curve"], c["alias"]
-    both = [k for k in c["mine"] if None not in (was.get(k), score.get(k))]
-    jumps = sorted(both, key=lambda k: -abs(score[k] - was[k]))[:3]
-    moved = _listed(f"{alias[k]} {was[k]:.2f}>{score[k]:.2f}" for k in jumps)
-    unscored = _listed(alias.get(k, k) for k in c["mine"] if k not in rank)
-    kept = _listed(f"{alias.get(k, k)} {rank[k]}" for k in c["mine"] if top < rank.get(k, 0))
+    # Every selection orders by its value, then by the listing: one source, one text.
+    mine = sorted(c["mine"])
+    both = [k for k in mine if None not in (was.get(k), score.get(k))]
+    jumps = sorted(both, key=lambda k: (-abs(score[k] - was[k]), k))
+    moved = _listed(f"{alias[k]} {was[k]:.2f}>{score[k]:.2f}" for k in jumps[:3])
+    ties = sum(
+        abs(score[k] - was[k]) == abs(score[j] - was[j]) for k in jumps[3:] for j in jumps[2:3]
+    )
+    moved += f", and {ties} others moved equally" if ties else ""
+    unscored = _listed(alias.get(k, k) for k in mine if k not in rank)
+    kept = _listed(
+        f"{alias.get(k, k)} {rank[k]}"
+        for k in sorted(mine, key=lambda k: (rank.get(k, 0), k))
+        if top < rank.get(k, 0)
+    )
     gap = [score.get(k) or 0.0 for k in moves] or [0.0]
     ranks = dict(c=name, top=sum(curve[:4]) / 4, bottom=sum(curve[-4:]) / 4)
     return [
@@ -340,11 +351,12 @@ def _cro_values(
         view.get("recipe"),
         view.get("proposal"),
     )
-    flagged = sum(
-        _fraction(r.get("ending_weight"))
-        for r in evidence.get("issuer_rows") or ()
-        if r.get("adverse_issue_count")
-    )
+    weight = {h["alias"]: h["weight"] for h in held}
+    cards = [
+        (c.get("issue_handle"), *card_holdings(c, evidence, held))
+        for c in evidence.get("issue_cards") or ()
+    ]
+    flagged = sum(weight[a] for a in {a for _, hit, _ in cards for a in hit})
     sealed = (readback.get("realized_performance") or {}).get("strategy_package_hash")
     used = getattr(getattr(proposal, "input", None), "strategy_package_hash", sealed)
     same = "matches" if not sealed or used == sealed else "differs from"
@@ -353,17 +365,68 @@ def _cro_values(
         scope.get("whole_book_reviewed_weight"),
         scope.get("minimum_required_weight"),
     )
-    when, cards = getattr(proposal, "schedule", None), len(evidence.get("issue_cards") or ())
+    when = getattr(proposal, "schedule", None)
     seen = getattr(view.get("value"), "observed_through", None)
     target = (readback.get("update") or {}).get("target_session")
     dates = dict(entry=when.entry_session, formation=when.formation_session) if when else {}
     return [
-        ("flagged", dict(flagged=flagged, cards=cards)),
+        *(
+            ("card", dict(handle=h, held=_listed(hit), outside=_listed(out)))
+            for h, hit, out in cards
+        ),
+        ("flagged", dict(flagged=flagged, cards=len(cards))),
         ("scope", dict(reviewed=reviewed, minimum=minimum) if scope else None),
         ("review", dict(now=review_now(readback))),
         ("package", dict(same=same, seen=seen, target=target, **dates) if when else None),
         ("caps", dict(w=largest, cap=recipe.aggregate_name_cap) if recipe else None),
         ("dissents", {}),
+    ]
+
+
+def card_holdings(
+    card: Mapping[str, Any], evidence: Mapping[str, Any], held: Sequence[Mapping[str, Any]]
+) -> tuple[list[str], list[str]]:
+    """The held aliases an issue card affects, and the entities it names that no holding is.
+
+    Each affected entity reaches its listings through its issuer row's tickers, which name the
+    floor's holdings; nothing is matched by company name.
+
+    Args:
+        card: One issue card of the Evidence projection.
+        evidence: The projection, with its issuer rows.
+        held: The floor's holdings.
+
+    Returns:
+        The affected held aliases in the floor's order, and the entities held by none.
+    """
+    tickers = {
+        r.get("entity_id"): r.get("tickers") or () for r in evidence.get("issuer_rows") or ()
+    }
+    aliases = {h["name"]: h["alias"] for h in held if h["weight"] > 0}
+    hit = {
+        e: [aliases[t] for t in tickers.get(e, ()) if t in aliases]
+        for e in card.get("affected_entities") or ()
+    }
+    order = [h["alias"] for h in held]
+    return sorted({a for a_ in hit.values() for a in a_}, key=order.index), [
+        e for e, a in hit.items() if not a
+    ]
+
+
+def issue_lines(evidence: Mapping[str, Any], held: Sequence[Mapping[str, Any]]) -> list[str]:
+    """The CRO view's issue cards, each with the held aliases it affects.
+
+    Args:
+        evidence: The Evidence projection on the positions.
+        held: The floor's holdings.
+
+    Returns:
+        One line per issue card.
+    """
+    return [
+        f"{c.get('issue_handle')} (affects {_listed(card_holdings(c, evidence, held)[0])}): "
+        f"{c.get('cro_inference')} Severity if true: {c.get('severity_if_true')}."
+        for c in evidence.get("issue_cards") or ()
     ]
 
 

@@ -27,6 +27,7 @@ from alphalattice.control.product_host.composition.committee_materials import (
     concentration,
     evidence_gap,
     facts,
+    issue_lines,
     review_now,
     risk_view,
     tension_points,
@@ -866,11 +867,7 @@ def role_lines(
             *(
                 [f"No Evidence stands ({gap}): {evidence.get('explanation') or ''}"]
                 if gap
-                else [
-                    f"{c.get('issue_handle')}: {c.get('cro_inference')} Severity if true: "
-                    f"{c.get('severity_if_true')}."
-                    for c in evidence.get("issue_cards") or ()
-                ]
+                else issue_lines(evidence, held)
             ),
         ]
     else:

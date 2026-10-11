@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -540,6 +543,16 @@ def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
     args = [str(script), str(modules), str(fixture), "s-1"]
     result = run_node(args, capture_output=True, text=True, timeout=30)
     assert result is not None and result.returncode == 0, result.stderr if result else ""
+
+
+def test_one_sealed_source_gives_one_fact_text_under_any_hash_seed(tmp_path: Path, readback):
+    """requirement (the materials): facts order by value, then listing, never by set order."""
+    (tmp_path / "r.json").write_text(json.dumps(readback), encoding="utf-8")
+    code = "import json,sys;from alphalattice.control.product_host.composition import committee"
+    code += ";r=json.load(open(sys.argv[1]));print(committee.facts(r,{},committee.holdings(r)))"
+    run = [sys.executable, "-c", code, tmp_path / "r.json"]
+    texts = [subprocess.check_output(run, env=os.environ | {"PYTHONHASHSEED": s}) for s in "12"]
+    assert texts[0] == texts[1] and b"question" in texts[0]
 
 
 def test_a_roles_bundle_carries_its_view_of_a_dates_positions(

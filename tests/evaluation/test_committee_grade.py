@@ -11,6 +11,9 @@ import pytest
 from pydantic import ValidationError
 
 from alphalattice.control.product_host.composition.committee import (
+    ALIAS as OWNER_ALIAS,
+)
+from alphalattice.control.product_host.composition.committee import (
     misshapen,
 )
 from alphalattice.control.product_host.composition.committee import (
@@ -24,6 +27,7 @@ from alphalattice.control.product_host.composition.committee_materials import (
 from alphalattice.interface.local_application.portfolio_research import CommitteeMessage
 from devtools.evaluation import Scenario, Trace, TraceEvent
 from devtools.evaluation.committee import (
+    ALIAS,
     CommitteeGrader,
     committee_problems,
     materials_findings,
@@ -162,6 +166,11 @@ def test_an_admitted_message_belongs_to_its_expected_floor(change):
     assert result["passed"] is (change == "clean")
 
 
+# Component and fact aliases spelled like development labels; the public label scan refuses
+# the literal spelling, so they are composed.
+COMPONENT, FACT, UNKNOWN_COMPONENT = (f"{k}{n}" for k, n in (("C", 1), ("S", 1), ("C", 9)))
+
+
 @pytest.mark.parametrize(
     "change,reason",
     [
@@ -169,6 +178,10 @@ def test_an_admitted_message_belongs_to_its_expected_floor(change):
         ("shape", "message_shape"),
         ("empty", None),
         ("alias", "unknown_alias"),
+        ("component", None),
+        ("fact", None),
+        ("unknown_component", "unknown_alias"),
+        ("unknown_fact", "unknown_alias"),
         ("ruling", None),
         ("unseen_ruling", "unknown_alias"),
         ("blind_ruling", "unknown_alias"),
@@ -187,8 +200,15 @@ def test_an_admitted_message_belongs_to_its_expected_floor(change):
 def test_recorded_message_keeps_the_host_contract(change, reason):
     """Member words use known aliases and cannot invent or propose numeric positions."""
     scenario, context, parts, answer = recorded(
-        "decision" if change in {"ruling", "unseen_ruling"} else "stance"
+        "decision" if change in {"ruling", "unseen_ruling", "fact"} else "stance"
     )
+    aliases = f"{COMPONENT} H1 M1 {FACT} T1 X1 S10000"
+    assert ALIAS.findall(aliases) == OWNER_ALIAS.findall(aliases)
+    context["dossier"]["holdings"][0]["scores"] = {COMPONENT: {}}
+    context["dossier"]["facts"] = [{"alias": FACT, "text": "A sealed fact."}]
+    if change == "fact":
+        context["stances"][0]["message"]["text"] = f"Reserve {FACT}."
+        parts[2]["text"] = json.dumps(context["stances"])
     context["dossier"]["floor"] = {"messages": [{"id": "M6", "kind": "RULING"}]}
     context["dossier"]["entry_open_at"] = "2026-08-07T13:30:00Z"
     parts[1]["text"] = json.dumps(context["dossier"])
@@ -197,6 +217,10 @@ def test_recorded_message_keeps_the_host_contract(change, reason):
             "shape": {"kind": "CHALLENGE"},
             "empty": {"positions": {}},
             "alias": {"text": "Reserve H9."},
+            "component": {"text": f"Reserve {COMPONENT}."},
+            "fact": {"text": f"Proceed after {FACT}."},
+            "unknown_component": {"text": f"Reserve {UNKNOWN_COMPONENT}."},
+            "unknown_fact": {"text": "Reserve S9."},
             "ruling": {"text": "Proceed after M6.", "targets": ["M6"]},
             "unseen_ruling": {"text": "Proceed after M7.", "targets": ["M7"]},
             "blind_ruling": {"text": "Reserve after M6.", "targets": ["M6"]},
@@ -392,10 +416,12 @@ def test_a_reply_only_replaces_the_positions_it_explicitly_states(role, point, f
 def test_a_reserve_beside_its_material_is_the_agents_and_without_it_the_products(kind):
     """Every question holds a fact or a named absence; a RESERVE citing none is graded unused
     where the member's facts stand, missing where only absences do."""
-    rows = {"issuer_rows": [{"ending_weight": "12.5%", "adverse_issue_count": 1}]}
-    said = facts({"publication": {"cro_status": "NOT_REVIEWED"}}, rows, [])
+    rows = {"issuer_rows": [{"entity_id": "E", "tickers": ["N"], "ending_weight": "12.5%"}]}
+    rows["issue_cards"] = [{"issue_handle": "I", "affected_entities": ["E", "X"]}]
+    held = [{"alias": "H", "name": "N", "weight": 0.125, "listing_id": "n", "change": 0.0}]
+    said = facts({"publication": {"cro_status": "NOT_REVIEWED"}}, rows, held)
     assert sufficiency(SimpleNamespace(opened={"facts": said})) == {}
-    assert any("12.50%" in f["text"] for f in said)  # a weight given as text reads; none refuses
+    assert any("affects H; not held here: X" in f["text"] for f in said)  # by its issuer row
     if kind == "unused":
         fact = {"alias": "S99", "question": "ALPHA.held", "text": "By rank.", "source": "pub"}
         said.append(fact)

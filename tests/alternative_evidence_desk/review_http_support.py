@@ -36,9 +36,13 @@ from alphalattice.interface.local_application.web import SESSION_COOKIE, SESSION
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioResearchSpec,
 )
+from alphalattice.oversight.chief_risk_officer.portfolio_evidence.coverage.issuer_mapping import (
+    resolve_portfolio_issuer_mapping,
+)
 from alphalattice.protocols.actor_execution import ActorKind
 from tests.alternative_evidence_desk.issuer_listing import (
     ISSUER_TOPICS,
+    TICKERS,
     _documents,
     _listing_authority,
     _registry,
@@ -161,23 +165,24 @@ def build_authority(
     with_actor: bool = True,
     model_authority_admitted: bool = True,
     document_suffix: str = "",
+    listing_symbols: dict[str, str] | None = None,
     extra_documents: Callable[[tuple[str, ...]], tuple[RecordedEvidenceDocument, ...]]
     | None = None,
 ) -> EvidenceReviewAuthority:
-    """Everything a host must be handed, and nothing bound to a session.
-
-    Constructible before any service exists and reusable across restarts: the
-    evidence *runtime* and its typed resources are held here, and the
-    composition owner binds them to the session's registry once it has one.
-    `extra_documents` adds recorded filings for the book's admitted entities
-    beside the planted releases (a 10-K with a litigation note, say).
-    """
+    """Reusable pre-service review resources and submitted actors, with optional extra filings."""
 
     listings = tuple(value.listing_id for value in report.window_end_book.positions)
     runtime = _runtime(tmp_path / "evidence")
-    registry_snapshot = _registry()
-    listing_authority = _listing_authority(listings)
-    entities = tuple(sorted({value.ticker for value in listing_authority.entries}))
+    tickers = (
+        tuple(sorted(set(listing_symbols.values()))) if listing_symbols is not None else TICKERS
+    )
+    registry_snapshot = _registry(tickers)
+    listing_authority = _listing_authority(listings, symbols=listing_symbols)
+    mapping = resolve_portfolio_issuer_mapping(
+        registry=registry_snapshot,
+        listings=tuple((value.listing_id, value.ticker) for value in listing_authority.entries),
+    )
+    entities = tuple(sorted(mapping.cik_by_entity))
     resources = AlternativeEvidenceDocumentTaskResources(
         recorded_registry=registry_snapshot,
         recorded_documents=(
@@ -203,7 +208,7 @@ def build_authority(
             cast(Any, _RefusingActor())
             if not model_authority_admitted
             else CitingReviewActor(
-                risks=(ControlledRisk("AAPL"),),
+                risks=(ControlledRisk(entities[0]),),
                 actor_kind=ActorKind.HUMAN,
                 actor_id="gate-9c5-http",
             )

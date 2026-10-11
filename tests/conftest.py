@@ -38,8 +38,16 @@ from devtools.evaluation.round_trip import (
 # Every test runs outside an agent session: a vendor's session variable would otherwise ride
 # into each request the tests send, and into its activity (LAWS OP13). A test that needs one
 # sets it itself. Popped at import, so each worker and the commands it starts inherit none.
+_MAINTAINER_THREAD = os.environ.get("CODEX_THREAD_ID") or os.environ.get("CLAUDE_CODE_SESSION_ID")
 for _vendor, _variable in AGENT_SESSION_VARIABLES:
     os.environ.pop(_variable, None)
+
+
+@pytest.fixture
+def maintainer_thread(request):
+    """Managed test runs retain their caller's owner without attributing product operations."""
+    worker = getattr(request.config, "workerinput", {})
+    return worker.get("maintainer_thread", _MAINTAINER_THREAD)
 
 
 class EvidenceRootRequests:
@@ -403,6 +411,7 @@ def pytest_configure_node(node: object) -> None:
     """xdist, in the main process: every worker sorts by the one reading taken here, so their
     collections agree even when another run rewrites the file meanwhile."""
     node.workerinput["recorded_durations"] = _recorded_durations()  # type: ignore[attr-defined]
+    node.workerinput["maintainer_thread"] = _MAINTAINER_THREAD  # type: ignore[attr-defined]
     # xdist sets config.option.dist to "no" inside a worker. Preserve the
     # controller's mode alongside the snapshot its collection uses.
     node.workerinput["recorded_distribution"] = node.config.getoption("dist", "no")  # type: ignore[attr-defined]

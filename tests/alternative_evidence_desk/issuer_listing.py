@@ -1,8 +1,4 @@
-"""The listing authority, issuer topics and recorded documents of the evidence
-review route, shared with its HTTP composition suite.
-
-Test support beside its owner; nothing here is product authority or evidence.
-"""
+"""Synthetic listing authority, issuer topics and documents shared by review fixtures."""
 
 from __future__ import annotations
 
@@ -46,18 +42,14 @@ def _documents(
     revisions: tuple[str, ...] = ("release", "transcript"),
     suffix: str = "",
 ) -> tuple[RecordedEvidenceDocument, ...]:
-    """Two official documents per issuer, each stating that issuer's planted claim.
-
-    Two, because a corroborated finding needs two: one document is
-    `SINGLE_SOURCE` by construction and can never reach an objection. Both
-    are current reports, the form the integrated selection reads (the
-    revision names which is the release and which the transcript).
-    """
+    """Two current official releases per issuer corroborate its planted claim."""
 
     return tuple(
         _recorded_document(
             entity,
-            claims=(PLANTED_CLAIMS[ISSUER_TOPICS[entity]] + suffix,),
+            claims=(
+                PLANTED_CLAIMS[ISSUER_TOPICS.get(entity, EvidenceTopic.OPERATIONS_SUPPLY)] + suffix,
+            ),
             revision=f"{entity.casefold()}-2026-q3-{revision}",
             document_type="8-K",
         )
@@ -66,35 +58,39 @@ def _documents(
     )
 
 
-def _registry() -> SecIssuerRegistrySnapshot:
+def _registry(tickers: tuple[str, ...] = TICKERS) -> SecIssuerRegistrySnapshot:
     return seal_contract(
         SecIssuerRegistrySnapshot,
         "registry_hash",
         captured_at=_NOW - timedelta(days=1),
         entries=tuple(
             SecIssuerRegistryEntry(
-                entity_id=ticker, ticker=ticker, cik=CIKS[ticker], legal_name=f"{ticker} Inc."
+                entity_id=ticker,
+                ticker=ticker,
+                cik=CIKS.get(ticker, f"{index % 5 + 1:010d}"),
+                legal_name=f"{ticker} Inc.",
             )
-            for ticker in TICKERS
+            for index, ticker in enumerate(tickers)
         ),
         source_content_hash="1" * 64,
     )
 
 
 def _listing_authority(
-    listing_ids: tuple[str, ...], *, omit: str | None = None
+    listing_ids: tuple[str, ...], *, omit: str | None = None, symbols: dict[str, str] | None = None
 ) -> AdmittedListingTickerAuthority:
-    """Map the book's own listings onto admitted symbols, deterministically.
-
-    `omit` drops one listing from the authority: that row then has no admitted
-    symbol, which is the first of the three mapping gaps.
-    """
+    """Admit the book's symbols or a deterministic fixture map, with an optional missing row."""
 
     return seal_portfolio_evidence_contract(
         AdmittedListingTickerAuthority,
         "authority_hash",
         entries=tuple(
-            AdmittedListingTicker(listing_id=listing_id, ticker=TICKERS[index % len(TICKERS)])
+            AdmittedListingTicker(
+                listing_id=listing_id,
+                ticker=symbols[listing_id]
+                if symbols is not None
+                else TICKERS[index % len(TICKERS)],
+            )
             for index, listing_id in enumerate(sorted(listing_ids))
             if listing_id != omit
         ),
