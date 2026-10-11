@@ -137,6 +137,7 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 - Reading a stopped Task's recovery returns OK with its permitted way on; the read does not turn the stopped Task into a success.
 - A message file that cannot be read names the line and column where reading stopped and offers that operation's schema, a few kilobytes rather than the whole catalogue.
 - The waits accept `--section`, as their compact answers offer.
+- A request refused only because a field was sent empty comes back with the corrected request to send as it stands.
 
 **Committee**
 
@@ -147,6 +148,8 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 - Resending an unchanged accepted message returns its first admission without spending another turn.
 - A wrong update reference points to open committees and offers a corrected request when the member's key identifies one.
 - The portfolio manager must rule on every outstanding challenge before giving a verdict.
+- A reservation cites the floor's facts it rests on, or their named absence; one without them is refused with its rule.
+- The review coverage fact names each part of the book's weight: filings read, checked with nothing filed, and not reached. A review that did not record the split says so.
 - When a published review is available, the CRO's material shows its current status and route rather than only the status recorded with the positions.
 - The report carries the published review and every position a member still holds, in the member's words with its message id.
 
@@ -155,6 +158,7 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 - A date's performance appears above its holdings.
 - Forward realized names the session it waits for when no realized session exists yet.
 - Team, Sessions lists the specialist sessions each lead started.
+- An accepted Evidence Analyst or CRO answer opens in full from its session's record.
 
 **Previews**
 
@@ -170,4 +174,4 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 
 **Measured**
 
-- One recorded run from the first product command to delivery-report export took about 47 minutes on a four-core execution budget without a product repair; this is indicative, not a runtime guarantee.
+- One recorded run from the first product command to delivery-report export took about 46 minutes on a four-core execution budget without a product repair; this is indicative, not a runtime guarantee.
