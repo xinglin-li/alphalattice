@@ -28,7 +28,6 @@ import re
 from collections import deque
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
-from itertools import islice
 from pathlib import Path
 from uuid import UUID
 
@@ -38,8 +37,6 @@ _MARKERS = {
     HOST_CLAUDE_CODE: (b'"usage":',),
     HOST_CODEX: (b"token_usage_record", b"turn_context", b"SubAgentActivity"),
 }
-CHILDREN = 64
-"""The most children one lead's file names that are read; more read as unavailable."""
 
 
 class NativeUsageReadLimitError(ValueError):
@@ -331,9 +328,6 @@ def claude_children(session_id: str) -> tuple[str, ...]:
 
     Returns:
         The child ids in name order; none when the lead's file or its directory is missing.
-
-    Raises:
-        NativeUsageReadLimitError: The directory holds more than `CHILDREN` children.
     """
     lead = session_file(HOST_CLAUDE_CODE, session_id)
     if lead is None:
@@ -342,11 +336,8 @@ def claude_children(session_id: str) -> tuple[str, ...]:
     if directory.is_symlink() or not directory.is_dir():
         return ()
     names = sorted(
-        path.name[len("agent-") : -len(".jsonl")]
-        for path in islice(directory.glob("agent-*.jsonl"), CHILDREN + 1)
+        path.name[len("agent-") : -len(".jsonl")] for path in directory.glob("agent-*.jsonl")
     )
-    if len(names) > CHILDREN:
-        raise NativeUsageReadLimitError("children")
     return tuple(name for name in names if re.fullmatch(r"[A-Za-z0-9_-]{1,128}", name))
 
 
@@ -394,8 +385,6 @@ def read_session(
             child = _codex_child(record)
             if child is not None:
                 children.setdefault(child)
-                if len(children) > CHILDREN:
-                    raise NativeUsageReadLimitError("children")
             continue
         if host == HOST_CLAUDE_CODE:
             response = _claude_response(record)

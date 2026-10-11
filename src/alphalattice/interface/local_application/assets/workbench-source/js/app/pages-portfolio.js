@@ -611,10 +611,12 @@ const Portfolio = (() => {
       const absenceStatus = {
         INSUFFICIENT_REALIZED_OBSERVATIONS: t('Fewer than two settled outcomes were recorded'),
         NO_REALIZED_FORWARD_PUBLICATION: t('No realized forward publication is available for this book and cost lane.'),
+        NO_INSTALLED_STRATEGY: t('Needs an installed strategy result'),
       }[absenceCode] || (!fp?.status && fp?.available !== true ? t('No realized forward publication is available for this book and cost lane.') : '');
       if (noForwardObservations) {
         const scope = [reportSpan(), dates].filter(Boolean).join(' · ');
-        const absence = absenceStatus || (absenceCode ? coded(absenceCode) : t('Not recorded'));
+        const expected = ['NO_REALIZED_FORWARD_PUBLICATION','INSUFFICIENT_REALIZED_OBSERVATIONS'].includes(absenceCode) ? LiveActivation.forwardAbsence?.(Data.subject()) : '';
+        const absence = expected || absenceStatus || (absenceCode ? coded(absenceCode) : t('Not recorded'));
         return html`<div id="portfolioPerformance">${controls}${emptyState(absence, scope ? html`<p class="caption">${scope}</p>` : '', '', 'elsewhere')}</div>`;
       }
       const status = fp?.available === true ? (availableStatus ? html`<p class="caption">${availableStatus}</p>` : '') : (absenceStatus ? html`<p class="caption">${absenceStatus}</p>` : '');
@@ -648,8 +650,8 @@ const Portfolio = (() => {
     if(typeof queueMicrotask==='function') queueMicrotask(()=>void LiveActivation.ensure(subject));
     return (
       html`${stackSlot('portfolioHeader',portfolioHead())}${LiveTasks.currentGroup?.() || ''}
- <section class="panel portfolio-detail-surface section-gap"${Data.portfolioReading() ? ' aria-busy="true"' : ''}>${tabs()}<div class="holdings-toolbar">${holdingsToolbar()}</div><div id="portfolioDetail">${details()}</div></section>${stackSlot('portfolioDateRisk',context.forward ? dateRiskPanel(context.projection) : '')}
  ${performancePanel()}${rollingOpenPeriods()}
+ <section class="panel portfolio-detail-surface section-gap"${Data.portfolioReading() ? ' aria-busy="true"' : ''}>${tabs()}<div class="holdings-toolbar">${holdingsToolbar()}</div><div id="portfolioDetail">${details()}</div></section>${stackSlot('portfolioDateRisk',context.forward ? dateRiskPanel(context.projection) : '')}
  ${stackSlot('bookActivation', LiveActivation.panel(subject))}${stackSlot('portfolioStanding', standingPanel(Data.raw()?.standing))}${stackSlot('portfolioTiming', LiveViews.researchTiming(Data.raw()?.timing))}`
     );
   }

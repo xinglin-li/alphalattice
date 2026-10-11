@@ -590,17 +590,43 @@ def unfiled(floor: Floor, now: datetime) -> list[dict[str, Any]]:
     return [floor_row(floor, m) for m in floor.messages if m["id"] not in floor.filed]
 
 
+def standing_messages(floor: Floor) -> dict[str, dict[str, str]]:
+    """What each member still holds, keyed by the message that holds it."""
+    # A challenge stands while a ruling rejects it or none answers it; a position stands until
+    # its member changes it on that point or a ruling adopts or hands the point to the person.
+    ruled = {m["reply_to"]: m["outcome"] for m in floor.messages if m["kind"] == "RULING"}
+    open_ = {m["id"] for m in floor.messages if ruled.get(m["id"], "REJECT") == "REJECT"}
+    settled = {
+        t
+        for m in floor.messages
+        if m["kind"] == "CHALLENGE" and m["id"] not in open_
+        for t in m["targets"]
+    }
+    since: dict[tuple[str, str], tuple[str, str]] = {}
+    for m in floor.messages:
+        for point, position in m["positions"].items():
+            if since.get((m["role"], point), ("", ""))[1] != position:
+                since[(m["role"], point)] = (m["id"], position)
+    held = {
+        m["id"]: dict[str, str]()
+        for m in floor.messages
+        if m["kind"] == "CHALLENGE" and m["id"] in open_
+    }
+    for (_role, point), (message, position) in since.items():
+        if point not in settled:
+            held.setdefault(message, {})[point] = position
+    return {m["id"]: held[m["id"]] for m in floor.messages if m["id"] in held}
+
+
 def standing_dissents(floor: Floor) -> list[dict[str, Any]]:
-    """The CRO's challenges no ruling adopted, and its stance where it objects to a point."""
-    rulings = {m["reply_to"]: m["outcome"] for m in floor.messages if m["kind"] == "RULING"}
+    """The CRO's standing challenges, and its messages that hold an objection to a point."""
+    held = standing_messages(floor)
     return [
         m
         for m in floor.messages
         if m["role"] == "CRO"
-        and (
-            (m["kind"] == "CHALLENGE" and rulings.get(m["id"], "REJECT") == "REJECT")
-            or (m["kind"] == "STANCE" and "OBJECT" in m["positions"].values())
-        )
+        and m["id"] in held
+        and (m["kind"] == "CHALLENGE" or "OBJECT" in held[m["id"]].values())
     ]
 
 
@@ -608,12 +634,13 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
     """The closed floor as the delivery's commentary; None while it is open.
 
     The verdict first, then each standing CRO dissent in the CRO's own words, each member's
-    final view, what was handed to the person with their relayed answer, and each ruling.
+    final view and every earlier message of it that still holds a position
+    (`standing_messages`), what was handed to the person with their relayed answer, and each
+    ruling.
     """
     closed = verdict(floor, now)
     if closed is None:
         return None
-    said = {m["role"]: m["text"] for m in floor.messages if m["kind"] in _VIEWS}
     answers = {m["reply_to"]: m["text"] for m in floor.messages if m["kind"] == "PERSON_ANSWER"}
     refs = {p["alias"]: [p["alias"], *p["targets"]] for p in floor.opened["tension_points"]}
     refs |= {
@@ -621,8 +648,8 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
         for m in floor.messages
     }
 
-    def targets(message: Mapping[str, Any]) -> str:
-        pending, named = [message["id"]], dict[str, None]()
+    def targets(*aliases: str) -> str:
+        pending, named = list(aliases), dict[str, None]()
         for alias in pending:
             if alias not in named:
                 named[alias] = None
@@ -631,7 +658,7 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
             ", ".join(a for a in named if not a.startswith("M")), floor.opened["holdings"]
         )
 
-    named = {m["id"]: targets(m) for m in floor.messages}
+    named = {m["id"]: targets(m["id"]) for m in floor.messages}
     items: list[tuple[str, dict[str, str], str, dict[str, Any]]] = [
         (
             "Committee verdict: {outcome}",
@@ -648,15 +675,7 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
             )
             for m in standing_dissents(floor)
         ),
-        *(
-            (
-                "{member}, final view",
-                {"member": r},
-                said.get(r, "Not addressed."),
-                {} if r in said else {"text_word": "Not addressed."},
-            )
-            for r in ROLES
-        ),
+        *_views(floor, targets),
         *(
             (
                 "Handed to the person: {targets}" if named[m["id"]] else "Handed to the person",
@@ -694,6 +713,33 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
         }
         for word, words, text, details in items
     ]
+
+
+def _views(floor: Floor, targets: Callable[..., str]) -> list[tuple[Any, ...]]:
+    """Each member's final view, then each earlier message of it that still holds a position
+    or a challenge (`standing_messages`), verbatim; a CRO dissent is shown as one already."""
+    last = {m["role"]: m for m in floor.messages if m["kind"] in _VIEWS}
+    held, shown = standing_messages(floor), {m["id"] for m in standing_dissents(floor)}
+    items: list[tuple[Any, ...]] = []
+    for r in ROLES:
+        final = last.get(r)
+        items.append(
+            ("{member}, final view", {"member": r}, final["text"], {})
+            if final
+            else (
+                "{member}, final view",
+                {"member": r},
+                "Not addressed.",
+                {"text_word": "Not addressed."},
+            )
+        )
+        for m in floor.messages:
+            if m["role"] == r and m["id"] in held and m is not final and m["id"] not in shown:
+                on = targets(*(held[m["id"]] or [m["id"]]))
+                word = "{member} still holds on {targets}" if on else "{member} still holds"
+                words = {"member": r, "message": m["id"], "targets": on}
+                items.append((word, words, m["text"], {"positions": held[m["id"]]}))
+    return items
 
 
 def holdings(readback: Mapping[str, Any]) -> list[dict[str, Any]]:

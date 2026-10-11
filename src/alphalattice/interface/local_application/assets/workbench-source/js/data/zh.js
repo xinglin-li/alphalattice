@@ -2,6 +2,11 @@
  * English phrase is worded differently in another part of the product. Generated data; edit
  * translations here, never in the templates. */
 window.ALPHA_ZH = {
+  "Session-wide usage only": "仅有会话整体用量",
+  "Forward realized will show settled outcomes for actionable positions from {date} after publication.": "收益发布后，将显示自 {date} 起可执行仓位的已实现收益。",
+  "Forward realized will show settled outcomes after publication.": "收益发布后，将显示已实现收益。",
+  "Forward realized will show settled outcomes for actionable positions from {date} after activation and publication.": "激活且收益发布后，将显示自 {date} 起可执行仓位的已实现收益。",
+  "Forward realized will show settled outcomes after this book is activated.": "此投资组合激活后，将显示已实现收益。",
   "Review this redacted report. Ask the person before sending it to the developers; without their yes, keep it local.": "请查看这份已脱敏的报告。发送给开发者前先征得人的同意；没有明确同意，就只保留在本机。",
   "The report accepts only the safe sentence template: Report the <OPERATION> problem to the developers. Use a registered operation name, or omit --sentence for a generated summary. Conversation text is not exported.": "问题报告只接受安全句式模板：`Report the <OPERATION> problem to the developers.`。请填入已注册的操作名，或省略 `--sentence` 使用生成的摘要。不会导出对话文本。",
   "The expected route accepts registered operation names only. Read operation list, or omit --expected-route to leave the report untriaged; no request values are exported.": "预期路径只接受已注册的操作名。运行操作列表命令 `operation list`，或省略 `--expected-route` 将报告留待分诊；不会导出请求值。",
@@ -7130,6 +7135,8 @@ window.ALPHA_ZH = {
   "CRO dissent stands on {targets}": "CRO 对 {targets} 的异议仍有效",
   "CRO dissent stands": "CRO 异议仍有效",
   "{member}, final view": "{member} 的最终意见",
+  "{member} still holds on {targets}": "{member} 对 {targets} 的立场仍有效",
+  "{member} still holds": "{member} 的立场仍有效",
   "Handed to the person: {targets}": "交由用户决定：{targets}",
   "Handed to the person": "交由用户决定",
   "PM ruling on {targets}: {outcome}": "主 PM 对 {targets} 的裁定：{outcome}",

@@ -493,7 +493,9 @@ the sealed deliverable). *Held by:* review (its round probe: `book_b1_probe` in 
 
 **PG12. One anchor, a quiet rest.** One dominant visual anchor per viewport and one dominant
 action per region. The UI at rest is quiet: an unchosen option is text, a Task at rest a row; a
-hover, a selection, activity, a warning or focus lifts a thing. *Held by:* review.
+hover, a selection, activity, a warning or focus lifts a thing. A dated Portfolio reads in this
+order: the date's summary, its performance, then its holdings (the maintainer, 2026-10-10).
+*Held by:* review, `workbench_portfolio_layout.cjs`.
 
 **PG13. Making new things.** A group's `+` in its head is a menu of what it makes new, in the
 chain's order, each opening its composer preset to its kind; a kind's list says `+ New` in its
@@ -572,6 +574,10 @@ each with its specialists and the way to it; none is said, never guessed (the ma
 the PM, the Alternative analyst and the CRO as ways into Team sessions). *Held by:*
 `collaborationRows`, `LiveTeam.sessionsNaming`, the books scene's Team sessions
 (`team_evidence.py`), the walk.
+Sessions and Participants retain the native reader's exact parent and specialist role as
+session membership, including children with usage alone. A Goal's participation count remains
+its attributed hooks and messages; session-wide usage never becomes a Goal contribution.
+*Held by:* `workbench_team.cjs` (the maintainer, 2026-10-10).
 
 ## LY. Layers and glass
 

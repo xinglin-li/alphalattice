@@ -334,10 +334,17 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
     if(!p.startsWith('/api/goals/narrative?'))return priorRead(p);const h=new URLSearchParams(p.split('?')[1]).get('goal_hash'),d=narratives[h];narrativeReads.push(h);
     if(!d)throw Error('goal.revision_unknown');return {status:'GOAL_NARRATIVE',goal_id:d.id,goal_hash:h,goal:{goal_id:d.id,goal_hash:h,revision:d.revision,declaration:{title:d.title,objective:d.question}},evidence_verification:'NOT_PERFORMED'};};
   const attributed=(row,goal=G1)=>{row.payload.subject.goal_id=goal;return row;},bound=(ref)=>{const row=attributed(message(S5,S5,'research_lead','session_bound','Fixture binding',{reference:ref}));row.payload.subject.input_channel='PRODUCT_OPERATION';return row;};
-  const oldMember=attributed(message(S5,'old-member','alphalattice_cro','answer','Earlier workspace answer'),G2),usageOnly=attributed(external('NATIVE_AGENT_USAGE',{native_session_id:S5,native_agent_id:'old-member',role:'alphalattice_cro',model:'fixture-model',input_channel:'CODEX_SESSION_FILE',last_at:'2026-09-30T12:00:00Z'},'Fixture session-wide usage'));
-  A.absorbPage(page('CONTINUED',[oldMember,usageOnly,bound(refitCase)]));hash.value='#page=team&team='+S5;c.app.page='team';TM.refresh();TM.section();await new Promise(r=>setImmediate(r));let sum=TM.summary();html=TM.section();
+  const usage5=(id,channel)=>attributed(external('NATIVE_AGENT_USAGE',{native_session_id:S5,native_agent_id:id,role:'alphalattice_cro',model:'fixture-'+id,input_channel:channel,last_at:'2026-09-30T12:00:00Z'},'Fixture usage'));
+  const oldMember=attributed(message(S5,'old-member','alphalattice_cro','answer','Earlier workspace answer'),G2),usageOnly=usage5('old-member','CODEX_SESSION_FILE');
+  A.absorbPage(page('CONTINUED',[oldMember,usageOnly,usage5('usage-child','CLAUDE_CODE_SESSION_FILE'),usage5('unknown','ACTOR_DECLARED'),bound(refitCase)]));hash.value='#page=team&team='+S5;c.app.page='team';TM.refresh();TM.section();await new Promise(r=>setImmediate(r));let sum=TM.summary();html=TM.section();
   assert.equal(sum.question.title,narratives[H1].title);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H1].question)&&html.includes(narratives[H1].title));assert.equal(sum.question.goalId,G1);assert.equal(sum.participants,1);
   assert.deepEqual(narrativeReads,[H1]);assert.ok(TM.recordOf(S5).includes(oldMember.payload.summary));
+  const native5=TM.scene(false,true).sessions.find(s=>s.id===S5);
+  assert.deepEqual([...native5.participants.keys()].sort(),[S5,'old-member','usage-child'].sort());
+  assert.equal(TM.runs([native5])[0].participants,1);assert.equal(native5.goals.size,1);
+  const paging5={pageOf:c.pageOf,pager:c.pager};c.pageOf=l=>({shown:l,page:0,pages:1});c.pager=()=>'';
+  for(const view of ['team-sessions','team-participants']){hash.value='#page='+view+'&team='+S5;c.app.page=view;const shown=teamSection();assert.equal(TM.counts().participants,1);assert.ok(view==='team-sessions'||shown.includes('fixture-old-member')&&shown.includes('fixture-usage-child')&&!shown.includes('fixture-unknown'));}
+  Object.assign(c,paging5);hash.value='#page=team&team='+S5;c.app.page='team';
   A.absorbPage(page('CONTINUED',[bound('case:'+H3)]));TM.refresh();await new Promise(r=>setImmediate(r));sum=TM.summary();html=TM.section();const head5=()=>TM.section().split('</header>')[0];
   assert.equal(sum.question.title,narratives[H3].title);assert.equal(sum.question.choice,false);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H3].question)&&!html.includes('<team-question:'));assert.equal(sum.question.goalId,G1);assert.equal(sum.question.groups.length,1);
   assert.ok(head5().includes(narratives[H3].title)&&!head5().includes(H1.slice(0,8)));assert.ok(folds.some(f=>f.key===c.t('{n} earlier revision',{n:1})&&f.body.includes(H1.slice(0,8))));
@@ -505,19 +512,18 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   c.tr=(cells)=>'<tr>'+cells.map(x=>String(x??'')).join('|')+'</tr>';
   c.pageOf=c.pageOf||((l)=>({shown:l,start:0,page:0,pages:1}));c.pager=c.pager||(()=>'');
   hash.value='#page=team-participants&team='+S9;c.app.page='team-participants';html=TM.section();
-  assert.ok(html.replace(/<[^>]*>/g,'').includes('Agent|Activities|Model|Input|Output|Cache read|Cache written'),'the folder keeps compact column labels: '+html.slice(html.indexOf('<table>'),html.indexOf('<table>')+300));
-  assert.ok(html.includes('<span class="hint" data-tip="All usage values are tokens. Input excludes cache reads and cache writes." tabindex="0">Input</span>'),'the existing keyboard-accessible header hint states token units and the uncached-input definition');
+  assert.ok(html.replace(/<[^>]*>/g,'').includes('Agent|Activities|Model|Input|Output|Cache read|Cache written'),'compact labels: '+html.slice(html.indexOf('<table>'),html.indexOf('<table>')+300));
+  assert.ok(html.includes('<span class="hint" data-tip="All usage values are tokens. Input excludes cache reads and cache writes." tabindex="0">Input</span>'),'accessible units');
   const rows9=html.split('<tr>').slice(1),row9=rows9.find((r)=>r.includes('gpt-6'))||'';
-  assert.ok(rows9[0].includes('Lead')&&rows9[0].includes('no usage read'),'the lead first; a member with no reading says so: '+rows9[0]);
-  assert.ok(row9.includes('gpt-6')&&row9.includes('high')&&/120\D+50\D+25\D+6/.test(row9)&&row9.includes('differs from its card'),'a row of a member: its model, efforts, latest tokens and the card it differs from: '+row9);
+  assert.ok(rows9[0].includes('Lead')&&rows9[0].includes('no usage read'),'lead and absence: '+rows9[0]);
+  assert.ok(row9.includes('gpt-6')&&row9.includes('high')&&/120\D+50\D+25\D+6/.test(row9)&&row9.includes('differs from its card'),'member reading: '+row9);
   assert.ok(row9.includes('1 answer')&&row9.includes('1 message'),'its exchanges by kind: '+row9);
-  assert.ok(!html.includes('<tfoot>')&&!html.includes('Recorded tokens so far'),'U196: a session foot cannot add parent and child counts without non-overlap evidence');
+  assert.ok(!html.includes('<tfoot>')&&!html.includes('Recorded tokens so far'),'no inferred total');
   assert.ok(row9.includes('Codex session file')&&row9.includes('sampled '),'the latest member reading names its source and source sample time: '+row9);
   countWords.I18N.set('zh');const zh51=TM.section();
   assert.ok(zh51.replace(/<[^>]*>/g,'').includes('智能体|活动|模型|输入|输出|缓存读取|缓存写入'),'the compact Chinese column labels keep the same meanings');
   assert.ok(zh51.includes('data-tip="所有用量的单位均为 token。输入不含缓存读取和缓存写入。" tabindex="0">输入</span>'),'the Chinese hint keeps the same token units and uncached-input definition');
-  // U196: both hosts, direct members sharing a role, absent fields, and a later cumulative
-  // snapshot are read independently. A known zero remains zero; an unknown count stays blank.
+  // U196: host siblings, absent counters and cumulative snapshots stay independent.
   countWords.I18N.set('en');
   for(const [host,source,label] of [['codex','CODEX_SESSION_FILE','Codex session file'],['claude-code','CLAUDE_CODE_SESSION_FILE','Claude Code session file']]){
     const sid='sess-196-'+host,childA='child-196-a-'+host,childB='child-196-b-'+host,unknown='child-196-unknown-'+host;
@@ -537,30 +543,30 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
     ]));
     hash.value='#page=team-participants&team='+sid;c.app.page='team-participants';
     const first196=TM.scene().sessions.find(s=>s.id===sid),a196=first196.participants.get(childA),b196=first196.participants.get(childB);
-    assert.equal(a196.usage.get('gpt-6').source_kind,source,'the real input_channel-only event retains its exact source');
-    assert.equal(b196.usage.get('gpt-6').source_kind,source,'the same-role sibling retains its independently projected source');
-    assert.equal(first196.participants.get(unknown).usage.get('unknown-model').source_kind,null,'an unadmitted channel cannot infer a source from the host');
-    assert.equal(a196.usage.get('gpt-6').input,11);assert.equal(b196.usage.get('gpt-6').input,21,'members sharing a role retain their exact native ids');
-    assert.equal(JSON.stringify([...first196.participants.get(unknown).usage.values()].map(u=>[u.responses,u.input,u.output,u.cacheRead,u.cacheWrite])),JSON.stringify([[null,null,null,null,null]]),'missing counters supply no measured zero');
+    assert.equal(a196.usage.get('gpt-6').source_kind,source,'exact native source');
+    assert.equal(b196.usage.get('gpt-6').source_kind,source,'independent sibling source');
+    assert.equal(first196.participants.get(unknown).usage.get('unknown-model').source_kind,null,'unadmitted channel');
+    assert.equal(a196.usage.get('gpt-6').input,11);assert.equal(b196.usage.get('gpt-6').input,21,'exact sibling ids');
+    assert.equal(JSON.stringify([...first196.participants.get(unknown).usage.values()].map(u=>[u.responses,u.input,u.output,u.cacheRead,u.cacheWrite])),JSON.stringify([[null,null,null,null,null]]),'absent counters');
     let shown196=TM.section(),rows196=shown196.split('<tr>').slice(1);
-    assert.equal(rows196.filter(row=>row.includes('gpt-6')).length,3,'the parent and both same-role children each keep their own model row');
-    assert.ok(rows196.filter(row=>row.includes('gpt-6')).every(row=>row.includes(label)&&row.includes('sampled ')),'each member names this host\'s source and sample time');
+    assert.equal(rows196.filter(row=>row.includes('gpt-6')).length,3,'independent model rows');
+    assert.ok(rows196.filter(row=>row.includes('gpt-6')).every(row=>row.includes(label)&&row.includes('sampled ')),'source and sample');
     const unknown196=rows196.find(row=>row.includes('unknown-model'))||'';
-    assert.ok(unknown196.includes('Usage source not observed')&&unknown196.includes('Sample time not observed')&&/\|\|\|\|<\/tr>/.test(unknown196),'unknown counters/source/time remain visible as unknown without zeros: '+unknown196);
-    assert.ok(!shown196.includes('<tfoot>')&&!shown196.includes('Recorded tokens so far'),'neither host receives a fabricated parent/child total');
+    assert.ok(unknown196.includes('Usage source not observed')&&unknown196.includes('Sample time not observed')&&/\|\|\|\|<\/tr>/.test(unknown196),'unknown reading: '+unknown196);
+    assert.ok(!shown196.includes('<tfoot>')&&!shown196.includes('Recorded tokens so far'),'no inferred total');
     A.absorbPage(page('CONTINUED',[usage(childA,'alternative_analyst',[3,31,3,0,32],{...metadata,last_at:'2026-09-14T12:08:00Z'})]));
     const latest196=TM.scene().sessions.find(s=>s.id===sid);
-    assert.equal(latest196.participants.get(childA).usage.size,1);assert.equal(latest196.participants.get(childA).usage.get('gpt-6').input,31,'a cumulative snapshot replaces the same member/model reading');
+    assert.equal(latest196.participants.get(childA).usage.size,1);assert.equal(latest196.participants.get(childA).usage.get('gpt-6').input,31,'latest cumulative reading');
     assert.equal(latest196.participants.get(childA).usage.get('gpt-6').last_at,'2026-09-14T12:08:00Z');
-    assert.equal(latest196.participants.get(childB).usage.get('gpt-6').input,21,'one member\'s new snapshot does not rewrite its same-role sibling');
+    assert.equal(latest196.participants.get(childB).usage.get('gpt-6').input,21,'independent cumulative reading');
     A.absorbPage(page('CONTINUED',[usage(childA,'alternative_analyst',[3,31,3,0,32],{...metadata,input_channel:null,source_kind:source,last_at:'2026-09-14T12:08:00Z'})]));
-    assert.equal(TM.scene().sessions.find(s=>s.id===sid).participants.get(childA).usage.get('gpt-6').source_kind,source,'a legacy explicit source remains readable without an input channel');
-    for(const child of [childA,childB]){TM.openMember(child);assert.equal(navigations.at(-1)[1].actor,child,'the member route keeps the exact child id');}
+    assert.equal(TM.scene().sessions.find(s=>s.id===sid).participants.get(childA).usage.get('gpt-6').source_kind,source,'legacy source');
+    for(const child of [childA,childB]){TM.openMember(child);assert.equal(navigations.at(-1)[1].actor,child,'exact member route');}
   }
-  for(const value of [undefined,null,'',' ','-1','1.5','1e3','0x10','NaN','Infinity',true,Number.MAX_SAFE_INTEGER+1])assert.equal(TM.usageCount(value),'','unobserved or invalid counters cannot become zero: '+String(value));
+  for(const value of [undefined,null,'',' ','-1','1.5','1e3','0x10','NaN','Infinity',true,Number.MAX_SAFE_INTEGER+1])assert.equal(TM.usageCount(value),'','invalid counter: '+String(value));
   assert.equal(TM.usageCount('0'),'0','a recorded zero is still a zero');assert.equal(TM.usageCount('12'),'12');
   for(const metadata of [{},{source_kind:'UNKNOWN',sample_time_kind:'LATEST_USAGE_RECORD_AT',last_at:'not-a-time'},{source_kind:'CODEX_SESSION_FILE',sample_time_kind:'UNKNOWN',last_at:'2026-09-14T12:08:00Z'}]){
-    assert.ok(TM.usageMetadata(metadata).includes('Sample time not observed'),'a missing, malformed or unproved time does not read as sampled');
+    assert.ok(TM.usageMetadata(metadata).includes('Sample time not observed'),'unknown sample');
   }
   Object.assign(c,{table:was51.table,tr:was51.tr,pageOf:was51.pageOf,pager:was51.pager,hint:was51.hint,t:was51.t,I18N:was51.I18N});c.app.page=was51.page;
   // U53: the Product record leads with the session's own work; a person's reads on the Local Web are one line, closed until

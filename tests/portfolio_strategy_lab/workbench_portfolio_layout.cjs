@@ -66,6 +66,7 @@ vm.runInContext(fs.readFileSync(path.join(appDir,'pages-portfolio.js'),'utf8'),c
 
 const render = () => {statTiles.length=0;return c.PAGES.portfolio();};
 let markup=render();
+assert.ok(markup.indexOf('id="portfolioHeader"') < markup.indexOf('id="portfolioPerformance"') && markup.indexOf('id="portfolioPerformance"') < markup.indexOf('class="panel portfolio-detail-surface'),'date summary precedes performance, then holdings');
 assert.equal(headDetails.subject,undefined,'the book head does not own the holdings date picker');
 assert.equal(headStanding,'');raw.review_standing={status:'NOT_REVIEWED'};render();assert.equal(headStanding,'NOT_REVIEWED:NOT_REVIEWED');delete raw.review_standing;
 assert.match(markup,/Holdings113/,'the Historical badge uses the owner current holding count, not the 129-row replay union');
@@ -91,7 +92,7 @@ assert.match(markup,/2\.5%/);
 assert.doesNotMatch(markup,/1\.5%|Execution weight|<th>Target weight/);
 assert.match(markup,/Conditional estimated weights at 2024-08-19; they are not actual fills/);
 assert.match(markup,/Change compares formation-close estimates/);
-const emptyPerformance=markup.slice(markup.indexOf('<div id="portfolioPerformance">'),markup.indexOf('<div id="bookActivation">'));
+const emptyPerformance=markup.slice(markup.indexOf('<div id="portfolioPerformance">'),markup.indexOf('class="panel portfolio-detail-surface'));
 assert.match(emptyPerformance,/data-empty="elsewhere"/,'zero observations retain an ordinary owner absence state after the source tabs');
 assert.match(emptyPerformance,/Fewer than two settled outcomes were recorded/);
 assert.match(emptyPerformance,/0 observations/,'the scope retains the owner-reported observation count');
@@ -211,8 +212,8 @@ function performanceReader(source,locale,theme,width) {
   view.chooseLocale(locale);
   vm.runInContext(source,view,{filename:'pages-portfolio.js'});
   const fragment=()=>{
-    const page=String(view.PAGES.portfolio()),start=page.indexOf('<div id="portfolioPerformance">'),end=page.indexOf('<div id="bookActivation">');
-    assert.ok(start>=0 && end>start,'the actual performance producer precedes Activation');
+    const page=String(view.PAGES.portfolio()),start=page.indexOf('<div id="portfolioPerformance">'),end=page.indexOf('class="panel portfolio-detail-surface');
+    assert.ok(start>=0 && end>start,'the actual performance producer precedes holdings');
     return page.slice(start,end);
   };
   return {owner,fragment,page:()=>String(view.PAGES.portfolio()),studyFacts:view.strategyFacts,translate:view.translate,setMode:(next)=>{selectedMode=next;}};
@@ -279,6 +280,8 @@ for(const locale of ['en','zh-CN'])for(const theme of ['light','dark'])for(const
   reader.owner.forward_performance={available:false,status:'NO_REALIZED_FORWARD_PUBLICATION'};
   fragment=assertEmptyPerformance(reader,'No realized forward publication is available for this book and cost lane.');
   assert.doesNotMatch(fragment,/2024-|2026-|\d+ observations|\d+ 个观测/,'a missing publication invents neither dates nor a count');
+  reader.owner.forward_performance={available:false,status:'NO_INSTALLED_STRATEGY'};
+  assertEmptyPerformance(reader,'Needs an installed strategy result');
 
   reader.owner.forward_performance=zeroOwner();
   reader.owner.forward_performance.selected_window_metric_provenance.status='UNDECLARED_REALIZED_OWNER_STATUS';
@@ -572,7 +575,7 @@ async function projectionAssertions() {
  const read=expression=>clone(vm.runInContext(expression,c));
  const render=()=>String(c.probe.PAGES.portfolio());
  const text=markup=>markup.replace(/<[^>]*>/g,'');
- const performance=()=>{const markup=render();return markup.slice(markup.indexOf('id="portfolioPerformance"'),markup.indexOf('id="bookActivation"'));};
+ const performance=()=>{const markup=render();return markup.slice(markup.indexOf('id="portfolioPerformance"'),markup.indexOf('class="panel portfolio-detail-surface'));};
  const selectedSource=()=>[...performance().matchAll(/<button([^>]*)>(.*?)<\/button>/gs)].filter(([,attrs])=>attrs.includes('role="tab"')&&attrs.includes('aria-selected="true"')).map(([,attrs,body])=>text(body));
  const hasClass=(node,name)=>node.attrs.class?.split(' ').includes(name);
  const performanceNodes=()=>markupNodes(performance());

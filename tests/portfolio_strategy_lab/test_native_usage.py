@@ -18,7 +18,6 @@ from alphalattice.interface.local_application.native_bridge import (
 )
 from alphalattice.interface.local_application.native_setup import declare_project
 from alphalattice.interface.local_application.native_usage import (
-    CHILDREN,
     HOST_CLAUDE_CODE,
     HOST_CODEX,
     ModelUsage,
@@ -455,6 +454,14 @@ def test_the_host_reads_the_lead_and_the_children_its_own_session_records(tmp_pa
     assert later[0]["subject"]["responses"] == "3"
     assert later[0]["producer_sequence"] != filed[0]["producer_sequence"]
     assert later[1] == filed[1]
+    for number in range(65):
+        _claude_child(config, f"many-{number}", "alphalattice_cro", spent)
+    many = []
+    receipt = read_session_usage(
+        project, binding, publish=lambda d: many.append(d) or {"status": "APPENDED"}
+    )
+    assert receipt["status"] == "DELIVERED"
+    assert len(many) == 67 and len(receipt["participants"]) == 68
 
 
 def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatch):
@@ -539,6 +546,27 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
     assert members == {lead: "DELIVERED", child: "DELIVERED", stray: "UNAVAILABLE"}
     assert [d["subject"]["native_agent_id"] for d in filed] == [lead, child]
     assert filed[1]["subject"]["role"] == "alphalattice_risk"
+    for number in range(65):
+        extra = str(uuid4())
+        rollout(
+            extra,
+            {
+                "type": "session_meta",
+                "payload": {"id": extra, "source": {"subagent": {"thread_spawn": spawn}}},
+            },
+            turn,
+            usage(f"many-{number}"),
+        )
+        with codex_session_file(lead).open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(activity(extra, "started")) + "\n")
+    many = []
+    receipt = read_session_usage(
+        project,
+        NativeResearchBinding.read(project),
+        publish=lambda d: many.append(d) or {"status": "APPENDED"},
+    )
+    assert len(many) == 67 and len(receipt["participants"]) == 68
+    assert receipt["status"] == "PARTIAL"  # The earlier stray remains unverified.
 
 
 def test_claude_children_are_listed_from_the_leads_own_directory_alone(tmp_path, monkeypatch):
@@ -553,10 +581,9 @@ def test_claude_children_are_listed_from_the_leads_own_directory_alone(tmp_path,
         _write(config / "projects/p/lead-session/subagents" / name, [])
     _write(config / "projects/p/other-session/subagents/agent-c.jsonl", [])
     assert claude_children("lead-session") == ("a", "b")
-    for number in range(CHILDREN + 1):
+    for number in range(65):
         _write(config / f"projects/p/lead-session/subagents/agent-many{number}.jsonl", [])
-    with pytest.raises(NativeUsageReadLimitError):
-        claude_children("lead-session")
+    assert len(claude_children("lead-session")) == 67
 
 
 @pytest.mark.parametrize("off", ["binding", "person", "unknown_control", "unreadable_control"])

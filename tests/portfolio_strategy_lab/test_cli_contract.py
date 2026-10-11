@@ -296,8 +296,9 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
         "RESEARCH_UPDATE_PLAN",
     ],
 )
+@pytest.mark.parametrize("missing", [False, True])
 def test_a_missing_or_invalid_selector_offers_an_admitted_discovery_read(
-    read_only_live, tmp_path, operation
+    read_only_live, tmp_path, operation, missing
 ) -> None:
     """A request's field refusal names its rule and offers a read without choosing another plan."""
     saved = tmp_path / "request.json"
@@ -311,9 +312,9 @@ def test_a_missing_or_invalid_selector_offers_an_admitted_discovery_read(
         if operation == "COMMITTEE_READ"
         else "update_plan_hash"
     )
-    if field.endswith("task_id"):
+    if field.endswith("task_id") and not missing:
         request[field] = "?"
-    if field == "strategy_package_id":
+    if field == "strategy_package_id" and not missing:
         request[field] = "NOT_AN_INSTALLED_PACKAGE"
     saved.write_text(json.dumps(request), encoding="utf-8")
     code, refusal, _ = _cli(read_only_live.workspace, "request", "--file", str(saved))

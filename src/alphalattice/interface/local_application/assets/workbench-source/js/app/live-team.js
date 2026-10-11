@@ -95,7 +95,7 @@ const LiveTeam = (() => {
   }
   /* ---- the scene, derived from the retained feed ---- */
   const sessionState = id => ({id, participants: new Map(), entries: new Map(), byEvent: new Map(), references: new Set(), producers: new Set(), facts: [], unknownKinds: [], goals: new Set(), last: 0});
-  function scene(fullRecord = false) {
+  function scene(fullRecord = false, includeSessionMembers = false) {
     const sessions = new Map(), unknown = [];
     const external = externalItems(), scopes = new Map(), contributors = new Map();
     for (const item of external) {
@@ -114,18 +114,21 @@ const LiveTeam = (() => {
       if (!p.event_kind) { unknown.push({item, reason: 'payload not retained'}); continue; }
       const kind = KINDS[p.event_kind], sid = sub.native_session_id || '';
       const scope = scopes.get(sid);
-      if (!fullRecord && scope && (sub.goal_id !== scope || (kind === 'usage' && !contributors.get(sid + ':' + scope)?.has(sub.native_agent_id)))) continue;
+      const outsideGoal = scope && (sub.goal_id !== scope || (kind === 'usage' && !contributors.get(sid + ':' + scope)?.has(sub.native_agent_id)));
+      const nativeMember = includeSessionMembers && kind === 'usage' && ['CODEX_SESSION_FILE', 'CLAUDE_CODE_SESSION_FILE'].includes(sub.input_channel);
+      if (!fullRecord && outsideGoal && !nativeMember) continue;
       if (!kind) { (sid ? session(sid).unknownKinds : unknown).push({item, reason: 'unknown event kind'}); continue; }
       const s = session(sid);
       s.goalScope = scope || '';
+      s.goalParticipants = contributors.get(sid + ':' + scope)?.size || 0;
       s.producers.add(p.producer_id + ':' + short(p.producer_session, SHORT.hash));
-      if (sub.goal_id) s.goals.add(sub.goal_id); // U25: since GR2 a row's subject names the goal the Host filed it under
-      if (kind === 'usage') { // U31: what an agent had run and spent, by model; its latest reading counts, never a sum of readings
+      if (sub.goal_id && (!outsideGoal || fullRecord)) s.goals.add(sub.goal_id); // A session-wide reading does not add a Goal contribution.
+      if (kind === 'usage') { // U31: the latest cumulative reading per model, never a sum.
         if (sub.native_agent_id && sub.model) { const pt = participant(s, sub.native_agent_id, sub.role), held = pt.usage.get(sub.model), n = (k) => usageNumber(sub[k]);
           if (!held || held.ordinal < item.ordinal) pt.usage.set(sub.model, {ordinal: item.ordinal, model: sub.model, efforts: String(sub.efforts || '').split(',').filter(Boolean), pinDiffers: String(sub.pin_differs || '').split(',').filter(Boolean), responses: n('responses'), input: n('input_tokens'), output: n('output_tokens'), cacheRead: n('cache_read_tokens'), cacheWrite: n('cache_write_tokens'), source_kind: sub.source_kind || (sub.input_channel === 'CODEX_SESSION_FILE' || sub.input_channel === 'CLAUDE_CODE_SESSION_FILE' ? sub.input_channel : null), sample_time_kind: sub.sample_time_kind || null, last_at: sub.last_at || null}); }
         s.last = Math.max(s.last, item.ordinal); continue;
       }
-      // The observation is the identity; the client's native_event_id is a declared grouping key.
+      // An observation is an identity; a native event is a grouping claim.
       const entry = {id: item.observation_id, ordinal: item.ordinal, kind, at: item.occurred_at, timeKind: sub.source_time_kind || null, channel: sub.input_channel || null, availability: item.availability, authority: item.authority, source: item.source_id + ':' + item.source_sequence, subject: sub, payload: p, actor: sub.native_agent_id || null, role: sub.role || null, declaredEvent: sub.native_event_id || null, groupKey: item.task_id || p.operation_ref || item.observation_id, taskId: item.task_id || null, replayOf: null, conflictsWith: []};
       if (kind === 'message') {
         entry.messageKind = Object.hasOwn(MESSAGE_KINDS, sub.message_kind) ? sub.message_kind : null;
@@ -153,10 +156,8 @@ const LiveTeam = (() => {
       s.entries.set(entry.id, entry);
       s.last = Math.max(s.last, item.ordinal);
     }
-    // Product observations carry the requesting session independently of what its messages
-    // cite. This is request provenance, never native authorship or execution authority. Other
-    // observations still join only by exact qualified references. One hop follows the Task
-    // named by the owner's return; External payloads inside mixed groups name nothing here.
+    // Requests name their session; this proves no native authorship. Other facts join exact
+    // references or one owner's Task return, never an External payload in a mixed group.
     for (const s of sessions.values()) {
       const product = [];
       for (const g of LiveActivity.retained()) {
@@ -191,12 +192,11 @@ const LiveTeam = (() => {
     peerPrefix = ids.length > 1 ? ids.reduce((n, id) => { let i = 0; while (i < n && i < id.length && id[i] === ids[0][i]) i++; return i; }, ids[0].length) : 0;
     return {sessions: [...sessions.values()].sort((a, b) => b.last - a.last), unknown};
   }
-  /* The foreground PM is a declaration that needs both halves: the parent session's own id as
-   * the agent id, and the research_lead role. Either half alone is shown as what it is. */
+  const participantCount = s => s.goalScope ? s.goalParticipants : s.participants.size;
+  /* A Main PM needs both the parent session id and research_lead role. */
   const isLead = (pt, s) => Boolean(s.id) && pt.id === s.id && pt.roles.has(PM_ROLE);
-  /* The specialists a session holds, in the chain's order (ROLE_NAMES): the ways into Team by role -- the Sessions
-   * lobby's Participant filter, and the sessions an Evidence book names (the user, 2026-09-26). The Main PM leads
-   * every session, so it is no filter. Two cards' spellings of one role are one role to the reader. */
+  /* Sessions and book Facts use the specialist order; equivalent cards share a role.
+   * The Main PM leads every session and is no filter. */
   const ROLE_SAME = {alternative_analyst: 'alphalattice_evidence_analyst', independent_cro: 'alphalattice_cro'};
   const ROLE_ORDER = Object.keys(ROLE_NAMES);
   const rolesOf = (s) => [...new Set([...s.participants.values()].filter((pt) => !isLead(pt, s)).flatMap((pt) => [...pt.roles]).map((r) => ROLE_SAME[r] || r))]
@@ -209,9 +209,8 @@ const LiveTeam = (() => {
     return roles.length ? roles.map(roleName).join(', ') : '';
   }
   const actorName = (s, id) => { if (!id) return t('agent id not declared'); const pt = s.participants.get(id); return pt && pt.roles.size ? [...pt.roles].map(roleName).join('/') : short(id); };
-  /* A native path is a recipient locator, never an agent's display name or an author.
-   * Resolve only the unique path a retained, bound start hook selected; no role is inferred
-   * from a path's spelling. Conflicting paths or participants leave the recipient unknown. */
+  /* A path names one recipient through one bound start hook, never its spelling or authorship.
+   * Conflicting paths or participants leave the recipient unknown. */
   function recipientParticipant(s, id) {
     if (!id) return null;
     const direct = s.participants.get(id);
@@ -743,7 +742,7 @@ const LiveTeam = (() => {
     }));
     const goals = [...s.goals].map((id) => link(html`<span class="mono">${short(id, SHORT.id)}</span>`, 'goal', 'text-btn', {goal: id}));
     // U51: the models and tokens are the Participants folder's, by member and model, the session's totals at its foot
-    return [[t('Lead'), lead ? actorName(s, lead.id) : html`<span class="muted">${t('no main PM declared')}</span>`], ...(span ? [[t('Span'), span]] : []), ...(goals.length ? [[t('Goals'), html`${goals}`]] : []), ...(s.goalScope ? [[t('Participants'), hint(s.participants.size, t('Only contributions attributed to this Goal count as participation; session-wide usage alone does not.'))]] : []), ...(q.kind !== 'none' ? [[t('Question'), questionSource(q)]] : []), ...(references.length ? [[t('Declared references'), html`${references}`]] : [])];
+    return [[t('Lead'), lead ? actorName(s, lead.id) : html`<span class="muted">${t('no main PM declared')}</span>`], ...(span ? [[t('Span'), span]] : []), ...(goals.length ? [[t('Goals'), html`${goals}`]] : []), ...(s.goalScope ? [[t('Participants'), hint(participantCount(s), t('Only contributions attributed to this Goal count as participation; session-wide usage alone does not.'))]] : []), ...(q.kind !== 'none' ? [[t('Question'), questionSource(q)]] : []), ...(references.length ? [[t('Declared references'), html`${references}`]] : [])];
   }
   /* The thread's product lines (C4 item 1): what the members' work made the product record -- never a
    * person's Local Web reads of the session's references (the owner records `caller HUMAN`), nor what was
@@ -904,7 +903,7 @@ const LiveTeam = (() => {
       const all = entriesOf(s), q = questionOf(s, all.filter((e) => !e.replayOf));
       const objections = all.filter((e) => !e.replayOf && e.messageKind === 'objection'), unresolved = objections.filter((e) => !e.pmResponses.length).length;
       const lead = [...s.participants.values()].find((pt) => isLead(pt, s));
-      return {id: s.id, kind: 'session', name: titleOf(q), question: q.text || '', state: 'recorded', starter: lead ? actorName(s, lead.id) : '', started: all.map((e) => e.at).filter(Boolean).sort()[0] || '', finished: latestAt(s), exchanges: s.entries.size, participants: s.participants.size, roles: rolesOf(s), unread: [...s.entries.keys()].filter((id) => S.incoming.has(id)).length, objections: objections.length, unresolved, object: s};
+      return {id: s.id, kind: 'session', name: titleOf(q), question: q.text || '', state: 'recorded', starter: lead ? actorName(s, lead.id) : '', started: all.map((e) => e.at).filter(Boolean).sort()[0] || '', finished: latestAt(s), exchanges: s.entries.size, participants: participantCount(s), roles: rolesOf(s), unread: [...s.entries.keys()].filter((id) => S.incoming.has(id)).length, objections: objections.length, unresolved, object: s};
     });
   }
   /* Sessions as a lobby (F1, law 136). N5 (law 134): a session is its short reference (what tells
@@ -975,7 +974,7 @@ const LiveTeam = (() => {
   // N3: what a section's caption said is the page's (i)
   const INFO = {'team-outputs': 'Accepted answers retain their recorded author, submitter and sealed references. Tasks appear only when this session submitted them; goals appear only when bound to it.', 'team-participants': 'Each member\'s latest reading by model: its own so far, never a sum of readings, and not attributed to a goal or a Task.', 'team-evidence': 'Operations and their answers attributed to this session or naming its exact references, with Task Control facts and verified artifacts; the session\'s own work first, a person\'s reads on the Local Web in one line.'};
   function section() {
-    const {sessions, unknown} = scene(), sel = selection(), view = app.page;
+    const view = app.page, {sessions, unknown} = scene(false, ['team-sessions', 'team-participants'].includes(view)), sel = selection();
     // law 123: a session's page with no session chosen opens Sessions, the Team's Home
     if (view !== 'team-sessions' && !sel.session && sessions.length) { app.page = 'team-sessions'; replaceHash({page: 'team-sessions'}); return section(); }
     const chosen = sel.session ? sessions.find((s) => s.id === sel.session) || (sel.committee ? sessionState(sel.session) : null) : null;
@@ -1042,7 +1041,7 @@ const LiveTeam = (() => {
       const made = [...by].map(([k, n]) => (PLURAL_KINDS[k] ? countText(n, ...PLURAL_KINDS[k]) : countText(n, '{n} message', '{n} messages'))).join(' · ') || t('No exchange retained');
       const latest = mine.at(-1), pins = pinWords(pt);
       const member = html`<span class="team-member-mark" data-role="${roleTone(s, pt.id)}">${icon(roleIcon(s, pt.id))}</span> ${btnAttrs(actorName(s, pt.id), 'team-member-open', pt.id, 'text-btn')}${isLead(pt, s) ? html` <span class="sub-cell">${t('Lead')}</span>` : ''}`;
-      const exchanges = html`${made}${latest ? html`<span class="sub-cell">${t('latest')} ${clock(latest.at)}</span>` : ''}`;
+      const exchanges = html`${made}${latest ? html`<span class="sub-cell">${t('latest')} ${clock(latest.at)}</span>` : ''}${s.goalScope && !pt.messages.length && !pt.hooks.length && pt.usage.size ? html`<span class="sub-cell">${t('Session-wide usage only')}</span>` : ''}`;
       const usage = [...pt.usage.values()].sort((a, b) => a.model.localeCompare(b.model));
       if (!usage.length) return [tr([member, exchanges, html`<span class="muted">${pins ? hint(t('no usage read'), pins) : t('no usage read')}</span>`, '', '', '', ''])];
       return usage.map((u, i) => {
@@ -1211,7 +1210,7 @@ const LiveTeam = (() => {
     linkExchanges(s, all);
     const latest = all.filter((e) => e.kind === 'message').at(-1) || null;
     const objections = all.filter((e) => e.messageKind === 'objection');
-    return {sessions: sessions.length, session: s.id, selected: Boolean(sel), participants: s.participants.size, unread: [...s.entries.keys()].filter((id) => S.incoming.has(id)).length,
+    return {sessions: sessions.length, session: s.id, selected: Boolean(sel), participants: participantCount(s), unread: [...s.entries.keys()].filter((id) => S.incoming.has(id)).length,
       question: questionOf(s, all),
       latest: latest ? {actor: actorName(s, latest.actor), kind: kindWords(latest), text: latest.text, at: latest.at, id: latest.id} : null,
       objections: objections.length, unresolved: objections.filter((e) => !e.pmResponses.length).length};
@@ -1235,7 +1234,7 @@ const LiveTeam = (() => {
   function counts() {
     const s = scene().sessions.find((v) => v.id === selection().session);
     // U54's 产出 carries no count: known only once both its reads answer, it would appear on one tab and move the others
-    return s ? {exchanges: entriesOf(s).filter((e) => !e.replayOf && e.channel !== 'PRODUCT_COMMITTEE').length, participants: s.participants.size, observations: s.facts.length} : {};
+    return s ? {exchanges: entriesOf(s).filter((e) => !e.replayOf && e.channel !== 'PRODUCT_COMMITTEE').length, participants: participantCount(s), observations: s.facts.length} : {};
   }
   return {pages: PAGES_SET, hasCommittee, readCommittee, chooseCommitteePoint, committeeRead: () => { const sel = selection(), s = scene().sessions.find(s => s.id === sel.session) || (sel.session && sel.committee ? sessionState(sel.session) : null); if (s) void readCommittee(s, true); }, usageCount, usageTokenWords, usageMetadata, sessionLabel, roleName, recipientName, section, scene, select, counts, openMember, turnParticipants, turnOutputs, outputsOlder, outputsRead, leaveOutputs, setFactKind, readOlder, toggleWords, showActor, showEvent, revealExchange, more, toggleReplies, toggleFold, markSeen, arrivals, refresh, open, resolve, verify, sessionOf, qualify, productReferences, summary, recordOf, sessionsNaming, questionSource, chooseQuestion, routeContext, runs, retained: () => S.retained, resolved: () => S.resolved};
 })();

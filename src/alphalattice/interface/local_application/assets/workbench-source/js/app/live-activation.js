@@ -101,6 +101,15 @@ const LiveActivation = (() => {
   const ACTIVATION_STAGES=[['book','Review and schedule'],['models','Model grants'],['seed','Calibration seed'],['checkpoint','Checkpoint and publication'],['bind','Manifest binding']];
   const activationTiming=(value)=>kv(ACTIVATION_STAGES.filter(([stage])=>value.activating?.stage===stage || value.stage_seconds?.[stage]!=null).map(([stage,word])=>[t(word),durationText(Number(value.activating?.stage===stage ? value.activating.elapsed_seconds : value.stage_seconds[stage])*1000)]));
   const bookRef = (task, subject) => (task === subject.task_id ? t('this book') : html`<span class="mono">${short(task)}</span>`);
+  function forwardAbsence(subject) {
+    const a=S.pkg===packageOf(subject) && !S.error ? S.value : null;
+    const active=a?.status==='ACTIVE' && a.book_task_id===subject.task_id;
+    if (!active && !(a?.status==='INACTIVE' && a.next_requests?.activate?.task_id===subject.task_id)) return '';
+    const date=a.strategy_dates?.first_actionable_session;
+    return t(active
+      ? date ? 'Forward realized will show settled outcomes for actionable positions from {date} after publication.' : 'Forward realized will show settled outcomes after publication.'
+      : date ? 'Forward realized will show settled outcomes for actionable positions from {date} after activation and publication.' : 'Forward realized will show settled outcomes after this book is activated.',{date});
+  }
   function panelOf(subject) {
     if (!packageOf(subject) || S.pkg !== packageOf(subject)) return '';
     if (S.error) return notRead(t('Activation not read'), S.error, explainCode(String(S.error).split(':')[0]), btn(t('Read again'), 'activation-read', '', 'button compact'));
@@ -185,5 +194,5 @@ const LiveActivation = (() => {
       return objectRow({lead: tile('activity', 'accent'), name: dated ? t('Positions for {date}',{date:dated}) : codeWords(f.strategy_package_id), why: dated ? codeWords(f.strategy_package_id) : '', to: f.book_task_id ? {page: 'portfolio', extra: {book: f.book_task_id,performance:dated ? 'forward' : ''}} : null, cls: 'forward-row'}, {key: 'forward:' + f.strategy_package_id, columns: ['state', 'update', 'facts'], props: [stateLine(STATES[f.status][0], {word: t(STATES[f.status][1]), next: ''}), briefUpdate, facts], time: f.activated_at ? when(f.activated_at) : '', actions: ways});
     });
   }
-  return {ensure, observe, panel: panelOf, confirm, commit, read: () => ensure(Data.subject(), true), forwardRows};
+  return {ensure, observe, panel: panelOf, confirm, commit, read: () => ensure(Data.subject(), true), forwardRows, forwardAbsence};
 })();
