@@ -716,29 +716,34 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
 
 
 def _views(floor: Floor, targets: Callable[..., str]) -> list[tuple[Any, ...]]:
-    """Each member's final view, then each earlier message of it that still holds a position
-    or a challenge (`standing_messages`), verbatim; a CRO dissent is shown as one already."""
+    """Each member's final view first, then each earlier message of it that still holds a
+    position or a challenge (`standing_messages`), each verbatim with its id, the points it
+    holds and its positions; a CRO dissent is shown as one already."""
     last = {m["role"]: m for m in floor.messages if m["kind"] in _VIEWS}
     held, shown = standing_messages(floor), {m["id"] for m in standing_dissents(floor)}
     items: list[tuple[Any, ...]] = []
     for r in ROLES:
         final = last.get(r)
-        items.append(
-            ("{member}, final view", {"member": r}, final["text"], {})
-            if final
-            else (
-                "{member}, final view",
-                {"member": r},
-                "Not addressed.",
-                {"text_word": "Not addressed."},
+        if final is None:
+            silent = {"text_word": "Not addressed."}
+            items.append(("{member}, final view", {"member": r}, "Not addressed.", silent))
+        earlier = [
+            m
+            for m in floor.messages
+            if m["role"] == r and m["id"] in held and m is not final and m["id"] not in shown
+        ]
+        for m in ([final] if final else []) + earlier:
+            on = targets(*(held.get(m["id"]) or [m["id"]]))
+            word = "{member} still holds on {targets}" if on else "{member} still holds"
+            words = {"member": r, "message": m["id"], "targets": on}
+            items.append(
+                (
+                    "{member}, final view" if m is final else word,
+                    words,
+                    m["text"],
+                    {"positions": held.get(m["id"], {})},
+                )
             )
-        )
-        for m in floor.messages:
-            if m["role"] == r and m["id"] in held and m is not final and m["id"] not in shown:
-                on = targets(*(held[m["id"]] or [m["id"]]))
-                word = "{member} still holds on {targets}" if on else "{member} still holds"
-                words = {"member": r, "message": m["id"], "targets": on}
-                items.append((word, words, m["text"], {"positions": held[m["id"]]}))
     return items
 
 

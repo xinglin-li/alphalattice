@@ -277,6 +277,9 @@ def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> 
     """Read valid values without choosing work or assuming a refused member's credentials."""
     if "operation" in reasons:
         return {}
+    # A completed Task can offer an unbound replan with no recovery context.
+    if "strategy_package_id" in reasons:
+        return {"operation": "WORKSPACE_SHOW"}
     if "update_plan_hash" in reasons:
         return {"operation": "ACTIVITY_LIST", "limit": 200}
     if "update_task_id" in reasons:
