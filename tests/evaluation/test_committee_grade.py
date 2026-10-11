@@ -424,12 +424,19 @@ def test_a_reserve_beside_its_material_is_the_agents_and_without_it_the_products
     rows["scope_coverage"] = {"whole_book_reviewed_weight": "1", "minimum_required_weight": "0"}
     parts = zip(("reviewed", "nothing_filed", "unreached"), (11, 89, 0), strict=True)
     rows["coverage"] = {f"{p}_ending_weight": f"{w}%" for p, w in parts}
+    rows["coverage"]["nothing_filed_window_days"] = 30
     held = [{"alias": a, "name": a, "weight": w, "change": 0.0} for a, w in (("N", 0.1), ("Z", 0))]
-    said = facts({"publication": {"cro_status": "NOT_REVIEWED"}}, rows, held)
+    published = {"publication": {"cro_status": "NOT_REVIEWED"}}
+    said = facts(published, rows, held)
     assert sufficiency(SimpleNamespace(opened={"facts": said})) == {}
     assert any("affects N; not held here: X, Z" in f["text"] for f in said)  # by its issuer row
     scope = next(f["text"] for f in said if "89%" in f["text"])  # each part of the book named
     assert all(part in scope for part in ("ending weight", "filings read 11%", "not reached 0%"))
+    legacy = {**rows, "coverage": {"reviewed_ending_weight": "11%"}}  # published before the split
+    said_then = [
+        f["text"] for f in facts(published, legacy, held) if f["question"] == "CRO.coverage"
+    ]
+    assert any("not recorded" in t for t in said_then) and not any("None" in t for t in said_then)
     points = [p["targets"] for p in tension_points(held, rows) if p["kind"].startswith("HELD")]
     assert points == [["N"]]  # a name at zero weight is never held
     if kind == "unused":

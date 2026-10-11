@@ -119,6 +119,12 @@ _FACTS: Final = {
         "{days} days {nothing}; not reached {unread}. Read and checked together {reviewed}, "
         "against the minimum {minimum}.",
     ),
+    "scope_total": (
+        "CRO.coverage",
+        "evidence",
+        "Read and checked together {reviewed}, against the minimum {minimum}; the split by part "
+        "is not recorded for this review.",
+    ),
     "review": ("CRO.coverage", "review_standing", "{now}"),
     "package": (
         "CRO.process",
@@ -364,10 +370,6 @@ def _cro_values(
     used = getattr(getattr(proposal, "input", None), "strategy_package_hash", sealed)
     same = "matches" if not sealed or used == sealed else "differs from"
     largest = max((h["weight"] for h in held), default=0.0)
-    reviewed, minimum = (
-        scope.get("whole_book_reviewed_weight"),
-        scope.get("minimum_required_weight"),
-    )
     when = getattr(proposal, "schedule", None)
     seen = getattr(view.get("value"), "observed_through", None)
     target = (readback.get("update") or {}).get("target_session")
@@ -378,24 +380,36 @@ def _cro_values(
             for h, hit, out in cards
         ),
         ("flagged", dict(flagged=flagged, cards=len(cards))),
-        (
-            "scope",
-            dict(
-                reviewed=reviewed,
-                minimum=minimum,
-                read=split.get("reviewed_ending_weight"),
-                nothing=split.get("nothing_filed_ending_weight"),
-                days=split.get("nothing_filed_window_days"),
-                unread=split.get("unreached_ending_weight"),
-            )
-            if scope and split
-            else None,
-        ),
+        *_coverage(scope, split),
         ("review", dict(now=review_now(readback))),
         ("package", dict(same=same, seen=seen, target=target, **dates) if when else None),
         ("caps", dict(w=largest, cap=recipe.aggregate_name_cap) if recipe else None),
         ("dissents", {}),
     ]
+
+
+def _coverage(scope: Mapping[str, Any], split: Mapping[str, Any]) -> Said:
+    """The reviewed weight against its minimum, by part where the review recorded its split, else
+    that the split is not recorded (a review published before it): never a missing part printed."""
+    total = (
+        {
+            "reviewed": scope.get("whole_book_reviewed_weight"),
+            "minimum": scope.get("minimum_required_weight"),
+        }
+        if scope
+        else None
+    )
+    parts = {k: split.get(f"{f}_ending_weight") for k, f in _SPLIT}
+    parts["days"] = split.get("nothing_filed_window_days")
+    whole = total is not None and None not in parts.values()
+    return [
+        ("scope", {**total, **parts} if total and whole else None),
+        ("scope_total", None if whole else total),
+    ]
+
+
+_SPLIT: Final = (("read", "reviewed"), ("nothing", "nothing_filed"), ("unread", "unreached"))
+"""Each part of the book's ending weight a review's coverage records, by the fact's word."""
 
 
 def _held(held: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
