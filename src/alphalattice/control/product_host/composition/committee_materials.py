@@ -115,7 +115,9 @@ _FACTS: Final = {
     "scope": (
         "CRO.coverage",
         "evidence",
-        "Reviewed weight {reviewed} against the minimum {minimum}.",
+        "Of the book's ending weight: filings read {read}; checked with nothing filed in "
+        "{days} days {nothing}; not reached {unread}. Read and checked together {reviewed}, "
+        "against the minimum {minimum}.",
     ),
     "review": ("CRO.coverage", "review_standing", "{now}"),
     "package": (
@@ -346,8 +348,9 @@ def _cro_values(
     view: Mapping[str, Any],
 ) -> Said:
     """What is wrong or undisclosed, each against the book, the minimum or the declaration."""
-    scope, recipe, proposal = (
+    scope, split, recipe, proposal = (
         evidence.get("scope_coverage") or {},
+        evidence.get("coverage") or {},
         view.get("recipe"),
         view.get("proposal"),
     )
@@ -375,7 +378,19 @@ def _cro_values(
             for h, hit, out in cards
         ),
         ("flagged", dict(flagged=flagged, cards=len(cards))),
-        ("scope", dict(reviewed=reviewed, minimum=minimum) if scope else None),
+        (
+            "scope",
+            dict(
+                reviewed=reviewed,
+                minimum=minimum,
+                read=split.get("reviewed_ending_weight"),
+                nothing=split.get("nothing_filed_ending_weight"),
+                days=split.get("nothing_filed_window_days"),
+                unread=split.get("unreached_ending_weight"),
+            )
+            if scope and split
+            else None,
+        ),
         ("review", dict(now=review_now(readback))),
         ("package", dict(same=same, seen=seen, target=target, **dates) if when else None),
         ("caps", dict(w=largest, cap=recipe.aggregate_name_cap) if recipe else None),

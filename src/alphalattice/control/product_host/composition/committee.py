@@ -88,6 +88,8 @@ RULE_WORDS: Final = {
     "offers.",
     "UNRULED": "A verdict closes the floor, so the PM rules on every challenge first and one "
     "stands unruled; read it, send its ruling in your own words, then the verdict.",
+    "FACTS": "A RESERVE rests on the floor's facts: cite by S alias the facts, or the named "
+    "absences, that `committee show` lists under this member's questions, then send it again.",
     "NUMBER": "A digit is typed outside an alias ({subject}), and the Host renders every number: "
     "resubmit the same message with each typed figure or reference replaced by its alias on the "
     "floor.",
@@ -305,6 +307,7 @@ def submit(
             ("UNRULED", bool(_unruled(floor, message))),
             # The Host renders every number; the person's own relayed words keep theirs.
             ("NUMBER", message.kind != "PERSON_ANSWER" and typed),
+            ("FACTS", _unsourced(floor, role, message)),
         ):
             if broken:
                 raise ValueError(f"committee.message_refused:{rule}")
@@ -314,6 +317,14 @@ def submit(
             floor.goal_id, {"committee_message": {**entry, **message.model_dump(mode="json")}}
         )
         return number
+
+
+def _unsourced(floor: Floor, role: str, message: CommitteeMessage) -> bool:
+    """A RESERVE that cites none of the floor's facts while the member's questions hold some."""
+    facts = floor.opened.get("facts") or ()
+    cited = {f["alias"] for f in facts} & set(ALIAS.findall(message.text))
+    asked = any(f["question"] in QUESTIONS.get(role, {}) for f in facts)
+    return "RESERVE" in message.positions.values() and asked and not cited
 
 
 def _unruled(floor: Floor, message: CommitteeMessage) -> list[str]:
@@ -924,8 +935,9 @@ def route(role: str, floor: Floor | None, now: datetime) -> tuple[str, ...] | No
     task, key = floor.opened["update_task_id"], floor.key(role)
     return (
         f"On the committee's floor you are {role}. Send one STANCE first (the round is blind); "
-        "its position on each point is about the date's positions: SUPPORT, they may stand; "
-        "OBJECT, they should not stand as they are; RESERVE, this bundle cannot tell.",
+        "its position on each tension point (T1, never a question) is about the date's "
+        "positions: SUPPORT, they may stand; OBJECT, they should not stand as they are; RESERVE, "
+        "this bundle cannot tell, citing by S alias the facts it rests on.",
         f"Then up to {MESSAGE_CAP} CHALLENGE or REPLY, each naming its targets by alias (T1, H3, "
         "M4, a fact by its S alias); type no other digit, since the Host renders every number. "
         "Write each message as a YAML file (kind, text, positions, targets, reply_to), send it "

@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 from collections.abc import Mapping
+from copy import deepcopy
 from hashlib import sha256
 from typing import Final
 from uuid import UUID
@@ -217,7 +218,7 @@ def located_failure(
 
     if not isinstance(error, ValidationError):
         return {"failure_code": public_failure(error, fallback)}
-    from alphalattice.interface.local_application.cli_contract import refusal_words, schema_request
+    from alphalattice.interface.local_application.cli_contract import refusal_words
 
     fields: list[list[str]] = []
     reasons: dict[str, str] = {}
@@ -263,17 +264,60 @@ def located_failure(
     }
     if request is not None:
         answer["next_action"] = "READ_CAPABILITIES_SCHEMA"
-        if read := _request_read(reasons, request):
-            answer.update(
-                detail=refusal_words(fallback)["detail"],
-                next_action="READ_VALID_VALUES_AND_CORRECT_THE_NAMED_FIELD",
-                next_requests={
-                    "valid_values": read,
-                    "schema": schema_request(str(request["operation"])),
-                },
-                schema_command=["alphalattice", "schema", "show", request["operation"]],
-            )
+        answer.update(_way_back(fields, reasons, request, fallback))
     return answer
+
+
+def _way_back(
+    fields: list[list[str]], reasons: Mapping[str, str], request: Mapping[str, object], code: str
+) -> dict[str, object]:
+    """A refused request's way back: the same request corrected where only a field sent empty
+    broke it, else a read of the named field's valid values; none where neither stands."""
+    from alphalattice.interface.local_application.cli_contract import refusal_words, schema_request
+
+    corrected = _without_empty(fields, request)
+    read = {} if corrected is not None else _request_read(reasons, request)
+    if corrected is None and not read:
+        return {}
+    return {
+        "detail": refusal_words(code)["detail"],
+        "next_action": "READ_VALID_VALUES_AND_CORRECT_THE_NAMED_FIELD"
+        if corrected is None
+        else "SEND_THE_CORRECTED_REQUEST",
+        "next_requests": {
+            **({"valid_values": read} if corrected is None else {"corrected": corrected}),
+            "schema": schema_request(str(request["operation"])),
+        },
+        "schema_command": ["alphalattice", "schema", "show", request["operation"]],
+    }
+
+
+def _without_empty(
+    fields: list[list[str]], request: Mapping[str, object]
+) -> dict[str, object] | None:
+    """An optional field sent empty ("", [] or {}) means none: the same request with it null,
+    else without it, offered only where the request contract then admits it."""
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchRequestDocument,
+    )
+
+    for null in (True, False) if fields else ():
+        corrected: dict[str, object] = deepcopy(dict(request))
+        for *parents, name in fields:
+            holder: object = corrected
+            for part in parents:
+                holder = holder.get(part) if isinstance(holder, dict) else None
+            if not isinstance(holder, dict) or holder.get(name, 0) not in ("", [], {}):
+                return None
+            holder[name] = None
+            if not null:
+                del holder[name]
+        try:
+            PortfolioResearchRequestDocument.model_validate(corrected)
+        except ValueError:
+            continue
+        return corrected
+    return None
 
 
 def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> dict[str, object]:

@@ -421,10 +421,15 @@ def test_a_reserve_beside_its_material_is_the_agents_and_without_it_the_products
         "issuer_rows": [{"entity_id": e, "tickers": [e], "adverse_issue_count": 1} for e in "NZ"]
     }
     rows["issue_cards"] = [{"issue_handle": "I", "affected_entities": ["N", "X", "Z"]}]
+    rows["scope_coverage"] = {"whole_book_reviewed_weight": "1", "minimum_required_weight": "0"}
+    parts = zip(("reviewed", "nothing_filed", "unreached"), (11, 89, 0), strict=True)
+    rows["coverage"] = {f"{p}_ending_weight": f"{w}%" for p, w in parts}
     held = [{"alias": a, "name": a, "weight": w, "change": 0.0} for a, w in (("N", 0.1), ("Z", 0))]
     said = facts({"publication": {"cro_status": "NOT_REVIEWED"}}, rows, held)
     assert sufficiency(SimpleNamespace(opened={"facts": said})) == {}
     assert any("affects N; not held here: X, Z" in f["text"] for f in said)  # by its issuer row
+    scope = next(f["text"] for f in said if "89%" in f["text"])  # each part of the book named
+    assert all(part in scope for part in ("ending weight", "filings read 11%", "not reached 0%"))
     points = [p["targets"] for p in tension_points(held, rows) if p["kind"].startswith("HELD")]
     assert points == [["N"]]  # a name at zero weight is never held
     if kind == "unused":

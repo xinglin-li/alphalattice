@@ -119,8 +119,10 @@ def mutations(
             yield "value-change", {**request, key: "?"}, key
         if key.endswith("_id"):
             yield "wrong-id", {**request, key: "00000000-0000-0000-0000-000000000000"}, key
-    if isinstance(request.get("committee_message"), dict):
+    if isinstance(message := request.get("committee_message"), dict):
         for kind, values, rule in (
+            # A message that answers none, with its reply_to sent as an empty list.
+            *[("empty-reply", {"reply_to": []}, "reply_to")] * (message.get("reply_to", 0) is None),
             ("shape", {"outcome": "ADOPT", "reply_to": None}, "SHAPE"),
             ("target", {"targets": ["H9999"]}, "TARGET"),
             ("reply", {"reply_to": "M9999"}, "REPLY_TO"),
