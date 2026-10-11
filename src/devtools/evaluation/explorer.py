@@ -10,6 +10,7 @@ whole answer, for the feedback test that reads the answers an agent decides on.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
@@ -187,6 +188,7 @@ class Explorer:
     mutation_budget: float = 0.0
     mutation_seconds: float = 0.0
     mutation_checks: list[dict[str, Any]] = field(default_factory=list)
+    mutation_kinds: set[str] | None = None
     findings: list[dict[str, Any]] = field(default_factory=list)
     mutated: set[str] = field(default_factory=set)
 
@@ -209,7 +211,10 @@ class Explorer:
         if baseline is not None:
             variants = [("duplicate", request, "same admission")]
         elif kinds is None and variants:
-            variants = [variants[len(self.mutation_checks) % len(variants)]]
+            state = re.sub(r"\b[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}\b", "<id>", where)
+            key = f"{self.scenario.id}|{state}|{operation}|{','.join(sorted(required))}"
+            index = int(hashlib.sha256(key.encode()).hexdigest(), 16) % len(variants)
+            variants = [variants[index]]
         for kind, changed, rule in (
             v
             for v in variants
@@ -636,20 +641,21 @@ class Explorer:
         document = self.work / f"offer-{len(self.events)}.json"
         document.write_text(json.dumps(step), encoding="utf-8")
         corrected = None
+        path = where + " > " + name
         if self.mutation_budget and json.dumps(step, sort_keys=True) not in self.mutated:
             self.mutated.add(json.dumps(step, sort_keys=True))
-            corrected = self.inject(step, where + " > " + name)
+            corrected = self.inject(step, path, kinds=self.mutation_kinds)
         if corrected is not None:
             self.events[-1].attributes.pop("alphalattice.mutation", None)
             if not self.events[-1].attributes.get("alphalattice.retired_offer"):
                 self.events[-1].attributes["alphalattice.corrected_original"] = True
-        sent = corrected or self._send(["request", "--file", str(document)], where + f" > {name}")
+        sent = corrected or self._send(["request", "--file", str(document)], path)
         if (
             self.mutation_budget
             and sent.get("outcome") not in {"REFUSED", "FAILED"}
             and not self.events[-1].attributes.get("alphalattice.retired_offer")
         ):
-            self.inject(step, where + " > " + name, baseline=sent)
+            self.inject(step, path, baseline=sent)
         refused = str(sent.get("failure_code") or "").partition(":")[0]
         if any(mark in refused for mark in ("not_offered", "_invalid", "operation_field")):
             self._problem(

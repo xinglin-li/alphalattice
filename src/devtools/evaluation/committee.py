@@ -341,3 +341,120 @@ def committee_problems(
     if not page.lower().startswith("<!doctype html") or not page.rstrip().endswith("</html>"):
         problems.append("the report does not render as a page")
     return problems
+
+
+def standing_messages(messages) -> dict[str, dict[str, str]]:
+    """Mirror the public floor's standing positions without importing its product owner."""
+    outcomes = {
+        item.get("reply_to"): item.get("outcome") for item in messages if item["kind"] == "RULING"
+    }
+    held, settled, positions = {}, set(), {}
+    for item in messages:
+        if item["kind"] == "CHALLENGE":
+            if outcomes.get(item["id"], "REJECT") == "REJECT":
+                held[item["id"]] = {}
+            else:
+                settled.update(item.get("targets", ()))
+        for point, position in item.get("positions", {}).items():
+            key = item["role"], point
+            if positions.get(key, (None, None))[1] != position:
+                positions[key] = item["id"], position
+    for (_role, point), (source, position) in positions.items():
+        if point not in settled:
+            held.setdefault(source, {})[point] = position
+    return {item["id"]: held[item["id"]] for item in messages if item["id"] in held}
+
+
+def _standing_fidelity(messages, rows, page) -> list[str]:
+    problems, held = [], standing_messages(messages)
+    for message in (item for item in messages if item["id"] in held):
+        point = ",".join(held[message["id"]]) or "CHALLENGE"
+        if message["text"] not in page or not any(
+            message["text"] in str(row.get("text") or "")
+            and (
+                message["id"] in ALIAS.findall(str(row.get("attribution") or ""))
+                or (row.get("attribution_words") or {}).get("message") == message["id"]
+            )
+            for row in rows
+        ):
+            problems.append(f"report.standing_missing:{message['role']}:{point}:{message['id']}")
+    return problems
+
+
+def _floor_fidelity(messages, rows, page, raw) -> list[str]:
+    problems = []
+    verdict = next((i for i, m in enumerate(messages) if m["kind"] == "VERDICT"), len(messages))
+    for index, message in enumerate(messages):
+        if message["kind"] == "CHALLENGE" and not any(
+            m["kind"] == "RULING" and m["role"] == "PM" and m.get("reply_to") == message["id"]
+            for m in messages[index + 1 : verdict]
+        ):
+            problems.append(f"report.challenge_unruled:{message['id']}")
+        if message["kind"] == "PERSON_ANSWER" and not any(
+            row.get("answer") == raw.get(message["id"], message["text"])
+            and row.get("relay_word")
+            and (row.get("attribution_words") or {}).get("message") == message.get("reply_to")
+            and message["text"] in str(row.get("text") or "")
+            and raw.get(message["id"], message["text"]) in page
+            for row in rows
+        ):
+            problems.append(f"report.person_unrelayed:{message['id']}")
+    return problems
+
+
+def _review_fidelity(standing, cro_view, expected) -> list[str]:
+    if standing is None or not standing.get("status"):
+        return ["UNPROVED:review_standing"]
+    problems, status = [], str(standing["status"])
+    if standing.get("review_publication_hash") != expected:
+        problems.append("report.review_standing_mismatch")
+    if cro_view is None:
+        return [*problems, "UNPROVED:cro_view"]
+    view = "\n".join(cro_view) if isinstance(cro_view, list) else cro_view
+    line = next(
+        (
+            line
+            for line in view.splitlines()
+            if re.search(r"\bnow:\s*" + re.escape(status) + r"\b", line)
+        ),
+        "",
+    )
+    sources = standing.get("published_at"), (standing.get("cro") or {}).get("route")
+    if not line:
+        problems.append(f"report.cro_status_mismatch:{status}")
+    elif any(str(value) not in line for value in sources if value):
+        problems.append("report.cro_review_source_mismatch")
+    return problems
+
+
+def report_fidelity(
+    closed: Mapping[str, Any],
+    report: Mapping[str, Any],
+    *,
+    raw_messages: list[Mapping[str, Any]] | None = None,
+    cro_view: list[str] | str | None = None,
+    review_standing: Mapping[str, Any] | None = None,
+) -> list[str]:
+    """Check a delivery against explicit standing positions and the admitted raw messages."""
+    messages, rows = closed.get("messages", []), report.get("commentary", [])
+    page = html.unescape(str(report.get("html", "")))
+    raw = {m["id"]: m["text"] for m in raw_messages or []}
+    problems = _standing_fidelity(messages, rows, page) + _floor_fidelity(messages, rows, page, raw)
+    if raw_messages is None or {m["id"] for m in raw_messages} != {m["id"] for m in messages}:
+        problems.append("UNPROVED:raw_messages")
+    else:
+        problems.extend(
+            f"report.number_outside_alias:{m['id']}"
+            for m in raw_messages
+            if m["kind"] != "PERSON_ANSWER" and re.search(r"\d", ALIAS.sub("", m["text"]))
+        )
+    selected = report.get("selection", {}).get("review_publication_hash")
+    exported = report.get("sections", {}).get("evidence_cro", {}).get("value", {})
+    published = (exported.get("review") or {}).get("publication", {}).get("publication_hash")
+    expected = closed.get("delivery", {}).get("review_publication_hash")
+    if not expected:
+        known = review_standing and review_standing.get("review_publication_hash")
+        problems.append("report.review_hash_mismatch" if known else "UNPROVED:review_hash")
+    elif selected != expected or published != expected:
+        problems.append("report.review_hash_mismatch")
+    return problems + _review_fidelity(review_standing, cro_view, expected)

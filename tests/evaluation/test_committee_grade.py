@@ -5,14 +5,25 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
-from alphalattice.control.product_host.composition.committee import misshapen
+from alphalattice.control.product_host.composition.committee import (
+    misshapen,
+)
+from alphalattice.control.product_host.composition.committee import (
+    standing_messages as owner_standing,
+)
 from alphalattice.interface.local_application.portfolio_research import CommitteeMessage
 from devtools.evaluation import Scenario, Trace, TraceEvent
-from devtools.evaluation.committee import CommitteeGrader, committee_problems
+from devtools.evaluation.committee import (
+    CommitteeGrader,
+    committee_problems,
+    report_fidelity,
+    standing_messages,
+)
 
 SAID = "H1 (F1, 3.44%) leans on one model"
 
@@ -324,3 +335,137 @@ def test_portable_shape_matches_the_owner(change):
     assert ("message_shape" not in reasons) is accepted
     if not isinstance(answer["message"].get("text"), str):
         assert not result["passed"] and "invalid_answer" in reasons
+
+
+def floor_message(identifier, role, kind, **fields):
+    return dict(id=identifier, role=role, kind=kind, **fields)
+
+
+def fidelity_floor(role="CRO", point="T1", following=None):
+    messages = [
+        floor_message("M1", role, "STANCE", text=f"Object {point}.", positions={point: "OBJECT"}),
+        floor_message("M2", role, "REPLY", text="Read T1.", positions=following or {}),
+        floor_message("M3", "PM", "VERDICT", text="Proceed."),
+    ]
+    rows = [{"attribution": m["id"], "text": m["text"]} for m in messages]
+    selected = {"review_publication_hash": "a" * 64}
+    closed = {"messages": messages, "delivery": selected}
+    report = {
+        "commentary": rows,
+        "selection": dict(selected),
+        "html": " ".join(m["text"] for m in messages),
+        "sections": {
+            "evidence_cro": {"value": {"review": {"publication": {"publication_hash": "a" * 64}}}}
+        },
+    }
+    evidence = {
+        "raw_messages": deepcopy(messages),
+        "cro_view": ["Review now: REVIEWED."],
+        "review_standing": {"status": "REVIEWED", **selected},
+    }
+    return closed, report, evidence
+
+
+@pytest.mark.parametrize(
+    "role,point,following", [("CRO", "T1", {"T2": "RESERVE"}), ("ALPHA", "T2", {})]
+)
+def test_a_reply_only_replaces_the_positions_it_explicitly_states(role, point, following):
+    """A later unrelated or empty reply leaves each earlier point's position in the report."""
+    closed, report, evidence = fidelity_floor(role, point, following)
+    assert report_fidelity(closed, report, **evidence) == []
+    report["commentary"].pop(0)
+    assert f"report.standing_missing:{role}:{point}:M1" in report_fidelity(
+        closed, report, **evidence
+    )
+    closed["messages"][1]["positions"] = {point: "SUPPORT"}
+    evidence["raw_messages"] = deepcopy(closed["messages"])
+    assert report_fidelity(closed, report, **evidence) == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["same", "changed", "unrelated", "empty", "unruled", "ADOPT", "REJECT", "FOR_THE_PERSON"],
+)
+def test_standing_message_mirror_agrees_with_the_floor_owner(change):
+    """Standing sources change only with a point's value, or a ruling that settles it."""
+    first = floor_message("M1", "ALPHA", "STANCE", positions={"T1": "OBJECT"}, targets=[])
+    values = dict(same={"T1": "OBJECT"}, changed={"T1": "SUPPORT"}, unrelated={"T2": "RESERVE"})
+    second = dict(first, id="M2", kind="REPLY", positions=values.get(change, {}))
+    messages = [first, second]
+    if change in {"unruled", "ADOPT", "REJECT", "FOR_THE_PERSON"}:
+        messages.append(
+            dict(first, id="M3", role="CRO", kind="CHALLENGE", positions={}, targets=["T1"])
+        )
+        if change != "unruled":
+            ruled = dict(first, id="M4", role="PM", kind="RULING", positions={})
+            ruled.update(reply_to="M3", outcome=change)
+            messages.append(ruled)
+    assert standing_messages(messages) == owner_standing(SimpleNamespace(messages=messages))
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        "clean",
+        "ruling",
+        "after",
+        "relay",
+        "hash",
+        "standing",
+        "cro",
+        "numbers",
+        "raw",
+        "missing_raw",
+        "missing_cro",
+        "alias_attribution",
+        "stale_status",
+        "closed_hash",
+    ],
+)
+def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
+    """Rulings, person relays, review identity and raw number checks have independent evidence."""
+    closed, report, evidence = fidelity_floor()
+    challenge = floor_message("M4", "CRO", "CHALLENGE", text="Check T1.")
+    ruling = floor_message("M5", "PM", "RULING", reply_to="M4", text="Ask person.")
+    ruling["outcome"] = "FOR_THE_PERSON"
+    words = "Wait 2 days on H1."
+    answer = floor_message("M6", "PM", "PERSON_ANSWER", reply_to="M5", text=words)
+    closed["messages"][2:2] = [challenge, ruling, answer]
+    evidence["raw_messages"] = deepcopy(closed["messages"])
+    answer["text"] = words.replace("H1", "Synthetic holding.")
+    relayed = dict(answer=words, relay_word="Relayed", text=answer["text"])
+    relayed["attribution_words"] = {"message": "M5"}
+    report["commentary"].append(relayed)
+    report["html"] += " " + words
+    if broken == "ruling":
+        closed["messages"][3]["role"] = "RISK"
+    elif broken == "after":
+        closed["messages"].append(closed["messages"].pop(3))
+    elif broken == "relay":
+        report["commentary"][-1]["relay_word"] = None
+    elif broken == "hash":
+        report["selection"]["review_publication_hash"] = "b" * 64
+    elif broken == "standing":
+        evidence["review_standing"]["review_publication_hash"] = "b" * 64
+    elif broken == "cro":
+        evidence["cro_view"] = ["Review now: NOT_REVIEWED."]
+    elif broken == "numbers":
+        evidence["raw_messages"][0]["text"] = "Weight 2%."
+    elif broken == "raw":
+        evidence["raw_messages"].pop()
+    elif broken == "alias_attribution":
+        report["commentary"][0]["attribution"] = "M10"
+    elif broken == "stale_status":
+        evidence["cro_view"] = ['{"old": "REVIEWED"}', "Review now: NOT_REVIEWED."]
+    elif broken == "closed_hash":
+        closed["delivery"] = {}
+    elif broken.startswith("missing_"):
+        evidence["raw_messages" if broken == "missing_raw" else "cro_view"] = None
+    problems = report_fidelity(closed, report, **evidence)
+    assert bool(problems) is (broken != "clean")
+    if broken in {"raw", "missing_raw"}:
+        assert "UNPROVED:raw_messages" in problems
+    if broken == "missing_cro":
+        assert "UNPROVED:cro_view" in problems
+    if broken == "closed_hash":
+        assert "report.review_hash_mismatch" in problems

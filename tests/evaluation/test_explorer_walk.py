@@ -175,7 +175,7 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         sent.append(document)
         if discovery and document == repaired:
             return {"operation": document["operation"], "outcome": "OK", "data": read_data}
-        if document.get(required):
+        if document.get(required) and argv[1] == "--file":
             return {
                 "operation": document["operation"],
                 "outcome": "UNAVAILABLE" if recovery == "unavailable" else "OK",
@@ -200,9 +200,10 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
                 rule="TARGET",
                 detail="Choose an alias from the floor.",
             )
-        if recovery == "usage":
+        if recovery == "usage" or argv[1] == "--flie":
             answer.update(
-                failure_code="local_client.usage_invalid", usage_error={"observed": required}
+                failure_code="local_client.usage_invalid",
+                usage_error={"observed": required if recovery == "usage" else "--flie"},
             )
         if recovery not in {"missing", "generic"}:
             answer["next_requests"] = {"repair": document if recovery == "loop" else repaired}
@@ -220,6 +221,7 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         mutation_owners={request["operation"]: "committee.py", "COMMITTEE_READ": "committee.py"},
         read_operations={"COMMITTEE_READ", "ACTIVITY_LIST", "TASKS", "WORKSPACE_SHOW"},
         mutation_budget=120,
+        mutation_kinds={"drop-field"} if recovery == "walk" else None,
     )
     if recovery == "walk":
         grade, trace = explorer.explore([["start"]])
@@ -261,6 +263,15 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         assert sent[-1] == request
     elif recovery == "loop":
         assert len(sent) <= 3
+    if recovery == "filled":
+        sampled, preceding = [], [*explorer.mutation_checks, {"mutation": "earlier"}]
+        for number, checks in enumerate(([], preceding, preceding[::-1])):
+            explorer.mutation_checks = checks
+            before = len(sent)
+            state = f"committee/00000000-0000-0000-0000-{number:012d}"
+            explorer.inject(request, state)
+            sampled.append((explorer.mutation_checks[-1]["mutation"], sent[before]))
+        assert sampled[0] == sampled[1] == sampled[2] and sampled[0][1] != request
 
 
 @pytest.mark.parametrize(
