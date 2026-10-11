@@ -119,6 +119,20 @@ class _ProcessTreeSample:
     instrumentation_limitation: str | None = None
 
 
+def _descendants(root_pid: int, children: dict[int, list[int]]) -> tuple[int, ...]:
+    """The root and every process under it, each once: a parent id the system reused, or PID 0
+    as its own parent, makes a cycle that would otherwise never end."""
+    pending, seen = [root_pid], {root_pid}
+    result: list[int] = []
+    while pending:
+        current = pending.pop()
+        result.append(current)
+        fresh = [child for child in children.get(current, ()) if child not in seen]
+        seen.update(fresh)
+        pending.extend(fresh)
+    return tuple(result)
+
+
 def _windows_descendant_process_ids(root_pid: int) -> tuple[tuple[int, ...], str | None]:
     """Return the live descendant graph with ToolHelp, without a new dependency."""
     loader: Any = getattr(ctypes, "WinDLL", None)
@@ -161,13 +175,7 @@ def _windows_descendant_process_ids(root_pid: int) -> tuple[tuple[int, ...], str
             entry.dwSize = ctypes.sizeof(entry)
             if not next_entry(snapshot, ctypes.byref(entry)):
                 break
-        pending = [root_pid]
-        result: list[int] = []
-        while pending:
-            current = pending.pop()
-            result.append(current)
-            pending.extend(children.get(current, ()))
-        return tuple(result), None
+        return _descendants(root_pid, children), None
     finally:
         kernel32.CloseHandle(snapshot)
 
@@ -184,13 +192,7 @@ def _linux_descendant_process_ids(root_pid: int) -> tuple[tuple[int, ...], str |
             parents.setdefault(int(tail[1]), []).append(int(path.name))
     except (OSError, ValueError, IndexError):
         return (root_pid,), "PROCESS_TREE_ENUMERATION_UNAVAILABLE"
-    pending = [root_pid]
-    result: list[int] = []
-    while pending:
-        current = pending.pop()
-        result.append(current)
-        pending.extend(parents.get(current, ()))
-    return tuple(result), None
+    return _descendants(root_pid, parents), None
 
 
 class _ProcessExited(Exception):

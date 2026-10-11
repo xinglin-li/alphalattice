@@ -981,6 +981,8 @@ def test_process_resource_monitor_reports_a_time_aligned_live_child_tree() -> No
     assert usage.process_tree_peak_rss_bytes >= usage.peak_rss_bytes
     assert usage.sample_interval_seconds == 0.02
     assert usage.instrumentation_limitation is None
+    # A reused parent id or PID 0 as its own parent is a cycle; the walk ends, each pid once.
+    assert process_metrics._descendants(7, {0: [0, 7], 7: [8], 8: [7, 9]}) == (7, 8, 9)
 
 
 def _assert_capacity_ceiling_holds(
