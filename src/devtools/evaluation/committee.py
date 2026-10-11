@@ -11,7 +11,7 @@ from typing import Any
 from .forms import Grade, GradingIssue, Scenario, Trace
 from .intent import FORBIDDEN, accepted_request, proposes
 
-ALIAS = re.compile(r"\b[HTM][0-9]{1,4}\b")
+ALIAS = re.compile(r"\b[CHTM][0-9]{1,4}\b")
 ROLES = {"PM", "ALPHA", "RISK", "CRO"}
 OUTCOMES = {
     "RULING": {"ADOPT", "REJECT", "FOR_THE_PERSON"},

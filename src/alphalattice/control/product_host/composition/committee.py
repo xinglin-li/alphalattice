@@ -78,13 +78,14 @@ RULE_WORDS: Final = {
     "offers.",
     "UNRULED": "A verdict closes the floor, so the PM rules on every challenge first and one "
     "stands unruled; read it, send its ruling in your own words, then the verdict.",
-    "NUMBER": "A digit is typed outside an alias, and the Host renders every number: resubmit "
-    "the same message with each typed figure or reference replaced by its alias on the floor.",
+    "NUMBER": "A digit is typed outside an alias ({subject}), and the Host renders every number: "
+    "resubmit the same message with each typed figure or reference replaced by its alias on the "
+    "floor.",
 }
 """Each floor rule's own words, as its refusal says them."""
 _VIEWS: Final = frozenset({"STANCE", "CHALLENGE", "REPLY"})
-ALIAS: Final = re.compile(r"\b[HTM][0-9]{1,4}\b")
-"""A floor alias: a holding (H3), a tension point (T2) or a message (M4)."""
+ALIAS: Final = re.compile(r"\b[CHTM][0-9]{1,4}\b")
+"""A floor alias: a component (C), a holding (H3), a tension point (T2) or a message (M4)."""
 """The kinds that carry a member's own view; a ruling, the verdict and a relay do not."""
 
 
@@ -275,8 +276,7 @@ def submit(
         if floor.admits(role, key) and (same := _same(floor, role, message)):
             return same
         stage, mine = floor.stage(now), [m for m in floor.messages if m["role"] == role]
-        known = {p["alias"] for p in floor.opened["tension_points"]}
-        known |= {h["alias"] for h in floor.opened["holdings"]} | {m["id"] for m in floor.messages}
+        known = _known(floor)
         target = next((m for m in floor.messages if m["id"] == message.reply_to), None)
         fits = target is not None and answers in {"ANY", target["kind"], target.get("outcome")}
         ruled = _ruled(floor, message)
@@ -320,8 +320,13 @@ def _owed(
     rule: str,
 ) -> dict[str, Any]:
     """For a verdict refused UNRULED, each ruling it owes as a template: once per unruled
-    challenge and outcome, its words left to the PM."""
+    challenge and outcome, its words left to the PM. For a NUMBER refusal whose every typed
+    figure is a name the floor holds under an alias, the same message with those aliases."""
     message = request.committee_message
+    renamed = _typed(floor, message)[1] if rule == "NUMBER" else None
+    if message is not None and renamed and not any(c.isnumeric() for c in ALIAS.sub("", renamed)):
+        sent = message.model_dump(mode="json") | {"text": renamed}
+        return {"corrected": {"operation": "COMMITTEE_SUBMIT", **member, "committee_message": sent}}
     owed = [] if floor is None or message is None or rule != "UNRULED" else _unruled(floor, message)
     return {
         f"rule:{challenge}:{outcome}": {
@@ -333,6 +338,23 @@ def _owed(
         for challenge in owed
         for outcome in sorted(OUTCOMES["RULING"])
     }
+
+
+def _known(floor: Floor) -> set[str]:
+    """Every alias the floor shows its members: points, holdings, components and messages."""
+    known = {p["alias"] for p in floor.opened["tension_points"]} | {m["id"] for m in floor.messages}
+    return known | {a for h in floor.opened["holdings"] for a in (h["alias"], *h.get("scores", {}))}
+
+
+def _typed(floor: Floor | None, message: CommitteeMessage | None) -> tuple[list[str], str]:
+    """The figures a message types outside an alias, and its text with each that is a
+    holding's name on the floor replaced by the holding's alias."""
+    text = "" if message is None else message.text
+    names = {} if floor is None else {h["name"]: h["alias"] for h in floor.opened["holdings"]}
+    typed = [w.strip(".,;:!?()") for w in ALIAS.sub("", text).split() if any(map(str.isnumeric, w))]
+    for word in typed:
+        text = re.sub(rf"(?<!\w){re.escape(word)}(?!\w)", names.get(word, word), text)
+    return typed, text
 
 
 def _same(floor: Floor, role: str, message: CommitteeMessage) -> str | None:
@@ -407,10 +429,12 @@ def _corrected(
     # A rule no field fixes: the member's own read of the floor, where its stage and aliases are.
     member = _read_fields(request, rule)
     floor_read = {"floor": {"operation": "COMMITTEE_READ", **member}}
-    words: dict[str, Any] = {"detail": RULE_WORDS[rule], "rule": rule}
-    words |= {"next_action": "READ_THE_FLOOR", "next_requests": floor_read}
     message, floor = request.committee_message, floor_of(store, str(request.update_task_id))
-    words["next_requests"] |= _owed(floor, request, member, rule)
+    typed = ", ".join(_typed(floor, message)[0])
+    words: dict[str, Any] = {"detail": RULE_WORDS[rule].replace("{subject}", typed), "rule": rule}
+    owed = _owed(floor, request, member, rule)
+    lead = "SEND_THE_CORRECTED_MESSAGE" if "corrected" in owed else "READ_THE_FLOOR"
+    words |= {"next_action": lead, "next_requests": floor_read | owed}
     if (ruling := _ruled(floor, message)) is not None:
         # The challenge is ruled already: the ruling stands, and no correction changes it.
         return words | {"ruled_by": ruling["id"]}
@@ -765,7 +789,7 @@ def holdings(readback: Mapping[str, Any]) -> list[dict[str, Any]]:
     previous = positions.preceding or positions.weights
     book = None if value.pending_proposal is None else value.pending_proposal.input
     components = getattr(book, "components", None) or (() if book is None else (book,))
-    names = getattr(book, "component_ids", None) or [f"C{n}" for n in range(1, 9)]
+    names = [f"C{n}" for n in range(1, len(components) + 1)]  # a component's floor alias
     scores: dict[str, dict[str, float]] = {}
     for name, component in zip(names, components, strict=False):
         for listing, score in zip(component.ordered_listing_ids, component.scores, strict=False):

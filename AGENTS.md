@@ -168,9 +168,10 @@ each challenge as it arrives (ADOPT, REJECT or FOR_THE_PERSON), then give the
 verdict; the floor refuses a verdict while a challenge stands unruled and offers its
 ruling to fill. The stances are blind until all four are in, each specialist has three
 challenges or replies after its stance, and the floor closes at its time box
-whoever is silent. Messages name holdings, points and messages by alias and type
-no other digit. A refused message names the rule it broke and, where only its shape
-is wrong, offers the same message corrected: send that as it stands. The report keeps
+whoever is silent. Messages name holdings, points, components and messages by alias
+and type no other digit. A refused message names the rule it broke and, where only its
+shape or a typed holding name is wrong, offers the same message corrected: send that as
+it stands. The report keeps
 each member's last message and every earlier one whose position it has not changed, verbatim.
 The committee changes no number. Ask the person
 about each item it hands them in one line, and relay their words as a
