@@ -362,6 +362,19 @@ def _saved_read_arguments(child: argparse.ArgumentParser) -> None:
     )
 
 
+def _section(child: argparse.ArgumentParser, *, wanted: bool = True) -> None:
+    """The reread a compact answer's envelope offers, for every command that prints one."""
+    if not wanted:
+        return
+    child.add_argument(
+        "--section",
+        metavar="PATH",
+        help="Print one part of the answer by its dotted path (result.evidence_report), a "
+        "list's items from the fourth as items.3: (omitted_sections names each part the "
+        "compact view left out); --output still saves it whole.",
+    )
+
+
 def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> None:
     child.add_argument(
         "--output",
@@ -612,6 +625,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
         child = by_noun[noun].add_parser(verb, help=purpose, description=purpose)
         child.set_defaults(client_command=(noun, verb))
         _client_command(child, noun, verb)
+        _section(child, wanted=verb == "wait")  # a wait prints a compact answer too
     table = command_table()
     for (noun, verb), operations in sorted(_commands().items()):
         if noun not in by_noun:
@@ -712,13 +726,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
             metavar="N",
             help="With --list-next: list from the Nth entry, commands then templates.",
         )
-        child.add_argument(
-            "--section",
-            metavar="PATH",
-            help="Print one part of the answer by its dotted path (result.evidence_report), a "
-            "list's items from the fourth as items.3: (omitted_sections names each part the "
-            "compact view left out); --output still saves it whole.",
-        )
+        _section(child)
     # Every command reads the global options after its action too, as GNU reads options
     # anywhere on the line: AX14's agent put --view full after the action (V412).
     for command in _commands_of(parser):

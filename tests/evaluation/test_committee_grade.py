@@ -23,6 +23,7 @@ from alphalattice.control.product_host.composition.committee_materials import (
     QUESTIONS,
     facts,
     sufficiency,
+    tension_points,
 )
 from alphalattice.interface.local_application.portfolio_research import CommitteeMessage
 from devtools.evaluation import Scenario, Trace, TraceEvent
@@ -416,12 +417,16 @@ def test_a_reply_only_replaces_the_positions_it_explicitly_states(role, point, f
 def test_a_reserve_beside_its_material_is_the_agents_and_without_it_the_products(kind):
     """Every question holds a fact or a named absence; a RESERVE citing none is graded unused
     where the member's facts stand, missing where only absences do."""
-    rows = {"issuer_rows": [{"entity_id": "E", "tickers": ["N"], "ending_weight": "12.5%"}]}
-    rows["issue_cards"] = [{"issue_handle": "I", "affected_entities": ["E", "X"]}]
-    held = [{"alias": "H", "name": "N", "weight": 0.125, "listing_id": "n", "change": 0.0}]
+    rows = {
+        "issuer_rows": [{"entity_id": e, "tickers": [e], "adverse_issue_count": 1} for e in "NZ"]
+    }
+    rows["issue_cards"] = [{"issue_handle": "I", "affected_entities": ["N", "X", "Z"]}]
+    held = [{"alias": a, "name": a, "weight": w, "change": 0.0} for a, w in (("N", 0.1), ("Z", 0))]
     said = facts({"publication": {"cro_status": "NOT_REVIEWED"}}, rows, held)
     assert sufficiency(SimpleNamespace(opened={"facts": said})) == {}
-    assert any("affects H; not held here: X" in f["text"] for f in said)  # by its issuer row
+    assert any("affects N; not held here: X, Z" in f["text"] for f in said)  # by its issuer row
+    points = [p["targets"] for p in tension_points(held, rows) if p["kind"].startswith("HELD")]
+    assert points == [["N"]]  # a name at zero weight is never held
     if kind == "unused":
         fact = {"alias": "S99", "question": "ALPHA.held", "text": "By rank.", "source": "pub"}
         said.append(fact)

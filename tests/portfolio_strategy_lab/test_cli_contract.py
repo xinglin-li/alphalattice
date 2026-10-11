@@ -766,6 +766,13 @@ def test_the_product_text_names_no_internal_code() -> None:
     assert len(texts) > 1000 and not named, sorted(named)[:20]
 
 
+def test_each_wait_takes_the_reread_its_compact_answer_offers() -> None:
+    """A compact envelope offers `--section`; both waits take it, so the hint runs as written."""
+    committee = ["committee", "wait", "--update", "u", "--role", "PM", "--key", "k"]
+    for wait in (["activity", "wait"], committee):
+        assert cli._parser().parse_args([*wait, "--section", "messages"]).section == "messages"
+
+
 def test_an_answer_carries_the_titles_of_the_installed_ids_it_names() -> None:
     """Answer titles follow installed label keys in either language without changing data."""
 

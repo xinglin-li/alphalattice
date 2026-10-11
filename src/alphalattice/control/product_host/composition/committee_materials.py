@@ -383,6 +383,11 @@ def _cro_values(
     ]
 
 
+def _held(held: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    """The names held at the date's positions, weight above zero; an exit is never held."""
+    return [h for h in held if h["weight"] > 0]
+
+
 def card_holdings(
     card: Mapping[str, Any], evidence: Mapping[str, Any], held: Sequence[Mapping[str, Any]]
 ) -> tuple[list[str], list[str]]:
@@ -402,7 +407,7 @@ def card_holdings(
     tickers = {
         r.get("entity_id"): r.get("tickers") or () for r in evidence.get("issuer_rows") or ()
     }
-    aliases = {h["name"]: h["alias"] for h in held if h["weight"] > 0}
+    aliases = {h["name"]: h["alias"] for h in _held(held)}
     hit = {
         e: [aliases[t] for t in tickers.get(e, ()) if t in aliases]
         for e in card.get("affected_entities") or ()
@@ -557,7 +562,7 @@ def tension_points(
     adverse = {
         h["alias"]: int(row["adverse_issue_count"])
         for row in evidence.get("issuer_rows") or ()
-        for h in held
+        for h in _held(held)
         if h["name"] in (row.get("tickers") or ()) and int(row.get("adverse_issue_count") or 0)
     }
     moved = [h["alias"] for h in sorted(held, key=lambda h: -abs(h["change"]))[:5]]
