@@ -891,10 +891,14 @@ def evidence_gap(evidence: Mapping[str, Any]) -> str | None:
 def _review_now(readback: Mapping[str, Any]) -> str:
     """The review of this proposal as it stands now; the sealed status only when none stands."""
     standing = readback.get("review_standing") or {}
-    route = (standing.get("cro") or {}).get("route")
-    if standing.get("status") == "REVIEWED":
-        published = standing.get("published_at")
-        return f"Review of this proposal now: REVIEWED, published {published}; CRO route {route}."
+    route, published = (standing.get("cro") or {}).get("route"), standing.get("published_at")
+    if standing.get("status"):
+        return (
+            f"Review of this proposal now: {standing['status']}"
+            + (f", published {published}" if published else "")
+            + (f"; CRO route {route}" if route else "")
+            + "."
+        )
     return f"Review of this proposal at publication: {readback['publication'].get('cro_status')}."
 
 
