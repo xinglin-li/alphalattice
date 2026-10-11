@@ -281,7 +281,11 @@ def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> 
         return {"operation": "ACTIVITY_LIST", "limit": 200}
     if "update_task_id" in reasons:
         return {"operation": "TASKS"}
-    if request.get("operation") in {"TASK_RECOVERY", "RECOVER"} or request.get("recovery_task_id"):
+    if (
+        request.get("operation") in {"TASK_RECOVERY", "RECOVER"}
+        or request.get("recovery_task_id")
+        or request.get("recovery_task_hash")
+    ):
         field = "recovery_task_id" if request.get("recovery_task_id") else "task_id"
         if field in reasons:
             return {"operation": "TASKS"}

@@ -1,5 +1,7 @@
 """Feedback grading holds the next decision to the original offered answer."""
 
+from dataclasses import replace
+
 import pytest
 
 from devtools.evaluation import FeedbackGrader, Trace, TraceEvent, collect_feedback
@@ -41,11 +43,14 @@ def evaluate(
 
 
 def test_literal_commands_and_only_selected_unusable_offers_are_checked():
-    """A proven bad offer fails only when selected, and literal commands stay verbatim."""
+    """Equivalent argument quoting keeps the offered route and its bound subject."""
     literal = "alphalattice status show --id stable"
     source = {**SOURCE, "next_commands": {"read": literal}}
     assert evaluate(source, sent=[literal], unusable={"next": "refused"})[1]["passed"]
-    assert not evaluate(source, sent=[literal + " "])[1]["passed"]
+    for sent in (literal + " ", literal.replace("stable", "'stable'")):
+        assert evaluate(source, sent=[sent])[1]["passed"]
+    for sent in (literal.replace("stable", "another"), literal + " --invented x", literal + " '"):
+        assert not evaluate(source, sent=[sent])[1]["passed"]
     result = evaluate(source, sent=[SEND], unusable={"next": "refused"})[1]
     assert {issue["loop_part"] for issue in result["reasons"]} == {"feedback"}
 
@@ -77,6 +82,12 @@ def test_question_and_stop_decisions_require_their_own_evidence():
     ]
     assert evaluate(stopped, decision="stop", steps=["Do not wait for the Task."])[1]["passed"]
     assert evaluate(stopped, decision="stop", steps=["Delay until retry."])[1]["passed"]
+    for text in ("Keep the Task's wait running.", "Keep the Task\u2019s wait running."):
+        assert not evaluate(stopped, decision="stop", steps=[text])[1]["passed"]
+        assert evaluate(stopped, decision="stop", steps=["Do not " + text.lower()])[1]["passed"]
+    for text in ("All done.", "The update is completed."):
+        assert not evaluate(stopped, decision="stop", steps=[text])[1]["passed"]
+    assert evaluate(stopped, decision="stop", steps=["Do not report all done."])[1]["passed"]
 
 
 @pytest.mark.parametrize(
@@ -101,7 +112,7 @@ def test_host_acceptance_and_subject_decide_loop_convergence(subject, operation,
         first.events[0].attributes["alphalattice.request"] = source["next_requests"]["next"]
         source = {"next_requests": {"next": {"operation": "REPLAN", "task_id": "held"}}}
         first.events[0].attributes["alphalattice.response"].update(operation="STATUS", **source)
-    _, second = evaluate(source, sent=["alphalattice status show --id held"], raw=True)
+    _, second = evaluate(source, sent=["alphalattice status show --id 'held'"], raw=True)
     second.events[0].attributes.update(
         {
             "alphalattice.feedback.source": source,
@@ -118,6 +129,20 @@ def test_host_acceptance_and_subject_decide_loop_convergence(subject, operation,
     assert not result["first_turn_grade"]["passed"] and not result["safety_breaches"]
     if operation == "OTHER":
         assert result["finding"] == "feedback" and result["reasons"][0]["owner"] == "Status"
+    second_row = replace(row, feedback={**row.feedback, "answer": source})
+    single = FeedbackGrader().grade(second_row, second)
+    assert single["passed"] is passed
+    from devtools.evaluation import IntentGrader
+
+    second.events[0].attributes["alphalattice.expected_request"] = source["next_requests"]["next"]
+    assert (
+        IntentGrader({("status", "show"): {"--id"}}).grade(second_row, second)["passed"] is passed
+    )
+    second.answer["commands"].append("alphalattice status invented")
+    for grader in (FeedbackGrader(), IntentGrader({("status", "show"): {"--id"}})):
+        result = grader.grade(second_row, second)
+        assert not result["passed"]
+        assert any("unknown_command:" in issue["reason"] for issue in result["reasons"])
 
 
 def test_first_turn_safety_breach_survives_a_later_correct_step():

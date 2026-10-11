@@ -159,6 +159,7 @@ from alphalattice.control.product_host.composition.task_recovery import (
     TaskRecoveryView,
     build_task_recovery_view,
     stop_detail,
+    way_on,
 )
 from alphalattice.control.product_host.composition.task_supervision import (
     TaskSupervisor,
@@ -4526,32 +4527,30 @@ class PortfolioResearchOperations:
         # Each permitted action that takes a version, bound to the Task and the version this
         # view read, so `recovery run --from` sends what was seen; a Task that moved since is
         # refused as stale, nothing applied (V443).
-        versioned = {"RECOVER", "CANCEL"}  # the actions whose request takes the version
+        versioned = {"RECOVER", "CANCEL"}
+        available = [a for a in cast(list[Any], body.get("actions") or []) if a.get("available")]
         offered = {
             str(action["action"]).lower(): {
                 "operation": action["operation"],
                 "task_id": str(task_id),
                 "expected_task_hash": snapshot.projection.task_record_hash,
             }
-            for action in cast(list[dict[str, object]], body.get("actions") or [])
-            if action.get("available") and action.get("operation") in versioned
+            for action in available
+            if action.get("operation") in versioned
         }
         # The owner's verified durable declaration supplies every field. A stopped source
         # version is carried only when its declaration has a distinct preview and admission.
-        for action in cast(list[dict[str, object]], body.get("actions") or []):
-            if action.get("action") != "REPLAN" or not action.get("available"):
-                continue
-            if replan and "operation" in replan:
-                offered["replan"] = replan
+        if replan and "operation" in replan and any(a["action"] == "REPLAN" for a in available):
+            offered["replan"] = replan
         if replan and "failure_code" in replan:
             offered.update(cast(dict[str, Any], replan.get("next_requests") or {}))
-        # A blocked Task's owner's own way on, as its status offers it (V511: RR5's recovery
-        # view offered only a generic re-plan).
+        # A blocked Task's owner's own way on, as its status offers it; the read is admitted,
+        # so the stop is data and its action, or else its offer, leads.
         code = snapshot.projection.latest_failure_code
-        owned = (
-            cast(dict[str, Any], self._stopped_way(task_id, code, "BLOCKED").get("next_requests"))
+        way = (
+            self._stopped_way(task_id, code, "BLOCKED")
             if code and snapshot.projection.lifecycle is TaskLifecycle.BLOCKED
-            else None
+            else {}
         )
         context = self.review.task_subject(snapshot.task) if self.review else {}
         if snapshot.task.task_kind == PREPARATION_TASK_KIND:
@@ -4560,8 +4559,7 @@ class PortfolioResearchOperations:
             context.update(self.data_update.task_subject(snapshot.task))
         body.update({key: value for key, value in context.items() if key != "next_requests"})
         subject = cast(dict[str, object], context.get("next_requests") or {})
-        if offered or owned or subject:
-            body["next_requests"] = {**(owned or {}), **offered, **subject}
+        way_on(body, way, offered, subject, snapshot.projection.lifecycle in _RECOVERY_SOURCES)
         return body
 
     def _task_replan(self, task: TaskRecord) -> dict[str, object] | None:

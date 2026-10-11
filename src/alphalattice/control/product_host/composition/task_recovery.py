@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
@@ -1111,6 +1111,30 @@ def build_task_recovery_view(
     return _with_hash(TaskRecoveryView, values, "view_hash")
 
 
+def way_on(
+    body: dict[str, object],
+    way: Mapping[str, Any],
+    offered: Mapping[str, object],
+    subject: Mapping[str, object],
+    stopped: bool,
+) -> None:
+    """Set a recovery view's offers and lead, as an admitted read of a stop gives them.
+
+    Args:
+        body: The view's answer, completed in place.
+        way: The stopped Task's owner's words and way on; empty when it names none.
+        offered: The view's own bound requests: recover, cancel, replan.
+        subject: The requests its subject's owner offers.
+        stopped: Whether the Task stopped, so an offer it carries leads.
+    """
+    owned = way.get("next_requests") or {}
+    if offered or owned or subject:
+        body["next_requests"] = {**owned, **offered, **subject}
+    lead = way.get("next_action") or ("SEND_THE_OFFERED_REQUEST" if offered and stopped else None)
+    if lead:
+        body["next_action"] = lead
+
+
 RecoverableKinds = Callable[[], frozenset[str]]
 
 __all__ = [
@@ -1126,4 +1150,5 @@ __all__ = [
     "build_task_recovery_view",
     "stop_detail",
     "task_attention",
+    "way_on",
 ]

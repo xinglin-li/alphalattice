@@ -103,7 +103,7 @@ def test_portfolio_promotion_keeps_its_upstream_stop_and_exact_recovery(
         request.write_text(json.dumps(recovery_request), encoding="utf-8")
         assert (
             main(["--workspace", str(root), "--view", "full", "request", "--file", str(request)])
-            == 2
+            == 0
         )
         recovery = json.loads(capsys.readouterr().out)["data"]
         assert recovery["task_id"] == alpha_id and recovery["lifecycle"] == "BLOCKED"

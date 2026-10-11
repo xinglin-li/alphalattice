@@ -141,7 +141,7 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
 
             saved = tmp_path / "stopped.json"
             code, answer = cli("recovery", "show", str(task.task_id), "--output", str(saved))
-            assert code == 2 and answer["data"]["lifecycle"] == "BLOCKED"
+            assert code == 0 and answer["data"]["lifecycle"] == "BLOCKED"
             assert answer["data"]["stop"]["detail"] == LEDGER_REBUILT_DETAIL
             direct_saved = tmp_path / "strategy.json"
             code, answer = cli(
@@ -247,7 +247,7 @@ def test_an_evidence_task_without_its_book_selector_names_the_choice_before_repl
                     ],
                     serve=lambda _: 99,
                 )
-                == 2
+                == 0
             )
             answer = json.loads(capsys.readouterr().out)
             action = next(v for v in answer["data"]["actions"] if v["action"] == "REPLAN")

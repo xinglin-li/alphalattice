@@ -13,6 +13,7 @@ CATALOG = {
     ("study", "run"): set(),
     ("study", "plan"): {"--file"},
     ("request", ""): {"--from", "--action"},
+    ("research-update", "show"): {"--task"},
 }
 
 
@@ -52,6 +53,9 @@ def plan(**changes):
         ({"commands": ["FEATURE_CONTROLS"]}, None),
         ({"commands": ["feature controls-extra"]}, "route_missing"),
         ({"commands": []}, "route_missing"),
+        ({"commands": [], "steps": ["Read feature controls"]}, "route_missing"),
+        ({"commands": [], "fields": ["FEATURE_CONTROLS"]}, "route_missing"),
+        ({"commands": ["All done: feature controls"]}, "route_missing"),
         ({"decider": "person"}, "wrong_decider"),
         ({"fields": "feature controls"}, "invalid_answer"),
     ],
@@ -152,12 +156,17 @@ def test_a_forbidden_command_cannot_hide_behind_a_lawful_action_label(command, f
     "route,text,passed",
     [
         ("committee show|COMMITTEE_READ", "", False),
-        ("committee show|COMMITTEE_READ", "COMMITTEE_READ", True),
+        ("committee show|COMMITTEE_READ", "COMMITTEE_READ", False),
         ("--action reopen", "alphalattice request --from <report> --action reopen", True),
         ("--action reopen", "alphalattice request --from <report> --action <offered>", False),
         ("entry_session", "entry dates", True),
         ("formation_session", "formation and entry sessions", True),
-        ("position_basis", "position with its basis", True),
+        ("position_basis", "position with its basis", False),
+        (
+            "position_basis",
+            "alphalattice research-update show --task <task>",
+            True,
+        ),
         ("entry_session", "Do not report entry dates", False),
         ("formation_session", "Omit the formation dates", False),
         ("entry_session", "entry price", False),
@@ -170,6 +179,8 @@ def test_every_required_route_group_must_be_named(route, text, passed):
     row = request(expected_route=[["feature controls"], route.split("|")])
     answer = plan()
     answer["commands" if text.startswith("alphalattice ") else "fields"].append(text)
+    if text.startswith("alphalattice research-update show"):
+        answer["fields"].append("position_basis")
     assert grade(row, answer, CATALOG)["passed"] == passed
 
 

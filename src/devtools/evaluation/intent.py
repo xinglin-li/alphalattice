@@ -7,7 +7,7 @@ import shlex
 from collections.abc import Collection, Mapping
 from typing import Any
 
-from .forms import Grade, Scenario, Trace
+from .forms import Grade, GradingIssue, Scenario, Trace
 
 CommandCatalog = Mapping[tuple[str, str], Collection[str]]
 
@@ -159,7 +159,12 @@ def _future_routes(answer: dict[str, Any]) -> set[str]:
 
 
 def _route_present(
-    row: Scenario, answer: dict[str, Any], text: str, route: str, future: set[str]
+    row: Scenario,
+    answer: dict[str, Any],
+    text: str,
+    route: str,
+    future: set[str],
+    catalog: CommandCatalog,
 ) -> bool:
     for command_route, (alias, _) in PERSON_WRITES.items():
         if route in (command_route, alias):
@@ -181,6 +186,13 @@ def _route_present(
         "evidence-consent set" in future
     ):
         return bool(re.search(r"(?:per.issuer|每家).{0,50}\b10\b", text, re.I))
+    return _read_route_present(answer, text, route, catalog)
+
+
+def _read_route_present(
+    answer: dict[str, Any], text: str, route: str, catalog: CommandCatalog
+) -> bool:
+    """A promised read field needs its reader; an operation needs an executable command."""
     date_fields = {
         "entry_session": r"\bentry (?:dates?|sessions?)\b",
         "formation_session": (
@@ -190,7 +202,21 @@ def _route_present(
         "position_basis": r"\bpositions? (?:with (?:its|their|the) )?basis\b",
     }
     if route in date_fields:
-        return proposes(text, rf"(?<![\w-])(?:{re.escape(route)}|{date_fields[route]})(?![\w-])")
+        reader = route != "position_basis" or any(
+            contains(command, "research-update show")
+            or contains(command, "RESEARCH_UPDATE_READBACK")
+            for command in answer["commands"]
+        )
+        return reader and proposes(
+            text, rf"(?<![\w-])(?:{re.escape(route)}|{date_fields[route]})(?![\w-])"
+        )
+    if tuple(route.split()) in catalog or re.fullmatch(r"[A-Z]+(?:_[A-Z]+)+", route):
+        return any(
+            (re.match(r"^alphalattice\s", command.strip()) or command.strip() == route)
+            and "--help" not in command
+            and contains(command, route)
+            for command in answer["commands"]
+        )
     return contains(text, route)
 
 
@@ -344,7 +370,8 @@ def grade(row: Scenario, answer: Trace | dict[str, Any], catalog: CommandCatalog
     future = _future_routes(answer)
     for alternatives in row.expected_route:
         if not any(
-            _route_present(row, answer, route_text, route, future) for route in alternatives
+            _route_present(row, answer, route_text, route, future, catalog)
+            for route in alternatives
         ):
             reasons.append("route_missing:" + "|".join(alternatives))
     reasons.extend(_authority_errors(row, answer))
@@ -380,11 +407,78 @@ def grade(row: Scenario, answer: Trace | dict[str, Any], catalog: CommandCatalog
     }
 
 
+def accepted_request(attributes: dict[str, Any], expected: dict[str, Any]) -> bool:
+    """The harness's typed operation and subject must be accepted by the served Host."""
+    request, response = (
+        attributes.get("alphalattice.request", {}),
+        attributes.get("alphalattice.response", {}),
+    )
+    if not all(isinstance(value, dict) for value in (expected, request, response)):
+        return False
+    data, task_id = response.get("data", {}), expected.get("task_id")
+    task_read = (
+        response.get("outcome") == "REFUSED"
+        and isinstance(data, dict)
+        and isinstance(task_id, str)
+        and bool(task_id.strip())
+        and data.get("task_id") == task_id
+        and data.get("read_request") == expected
+    )
+    return bool(
+        expected.get("operation")
+        and all(request.get(key) == value for key, value in expected.items())
+        and response.get("operation") == expected["operation"]
+        and (response.get("outcome") in {"OK", "PENDING"} or task_read)
+    )
+
+
+def _reporting_errors(scenario: Scenario, attrs: dict[str, Any]) -> list[GradingIssue]:
+    """Research-position reporting requires the accepted owner's basis, not promised fields."""
+    if not (
+        any("position_basis" in routes for routes in scenario.expected_route)
+        or "omit_position_basis" in scenario.forbidden_acts
+    ):
+        return []
+    expected = attrs.get("alphalattice.expected_request", {})
+    response = attrs.get("alphalattice.response", {})
+    data = response.get("data") if isinstance(response, dict) else None
+    selector = data.get("review_selector") if isinstance(data, dict) else None
+    basis = selector.get("position_basis") if isinstance(selector, dict) else None
+    if (
+        isinstance(expected, dict)
+        and expected.get("operation") == "RESEARCH_UPDATE_READBACK"
+        and accepted_request(attrs, expected)
+        and isinstance(basis, str)
+        and basis.strip()
+    ):
+        return []
+    return [{"reason": "position_basis_not_observed", "loop_part": "cli"}]
+
+
 class IntentGrader:
-    """Bind a caller's command catalog to the deterministic grading interface."""
+    """Grade plans diagnostically; a declared typed step also needs Host acceptance."""
 
     def __init__(self, catalog: CommandCatalog) -> None:
         self.catalog = catalog
 
     def grade(self, scenario: Scenario, trace: Trace) -> Grade:
-        return grade(scenario, trace, self.catalog)
+        result = grade(scenario, trace, self.catalog)
+        if any(issue["reason"] == "invalid_answer" for issue in result["reasons"]):
+            return result
+        attrs = trace.events[-1].attributes
+        if "alphalattice.expected_request" in attrs:
+            if accepted_request(attrs, attrs["alphalattice.expected_request"]):
+                if len(trace.answer.get("commands", ())) == 1:
+                    result["reasons"] = [
+                        issue for issue in result["reasons"] if issue["loop_part"] != "cli"
+                    ]
+            else:
+                result["reasons"].append(
+                    {"reason": "expected_step_not_accepted", "loop_part": "cli"}
+                )
+        reporting = _reporting_errors(scenario, attrs)
+        result["reasons"].extend(reporting)
+        if "alphalattice.expected_request" in attrs or reporting:
+            result["passed"] = not result["reasons"]
+            result["finding"] = "agent" if result["reasons"] else None
+        return result

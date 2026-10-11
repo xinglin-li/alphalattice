@@ -82,7 +82,7 @@ def _view(live: LocalPortfolioWebSession, task_id: str) -> dict[str, Any]:
     # the same snapshot as the operation reader sees it (the dispatcher's mask), not a re-read,
     # and the offered requests stand beside it as navigation (V443).
     TaskRecoveryView.model_validate(
-        {k: v for k, v in body.items() if k not in {"status", "next_requests"}}
+        {k: v for k, v in body.items() if k not in {"status", "next_requests", "next_action"}}
     )
     assert body["status"]["task_id"] == task_id == body["task_id"]
     assert body["status"]["task_record_hash"] == body["task_record_hash"]
@@ -534,6 +534,10 @@ def test_an_owner_stop_remains_a_stop_and_admits_no_resume(
         assert actions["RECOVER"]["available"] is False
         assert actions["CANCEL"]["available"] is False
         assert actions["REPLAN"]["available"] is True
+        from alphalattice.interface.local_application.cli_contract import outcome_of
+
+        # The read of the stop is admitted, its stop data; its way on leads (feedback row 3).
+        assert outcome_of(view) == "OK" and view["next_action"] and view["next_requests"]["replan"]
         # The PM's one read of every unfinished Task carries the same facts (GY, V78).
         guardian = _json(live, "/api/tasks/guardian")
         (entry,) = [item for item in guardian["tasks"] if item["task_id"] == task_id]
@@ -549,8 +553,6 @@ def test_an_owner_stop_remains_a_stop_and_admits_no_resume(
         }
         # A read of the blocked Task answers REFUSED, so it says why and where it goes on, as a
         # refusal does (V424, AX14: it named neither).
-        from alphalattice.interface.local_application.cli_contract import outcome_of
-
         status = _json(live, f"/api/status?task_id={task_id}")
         assert outcome_of(status) == "REFUSED"
         assert status["failure_code"] == "portfolio_application.no_admissible_candidate"
@@ -1126,7 +1128,7 @@ def test_a_cancelled_verification_sweep_offers_and_runs_its_replan(
         _json(live, "/api/cancel", method="POST", payload={"task_id": task_id})
         stopped = tmp_path / "stopped.json"
         code, saved = cli("recovery", "show", task_id, "--output", str(stopped))
-        assert code == 2 and saved["data"]["lifecycle"] == "CANCELLED", saved
+        assert code == 0 and saved["data"]["lifecycle"] == "CANCELLED", saved
         action = _actions(saved["data"])["REPLAN"]
         assert (action["operation"], action["available"], action["admits"]) == (
             "EXPERIMENT_VERIFY_ALL",

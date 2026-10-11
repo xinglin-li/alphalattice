@@ -554,7 +554,8 @@ def outcome_of(body: dict[str, Any]) -> Outcome:
 
     A Task's state counts wherever the answer writes it, ``lifecycle`` or ``status``, over the
     whole lifecycle: work that waits, runs or awaits a decision is pending, and a blocked or
-    cancelled Task, or a feature trial stopped on a failed step, is refused (V144, V138).
+    cancelled Task, or a feature trial stopped on a failed step, is refused (V144, V138). A
+    recovery view is the read of a stop, admitted: the stopped Task is its data.
 
     Args:
         body: The full owner answer.
@@ -564,7 +565,8 @@ def outcome_of(body: dict[str, Any]) -> Outcome:
     """
     state = task_state(body)
     trial = body.get("state") if body.get("status") == "FEATURE_TRIAL" else None
-    if refused(body) or state in _REFUSED_STATES or trial == "STOPPED":
+    stop = state in _REFUSED_STATES and body.get("kind") != "TaskRecoveryView"
+    if refused(body) or stop or trial == "STOPPED":
         return "REFUSED"
     disposition = body.get("status", body.get("disposition"))
     if (
