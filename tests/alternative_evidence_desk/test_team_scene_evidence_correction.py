@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -26,8 +27,16 @@ from uuid import UUID
 
 import pytest
 
+from alphalattice.control.product_host.composition.evidence_review_application import (
+    ANSWER_CATEGORY,
+)
+from alphalattice.control.product_host.composition.evidence_review_bundles import (
+    EvidenceReviewBundles,
+)
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.interface.local_application.client import LocalResearchClient
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, answer_slot
 from tests.alternative_evidence_desk.planted_corpus import _CitingActor
 from tests.alternative_evidence_desk.review_dossiers import controlled_answer
 from tests.alternative_evidence_desk.review_http_support import (
@@ -486,3 +495,267 @@ def test_scene_shows_the_same_context_refusals_correction_and_owner_readback(
     assert states_no_correction(html), "the scene states no correction of its own"
     assert all(states_no_correction(r) for r in scene["readers"].values())
     assert len(service.registry.tasks()) == tasks_before + 3
+
+
+def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
+    service, tmp_path, capsys, monkeypatch
+):
+    """A served specialist correction-and-acceptance loop reopens its exact sealed answer."""
+
+    from alphalattice.evidence.alternative_evidence.analysis.views import render_analyst_bundle
+    from alphalattice.interface.local_application.cli import main
+    from alphalattice.oversight.chief_risk_officer.decision.views import render_review_bundle
+    from tests.alternative_evidence_desk.review_dossiers import REPO_ROOT
+
+    monkeypatch.setenv("CODEX_THREAD_ID", "bundle-review-lead")
+    adapter = service.review.evidence_task_adapter
+    topics = adapter.resources.analysis_actor.topics
+    adapter.resources = replace(adapter.resources, analysis_actor=None)
+    service.review.model_authority_admitted = False
+    service.review.review_actor = None
+    client = LocalResearchClient(service.session.workspace)
+    selected = {"result_hash": service.result_hash()}
+    start = client.activity()
+
+    def run(*arguments: str) -> tuple[int, dict[str, Any]]:
+        code = main(["--view", "full", *arguments], serve=lambda _: 99)
+        return code, json.loads(capsys.readouterr().out)["data"]
+
+    def files_of(bundle: dict[str, Any]) -> dict[str, str]:
+        directory = Path(bundle["bundle_directory"])
+        return {path.name: path.read_text(encoding="utf-8") for path in directory.iterdir()}
+
+    def skill(path: str) -> str:
+        return (REPO_ROOT / "skills" / path / "SKILL.md").read_text(encoding="utf-8")
+
+    workspace = ("--workspace", str(service.session.workspace))
+    # Commands printed for a POSIX shell, which `shlex` reads back; the PowerShell form is
+    # held by its own test.
+    monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
+    # The CPU budget (F1): the lead reads the machine and its load, and sets a
+    # budget, with one verb; a budget that is not one is refused by name.
+    code, budget = run(*workspace, "cpu-budget", "show")
+    assert code == 0 and budget["cpu_budget"] == "auto" and budget["machine"]["processors"] >= 1
+    code, budget = run(*workspace, "cpu-budget", "set", "--cores", "2")
+    assert code == 0 and budget["cpu_budget"] == 2
+    code, refused = run(*workspace, "cpu-budget", "set", "--cores", "all")
+    assert code == 2 and "execution.cpu_budget_invalid" in json.dumps(refused)
+    assert run(*workspace, "cpu-budget", "set", "--cores", "auto")[0] == 0
+    # The Task queue's waiting places are set beside it, one setting a request.
+    assert budget["task_queue"]["tasks_waiting"] == "auto" and budget["task_queue"]["places"] >= 1
+    code, queue = run(*workspace, "cpu-budget", "set", "--queue", "3")
+    assert code == 0 and queue["task_queue"]["places"] == 3 and queue["cpu_budget"] == "auto"
+    code, refused = run(*workspace, "cpu-budget", "set", "--queue", "0")
+    assert code == 2 and "task_control.tasks_waiting_invalid" in json.dumps(refused)
+    preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
+    prepared = client.request(preview["next_requests"]["prepare"])
+    service.drain()
+    source_id = prepared["task_id"]
+
+    # Every book is a run: the Analyst's packet is one unit's, and a bundle
+    # asked for without its unit is refused naming the units there are.
+    code, unnamed = run(
+        *workspace,
+        *("bundle", "prepare", "--role", "ANALYST", "--task", source_id),
+        *("--result", selected["result_hash"]),
+        *("--dir", str(tmp_path / "unnamed")),
+    )
+    assert code == 2 and "agent_bundle.analyst_unit_required:u01" in json.dumps(unnamed)
+    assert not (tmp_path / "unnamed").exists()
+    # Each says how to name the packet, where it answered with no way on.
+    assert unnamed["next_action"] == "GIVE_THE_PACKETS_TASK_AND_UNIT"
+    assert "`evidence_unit_id`" in unnamed["message"]
+    code, untasked = run(
+        *workspace,
+        *("bundle", "prepare", "--role", "ANALYST"),
+        *("--result", selected["result_hash"]),
+        *("--dir", str(tmp_path / "untasked")),
+    )
+    assert code == 2 and untasked["failure_code"] == "agent_bundle.analyst_task_required"
+    assert untasked["next_action"] == "GIVE_THE_PACKETS_TASK_AND_UNIT"
+
+    # The Analyst: a subset, one invalid item corrected, then accepted.
+    code, analyst = run(
+        *workspace,
+        *("bundle", "prepare", "--role", "ANALYST"),
+        *("--task", source_id, "--unit", "u01"),
+        *("--result", selected["result_hash"]),
+        *("--dir", str(tmp_path / "analyst")),
+    )
+    assert code == 0 and analyst["status"] == "AGENT_BUNDLE_READY"
+    assert analyst["files"][0]["name"] == "README.md"
+    packet = adapter.prepared_packet(UUID(source_id), now=service.review.clock(), unit_id="u01")
+    view = render_analyst_bundle(
+        packet, task_procedure=skill("alternative-evidence/governed-evidence-analysis")
+    )
+    assert files_of(analyst) == dict(view.files)
+    readme = files_of(analyst)["README.md"]
+    assert "`findings`: at most three an issuer and 32 in one answer" in readme
+    full = _CitingActor(topics=topics)(packet=packet).answer.model_dump(mode="json")
+    subset = {**full, "findings": full["findings"][:2]}
+    assert len(subset["findings"]) == 2
+    invented = json.loads(json.dumps(subset))
+    invented["findings"][1]["cite"] = ["S999"]
+    answer_file = Path(analyst["answer_file"])
+    # An answer names the files it read whole; the list is its own word, kept with the
+    # answer as provenance, and the answer is read whatever it names.
+    read = [item["name"] for item in analyst["files"]]
+    answer_file.write_text(json.dumps({**invented, "read": read[:1]}), encoding="utf-8")
+    code, verdict = run(*analyst["submit_arguments"])
+    assert code == 0 and verdict["status"] == "CORRECT" and "receipt" not in verdict
+    bundle = EvidenceReviewBundles(service.review).agent_bundle(str(tmp_path / "analyst"))
+    assert bundle is not None
+    binding = {
+        "role": "alternative_evidence.analyst",
+        "task_id": source_id,
+        "unit_id": "u01",
+        "analysis_context_hash": bundle.submission["analysis_context_hash"],
+    }
+    kept = service.review.artifacts.load(
+        ANSWER_CATEGORY, answer_slot(str(canonical_hash(binding)), 1), AgentAnswerRecord
+    )
+    assert kept.read_files == tuple(read[:1])
+    assert verdict["problems"] == [{"item": 2, "text": "S999 is not an excerpt of this bundle."}]
+    assert (verdict["answer_number"], verdict["rounds_left"], verdict["accepted_items"]) == (
+        1,
+        2,
+        [1],
+    )
+    answer_file.write_text(json.dumps({**subset, "read": read}), encoding="utf-8")
+    code, verdict = run(*analyst["submit_arguments"])
+    # Accepted, its Task pending: the receipt names the Task's state.
+    assert code == 3 and verdict["status"] == "ACCEPTED"
+    assert verdict["bundle_reference"] == analyst["bundle_reference"]
+    assert verdict["task_lifecycle"] in {"QUEUED", "RUNNING"}
+    assert verdict["receipt"] == {
+        "agent_role": "ANALYST",
+        "verdict": "ACCEPTED",
+        "answer_reference": answer_slot(str(canonical_hash(binding)), 2),
+        "task_id": verdict["task_id"],
+        "accepted_items": 2,
+        "dropped_items": 0,
+    }
+    service.drain()
+
+    # The CRO: one invalid risk kept three times, the third answer DONE.
+    # The book named by its selector's field (an experiment or update book
+    # names its own fields); the reply carries the one command ready to run.
+    code, cro = run(
+        *workspace,
+        *("bundle", "prepare", "--role", "CRO"),
+        *("--result", selected["result_hash"]),
+        *("--dir", str(tmp_path / "c")),
+    )
+    assert code == 0 and cro["status"] == "AGENT_BUNDLE_READY"
+    cro_bundle = EvidenceReviewBundles(service.review).agent_bundle(str(tmp_path / "c"))
+    cro_binding = {
+        "role": "chief_risk_officer.reviewer",
+        "dossier_hash": cro_bundle.submission["review_dossier_hash"],
+        "policy_hash": cro_bundle.submission["review_policy_hash"],
+        "schema_hash": cro_bundle.submission["review_schema_hash"],
+    }
+    # The bundle offers its submit, the directory bound and the answer left.
+    offered = cro["next_requests"]["submit"]
+    assert (offered["operation"], offered["agent_answer"]) == ("AGENT_ANSWER_SUBMIT", None)
+    assert Path(offered["bundle_directory"]) == Path(cro["bundle_directory"])
+    command = shlex.split(cro["submit_command"])
+    # The installed command, as every printed command starts, then its arguments.
+    assert command[0] == "alphalattice" and command[1:] == cro["submit_arguments"]
+    dossier = service.review._resolve_review_dossier(service.review._review_selector(None))
+    view = render_review_bundle(
+        dossier, task_procedure=skill("chief-risk-officer/review-portfolio-evidence")
+    )
+    assert files_of(cro) == dict(view.files)
+    assert "`risks`: at most 16 in one answer" in files_of(cro)["README.md"]
+    risk = {
+        "findings": ["F1"],
+        "why": "The cited finding is adverse for a held issuer.",
+        "severity": "HIGH",
+        "confidence": "SUPPORTED",
+        "recommendation": "Size the position down.",
+    }
+    submission = {"risks": [risk], "summary": "One major negative in the evidence read."}
+    stray = {**risk, "findings": ["F999"]}
+    Path(cro["answer_file"]).write_text(
+        json.dumps(
+            {
+                **submission,
+                "risks": [*submission["risks"], stray],
+                "read": [item["name"] for item in cro["files"]],
+            }
+        ),
+        encoding="utf-8",
+    )
+    problem = {
+        "item": len(submission["risks"]) + 1,
+        "text": "F999 is not a finding of this bundle.",
+    }
+    for rounds_left in (2, 1):
+        code, verdict = run(*cro["submit_arguments"])
+        assert code == 0 and verdict["status"] == "CORRECT"
+        assert (verdict["rounds_left"], verdict["problems"]) == (rounds_left, [problem])
+    code, verdict = run(*cro["submit_arguments"])
+    assert code == 3 and verdict["status"] == "DONE" and verdict["dropped"] == [problem]
+    assert verdict["bundle_reference"] == cro["bundle_reference"]
+    assert verdict["receipt"] == {
+        "agent_role": "CRO",
+        "verdict": "DONE",
+        "answer_reference": answer_slot(str(canonical_hash(cro_binding)), 3),
+        "task_id": verdict["task_id"],
+        "accepted_items": len(submission["risks"]),
+        "dropped_items": 1,
+    }
+    # The lead goes on from this answer: its Task, and the book's Evidence and CRO.
+    assert verdict["next_requests"] == {
+        "task": {"operation": "STATUS", "task_id": verdict["task_id"]},
+        "book": {"operation": "EVIDENCE_CRO", "result_hash": selected["result_hash"]},
+    }
+    service.drain()
+    review = service.review.review_publications.find_for_review_key(
+        service.registry.task(UUID(verdict["task_id"])).input.input_hash
+    )
+    assert review.receipt.answer.model_dump(mode="json") == submission
+
+    # What the agents read carries no hash; what the lead holds is the receipt.
+    for text in (*files_of(analyst).values(), *files_of(cro).values()):
+        assert re.search(r"\b[0-9a-f]{64}\b", text) is None
+    page = client.activity(after=start["cursor"], limit=200)
+    submitted = [
+        (item["payload"]["subject"].get("agent_role"), item["payload"]["status"])
+        for item in page["items"]
+        if item["payload"]
+        and item["payload"].get("operation") == "AGENT_ANSWER_SUBMIT"
+        and item["payload"]["phase"] == "RETURNED"
+    ]
+    assert submitted == [
+        ("ANALYST", "CORRECT"),
+        ("ANALYST", "ACCEPTED"),
+        ("CRO", "CORRECT"),
+        ("CRO", "CORRECT"),
+        ("CRO", "DONE"),
+    ]
+    rows = [
+        item
+        for item in client.read_external()["items"]
+        if item["payload"]["subject"].get("input_channel") == "PRODUCT_ACCEPTED_ANSWER"
+    ]
+    assert {row["payload"]["subject"]["bundle_role"] for row in rows} == {"ANALYST", "CRO"}
+    for row in rows:
+        subject = row["payload"]["subject"]
+        assert subject["native_agent_id"] == subject["submitted_by"] == "bundle-review-lead"
+        assert subject["authorship_basis"] == "NOT_OBSERVED"
+        detail = client.read_external(observation_id=row["observation_id"])["accepted_answer"]
+        assert detail["status"] == "AVAILABLE", detail
+        assert detail["agent_role"] == subject["bundle_role"]
+        assert detail["bundle_reference"] == subject["bundle_reference"]
+    # A directory the Host never prepared, or a bundle whose evidence moved
+    # on, is refused by name and nothing is read.
+    stranger = tmp_path / "elsewhere"
+    stranger.mkdir()
+    (stranger / "answer.json").write_text("{}", encoding="utf-8")
+    code, refused = run(
+        *workspace,
+        *("bundle", "submit", "--dir", str(stranger)),
+        *("--file", str(stranger / "answer.json")),
+    )
+    assert code == 2 and refused["failure_code"] == "agent_bundle.not_prepared"

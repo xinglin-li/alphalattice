@@ -2241,58 +2241,53 @@ class PortfolioResearchOperations:
                         }:
                             raise
                         return agent_bundle_refusal(str(error), role=bundle.role)
-                    generic_body = self.observe_accepted_answer(
+                    body: dict[str, object] | None = self.observe_accepted_answer(
                         generic_body, bundle, accepted_receipt=accepted_receipt
                     )
-                    answered = agent_answer_result(bundle.role, generic_body)
-                    if answered["status"] in {"ACCEPTED", "DONE"}:
-                        answered["bundle_reference"] = bundle.record_hash
-                    if agent_run is not None and answered["status"] not in {"ACCEPTED", "DONE"}:
-                        answered["recorded_agent"] = agent_run.model_dump(mode="json")
-                    if "conversation" in generic_body:
-                        answered["conversation"] = generic_body["conversation"]
-                    return answered
-                bound = PortfolioResearchRequestDocument.model_validate(
-                    {**bundle.submission, ANSWER_FIELDS[bundle.role]: answer}
-                ).to_operation_request()
-                try:
-                    body = self._review_operation(
-                        bound,
-                        caller=caller,
-                        read_files=read,
-                        agent_run=agent_run,
-                        accepted_bundle=bundle,
-                    )
-                except ValidationError as error:
-                    # The answer passed its format and the record it would seal did
-                    # not: named by place, count and bound, never a bare field code.
-                    over = sealed_bounds_exceeded(error)
-                    if not over:
-                        raise
-                    return agent_bundle_refusal(
-                        "agent_bundle.seal_bound_exceeded", role=bundle.role, bounds=over
-                    )
-                except PortfolioEvidenceReviewError as error:
-                    if str(error) == "agent_bundle.answer_settled":  # V417
-                        return agent_bundle_refusal(str(error), role=bundle.role)
-                    if str(error) not in STALE_BUNDLE_CODES:
-                        raise
-                    return agent_bundle_refusal("agent_bundle.preparation_stale")
-                except ValueError as error:
-                    # A packet prepared under authority the Host no longer holds -- an install
-                    # replaced its package -- is refused by what moved, with the book's preview
-                    # that prepares the unit again (V547).
-                    if not str(error).startswith(STALE_PACKET):
-                        raise
-                    return stale_packet_refusal(
-                        str(error),
-                        role=bundle.role,
-                        book=_bundle_book(bundle.submission),
-                        unit_id=bundle.submission.get("evidence_unit_id"),
-                    )
+                else:
+                    bound = PortfolioResearchRequestDocument.model_validate(
+                        {**bundle.submission, ANSWER_FIELDS[bundle.role]: answer}
+                    ).to_operation_request()
+                    try:
+                        body = self._review_operation(
+                            bound,
+                            caller=caller,
+                            read_files=read,
+                            agent_run=agent_run,
+                            accepted_bundle=bundle,
+                        )
+                    except ValidationError as error:
+                        # The answer passed its format and the record it would seal did
+                        # not: named by place, count and bound, never a bare field code.
+                        over = sealed_bounds_exceeded(error)
+                        if not over:
+                            raise
+                        return agent_bundle_refusal(
+                            "agent_bundle.seal_bound_exceeded", role=bundle.role, bounds=over
+                        )
+                    except PortfolioEvidenceReviewError as error:
+                        if str(error) == "agent_bundle.answer_settled":  # V417
+                            return agent_bundle_refusal(str(error), role=bundle.role)
+                        if str(error) not in STALE_BUNDLE_CODES:
+                            raise
+                        return agent_bundle_refusal("agent_bundle.preparation_stale")
+                    except ValueError as error:
+                        # A packet prepared under authority the Host no longer holds -- an install
+                        # replaced its package -- is refused by what moved, with the book's preview
+                        # that prepares the unit again (V547).
+                        if not str(error).startswith(STALE_PACKET):
+                            raise
+                        return stale_packet_refusal(
+                            str(error),
+                            role=bundle.role,
+                            book=_bundle_book(bundle.submission),
+                            unit_id=bundle.submission.get("evidence_unit_id"),
+                        )
                 assert body is not None
-                book = _bundle_book(bundle.submission)
+                book = _bundle_book(bundle.submission) if bundle.role in ANSWER_FIELDS else None
                 answered = agent_answer_result(bundle.role, body, book)
+                if answered["status"] in {"ACCEPTED", "DONE"}:
+                    answered["bundle_reference"] = bundle.record_hash
                 if agent_run is not None and answered["status"] not in {"ACCEPTED", "DONE"}:
                     answered["recorded_agent"] = agent_run.model_dump(mode="json")
                 if "conversation" in body:

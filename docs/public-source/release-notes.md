@@ -118,3 +118,56 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 - The delivery export is English and still shows some raw figures and codes. Words and number formatting follow in 0.1.5.
 - The decision schedule is fixed: decided at the official close, entered at the next official open. Other schedules are a recorded feature request.
 - Claude specialists use the `haiku` alias at high effort. On Bedrock, Vertex or Foundry, pin the alias with `ANTHROPIC_DEFAULT_HAIKU_MODEL`. A project configured from 0.1.3 keeps its copied cards, as earlier notes describe.
+
+## 0.1.5
+
+**Launch and activation**
+
+- Local Web stays running when your agent launches it from a background shell with no open standard input.
+- `alphalattice host stop` waits for the Host's workers to finish before releasing the workspace.
+- Measuring a run's process tree visits each process once, so a reused parent id cannot loop it.
+- Outside first-use delegation, the agent introduces the selected strategy, asks you once in one line about activation and relays your answer.
+
+**Refusals and recovery**
+
+- An unambiguous command or option typo offers a corrected request that has been checked; it does not run without your agent sending it.
+- A missing or invalid selection names its field and offers the read that shows valid values.
+- An unknown strategy points to installed strategies; an unknown Task points to the workspace's Task list.
+- A preparation plan offers no confirmation when it directs you elsewhere or its inputs have already been published.
+- Reading a stopped Task's recovery returns OK with its permitted way on; the read does not turn the stopped Task into a success.
+- A message file that cannot be read names the line and column where reading stopped and offers that operation's schema, a few kilobytes rather than the whole catalogue.
+- The waits accept `--section`, as their compact answers offer.
+
+**Committee**
+
+- Each member receives the facts its role judges from, drawn from the sealed records: the signal and why each name is held for Alpha, concentration and risk for Risk, the evidence and the run's process for the CRO, and the change, cost and timing for the portfolio manager. Each fact names its source; a fact no record holds is named as unavailable.
+- Members cite facts, components and holdings by alias and type no figure. A typed figure is refused with each figure named and, for a holding's name, the message offered back with its alias.
+- Tension points come from the date's exceptions, and an issue card names the held positions it affects.
+- Refusals explain their rule and offer a corrected message where its shape can be repaired.
+- Resending an unchanged accepted message returns its first admission without spending another turn.
+- A wrong update reference points to open committees and offers a corrected request when the member's key identifies one.
+- The portfolio manager must rule on every outstanding challenge before giving a verdict.
+- When a published review is available, the CRO's material shows its current status and route rather than only the status recorded with the positions.
+- The report carries the published review and every position a member still holds, in the member's words with its message id.
+
+**Workbench**
+
+- A date's performance appears above its holdings.
+- Forward realized names the session it waits for when no realized session exists yet.
+- Team, Sessions lists the specialist sessions each lead started.
+
+**Previews**
+
+- **Investment committee (preview).** Specialists judge a date's research positions and the portfolio manager records their decision; they change no position number.
+- **Problem report (preview).** Tell your agent to report a problem in one sentence; it shows you a redacted report and sends it only on your yes.
+
+**For developers**
+
+- [Public scenario forms](../../src/devtools/evaluation/forms.py) describe starting states, clocks, routes, decisions and forbidden acts.
+- The [feedback grader](../../src/devtools/evaluation/feedback.py) checks an agent's next step against the answer and records which part failed.
+- The [committee grader](../../src/devtools/evaluation/committee.py) checks a closed committee's report against its floor: standing positions, rulings, the review and typed figures.
+- [Design principles](design-principles.md) explain the product's choices with examples you can check.
+
+**Measured**
+
+- One recorded run from the first product command to delivery-report export took about 47 minutes on a four-core execution budget without a product repair; this is indicative, not a runtime guarantee.
