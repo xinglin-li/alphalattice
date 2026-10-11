@@ -30,6 +30,7 @@ from alphalattice.control.product_host.composition.local_web_session import (
 )
 from alphalattice.control.product_host.research_authoring.comparison import POSITION_UNITS
 from alphalattice.interface.local_application import cli, client, native_setup
+from alphalattice.interface.local_application.answers import answer_problem
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
@@ -323,8 +324,16 @@ def test_a_missing_or_invalid_selector_offers_an_admitted_discovery_read(
     assert field in refusal["data"]["reasons"] and refusal["detail"]
     schema_line = refusal["data"]["schema_command"]
     assert schema_line == ["alphalattice", "schema", "show", operation]
-    code, form, _ = _cli(read_only_live.workspace, *schema_line[1:])
-    assert code == 0 and field in form["data"]["properties"]
+    assert refusal["next_requests"]["schema"] == {
+        "operation": "OPERATION_LIST",
+        "schema_operation": operation,
+    }
+    saved.write_text(json.dumps(refusal), encoding="utf-8")
+    code, form, _ = _cli(
+        read_only_live.workspace, "request", "--from", str(saved), "--action", "schema"
+    )
+    assert code == 0 and field in form["data"]["operation_schema"]["properties"]
+    saved.write_text(json.dumps(request), encoding="utf-8")
     _, chinese, _ = _cli(read_only_live.workspace, "--lang", "zh", "request", "--file", str(saved))
     assert chinese["detail"] != refusal_words("local_client.request_invalid")["detail"]
     assert any("一" <= char <= "鿿" for char in chinese["detail"])
@@ -546,27 +555,29 @@ def test_an_empty_document_file_is_refused_by_its_own_code(
         assert "references" in body["detail"] and "cannot be read" not in body["detail"]
     else:
         missing = tmp_path / "copies" / "01-controls.json"
-        code = cli.main(
-            ["--workspace", str(tmp_path), "--view", "full", "request", "--file", str(missing)],
-            serve=lambda _: 99,
-        )
-        body = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+        code, body, _ = _inprocess_cli(tmp_path, "request", "--file", str(missing), capsys=capsys)
         assert (code, body["failure_code"]) == (1, "local_client.document_missing"), body
         assert body["document_location"] == {"file": str(missing), "expected": "an existing file"}
         assert body["next_action"] == "CHECK_THE_FILE_PATH" and "schema" not in body["detail"]
         broken = tmp_path / "broken.json"
         broken.write_bytes(b"\xff\xfe not utf-8")
-        code = cli.main(
-            ["--workspace", str(tmp_path), "--view", "full", "request", "--file", str(broken)],
-            serve=lambda _: 99,
-        )
-        body = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+        code, body, _ = _inprocess_cli(tmp_path, "request", "--file", str(broken), capsys=capsys)
         assert (code, body["failure_code"]) == (1, "local_client.document_unreadable"), body
         assert body["document_location"]["file"] == str(broken)
         refusal = client_refusal("local_client.document_unreadable")
         assert "YAML or JSON" in refusal.detail
         assert refusal.next_action == "CORRECT_THE_DOCUMENT_WHERE_READING_STOPPED"
         assert "JSON;" not in client_refusal("local_client.document_missing").detail
+        assert fake_host.sent == []
+        assert body["next_requests"] == {"schema": {"operation": "OPERATION_LIST"}}, body
+        saved = tmp_path / "refusal.json"
+        saved.write_text(json.dumps(body), encoding="utf-8")
+        code, recovered, _ = _inprocess_cli(
+            tmp_path, "request", "--from", str(saved), "--action", "schema", capsys=capsys
+        )
+        assert code == 0 and recovered["outcome"] == "OK", recovered
+        assert fake_host.sent == [{"operation": "OPERATION_LIST"}]
+        return
     assert fake_host.sent == []
 
 
@@ -835,6 +846,7 @@ def test_every_field_schema_prints_is_described() -> None:
 
 def test_an_operation_only_a_person_completes_is_marked_so(
     read_only_live: LocalPortfolioWebSession,
+    tmp_path: Path,
 ) -> None:
     """An operation only a person completes is marked so."""
     live = read_only_live
@@ -851,6 +863,29 @@ def test_an_operation_only_a_person_completes_is_marked_so(
     contracts = body["data"]["operation_fields"]
     assert code == 0
     assert {op for op, contract in contracts.items() if contract.get("person_only")} == PERSON_ONLY
+    assert body["data"]["operation_schema"] == PortfolioResearchRequestDocument.model_json_schema()
+    assert answer_problem(
+        "OPERATION_LIST",
+        {key: body["data"][key] for key in ("operation_schema", "operation_fields")},
+    )
+    sizes = {}
+    form_args = ["operation", "list", "--schema-operation"]
+    for operation in ("COMMITTEE_SUBMIT", "DATA_UPDATE_RUN", "EXPERIMENT_PLAN"):
+        code, focused, _ = _cli(live.workspace, *form_args, operation)
+        data = focused["data"]
+        assert code == 0 and set(data) == {"operation_schema", "operation_fields", "read_request"}
+        assert data["operation_fields"] == {operation: contracts[operation]}
+        schema = data["operation_schema"]
+        assert set(schema["properties"]) == {"operation", *contracts[operation]["allowed"]}
+        assert schema["properties"]["operation"]["const"] == operation
+        groups = command_table()["alternatives"].get(operation, [])
+        assert schema.get("oneOf", []) == [{"required": group} for group in groups]
+        refs = re.findall(r'"\$ref":\s*"#/\$defs/([^"]+)"', json.dumps(schema))
+        assert set(refs) == set(schema["$defs"])
+        sizes[operation] = len(json.dumps(focused, indent=1).encode("utf-8"))
+    (tmp_path / "schema-sizes.json").write_text(json.dumps(sizes), encoding="utf-8")
+    code, unknown, _ = _cli(live.workspace, *form_args, "COMMITTEE_SUBMT")
+    assert code == 2 and unknown["failure_code"] == "local_client.request_invalid"
     values = {
         "network_enabled": "true",
         "evidence_documents_per_issuer": "3",

@@ -1,4 +1,4 @@
-"""Local client transport over the running Host, never another workspace writer."""
+"""Read-only transport to the running Host."""
 
 from __future__ import annotations
 
@@ -44,6 +44,7 @@ from alphalattice.interface.local_application.cli_contract import (
     named_read,
     offered_requests,
     outcome_of,
+    schema_request,
     shell,
     task_state,
     worded,
@@ -52,27 +53,17 @@ from alphalattice.interface.local_application.goals import target_sessions
 
 CONNECTION_NAME = "local-research-connection.json"
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
-"""Beside the connection: every hash and id the Host has answered a client with (V393)."""
+"""Issued hashes and ids beside the connection."""
 WHOLE_REFERENCE = re.compile(
     r"\b(?:[0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
 )
-"""A whole hash (a SHA-256 hex digest) or id (a UUID)."""
+"""SHA-256 or UUID."""
 DEFAULT_HTTP_WAIT_SECONDS = 120.0
 """Transport waiting, not a Task budget; verified historical PLAN/readback may exceed 30 s."""
 
 
 def request_body(document: dict[str, Any]) -> bytes:
-    """A request's JSON body, its text in UTF-8 rather than escaped.
-
-    Escaped, a Chinese character takes six bytes instead of three, so a request whose fields
-    are each within their limits could exceed the Host's body limit (V147).
-
-    Args:
-        document: The request document.
-
-    Returns:
-        The body the Host reads.
-    """
+    """Use UTF-8 JSON: escapes could make admitted Unicode fields exceed the body limit."""
     return json.dumps(document, default=_json_value, ensure_ascii=False).encode("utf-8")
 
 
@@ -775,10 +766,9 @@ def _listed(path: Path) -> list[Any]:
 
 
 def _response_document(path: Path) -> dict[str, Any]:
-    """A saved answer, in JSON or in the YAML `--output --format yaml` writes (V130).
+    """Read a saved full or compact JSON/YAML answer.
 
-    A compact display is read too; what continues from it checks that the parts it reads are
-    whole (`_whole`), since a display cut elsewhere still holds them (V133).
+    Only a continued part must be whole (`_whole`); a local refusal keeps its own offer.
     """
 
     import yaml
@@ -792,6 +782,8 @@ def _response_document(path: Path) -> dict[str, Any]:
         except ValueError:
             result = load_safe_yaml_document(text)
         value = result.get("data", result)
+        if value is None and offered_requests(result):
+            value = result
         if not isinstance(value, dict):
             raise ValueError("not an operation response")
     except (ValueError, AttributeError, yaml.YAMLError) as error:
@@ -3313,7 +3305,11 @@ def run(
     body: dict[str, Any] | None = None
     raw_body: bytes | None = None
     saved_output: Path | None = None
-    document: dict[str, Any] = {} if callable(document_override) else dict(document_override or {})
+    document: dict[str, Any] = (
+        {"operation": getattr(args, "operation", None)}
+        if callable(document_override)
+        else dict(document_override or {})
+    )
     display_view = args.view or "compact"
     listed = bool(getattr(args, "list_next", False))
     next_from = int(getattr(args, "next_from", 0) or 0)
@@ -3546,22 +3542,15 @@ def run(
                     failure_code=code,
                     detail=refusal.detail,
                     next_action=refusal.next_action,
+                    next_requests={"schema": schema_request(document.get("operation"))}
+                    if code == "local_client.document_unreadable"
+                    else None,
                     context=_context(args.workspace, getattr(args, "goal", None)),
-                    **(
-                        {"document_location": error.document_location}
-                        if error.document_location is not None
-                        else {}
-                    ),
-                    **(
-                        {"document_size": error.document_size}
-                        if error.document_size is not None
-                        else {}
-                    ),
-                    **(
-                        {"short_reference": error.short_reference}
-                        if error.short_reference is not None
-                        else {}
-                    ),
+                    **{
+                        field: getattr(error, field)
+                        for field in ("document_location", "document_size", "short_reference")
+                        if getattr(error, field) is not None
+                    },
                     **transport,
                 ),
                 default=_json_value,

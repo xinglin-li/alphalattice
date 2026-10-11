@@ -1,0 +1,569 @@
+"""What each committee member is given to judge a date's positions.
+
+Its questions and the floor's facts, each sealed at the floor's open with the record it reads
+and the reference it reads against, and a named absence where no record holds one (PENDING
+for live data, UNAVAILABLE otherwise). The floor's admission of messages is `committee`'s;
+this composes the material only, by reading the sealed records and taking differences.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any, Final
+
+import numpy as np
+
+QUESTIONS: Final = {
+    "PM": {
+        "PM.change": "What changed, and what did it cost?",
+        "PM.envelope": "Is the book inside its research envelope?",
+        "PM.feasibility": "Can it be carried out?",
+        "PM.synthesis": "What does the committee hand on?",
+    },
+    "ALPHA": {
+        "ALPHA.clean": "Is the signal clean?",
+        "ALPHA.held": "Why is each name held?",
+        "ALPHA.cost": "Was today's change worth its cost?",
+        "ALPHA.bet": "Is it one bet?",
+        "ALPHA.strength": "How strong is today's signal?",
+    },
+    "RISK": {
+        "RISK.volatility": "How volatile is the book against its own history?",
+        "RISK.decomposition": "Where does its risk come from?",
+        "RISK.concentration": "Is it concentrated beyond its caps?",
+        "RISK.correlation": "Do its names move together?",
+        "RISK.liquidity": "Can it be traded at its size?",
+        "RISK.reliability": "Can the risk read be trusted?",
+    },
+    "CRO": {
+        "CRO.evidence": "What is wrong with the names held?",
+        "CRO.coverage": "What did the review not see?",
+        "CRO.process": "Did the update run by its declared method?",
+        "CRO.rules": "Are the positions within the declared rules?",
+        "CRO.dissents": "What stands against the book, and what goes to the person?",
+    },
+}
+"""Each member's questions; the floor answers every one with a fact or a named absence."""
+
+_ASKED: Final = {q: words for qs in QUESTIONS.values() for q, words in qs.items()}
+
+_ABSENT: Final = (
+    ("PM.envelope", "PENDING: the replay baseline and live against expected need live sessions."),
+    ("ALPHA.clean", "UNAVAILABLE: data decisions on held names need the data platform's join."),
+    ("ALPHA.bet", "UNAVAILABLE: sector and style concentration are in no record yet."),
+    (
+        "ALPHA.strength",
+        "UNAVAILABLE: score dispersion needs raw pre-rank scores; hit rate PENDING.",
+    ),
+    ("RISK.volatility", "UNAVAILABLE: volatility history needs the date's Risk kept each session."),
+    ("RISK.correlation", "UNAVAILABLE: pairwise correlation and clusters are in no record."),
+    ("RISK.liquidity", "UNAVAILABLE: position against ADV needs a declared capital."),
+    ("CRO.process", "UNAVAILABLE: repairs and data decisions need the data platform's join."),
+)
+"""What no record holds yet, said as a fact: PENDING for live data, UNAVAILABLE otherwise."""
+
+_FACTS: Final = {
+    "turnover": (
+        "PM.change",
+        "positions",
+        "Turnover {t:.1%}, settled median {median}; cost {c5:.3%} at 5, {c10:.3%} at 10 bps.",
+    ),
+    "cash": (
+        "PM.feasibility",
+        "publication",
+        "Cash {cash:.2%}; missed executions settled so far: {missed}.",
+    ),
+    "floor": (
+        "PM.synthesis",
+        "floor",
+        "The floor itself: stances, rulings and items for the person.",
+    ),
+    "moves": (
+        "ALPHA.clean",
+        "publication",
+        "{c} score moves on the previous session: {moved}; unscored: {unscored}.",
+    ),
+    "rule": (
+        "ALPHA.held",
+        "publication",
+        "{c} holds {n}, top {top} by rank; kept by the exit line at {out}: {kept}.",
+    ),
+    "spread": (
+        "ALPHA.cost",
+        "publication",
+        "{c} entries and exits: score spread {spread:.2f} against a {cost:.3%} cost.",
+    ),
+    "curve": (
+        "ALPHA.strength",
+        "publication",
+        "{c} matured return by rank: top fifth {top:.2%}, bottom {bottom:.2%}.",
+    ),
+    "shared": ("ALPHA.bet", "publication", "Held by two or more components: {shared}."),
+    "risk": ("RISK.decomposition", "date_risk", "{view}"),
+    "weights": (
+        "RISK.concentration",
+        "positions",
+        "Largest {w:.2%} against the {cap} cap; top ten {ten:.2%}; {spread}",
+    ),
+    "covered": ("RISK.reliability", "date_risk", "Covered weight {covered:.0%}, Risk as of {at}."),
+    "flagged": (
+        "CRO.evidence",
+        "evidence",
+        "Names with a major negative hold {flagged:.2%} of the book, across {cards} issue cards.",
+    ),
+    "scope": (
+        "CRO.coverage",
+        "evidence",
+        "Reviewed weight {reviewed} against the minimum {minimum}.",
+    ),
+    "review": ("CRO.coverage", "review_standing", "{now}"),
+    "package": (
+        "CRO.process",
+        "publication",
+        "Package hash {same} the installed book's; observed through {seen}; enters {entry} "
+        "from the {formation} close, target session {target}.",
+    ),
+    "caps": (
+        "CRO.rules",
+        "publication",
+        "Largest {w:.2%} against the {cap:.0%} cap; research positions only.",
+    ),
+    "dissents": (
+        "CRO.dissents",
+        "floor",
+        "The floor itself: standing dissents and items for the person.",
+    ),
+}
+"""Each fact's question, source record and the Host's words; a writer gives its values."""
+
+
+def _view(readback: Mapping[str, Any], held: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The book's sealed records as the facts read them, by reading and differencing only."""
+    from alphalattice.capabilities.portfolio_backtesting.contracts import (
+        PortfolioCostPolicy as Policy,
+    )
+    from alphalattice.capabilities.portfolio_backtesting.contracts import (
+        PortfolioPerSideCostAssumption as Side,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
+        PortfolioUpdatePublication as Publication,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies import (
+        FROZEN_RESEARCH_BOOK_RECIPES as RECIPES,
+    )
+
+    moved = np.asarray([0.5 * sum(abs(h["change"]) for h in held)])
+    side = [Side.from_bps_per_side(b).platform_cost_bps for b in ("5", "10")]
+    cost = [Policy().cost_fraction(one_way_turnover=moved, cost_bps=b)[0] for b in side]
+    view: dict[str, Any] = {"components": [], "settled": [], "turnover": moved[0], "cost": cost}
+    try:
+        value = Publication.model_validate(readback["publication"])
+        earlier = [Publication.model_validate(v) for v in readback.get("history", [])]
+    except (KeyError, ValueError):
+        return view
+    events = {e.formation_session: e for v in (*earlier, value) for e in v.events}.values()
+    before = next((p.pending_proposal for p in reversed(earlier) if p.pending_proposal), None)
+    proposal, package = value.pending_proposal, readback.get("strategy_package_id")
+    return view | {
+        "value": value,
+        "proposal": proposal,
+        "recipe": next((r for r in RECIPES if r.strategy_id == package), None),
+        "components": _components(readback, proposal, before) if proposal else [],
+        "settled": sorted(e.turnover for e in events if e.phase == "ENTRY_SETTLED"),
+        "missed": sum(e.missed_executions for e in events),
+    }
+
+
+def _components(readback: Mapping[str, Any], proposal: Any, before: Any) -> list[dict[str, Any]]:
+    """Each component's held names, scores and ranks, and its scores the session before."""
+    axis, sleeves = list(readback["listing_labels"]), proposal.book.sleeves
+    counts, out, first = proposal.book.component_sleeve_counts or (len(sleeves),), [], 0
+    for n, part in enumerate(_parts(proposal.input)):
+        mine = {axis[i] for s in sleeves[first : first + counts[n]] for i, w in enumerate(s) if w}
+        first += counts[n]
+        ids, old = part.ordered_listing_ids, _parts(before.input)[n : n + 1] if before else ()
+        score = dict(zip(ids, part.scores, strict=True))
+        ok = [
+            k
+            for k, e in zip(ids, part.decision_eligible, strict=True)
+            if e and score[k] is not None
+        ]
+        rank = {k: r for r, k in enumerate(sorted(ok, key=lambda k: -score[k]), 1)}
+        was = dict(zip(old[0].ordered_listing_ids, old[0].scores, strict=True)) if old else {}
+        out.append({"alias": f"C{n + 1}", "mine": mine, "score": score, "rank": rank, "was": was})
+        out[-1]["curve"] = [v for v in part.bucket_means if v is not None]
+    return out
+
+
+def _parts(book_input: Any) -> tuple[Any, ...]:
+    """A book input's component inputs, one for a single-component book."""
+    return tuple(getattr(book_input, "components", None) or (book_input,))
+
+
+def _listed(items: Iterable[str]) -> str:
+    return ", ".join(items) or "none"
+
+
+def facts(
+    readback: Mapping[str, Any], evidence: Mapping[str, Any], held: Sequence[Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    """The floor's facts: an S alias, the Host's words, its question and its source record.
+
+    Each reads against a reference; a question no record answers gets a named absence.
+
+    Args:
+        readback: The update's readback, with its publication, history and date Risk.
+        evidence: The Evidence projection on its positions.
+        held: The floor's holdings.
+
+    Returns:
+        The facts in question order, each with its alias, question, words and source.
+    """
+    view = _book(readback, held)
+    said = [*_read(_pm_values, readback, view), *_read(_alpha_values, held, view)]
+    said += _read(_risk_values, readback, held, view)
+    said += _read(_cro_values, readback, evidence, held, view)
+    rows = [(*_FACTS[k][:2], _FACTS[k][2].format(**v)) for k, v in said if v is not None]
+    rows += [(q, "absence", text) for q, text in _ABSENT]
+    rows += [
+        (q, "absence", f"UNAVAILABLE: no record that reads cleanly answers this: {w}")
+        for q, w in _ASKED.items()
+        if all(r[0] != q for r in rows)
+    ]
+    rows.sort(key=lambda r: list(_ASKED).index(r[0]))
+    return [
+        {"alias": f"S{n}", "question": q, "text": t, "source": s}
+        for n, (q, s, t) in enumerate(rows, 1)
+    ]
+
+
+Said = list[tuple[str, dict[str, Any] | None]]
+
+
+def _book(readback: Mapping[str, Any], held: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The book's view, or an empty one where its records cannot be read."""
+    try:
+        return _view(readback, held)
+    except (ArithmeticError, LookupError, TypeError, ValueError, AttributeError):
+        return {"components": [], "settled": [], "turnover": 0.0, "cost": [0.0, 0.0]}
+
+
+def _read(writer: Any, *records: Any) -> Said:
+    """A writer's values, or none where a record cannot be read: its questions are then named
+    absences, and the floor opens all the same."""
+    try:
+        return list(writer(*records))
+    except (ArithmeticError, LookupError, TypeError, ValueError, AttributeError):
+        return []
+
+
+def _fraction(value: Any) -> float:
+    """A weight as the Evidence projection gives it: a fraction, or a percentage as text."""
+    text = str(value or 0).strip()
+    return float(text[:-1]) / 100 if text.endswith("%") else float(text)
+
+
+def _pm_values(readback: Mapping[str, Any], view: Mapping[str, Any]) -> Said:
+    """What changed against its settled median, and the cash and misses."""
+    past, proposal, (c5, c10) = view["settled"], view.get("proposal"), view["cost"]
+    median = f"{past[len(past) // 2]:.1%} over {len(past)}" if past else "none settled"
+    cash = dict(cash=proposal.book.cash, missed=view["missed"]) if proposal else None
+    return [
+        ("turnover", dict(t=view["turnover"], median=median, c5=c5, c10=c10)),
+        ("cash", cash),
+        ("floor", {}),
+    ]
+
+
+def _alpha_values(held: Sequence[Mapping[str, Any]], view: Mapping[str, Any]) -> Said:
+    """Whether a clean, weak signal is carried out faithfully and cheaply, per component."""
+    alias, recipe = {h["listing_id"]: h["alias"] for h in held}, view.get("recipe")
+    top, out = (recipe.top_k, recipe.exit_rank) if recipe else (0, 0)
+    moves = [h["listing_id"] for h in held if h["change"] and h["weight"] in (0, h["change"])]
+    rules = (alias, top, out, moves, view["cost"][0])
+    said = [s for c in view["components"] for s in _component_values(c, *rules)]
+    names = [k for c in view["components"] for k in c["mine"]]
+    shared = _listed(sorted({alias[k] for k in names if names.count(k) > 1}))
+    return [*said, ("shared", dict(shared=shared) if names else None)]
+
+
+def _component_values(
+    c: Mapping[str, Any],
+    alias: Mapping[str, str],
+    top: int,
+    out: int,
+    moves: list[str],
+    cost: float,
+) -> Said:
+    """One component's score moves, rule lines, entry-exit spread and rank curve."""
+    score, was, rank, curve, name = c["score"], c["was"], c["rank"], c["curve"], c["alias"]
+    both = [k for k in c["mine"] if None not in (was.get(k), score.get(k))]
+    jumps = sorted(both, key=lambda k: -abs(score[k] - was[k]))[:3]
+    moved = _listed(f"{alias[k]} {was[k]:.2f}>{score[k]:.2f}" for k in jumps)
+    unscored = _listed(alias.get(k, k) for k in c["mine"] if k not in rank)
+    kept = _listed(f"{alias.get(k, k)} {rank[k]}" for k in c["mine"] if top < rank.get(k, 0))
+    gap = [score.get(k) or 0.0 for k in moves] or [0.0]
+    ranks = dict(c=name, top=sum(curve[:4]) / 4, bottom=sum(curve[-4:]) / 4)
+    return [
+        ("moves", dict(c=name, moved=moved, unscored=unscored)),
+        ("rule", dict(c=name, n=len(c["mine"]), top=top, out=out, kept=kept)),
+        ("spread", dict(c=name, spread=max(gap) - min(gap), cost=cost) if moves else None),
+        ("curve", ranks if len(curve) > 7 else None),
+    ]
+
+
+def _risk_values(
+    readback: Mapping[str, Any], held: Sequence[Mapping[str, Any]], view: Mapping[str, Any]
+) -> Said:
+    """How the book can hurt today, each against its cap or its weight."""
+    risk, recipe = readback.get("date_risk") or {}, view.get("recipe")
+    w = sorted((h["weight"] for h in held), reverse=True) or [0.0]
+    cap = f"{recipe.aggregate_name_cap:.0%} name" if recipe else "undeclared name"
+    view_ = dict(view=risk_view(risk, held)) if risk.get("risk_status") == "EVALUATED" else None
+    covered = risk.get("covered_weight")
+    return [
+        ("risk", view_),
+        ("weights", dict(w=w[0], cap=cap, ten=sum(w[:10]), spread=concentration(held))),
+        ("covered", None if covered is None else dict(covered=covered, at=risk.get("risk_as_of"))),
+    ]
+
+
+def _cro_values(
+    readback: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+    held: Sequence[Mapping[str, Any]],
+    view: Mapping[str, Any],
+) -> Said:
+    """What is wrong or undisclosed, each against the book, the minimum or the declaration."""
+    scope, recipe, proposal = (
+        evidence.get("scope_coverage") or {},
+        view.get("recipe"),
+        view.get("proposal"),
+    )
+    flagged = sum(
+        _fraction(r.get("ending_weight"))
+        for r in evidence.get("issuer_rows") or ()
+        if r.get("adverse_issue_count")
+    )
+    sealed = (readback.get("realized_performance") or {}).get("strategy_package_hash")
+    used = getattr(getattr(proposal, "input", None), "strategy_package_hash", sealed)
+    same = "matches" if not sealed or used == sealed else "differs from"
+    largest = max((h["weight"] for h in held), default=0.0)
+    reviewed, minimum = (
+        scope.get("whole_book_reviewed_weight"),
+        scope.get("minimum_required_weight"),
+    )
+    when, cards = getattr(proposal, "schedule", None), len(evidence.get("issue_cards") or ())
+    seen = getattr(view.get("value"), "observed_through", None)
+    target = (readback.get("update") or {}).get("target_session")
+    dates = dict(entry=when.entry_session, formation=when.formation_session) if when else {}
+    return [
+        ("flagged", dict(flagged=flagged, cards=cards)),
+        ("scope", dict(reviewed=reviewed, minimum=minimum) if scope else None),
+        ("review", dict(now=review_now(readback))),
+        ("package", dict(same=same, seen=seen, target=target, **dates) if when else None),
+        ("caps", dict(w=largest, cap=recipe.aggregate_name_cap) if recipe else None),
+        ("dissents", {}),
+    ]
+
+
+def _turnovers(view: Mapping[str, Any]) -> list[float]:
+    """The settled sessions' one-way turnovers, smallest first."""
+    return list(view.get("settled") or ())
+
+
+def sufficiency(floor: Any) -> dict[str, list[str]]:
+    """Each role's questions no fact on the floor answers; empty when every one has a fact."""
+    asked = {f["question"] for f in floor.opened.get("facts", ())}
+    return {
+        r: missing for r, qs in QUESTIONS.items() if (missing := [q for q in qs if q not in asked])
+    }
+
+
+def _outliers(
+    held: Sequence[Mapping[str, Any]], moved: list[str], view: Mapping[str, Any]
+) -> list[tuple[str, str, dict[str, Any], list[str]]]:
+    """The date's exceptions as points, from the facts' own records."""
+    past, top = view.get("settled") or [], getattr(view.get("recipe"), "top_k", 0)
+    ranks = [(c["rank"], c["mine"]) for c in view.get("components") or ()]
+    kept = [
+        h["alias"]
+        for h in held[:5]
+        if top
+        and any(
+            h["listing_id"] in mine and rank.get(h["listing_id"], top + 1) > top
+            for rank, mine in ranks
+        )
+    ]
+    points = [
+        (
+            "TURNOVER_ABOVE_MEDIAN",
+            "Turnover is above its settled median; the largest changes: {holdings}.",
+            {"holdings": ", ".join(moved)},
+            moved,
+            bool(past) and view["turnover"] > past[len(past) // 2],
+        ),
+        (
+            "KEPT_BY_RULE",
+            "{holdings} sit among the five largest weights, kept by the exit line "
+            "rather than by score.",
+            {"holdings": ", ".join(kept)},
+            kept,
+            bool(kept),
+        ),
+    ]
+    largest = (
+        "LARGEST_POSITION",
+        "The largest position, {holding}, and the five largest together.",
+        {"holding": "H1"},
+        [h["alias"] for h in held[:5]],
+    )
+    return [p[:4] for p in points if p[4]] or [largest]
+
+
+def evidence_gap(evidence: Mapping[str, Any]) -> str | None:
+    """Why no Evidence stands for the positions (a refusal, or a state with no analysis)."""
+    if evidence.get("status") == "REFUSED" or evidence.get("failure_code"):
+        return str(evidence.get("failure_code") or "REFUSED")
+    if evidence.get("evidence_as_of") is None:
+        return str(evidence.get("state") or "NOT_PREPARED")
+    return None
+
+
+def review_now(readback: Mapping[str, Any]) -> str:
+    """The review of this proposal as it stands now; the sealed status only when none stands."""
+    standing = readback.get("review_standing") or {}
+    route, published = (standing.get("cro") or {}).get("route"), standing.get("published_at")
+    if standing.get("status"):
+        return (
+            f"Review of this proposal now: {standing['status']}"
+            + (f", published {published}" if published else "")
+            + (f"; CRO route {route}" if route else "")
+            + "."
+        )
+    return f"Review of this proposal at publication: {readback['publication'].get('cro_status')}."
+
+
+def risk_view(risk: Mapping[str, Any] | None, held: Sequence[Mapping[str, Any]]) -> str:
+    """The date's predicted risk as the Host renders it, report only; members type no digit."""
+    if not risk or risk.get("risk_status") != "EVALUATED":
+        reason = (risk or {}).get("reason") or "risk_research.date_risk_unavailable"
+        return f"Predicted risk of these positions: not evaluated ({reason}); "
+    alias = {h["listing_id"]: h["alias"] for h in held}
+    top = ", ".join(
+        f"{alias.get(c['listing_id'], c['listing_id'])} {c['share']:.0%}"
+        for c in risk["top_contributors"]
+    )
+    later = risk["sessions_before_the_positions"]
+    return (
+        f"Predicted risk of these positions at {risk['risk_as_of']}"
+        + (f", {later} sessions before them" if later else "")
+        + f" (the installed recipe, report only): volatility {risk['volatility_per_session']:.2%} "
+        f"a session, {risk['volatility_annualized']:.1%} a year; systematic share "
+        f"{risk['systematic_share']:.0%}; covered weight {risk['covered_weight']:.0%}; largest "
+        f"contributors {top}; "
+    )
+
+
+def concentration(held: Sequence[Mapping[str, Any]]) -> str:
+    """Concentration from the date's weights alone."""
+    weights = sorted((h["weight"] for h in held if h["weight"] > 0), reverse=True)
+    if not weights:
+        return "the date's positions hold no name."
+    hhi = sum(w * w for w in weights)
+    return (
+        f"concentration from the date's weights only: {len(weights)} holdings, largest "
+        f"{weights[0]:.2%}, five largest {sum(weights[:5]):.2%}, Herfindahl {hhi:.4f}, effective "
+        f"names {1 / hhi:.1f}."
+    )
+
+
+def tension_points(
+    held: Sequence[Mapping[str, Any]],
+    evidence: Mapping[str, Any],
+    risk: Mapping[str, Any] | None = None,
+    readback: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """What the committee argues: this date's exceptions in its facts.
+
+    Held names with Evidence flags; turnover above its settled median; large weights kept by
+    the exit line rather than by score; the largest risk
+    contributors (or why none stands); a gap in the Evidence. With no outlier, the largest
+    position stands in for one.
+    """
+    adverse = {
+        h["alias"]: int(row["adverse_issue_count"])
+        for row in evidence.get("issuer_rows") or ()
+        for h in held
+        if h["name"] in (row.get("tickers") or ()) and int(row.get("adverse_issue_count") or 0)
+    }
+    moved = [h["alias"] for h in sorted(held, key=lambda h: -abs(h["change"]))[:5]]
+    gap = evidence_gap(evidence)
+    points = [
+        *(
+            (
+                "HELD_WITH_ADVERSE_EVIDENCE",
+                "{holding} is held while its Evidence names {n} major negative(s).",
+                {"holding": a, "n": n},
+                [a],
+            )
+            for a, n in adverse.items()
+        ),
+        *_outliers(held, moved, _book(readback, held) if readback else {}),
+        *_risk_point(held, risk),
+        *(
+            [
+                (
+                    "EVIDENCE_GAP",
+                    "No Evidence stands for these positions: {reason}.",
+                    {"reason": gap},
+                    [],
+                )
+            ]
+            if gap
+            else []
+        ),
+    ]
+    return [
+        {
+            "alias": f"T{n}",
+            "kind": kind,
+            "text": word.format(**words),
+            "word": word,
+            "words": words,
+            "targets": targets,
+        }
+        for n, (kind, word, words, targets) in enumerate(points, 1)
+    ]
+
+
+def _risk_point(
+    held: Sequence[Mapping[str, Any]], risk: Mapping[str, Any] | None
+) -> list[tuple[str, str, dict[str, Any], list[str]]]:
+    """The date's largest risk contributors as a point, or the reason no predicted risk stands."""
+    if risk is None:
+        return []
+    alias = {h["listing_id"]: h["alias"] for h in held}
+    top = [
+        alias[c["listing_id"]]
+        for c in risk.get("top_contributors") or ()
+        if c["listing_id"] in alias
+    ]
+    if risk.get("risk_status") == "EVALUATED" and top:
+        return [
+            (
+                "TOP_RISK_CONTRIBUTORS",
+                "The largest risk contributors: {holdings}.",
+                {"holdings": ", ".join(top)},
+                top,
+            )
+        ]
+    reason = risk.get("reason") or "none of the held names contributes"
+    return [
+        (
+            "RISK_GAP",
+            "No predicted risk stands for these positions: {reason}.",
+            {"reason": reason},
+            [],
+        )
+    ]

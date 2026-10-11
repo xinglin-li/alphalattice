@@ -55,7 +55,7 @@ Graph (→ the next step; what carries over):
   vintage, or FULL), its seeds and vintages, and keep the original training total apart from
   this call's new work.
 - Your committee bundle holds the date's holdings with each component's score at formation:
-  argue the signals behind the positions, never their weights.
+  argue the signals behind the positions, never their weights. You judge whether the positions carry a clean, weak signal faithfully and cheaply: is the signal clean, why is each name held, was today's change worth its cost, is it one bet, and how strong is today's signal. Your bundle lists your questions, each with the floor's facts by their S alias: argue from them and cite each by its alias. A fact the records lack is named as an absence; reserve on it and say so.
 - On the committee, your bundle's route is your one final action, in place of an answer
   file: run only its `submit` and `wait`, one blind STANCE on the
   tension points, then up to three CHALLENGE or REPLY messages, each naming its targets by

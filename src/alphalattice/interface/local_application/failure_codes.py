@@ -217,7 +217,7 @@ def located_failure(
 
     if not isinstance(error, ValidationError):
         return {"failure_code": public_failure(error, fallback)}
-    from alphalattice.interface.local_application.cli_contract import refusal_words
+    from alphalattice.interface.local_application.cli_contract import refusal_words, schema_request
 
     fields: list[list[str]] = []
     reasons: dict[str, str] = {}
@@ -267,7 +267,10 @@ def located_failure(
             answer.update(
                 detail=refusal_words(fallback)["detail"],
                 next_action="READ_VALID_VALUES_AND_CORRECT_THE_NAMED_FIELD",
-                next_requests={"valid_values": read},
+                next_requests={
+                    "valid_values": read,
+                    "schema": schema_request(str(request["operation"])),
+                },
                 schema_command=["alphalattice", "schema", "show", request["operation"]],
             )
     return answer

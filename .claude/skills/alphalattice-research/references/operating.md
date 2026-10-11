@@ -80,7 +80,7 @@ A refusal names its owner's code, detail and legal way on; take only that or a p
 
 Keep the original Goal, Task and error, and tell a malformed request, a permission refusal, a data decision, a transport event and a product defect apart:
 
-1. For a spelling or shape mistake, send the filled correction as offered. For a content mistake, read its named rule and offered valid values, change only the named field and send the corrected request; restore a missing plan hash from the original answer, never the latest plan. A permission refusal is a stop, not a bug; a code fix grants no authority and never weakens a scientific or integrity check.
+1. For a spelling or shape mistake, send the filled correction as offered. For an unreadable document, read the offered schema, repair the named line and column, and resend the original request. For a content mistake, read its named rule and offered valid values, change only the named field and send the corrected request; restore a missing plan hash from the original answer, never the latest plan. A permission refusal is a stop, not a bug; a code fix grants no authority and never weakens a scientific or integrity check.
 2. Take a data decision through its offered preview and confirmation ([pipeline issues](pipeline-issues.md)).
 3. After a timeout or lost connection, read the known Task before repeating anything: no answer does not prove no work was admitted.
 4. Reproduce a product defect, fix its existing owner and add a regression. For changed source, stop only an idle Host you own with `host stop`, serve it again and open its new link.

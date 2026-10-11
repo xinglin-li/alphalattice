@@ -11,7 +11,7 @@ from typing import Any
 from .forms import Grade, GradingIssue, Scenario, Trace
 from .intent import FORBIDDEN, accepted_request, proposes
 
-ALIAS = re.compile(r"\b[CHTM][0-9]{1,4}\b")
+ALIAS = re.compile(r"\b[CHMST][0-9]{1,4}\b")
 ROLES = {"PM", "ALPHA", "RISK", "CRO"}
 OUTCOMES = {
     "RULING": {"ADOPT", "REJECT", "FOR_THE_PERSON"},
@@ -427,6 +427,25 @@ def _review_fidelity(standing, cro_view, expected) -> list[str]:
     return problems
 
 
+def materials_findings(closed: Mapping[str, Any]) -> list[str]:
+    """A question the floor shows no fact for, and each RESERVE that cites no fact: unused
+    where the member's own questions hold a fact, missing where only named absences stand."""
+    facts, questions = closed.get("facts") or [], closed.get("questions") or {}
+    asked, aliases = {f["question"] for f in facts}, {f["alias"] for f in facts}
+    found = [
+        f"materials.insufficient:{q}" for qs in questions.values() for q in qs if q not in asked
+    ]
+    for m in closed.get("messages", []) if questions else ():  # a floor that asks nothing
+        mine = [f for f in facts if f["question"] in questions.get(m["role"], {})]
+        kind = "unused" if any(f["source"] != "absence" for f in mine) else "missing"
+        found += [
+            f"materials.{kind}:{m['role']}:{point}:{m['id']}"
+            for point, position in (m.get("positions") or {}).items()
+            if position == "RESERVE" and not aliases & set(ALIAS.findall(m["text"]))
+        ]
+    return found
+
+
 def report_fidelity(
     closed: Mapping[str, Any],
     report: Mapping[str, Any],
@@ -457,4 +476,8 @@ def report_fidelity(
         problems.append("report.review_hash_mismatch" if known else "UNPROVED:review_hash")
     elif selected != expected or published != expected:
         problems.append("report.review_hash_mismatch")
-    return problems + _review_fidelity(review_standing, cro_view, expected)
+    return (
+        problems
+        + _review_fidelity(review_standing, cro_view, expected)
+        + materials_findings(closed)
+    )

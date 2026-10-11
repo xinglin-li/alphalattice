@@ -158,7 +158,10 @@ view of the date's positions and its `submit` and `wait` on the floor. Prepare t
 three (ALPHA, RISK, CRO), then in one turn start them as general subagents (the
 registered CRO card runs no command, and each bundle's route runs two), each
 prompt its card's text and its bundle's path, and submit your own stance after
-reading `committee show --update <task>`. The open's answer gives your PM key
+reading `committee show --update <task>`, which lists each member's questions with the
+floor's facts by their S alias: argue from them. As PM you judge whether the book adds
+up: what changed and what it cost, its research envelope, whether it can be carried out,
+and what the committee hands on; its dates are in the CRO's process fact. The open's answer gives your PM key
 (`pm_key`), and your session's later open gives it again: pass it as `--key` with
 `--role PM`, and keep it out of every file a specialist reads; each specialist's
 key is in its own bundle. Each specialist

@@ -414,9 +414,10 @@ delegation. A paid action or a real order never joins it."""
 
 @dataclass(frozen=True, slots=True)
 class PortfolioResearchOperationRequest:
-    """The browser and agent's shared request."""
+    """Shared request."""
 
     operation: PortfolioResearchOperation
+    schema_operation: PortfolioResearchOperation | None = None
     goal_id: UUID | None = None
     goal_hash: str | None = None
     goal_reference_id: str | None = None
@@ -1164,7 +1165,7 @@ class PortfolioResearchOperationRequest:
                 frozenset({"task_id", "strategy_package_id"}),
             ),
             # The client's own commands, operations like any other (V266, OP1).
-            "OPERATION_LIST": (frozenset(), frozenset({"strategy_package_id"})),
+            "OPERATION_LIST": (frozenset(), frozenset({"strategy_package_id", "schema_operation"})),
             "ACTIVITY_LIST": (frozenset(), frozenset({"after", "limit", "watch"})),
             "ACTIVITY_RECENT": (frozenset(), frozenset({"limit"})),
             "EVENT_DECLARE": (frozenset({"event"}), frozenset({"event"})),
@@ -1511,6 +1512,8 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
 
     operation: PortfolioResearchOperation
     """The operation asked for; `alphalattice schema show <name>` lists its fields."""
+    schema_operation: PortfolioResearchOperation | None = None
+    """Only this operation's request schema and fields."""
     goal_id: UUID | None = None
     """The goal, by the id its GOAL_OPEN answered with."""
     goal_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -1846,7 +1849,7 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
         return self
 
     def to_operation_request(self) -> PortfolioResearchOperationRequest:
-        """Retain typed values while delegating operation-specific validation."""
+        """Validate typed fields."""
         return PortfolioResearchOperationRequest(
             **{
                 field.name: getattr(self, field.name)
@@ -1856,11 +1859,7 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
 
 
 def decision_hash(request: Mapping[str, object]) -> str:
-    """The decision a person's relayed yes answers.
-
-    The request's own fields as the Host reads them, without the confirmation: the client binds
-    the yes with it, and the Host checks it.
-    """
+    """Hash the request a relayed yes binds."""
     document = PortfolioResearchRequestDocument.model_validate(
         {
             name: value

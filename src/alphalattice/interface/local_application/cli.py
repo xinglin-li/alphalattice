@@ -61,6 +61,7 @@ from alphalattice.interface.local_application.cli_contract import (
     envelope,
     flag,
     offered_requests,
+    operation_schema,
     worded,
 )
 from alphalattice.interface.local_application.failure_codes import (
@@ -848,34 +849,6 @@ def _client_fields(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def _operation_schema(
-    schema: dict[str, Any], fields: list[str], *, operation: str | None = None
-) -> dict[str, Any]:
-    """Keep the selected fields and their transitive definitions, not unrelated operations."""
-    properties = {name: schema["properties"][name] for name in fields}
-    if operation is not None:
-        properties["operation"] = {
-            "type": "string",
-            "const": operation,
-            "description": "This operation, by its name.",
-        }
-    definitions: dict[str, Any] = {}
-    pending: list[Any] = [properties]
-    while pending:
-        value = pending.pop()
-        if isinstance(value, dict):
-            reference = value.get("$ref")
-            if isinstance(reference, str) and reference.startswith("#/$defs/"):
-                name = reference.removeprefix("#/$defs/")
-                if name not in definitions:
-                    definitions[name] = schema["$defs"][name]
-                    pending.append(definitions[name])
-            pending.extend(value.values())
-        elif isinstance(value, list):
-            pending.extend(value)
-    return {"properties": properties, "$defs": definitions}
-
-
 def schema(operation: str) -> dict[str, Any]:
     """One operation as a caller writes it, answered without a Host.
 
@@ -889,29 +862,16 @@ def schema(operation: str) -> dict[str, Any]:
 
     required, allowed = _fields(operation)
     noun, verb = next(name for name, ops in _commands().items() if operation in ops)
-    request = _operation_schema(
+    request = operation_schema(
         PortfolioResearchRequestDocument.model_json_schema(),
         ["operation", *sorted(allowed)],
         operation=operation,
+        required=required,
     )
-    # The operation's request exactly as its owner reads it: its required fields take no null
-    # and no other field is read (the review's F4).
-    for name in required:
-        spec = request["properties"][name]
-        if "anyOf" in spec:
-            kept = [option for option in spec["anyOf"] if option.get("type") != "null"]
-            spec = {k: v for k, v in spec.items() if k not in {"anyOf", "default"}}
-            request["properties"][name] = {
-                **spec,
-                **(kept[0] if len(kept) == 1 else {"anyOf": kept}),
-            }
-    groups = command_table()["alternatives"].get(operation, [])
     request = {
         "type": "object",
         "additionalProperties": False,
         **request,
-        # Exactly one of the field groups its owner takes (V409).
-        **({"oneOf": [{"required": group} for group in groups]} if groups else {}),
     }
     shown = command_table()["positional"].get(operation)
     answer = ANSWERS.get(operation)
@@ -1752,6 +1712,7 @@ def _command(
     request = argparse.Namespace(
         **common,
         command="request",
+        operation=None if whole else _operation(parser, args),
         file=(args.choices if args.from_response is not None else args.file) if whole else None,
         primary_file=args.file if whole and args.from_response is not None else None,
         from_response=args.from_response if whole else None,

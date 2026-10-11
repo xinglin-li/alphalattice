@@ -21,6 +21,7 @@ from alphalattice.foundation.factor_research.experiments.authoring import (
 from alphalattice.interface.local_application.cli_contract import (
     NETWORK_ACCESS_REFUSALS,
     refusal_words,
+    schema_request,
 )
 
 _CHANGED = frozenset(
@@ -281,7 +282,10 @@ def forward_availability_words(
             "fields": [["strategy_package_id"]],
             "reasons": {"strategy_package_id": code},
             "schema_command": ["alphalattice", "schema", "show", "RESEARCH_UPDATE_PLAN"],
-            "next_requests": {"valid_values": {"operation": "WORKSPACE_SHOW"}},
+            "next_requests": {
+                "valid_values": {"operation": "WORKSPACE_SHOW"},
+                "schema": schema_request("RESEARCH_UPDATE_PLAN"),
+            },
         }
     return {
         "detail": (

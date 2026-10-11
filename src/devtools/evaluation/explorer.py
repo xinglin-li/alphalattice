@@ -403,7 +403,13 @@ class Explorer:
         discovery = {"TASKS"} if any(k.endswith("task_id") for k in original) else set()
         return min(
             candidates,
-            key=lambda p: 0 if p[1] == original else 1 if p[1]["operation"] in discovery else 2,
+            key=lambda p: (
+                0
+                if p[1] == original
+                else 1
+                if p[1]["operation"] in discovery or p[0] == "valid_values"
+                else 2
+            ),
         )
 
     def _accepted_correction(

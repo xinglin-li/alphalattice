@@ -22,6 +22,15 @@ from hashlib import sha256
 from typing import Any, Final
 from uuid import UUID
 
+from alphalattice.control.product_host.composition.committee_materials import (
+    QUESTIONS,
+    concentration,
+    evidence_gap,
+    facts,
+    review_now,
+    risk_view,
+    tension_points,
+)
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.interface.local_application.cli_contract import RequestProvenance
@@ -84,8 +93,8 @@ RULE_WORDS: Final = {
 }
 """Each floor rule's own words, as its refusal says them."""
 _VIEWS: Final = frozenset({"STANCE", "CHALLENGE", "REPLY"})
-ALIAS: Final = re.compile(r"\b[CHTM][0-9]{1,4}\b")
-"""A floor alias: a component (C), a holding (H3), a tension point (T2) or a message (M4)."""
+ALIAS: Final = re.compile(r"\b[CHMST][0-9]{1,4}\b")
+"""A floor alias: a component (C), a holding (H3), a message (M4), a fact (S) or a point (T2)."""
 """The kinds that carry a member's own view; a ruling, the verdict and a relay do not."""
 
 
@@ -172,7 +181,8 @@ def open_floor(
         "session": list(session),
         "holdings": held,
         "date_risk": readback.get("date_risk"),
-        "tension_points": tension_points(held, evidence, readback.get("date_risk")),
+        "tension_points": tension_points(held, evidence, readback.get("date_risk"), readback),
+        "facts": facts(readback, evidence, held),
     }
     with store.lock:
         kept = store.committee(task, goal_id)
@@ -343,6 +353,7 @@ def _owed(
 def _known(floor: Floor) -> set[str]:
     """Every alias the floor shows its members: points, holdings, components and messages."""
     known = {p["alias"] for p in floor.opened["tension_points"]} | {m["id"] for m in floor.messages}
+    known |= {f["alias"] for f in floor.opened.get("facts", ())}
     return known | {a for h in floor.opened["holdings"] for a in (h["alias"], *h.get("scores", {}))}
 
 
@@ -510,10 +521,12 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
         "member_cards": dict(CARDS),
         "member_agents": {r: member_agent(floor, r) for r in ROLES},
         "tension_points": _points(floor, stage),
+        "questions": QUESTIONS,
+        "facts": floor.opened.get("facts", []),
         "messages": [
             {
                 **m,
-                "text": render(m["text"], held),
+                "text": render(m["text"], held, floor.opened.get("facts", ())),
                 "target_text": render(", ".join(m["targets"]), held),
                 "row": floor_row(floor, m),
             }
@@ -730,7 +743,7 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
     return [
         {
             "attribution": word.format(**words),
-            "text": render(text, held),
+            "text": render(text, held, floor.opened.get("facts", ())),
             "attribution_word": word,
             "attribution_words": words,
             **details,
@@ -812,96 +825,6 @@ def holdings(readback: Mapping[str, Any]) -> list[dict[str, Any]]:
     return [{"alias": f"H{n}", **row} for n, row in enumerate(rows, 1)]
 
 
-def tension_points(
-    held: Sequence[Mapping[str, Any]],
-    evidence: Mapping[str, Any],
-    risk: Mapping[str, Any] | None = None,
-) -> list[dict[str, Any]]:
-    """What the committee argues.
-
-    Held names its Evidence flags, the largest changes, the largest position, the largest
-    contributors to the date's predicted risk (or why none stands), and a gap in the Evidence.
-    """
-    adverse = {
-        h["alias"]: int(row["adverse_issue_count"])
-        for row in evidence.get("issuer_rows") or ()
-        for h in held
-        if h["name"] in (row.get("tickers") or ()) and int(row.get("adverse_issue_count") or 0)
-    }
-    moved = [h["alias"] for h in sorted(held, key=lambda h: -abs(h["change"]))[:5]]
-    gap = evidence_gap(evidence)
-    points = [
-        *(
-            (
-                "HELD_WITH_ADVERSE_EVIDENCE",
-                "{holding} is held while its Evidence names {n} major negative(s).",
-                {"holding": a, "n": n},
-                [a],
-            )
-            for a, n in adverse.items()
-        ),
-        (
-            "LARGEST_CHANGES",
-            "The largest changes: {holdings}.",
-            {"holdings": ", ".join(moved)},
-            moved,
-        ),
-        (
-            "LARGEST_POSITION",
-            "The largest position, {holding}, and the five largest together.",
-            {"holding": "H1"},
-            [h["alias"] for h in held[:5]],
-        ),
-        *_risk_point(held, risk),
-        *(
-            [
-                (
-                    "EVIDENCE_GAP",
-                    "No Evidence stands for these positions: {reason}.",
-                    {"reason": gap},
-                    [],
-                )
-            ]
-            if gap
-            else []
-        ),
-    ]
-    return [
-        {
-            "alias": f"T{n}",
-            "kind": kind,
-            "text": word.format(**words),
-            "word": word,
-            "words": words,
-            "targets": targets,
-        }
-        for n, (kind, word, words, targets) in enumerate(points, 1)
-    ]
-
-
-def evidence_gap(evidence: Mapping[str, Any]) -> str | None:
-    """Why no Evidence stands for the positions (a refusal, or a state with no analysis)."""
-    if evidence.get("status") == "REFUSED" or evidence.get("failure_code"):
-        return str(evidence.get("failure_code") or "REFUSED")
-    if evidence.get("evidence_as_of") is None:
-        return str(evidence.get("state") or "NOT_PREPARED")
-    return None
-
-
-def _review_now(readback: Mapping[str, Any]) -> str:
-    """The review of this proposal as it stands now; the sealed status only when none stands."""
-    standing = readback.get("review_standing") or {}
-    route, published = (standing.get("cro") or {}).get("route"), standing.get("published_at")
-    if standing.get("status"):
-        return (
-            f"Review of this proposal now: {standing['status']}"
-            + (f", published {published}" if published else "")
-            + (f"; CRO route {route}" if route else "")
-            + "."
-        )
-    return f"Review of this proposal at publication: {readback['publication'].get('cro_status')}."
-
-
 def role_lines(
     role: str,
     readback: Mapping[str, Any],
@@ -935,11 +858,11 @@ def role_lines(
     elif role == "RISK":
         risk = floor.opened.get("date_risk") if floor else readback.get("date_risk")
         sealed = f"Risk status sealed at publication: {publication.get('risk_status')}. "
-        view = [sealed + _risk_view(risk, held) + _concentration(held), *table]
+        view = [sealed + risk_view(risk, held) + concentration(held), *table]
     elif role == "CRO":
         gap = evidence_gap(evidence)
         view = [
-            _review_now(readback),
+            review_now(readback),
             *(
                 [f"No Evidence stands ({gap}): {evidence.get('explanation') or ''}"]
                 if gap
@@ -964,7 +887,21 @@ def role_lines(
     )
     if floor is None or role == "DATA":
         return [head, *view]
-    return [head, *(f"{p['alias']}: {p['text']}" for p in floor.opened["tension_points"]), *view]
+    return [
+        head,
+        *(f"{p['alias']}: {p['text']}" for p in floor.opened["tension_points"]),
+        *_asked(role, floor),
+        *view,
+    ]
+
+
+def _asked(role: str, floor: Floor) -> list[str]:
+    """A role's questions, each with the floor's facts that answer it."""
+    said = floor.opened.get("facts", ())
+    return [
+        f"{q} {words} " + " ".join(f"{f['alias']}: {f['text']}" for f in said if f["question"] == q)
+        for q, words in QUESTIONS.get(role, {}).items()
+    ]
 
 
 def bundle_parts(
@@ -993,8 +930,9 @@ def route(role: str, floor: Floor | None, now: datetime) -> tuple[str, ...] | No
         "its position on each point is about the date's positions: SUPPORT, they may stand; "
         "OBJECT, they should not stand as they are; RESERVE, this bundle cannot tell.",
         f"Then up to {MESSAGE_CAP} CHALLENGE or REPLY, each naming its targets by alias (T1, H3, "
-        "M4); type no other digit, since the Host renders every number. Write each message as a "
-        "YAML file (kind, text, positions, targets, reply_to), send it with `committee submit "
+        "M4, a fact by its S alias); type no other digit, since the Host renders every number. "
+        "Write each message as a YAML file (kind, text, positions, targets, reply_to), send it "
+        "with `committee submit "
         f"--update {task} --role {role} --key {key} --file <message.yaml>` and follow what is "
         f"addressed to you with `committee wait --update {task} --role {role} --key {key} "
         "--seen <seen>`. The key is yours alone. A refused message names its rule; where only "
@@ -1005,76 +943,13 @@ def route(role: str, floor: Floor | None, now: datetime) -> tuple[str, ...] | No
     )
 
 
-def render(text: str, held: Sequence[Mapping[str, Any]]) -> str:
-    """Each holding alias with its name and weight, as the Host has them; agents type none."""
+def render(
+    text: str, held: Sequence[Mapping[str, Any]], said: Sequence[Mapping[str, Any]] = ()
+) -> str:
+    """Each holding alias with its name and weight, and each fact alias with its words."""
     named = {h["alias"]: f"{h['alias']} ({h['name']}, {h['weight']:.2%})" for h in held}
+    named |= {f["alias"]: f"{f['alias']} ({f['text']})" for f in said}
     return ALIAS.sub(lambda m: named.get(m.group(0), m.group(0)), text)
-
-
-def _risk_point(
-    held: Sequence[Mapping[str, Any]], risk: Mapping[str, Any] | None
-) -> list[tuple[str, str, dict[str, Any], list[str]]]:
-    """The date's largest risk contributors as a point, or the reason no predicted risk stands."""
-    if risk is None:
-        return []
-    alias = {h["listing_id"]: h["alias"] for h in held}
-    top = [
-        alias[c["listing_id"]]
-        for c in risk.get("top_contributors") or ()
-        if c["listing_id"] in alias
-    ]
-    if risk.get("risk_status") == "EVALUATED" and top:
-        return [
-            (
-                "TOP_RISK_CONTRIBUTORS",
-                "The largest risk contributors: {holdings}.",
-                {"holdings": ", ".join(top)},
-                top,
-            )
-        ]
-    reason = risk.get("reason") or "none of the held names contributes"
-    return [
-        (
-            "RISK_GAP",
-            "No predicted risk stands for these positions: {reason}.",
-            {"reason": reason},
-            [],
-        )
-    ]
-
-
-def _risk_view(risk: Mapping[str, Any] | None, held: Sequence[Mapping[str, Any]]) -> str:
-    """The date's predicted risk as the Host renders it, report only; members type no digit."""
-    if not risk or risk.get("risk_status") != "EVALUATED":
-        reason = (risk or {}).get("reason") or "risk_research.date_risk_unavailable"
-        return f"Predicted risk of these positions: not evaluated ({reason}); "
-    alias = {h["listing_id"]: h["alias"] for h in held}
-    top = ", ".join(
-        f"{alias.get(c['listing_id'], c['listing_id'])} {c['share']:.0%}"
-        for c in risk["top_contributors"]
-    )
-    later = risk["sessions_before_the_positions"]
-    return (
-        f"Predicted risk of these positions at {risk['risk_as_of']}"
-        + (f", {later} sessions before them" if later else "")
-        + f" (the installed recipe, report only): volatility {risk['volatility_per_session']:.2%} "
-        f"a session, {risk['volatility_annualized']:.1%} a year; systematic share "
-        f"{risk['systematic_share']:.0%}; covered weight {risk['covered_weight']:.0%}; largest "
-        f"contributors {top}; "
-    )
-
-
-def _concentration(held: Sequence[Mapping[str, Any]]) -> str:
-    """Concentration from the date's weights alone."""
-    weights = sorted((h["weight"] for h in held if h["weight"] > 0), reverse=True)
-    if not weights:
-        return "the date's positions hold no name."
-    hhi = sum(w * w for w in weights)
-    return (
-        f"concentration from the date's weights only: {len(weights)} holdings, largest "
-        f"{weights[0]:.2%}, five largest {sum(weights[:5]):.2%}, Herfindahl {hhi:.4f}, effective "
-        f"names {1 / hhi:.1f}."
-    )
 
 
 def _points(floor: Floor, stage: str) -> list[dict[str, Any]]:

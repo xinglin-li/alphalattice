@@ -290,6 +290,7 @@ from alphalattice.interface.local_application.activity import (
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
+    operation_schema,
     refusal_words,
     worded_refusal,
 )
@@ -5988,21 +5989,7 @@ class PortfolioResearchOperations:
     def _selector_refusal(
         self, code: str, request: PortfolioResearchOperationRequest
     ) -> dict[str, object] | None:
-        """A review request's book selector refused, worded with the request that works (V546).
-
-        Parts of a study's selector beside another book do not apply, and the same request
-        without them is offered (V290's way, for the study's parts); a selector missing a part,
-        or naming two books, says which parts name a book. A study's selector that names a
-        Task of another kind -- a public development replay, whose book is its published
-        result -- offers the request by the receipt it named, where that receipt opens a book.
-
-        Args:
-            code: The refusal's code.
-            request: The refused request.
-
-        Returns:
-            The worded refusal; None for a refusal that is not the selector's.
-        """
+        """Word a book-selector refusal with its corrected fields or published receipt."""
         base, _sep, subject = code.partition(":")
         if base == "product_host.evidence_review_experiment_selector_invalid" and subject:
             return refused(code, book=_request_fields(request, *subject.split(",")))
@@ -6122,10 +6109,31 @@ class PortfolioResearchOperations:
     def client_session(
         self, request: PortfolioResearchOperationRequest, *, caller: OperationCaller
     ) -> dict[str, object]:
-        """The workspace as a client reads it (`workspace show`), or with its operations.
-
-        `operation list` adds every operation's fields and notes, and a named package's controls.
-        """
+        """Read the workspace, all operations or one operation's form."""
+        if request.operation == "OPERATION_LIST":
+            contracts: dict[str, dict[str, object]] = {}
+            selected = request.schema_operation
+            for operation in (selected,) if selected else OPERATIONS:
+                required, allowed = PortfolioResearchOperationRequest.field_contract(operation)  # type: ignore[arg-type]
+                contracts[operation] = {"required": sorted(required), "allowed": sorted(allowed)}
+                if operation in PERSON_ONLY:
+                    contracts[operation]["person_only"] = True
+            schema = PortfolioResearchRequestDocument.model_json_schema()
+            if selected:
+                return {
+                    "operation_fields": contracts,
+                    "operation_schema": {
+                        **operation_schema(
+                            schema,
+                            ["operation", *sorted(allowed)],
+                            operation=selected,
+                            required=required,
+                        ),
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["operation", *sorted(required)],
+                    },
+                }
         body = self.session_projection(
             session_token="",
             include_context=request.operation == "WORKSPACE_SHOW",
@@ -6151,18 +6159,9 @@ class PortfolioResearchOperations:
             ),
         ]
         if request.operation == "WORKSPACE_SHOW":
-            # The first read is the path: every standard flow on each input, what it needs,
-            # holds and asks next, each request ready to send (V376).
             body["intents"] = [*self._forward_intents(), *self.experiments.intents()]
             return body
-        contracts: dict[str, dict[str, object]] = {}
-        for operation in OPERATIONS:
-            required, allowed = PortfolioResearchOperationRequest.field_contract(operation)  # type: ignore[arg-type]
-            contracts[operation] = {"required": sorted(required), "allowed": sorted(allowed)}
-            if operation in PERSON_ONLY:  # the person's decision (V143)
-                contracts[operation]["person_only"] = True
-        body["operation_schema"] = PortfolioResearchRequestDocument.model_json_schema()
-        body["operation_fields"] = contracts
+        body.update(operation_schema=schema, operation_fields=contracts)
         if request.strategy_package_id is not None:
             body["package_controls"] = self._execute(
                 PortfolioResearchOperationRequest(
@@ -6657,7 +6656,11 @@ def _carried(
     book = {k: asked[k] for k in _CARRIED_BOOK if k in asked}
     changed: dict[str, object] = {}
     for name, offer in offered.items():
-        if not isinstance(offer, dict) or not isinstance(offer.get("operation"), str):
+        if (
+            not isinstance(offer, dict)
+            or not isinstance(offer.get("operation"), str)
+            or offer.get("schema_operation")
+        ):
             continue
         try:
             _required, allowed = PortfolioResearchOperationRequest.field_contract(
@@ -6668,9 +6671,8 @@ def _carried(
         add = {k: v for k, v in target.items() if k in allowed and k not in offer}
         if book and not set(_CARRIED_BOOK) & set(offer) and set(book) <= allowed:
             add.update(book)
-        if add:
-            changed[name] = {**offer, **add}
-    return {**body, "next_requests": {**offered, **changed}} if changed else body
+        changed[name] = {**offer, **add}
+    return {**body, "next_requests": {**offered, **changed}}
 
 
 def _bundle_book(submission: Mapping[str, Any]) -> dict[str, Any]:

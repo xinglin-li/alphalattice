@@ -16,9 +16,17 @@ import json
 import operator
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Final, Literal, get_args, get_origin
+from typing import Any, Final, Literal, Self, get_args, get_origin
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    RootModel,
+    ValidationError,
+    create_model,
+    model_validator,
+)
 
 
 class _Answer(BaseModel):  # type: ignore[misc]
@@ -478,6 +486,26 @@ _KINDS: Final[dict[str, Any]] = {
 }
 
 
+class FilteredOperationListAnswer(_Answer):
+    """One operation's form, with no workspace projection."""
+
+    model_config = ConfigDict(extra="forbid")
+    operation_schema: dict[str, Any]
+    """The selected request's fields and referenced definitions."""
+    operation_fields: dict[str, Any]
+    """Only the selected operation's field contract."""
+    read_request: dict[str, Any] | None = None
+    """The CLI copy's request, when present."""
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def selected_operation(self) -> Self:
+        """Require both parts to name the same operation."""
+        selected = self.operation_schema.get("properties", {}).get("operation", {}).get("const")
+        if not isinstance(selected, str) or set(self.operation_fields) != {selected}:
+            raise ValueError("The schema and fields must name one operation.")
+        return self
+
+
 def _declared(operation: str, row: dict[str, Any], purpose: str) -> type[BaseModel]:
     """One operation's answer model from its row (V410): each field's kind (`string|null`),
     whether every answer carries it, and its meaning, which `schema show` prints."""
@@ -502,6 +530,12 @@ def _declared(operation: str, row: dict[str, Any], purpose: str) -> type[BaseMod
         __doc__=purpose,
         **fields,
     )
+    if operation == "OPERATION_LIST":
+        model = create_model(
+            "OperationListForms",
+            __base__=RootModel,
+            root=(model | FilteredOperationListAnswer, ...),
+        )
     return model
 
 
@@ -566,7 +600,14 @@ def collection_answer_fields(operation: str) -> tuple[str, ...]:
     if operation not in table["reads"] or operation not in table["collections"] or model is None:
         return ()
     arrays = []
-    for name, field in model.model_fields.items():
+    fields = model.model_fields
+    if "root" in fields:
+        fields = {
+            name: field
+            for variant in get_args(fields["root"].annotation)
+            for name, field in variant.model_fields.items()
+        }
+    for name, field in fields.items():
         annotation = field.annotation
         if get_origin(annotation) is not list:
             candidates = [value for value in get_args(annotation) if value is not type(None)]

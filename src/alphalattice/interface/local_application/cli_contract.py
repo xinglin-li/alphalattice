@@ -1072,7 +1072,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "INVALID_INPUT",
             "CORRECT_THE_DOCUMENT_WHERE_READING_STOPPED",
             "The document does not read as YAML or JSON; reading stopped at the line and "
-            "column named. Correct its syntax there (in YAML, quote a value holding a colon "
+            "column named. Read the offered schema and correct its syntax there "
+            "(in YAML, quote a value holding a colon "
             "followed by a space) and send it again.",
         ),
     ),
@@ -1512,6 +1513,57 @@ def _zh_templates() -> tuple[tuple[re.Pattern[str], str], ...]:
         for key, value in _zh().items()
         if "{subject}" in key
     )
+
+
+def schema_request(operation: str | None = None) -> dict[str, str]:
+    """Read the known operation's form, or discover the whole catalogue."""
+    return {"operation": "OPERATION_LIST", **({"schema_operation": operation} if operation else {})}
+
+
+def operation_schema(
+    schema: dict[str, Any],
+    fields: list[str],
+    *,
+    operation: str | None = None,
+    required: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
+    """Keep the selected fields and their transitive definitions."""
+    properties = {name: schema["properties"][name] for name in fields}
+    if operation is not None:
+        properties["operation"] = {
+            "type": "string",
+            "const": operation,
+            "description": "This operation, by its name.",
+        }
+    for name in required:
+        spec = properties[name]
+        if "anyOf" in spec:
+            kept = [option for option in spec["anyOf"] if option.get("type") != "null"]
+            spec = {k: v for k, v in spec.items() if k not in {"anyOf", "default"}}
+            properties[name] = {
+                **spec,
+                **(kept[0] if len(kept) == 1 else {"anyOf": kept}),
+            }
+    definitions: dict[str, Any] = {}
+    pending: list[Any] = [properties]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, dict):
+            reference = value.get("$ref")
+            if isinstance(reference, str) and reference.startswith("#/$defs/"):
+                name = reference.removeprefix("#/$defs/")
+                if name not in definitions:
+                    definitions[name] = schema["$defs"][name]
+                    pending.append(definitions[name])
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+    groups = command_table()["alternatives"].get(operation, [])
+    return {
+        "properties": properties,
+        "$defs": definitions,
+        **({"oneOf": [{"required": group} for group in groups]} if groups else {}),
+    }
 
 
 @functools.cache

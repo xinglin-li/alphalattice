@@ -16,11 +16,17 @@ from alphalattice.control.product_host.composition.committee import (
 from alphalattice.control.product_host.composition.committee import (
     standing_messages as owner_standing,
 )
+from alphalattice.control.product_host.composition.committee_materials import (
+    QUESTIONS,
+    facts,
+    sufficiency,
+)
 from alphalattice.interface.local_application.portfolio_research import CommitteeMessage
 from devtools.evaluation import Scenario, Trace, TraceEvent
 from devtools.evaluation.committee import (
     CommitteeGrader,
     committee_problems,
+    materials_findings,
     report_fidelity,
     standing_messages,
 )
@@ -380,6 +386,24 @@ def test_a_reply_only_replaces_the_positions_it_explicitly_states(role, point, f
     closed["messages"][1]["positions"] = {point: "SUPPORT"}
     evidence["raw_messages"] = deepcopy(closed["messages"])
     assert report_fidelity(closed, report, **evidence) == []
+
+
+@pytest.mark.parametrize("kind", ["missing", "unused"])
+def test_a_reserve_beside_its_material_is_the_agents_and_without_it_the_products(kind):
+    """Every question holds a fact or a named absence; a RESERVE citing none is graded unused
+    where the member's facts stand, missing where only absences do."""
+    rows = {"issuer_rows": [{"ending_weight": "12.5%", "adverse_issue_count": 1}]}
+    said = facts({"publication": {"cro_status": "NOT_REVIEWED"}}, rows, [])
+    assert sufficiency(SimpleNamespace(opened={"facts": said})) == {}
+    assert any("12.50%" in f["text"] for f in said)  # a weight given as text reads; none refuses
+    if kind == "unused":
+        fact = {"alias": "S99", "question": "ALPHA.held", "text": "By rank.", "source": "pub"}
+        said.append(fact)
+    stance = floor_message("M1", "ALPHA", "STANCE", text="Hold.", positions={"T1": "RESERVE"})
+    closed = {"facts": said, "questions": QUESTIONS, "messages": [stance]}
+    assert materials_findings(closed) == [f"materials.{kind}:ALPHA:T1:M1"]
+    stance["text"] = said[-1]["alias"] + " holds."
+    assert materials_findings(closed) == []
 
 
 @pytest.mark.parametrize(
