@@ -8388,7 +8388,7 @@
     "name": "next_action",
     "kind": "string",
     "required": true,
-    "meaning": "What the agent does next: `CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN` or `RETURN_THE_RECEIPT_TO_YOUR_LEAD`."
+    "meaning": "What the agent does next: `CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN` or `RETURN_THE_RECEIPT_TO_YOUR_LEAD`; refused on a review bundle's thread, `START_THE_MEMBER` (MEMBER, KEY) or `RETURN_THE_RECEIPT_TO_YOUR_LEAD` (ENDED)."
    },
    {
     "name": "accepted_items",

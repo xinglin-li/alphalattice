@@ -2773,19 +2773,6 @@ body[data-page] .fv-step.is-complete:has(+ .fv-step.is-working)::before {
 .card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > :is(.chevron-slot, .icon:last-of-type) { grid-column: way; margin-inline-start: var(--slot-gap); }
 .card-list:is(.slotted, :has(> :is(.evidence-row, .retained-session-row))) > .list-row > .list-row-props > .list-row-ref { grid-column: ref; grid-row: 1; padding-inline: 0 var(--space-3); } /* placed first, whole: after the name the auto-placement cursor has passed its column */
 }
-/* The compact forward standing keeps its daily owner status whole at split width. A pair
-   of caption lines uses the regular row's budget, rather than clipping the status or growing
-   an eligible list row beyond it. The title, other slots and control steps keep their rules. */
-.forward-row > .list-row-props > [data-column=update] {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-}
-@container (width >= 640px) {
-  .card-list > .forward-row {
-    padding-block: min(var(--space-2), calc((var(--row-regular) - 2 * var(--style-footnote-leading)) / 2));
-  }
-}
 .evidence-row[data-kind="issuer"] .list-row-props > span:nth-child(2), .evidence-row[data-kind="issuer"] .list-row-props > span:nth-child(3) { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .first-use { margin-bottom: var(--space-6); }
 .home-groups .group-head + :is(.card-list, .section-empty) + .group-head {

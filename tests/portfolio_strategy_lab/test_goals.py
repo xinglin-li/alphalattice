@@ -1973,7 +1973,7 @@ def test_goal_list_keeps_readable_rows_and_scopes_only_provable_head_refusals(go
             Request(
                 operation="GOAL_OPEN",
                 goal_id=goal_id,
-                goal_declaration=DECLARATION,
+                goal_declaration={**DECLARATION, "target_date": "2026-08-12"},
                 change_reason="Register before execution",
             ),
             "HUMAN",
@@ -1994,6 +1994,7 @@ def test_goal_list_keeps_readable_rows_and_scopes_only_provable_head_refusals(go
 
     clean = app.operate(Request(operation="GOAL_LIST"), "HUMAN")
     assert "refused" not in clean
+    assert {row["target_date"] for row in clean["goals"]} == {None, "2026-08-12"}
     assert {row["goal_id"] for row in clean["goals"]} == {
         str(UUID(int=1)),
         str(damaged_id),

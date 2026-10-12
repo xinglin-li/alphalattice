@@ -698,8 +698,8 @@ def agent_answer_result(
                 else {}
             ),
             **({"task_id": body["task_id"]} if isinstance(body.get("task_id"), str) else {}),
-            # The Task the answer started, its state beside the verdict, so a wait follows it
-            # to its end rather than ending on the verdict (OP18, V580).
+            # The Task the answer started, its state beside the verdict: a wait follows it to its
+            # end, not the verdict's (OP18, V580).
             **(
                 {"task_lifecycle": body["lifecycle"]}
                 if isinstance(body.get("lifecycle"), str)
@@ -2155,8 +2155,8 @@ class EvidenceReviewApplication:
         )
         floor = resources.minimum_entity_coverage
         short = units_short_of_sources(inventory, self.evidence_policy.mode, floor=floor)
-        # A run no unit of which can prepare is not offered: each unit would fail as named, and
-        # the ways on are the person's (V541). Under official acquisition, the run reads the index.
+        # A run no unit of which can prepare is not offered: each would fail as named, its ways
+        # on the person's (V541). Under official acquisition it reads the index.
         source_ready = (
             len(short) < len(run.units)
             if self.evidence_policy.mode is AlternativeEvidenceMode.RECORDED
@@ -2173,7 +2173,7 @@ class EvidenceReviewApplication:
         ways: dict[str, object] = {}
         if short:
             ways = {
-                # Said before any run, never learnt from a coverage that failed (V445, V541).
+                # Said before any run, not learnt from a failed coverage (V445, V541).
                 "source_limit": (
                     "This Host reads only the documents the workspace holds (RECORDED), and a "
                     "unit is prepared only when enough of its issuers hold one for the installed "
@@ -2975,8 +2975,8 @@ class EvidenceReviewApplication:
                 _submitted(submission),
                 answer=_answer_view(record, delivery, record_filed=submission.admitted),
             )
-            # The unit is the answer's own field, as an answer already published says it; a next
-            # request is one the Host accepts (V449).
+            # The unit is the answer's own field, as a published answer says; a next request
+            # is one the Host accepts (V449).
             return replace(outcome, evidence_unit_id=unit_id)
 
     def drive_evidence_task(
@@ -3772,9 +3772,8 @@ class EvidenceReviewApplication:
     def read_accepted_answer(self, subject: Mapping[str, object]) -> dict[str, object]:
         """Read a sealed accepted contribution bound to one observed native answer.
 
-        This opens the retained answer, bundle and exact Task only for a selected
-        accepted event. Typed submissions recover their screened Task input; generic
-        contributions must still match the original legal answer's digest.
+        It opens one accepted event's answer, bundle and Task: a hook's, or a review thread's the
+        Host accepted. Typed answers recover their screened input; generic ones match their digest.
         """
         metadata = {
             key: subject.get(key)
@@ -3803,13 +3802,13 @@ class EvidenceReviewApplication:
                 BUNDLE_CATEGORY, str(subject.get("bundle_reference")), AgentBundleRecord
             )
             run = answer.agent_run
-            if (
-                answer.verdict not in {AnswerVerdict.ACCEPTED, AnswerVerdict.DONE}
-                or run is None
-                or run.basis != "HOOK"
-                or run.agent_id is None
-                or run.role is None
-            ):
+            if answer.verdict not in {AnswerVerdict.ACCEPTED, AnswerVerdict.DONE} or run is None:
+                return unavailable
+            if subject.get("authorship_basis") == "HOST_ACCEPTED":
+                return self._read_accepted_contribution(
+                    answer, bundle, subject.get("reference"), metadata
+                )
+            if run.basis != "HOOK" or run.agent_id is None or run.role is None:
                 return unavailable
             if (
                 subject.get("authorship_basis") != "HOOK"
@@ -3832,9 +3831,8 @@ class EvidenceReviewApplication:
     ) -> dict[str, object]:
         """Read a sealed answer selected by an owner operation-return observation.
 
-        Workspace activity verifies that selected row's source and authority before
-        asking here. The submitting request's Session and Goal remain separate from
-        the answer's stored attribution; absent attribution is never reconstructed.
+        Workspace activity verifies the row's source and authority first. The request's Session
+        and Goal stay apart from the answer's stored attribution, never reconstructed.
         """
         metadata = {
             key: subject.get(key)

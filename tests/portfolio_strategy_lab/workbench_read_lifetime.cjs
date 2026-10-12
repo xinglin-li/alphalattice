@@ -154,6 +154,11 @@ async function historyPages() {
 }
 
 async function exactOpen() {
+  const selector = {update_task_id: task, update_publication_hash: 'delivery', position_basis: 'CONDITIONAL_ESTIMATE'};
+  const current = fixture({'/api/research-history': () => ({entries: [{...entry('update:delivery'), kind: 'CONTINUOUS_UPDATE', book: selector}]})});
+  current.c.LiveReview.open = (...args) => current.opens.push(args); current.c.LiveViews.existing = () => {};
+  await current.D.connect(); await current.D.openEntry('update:delivery');
+  assert.deepEqual(current.opens[0], [selector]);
   for (const back of [false, true]) {
     const f = fixture();
     const held = f.hold(url => url.includes('history_entry_id=result%3Aexact'));
@@ -213,7 +218,30 @@ async function taskStudyRead() {
   }
 }
 
+async function homeOutcome() {
+  const selector = {update_task_id: task, update_publication_hash: 'publication', position_basis: 'FINAL'};
+  const selected = {task_id: task, positions_session: day, status: 'SUCCEEDED', review_selector: selector};
+  const automation = {runs_forward: [{latest_update: selected}]};
+  const f = fixture({'/api/research-update': () => ({review_selector: selector, schedule: {entry_session: day}}),
+    '/api/session': () => ({session_token: 'fixture-token', research_context: {goals: {goals: [{state: 'OPEN', target_date: '2024-08-13'}]}}})}, '#page=overview'); await f.D.connect();
+  const answer = f.hold(url => url.startsWith('/api/research-update?'));
+  f.D.observeHome(automation); f.D.observeHome(automation); await entered(answer);
+  assert.equal(prefixCount(f, '/api/research-update?'), 1);
+  f.c.go('history'); answer.release({review_selector: selector, schedule: {entry_session: day}}); await tick();
+  assert.equal(f.c.app.page, 'history'); assert.equal(f.D.homeOutcome().value, null);
+  f.c.go('overview');
+  f.c.Settings = {dailyUpdate: () => ({value: automation})};
+  const mismatch = f.hold(url => url.startsWith('/api/research-update?'));
+  f.D.observeHome(automation); await entered(mismatch);
+  mismatch.release({review_selector: {...selector, update_publication_hash: 'changed'}}); await tick();
+  assert.equal(f.D.homeOutcome().value, null); assert.ok(f.D.homeOutcome().error);
+  f.c.go('history'); f.c.go('overview'); f.D.observeHome(automation); await tick();
+  assert.equal(f.D.homeOutcome().value.schedule.entry_session, day);
+  f.c.location.hash += '&task=' + task; f.D.observeHome(automation); await tick();
+  assert.equal(f.D.homeOutcome().value.schedule.entry_session, day);
+}
+
 (async () => {
-  await wire(); await historyPages(); await exactOpen(); await portfolioOpen(); await taskStudyRead();
+  await wire(); await historyPages(); await exactOpen(); await portfolioOpen(); await taskStudyRead(); await homeOutcome();
   finish();
 })().catch(error => { console.error(error); process.exitCode = 1; });

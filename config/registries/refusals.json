@@ -36,6 +36,9 @@
 "activity.query_field_unknown": {
 "owner": "activity"
 },
+"activity.query_parameter_invalid": {
+"owner": "activity"
+},
 "activity.query_selection_conflict": {
 "owner": "activity"
 },
@@ -6597,9 +6600,6 @@
 "native_bridge.binding_unreadable": {
 "owner": "native_bridge"
 },
-"native_bridge.child_not_a_specialist": {
-"owner": "native_bridge"
-},
 "native_bridge.child_usage_binding_unverified": {
 "owner": "native_bridge"
 },
@@ -6682,6 +6682,9 @@
 "owner": "native_bridge"
 },
 "native_bridge.start_not_observed": {
+"owner": "native_bridge"
+},
+"native_bridge.usage_reader_busy": {
 "owner": "native_bridge"
 },
 "native_bridge.workspace_mismatch": {

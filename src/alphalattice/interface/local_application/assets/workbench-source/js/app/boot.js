@@ -45,6 +45,7 @@
     setLocale,
     failNextRender: () => { app.failNextRender = true; },
     data: Data,
+    team: Object.freeze({scene: LiveTeam.scene, resolve: LiveTeam.resolve, resolved: LiveTeam.resolved, roleName: LiveTeam.roleName, recipientName: LiveTeam.recipientName, unique: TeamMembers.unique}),
     untranslated: I18N.untranslated,
     i18nKeys: I18N.keys,
     action: (name, value) => dispatchAction(name, value),

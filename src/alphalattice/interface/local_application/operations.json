@@ -738,7 +738,8 @@
   "AGENT_ANSWER_SUBMIT": {
    "allowed": [
     "agent_answer",
-    "bundle_directory"
+    "bundle_directory",
+    "committee_key"
    ],
    "required": [
     "agent_answer",

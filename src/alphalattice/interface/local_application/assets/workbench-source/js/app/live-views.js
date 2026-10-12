@@ -191,7 +191,7 @@ const LiveViews = (() => {
   };
   function recordRow(x, extra = {}) {
     if (x.earlierStops?.length) return earlierStopRows(x, row => recordRow({...row, earlierStops: undefined}, extra));
-    const {name, markup} = nameOf(x);
+    const {name, markup} = extra.name ? {name:extra.name} : nameOf(x);
     const on = (key) => extra.show ? extra.show[key] !== false : key !== 'reference'; // round 57: the viewer's display properties; the id is a property, off unless chosen (round 63)
     // a lobby's row carries its reference in its own column (`extra.ref`, law 136); what it continues is a fact
     const reference = extra.ref ? (on('origin') && x.origin ? html`${t('continued from')} <span class="mono">${shortRef(x.origin)}</span>` : '') : on('reference') ? html`<span class="mono">${x.reference}</span>${x.origin ? html` · ${t('continued from')} <span class="mono">${shortRef(x.origin)}</span>` : ''}` : '';
@@ -240,9 +240,8 @@ const LiveViews = (() => {
       ? studyLobby('portfolio', list)
       : emptyState(t('No experiment yet'), link(t('New experiment'), 'lab', 'button primary', {experiment_kind: 'portfolio.policy-development'}), 'page-empty')}`; // N3: the path names the list; the dock and ⌘K reach History
   }
-  /* ---- Home (round 65): the workspace's name and state as the head, the data facts as chips,
-   * and three groups of object rows for whoever operates — what needs a decision, what is
-   * running, what was recently recorded. Nothing here runs, plans or selects; the chart of a
+  /* ---- Home: the current goal, its outcome, the person's decisions and moving work.
+   * Nothing here runs, plans or selects; the chart of a
    * book is the book's page, the index of every object is History. ---- */
   /* Where and how a result was computed (R9): the Host's record of the settings and the machine its Task
    * started with, and an Alpha study's fits -- a record beside the result, never an identity (the same numbers
@@ -280,8 +279,7 @@ const LiveViews = (() => {
   }
   /* What waits on a person (U5): the Host's one answer (`/api/decisions`), in its order, each
    * decision a row whose way on is its object's. The page adds only what the reader's own
-   * address holds (their PLAN previewed since the read) and the Team's own record (an objection
-   * awaiting the Main PM, U25). A data issue's case is a token, so the cases are one row with
+   * address holds (their PLAN previewed since the read). A data issue's case is a token, so the cases are one row with
    * their count; a kind the page has no words for is named by its code, never dropped (ST7).
    * Each row: {lead, place, name, why, to, by, at, key, state}. */
   const DATA_TASKS = new Set(['workspace_data_update', 'workspace_preparation']); // the Tasks the Data place holds
@@ -338,8 +336,6 @@ const LiveViews = (() => {
     if (!Data.decisions() && Data.decisionsError) out.push({lead: 'warning', name: t('What waits on a person was not read'), why: coded(Data.decisionsError.split(':')[0]), to: {action: 'workspace-refresh'}});
     // the reader's own PLAN, previewed since the Host's answer was read
     if (app.plan?.plan_hash && !all.some((d) => d.kind === 'PLAN_PREVIEW' && d.plan_hash === app.plan.plan_hash)) out.push({lead: 'lab', name: t('Your PLAN waits to be confirmed'), why: t('Previewed and not run; the confirmation admits a Task.'), to: {page: 'lab'}, by: t('You'), key: app.plan.plan_hash});
-    const team = typeof LiveTeam !== 'undefined' && LiveTeam.summary ? LiveTeam.summary() : null;
-    if (team?.unresolved) out.push({lead: 'review', name: countText(team.unresolved, '{n} objection awaits the Main PM', '{n} objections await the Main PM'), why: html`<span class="coded" data-tip="${team.session}">${t('Retained session')}</span> · ${t('Team')}`, to: {page: 'team', extra: team.selected ? {} : {team: team.session, actor: '', event: ''}}, key: team.session, at: team.latest?.at || ''});
     return out;
   }
   /* The rows are one line (U9, LS2): the title whole, its words cut with an ellipsis and read whole
@@ -358,23 +354,14 @@ const LiveViews = (() => {
     });
     return items;
   }
-  /* What is running: the moving Tasks with their stage, and the newest retained team session. */
+  /* Home counts running work, never a queued Task or retained session. Object pages keep their detailed moving rows. */
   function runningRows(tasksOnly=false) {
     const prep = Data.preparation();
-    const rows = Data.runsOf('task').filter((r) => stateMoving(r.state)).slice(0,LOBBY.shown).map((r) => {
+    const rows = Data.runsOf('task').filter((r) => tasksOnly ? stateMoving(r.state) : r.state === 'RUNNING').slice(0,LOBBY.shown).map((r) => {
       const subject=LiveTasks.subjectContext?.(r.id);
       const name=I18N.zh && subject?.name_zh || (subject?.name ? t(subject.name) : bookWords(subject?.policy));
-      return runRow(name ? {...r,name,markup:null} : r, {pinned:true,until:r.id===prep?.task_id ? prep.progress?.retry_after_at || null : null,word:r.id===prep?.task_id ? t('Preparing the workspace') : undefined,columns:['id','kind','date','verified'],props:['',codeWords(r.kind),subject?.date || '',html`${count(r.verified[0])} / ${count(r.verified[1])} ${t('verified')}`]});
+      return runRow(name ? {...r,name,markup:null} : r, tasksOnly ? {pinned:true,until:r.id===prep?.task_id ? prep.progress?.retry_after_at || null : null,word:r.id===prep?.task_id ? t('Preparing the workspace') : undefined,columns:['id','kind','date','verified'],props:['',codeWords(r.kind),subject?.date || '',html`${count(r.verified[0])} / ${count(r.verified[1])} ${t('verified')}`]} : {pinned:true,columns:['date'],props:[subject?.date || ''],to:{page:'tasks',extra:{task:r.id}}});
     });
-    if(tasksOnly)return rows;
-    // U70 (V452, OP19): the person's first use, run by their agent -- the Host's FIRST_USE item while its delegation holds: the
-    // steps it took as theirs, the hours left, its goal the way (where its one Stop is)
-    for (const d of (Data.decisions() || []).filter((x) => x.kind === 'FIRST_USE')) {
-      const steps = d.delegated_steps || [], hours = LiveGoals.hoursLeft({ends_at: d.ends_at, active: d.active !== false});
-      rows.push(objectRow({lead: tile('flag', 'accent'), name: t('Your first use, run by your agent'), to: {action: 'goal-open', value: d.goal_hash}}, {key: 'first-use:' + d.goal_id, columns: ['steps', 'hours'], props: [steps.length ? steps.map(LiveGoals.stepWords).join(' · ') : t('No step taken for you yet.'), hours], time: steps.length ? when(steps.at(-1).recorded_at) : ''})); // one line (LS2): its facts in their slots, the sentence on its goal
-    }
-    const s = typeof LiveTeam !== 'undefined' && LiveTeam.summary ? LiveTeam.summary() : null;
-    if (s?.session && s.latest) rows.push(objectRow({lead: tile('team', 'accent'), name: s.question?.text || t('Team'), to: {page: 'team', extra: s.selected ? {} : {team: s.session, actor: '', event: ''}}}, {key: s.session, columns: ['participants', 'latest', 'unread'], props: [countText(s.participants, '{n} participant', '{n} participants'), html`${s.latest.actor} · ${s.latest.kind}`, s.unread ? html`<span class="team-unread">${t('{n} unread', {n: s.unread})}</span>` : ''], time: s.latest.at ? when(s.latest.at) : ''}));
     return rows;
   }
   /* What needs you, as Home counts it (its "Needs a decision" group, the rows decisionRows draws): the
@@ -388,27 +375,51 @@ const LiveViews = (() => {
     return rows.length ? html`${groupHead(title, total)}${note}<div class="${cls}">${rows.slice(0, shown)}</div>${more}${reveal}` : ''; // N6 (law 81): an empty group is not drawn
   };
   const runningGroup=(tasksOnly=false)=>{
-    const total=Data.tasks().filter(v=>stateMoving(v.lifecycle)).length, rows=runningRows(tasksOnly);
-    return group(t('Running'),rows,'card-list lines slotted',total+rows.length-Math.min(total,LOBBY.shown),total>LOBBY.shown ? link(t('All Tasks'),'tasks','text-btn') : '');
+    const total=Data.tasks().filter(v=>tasksOnly ? stateMoving(v.lifecycle) : v.lifecycle==='RUNNING').length, rows=runningRows(tasksOnly);
+    return group(t('Running'),rows,'card-list lines slotted',total,!tasksOnly || total>LOBBY.shown ? link(t('All Tasks'),'tasks','text-btn') : '');
   };
   /* U74: Home keeps WD4's first screen at any count -- the first decisions in the Host's order, the rest folded behind
    * one way that counts them (a person can pile up a dozen). */
   const HOME_DECISIONS = 5;
   const decisionGroup = (rows) => { const rest = rows.slice(HOME_DECISIONS), all = waiting(), shared = sharedWay(all), cause = sharedCause(all); return group(t('Needs a decision'), rows.slice(0, HOME_DECISIONS), 'card-list lines slotted', rows.length, rest.length ? html`<details class="reveal-details home-more"><summary>${countText(rest.length, '{n} more decision', '{n} more decisions')}</summary><div class="card-list lines slotted">${rest}</div></details>` : '', cause.words ? noteLine(t('{n} Tasks: {reason}', {n: cause.count, reason: t(cause.words)}), shared ? t('For each: {way}', {way: shared}) : '', 'warning') : shared ? html`<p class="caption group-note">${t('For each: {way}', {way: shared})}</p>` : ''); };
   const HOME_TOOLS = () => [{ic: 'data', action: 'go', value: 'data', word: t('Update data'), why: t('The working store; one explicit update at a time')}, {ic: 'evidence', action: 'go', value: 'evidence-stream', word: t('Prepare evidence'), why: t('Sources for the review desk')}, {ic: 'archive', action: 'go', value: 'storage', word: t('Storage cleanup'), why: t('Retention and reclaimable space')}];
-  /* The Home's groups (N6): what needs a decision, what runs, what was recorded -- each only when
-   * it holds something; a Home with nothing in any shows the one empty state and its way. */
+  function homeOutcomeRows(reading) {
+    const {selection:s,value:v,error}=reading, selector=v?.review_selector || s?.review_selector;
+    if(!s)return [];
+    const date=v?.schedule?.entry_session || s.positions_session, extra={review_selector:JSON.stringify(selector)};
+    const rows=[objectRow({lead:'portfolio',name:date ? t('Positions for {date}',{date}) : t('Positions not stated'),why:error ? t('Positions not read') : '',to:{page:'evidence',extra}}, {key:'positions:'+s.task_id+':'+selector.update_publication_hash,columns:['book'],props:[s.book_task_id ? link(t('Portfolio study'),'portfolio','text-btn',{book:s.book_task_id,session:date,performance:'forward'}) : '']})];
+    if(error)return [...rows,notRead(t('Positions not read'),error)];
+    if(!v)return rows;
+    const review=v.review_standing, publication=review?.review_publication_hash, committee=v.committee_context;
+    if(review)rows.push(objectRow({lead:'review',name:t('Review'),why:codeWords(review.status),to:{page:'handoff',extra:{...extra,review_publication:publication || ''}}},{key:'review:'+(publication || s.task_id)}));
+    if(committee)rows.push(objectRow({lead:'team',name:t('Committee'),why:codeWords(committee.verdict?.outcome || committee.stage),to:{page:'team-committee',extra:{team:committee.native_session_id,committee:committee.update_task_id}}},{key:'committee:'+committee.update_task_id}));
+    if(publication)rows.push(objectRow({lead:'file',name:t('Report'),to:{page:'report',extra:{...extra,review_publication:publication}}},{key:'report:'+publication}));
+    return rows;
+  }
+  function homeDeliveries(reading) {
+    const seen=new Set([reading.selection?.review_selector?.update_publication_hash,reading.value?.review_standing?.review_publication_hash].filter(Boolean));
+    return Data.history().filter(row=>{
+      const r=row.raw, study=r.kind.endsWith('-development') && r.status==='SUCCEEDED', review=r.kind==='CRO_REVIEW' && r.review_publication_hash, positions=r.kind==='CONTINUOUS_UPDATE' && r.status==='SUCCEEDED' && r.book && r.final_delivery===true;
+      if(!study && !review && !positions)return false;
+      const key=r.review_publication_hash || r.book?.update_publication_hash || r.book?.result_hash || r.kind+':'+r.task_id;
+      if(seen.has(key))return false;
+      seen.add(key); return true;
+    }).map(row=>row.raw.kind==='CONTINUOUS_UPDATE' && row.raw.positions_session ? recordRow(row,{name:t('Positions for {date}',{date:row.raw.positions_session}),columns:['book'],props:[row.words]}) : recordRow(row));
+  }
+  /* Outcome first, then the person's decisions and moving work; the audit stays in History. */
   function homeGroups(unprepared) {
-    const decide = decisionRows(), running = runningGroup(), forward = LiveActivation.forwardRows(), recent = Data.recent(8).map((r) => recordRow(r)), closure = LiveTasks.unrecoverableActions();
-    if (!decide.length && !String(running).trim() && !forward.length && !recent.length && !closure) return html`${stackSlot('homeRunning','')}${emptyState(t('No saved research yet.'), unprepared ? '' : link(t('New experiment'), 'lab', 'button primary'), 'page-empty')}`;
-    // V593 (U81): what runs forward, after what runs now (LiveActivation reads it from its owners)
-    return html`${decisionGroup(decide)}${closure}${stackSlot('homeRunning',running)}${group(t('Running forward'), forward)}${group(t('Recently recorded'), recent, undefined, recent.length, '', '', LOBBY.shown)}`;
+    const reading=Data.homeOutcome(), outcome=homeOutcomeRows(reading), decide=decisionRows(), running=runningGroup(), deliveries=homeDeliveries(reading);
+    if(!outcome.length && !decide.length && !String(running).trim() && !deliveries.length)return html`${stackSlot('homeRunning','')}${emptyState(t('No saved research yet.'), unprepared ? '' : link(t('New experiment'),'lab','button primary'),'page-empty')}`;
+    return html`${group(t('Positions'),outcome,undefined,null)}${decisionGroup(decide)}${stackSlot('homeRunning',running)}${group(t('Latest deliveries'),deliveries,undefined,deliveries.length,'','',LOBBY.shown)}`;
   }
   function overview() {
     const prep = Data.preparation(), unprepared = Boolean(prep) && !prep.inputs?.length;
     const f = resumeFacts(prep, unprepared);
     const meta = html`<span>${icon('task')}${countText(openTaskCount(), '{n} Task needs a decision', '{n} Tasks need a decision')}</span><span>${icon('lock')}${t('Local workspace')}</span>`;
-    return html`${objectHead(Data.workspace(), meta, html`${f.secondary}${f.primary}`, f.state, HOME_TOOLS(), {object: true, facts: homeChips().filter(Boolean)})}${unprepared || LiveWorkspace.selectedTask('welcome') ? html`<section class="first-use" aria-label="${t('First use')}">${LiveWorkspace.firstUse()}</section>` : ''}<section class="home-groups" aria-label="${t('Home')}">${homeGroups(unprepared)}</section>`;
+    const goal=Data.currentGoal(), title=t(goal?.title || goal?.declaration?.title || 'Home'), date=goal?.target_date || goal?.declaration?.target_date;
+    const facts=homeChips().filter(Boolean);
+    if(goal)facts.unshift([t('Current goal'),html`${btn(title,'goal-open',goal.goal_hash || goal.goal_id,'text-btn')}${date ? html` · ${date}` : ''}`]);
+    return html`${objectHead(title, meta, html`${f.secondary}${f.primary}`, f.state, HOME_TOOLS(), {object:true,facts})}${unprepared || LiveWorkspace.selectedTask('welcome') ? html`<section class="first-use" aria-label="${t('First use')}">${LiveWorkspace.firstUse()}</section>` : ''}<section class="home-groups" aria-label="${t('Home')}">${homeGroups(unprepared)}</section>`;
   }
   function tasks() {
     return LiveTasks.page();

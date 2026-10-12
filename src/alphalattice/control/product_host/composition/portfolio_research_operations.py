@@ -1939,9 +1939,9 @@ class PortfolioResearchOperations:
     def _agent_run(self) -> AgentRun | None:
         """The Session that submitted an answer, recorded beside it (V300, AU3, LAWS.md ID7).
 
-        The lead submits every answer; which of its children wrote it is not observed, so the
-        record names the host and Session alone, never a guess. None for a request that names
-        no agent Session.
+        A review member's own answer is named on its bundle's thread; otherwise which child
+        wrote it is not observed, so the record names the host and Session alone. None for a
+        request that names no agent Session.
         """
         provenance = REQUEST_PROVENANCE.get()
         if provenance is None or provenance.vendor is None or provenance.session is None:
@@ -2057,9 +2057,8 @@ class PortfolioResearchOperations:
     ) -> GoalAcceptedAnswerReceipt | None:
         """Freeze the first genuine acceptance's prior packet before optional delivery.
 
-        Called while the scientific submission holds the workspace mutation gate. This
-        reads only product owner records; it never discovers native files or contacts a Host.
-        The caller isolates failures so the accepted scientific answer remains usable.
+        Called under the submission's mutation gate, it reads only product owner records, never
+        native files or a Host; its caller isolates failures from the answer.
         """
         view = body.get("answer")
         delivery = view.get("accepted_delivery") if isinstance(view, dict) else None
@@ -2100,7 +2099,9 @@ class PortfolioResearchOperations:
         *,
         accepted_receipt: GoalAcceptedAnswerReceipt | None = None,
     ) -> dict[str, object]:
-        """Keep observation optional at every registered accepted-answer return door."""
+        """Keep observation optional at each accepted-answer door; a thread files its own."""
+        if committee.threaded(self.goals.store, bundle):
+            return body
         failures = self.observer_failures
         conversation = self._observe(
             lambda: self.record_agent_answer(bundle, body, accepted_receipt=accepted_receipt)
@@ -2181,11 +2182,11 @@ class PortfolioResearchOperations:
         match request.operation:
             case "AGENT_BUNDLE_PREPARE":
                 assert request.agent_role is not None and request.bundle_directory is not None
-                # A role's view of a date's positions, and of its committee floor when one is
-                # open: one owner for both.
+                # A role's view of the date's positions, its floor or review route.
                 dated = None if request.task_id is None else self._dated(str(request.task_id))
+                now, store, file = self.dispatcher.clock(), self.goals.store, self._file_floor
                 parts = committee.bundle_parts(
-                    request.agent_role, dated, self.goals.store, self.dispatcher.clock()
+                    request.agent_role, dated, store, now, request.bundle_directory
                 )
                 try:
                     prepared = EvidenceReviewBundles(self.review).prepare_agent_bundle(
@@ -2213,18 +2214,19 @@ class PortfolioResearchOperations:
                     if unit is None:
                         raise
                     return unit
-                return _review_outcome_body(prepared)
+                return committee.issued(store, _review_outcome_body(prepared), now, file)
             case "AGENT_ANSWER_SUBMIT":
-                # The bundle's own submission, completed with the answer as
-                # written: the agent names its bundle, never a hash.
+                # The bundle's own submission and answer.
                 assert request.bundle_directory is not None
                 bundle = EvidenceReviewBundles(self.review).agent_bundle(request.bundle_directory)
                 if bundle is None:
                     return agent_bundle_refusal("agent_bundle.not_prepared")
-                # The files the agent names as read whole are its own word, kept with
-                # its answer as provenance; the answer is read whatever they are (OP11).
+                # Files it names as read whole are its word, kept as provenance (OP11).
                 answer, read = answer_read(request.agent_answer or {})
                 agent_run = self._agent_run()
+                store, who = self.goals.store, (bundle.role, bundle.record_hash, answer)
+                if isinstance(thread := committee.admit(store, who, request.committee_key), dict):
+                    return thread
                 if bundle.role not in ANSWER_FIELDS:
                     try:
                         with self.workspace_session.mutation_gate.hold():
@@ -2257,8 +2259,7 @@ class PortfolioResearchOperations:
                             accepted_bundle=bundle,
                         )
                     except ValidationError as error:
-                        # The answer passed its format and the record it would seal did
-                        # not: named by place, count and bound, never a bare field code.
+                        # A record past its sealed bounds: named by place, count and bound.
                         over = sealed_bounds_exceeded(error)
                         if not over:
                             raise
@@ -2284,8 +2285,11 @@ class PortfolioResearchOperations:
                             unit_id=bundle.submission.get("evidence_unit_id"),
                         )
                 assert body is not None
-                book = _bundle_book(bundle.submission) if bundle.role in ANSWER_FIELDS else None
+                book = _bundle_book(bundle.submission)  # none for a stage role's bundle
                 answered = agent_answer_result(bundle.role, body, book)
+                committee.answered(
+                    store, thread, who, answered, self.dispatcher.clock(), self._file_floor
+                )
                 if answered["status"] in {"ACCEPTED", "DONE"}:
                     answered["bundle_reference"] = bundle.record_hash
                 if agent_run is not None and answered["status"] not in {"ACCEPTED", "DONE"}:
@@ -2384,8 +2388,7 @@ class PortfolioResearchOperations:
                 if outcome.task_id is not None:
                     packets = self.review.packet_requests(selector, task_id=outcome.task_id)
                     chosen = self.review.default_selector(selector)
-                    # Nothing new, the CRO's review carried forward: its Task and its book go
-                    # on, never a packet of the review's Task (V434).
+                    # Nothing new: the CRO's review carries forward with its Task and book (V434).
                     carried: dict[str, dict[str, Any]] = {
                         "task": {"operation": "STATUS", "task_id": str(outcome.task_id)},
                         **(
@@ -2427,8 +2430,7 @@ class PortfolioResearchOperations:
                         view_to=request.view_to,
                     )
                 except (PortfolioEvidenceReviewError, ValueError) as error:
-                    # A unit that was not prepared says why and where the prepared ones are
-                    # (V388); any other refusal is answered as before.
+                    # An unprepared unit says why and where prepared ones are (V388).
                     unit = unit_refusal(
                         public_failure(error, "alternative_evidence.refused"),
                         None if selector is None else selector.request_fields(),
@@ -2455,8 +2457,7 @@ class PortfolioResearchOperations:
                 )
                 body = _review_outcome_body(outcome)
                 if outcome.task_id is not None:
-                    # The continuation's packet is its own Task's, single: the
-                    # unit it continued rides in its input, not in the request.
+                    # The continuation's packet is its own Task's; its unit rides in its input.
                     # Its consumer holds every earlier part already, so the
                     # session's own windows are offered beside the whole.
                     packets = self.review.packet_requests(selector, task_id=outcome.task_id)
@@ -2562,12 +2563,9 @@ class PortfolioResearchOperations:
         raise ValueError("portfolio_research.operation_unknown")
 
     def _refresh_prepared_inputs(self) -> None:
-        # Asked on every operation, so the manifest file's own stat answers first whether
-        # anything could have changed: two Task counts per request under Task Control's one
-        # connection lock queued every light read at twenty requests a second (W10, measured
-        # with py-spy), and the counts themselves are answered again while nothing is written.
-        # They stay the first check, not a listing that validates every Task record (~0.2 s
-        # per poll on thirty-five Tasks); a workspace with no preparation reads no manifest.
+        # Asked on every operation, so the manifest's stat answers first whether anything
+        # changed: Task counts under one connection lock queued every light read (W10, py-spy),
+        # and a listing validating every Task record took ~0.2 s a poll on thirty-five Tasks.
         stamp = _file_stamp(self.workspace_session.workspace / RESEARCH_WORKSPACE_MANIFEST_NAME)
         if stamp is not None and stamp == self._manifest_stamp:
             return
@@ -2843,11 +2841,11 @@ class PortfolioResearchOperations:
         A wait's read takes the gate only when a row is due; the floor is read again under the
         lock, so two filings never file one message twice.
         """
-        floor, observer = committee.floor_of(self.goals.store, task), self.observer
+        floor, observer = committee.thread_of(self.goals.store, task), self.observer
         if observer is None or floor is None or not committee.unfiled(floor, now):
             return
         with self.workspace_session.mutation_gate.hold(), self.goals.store.lock:
-            floor = committee.floor_of(self.goals.store, task)
+            floor = committee.thread_of(self.goals.store, task)
             rows = [] if floor is None else committee.unfiled(floor, now)
             if floor is None or not rows:
                 return
@@ -6187,7 +6185,7 @@ class PortfolioResearchOperations:
                 **located_failure(error, "activity.event_invalid"),
                 "next_action": "READ_ACTIVITY_EVENT_CONTRACT",
             }
-        if document.subject.get("input_channel") == committee.CHANNEL:
+        if document.subject.get("input_channel") in committee.CHANNELS:
             # Only the committee's own floor files on its channel (`_file_floor`).
             return refused("activity.event_channel_reserved")
         with self.workspace_session.mutation_gate.hold(), self.goals.store.lock:

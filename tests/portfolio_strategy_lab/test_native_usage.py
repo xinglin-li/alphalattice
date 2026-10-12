@@ -3,12 +3,16 @@
 import json
 import os
 from dataclasses import asdict
+from hashlib import sha256
+from itertools import pairwise
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
 from alphalattice.interface.local_application import client as client_module
+from alphalattice.interface.local_application import native_bridge as bridge_module
+from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
 from alphalattice.interface.local_application.failure_codes import owner_failure_code
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
@@ -29,6 +33,7 @@ from alphalattice.interface.local_application.native_usage import (
     read_session,
     session_file,
 )
+from devtools.evaluation.native_usage import STEPS, walk
 
 SECRET = "SECRET-TRANSCRIPT-TEXT"
 
@@ -102,11 +107,11 @@ def test_claude_child_metadata_names_one_exact_direct_parent_and_explicit_role(
             "{" if problem == "invalid_meta" else json.dumps(meta), encoding="utf-8"
         )
     result = claude_thread_spawn("lead-session", "exact-child")
-    if problem == "exact":
+    if problem in {"exact", "role"}:
         assert result is not None
         assert (result.parent_thread_id, result.agent_role) == (
             "lead-session",
-            "alphalattice_risk",
+            "alphalattice_risk" if problem == "exact" else None,
         )
         assert SECRET not in repr(result)
     else:
@@ -157,9 +162,13 @@ def _lead_records():
 
 
 def test_a_claude_session_counts_each_response_once_and_keeps_no_text(tmp_path):
-    usage = read_session(_write(tmp_path / "lead.jsonl", _lead_records()), host=HOST_CLAUDE_CODE)
+    records = _lead_records()
+    records[2]["message"]["id"] = records[3]["message"]["id"] = SECRET * 10_000
+    usage = read_session(_write(tmp_path / "lead.jsonl", records), host=HOST_CLAUDE_CODE)
 
-    assert [row.response_id for row in usage.responses] == ["msg_1", "msg_2"]
+    assert [row.response_id for row in usage.responses] == [
+        sha256(i.encode()).hexdigest() for i in (SECRET * 10_000, "msg_2")
+    ]
     assert usage.incomplete == 1
     assert (usage.first_at, usage.last_at) == ("2026-09-29T01:00:00Z", "2026-09-29T01:00:10Z")
     (row,) = usage.by_model()
@@ -179,7 +188,10 @@ def test_a_codex_rollout_names_the_model_by_turn_and_leaves_the_uncached_input(t
             "output_tokens": output,
         }
         record = {"type": "token_usage_record", "timestamp": "2026-09-29T02:00:05Z"}
-        return {**record, "payload": {"response_id": ident, "usage": usage}}
+        return {
+            **record,
+            "payload": {"response_id": SECRET * 10_000 if ident == "r1" else ident, "usage": usage},
+        }
 
     def turn(effort):
         return {"type": "turn_context", "payload": {"model": "gpt-6-luna", "effort": effort}}
@@ -200,7 +212,9 @@ def test_a_codex_rollout_names_the_model_by_turn_and_leaves_the_uncached_input(t
     )
     usage = read_session(path, host=HOST_CODEX)
 
-    assert [row.response_id for row in usage.responses] == ["r1", "r2"]
+    assert [row.response_id for row in usage.responses] == [
+        sha256(i.encode()).hexdigest() for i in (SECRET * 10_000, "r2")
+    ]
     assert usage.incomplete == 2
     (row,) = usage.by_model()
     assert (row.model, row.efforts, row.responses) == ("gpt-6-luna", ("high", "xhigh"), 2)
@@ -279,13 +293,13 @@ def test_bounded_usage_admits_a_large_valid_native_line_and_preserves_legacy_tot
     )
     assert bounded == read_session(path, host=host)
     assert bounded.incomplete == 0 and len(bounded.responses) == 1
-    assert bounded.responses[0].response_id == "complete-response"
+    assert bounded.responses[0].response_id == sha256(b"complete-response").hexdigest()
     assert SECRET not in repr(bounded)
 
 
 @pytest.mark.parametrize("limit", ["max_bytes", "max_line_bytes"])
 def test_an_incomplete_bounded_usage_scan_returns_no_prefix_totals(tmp_path, limit):
-    """BEHAVIOUR: even a complete usage prefix gives no totals when a later byte bound fails."""
+    """A byte slice stays partial; an oversized record retains its typed refusal."""
     records = [
         _assistant("complete-response", "claude-sonnet-5-5", output=3, at="2026-10-06T00:00:00Z"),
         {"type": "user", "payload": {"content": SECRET * 100}},
@@ -298,12 +312,20 @@ def test_an_incomplete_bounded_usage_scan_returns_no_prefix_totals(tmp_path, lim
     }
     assert read_session(path, host=HOST_CLAUDE_CODE, **limits).incomplete == 0
     limits[limit] -= 1
+    if limit == "max_bytes":
+        partial = read_session(path, host=HOST_CLAUDE_CODE, **limits)
+        assert partial.read_through < partial.total_bytes and partial.bytes_read == limits[limit]
+        assert SECRET not in repr(partial)
+        return
     with pytest.raises(NativeUsageReadLimitError) as caught:
         read_session(path, host=HOST_CLAUDE_CODE, **limits)
     assert caught.value.limit == limit and SECRET not in str(caught.value)
     assert str(caught.value) == "native_usage_limit_exceeded"
     assert owner_failure_code(caught.value) == "native_usage.read_limit_exceeded"
-    assert read_session(path, host=HOST_CLAUDE_CODE).responses[0].response_id == "complete-response"
+    assert (
+        read_session(path, host=HOST_CLAUDE_CODE).responses[0].response_id
+        == sha256(b"complete-response").hexdigest()
+    )
 
 
 def test_only_the_hosts_own_file_of_that_session_is_admitted(tmp_path, monkeypatch):
@@ -396,6 +418,209 @@ def _claude_child(config, agent, role, records):
     return path
 
 
+def _incremental_probe(tmp_path, monkeypatch, records, *, host=HOST_CLAUDE_CODE):
+    native, project = tmp_path / "native", tmp_path / "project"
+    monkeypatch.setenv("CODEX_HOME" if host == HOST_CODEX else "CLAUDE_CONFIG_DIR", str(native))
+    (project / ".codex").mkdir(parents=True)
+    declare_project(project, host)
+    session = str(uuid4()) if host == HOST_CODEX else "lead-session"
+    binding = NativeResearchBinding(session, tmp_path / "workspace", (), host)
+    path = native / (
+        f"sessions/2026/10/11/rollout-fixture-{session}.jsonl"
+        if host == HOST_CODEX
+        else f"projects/p/{session}.jsonl"
+    )
+    _write(path, records)
+    filed = []
+
+    def pull():
+        filed.clear()
+        return read_session_usage(
+            project, binding, publish=lambda d: filed.append(d) or {"status": "APPENDED"}
+        )
+
+    return path, binding, pull, filed
+
+
+def _incremental_scenario_inputs(host):
+    def context(model):
+        return [{"type": "turn_context", "payload": {"model": model}}] if host == HOST_CODEX else []
+
+    def spent(ident, model, output):
+        if host == HOST_CLAUDE_CODE:
+            return _assistant(ident, model, output=output, at="2026-10-11T00:00:00Z")
+        counts = {
+            "input_tokens": 10,
+            "cached_input_tokens": 4,
+            "cache_write_input_tokens": 0,
+            "output_tokens": output,
+        }
+        return {
+            "type": "token_usage_record",
+            "payload": {"response_id": ident, "usage": counts},
+        }
+
+    ignored = {"type": "user", "message": {"content": SECRET}}
+    records = [
+        ignored,
+        *context("first-model"),
+        *[spent(str(i), "first-model", 2) for i in range(8)],
+        *context("second-model"),
+        *[spent(str(i), "second-model", 2) for i in range(8, 12)],
+    ]
+    mutations = {
+        "append": (
+            [ignored] * 15 + [spent("new", "second-model", 5)],
+            {"first-model": (8, 16), "second-model": (5, 13)},
+        ),
+        "response_replacement": (
+            [*context("first-model"), spent("0", "first-model", 1)],
+            {"first-model": (8, 15), "second-model": (5, 13)},
+        ),
+        "file_replacement": (
+            [*context("replacement"), spent("replacement", "replacement", 13)],
+            {"replacement": (1, 13)},
+        ),
+        "file_shrink": (
+            [*context("shrink"), spent("shrink", "shrink", 11)],
+            {"shrink": (1, 11)},
+        ),
+    }
+    return records, mutations
+
+
+def test_incremental_usage_scenario_keeps_bounded_exact_model_counts(tmp_path, monkeypatch):
+    """The regenerated scenario holds exact counts across bounded reads and source changes."""
+    monkeypatch.setattr(bridge_module, "USAGE_READ_BYTES", 450)
+    owner_read, scans = bridge_module.read_session, []
+
+    def observe(path, **limits):
+        scans.append(limits["checkpoint"].get("offset", 0))
+        return owner_read(path, **limits)
+
+    monkeypatch.setattr(bridge_module, "read_session", observe)
+
+    def run(host):
+
+        records, mutations = _incremental_scenario_inputs(host)
+        path, binding, pull, filed = _incremental_probe(
+            tmp_path / host, monkeypatch, records, host=host
+        )
+        state = {
+            "step": "",
+            "cursor": 0,
+            "cache": binding.workspace / "runtime/native-usage",
+            "expected": {"first-model": (8, 16), "second-model": (4, 8)},
+        }
+
+        def mutate(step):
+            state["step"] = step
+            cache = next(state["cache"].glob("*.json"), None)
+            if step == "unterminated_final_line":
+                with path.open("ab") as stream:
+                    stream.write(json.dumps({"type": "user", "message": SECRET}).encode())
+            elif step == "cumulative_mismatch":
+                record = mutations["file_shrink"][0][-1]
+                state["mismatch"] = host == HOST_CODEX
+                if state["mismatch"]:
+                    record["payload"]["thread_token_usage"] = {
+                        **record["payload"]["usage"],
+                        "output_tokens": 99,
+                    }
+                with path.open("ab") as stream:
+                    stream.write(("\n" + json.dumps(record) + "\n").encode())
+            elif step == "corrupt_checkpoint":
+                checkpoint = json.loads(cache.read_text())
+                checkpoint["responses"][0]["output_tokens"] = 12345
+                cache.write_text(json.dumps(checkpoint))  # Digest must refuse this edit.
+            elif step == "same_size_mtime":
+                stat = path.stat()
+                os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+            if step not in mutations:
+                return
+            records, state["expected"] = mutations[step]
+            if step in {"append", "response_replacement"}:
+                with path.open("ab") as stream:
+                    stream.write("".join(json.dumps(r) + "\n" for r in records).encode())
+            else:
+                target = path.with_suffix(".replacement") if step == "file_replacement" else path
+                _write(target, records)
+                if target != path:
+                    os.replace(target, path)
+
+        def read():
+            step, previous, progress = state["step"], state["cursor"], []
+            failed = state.get("mismatch", False)
+            pending = step in {"cold_cap", "unterminated_final_line"}
+            resets = step in {
+                "file_replacement",
+                "file_shrink",
+                "corrupt_checkpoint",
+                "same_size_mtime",
+            }
+            for _ in range(30):
+                receipt = pull()
+                checkpoint = json.loads(next(state["cache"].glob("*.json")).read_text())
+                member = receipt["participants"][0]
+                progress.append(member)
+                assert (
+                    receipt["status"] == member["status"] in {"PARTIAL", "DELIVERED", "UNAVAILABLE"}
+                )
+                assert (
+                    member["total_bytes"] == path.stat().st_size
+                    and 0 <= member["bytes_read"] <= 450
+                )
+                assert member["rescan"] == (resets and len(progress) == 1)
+                through = member["read_through"]
+                if not member.get("rescan", False) and step not in {
+                    "corrupt_checkpoint",
+                    "same_size_mtime",
+                }:
+                    assert scans[-1] == previous and through >= previous
+                previous = through
+                if member["status"] == "PARTIAL":
+                    assert member["reason"] == "native_bridge.usage_catching_up" and not filed
+                    assert (
+                        "models" not in member and receipt["read_through"] < member["total_bytes"]
+                    )
+                if pending or member["status"] != "PARTIAL":
+                    break
+            expected_status = "UNAVAILABLE" if failed else "PARTIAL" if pending else "DELIVERED"
+            assert member["status"] == expected_status
+            if failed:
+                assert member["reason"] == "native_bridge.usage_cumulative_mismatch" and not filed
+                assert checkpoint["responses"][0]["output_tokens"] == 11
+                again = pull()
+                warm = json.loads(next(state["cache"].glob("*.json")).read_text())
+                assert again["reason"] == receipt["reason"] and warm["bytes_read"] == 0
+                assert warm["offset"] == checkpoint["offset"] and not filed
+            assert all(m["read_through"] > p["read_through"] for p, m in pairwise(progress))
+            if not pending and not failed:
+                assert member["read_through"] == member["total_bytes"]
+                subjects = (d["subject"] for d in filed)
+                assert {
+                    s["model"]: (int(s["responses"]), int(s["output_tokens"])) for s in subjects
+                } == state["expected"]
+            if step == "unchanged":
+                assert len(progress) == 1 and member["bytes_read"] == 0
+            state["cursor"] = previous
+            return {"receipt": receipt, "reads": len(progress)}
+
+        scenario, trace = walk(read, mutate)
+        assert scenario.id == "native_usage_incremental"
+        assert [e.attributes["alphalattice.mutation"] for e in trace.events] == list(STEPS)
+        saved = list((binding.workspace / "runtime/native-usage").glob("*.json"))
+        assert saved and all(SECRET not in p.read_text(encoding="utf-8") for p in saved)
+        assert all(
+            len(r["response_id"]) == 64
+            for p in saved
+            for r in json.loads(p.read_text())["responses"]
+        )
+
+    for host in (HOST_CODEX, HOST_CLAUDE_CODE):
+        run(host)
+
+
 def test_the_host_reads_the_lead_and_the_children_its_own_session_records(tmp_path, monkeypatch):
     """The Host reads lead and child provenance from its own native session records."""
     config, project = _claude_project(tmp_path, monkeypatch)
@@ -408,6 +633,7 @@ def test_the_host_reads_the_lead_and_the_children_its_own_session_records(tmp_pa
     filed = []
 
     def publish(document):
+        ExternalActivityEventDocument.model_validate(document)
         filed.append(document)
         return {"status": "APPENDED", "observation_id": f"observation-{len(filed)}"}
 
@@ -416,13 +642,14 @@ def test_the_host_reads_the_lead_and_the_children_its_own_session_records(tmp_pa
     assert receipt["status"] == "DELIVERED" and "reason" not in receipt
     members = {m["agent_id"]: m for m in receipt["participants"]}
     assert members["lead-session"]["status"] == "DELIVERED"
-    assert members["child"]["status"] == "DELIVERED"
-    assert members["stranger"] == {
-        "agent_id": "stranger",
-        "status": "NOT_READ",
-        "reason": "native_bridge.child_not_a_specialist",
-    }
-    led, child = filed
+    assert members["child"]["status"] == members["stranger"]["status"] == "DELIVERED"
+    assert members["child"]["specialist_verified"] is True
+    assert members["stranger"]["role"] == "general-purpose"
+    assert members["stranger"]["specialist_verified"] is False
+    led, child, helper = filed
+    assert "role" not in helper["subject"]
+    assert helper["subject"]["observed_role"] == "general-purpose"
+    assert helper["subject"]["specialist_verified"] == "false"
     assert (led["subject"]["native_agent_id"], led["subject"]["role"]) == (
         "lead-session",
         "research_lead",
@@ -436,7 +663,7 @@ def test_the_host_reads_the_lead_and_the_children_its_own_session_records(tmp_pa
     assert child["subject"]["pin_differs"] == "model"
     assert child["subject"]["input_channel"] == "CLAUDE_CODE_SESSION_FILE"
     assert child["subject"]["last_at"] == "2026-09-29T01:00:08Z"
-    assert all(len(item["subject"]) <= 15 for item in filed)
+    assert all(len(item["subject"]) <= 16 for item in filed)
     sent = json.dumps(filed)
     assert SECRET not in sent and str(config) not in sent and "transcript" not in sent
     # The same counts read again are the same events: their sequence is their content's.
@@ -461,17 +688,15 @@ def test_the_host_reads_the_lead_and_the_children_its_own_session_records(tmp_pa
         project, binding, publish=lambda d: many.append(d) or {"status": "APPENDED"}
     )
     assert receipt["status"] == "DELIVERED"
-    assert len(many) == 67 and len(receipt["participants"]) == 68
+    assert len(many) == len(receipt["participants"]) == 68
 
 
 def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatch):
-    """requirement (FLOW-1): a Codex lead's rollout records each child as a
-    ``SubAgentActivity`` item naming its thread (Codex CLI 0.162.0-alpha.2); only the thread id
-    leaves the record, and a child's own first record must name this lead as its parent."""
+    """Recorded exact-parent children retain independent usage when their lead fails."""
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     day = tmp_path / "sessions" / "2026" / "10" / "07"
     day.mkdir(parents=True)
-    lead, child, stray = (str(uuid4()) for _ in range(3))
+    lead, child, unknown, stray, unnamed = (str(uuid4()) for _ in range(5))
 
     def rollout(thread, *records):
         name = f"rollout-2026-10-07T00-00-00-{thread}.jsonl"
@@ -480,6 +705,13 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
     def activity(thread, kind):
         item = {"type": "SubAgentActivity", "id": SECRET, "kind": kind, "agent_thread_id": thread}
         return {"type": "event_msg", "payload": {"type": "item_completed", "item": item}}
+
+    def meta(thread, parent=lead, role="alphalattice_risk"):
+        spawn = {"parent_thread_id": parent, "agent_role": role}
+        return {
+            "type": "session_meta",
+            "payload": {"id": thread, "source": {"subagent": {"thread_spawn": spawn}}},
+        }
 
     def usage(ident):
         counts = {
@@ -498,32 +730,21 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
         usage("r1"),
         activity(child, "started"),
         activity(child, "completed"),
+        activity(unknown, "started"),
         activity(stray, "started"),
         activity("not-a-thread", "started"),
         {"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "Other"}}},
     )
-    spawn = {"parent_thread_id": lead, "agent_role": "alphalattice_risk"}
-    rollout(
-        child,
-        {
-            "type": "session_meta",
-            "payload": {"id": child, "source": {"subagent": {"thread_spawn": spawn}}},
-        },
-        turn,
-        usage("c1"),
-    )
-    other = {"parent_thread_id": str(uuid4()), "agent_role": "alphalattice_risk"}
-    rollout(
-        stray,
-        {
-            "type": "session_meta",
-            "payload": {"id": stray, "source": {"subagent": {"thread_spawn": other}}},
-        },
-    )
+    rollout(child, meta(child), turn, usage("c1"))
+    rollout(unknown, meta(unknown, role=None), turn, usage("u1"))
+    rollout(stray, meta(stray, str(uuid4())))
+    rollout(unnamed, meta(unnamed), turn, usage("not-recorded"))
 
     reading = read_session(codex_session_file(lead), host=HOST_CODEX)
-    assert reading.children == (child, stray)
-    assert reading.incomplete == 0 and [r.response_id for r in reading.responses] == ["r1"]
+    assert reading.children == (child, unknown, stray)
+    assert reading.incomplete == 0 and [r.response_id for r in reading.responses] == [
+        sha256(b"r1").hexdigest()
+    ]
     assert SECRET not in repr(reading)
 
     project = tmp_path / "project"
@@ -542,18 +763,24 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
         NativeResearchBinding.read(project),
         publish=lambda d: filed.append(d) or {"status": "APPENDED"},
     )
-    members = {m["agent_id"]: m["status"] for m in receipt["participants"]}
-    assert members == {lead: "DELIVERED", child: "DELIVERED", stray: "UNAVAILABLE"}
-    assert [d["subject"]["native_agent_id"] for d in filed] == [lead, child]
+    members = {m["agent_id"]: m for m in receipt["participants"]}
+    assert {a: m["status"] for a, m in members.items()} == {
+        lead: "DELIVERED",
+        child: "DELIVERED",
+        unknown: "DELIVERED",
+        stray: "UNAVAILABLE",
+    }
+    assert members[child]["specialist_verified"] is True
+    assert members[unknown]["role"] is None and members[unknown]["specialist_verified"] is False
+    assert [d["subject"]["native_agent_id"] for d in filed] == [lead, child, unknown]
     assert filed[1]["subject"]["role"] == "alphalattice_risk"
+    assert "role" not in filed[2]["subject"] and "observed_role" not in filed[2]["subject"]
+    assert filed[2]["subject"]["specialist_verified"] == "false"
     for number in range(65):
         extra = str(uuid4())
         rollout(
             extra,
-            {
-                "type": "session_meta",
-                "payload": {"id": extra, "source": {"subagent": {"thread_spawn": spawn}}},
-            },
+            meta(extra),
             turn,
             usage(f"many-{number}"),
         )
@@ -565,8 +792,28 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
         NativeResearchBinding.read(project),
         publish=lambda d: many.append(d) or {"status": "APPENDED"},
     )
-    assert len(many) == 67 and len(receipt["participants"]) == 68
-    assert receipt["status"] == "PARTIAL"  # The earlier stray remains unverified.
+    assert len(many) == 68 and len(receipt["participants"]) == 69
+    assert receipt["status"] == "PARTIAL"  # The earlier stray names another parent.
+    with codex_session_file(lead).open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps({"type": "user", "message": {"content": SECRET * 40}}) + "\n")
+    monkeypatch.setattr(bridge_module, "USAGE_LINE_BYTES", 512)
+    failed = read_session_usage(
+        project, NativeResearchBinding.read(project), publish=lambda d: {"status": "APPENDED"}
+    )
+    cached = {m["agent_id"]: m for m in failed["participants"]}
+    assert (
+        cached[lead]["status"] == "UNAVAILABLE" and cached[lead]["read_limit"] == "max_line_bytes"
+    )
+    assert cached[child]["status"] == cached[unknown]["status"] == "DELIVERED"
+    assert cached[stray]["status"] == "UNAVAILABLE" and unnamed not in cached
+    assert len(cached) == 69
+    codex_session_file(lead).unlink()
+    missing = read_session_usage(
+        project, NativeResearchBinding.read(project), publish=lambda d: {"status": "APPENDED"}
+    )
+    missing_members = {m["agent_id"]: m for m in missing["participants"]}
+    assert missing_members[lead]["reason"] == "native_bridge.lead_usage_file_missing"
+    assert missing_members[child]["status"] == missing_members[unknown]["status"] == "DELIVERED"
 
 
 def test_claude_children_are_listed_from_the_leads_own_directory_alone(tmp_path, monkeypatch):
@@ -679,9 +926,7 @@ def test_a_reading_differs_from_its_card_by_an_exact_id_an_alias_or_an_effort(
 
 
 def test_a_lone_lead_is_read_by_its_own_command_under_its_binding(tmp_path, monkeypatch, receiver):
-    """regression (V301): a session without subagents recorded no reading, since the bridge read
-    the session files only at a subagent's stop; its own goal and answer commands read the lead
-    through the bridge, for the bound session only and never where the binding reads nothing."""
+    """The lead's own commands read only its bound Session and publish only complete usage."""
 
     from alphalattice.interface.local_application.client import lead_readings
 
@@ -708,13 +953,18 @@ def test_a_lone_lead_is_read_by_its_own_command_under_its_binding(tmp_path, monk
     assert receiver == []
     (receipt,) = lead_readings(project, {"CLAUDE_CODE_SESSION_ID": "lead-session"})
     assert receipt["status"] == "UNAVAILABLE"
-    assert receipt["participants"][0] == {
-        "agent_id": "lead-session",
-        "role": "research_lead",
-        "status": "UNAVAILABLE",
-        "reason": "native_bridge.lead_usage_incomplete",
-        "incomplete": 1,
-    }
+    member = receipt["participants"][0]
+    assert tuple(member[key] for key in ("agent_id", "role", "status", "reason", "incomplete")) == (
+        "lead-session",
+        "research_lead",
+        "UNAVAILABLE",
+        "native_bridge.lead_usage_incomplete",
+        1,
+    )
+    size = lead.stat().st_size
+    assert tuple(
+        member[key] for key in ("read_through", "total_bytes", "bytes_read", "rescan")
+    ) == (size, size, size, False)
     assert receiver == []
     # The parser fixture's final empty-usage response is incomplete. Removing only that
     # synthetic record gives a complete source with the same two actual response counts.

@@ -1,46 +1,49 @@
-/* Sessions retain declared native identity and member text. Hooks and statements are
- * observations, never proof of completion. Product facts join through exact Task, hash or
- * History references and owner readbacks. One external feed serves each store epoch; its
- * arrivals refresh existing readers without another poll. */
+/* Native identity and member text are observations, not completion. Exact Task, hash and History references join owner readbacks; one feed merges records and arrivals. */
 const LiveTeam = (() => {
   const KINDS = {NATIVE_SUBAGENT_START_HOOK: 'hook', NATIVE_SUBAGENT_STOP_HOOK: 'hook', NATIVE_COORDINATION_MESSAGE: 'message', NATIVE_AGENT_USAGE: 'usage'};
   // U25: the decision notes (决策笔记) a member writes are messages of their own kinds, in the conversation
-  const MESSAGE_KINDS = {assignment: ['Assignment', 'arrow'], question: ['Question', 'info'], answer: ['Answer', 'file'], objection: ['Objection', 'warning'], pm_response: ['PM response', 'user'], plan: ['Plan', 'flag'], decision: ['Decision', 'check'], dead_end: ['Dead end', 'ban'], surprise: ['Surprise', 'info'], session_bound: ['Session bound', 'check'], stance: ['Stance', 'flag'], challenge: ['Challenge', 'warning'], reply: ['Reply', 'arrow'], ruling: ['Ruling', 'user'], person_answer: ['Person answer', 'user'], verdict: ['Verdict', 'file']};
+  const MESSAGE_KINDS = {issue: ['Bundle issued', 'arrow'], correction: ['Correction', 'warning'], acceptance: ['Acceptance', 'check'], assignment: ['Assignment', 'arrow'], question: ['Question', 'info'], answer: ['Answer', 'file'], objection: ['Objection', 'warning'], pm_response: ['PM response', 'user'], plan: ['Plan', 'flag'], decision: ['Decision', 'check'], dead_end: ['Dead end', 'ban'], surprise: ['Surprise', 'info'], session_bound: ['Session bound', 'check'], stance: ['Stance', 'flag'], challenge: ['Challenge', 'warning'], reply: ['Reply', 'arrow'], ruling: ['Ruling', 'user'], person_answer: ['Person answer', 'user'], verdict: ['Verdict', 'file']};
   const NOTE_KINDS = new Set(['plan', 'decision', 'dead_end', 'surprise']);
   const CHANNELS = {CODEX_HOOK: 'Codex hook input · not host-authenticated', CLAUDE_CODE_HOOK: 'Claude Code hook input · not host-authenticated', ACTOR_DECLARED: 'Actor-declared text · not host-verified', PRODUCT_ACCEPTED_ANSWER: 'Accepted structured answer · product record, not a native spoken turn'};
   const PM_ROLE = 'research_lead';
-  /* Product identity fields an operation may name; anything else in a subject is not a reference. */
+  /* Product identity fields an operation may name; nothing else in a subject is a reference. */
   const PRODUCT_KEYS = ['case_hash', 'task_id', 'experiment_task_id', 'publication_task_id', 'existing_task_id', 'update_task_id', 'left_task_id', 'right_task_id', 'development_task_id', 'experiment_plan_hash', 'plan_hash', 'result_hash', 'cached_result_hash', 'review_publication_hash', 'analysis_publication_hash', 'candidate_hash', 'report_hash', 'export_hash', 'foundation_admission_hash', 'publication_hash', 'answer_reference', 'bundle_reference'];
   const MAX_RESOLVED = 64;
   /* A session's shared head serves its conversation, committee and recorded views. */
   const PAGES_SET = new Set(['team', 'team-committee', 'team-participants', 'team-outputs', 'team-evidence', 'team-sessions']);
   const onTeam = () => PAGES_SET.has(app.page);
-  /* The external reader isolates native rows from the product feed's tail. Read once per
-   * store epoch, it merges owner-retained rows with live arrivals. */
+  /* One owner feed merges native records and arrivals; epoch/session keys prevent repeat reads. */
   const EXTERNAL_LIMIT = 200, EXTERNAL_KEEP = 400;
-  const X = {items: new Map(), epoch: null, fetching: null, error: '', read: false, more: false, oldest: null, keep: EXTERNAL_KEEP};
+  const X = {items: new Map(), epoch: null, fetching: null, error: '', read: false, more: false, oldest: null, keep: EXTERNAL_KEEP, selectedKey: '', selectedMore: false, selectedOldest: null};
   function ensureExternal() {
     if (X.fetching || Data.workspaceStatus !== 'ready') return;
-    const epoch = LiveActivity.state().epoch;
-    if (X.read && (!epoch || X.epoch === epoch)) return; // read; a new store epoch reads again
-    X.fetching = Data.readShared('/api/activity/external?limit=' + EXTERNAL_LIMIT).then((body) => {
-      X.items.clear();
-      for (const item of body.items || []) X.items.set(item.observation_id, item);
-      X.epoch = body.epoch || epoch; X.more = Boolean(body.more); X.oldest = body.oldest ?? null; X.keep = EXTERNAL_KEEP; X.error = '';
+    const epoch = LiveActivity.state().epoch, session = onTeam() && app.page !== 'team-sessions' ? selection().session : '', key = [epoch, session].join('|');
+    if (session ? X.selectedKey === key : X.read && (!epoch || X.epoch === epoch)) return;
+    if (session) { X.selectedMore = false; X.selectedOldest = null; }
+    const query = new URLSearchParams({limit: EXTERNAL_LIMIT, ...(session ? {native_session_id: session} : {})});
+    X.fetching = Data.readShared('/api/activity/external?' + query).then((body) => {
+      if (X.epoch && body.epoch && X.epoch !== body.epoch) { X.items.clear(); X.read = false; X.selectedKey = ''; X.keep = EXTERNAL_KEEP; }
+      for (const item of [...(body.items || []), ...(body.snapshots || [])]) X.items.set(item.observation_id, item);
+      X.epoch = body.epoch || epoch; X.keep = Math.max(X.keep, X.items.size); X.error = '';
+      if (session) { X.selectedMore = Boolean(body.more); X.selectedOldest = body.oldest ?? null; }
+      else { X.more = Boolean(body.more); X.oldest = body.oldest ?? null; }
+      if (body.snapshots_more) X.error = t('Older records are not read yet');
     }, (e) => { X.error = String(e?.message || e); X.epoch = epoch; }).finally(() => {
-      X.fetching = null; X.read = true; S.paintKey = '';
+      if (session) X.selectedKey = key; else X.read = true;
+      X.fetching = null; S.paintKey = '';
       refresh();
-      if (onTeam()) paint(); else if (typeof patchMain === 'function') patchMain(); // the Home's team rows read the same scene
+      if (onTeam()) paint(); else if (typeof patchMain === 'function') patchMain();
     });
   }
-  /* The sessions before the newest page (F1, law 136: a lobby holds years of sessions): one page
-   * further back through the owner's `before`, on the reader's word; what is read is kept (the
-   * window grows by it) until the store's epoch moves. */
+  /* F1, law 136: read one owner page per explicit request; keep it until the store epoch changes. */
   function readOlder() {
-    if (X.fetching || !X.more || X.oldest == null) return;
-    X.fetching = Data.readShared('/api/activity/external?' + new URLSearchParams({limit: EXTERNAL_LIMIT, before: X.oldest})).then((body) => {
-      for (const item of body.items || []) X.items.set(item.observation_id, item);
-      X.keep += (body.items || []).length; X.more = Boolean(body.more); X.oldest = body.oldest ?? X.oldest; X.error = '';
+    const session = onTeam() && app.page !== 'team-sessions' ? selection().session : '', before = session ? X.selectedOldest : X.oldest, more = session ? X.selectedMore : X.more;
+    if (X.fetching || !more || before == null) return;
+    X.fetching = Data.readShared('/api/activity/external?' + new URLSearchParams({limit: EXTERNAL_LIMIT, before, ...(session ? {native_session_id: session} : {})})).then((body) => {
+      for (const item of [...(body.items || []), ...(body.snapshots || [])]) X.items.set(item.observation_id, item);
+      X.keep += (body.items || []).length; X.error = body.snapshots_more ? t('Older records are not read yet') : '';
+      if (session) { X.selectedMore = Boolean(body.more); X.selectedOldest = body.oldest ?? before; }
+      else { X.more = Boolean(body.more); X.oldest = body.oldest ?? before; }
     }, (e) => { X.error = String(e?.message || e); }).finally(() => { X.fetching = null; S.paintKey = ''; paint(); });
     paint();
   }
@@ -48,14 +51,17 @@ const LiveTeam = (() => {
     ensureExternal();
     const merged = new Map(X.items);
     for (const g of LiveActivity.retained()) for (const item of g.items) if (item.schema_kind === 'ExternalActivityObserved') merged.set(item.observation_id, item);
-    const items = [...merged.values()].sort((a, b) => a.ordinal - b.ordinal);
+    const usage = new Map(), usageKey = item => { const sub = item.payload?.subject || {}; return [sub.native_session_id, sub.native_agent_id, sub.model].join('|'); };
+    for (const item of merged.values()) if (item.payload?.event_kind === 'NATIVE_AGENT_USAGE') { const key = usageKey(item), held = usage.get(key); if (!held || held.ordinal < item.ordinal) usage.set(key, item); }
+    const items = [...merged.values()].filter(item => {
+      if (item.payload?.event_kind !== 'NATIVE_AGENT_USAGE' || usage.get(usageKey(item)) === item) return true;
+      X.items.delete(item.observation_id); return false;
+    }).sort((a, b) => a.ordinal - b.ordinal);
     if (items.length > X.keep) { for (const item of items.splice(0, items.length - X.keep)) X.items.delete(item.observation_id); }
     return items;
   }
   const S = {resolved: new Map(), busy: new Set(), visible: 50, incoming: new Set(), flash: new Set(), factNew: new Set(), factVerified: new Set(), factFlash: new Set(), paintKey: '', retained: null, question: new Map(), unfolded: new Set(), replies: new Set(), words: new Set(), factKind: '', answerDetail: null};
-  /* A session named to a reader. Ids created together share their first characters (a
-   * time-ordered id, a fixture's family name), so the label keeps a short head and then the
-   * part that differs from the other retained sessions; a short id is shown whole. */
+  /* Session labels keep a short head plus the differing suffix across retained peers; short ids stay whole. */
   let peerPrefix = 0; // the retained sessions' common prefix, measured by scene()
   function sessionLabel(id) {
     const s = String(id || '');
@@ -69,11 +75,12 @@ const LiveTeam = (() => {
   const clock = (iso) => when(iso); // N3 (law 133): one clock -- the same instant reads as the Sessions list reads it
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, HASH = /^[0-9a-f]{64}$/i;
   const selection = () => ({session: hashParams().get('team') || '', actor: hashParams().get('actor') || '', event: hashParams().get('event') || '', committee: hashParams().get('committee') || '', point: hashParams().get('committee_point') || ''});
-  const ROLE_NAMES = {research_lead: 'Main PM', alphalattice_data: 'Data', alphalattice_factor: 'Factor & Foundation', alphalattice_alpha: 'Alpha Modeling', alphalattice_risk: 'Risk Modeling', alphalattice_portfolio: 'Portfolio', alphalattice_evidence_analyst: 'Alternative Analyst', alternative_analyst: 'Alternative Analyst', alphalattice_cro: 'CRO', independent_cro: 'CRO'};
+  const ROLE_NAMES = {research_lead: 'Main PM', alphalattice_data: 'Data', alphalattice_factor: 'Factor & Foundation', alphalattice_alpha: 'Alpha Modeling', alphalattice_risk: 'Risk Modeling', alphalattice_portfolio: 'Portfolio', alphalattice_evidence_analyst: 'Alternative Analyst', alternative_analyst: 'Alternative Analyst', alphalattice_cro: 'CRO', independent_cro: 'CRO', [HOST_ROLE]: 'Host'};
   const roleName = (role) => (role ? t(ROLE_NAMES[role] || role) : '');
   /* A qualified product reference, or null: a Task id, a 64-hex hash or a History entry id. */
   function qualify(value) {
     const v = String(value || '').trim();
+    if (/^review-thread:[0-9a-f-]+$/i.test(v) && UUID.test(v.slice(14))) return {kind: 'review_thread', ref: v.toLowerCase()};
     if (UUID.test(v)) return {kind: 'task', ref: v.toLowerCase()};
     if (HASH.test(v)) return {kind: 'hash', ref: v.toLowerCase()};
     if (/^case:[0-9a-f]{64}$/i.test(v)) return {kind:'case',ref:v.toLowerCase()};
@@ -120,12 +127,12 @@ const LiveTeam = (() => {
       if (!kind) { (sid ? session(sid).unknownKinds : unknown).push({item, reason: 'unknown event kind'}); continue; }
       const s = session(sid);
       s.goalScope = scope || '';
-      s.goalParticipants = contributors.get(sid + ':' + scope)?.size || 0;
       s.producers.add(p.producer_id + ':' + short(p.producer_session, SHORT.hash));
       if (sub.goal_id && (!outsideGoal || fullRecord)) s.goals.add(sub.goal_id); // A session-wide reading does not add a Goal contribution.
       if (kind === 'usage') { // U31: the latest cumulative reading per model, never a sum.
         if (sub.native_agent_id && sub.model) { const pt = participant(s, sub.native_agent_id, sub.role), held = pt.usage.get(sub.model), n = (k) => usageNumber(sub[k]);
-          if (!held || held.ordinal < item.ordinal) pt.usage.set(sub.model, {ordinal: item.ordinal, model: sub.model, efforts: String(sub.efforts || '').split(',').filter(Boolean), pinDiffers: String(sub.pin_differs || '').split(',').filter(Boolean), responses: n('responses'), input: n('input_tokens'), output: n('output_tokens'), cacheRead: n('cache_read_tokens'), cacheWrite: n('cache_write_tokens'), source_kind: sub.source_kind || (sub.input_channel === 'CODEX_SESSION_FILE' || sub.input_channel === 'CLAUDE_CODE_SESSION_FILE' ? sub.input_channel : null), sample_time_kind: sub.sample_time_kind || null, last_at: sub.last_at || null}); }
+          if (['true','false'].includes(sub.specialist_verified) && (!held || held.ordinal < item.ordinal)) pt.specialistVerified = sub.specialist_verified;
+          if (!held || held.ordinal < item.ordinal) pt.usage.set(sub.model, {ordinal: item.ordinal, first: Date.parse(sub.first_at || ''), model: sub.model, efforts: String(sub.efforts || '').split(',').filter(Boolean), pinDiffers: String(sub.pin_differs || '').split(',').filter(Boolean), responses: n('responses'), input: n('input_tokens'), output: n('output_tokens'), cacheRead: n('cache_read_tokens'), cacheWrite: n('cache_write_tokens'), source_kind: sub.source_kind || (sub.input_channel === 'CODEX_SESSION_FILE' || sub.input_channel === 'CLAUDE_CODE_SESSION_FILE' ? sub.input_channel : null), sample_time_kind: sub.sample_time_kind || null, last_at: sub.last_at || null}); }
         s.last = Math.max(s.last, item.ordinal); continue;
       }
       // An observation is an identity; a native event is a grouping claim.
@@ -136,6 +143,7 @@ const LiveTeam = (() => {
         entry.text = p.summary || ''; entry.truncated = p.summary_truncated === true;
         entry.bytes = sub.message_bytes || null; entry.sha = sub.message_sha256 || null; entry.messageId = sub.message_id || null;
         entry.recipient = sub.recipient_id || null; entry.reference = sub.reference || null; entry.replyTo = sub.reply_to || null; // U25: what it answers, named since GR2
+        if (entry.channel === 'PRODUCT_REVIEW' && UUID.test(entry.reference || '')) entry.reference = 'review-thread:' + entry.reference.toLowerCase();
         entry.qualified = qualify(entry.reference);
         if (entry.qualified) { s.references.add(entry.qualified.ref); if (['history','case'].includes(entry.qualified.kind)) s.references.add(entry.qualified.ref.split(':')[1]); } // a qualified id names its own hash or Task
         if (acceptedArtifact(s, entry)) for (const name of ['answer_reference', 'bundle_reference']) s.references.add(sub[name].toLowerCase());
@@ -144,7 +152,7 @@ const LiveTeam = (() => {
         entry.terminal = sub.terminal_state || null; entry.stopActive = sub.stop_hook_active || null;
       }
       if (p.task_verified && qualify(sub.task_id)) s.references.add(qualify(sub.task_id).ref);
-      if (entry.actor) { const pt = participant(s, entry.actor, entry.role); (kind === 'message' ? pt.messages : pt.hooks).push(entry); pt.last = Math.max(pt.last, item.ordinal);
+      if (entry.actor) { const pt = participant(s, entry.actor, entry.role); (kind === 'message' ? pt.messages : pt.hooks).push(entry); pt.keyed ||= sub.authorship_basis === 'HOST_ACCEPTED'; pt.last = Math.max(pt.last, item.ordinal);
         if (kind === 'hook' && (sub.hook_model || sub.role_model || sub.role_effort)) pt.pins = {host: sub.hook_model || '', model: sub.role_model || '', effort: sub.role_effort || ''}; } // U31: the pins a hook carries
       if (entry.declaredEvent) {
         const same = s.byEvent.get(entry.declaredEvent) || [];
@@ -190,9 +198,10 @@ const LiveTeam = (() => {
     }
     const ids = [...sessions.keys()].filter(Boolean);
     peerPrefix = ids.length > 1 ? ids.reduce((n, id) => { let i = 0; while (i < n && i < id.length && id[i] === ids[0][i]) i++; return i; }, ids[0].length) : 0;
+    TeamMembers.prune(sessions.values());
     return {sessions: [...sessions.values()].sort((a, b) => b.last - a.last), unknown};
   }
-  const participantCount = s => s.goalScope ? s.goalParticipants : s.participants.size;
+  const participantCount = s => TeamMembers.countOf(s, ROLE_SAME);
   /* A Main PM needs both the parent session id and research_lead role. */
   const isLead = (pt, s) => Boolean(s.id) && pt.id === s.id && pt.roles.has(PM_ROLE);
   /* Sessions and book Facts use the specialist order; equivalent cards share a role.
@@ -200,7 +209,7 @@ const LiveTeam = (() => {
   const ROLE_SAME = {alternative_analyst: 'alphalattice_evidence_analyst', independent_cro: 'alphalattice_cro'};
   const ROLE_ORDER = Object.keys(ROLE_NAMES);
   const rolesOf = (s) => [...new Set([...s.participants.values()].filter((pt) => !isLead(pt, s)).flatMap((pt) => [...pt.roles]).map((r) => ROLE_SAME[r] || r))]
-    .filter((r) => r !== PM_ROLE).sort((a, b) => (ROLE_ORDER.indexOf(a) + 1 || 99) - (ROLE_ORDER.indexOf(b) + 1 || 99));
+    .filter((r) => r !== PM_ROLE && r !== HOST_ROLE).sort((a, b) => (ROLE_ORDER.indexOf(a) + 1 || 99) - (ROLE_ORDER.indexOf(b) + 1 || 99));
   function roleLabel(pt, s) {
     const roles = [...pt.roles];
     if (isLead(pt, s)) return html`${t('Main PM · declared foreground conversation')}${roles.length > 1 ? html` <span class="muted">${t('also declared as')} ${roles.filter((r) => r !== PM_ROLE).join(', ')}</span>` : ''}`;
@@ -208,7 +217,7 @@ const LiveTeam = (() => {
     if (Boolean(s.id) && pt.id === s.id) return html`${roles.join(', ') || t('role not declared')} <span class="muted">· ${t('the parent session id without the research_lead role')}</span>`;
     return roles.length ? roles.map(roleName).join(', ') : '';
   }
-  const actorName = (s, id) => { if (!id) return t('agent id not declared'); const pt = s.participants.get(id); return pt && pt.roles.size ? [...pt.roles].map(roleName).join('/') : short(id); };
+  const actorName = (s, id) => { if (!id) return t('agent id not declared'); const pt = s.participants.get(id); return pt && pt.roles.size ? [...pt.roles].map(roleName).join('/') : TeamMembers.unique(s, id); };
   /* A path names one recipient through one bound start hook, never its spelling or authorship.
    * Conflicting paths or participants leave the recipient unknown. */
   function recipientParticipant(s, id) {
@@ -225,14 +234,13 @@ const LiveTeam = (() => {
     }).filter(({paths}) => paths.has(id));
     return candidates.length === 1 && candidates[0].paths.size === 1 ? candidates[0].pt : null;
   }
-  const recipientName = (s, id) => { const pt = recipientParticipant(s, id); return pt?.roles.size ? actorName(s, pt.id) : t('Unidentified'); };
-  /* ---- discovery, resolution and verification through the owners ----
-   * One outcome per reference as the actor wrote it (the display reference is the key): the
-   * level, the owner that answered, and `target` -- the exact qualified object an owner can be
-   * asked about (a `result` hash, a `task` id with its kind, a `plan` hash). Verify reads the
-   * target from the stored outcome and writes the owner's answer back under the same display
-   * reference, so the row the reader asked from is the row that changes; a failed readback keeps
-   * the discovery and names the failure. */
+  const recipientName = (s, id, entry = null) => {
+    const bundle = entry?.subject.bundle_reference;
+    const roles = new Set(bundle && entry.messageKind === 'issue' ? [...s.entries.values()].filter((e) => e.channel === 'PRODUCT_REVIEW' && e.subject.authorship_basis === 'HOST_ACCEPTED' && e.replyTo === entry.messageId && e.subject.bundle_reference === bundle && e.role && ![PM_ROLE, HOST_ROLE].includes(e.role)).map((e) => ROLE_SAME[e.role] || e.role) : []);
+    if (roles.size === 1) return roleName([...roles][0]);
+    const pt = recipientParticipant(s, id); return pt?.roles.size ? actorName(s, pt.id) : entry?.messageKind === 'issue' && id ? TeamMembers.unique(s, id) : t('Unidentified');
+  };
+  /* One outcome per written reference; failed owner verification keeps its discovery and names the failure. */
   async function withOutcome(ref, work) {
     if (!ref || S.busy.has(ref)) return;
     S.busy.add(ref); paint();
@@ -241,14 +249,12 @@ const LiveTeam = (() => {
     try { outcome = await work(previous); } catch (e) { if(e.name==='AbortError')return;outcome = previous ? {...previous, failure: e.message} : {level: 'unresolved', target: null, failure: e.message}; }
     finally {S.busy.delete(ref);}
 
-    S.resolved.delete(ref); S.resolved.set(ref, outcome);
+    S.resolved.delete(ref); S.resolved.set(outcome.level === 'verified' && outcome.reference ? outcome.reference : ref, outcome);
     while (S.resolved.size > MAX_RESOLVED) S.resolved.delete(S.resolved.keys().next().value);
     paint();
   }
   const historyRow = async (id) => { if (!Data.history().some((r) => r.id === id)) await Data.refreshHistory(); return Data.history().find((r) => r.id === id) || null; };
-  /* The exact object a History entry id names: a saved Portfolio result, or an experiment Task
-   * (an `experiment:` entry is by construction a research_experiment Task). A review has no
-   * owner readback through this reader. */
+  /* History resolves result hashes and experiment Tasks; reviews have no owner readback here. */
   function historyTarget(id) {
     const [prefix, value] = id.split(':');
     if (prefix === 'result' && HASH.test(value)) return {kind: 'result', ref: value};
@@ -258,8 +264,13 @@ const LiveTeam = (() => {
   /* Discovery: which owner's index names this reference. A hit is a candidate, not a verified object. */
   const resolve = (ref) => withOutcome(ref, async () => {
     const q = qualify(ref);
+    if (ref.startsWith('goal:') && UUID.test(ref.slice(5))) return {level: 'discovered', owner: 'Goal', target: {kind: 'case', ref: ref.slice(5), byId: true}};
     if(q?.kind==='case')return {level:'discovered',owner:'Goal',target:{kind:'case',ref:q.ref.slice(5)},note:t('Exact goal reference; verify its owner before opening.')};
     if (!q) return {level: 'declaration', note: t('Not a qualified product reference; shown as declared, never opened.'), target: null};
+    if (q.kind === 'review_thread') {
+      const s = scene().sessions.find(s => [...s.entries.values()].some(e => e.channel === 'PRODUCT_REVIEW' && e.reference === q.ref)), e = s && [...s.entries.values()].find(e => e.reference === q.ref);
+      return e ? {level: 'verified', owner: 'Review thread', target: {kind: 'review_thread', ref: q.ref.slice(14)}, route: {team: s.id, actor: '', event: e.id}, note: ''} : {level: 'unresolved', owner: 'Review thread', target: null, note: t('Selected exchange not retained')};
+    }
     if (q.kind === 'history') {
       const row = await historyRow(q.ref);
       return row ? {level: 'discovered', owner: 'History', note: `${t(row.name)} · ${codeWords(row.raw.status)}`, open: ['history-open', q.ref], target: historyTarget(q.ref)} : {level: 'unresolved', owner: 'History', note: t('No saved object with this reference is discovered.'), target: null};
@@ -274,26 +285,23 @@ const LiveTeam = (() => {
     }
     return {level: 'unresolved', owner: 'History', note: t('No saved result or review carries this hash; a retained PLAN can be asked from the research owner.'), target: {kind: 'plan', ref: q.ref}};
   });
-  /* The saved `result:` entry is the workbench's reader for an installed Portfolio result; until
-   * History lists it, the original product's link to that exact entry is offered instead. */
+  /* Open History's exact result entry when listed; otherwise offer the product's saved-object link. */
   async function resultReader(hash) {
     const entry = 'result:' + hash;
     if (!Data.history().some((r) => r.id === entry)) await Data.refreshHistory();
     return Data.history().some((r) => r.id === entry) ? {open: ['history-open', entry], link: null} : {open: null, link: entry};
   }
-  /* Verification: the owner's own exact readback of the stored target, never an index or a
-   * projection, and the answer must name the object it was asked for. A discovered Task keeps
-   * its discovery when the owner's answer is not a verification; `limit` says why. */
+  /* Only exact owner readback verifies a target; a non-verifying answer keeps its discovery and names the limit. */
   const verify = (ref) => withOutcome(ref, async (previous) => {
     const target = previous?.target;
     if (!target) return {...(previous || {level: 'unresolved'}), note: t('Nothing to verify.'), target: null};
     const keep = (level, owner, note, extra = {}) => ({...previous, level, owner, note, failure: null, limit: null, ...extra});
+    if (target.kind === 'review_thread') return previous;
     if(target.kind==='case'){
-      // The owner's exact readback of the saved revision. Its evidence references are
-      // re-verified when the case is opened, not here.
-      const body=await Data.read('/api/goals/narrative?'+new URLSearchParams({goal_hash:target.ref}));
-      if(body.goal_hash!==target.ref || body.goal?.goal_hash!==target.ref || !UUID.test(body.goal?.goal_id || ''))return keep('discovered','Goal',t('The owner answered for another goal.'),{open:null});
-      return keep('verified','Goal',t('Goal revision verified; its evidence is re-verified on opening; a note is not scientific approval.'),{open:['goal-open',target.ref],question:body.goal.declaration?.objective || '',title:body.goal.declaration?.title || '',goalId:body.goal.goal_id,revision:body.goal.revision});
+      // Verify the stored revision here; its references are re-verified on opening.
+      const body=await Data.read('/api/goals/narrative?'+new URLSearchParams(target.byId ? {goal_id:target.ref} : {goal_hash:target.ref})), hash=body.goal_hash;
+      if(!HASH.test(hash || '') || body.goal?.goal_hash!==hash || !UUID.test(body.goal?.goal_id || '') || (target.byId ? body.goal.goal_id!==target.ref : hash!==target.ref))return keep('discovered','Goal',t('The owner answered for another goal.'),{open:null});
+      return keep('verified','Goal',t('Goal revision verified; its evidence is re-verified on opening; a note is not scientific approval.'),{open:['goal-open',hash],reference:'case:'+hash,question:body.goal.declaration?.objective || '',title:body.goal.declaration?.title || '',goalId:body.goal.goal_id,revision:body.goal.revision});
     }
     if (target.kind === 'result') {
       const report = await Data.read('/api/report?' + new URLSearchParams({result_hash: target.ref}));
@@ -303,15 +311,13 @@ const LiveTeam = (() => {
     if (target.kind === 'task') {
       const kind = target.taskKind || Data.tasks().find((v) => v.task_id === target.ref)?.task_kind || null;
       if (kind === 'research_experiment') {
-        // An authored experiment (a Portfolio study among them) answers through its own readback.
+        // Authored experiments read their own exact Task back.
         const body = await Data.read('/api/experiments/readback?' + new URLSearchParams({task_id: target.ref}));
         if (body.task_id !== target.ref) return keep('discovered', previous.owner, `${t('Research experiments')}: ${t('the owner answered for another Task')}`);
         return body.status === 'EXPERIMENT_PUBLISHED' ? keep('verified', 'Research experiments', `${codeWords(body.program?.kind)} · ${codeWords(body.status)}`, {open: ['task-result', target.ref]}) : keep('discovered', previous.owner, `${t('Research experiments')}: ${t('readback')} ${codeWords(body.status)}`);
       }
       if (kind === 'portfolio_public_development_replay') {
-        // An installed strategy's replay: the Portfolio owner's own index names the Task's result
-        // and its REPORT opens that exact result, which must name this Task as its origin (the
-        // shared owner lookup). The authored-experiment readback does not answer for this kind.
+        // Installed replay's exact index/report must name this originating Task; experiment readback does not apply.
         let report;
         try { report = await Data.installedResult(target.ref); }
         catch (e) { if (e.message !== 'portfolio_application.result_readback_mismatch') throw e; return keep('discovered', previous.owner, `${t('Portfolio result')}: ${t('the owner answered for another result')}`); }
@@ -329,10 +335,11 @@ const LiveTeam = (() => {
   });
   const LEVELS = {declaration: ['metadata', 'declaration only'], discovered: ['metadata', 'discovered by {owner} · not verified'], verified: ['verified', 'verified by {owner}'], preview: ['planned', 'preview readback · {owner}'], unresolved: ['metadata', 'unresolved']};
   /* The target is shown beside the reference whenever it is a different object from what was written. */
-  const sameObject = (ref, target) => (['result','case'].includes(target.kind) ? ref === target.kind + ':' + target.ref : target.ref === ref);
-  const targetLabel = (target) => target.kind === 'result' ? 'result:' + short(target.ref, SHORT.hash) + '…' : target.kind === 'case' ? t('Research question')+' '+short(target.ref,SHORT.hash)+'…' : target.kind === 'plan' ? 'PLAN ' + short(target.ref, SHORT.hash) + '…' : t('Task') + ' ' + short(target.ref);
-  // C4 (item 5): a qualified reference reads as the product's references do -- its kind, 8 hex, the copy glyph
-  const refChip = (q, ref) => { const kind = q.kind === 'case' ? t('Goal') : q.kind === 'task' ? t('Task') : q.kind === 'history' ? codeWords(String(q.ref).split(':')[0]) : t('Reference'); const id = String(q.ref).split(':').at(-1); return html`<span class="run-ref"><span class="run-ref-kind">${kind}</span><span class="mono">${short(id, SHORT.id)}</span>${btnAttrs(icon('copy'), 'copy-text', ref, 'icon-btn compact', html`aria-label="${t('Copy the reference')}" data-tip="${t('Copy the reference')}"`)}</span>`; };
+  const sameObject = (ref, target) => (['result','case','review_thread'].includes(target.kind) ? ref === (target.kind === 'review_thread' ? 'review-thread' : target.kind) + ':' + target.ref : target.ref === ref);
+  const targetLabel = (target) => target.kind === 'review_thread' ? t('Review thread') + ' ' + short(target.ref) : target.kind === 'result' ? 'result:' + short(target.ref, SHORT.hash) + '…' : target.kind === 'case' ? t('Research question')+' '+short(target.ref,SHORT.hash)+'…' : target.kind === 'plan' ? 'PLAN ' + short(target.ref, SHORT.hash) + '…' : t('Task') + ' ' + short(target.ref);
+  // C4 (item 5): a qualified reference reads as the product's do: its kind, 8 hex, the copy glyph
+  const referenceKind = q => q.kind === 'review_thread' ? t('Review thread') : q.kind === 'case' ? t('Goal') : q.kind === 'task' ? t('Task') : q.kind === 'history' ? codeWords(String(q.ref).split(':')[0]) : t('Reference');
+  const refChip = (q, ref) => { const kind = referenceKind(q); const id = String(q.ref).split(':').at(-1); return html`<span class="run-ref"><span class="run-ref-kind">${kind}</span><span class="mono">${short(id, SHORT.id)}</span>${btnAttrs(icon('copy'), 'copy-text', ref, 'icon-btn compact', html`aria-label="${t('Copy the reference')}" data-tip="${t('Copy the reference')}"`)}</span>`; };
   function referenceLine(ref) {
     const done = S.resolved.get(ref), busy = S.busy.has(ref), q = qualify(ref);
     const label = q ? refChip(q, ref) : html`${ref} <span class="muted">· ${t('not a qualified product reference')}</span>`;
@@ -341,15 +348,14 @@ const LiveTeam = (() => {
     const [tone, text] = LEVELS[done.level] || LEVELS.unresolved;
     const target = done.target && !sameObject(ref, done.target) ? html` <span class="muted">· ${t('asked as')} <span class="mono">${targetLabel(done.target)}</span></span>` : '';
     const notes = html`${done.note || ''}${done.limit ? html` <span class="muted">· ${done.limit}</span>` : ''}${done.failure ? html` <span class="muted">· ${t('owner readback failed')}: <span class="mono">${done.failure}</span></span>` : ''}`;
-    return html`${label}${target} · ${stateLine(tone, {word: t(text, {owner: t(done.owner || '')})})} ${notes} ${done.open ? btn(t('Open'), done.open[0], done.open[1], 'button compact') : ''}${done.link ? LiveViews.savedObjectLink(t('Open saved object'), done.link) : ''}${done.target && done.level !== 'verified' && !done.limit ? btn(t('Verify with owner'), 'team-verify', ref, 'button compact') : ''}`;
+    return html`${label}${target} · ${stateLine(tone, {word: t(text, {owner: t(done.owner || '')})})} ${notes} ${done.route ? link(t('Open'), 'team', 'button compact', done.route) : ''}${done.open ? btn(t('Open'), done.open[0], done.open[1], 'button compact') : ''}${done.link ? LiveViews.savedObjectLink(t('Open saved object'), done.link) : ''}${done.target && done.level !== 'verified' && !done.limit ? btn(t('Verify with owner'), 'team-verify', ref, 'button compact') : ''}`;
   }
   /* ---- rendering ---- */
   const acceptedAnswer = (e) => e.kind === 'message' && e.messageKind === 'answer' && e.channel === 'PRODUCT_ACCEPTED_ANSWER';
   const acceptedArtifact = (s, e) => acceptedAnswer(e) && e.availability === 'AVAILABLE' && e.actor && e.subject.authorship_basis === 'HOOK' && e.subject.submitted_by === s.id && HASH.test(e.subject.answer_reference || '') && HASH.test(e.subject.bundle_reference || '') && ['TASK_ADMISSION', 'PRODUCT_ACCEPTED_AT'].includes(e.timeKind);
-  // A default relay is a selection candidate; its correlated product receipt verifies content.
+  // A default relay is a candidate; its correlated product receipt verifies it.
   const acceptedRelay = (s, e) => acceptedAnswer(e) && e.availability === 'AVAILABLE' && e.subject.authorship_basis === 'NOT_OBSERVED' && e.actor === s.id && e.role === 'research_lead' && e.subject.submitted_by === s.id && ['codex', 'claude-code'].includes(e.subject.native_host) && ['ALPHA', 'ANALYST', 'CRO', 'DATA', 'FACTOR', 'PORTFOLIO', 'RISK'].includes(e.subject.bundle_role) && HASH.test(e.subject.answer_reference || '') && HASH.test(e.subject.bundle_reference || '') && UUID.test(e.reference || '') && ['TASK_ADMISSION', 'PRODUCT_ACCEPTED_AT'].includes(e.timeKind);
-  /* A product receipt opens its sealed contribution independently of optional native credit.
-   * It stays a product fact: no participant statement, author or lifecycle is manufactured. */
+  /* Sealed contributions open independently of native credit; manufacture no author, statement or lifecycle. */
   function productAcceptedAnswer(s, f) {
     const item = f?.item, p = item?.payload, sub = p?.subject;
     // ActivityItem has no stored envelope version; the selected owner checks it before content.
@@ -358,7 +364,8 @@ const LiveTeam = (() => {
   const readableAnswer = (s, m) => m?.item ? productAcceptedAnswer(s, m) : m && (acceptedArtifact(s, m) || acceptedRelay(s, m));
   const answerObservation = (m) => m?.item?.observation_id || m?.id;
   const selectedAnswerRecord = (s, id) => s?.entries.get(id) || s?.facts.find((f) => f.item.observation_id === id && productAcceptedAnswer(s, f)) || (s && S.committee?.session === s.id && S.committee.task === committeeTask(s) && S.committee.body ? committeeEntries(S.committee.body).find(e => e.id === id) : null);
-  const acceptedArtifacts = (s) => Data.uniqueRows([...s.entries.values()].filter((e) => !e.replayOf && acceptedArtifact(s, e)), (e) => e.subject.answer_reference).sort((a, b) => b.ordinal - a.ordinal);
+  const reviewed = (e) => e.channel === 'PRODUCT_REVIEW' && e.messageKind === 'acceptance' && e.recipient;
+  const acceptedArtifacts = (s) => Data.uniqueRows([...s.entries.values()].filter((e) => !e.replayOf && (acceptedArtifact(s, e) || reviewed(e))), (e) => e.subject.answer_reference).sort((a, b) => b.ordinal - a.ordinal);
   const timeKindWords = (e) => t(e.timeKind === 'TASK_ADMISSION' ? 'Task admission time' : e.timeKind === 'PRODUCT_ACCEPTED_AT' ? 'Answer acceptance time' : e.timeKind === 'BRIDGE_RECEIVED' ? 'bridge receipt time' : 'time kind not declared');
   function identityNote(e) {
     const bits = [];
@@ -366,10 +373,9 @@ const LiveTeam = (() => {
     if (e.conflictsWith.length) bits.push(badge('blocked', t('conflicting content · same declared event id as {ids}', {ids: e.conflictsWith.map((id) => short(id)).join(', ')})));
     return bits.length ? html`<p>${bits}</p>` : '';
   }
-  // T4 (the Team review, 2026-09-24): an exchange's record read in place is a grid of what was recorded -- its receipt, its channel, its identities -- not a sentence of dots
+  // T4 (the Team review, 2026-09-24): an exchange's record read in place is a grid of what was recorded, not a sentence of dots
   const sourceRows = (e) => e.ownerFloor ? [[t('Recorded'), clock(e.at)], [t('Committee'), referenceLine(e.reference)]] : [[acceptedAnswer(e) && ['TASK_ADMISSION', 'PRODUCT_ACCEPTED_AT'].includes(e.timeKind) ? timeKindWords(e) : t('Received'), html`${clock(e.at)} <span class="muted">· ${timeKindWords(e)}</span>`], [t('Channel'), t(CHANNELS[e.channel] || 'input channel not declared')], [t('Observation'), html`<span class="mono">${short(e.id)}</span>`], [t('Declared event'), e.declaredEvent ? html`<span class="mono">${short(e.declaredEvent)}</span>` : t('not declared')]];
-  /* The feed keeps a bounded excerpt. Only its selected accepted record asks the sealed
-   * owner for the whole contribution; one selection is held, never another history cache. */
+  /* One selected accepted record reads its full sealed contribution; keep no second history cache. */
   const answerBindings = (s, m) => {
     if (m.item) return {observation_id: m.item.observation_id, record_kind: 'PRODUCT_OPERATION', ...Object.fromEntries(['agent_role', 'agent_vendor', 'agent_session', 'goal_id', 'answer_reference', 'bundle_reference', 'task_id'].map((key) => [key, m.item.payload.subject[key] ?? null])), source_kind: m.item.source_kind, source_id: m.item.source_id, authority: m.item.authority};
     if (acceptedRelay(s, m)) return {observation_id: m.id, record_kind: 'PRODUCT_OPERATION', agent_role: m.subject.bundle_role, agent_vendor: m.subject.native_host, agent_session: s.id, goal_id: m.subject.goal_id || null, answer_reference: m.subject.answer_reference, bundle_reference: m.subject.bundle_reference, task_id: m.reference, source_kind: 'PRODUCT_OPERATION', authority: 'OPERATIONAL_ASSERTION'};
@@ -464,7 +470,7 @@ const LiveTeam = (() => {
     }
     return out;
   }
-  // the second Team review: a withheld detail says why, in the owner's terms (activity.py: the feed stores a typed failure code, never a failure's own text)
+  // the second Team review: a withheld detail says why, in the owner's terms (the feed stores a typed failure code)
   const withheldWhy = (p) => p.failure_code === 'activity.failure_detail_withheld' ? html` <span class="muted">· ${t('the feed keeps a typed failure code, never a failure\'s own text')}</span>` : '';
   const callerOf = (x) => { const q = x.item.payload || {}; return q.caller ? actorWords(q.caller, q.producer_id) : x.item.source_kind === 'TASK_CONTROL' ? t('Task Control') : x.item.source_kind === 'PRODUCT_ARTIFACT' ? t('artifact owner') : codeWords(x.item.source_kind || ''); };
   /* What a record says apart from its group's first: its state, its outcome, what it names, who made it. */
@@ -481,7 +487,7 @@ const LiveTeam = (() => {
     const fresh = u.facts.some((x) => S.factNew.has(x.item.observation_id)), flash = u.facts.some((x) => S.factFlash.has(x.item.observation_id));
     const isNew = fresh ? html` <span class="team-unread">${t('New')}</span>` : '';
     if (fold) {
-      // T5 (the Team review, 2026-09-24: forty rows restated their group): under its group an occurrence says its own times and only what differs from the group's first
+      // T5 (the Team review, 2026-09-24): under its group an occurrence says its own times and only what differs from its first
       const h = fold.units[0].response || fold.units[0].request, d = differences(f, h);
       const differs = [d.state ? codeWords(state) : '', d.outcome ? outcome : '', d.named ? html`${t('names')} ${links}` : '', d.caller ? html`${caller} · ${codeWords(item.authority)}` : ''].filter(Boolean);
       const asked = u.request && u.response ? clock(u.request.item.occurred_at) : '', at = asked && asked !== clock(item.occurred_at) ? html`${asked} → ${clock(item.occurred_at)}` : clock(item.occurred_at);
@@ -505,9 +511,7 @@ const LiveTeam = (() => {
     const groups = new Map(s.facts.filter((f) => f.group.task_id).map((f) => [f.group.key, f.group]));
     return [...groups.values()].map((g) => { const f = LiveActivity.facts(g); return html`<div class="record-bundle">${icon('task')}<div><strong>${t('Task')} ${f.live?.status==='REFUSED' ? hashCell(g.task_id,SHORT.id) : html`<span class="mono">${short(g.task_id)}</span>`} · ${t('current state')}</strong><small>${f.live?.status==='REFUSED' ? html`${stateLine('refused')} ${explainCode(f.live.failure_code) || t(f.live.detail)}` : f.live ? html`${stateLine(f.state)} ${f.live.verified_stage_count} / ${f.live.total_stage_count} ${t('stages')} · ${t('Task Control projection, read now')}` : html`${stateLine('metadata', {word: t('no current projection')})} ${t('last recorded')} ${codeWords(f.state)}`} ${f.verified ? stateLine('verified', {word: t('Result verified by its owner')}) : ''}</small></div><div class="flow">${LiveActivity.nextRead(f, g)}</div></div>`; });
   }
-  /* A reply names exactly one message through replyTo/reference. Shared references relate
-   * topics only; author, order and proximity never form replies. A PM response must be the
-   * parent's recorded research_lead; other responses keep their authors. None resolves it. */
+  /* Exact replyTo/reference links replies; shared topics do not. A PM response requires the recorded parent research_lead and resolves nothing. */
   function linkExchanges(s, entries) {
     const declared = new Map();
     for (const e of entries) if (e.kind === 'message' && e.messageId) declared.set(e.messageId, [...(declared.get(e.messageId) || []), e]);
@@ -526,23 +530,8 @@ const LiveTeam = (() => {
     }
   }
   const kindWords = (e) => acceptedAnswer(e) ? t('Accepted answer') : e.kind === 'message' ? t((e.messageKind ? MESSAGE_KINDS[e.messageKind] : ['Message kind not declared'])[0]) : t('Host input');
-  /* Goal identity and revision come only from the exact owner read; PM association stays declared.
-   * Other Goals require the reader's choice. Assignment titles use the owner's words. */
-  const WORK = {refit: 'refit', backtest: 'backtest', screen: 'screening', scan: 'screening', analyze: 'analysis', analyse: 'analysis', review: 'review', compare: 'comparison', 're-read': 're-reading', reread: 're-reading', rerun: 're-run', 're-run': 're-run', evaluate: 'evaluation', estimate: 'estimate', explain: 'explanation', test: 'test'};
-  const clip = (s, n) => (s.length <= n ? s : s.slice(0, n - 1).trimEnd() + '…');
-  function sessionTitle(text) {
-    const s = String(text || '').replace(/\s+/g, ' ').trim(), m = /^([A-Za-z][A-Za-z-]*)\s+(.+)$/.exec(s), work = m ? WORK[m[1].toLowerCase()] : '';
-    if (work) {
-      const object = m[2].split(/\s+(?:on|for|at|in|with|and|to|from|over)\s+|[,.;:(]/i)[0];
-      const head = (object.match(/\b[A-Z][\w-]*/) || [''])[0];
-      const phrase = (/\b(?:on|for)\s+(?:the\s+)?(.+?)(?:[,.;:(]|\s+and\s+|$)/i.exec(m[2]) || [])[1] || '';
-      const named = head ? `${head} ${work}` : work.charAt(0).toUpperCase() + work.slice(1);
-      return phrase.trim() ? `${named} · ${clip(phrase.trim(), PARAMETER_VALUES['session-title-chars'] + 4)}` : named;
-    }
-    return clip(s.split(/[,.;:\n]/)[0].trim() || s, PARAMETER_VALUES['session-title-chars']); // a label's colon ends it too (`Assignment (ANALYZE): as the ...`)
-  }
-  // the name a session reads by: the case's own title where its owner verified one, else the rule's
-  const titleOf = (q) => (q.kind === 'none' ? t('No research question is declared') : q.kind === 'choice' ? q.text : q.title || sessionTitle(q.text) || t('Untitled session'));
+  /* The scoped or latest delivered Goal names its question through the exact owner read. */
+  const titleOf = (q) => (q.kind === 'none' ? t('No research question is declared') : q.text || q.title || t('Untitled session'));
   function referencesOf(entries) {
     const groups = new Map();
     for (const e of entries.filter(e => e.qualified)) {
@@ -562,13 +551,19 @@ const LiveTeam = (() => {
     const groups = referencesOf(declared);
     const related = distinct(cases.filter((e) => !lead || e.actor !== lead.id)).filter((e) => !declared.some((d) => d.qualified.ref === e.qualified.ref)).map((e) => ({ref: e.reference, actor: actorName(s, e.actor), by: e.actor}));
     const chosen = S.question.get(s.id) || '';
-    const candidate = declared.find(e => e.reference === chosen) || (groups.length === 1 ? groups[0][0] : null);
+    const scope = s.goalScope || [...all].reverse().find(e => acceptedAnswer(e) || reviewed(e) || e.messageKind === 'verdict')?.subject.goal_id;
+    const candidate = declared.find(e => e.reference === chosen) || groups.flat().find(e => scope && (e.subject.goal_id === scope || S.resolved.get(e.reference)?.goalId === scope)) || (!scope && groups.length === 1 ? groups[0][0] : null);
     const assignments = lead ? all.filter((e) => e.messageKind === 'assignment' && e.actor === lead.id) : [];
-    const base = {related, declared: declared.map((e) => e.reference), groups, lead: Boolean(lead)};
+    const base = {related, declared: declared.map((e) => e.reference), groups, lead: Boolean(lead), scope};
     if (candidate) {
       const outcome = S.resolved.get(candidate.reference) || null;
       if (outcome?.level === 'verified') return {...base, kind: 'case-verified', text: outcome.question, title: outcome.title || '', ref: candidate.reference, goalId: outcome.goalId, choice: groups.length > 1};
       return {...base, kind: 'case-declared', text: assignments.length ? assignments[0].text : t('Goal {ref}', {ref: short(candidate.reference.slice(5), SHORT.hash)}), ref: candidate.reference, resolved: Boolean(outcome), choice: groups.length > 1};
+    }
+    const heldGoal = scope && [...S.resolved].find(([ref, outcome]) => ref.startsWith('case:') && outcome.level === 'verified' && outcome.goalId === scope);
+    if (heldGoal) {
+      const [ref, outcome] = heldGoal;
+      return {...base, kind: 'case-verified', text: outcome.question, title: outcome.title || '', ref: outcome.reference || ref, goalId: outcome.goalId, viaDelivery: !s.goalScope, choice: false};
     }
     if (groups.length > 1) return {...base, kind: 'choice', text: declared.every(e => S.resolved.get(e.reference)?.goalId) ? t('{n} goals declared by Main PM', {n: groups.length}) : t('Choose a Goal reference'), count: groups.length};
     if (assignments.length) return {...base, kind: 'assignment', text: assignments[0].text, count: assignments.length};
@@ -576,7 +571,7 @@ const LiveTeam = (() => {
   }
   /* The source line under a question, the same words on the Team page and the Overview. */
   function questionSource(q) {
-    if (q.kind === 'case-verified') return html`${stateLine('verified', {word: t('Goal revision verified by its owner')})} <span class="muted">${t('association declared by Main PM · not verified')}</span>`;
+    if (q.kind === 'case-verified') return html`${stateLine('verified', {word: t('Goal revision verified by its owner')})} <span class="muted">${t(q.viaDelivery ? 'Question supplied for this delivery' : 'association declared by Main PM · not verified')}</span>`;
     if (q.kind === 'case-declared') return html`<span class="muted">${t(q.resolved ? 'declared by Main PM · Goal discovered, not yet verified' : 'declared by Main PM · Goal not yet resolved')} · <span class="mono">${short(String(q.ref).slice(5), SHORT.hash)}</span></span>`;
     if (q.kind === 'choice') return html`<span class="muted">${t('explicit choice required · none chosen by order or recency')}</span>`;
     if (q.kind === 'assignment') return html`<span class="muted">${t(q.count > 1 ? 'first of {n} assignments declared by Main PM · not a bound goal' : 'declared by Main PM · not a bound goal', {n: q.count})}</span>`;
@@ -597,22 +592,15 @@ const LiveTeam = (() => {
    * on the node, the roster's icon and the division marks only, never on a row. */
   const ROLE_TONES = {research_lead: 'lead', alphalattice_alpha: 'alpha', alphalattice_portfolio: 'portfolio', alphalattice_cro: 'cro', independent_cro: 'cro', alphalattice_risk: 'risk', alphalattice_factor: 'factor', alphalattice_data: 'data', alphalattice_evidence_analyst: 'neutral'}; // one tone per domain (round 89, law 76)
   const roleTone = (s, id) => { const pt = s.participants.get(id); if (!pt) return 'none'; if (isLead(pt, s)) return 'lead'; const role = [...pt.roles][0]; return role ? ROLE_TONES[role] || 'neutral' : 'none'; };
-  /* A declared reference as the thread's topic chip (N5, law 125): what the exchange names, the
-   * same chip on every exchange that names it -- a topic, never a reply. */
+  /* N5, law 125: one topic chip per declared reference; a shared topic is never a reply. */
   // Q2: a goal's revision, a result and a review by their hash's 12, an experiment and a Task by their id's 8
-  const topicWords = (q) => q.kind === 'case' ? html`${t('Goal')} <span class="mono">${short(q.ref.slice(5), SHORT.hash)}</span>` : q.kind === 'history' ? (([kind, id]) => html`<span class="mono">${kind}:${short(id, kind === 'experiment' ? SHORT.id : SHORT.hash)}</span>`)(q.ref.split(':')) : q.kind === 'task' ? html`${t('Task')} <span class="mono">${short(q.ref)}</span>` : html`<span class="mono">${short(q.ref, SHORT.hash)}</span>`;
-  /* One exchange as a comment of the thread (N5, law 125; C1, law 139): the member's mark, name and
-   * role, the addressee as a mention, the kind, the topic chip, the time (under the words below
-   * 640 px), the owner's words (clamped; whole in the side's Contribution box, which a press on the
-   * exchange opens -- the user, 2026-09-23: a `Read` button was too small to hit);
-   * the replies -- the messages that name this exchange exactly -- flat under it at the second
-   * level, the Main PM's response among them a neutral inset. An objection says whether the
-   * established Main PM recorded a response, never that it was resolved (law 17). */
+  const topicWords = (q) => q.kind === 'review_thread' ? html`${referenceKind(q)} <span class="mono">${short(q.ref.slice(14))}</span>` : q.kind === 'case' ? html`${t('Goal')} <span class="mono">${short(q.ref.slice(5), SHORT.hash)}</span>` : q.kind === 'history' ? (([kind, id]) => html`<span class="mono">${kind}:${short(id, kind === 'experiment' ? SHORT.id : SHORT.hash)}</span>`)(q.ref.split(':')) : q.kind === 'task' ? html`${t('Task')} <span class="mono">${short(q.ref)}</span>` : html`<span class="mono">${short(q.ref, SHORT.hash)}</span>`;
+  /* N5, law 125; C1, law 139; law 17: show role, addressee, kind, topic, time and clamped words; pressing opens the full record. Exact replies stay one level deep; PM responses are neutral and never resolve objections. */
   function exchange(s, e, selected, replies = [], chosen = null, reply = false) {
     const accepted = acceptedAnswer(e), kind = accepted ? ['Accepted answer', 'file'] : e.kind === 'message' ? MESSAGE_KINDS[e.messageKind] || ['Message kind not declared', 'info'] : ['Host input', 'activity'];
     const pmOf = (r) => { const pt = s.participants.get(r.actor); return ['pm_response', 'ruling'].includes(r.messageKind) && (r.ownerFloor ? r.role === PM_ROLE && r.actor === s.id : Boolean(pt) && isLead(pt, s)); };
-    const person = e.channel === 'PRODUCT_COMMITTEE' && e.messageKind === 'person_answer', author = person ? t('Person') : e.ownerFloor ? roleName(e.role) : actorName(s, e.actor);
-    const mention = person ? e.subject.relay_word ? html`<span class="team-kind">· ${t(e.subject.relay_word)}</span>` : '' : e.recipient ? html`<span class="team-mention" tabindex="0" data-tip="${e.recipient}">→ @${e.recipientRole ? roleName(e.recipientRole) : recipientName(s, e.recipient)}</span>` : '';
+    const person = e.channel === 'PRODUCT_COMMITTEE' && e.messageKind === 'person_answer', author = person ? t('Person') : e.ownerFloor || e.channel === 'PRODUCT_REVIEW' ? roleName(e.role) : actorName(s, e.actor);
+    const mention = person ? e.subject.relay_word ? html`<span class="team-kind">· ${t(e.subject.relay_word)}</span>` : '' : e.recipient ? html`<span class="team-mention" tabindex="0" data-tip="${e.recipient}">→ @${e.recipientRole ? roleName(e.recipientRole) : recipientName(s, e.recipient, e)}</span>` : '';
     const declaredPm = e.messageKind === 'pm_response' && !pmOf(e) ? html` <span class="muted">(${t('declared pm_response, not the Main PM')})</span>` : '';
     const kindMark = accepted ? html`<span class="team-kind" tabindex="0" data-tip="${t(CHANNELS.PRODUCT_ACCEPTED_ANSWER)}">· ${t(kind[0])}</span>` : html`<span class="team-kind">· ${t(kind[0])}${declaredPm}</span>`;
     const submitter = accepted ? html`<span class="team-kind">· ${t('Submitted by')} <span tabindex="0" data-tip="${e.subject.submitted_by || ''}">${recipientName(s, e.subject.submitted_by)}</span></span>` : '';
@@ -625,10 +613,10 @@ const LiveTeam = (() => {
       const tip = answered ? t('Recorded Main PM response · not a resolution; the objection stays as recorded') : `${t('No recorded Main PM response · unresolved choice')}${others.length ? ' · ' + countText(others.length, '{n} other message names this objection', '{n} other messages name this objection') : ''}`;
       status = html`<span class="team-objection-status" data-answered="${answered}" data-tip="${tip}" tabindex="0">${answered ? btn(stateLine('verified', {word: t('Main PM responded'), next: ''}), 'team-event', e.pmResponses.at(-1).id, 'text-btn') : stateLine('review_pending', {word: t('Awaiting the Main PM'), next: ''})}</span>`;
     }
-    // the second Team review: an objection no Main PM response answers says, read-only, what the page waits for and where it happens (the Local Web does not answer for the Main PM)
+    // the second Team review: an objection no Main PM response answers says, read-only, what the page waits for and where
     const waiting = e.messageKind === 'objection' && !e.pmResponses.length && !reply ? html`<p class="team-awaiting-note">${t('No Main PM response is recorded. The Main PM answers in its own host session; the feed shows the answer here once it is recorded.')}</p>` : '';
     const ambiguous = e.ambiguousReference ? html`<p class="team-relation team-ambiguous">${t('Names message ID {id}, declared by {n} exchanges · ambiguous, names none', {id: short(e.ambiguousReference.id, SHORT.id), n: e.ambiguousReference.count})}</p>` : '';
-    // C2 (law 140): a run of replies keeps its first (the cause) and its last (the latest); the middle is one line that opens in place, and opens by itself when it holds the exchange being read
+    // C2 (law 140): a run of replies keeps its first (the cause) and its last; the middle is one line that opens in place
     const replyRow = (r) => exchange(s, r, chosen?.id === r.id, [], chosen, true), middle = replies.length > 2 ? replies.length - 2 : 0;
     const heldReply = replies.slice(1, -1).find((r) => r.id === chosen?.id), open = S.replies.has(e.id) || Boolean(heldReply) || replies.some(r => r.dissentStands);
     const thread = replies.length ? html`<ol class="team-replies">${middle && !open ? html`${replyRow(replies[0])}<li class="team-replies-more" data-holds="${replies.slice(1, -1).map((r) => r.id).join(' ')}">${btnAttrs(html`··· ${countText(middle, 'Show {n} more', 'Show {n} more')} ···`, 'team-replies', e.id, 'text-btn', html`aria-expanded="false" data-fold-count="${middle}"`)}</li>${replyRow(replies.at(-1))}` : html`${replies.map(replyRow)}${middle ? html`<li class="team-replies-more">${btnAttrs(t('Show less'), heldReply && !S.replies.has(e.id) ? 'team-event' : 'team-replies', heldReply && !S.replies.has(e.id) ? heldReply.id : e.id, 'text-btn', html`aria-expanded="true" data-fold-count="${middle}"`)}</li>` : ''}`}</ol>` : '';
@@ -661,10 +649,7 @@ const LiveTeam = (() => {
     const line = html`<li class="team-event team-product-event team-product-run"><span class="team-event-mark">${icon('activity')}</span><span class="team-event-line">${btnAttrs(html`<span>${countText(units.length, '{n} product operation', '{n} product operations')} · ${titles.join(', ')}</span>${icon('chevron')}`, 'team-fold', key, 'text-btn team-hook-toggle', html`aria-expanded="${open}" data-fold-count="${units.length}"`)}</span><span class="team-exchange-end">${spanTime(units)}</span></li>`;
     return html`${line}${open ? folds.map((f) => productEvent(s, f)) : ''}`;
   }
-  /* The thread's items (N5, law 125): the exchanges and the hooks in the store's order, each reply
-   * under the exchange it names (one level: a reply to a reply sits under the same comment; the
-   * named exchange must be in view); the product's observations as one-line events between them,
-   * only while no member filters the thread. The order is the store's; it establishes nothing. */
+  /* N5, law 125: store-ordered exchanges and hooks; exact replies nest one level under visible targets. Product lines appear only without a member filter; order proves nothing. */
   /* Consecutive hook events are one line with their count (C2, law 140): the observations between two
    * exchanges read as one pause, opened in place; a single hook stays its own line. A run that holds
    * the exchange being read opens by itself, as the replies do (its reading is in place, C4 item 7);
@@ -685,15 +670,9 @@ const LiveTeam = (() => {
     if (!actor) for (const fold of foldUnits(factUnits(facts))) items.push({at: (fold.units[0].request || fold.units[0].response).item.ordinal, fold});
     return items.sort((a, b) => a.at - b.at).map((it) => (it.entry ? {...it, replies: replies.get(it.entry) || []} : it));
   }
-  /* The exchange being read opens its verification in place, under its words (C4 item 7, revised on two
-   * reviews, 2026-09-24: a drawer that repeated the words, then held four lines in a full-height column):
-   * what the feed kept of it, the declared reference with Resolve, the provenance in full. The row keeps
-   * the fill and the accent rail while it is open; pressed again, it closes. */
+  /* C4 item 7: pressing toggles the inline excerpt, reference and full provenance; preserve the open row's fill and rail. */
   const inlineRecord = (s, e) => html`<div class="team-record-inline">${e.kind === 'message' ? messageRecord(s, e) : hookRecord(s, e)}</div>`;
-  /* The members are the thread's filter (C4 item 3; the user's word, 2026-09-24, on the review of
-   * Participants): one chip a member, its mark and name; pressed, the thread shows its exchanges; its
-   * recorded composition and latest contribution in its tip. */
-  const PLURAL_KINDS = {assignment: ['{n} assignment', '{n} assignments'], question: ['{n} question', '{n} questions'], answer: ['{n} answer', '{n} answers'], objection: ['{n} objection', '{n} objections'], pm_response: ['{n} PM response', '{n} PM responses']};
+  /* C4 item 3: member chips filter exchanges; tips keep their declared composition and latest contribution. */
   const usageNumber = (value) => /^(0|[1-9][0-9]*)$/.test(String(value)) && Number.isSafeInteger(Number(value)) ? Number(value) : null;
   const usageCount = (value) => usageNumber(value) === null ? '' : count(usageNumber(value));
   const usageMetadata = (u) => {
@@ -711,17 +690,14 @@ const LiveTeam = (() => {
   const usageWords = (pt) => [...pt.usage.values()].map((u) => [`${u.model}${u.efforts.length ? ' (' + u.efforts.join(', ') + ')' : ''}`, usageTokenWords({input_tokens: u.input, output_tokens: u.output, cache_read_tokens: u.cacheRead, cache_write_tokens: u.cacheWrite})].filter(Boolean).join(' · ')).join(' · ');
   const pinWords = (pt) => pt.pins ? [pt.pins.model || pt.pins.effort ? `${t('card')} ${[pt.pins.model, pt.pins.effort].filter(Boolean).join(' ')}` : '', pt.pins.host ? `${t('host')} ${pt.pins.host}` : ''].filter(Boolean).join(' · ') : '';
   function memberChips(s, actor, all) {
-    const members = [...s.participants.values()].sort((a, b) => (isLead(b, s) ? 1 : 0) - (isLead(a, s) ? 1 : 0) || a.last - b.last);
+    const members = TeamMembers.rows(s, ROLE_SAME).sort((a, b) => (isLead(b, s) ? 1 : 0) - (isLead(a, s) ? 1 : 0) || a.last - b.last);
     if (members.length < 2) return '';
     const chip = (pt) => {
-      const mine = all.filter((e) => e.kind === 'message' && e.actor === pt.id), by = new Map();
-      for (const e of mine) by.set(e.messageKind || '', (by.get(e.messageKind || '') || 0) + 1);
-      const made = [...by].map(([k, n]) => (PLURAL_KINDS[k] ? countText(n, ...PLURAL_KINDS[k]) : countText(n, '{n} message', '{n} messages'))).join(' · ');
-      const latest = mine.at(-1), pressed = actor === pt.id;
+      const {made, latest} = TeamMembers.activities(pt, all, ROLE_SAME, MESSAGE_KINDS), pressed = actor === pt.id;
       const declared = String(roleLabel(pt, s)).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(); // who it declared itself to be (law 17: the lead is a declaration)
       const differs = [...pt.usage.values()].flatMap((u) => u.pinDiffers);
-      const tip = [declared, made || t('No exchange retained'), latest ? `${t('Latest contribution')} ${clock(latest.at)}` : '', usageWords(pt), pinWords(pt), differs.length ? t('differs from its card: {what}', {what: [...new Set(differs)].map((x) => codeWords(x)).join(', ')}) : ''].filter(Boolean).join(' · ');
-      return btnAttrs(html`${icon(roleIcon(s, pt.id))}<span>${actorName(s, pt.id)}</span>${differs.length ? icon('warning') : ''}`, 'team-actor', pressed ? '' : pt.id, 'team-chip team-member-chip', html`aria-pressed="${pressed}" data-role="${roleTone(s, pt.id)}" data-declared-role="${[...pt.roles].join(' ')}" data-tip="${tip}"`);
+      const tip = [declared, made || t('No exchange retained'), latest ? `${t('Latest contribution')} ${clock(latest.at)}` : '', pt.sharedUsage ? t('Usage shown with this thread’s first role') : usageWords(pt), pinWords(pt), differs.length ? t('differs from its card: {what}', {what: [...new Set(differs)].map((x) => codeWords(x)).join(', ')}) : ''].filter(Boolean).join(' · ');
+      return btnAttrs(html`${icon(ROLE_ICONS[pt.displayRole] || roleIcon(s, pt.id))}<span>${pt.displayRole ? roleName(pt.displayRole) : actorName(s, pt.id)}</span>${differs.length ? icon('warning') : ''}`, 'team-actor', pressed ? '' : pt.id, 'team-chip team-member-chip', html`aria-pressed="${pressed}" data-role="${ROLE_TONES[pt.displayRole] || roleTone(s, pt.id)}" data-declared-role="${[...pt.roles].join(' ')}" data-tip="${tip}"`);
     };
     return html`<span class="team-members" role="group" aria-label="${t('Members')}">${members.map(chip)}</span>`;
   }
@@ -738,7 +714,7 @@ const LiveTeam = (() => {
       const ref = e.qualified.ref, owner = S.resolved.get(e.reference);
       const objected = stated.some((x) => x.messageKind === 'objection' && x.qualified?.ref === ref), verified = S.resolved.get(e.reference)?.level === 'verified';
       const word = [objected ? t('objected') : '', verified ? t('verified by its owner') : ''].filter(Boolean).join(' · ');
-      return btn(html`${owner?.title ? html`<span class="owner-text">${owner.title}</span>` : e.qualified.kind === 'task' ? t('Task') : e.qualified.kind === 'case' ? t('Goal') : t('Reference')} <span class="mono">${short(String(ref).split(':').at(-1), SHORT.id)}</span>${owner?.revision ? html` · ${t('revision {n}', {n: owner.revision})}` : ''}${word ? html` <span class="muted">· ${word}</span>` : ''}`, 'team-reveal', e.id, 'text-btn team-reference');
+      return btn(html`${owner?.title ? html`<span class="owner-text">${owner.title}</span>` : referenceKind(e.qualified)} <span class="mono">${short(String(ref).split(':').at(-1), SHORT.id)}</span>${owner?.revision ? html` · ${t('revision {n}', {n: owner.revision})}` : ''}${word ? html` <span class="muted">· ${word}</span>` : ''}`, 'team-reveal', e.id, 'text-btn team-reference');
     }));
     const goals = [...s.goals].map((id) => link(html`<span class="mono">${short(id, SHORT.id)}</span>`, 'goal', 'text-btn', {goal: id}));
     // U51: the models and tokens are the Participants folder's, by member and model, the session's totals at its foot
@@ -764,9 +740,7 @@ const LiveTeam = (() => {
     const parts = [tf.earlier ? countText(tf.earlier, '{n} product operation before its first exchange', '{n} product operations before its first exchange') : '', tf.reads ? countText(tf.reads, '{n} Local Web read of its references', '{n} Local Web reads of its references') : ''].filter(Boolean);
     return html`<p class="team-outside">${icon('activity')}<span>${t('Recorded outside this conversation')}: ${parts.join(' · ')} · ${link(t('on Product record'), 'team-evidence', 'inline-link', {team: s.id})}</span></p>`;
   }
-  /* The one line a session's question takes when the head cannot hold it: an owner-verified case's
-   * question (its long text opens the conversation, law 137), the explicit choice among several
-   * PM-declared cases, the members' related references. */
+  /* Law 137: disclose the owner question, explicit case choices and related references when the head cannot hold them. */
   function questionCard(s, all, q) {
     return q.kind === 'case-verified' || q.kind === 'choice' || q.choice || q.related.length ? questionFacts(s, all) : '';
   }
@@ -869,7 +843,7 @@ const LiveTeam = (() => {
     const first = g.units[0], last = g.units.at(-1), from = first.request || first.response, f = last.response || last.request, {tone, state, p} = factFacts(f), n = g.units.length, open = S.unfolded.has(g.key);
     const refs = [...new Set(g.units.flatMap((u) => (u.response || u.request).named))];
     const names = refs.map((r) => { const e = stated.find((x) => x.qualified?.ref === r); return e ? html`${link(html`<span class="mono">${short(String(r).split(':').at(-1), SHORT.id)}</span>`, 'team', 'inline-link', {team: s.id, event: e.id})} <span class="muted">${t('declared by {member}', {member: actorName(s, e.actor)})}</span>` : html`<span class="mono">${short(String(r).split(':').at(-1), SHORT.id)}</span>`; });
-    // the clip census (2026-09-24): a one-line title cut whose reads these are at 375 -- the title says what, the second line (it wraps) says who, how often, when
+    // the clip census (2026-09-24): the title says what, the second line (it wraps) says who, how often, when
     const why = html`${t(g.who === 'person' ? 'a person on the Local Web' : 'the session\'s own operations')} · ${countText(n, '{n} time', '{n} times')} · ${t('first')} ${when(from.item.occurred_at)} · ${t('last')} ${when(f.item.occurred_at)}${p.failure_code ? html` · ${coded(p.failure_code)}${withheldWhy(p)}` : ''}`;
     // LS2/PG2: declared-reference links are controls beside the title, never nested in its clipped main.
     const refsSlot = {columns: ['names'], props: [names.length ? factsRef(t('names'), html`${names.map((name) => html`<p>${name}</p>`)}`) : '']};
@@ -896,8 +870,7 @@ const LiveTeam = (() => {
   }
   function setFactKind(key) { S.factKind = key || ''; paint(); }
   /* Sessions: every retained conversation by its own words, the shown one marked. */
-  /* The retained sessions as runs (round 73): the question, the lead as the starter, the first
-   * and latest instants; a session has no lifecycle of its own, so its state is `recorded`. */
+  /* Round 73: Session runs show question, lead and first/latest instants; their state is recorded, never a lifecycle. */
   function runs(sessions = scene().sessions) {
     return sessions.map((s) => {
       const all = entriesOf(s), q = questionOf(s, all.filter((e) => !e.replayOf));
@@ -906,12 +879,7 @@ const LiveTeam = (() => {
       return {id: s.id, kind: 'session', name: titleOf(q), question: q.text || '', state: 'recorded', starter: lead ? actorName(s, lead.id) : '', started: all.map((e) => e.at).filter(Boolean).sort()[0] || '', finished: latestAt(s), exchanges: s.entries.size, participants: participantCount(s), roles: rolesOf(s), unread: [...s.entries.keys()].filter((id) => S.incoming.has(id)).length, objections: objections.length, unresolved, object: s};
     });
   }
-  /* Sessions as a lobby (F1, law 136). N5 (law 134): a session is its short reference (what tells
-   * two alike apart) and its question on one line, then its lead and its size (the two a narrower list
-   * drops first, round 20). A session has no
-   * lifecycle of its own; what the owner records that sets one apart is an objection the Main PM has
-   * not answered: those sessions are one group, open; the rest are `Recorded`, folded. Time is the
-   * other axis. */
+  /* F1, law 136; N5, law 134; round 20: Session rows show short id/question, then lead/size. Unanswered objections group open, recorded Sessions folded; time is the other axis. */
   function sessionsView(sessions) { // the lobby marks no session: none is open while it is shown (the user, 2026-09-24: back from a session, its row stayed selected)
     const items = runs(sessions), leads = [...new Set(items.map((r) => r.starter).filter(Boolean))];
     const roles = [...new Set(items.flatMap((r) => r.roles))].sort((a, b) => ROLE_ORDER.indexOf(a) - ROLE_ORDER.indexOf(b));
@@ -969,7 +937,7 @@ const LiveTeam = (() => {
     return html`${o.refused ? refusal(o.refused, TONE.attention, {catalog: true}) : o.error ? notRead(t('Committee not read'), o.error) : ''}${stackSlot('committeeProgress', b.stage === 'STANCES' ? stat(t('Stances received'), html`${b.stances_in} / ${b.member_count}`) : '')}${stackSlot('committeeMembers', members)}${stackSlot('committeeAgenda', html`${sectionHead(t('Agenda'))}${points}`)}${b.person_items.length ? panel(t('For you'), t('Asked in your conversation with the agent'), b.person_items.map(p => html`<p class="owner-text" data-person-item="${p.id}">${p.question}</p><p class="caption">${when(p.asked_at)}</p>${p.answer !== null ? html`<p class="owner-text">${p.answer}</p><p class="caption">${p.relay_word ? html`${t(p.relay_word)} · ` : ''}${when(p.answer_at)}</p>` : ''}`)) : ''}${stackSlot('committeeFloor', html`${sectionHead(t('committee|Floor'))}${selected ? noteLine(html`${t('Showing')} ${selected}`, '', 'neutral', btn(t('Show everything'), 'team-committee-point', '', 'button compact')) : ''}${pill}${floor}`)}`;
   }
   const chooseCommitteePoint = point => { replaceHash({committee_point: selection().point === point ? '' : point, event: ''}); paint(); };
-  // round 90: one lede per page, its own (the sentence budget); member statements and product evidence stay two things
+  // One lede per page; member statements remain separate from product evidence.
   const LEDES = {team: 'The conversation, who is in it and what they cite.', 'team-participants': 'Who took part, the models they ran and the tokens they spent.', 'team-sessions': 'Retained conversations, read back exactly.', 'team-outputs': 'What this session produced: accepted answers, submitted Tasks and their artifacts, and the goals it took.', 'team-evidence': 'The product\'s records about this session.'};
   // N3: what a section's caption said is the page's (i)
   const INFO = {'team-outputs': 'Accepted answers retain their recorded author, submitter and sealed references. Tasks appear only when this session submitted them; goals appear only when bound to it.', 'team-participants': 'Each member\'s latest reading by model: its own so far, never a sum of readings, and not attributed to a goal or a Task.', 'team-evidence': 'Operations and their answers attributed to this session or naming its exact references, with Task Control facts and verified artifacts; the session\'s own work first, a person\'s reads on the Local Web in one line.'};
@@ -989,7 +957,7 @@ const LiveTeam = (() => {
       : !chosen ? noteLine(t('Selected session not retained'), html`<span class="mono">${sessionLabel(sel.session)}</span> ${t('is not in the retained activity window (reset, gap or retention).')}`, 'neutral', btn(t('Choose a session'), 'team-select', '', 'button compact'))
       : view === 'team-committee' ? committeeView(chosen, sel.actor) : view === 'team-evidence' ? evidenceView(chosen) : view === 'team-participants' ? participantsView(chosen) : view === 'team-outputs' ? outputsView(chosen) : sessionView(chosen, sel.actor);
     const state = LiveActivity.state();
-    const usage = LiveActivity.nativeUsageState?.(), usageFailure = usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : '';
+    const usage = LiveActivity.nativeUsageState?.(), usageFailure = usage?.reason === 'native_bridge.usage_catching_up' ? noteLine(t('Reading usage'), html`${t('Usage read through {read} of {total} bytes; the next read continues.', {read: usage.read_through, total: usage.total_bytes})}${usage.detail ? infoMark(t(usage.detail, {read: usage.read_through, total: usage.total_bytes})) : ''}`, 'neutral') : usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : usage?.rescan ? noteLine(t('Usage rescanned'), t('The session file changed; its usage was read again.'), 'neutral') : '';
     // The feed's own condition, said once at the top: current, not current, or unreachable.
     const feed = state.error ? ['unreachable', t('Feed unreachable')] : state.stale || ['RESET', 'UNAVAILABLE'].includes(state.disposition) ? ['stale', t('Feed not current')] : ['live', t('Live feed')];
     // All session tabs share its state and facts; the floor's standing is a fact.
@@ -999,11 +967,11 @@ const LiveTeam = (() => {
     const floorFacts = floor ? [[t(floor.verdict ? 'Verdict' : 'Committee'), html`<span data-committee-stage="${floor.stage}"${floor.verdict ? html` data-verdict="${floor.verdict.outcome}"` : ''}>${codeWords(floor.verdict?.outcome || floor.stage)}</span>`], ...(labelWords(floor.labels) ? [[t('Strategy'), html`<span class="owner-text">${labelWords(floor.labels)}</span>`]] : []), ...(floor.schedule?.entry_session ? [[t('Positions for'), floor.schedule.entry_session]] : []), [t('Holdings'), floor.holdings_count], [t('Task'), btnAttrs(mono(floor.update_task_id,SHORT.id),'task',floor.update_task_id,'text-btn',html`data-tip="${floor.update_task_id}"`)], [t(floor.stage === 'STANCES' ? 'Stances close' : 'Floor closes'), when(floor.stage === 'STANCES' ? floor.stances_close_at : floor.closes_at)]] : [];
     const floorActions = floor?.stage === 'CLOSED' ? link(t('Read the report'), 'report', 'text-btn', {review_selector: JSON.stringify(floor.review_selector)}) : '';
     const pending = stated.filter((e) => e.messageKind === 'objection' && !e.pmResponses.length), awaiting = pending.length;
-    // T2 (the Team review, 2026-09-24): the awaiting objection is the head's way to it -- the Conversation, the first one read in place
+    // T2: the awaiting objection is the head's way to it -- the Conversation, the first one read in place
     const marks = html`<span class="team-live" data-feed="${feed[0]}"><i class="live-dot" aria-hidden="true"></i><span class="state-word">${feed[1]}</span></span>${conversation && awaiting ? html`<span class="team-objection-status">${btn(stateLine('review_pending', {word: countText(awaiting, '{n} objection awaiting the Main PM', '{n} objections awaiting the Main PM'), next: ''}), 'team-reveal', pending[0].id, 'text-btn')}</span>` : ''}`;
     const view_ = html`<section class="team-scene" id="teamScene" data-view="${view}">${objectHead(conversation ? titleOf(conversation) : t(ROUTES[view]?.[1] || ROUTES.team[1]), html`<p class="lede">${t(view === 'team-committee' ? 'The committee’s recorded floor on these positions.' : LEDES[view] || LEDES.team)}${INFO[view] ? ' ' + t(INFO[view]) : ''}</p>`, floorActions, marks, [], {cls: 'team-head', headingId: 'teamSceneHeading', object: Boolean(conversation), facts: [...floorFacts, ...(conversation ? sessionFacts(chosen, stated, conversation, floor?.update_task_id) : [])], id: conversation ? chosen.id : '', scope: chosen && view !== 'team-sessions' ? {name: titleOf(questionOf(chosen, stated)), href: routeUrl('team', {team: chosen.id, actor: '', event: ''}), self: view === 'team'} : null})}
       ${state.error || state.notice || state.stale || ['RESET', 'UNAVAILABLE'].includes(state.disposition) ? noteLine(t('Activity visibility limited'), state.error || state.notice || t('Retained observations are not current host state.'), 'warning') : ''}
-      ${readback}${usageFailure}${body}${unknown.length ? noteLine(t('Events outside any declared session'), countText(unknown.length, '{n} external event without a native session id or with an unretained payload is listed in the activity feed, not here.', '{n} external events without a native session id or with an unretained payload are listed in the activity feed, not here.'), 'neutral') : ''}</section>`;
+      ${readback}${usageFailure}${body}${view !== 'team-sessions' && X.selectedMore ? Lobby.older(t('Older records are not read yet'), 'team-older', '', Boolean(X.fetching)) : ''}${unknown.length ? noteLine(t('Events outside any declared session'), countText(unknown.length, '{n} external event without a native session id or with an unretained payload is listed in the activity feed, not here.', '{n} external events without a native session id or with an unretained payload are listed in the activity feed, not here.'), 'neutral') : ''}</section>`;
     // An arrival flashes once, on the view that shows it: the workroom consumes the exchanges'
     // flash, the evidence view the facts'; the other views leave both for their first sight.
     if (view === 'team-evidence') S.factFlash.clear(); else if (view !== 'team-sessions') S.flash.clear();
@@ -1014,36 +982,26 @@ const LiveTeam = (() => {
   function select(sessionId) { S.visible = 50; if (!sessionId) S.retained = null; replaceHash({team: sessionId || '', actor: '', event: '', committee: '', committee_point: ''}); paint(); }
   /* The reader's choice among several PM-declared research cases, per session, in this tab. */
   function chooseQuestion(ref) { const s = selection().session || S.retained?.session || ''; if (!s) return; S.question.set(s, ref || ''); paint(); }
-  /* The Team keys a route carries when the page is entered without explicit context: the
-   * retained selection, so the navigation link, Quick Open and the Overview entry return to it.
-   * Explicit keys in the caller's context override these (routeUrl spreads them after). */
+  // Route keys restore the retained selection; explicit caller keys override them.
   const routeContext = () => (S.retained ? {team: S.retained.session || '', actor: S.retained.actor || '', event: S.retained.event || '', committee: S.retained.committee || '', committee_point: S.retained.point || ''} : {});
-  /* An exchange the head points at -- its awaiting objection (T2), a declared reference's first exchange --
-   * read in place on the Conversation, brought into view once the page has had its frame, from either
-   * tab; only this press moves the reader. */
+  // Only an explicit exchange entry moves the reader, after the page's frame.
   function revealExchange(eventId) {
     const sid = selection().session;
     if (!sid) return;
     navigate(app.page === 'team-committee' ? app.page : 'team', {team: sid, actor: '', event: eventId});
     requestAnimationFrame(() => { const row = document.getElementById('team-event-' + eventId); if (row) { row.scrollIntoView({block: 'center', behavior: 'instant'}); row.focus({preventScroll: true}); } });
   }
-  /* U51 (the user, 2026-09-30): the session's members, one row a member and model -- the role it declared (the lead
-   * marked), its exchanges by kind and its latest one; each model it ran with its efforts and its tokens (its latest
-   * reading by model: never a sum of readings, never a goal's or a Task's), a mark where a reading differs from its
-   * card, the pins its hooks carry. U196 keeps members separate without non-overlap evidence. A member's name opens its exchanges. */
+  // Per member and model: latest usage, never summed or Goal/Task-attributed; roles stay declared and hook pins retain their source.
   function participantsView(s) {
     const all = entriesOf(s).filter((e) => !e.replayOf);
-    const members = [...s.participants.values()].sort((a, b) => (isLead(b, s) ? 1 : 0) - (isLead(a, s) ? 1 : 0) || a.last - b.last);
+    const members = TeamMembers.rows(s, ROLE_SAME).sort((a, b) => (isLead(b, s) ? 1 : 0) - (isLead(a, s) ? 1 : 0) || a.last - b.last);
     if (!members.length) return emptyState(t('No member has taken part yet'));
     const rows = members.flatMap((pt) => {
-      const mine = all.filter((e) => e.kind === 'message' && e.actor === pt.id), by = new Map();
-      for (const e of mine) by.set(e.messageKind || '', (by.get(e.messageKind || '') || 0) + 1);
-      const made = [...by].map(([k, n]) => (PLURAL_KINDS[k] ? countText(n, ...PLURAL_KINDS[k]) : countText(n, '{n} message', '{n} messages'))).join(' · ') || t('No exchange retained');
-      const latest = mine.at(-1), pins = pinWords(pt);
-      const member = html`<span class="team-member-mark" data-role="${roleTone(s, pt.id)}">${icon(roleIcon(s, pt.id))}</span> ${btnAttrs(actorName(s, pt.id), 'team-member-open', pt.id, 'text-btn')}${isLead(pt, s) ? html` <span class="sub-cell">${t('Lead')}</span>` : ''}`;
-      const exchanges = html`${made}${latest ? html`<span class="sub-cell">${t('latest')} ${clock(latest.at)}</span>` : ''}${s.goalScope && !pt.messages.length && !pt.hooks.length && pt.usage.size ? html`<span class="sub-cell">${t('Session-wide usage only')}</span>` : ''}`;
-      const usage = [...pt.usage.values()].sort((a, b) => a.model.localeCompare(b.model));
-      if (!usage.length) return [tr([member, exchanges, html`<span class="muted">${pins ? hint(t('no usage read'), pins) : t('no usage read')}</span>`, '', '', '', ''])];
+      const {made, latest} = TeamMembers.activities(pt, all, ROLE_SAME, MESSAGE_KINDS), pins = pinWords(pt);
+      const member = html`<span class="team-member-mark" data-role="${ROLE_TONES[pt.displayRole] || roleTone(s, pt.id)}">${icon(ROLE_ICONS[pt.displayRole] || roleIcon(s, pt.id))}</span> ${btnAttrs(pt.displayRole ? roleName(pt.displayRole) : actorName(s, pt.id), 'team-member-open', pt.id, 'text-btn')}${isLead(pt, s) ? html` <span class="sub-cell">${t('Lead')}</span>` : (pt.keyed || pt.specialistVerified) ? html`<span class="sub-cell" data-specialist-verified="${pt.keyed || pt.specialistVerified}">${t(pt.keyed || pt.specialistVerified === 'true' ? 'Specialist identity verified' : 'Specialist identity not verified')}</span>` : ''}`;
+      const exchanges = html`${made || t('No exchange retained')}${latest ? html`<span class="sub-cell">${t('latest')} ${clock(latest.at)}</span>` : ''}${s.goalScope && !pt.messages.length && !pt.hooks.length && pt.usage.size ? html`<span class="sub-cell">${t('Session-wide usage only')}</span>` : ''}`;
+      const usage = pt.sharedUsage ? [] : [...pt.usage.values()].sort((a, b) => a.model.localeCompare(b.model));
+      if (!usage.length) return [tr([member, exchanges, html`<span class="muted">${pt.sharedUsage ? t('Usage shown with this thread’s first role') : pins ? hint(t('no usage read'), pins) : t('no usage read')}</span>`, '', '', '', ''])];
       return usage.map((u, i) => {
         const differs = u.pinDiffers.length ? html` <span class="team-differs" data-tip="${t('differs from its card: {what}', {what: u.pinDiffers.map((x) => codeWords(x)).join(', ')})}">${icon('warning')}</span>` : '';
         const model = html`<span class="mono">${u.model}</span>`;
@@ -1051,17 +1009,11 @@ const LiveTeam = (() => {
       });
     });
     const {shown, page, pages} = pageOf(rows, S.participantsPage);
-    return html`${table([{label: t('Agent'), type: 'text'}, {label: t('Activities'), type: 'text', absorb: true}, {label: t('Model'), type: 'text'}, {label: hint(t('Input'), t('All usage values are tokens. Input excludes cache reads and cache writes.')), type: 'num'}, {label: t('Output'), type: 'num'}, {label: t('Cache read'), type: 'num'}, {label: t('Cache written'), type: 'num'}], shown, '', {report: true, countLine: false, classes: 'compact team-participants'})}${pager({page, pages, prev: ['team-participants-page', 'prev'], next: ['team-participants-page', 'next']})}`;
+    return html`${TeamMembers.othersLine(s)}${table([{label: t('Agent'), type: 'text'}, {label: t('Activities'), type: 'text', absorb: true}, {label: t('Model'), type: 'text'}, {label: hint(t('Input'), t('All usage values are tokens. Input excludes cache reads and cache writes.')), type: 'num'}, {label: t('Output'), type: 'num'}, {label: t('Cache read'), type: 'num'}, {label: t('Cache written'), type: 'num'}], shown, '', {report: true, countLine: false, classes: 'compact team-participants'})}${pager({page, pages, prev: ['team-participants-page', 'prev'], next: ['team-participants-page', 'next']})}`;
   }
   function openMember(actorId) { navigate('team', {team: selection().session || '', actor: actorId || '', event: ''}); }
   const turnParticipants = (way) => { S.participantsPage = Math.max(0, (S.participantsPage || 0) + (way === 'next' ? 1 : -1)); paint(); };
-  /* U54: submitted Tasks and goals come from their owners' session-filtered reads, once a
-   * visit (`leaveOutputs`), with older pages from the foot. Accepted answers use the retained
-   * product-authored acceptance event and its sealed refs; a source Task named by that answer
-   * remains a citation. Outputs owns these deliverables; its link opens their full retained
-   * text and exact record in Conversation. Product record owns the operation receipts. */
-  // the two reads by agent session, each a page of `table-rows` by the Host's cursor: the Tasks it submitted (`TASKS`)
-  // and the goals whose record names it (`GOAL_LIST`)
+  // Outputs use session-filtered owner pages once per visit; accepted answers bind sealed receipts, and source Tasks remain citations.
   const OUTPUT_READS = {tasks: ['/api/tasks', 'tasks', 'refusals'], goals: ['/api/goals', 'goals', 'refused']};
   async function readOutputs(sid, which, cursor = '') {
     if (S.outputs?.session === sid && (S.outputs[which]?.busy || (cursor && S.outputs[which]?.next !== cursor))) return;
@@ -1080,11 +1032,12 @@ const LiveTeam = (() => {
   }
   const olderOf = (which, o, words) => (o.next ? Lobby.older(t(words), 'team-outputs-older', which, o.busy) : '');
   const outputRefusals = (o, which) => (o.refusals || []).map(r=>refusal(r,TONE.attention,{catalog:true,more:html`<p>${t(which==='tasks' ? 'Task' : 'Goal')} ${hashCell(r.task_id || r.goal_id,SHORT.id)}</p>`,next:prerequisiteWays(r.next_requests)}));
+  const author = (e) => (reviewed(e) ? e.recipient : e.actor);
   function answersBox(s) {
     const answers = acceptedArtifacts(s);
     if (!answers.length) return '';
     if (S.answers?.session !== s.id) S.answers = {session: s.id, page: 0};
-    const rows = answers.map((e) => tr([link(t('Accepted answer'), 'team', 'text-btn', {team: s.id, actor: '', event: e.id}), html`<span tabindex="0" data-tip="${e.actor}">${recipientName(s, e.actor)}</span>`, html`<span tabindex="0" data-tip="${e.subject.submitted_by}">${recipientName(s, e.subject.submitted_by)}</span>`, hashCell(e.subject.answer_reference, SHORT.hash), hashCell(e.subject.bundle_reference, SHORT.hash), hint(clock(e.at), timeKindWords(e))]));
+    const rows = answers.map((e) => tr([link(t('Accepted answer'), 'team', 'text-btn', {team: s.id, actor: '', event: e.id}), html`<span tabindex="0" data-tip="${author(e)}">${recipientName(s, author(e))}</span>`, html`<span tabindex="0" data-tip="${e.subject.submitted_by || author(e)}">${recipientName(s, e.subject.submitted_by || author(e))}</span>`, hashCell(e.subject.answer_reference, SHORT.hash), hashCell(e.subject.bundle_reference, SHORT.hash), hint(clock(e.at), timeKindWords(e))]));
     const {shown, page, pages} = pageOf(rows, S.answers.page);
     return panel(t('Accepted answers'), '', html`${table([{label: t('Answer'), type: 'text', absorb: true}, {label: t('Agent'), type: 'text'}, {label: t('Submitted by'), type: 'text'}, {label: t('Answer reference'), type: 'id'}, {label: t('Bundle reference'), type: 'id'}, {label: t('Time'), type: 'date'}], shown, '', {report: true, countLine: false, classes: 'compact team-outputs'})}${pager({page, pages, prev: ['team-outputs-page', 'answers:prev'], next: ['team-outputs-page', 'answers:next']})}`, '', 'data-box="table"');
   }
@@ -1175,9 +1128,12 @@ const LiveTeam = (() => {
     if (!onTeam()) { S.answerDetail = null; S.usageAsked = false; if (app.page !== 'overview') return; }
     if (onTeam() && !S.usageAsked) { S.usageAsked = true; LiveActivity.readSessionUsage?.(); }
     if (onTeam() && app.page !== 'team-sessions') { const s = scene().sessions.find(s => s.id === selection().session); if (s && committeeTask(s)) { const o = S.committee, deadline = o?.body?.stage === 'STANCES' ? o.body.stances_close_at : o?.body?.stage === 'DEBATE' ? o.body.closes_at : ''; const crossed = deadline && Date.now() >= Date.parse(deadline) && o.deadlineRead !== deadline; if (crossed) o.deadlineRead = deadline; void readCommittee(s, crossed); } }
-    for (const s of scene().sessions) for (const ref of questionOf(s, entriesOf(s)).declared) if (!S.resolved.has(ref) && !S.busy.has(ref)) void resolve(ref).then(() => verify(ref));
+    for (const s of scene().sessions) {
+      const q = questionOf(s, entriesOf(s)), refs = q.ref ? q.declared : UUID.test(q.scope || '') ? ['goal:' + q.scope] : q.declared;
+      for (const ref of refs) if (!S.resolved.has(ref) && !S.busy.has(ref)) void resolve(ref).then(() => verify(ref));
+    }
     const a = LiveActivity.state(), usage = LiveActivity.nativeUsageState?.();
-    const key = [a.epoch, a.cursor, a.watermark, a.error, a.stale, a.disposition, usage?.status, usage?.reason].join('|');
+    const key = [a.epoch, a.cursor, a.watermark, a.error, a.stale, a.disposition, usage?.status, usage?.reason, usage?.read_through, usage?.total_bytes, usage?.rescan].join('|');
     if (key !== S.paintKey) { S.paintKey = key; paint(); }
   }
   /* The explicit entry from an activity row, wherever that row lives: the Task Center drawer

@@ -112,6 +112,8 @@ const c={URLSearchParams,app:{page:'goal'},render(){},closeDialog(){},openDialog
 c.goalReferenceIntegrity=library.words(require('path').dirname(require('node:path').join(_appDir,'live-goals.js'))).goalReferenceIntegrity;
 library.context(c);
 vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(require('node:path').join(_appDir,'live-goals.js')),
+  'team-members.js'),'utf8'),c);
+vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(require('node:path').join(_appDir,'live-goals.js')),
   'live-team.js'),'utf8')+';globalThis.LiveTeam=LiveTeam;',c);
 vm.runInContext(fs.readFileSync(require('node:path').join(_appDir,'live-goals.js'),'utf8')+';globalThis.live=LiveGoals;',c);
 const teamScene=c.LiveTeam.scene;

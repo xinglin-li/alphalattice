@@ -71,6 +71,8 @@ class HistoryEntry:
     book: BookSelector | None = None
     review_publication_hash: str | None = None
     failure_code: str | None = None
+    final_delivery: bool | None = None
+    positions_session: str | None = None
 
     def body(self) -> dict[str, Any]:
         """Serialize history metadata with an explicit timestamp and non-null book selector.
@@ -200,8 +202,7 @@ class ResearchHistory:
             installed_packages: Explicit known package identities.
 
         Returns:
-            Ordered bounded entries, next cursor and named unreadable rows; selected descendant
-            readback verifies separately.
+            Bounded entries, next cursor and named refusals; descendants verify on readback.
 
         Raises:
             ValueError: Limit, strategy, exact entry or filter-bound cursor is invalid.
@@ -210,7 +211,6 @@ class ResearchHistory:
             raise ValueError("research_history.limit_outside_1_50")
         rows: dict[str, HistoryEntry] = {}
         task_batch = self.session.task_control_registry.record_collection()
-        tasks = task_batch.records
         failures: list[dict[str, Any]] = [
             {
                 **task_record_refusal(task_id),
@@ -252,7 +252,7 @@ class ResearchHistory:
                         "next_requests": requests,
                     }
                 )
-        for task in tasks:
+        for task in task_batch.records:
             try:
                 produced: list[HistoryEntry] = []
                 if task.task_kind == EXPERIMENT_TASK_KIND:
@@ -306,7 +306,8 @@ class ResearchHistory:
                     owner = self.research_updates
                     advance_plan = owner._plan_of(task, current=False)
                     if task.lifecycle is TaskLifecycle.SUCCEEDED:
-                        for identity in owner._need(advance_plan, UPDATE_STAGES[5]).products:
+                        products = owner._need(advance_plan, UPDATE_STAGES[5]).products
+                        for identity in products:
                             publication = owner._load(
                                 "decision-candidates", identity, PortfolioUpdatePublication
                             )
@@ -315,6 +316,7 @@ class ResearchHistory:
                                     task.task_id,
                                     advance_plan.package_id,
                                     publication,
+                                    final_delivery=identity == products[-1],
                                 )
                             )
                     else:
@@ -522,13 +524,17 @@ class ResearchHistory:
             "next_cursor": following,
             "next_requests": offered,
             "blocked_entries": failures,
-            "metadata_task_count": len(tasks),
+            "metadata_task_count": len(task_batch.records),
             "verification": "METADATA_ONLY_SELECTED_READBACK_VERIFIES_DESCENDANTS",
         }
 
     @staticmethod
     def _update_entry(
-        task_id: UUID, package: str, value: PortfolioUpdatePublication
+        task_id: UUID,
+        package: str,
+        value: PortfolioUpdatePublication,
+        *,
+        final_delivery: bool = True,
     ) -> HistoryEntry:
         # Each publication is dated by its own publication, never by its Task's
         # admission: a continuous Task publishes many, newest last (V190).
@@ -546,6 +552,10 @@ class ResearchHistory:
                 if value.pending_proposal
                 else "OBSERVED_RESEARCH_ENTRY",
             ),
+            final_delivery=final_delivery,
+            positions_session=(
+                value.pending_proposal or value.book
+            ).schedule.entry_session.isoformat(),
         )
 
     @staticmethod

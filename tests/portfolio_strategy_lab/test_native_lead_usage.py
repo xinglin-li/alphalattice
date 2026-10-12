@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,7 @@ import pytest
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.product_host.publication.goals import GoalStore
+from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application import cli, client, native_bridge
 from alphalattice.interface.local_application.activity import (
@@ -27,8 +29,9 @@ from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
     NativeResearchBinding,
     read_session_usage,
+    set_usage_reading,
 )
-from alphalattice.interface.local_application.native_setup import declare_project
+from alphalattice.interface.local_application.native_setup import declare_project, unbind_session
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
@@ -279,7 +282,21 @@ def test_lead_reading_from_nested_cwd_is_independent_of_child_stop_and_idempoten
     first = lead_readings(scene.nested, dict(os.environ), workspace=scene.workspace)
     assert first[0]["status"] == "DELIVERED"
     again = lead_readings(scene.nested, dict(os.environ), workspace=scene.workspace)
-    assert again == first
+    assert again[0]["status"] == "DELIVERED"
+    for reading, bytes_read in ((first[0], scene.session.stat().st_size), (again[0], 0)):
+        assert (
+            reading["read_through"],
+            reading["total_bytes"],
+            reading["bytes_read"],
+            reading["rescan"],
+        ) == (scene.session.stat().st_size, scene.session.stat().st_size, bytes_read, False)
+        (member,) = reading["participants"]
+        assert (member["agent_id"], member["role"], member["status"], member["models"]) == (
+            scene.parent,
+            "research_lead",
+            "DELIVERED",
+            1,
+        )
     (row,) = scene.observer.read_external(ExternalActivityReadQuery())["items"]
     assert row["payload"]["event_kind"] == "NATIVE_AGENT_USAGE"
     subject = row["payload"]["subject"]
@@ -470,10 +487,20 @@ def test_a_valid_later_response_block_forms_a_new_snapshot_without_counting_it_t
         assert after["last_at"] == later["timestamp"] and after["last_at"] != before["last_at"]
     else:
         assert after["efforts"] == "xhigh" and after["efforts"] != before.get("efforts")
-    assert (
-        lead_readings(scene.nested, dict(os.environ), workspace=scene.workspace, goal=scene.goal_id)
-        == receipt
+    (warm,) = lead_readings(
+        scene.nested, dict(os.environ), workspace=scene.workspace, goal=scene.goal_id
     )
+    assert warm["status"] == "DELIVERED" and warm["bytes_read"] == 0
+    for reading in (receipt[0], warm):
+        assert reading["read_through"] == reading["total_bytes"] == scene.session.stat().st_size
+        assert reading["rescan"] is False
+        (member,) = reading["participants"]
+        assert (member["agent_id"], member["role"], member["status"], member["models"]) == (
+            scene.parent,
+            "research_lead",
+            "DELIVERED",
+            1,
+        )
     assert scene.observer.read_external(ExternalActivityReadQuery())["items"] == rows
     assert all(row["payload"]["event_kind"] == "NATIVE_AGENT_USAGE" for row in rows)
     assert SECRET not in json.dumps(rows)
@@ -644,13 +671,15 @@ def test_a_child_usage_snapshot_needs_exact_parent_binding_but_no_lifecycle_hook
     scene = lead_scene
     child, path = _own_child(scene)
     first = _read_owned_usage(scene, "child", child)
-    assert first == {
+    assert {key: first[key] for key in ("agent_id", "role", "status", "models")} == {
         "agent_id": child,
         "role": "alphalattice_risk",
         "status": "DELIVERED",
         "models": 1,
     }
-    assert _read_owned_usage(scene, "child", child) == first
+    warm = _read_owned_usage(scene, "child", child)
+    assert warm == {**first, "bytes_read": 0}
+    assert warm["specialist_verified"] is True
     (row,) = _rows(scene, child)
     assert row["payload"]["event_kind"] == "NATIVE_AGENT_USAGE"
     assert row["authority"] == "AGENT_PROPOSAL"
@@ -671,6 +700,26 @@ def test_a_child_usage_snapshot_needs_exact_parent_binding_but_no_lifecycle_hook
     assert "native_hook_event" not in subject and "authorship_basis" not in subject
     assert SECRET not in json.dumps(row) and str(path) not in json.dumps(row)
     assert subject["goal_id"] == scene.goal_id
+    binding = NativeResearchBinding.read(scene.project)
+    assert binding is not None
+    with ExitStack() as locks:
+        for path in (scene.workspace / "runtime/native-usage").glob("*.lock"):
+            locks.enter_context(WorkspaceLock(path))
+        busy = read_session_usage(scene.project, binding, publish=scene.publish)
+    assert busy["status"] == "BUSY"
+    assert {row["agent_id"] for row in busy["participants"]} == {scene.parent, child}
+    assert all(row["status"] == "BUSY" for row in busy["participants"])
+    assert busy["reason"] == "native_bridge.usage_reader_busy"
+    assert set_usage_reading(scene.workspace, enabled=False)["usage_reading"] == "OFF"
+    cache = scene.workspace / "runtime/native-usage"
+    assert list(cache.iterdir()) == []
+    assert set_usage_reading(scene.workspace, enabled=True)["usage_reading"] == "READ"
+    assert _read_owned_usage(scene, "child", child)["status"] == "DELIVERED"
+    assert (
+        unbind_session(scene.project, session_id=scene.parent, host=scene.host)["status"]
+        == "DETACHED"
+    )
+    assert list(cache.iterdir()) == []
 
 
 def test_a_child_usage_delivery_failure_is_visible_and_retry_keeps_the_same_reading(lead_scene):
@@ -685,16 +734,18 @@ def test_a_child_usage_delivery_failure_is_visible_and_retry_keeps_the_same_read
     assert SECRET not in json.dumps(result)
     scene.failure = None
     first = _read_owned_usage(scene, "child", child)
-    assert first["status"] == "DELIVERED" and _read_owned_usage(scene, "child", child) == first
+    warm = _read_owned_usage(scene, "child", child)
+    assert first["status"] == "DELIVERED" and warm == first
+    assert warm["bytes_read"] == 0
     assert len(_rows(scene, child)) == 1
 
 
 @pytest.mark.parametrize("lead_scene", ["codex"], indirect=True)
 @pytest.mark.parametrize("mismatch", ["parent", "role", "missing_parent", "missing_role", "id"])
-def test_a_codex_child_usage_refuses_a_missing_or_conflicting_recorded_binding(
+def test_a_codex_child_usage_requires_its_recorded_parent_and_verifies_its_role_separately(
     lead_scene, mismatch
 ):
-    """BEHAVIOUR: a nominated id cannot substitute for its own exact recorded parent and role."""
+    """The child's own parent is required, while specialist verification remains a separate fact."""
     scene = lead_scene
     child, path = _own_child(scene)
     records = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
@@ -711,12 +762,32 @@ def test_a_codex_child_usage_refuses_a_missing_or_conflicting_recorded_binding(
     else:
         meta["id"] = "another-child"
     _write_native(path, records)
-    assert _read_owned_usage(scene, "child", child) == {
-        "agent_id": child,
-        "status": "UNAVAILABLE",
-        "reason": "native_bridge.child_usage_binding_unverified",
-    }
-    assert _rows(scene, child) == []
+    reading = _read_owned_usage(scene, "child", child)
+    if mismatch in {"role", "missing_role"}:
+        role = "alphalattice_factor" if mismatch == "role" else None
+        assert (reading["agent_id"], reading["role"], reading["status"], reading["models"]) == (
+            child,
+            role,
+            "DELIVERED",
+            1,
+        )
+        assert reading["specialist_verified"] is False
+        (row,) = _rows(scene, child)
+        subject = row["payload"]["subject"]
+        assert subject["specialist_verified"] == "false" and "role" not in subject
+        assert subject.get("observed_role") == role
+        assert (subject["responses"], subject["input_tokens"], subject["output_tokens"]) == (
+            "1",
+            "15",
+            "3",
+        )
+    else:
+        assert (reading["agent_id"], reading["status"], reading["reason"]) == (
+            child,
+            "UNAVAILABLE",
+            "native_bridge.child_usage_binding_unverified",
+        )
+        assert _rows(scene, child) == []
 
 
 @pytest.mark.parametrize("lead_scene", ["claude-code"], indirect=True)
@@ -793,7 +864,7 @@ def test_an_optional_usage_snapshot_publishes_all_allowed_models_or_no_overflow_
 def test_an_overbound_native_usage_scan_publishes_none_of_its_complete_prefix(
     lead_scene, monkeypatch, participant, limit
 ):
-    """BEHAVIOUR: both byte limits reject complete prefix counts before the observation owner."""
+    """A prefix publishes no total; an oversized record keeps its exact refusal."""
     scene = lead_scene
     child, path = _own_child(scene) if participant == "child" else (None, scene.session)
     records = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
@@ -807,8 +878,13 @@ def test_an_overbound_native_usage_scan_publishes_none_of_its_complete_prefix(
         1024,
     )
     result = _read_owned_usage(scene, participant, child)
-    assert result["status"] == "UNAVAILABLE" and result["read_limit"] == limit
-    assert result["reason"] == f"native_bridge.{participant}_usage_read_failed"
+    if limit == "max_bytes":
+        assert result["status"] == "PARTIAL"
+        assert result["reason"] == "native_bridge.usage_catching_up"
+        assert result["read_through"] < result["total_bytes"] and result["bytes_read"] <= 1024
+    else:
+        assert result["status"] == "UNAVAILABLE" and result["read_limit"] == limit
+        assert result["reason"] == f"native_bridge.{participant}_usage_read_failed"
     assert "models" not in result
     assert _rows(scene, scene.parent if participant == "lead" else child) == []
     assert path.read_bytes() == original and SECRET not in json.dumps(result)

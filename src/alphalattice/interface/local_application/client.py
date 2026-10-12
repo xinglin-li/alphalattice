@@ -296,19 +296,15 @@ class LocalResearchClient:
         )[0]
 
     def read_external(
-        self, *, before: int | None = None, observation_id: str | None = None
+        self,
+        *,
+        before: int | None = None,
+        observation_id: str | None = None,
+        native_session_id: str | None = None,
     ) -> dict[str, Any]:
-        """Read a native activity page or exact accepted-event readback from this Host.
+        """Read a page or Session span; observation_id selects one exact answer.
 
-        Args:
-            before: The owner's exclusive older cursor, or the newest page.
-            observation_id: One exact retained observation, exclusive of a page cursor.
-
-        Returns:
-            The unchanged bounded activity page or selected owner readback.
-
-        Raises:
-            LocalResearchClientError: A selector is invalid or the admitted transport fails.
+        `before` is exclusive. Invalid selectors/transport raise LocalResearchClientError.
         """
         if before is not None and (type(before) is not int or before <= 0):
             raise LocalResearchClientError("activity.cursor_invalid")
@@ -318,10 +314,13 @@ class LocalResearchClient:
                 or re.fullmatch(r"[0-9a-f]{64}", observation_id) is None
             ):
                 raise LocalResearchClientError("activity.observation_id_invalid")
-            if before is not None:
+            if before is not None or native_session_id is not None:
                 raise LocalResearchClientError("activity.query_selection_conflict")
             return self._exchange("/api/activity/external?observation_id=" + observation_id)[0]
-        suffix = "" if before is None else f"?before={before}"
+        query: dict[str, int | str] = {} if before is None else {"before": before}
+        if native_session_id is not None:
+            query["native_session_id"] = native_session_id
+        suffix = "?" + urlencode(query) if query else ""
         return self._exchange("/api/activity/external" + suffix)[0]
 
     def cpu_budget(
@@ -2675,8 +2674,8 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         "steps": chain.steps,
         "next_action": "DISPATCH_ANALYSTS" if bundles else "READ_EVIDENCE",
         "detail": (
-            "Give each Analyst its bundle directory, file list and answer path; when their answers "
-            "are written, `review continue --dir` submits them all and prepares the CRO's bundle."
+            "Start each Analyst with its bundle: each submits its answer by its route. With their "
+            "receipts back, `review continue --dir` reads them, prepares the CRO's bundle."
             if bundles
             else "Evidence is prepared with no Analyst bundle to answer; read its review state."
         ),
@@ -2817,8 +2816,8 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
         "steps": chain.steps,
         "next_action": "DISPATCH_CRO",
         "detail": (
-            "Give the CRO its bundle directory, file list and answer path; when its answer is "
-            "written, `review continue --dir` on that folder publishes the review."
+            "Start the CRO with its bundle: it submits its answer by its route. With its "
+            "receipt back, `review continue --dir` on that folder publishes the review."
         ),
     }
 
@@ -2861,7 +2860,7 @@ _FIRST_USE_ROAD: Final = (
     (
         "cro",
         ("review", "continue", "--dir", "<out>/analysts", "--cro-dir", "<out>/cro"),
-        "Submits the Analysts' answers and writes the CRO's bundle; start the CRO.",
+        "Reads the Analysts' accepted answers and writes the CRO's bundle; start the CRO.",
     ),
     (
         "publish",

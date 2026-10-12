@@ -1,10 +1,10 @@
 // Production routes and owner readers; each scenario has an isolated VM.
 const {assert,fs,path,vm,library,appDir,source,fixedScript,files,counts,H,ID,clone,makeContext,check,q,resetHistory,nonempty,settle,decode,markupNodes,ancestors,hasClass,assertLocators,localizedContext,offered,followAnchor,press,connect,goalBody,studyBody,portfolioBody,reviewBody,lifecycleContext,lifetimeGate,readCancelled,reviewReadContext,reviewReadEntered,reviewReadCompleted,loadedReport,run} = require('./workbench_route_context.cjs');
 run('workbench_routes', async () => {
-  // : Portfolio and its opened book share one registered reader; Home
-  // and Settings consume automation. Change only outside-page owner answers:
+  // Portfolio and its opened book share one registered reader; Settings
+  // consumes automation. Change only outside-page owner answers:
   // no Task transition, Reload, explicit reread, navigation or business write.
-  for (const site of ['Portfolio','book','Home','Settings']) for (const lang of ['en','zh']) await check('External strategy standing '+site+'/'+lang,async()=>{
+  for (const site of ['Portfolio','book','Settings']) for (const lang of ['en','zh']) await check('External strategy standing '+site+'/'+lang,async()=>{
     const pkg='RETURN_G6_MU_ONLY', date='2026-08-03';
     let active=false, scheduled=false, failed=false;
     const activation=()=>({status:active?'ACTIVE':'INACTIVE',book_task_id:active?ID:null,activated_at:active?'2026-08-04T12:00:00Z':null,first_forward_session:'2026-08-04',horizon:'2026-09-01',next_requests:active?{deactivate:{operation:'STRATEGY_DEACTIVATE',strategy_package_id:pkg}}:{activate:{operation:'STRATEGY_ACTIVATE',task_id:ID}}});
@@ -19,16 +19,14 @@ run('workbench_routes', async () => {
     const c=localizedContext(lang,{realData:true,body});let patches=0;c.patchMain=()=>{patches++;};await connect(c);
     const p=c.probe, bookSite=['Portfolio','book'].includes(site);
     if(bookSite){await p.Data.openPortfolio(ID,site==='book'?date:null);await p.LiveActivation.ensure(p.Data.subject());}
-    else {c.setRoute('#page='+(site==='Home'?'overview':'settings'));await p.Settings.rereadUpdate();}
+    else {c.setRoute('#page=settings');await p.Settings.rereadUpdate();}
     await p.LiveActivity.refresh();await settle();
     const address=c.location.hash, sealed=p.Data.raw(), beforeTasks=JSON.stringify(p.Data.tasks()), oldPatches=patches;
-    const markup=()=>bookSite?String(p.LiveActivation.panel(p.Data.subject())):site==='Home'?String(p.LiveActivation.forwardRows().join('')):String(p.Settings.page());
+    const markup=()=>bookSite?String(p.LiveActivation.panel(p.Data.subject())):String(p.Settings.page());
     const inactiveMarkup=markup();
     if(bookSite)assert.ok(markup().includes('activation-confirm')&&p.Data.raw().standing.activation==='A_PERSON_MAY_ACTIVATE');
-    else if(site==='Home')assert.equal(p.LiveActivation.forwardRows().length,0);
     active=true;await p.LiveActivity.refresh();await settle();
     if(bookSite){assert.ok(markup().includes('deactivate')&&!markup().includes('data-value="activate"'),'the external activation replaces the offered action');assert.equal(p.Data.raw().standing.activation,'ACTIVE');assert.equal(p.Data.raw().series,sealed.series,'sealed result not replaced');assert.equal(p.Data.raw().holdings,sealed.holdings);}
-    else if(site==='Home')assert.equal(p.LiveActivation.forwardRows().length,1);
     else {assert.equal(p.Settings.dailyUpdate().value.runs_forward[0].strategy_package_id,pkg);assert.notEqual(markup(),inactiveMarkup,'Settings repaints the running strategy');}
     const unscheduledMarkup=markup();scheduled=true;await p.LiveActivity.refresh();await settle();
     if(!bookSite){assert.ok(p.Settings.dailyUpdate().value.next_due_at&&p.Settings.dailyUpdate().value.status==='ENABLED_SERVICE_LIFETIME','external schedule repaints');assert.notEqual(markup(),unscheduledMarkup);assert.ok(markup().includes(vm.runInContext("t('next {t}', {t: whenText('2026-08-05T22:00:00Z')})",c)),'visible next run reads the owner date in '+lang);}

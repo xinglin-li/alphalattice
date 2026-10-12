@@ -15,6 +15,7 @@ const Data = (() => {
   let taskOwners = new Map();
   let experiments = null, experimentsError = '', experimentRefusals = []; // declared parameters and unreadable per-Task plans from one listing
   let preparation = null; // the preparation owner's readback: with the session, then as the scene re-reads it
+  let home = {key: '', selection: null, value: null, error: null, loading: false}, homeVersion = 0;
   let decisions = null, decisionsError = ''; // U5: what waits on a person, the Host's one answer (PENDING_DECISIONS)
   // A comparison is identified by A, B and the holdings date it was requested at (`comparisonKey`);
   // a response is kept only while that identity is still the selection.
@@ -364,6 +365,7 @@ const Data = (() => {
   const taskReaders = new Set();
   const followTasks = (reader) => { taskReaders.add(reader); };
   async function resync() {
+    homeVersion++;
     if (workspaceStatus !== 'ready') return; // the first read lists them
     if (resyncing) { resyncAgain = true; return; }
     resyncing = true;
@@ -794,6 +796,7 @@ const Data = (() => {
     if (!entry) {alertDialog(t('Saved reference unavailable'),t('This exact reference was not discovered. No latest result was selected.'),btn(t('Close'),'close','','button'));return;} // an alert hides its X: its one answer closes it
     if (entry.kind === 'TASK_RECORD' && entry.task_id) return LiveTasks.open(entry.task_id);
     if(entry.review_publication_hash && entry.book) { if (push) objectEntry('review:' + entry.review_publication_hash); return LiveReview.open(entry.book, entry.review_publication_hash); }
+    if(entry.kind==='CONTINUOUS_UPDATE' && entry.book) { if(push)objectEntry('update:'+entry.book.update_publication_hash); return LiveReview.open(entry.book); }
     const studyPage={'factor.screening-development':'factor','alpha.model-development':'alpha','risk.covariance-development':'risk'}[entry.kind];
     if(studyPage && entry.task_id) { if (push) objectEntry('study:' + entry.task_id); return LiveStudy.open(entry.task_id,studyPage); }
     if (['portfolio.policy-development','INSTALLED_RESULT'].includes(entry.kind) && entry.status === 'SUCCEEDED') {
@@ -863,9 +866,36 @@ const Data = (() => {
     if (typeof value[format] !== 'string') throw new Error('Export format unavailable');
     download(value[format], 'AlphaLattice-' + subject.task_id + '.' + format, format === 'html' ? 'text/html' : 'application/json');
   }
+  const currentGoal = () => {
+    const followed = typeof LiveActivity !== 'undefined' ? LiveActivity.currentGoal?.() : null;
+    const goals = workspace?.research_context?.goals?.goals || [];
+    return followed || goals.find(goal => goal.state === 'OPEN' && goal.target_date) || goals.find(goal => goal.state === 'OPEN') || goals[0] || null;
+  };
+  const selectorKey = selector => JSON.stringify(Object.entries(selector || {}).sort(([a], [b]) => a.localeCompare(b)));
+  function observeHome(automation) {
+    if (app.page !== 'overview') return;
+    const goal = currentGoal(), date = goal?.target_date || goal?.declaration?.target_date;
+    const delivered = (automation?.runs_forward || []).filter(row => row.latest_update).map(row => ({...row, ...row.latest_update})).filter(row => (row.lifecycle || row.status) === 'SUCCEEDED' && row.review_selector).sort((a, b) => String(b.positions_session).localeCompare(String(a.positions_session)));
+    const selection = delivered.find(row => row.positions_session === date) || delivered[0];
+    const navigation = navigationIntent(), key = JSON.stringify([selection?.task_id, selectorKey(selection?.review_selector), navigation, homeVersion]);
+    if (home.key === key) return;
+    const reading = home = {key, selection, value: null, error: null, loading: Boolean(selection), navigation};
+    if (!selection) return;
+    void pageRead('/api/research-update?' + new URLSearchParams({task_id: selection.task_id})).then(value => {
+      if (home !== reading || !navigationCurrent(navigation)) return;
+      if (selectorKey(value.review_selector) !== selectorKey(selection.review_selector)) throw new Error('The selected positions changed. Open the current positions.');
+      reading.value = value;
+    }).catch(error => { if (home === reading && navigationCurrent(navigation)) reading.error = error; }).finally(() => {
+      if (home === reading && navigationCurrent(navigation)) { reading.loading = false; refresh(); }
+    });
+  }
+  const homeOutcome = () => {
+    if (app.page === 'overview' && typeof Settings !== 'undefined') observeHome(Settings.dailyUpdate().value);
+    return home.navigation && navigationCurrent(home.navigation) ? home : {selection: null, value: null, error: null, loading: false};
+  };
   return {
     read: pageRead, readShared: read, visitPage, leavePage, post, route, offers, posts, navigationIntent, navigationCurrent, beginNavigation, uniqueRows, readDocument:pageDocument, postDocument:(path,payload)=>request(path,payload),
-    setTasks, mergeTasks, followTasks, setInputs, entryPage, connect, runsOf, kindName, groupByDay, openEntry, openPortfolio, installedResult, refreshHistory, refreshStanding, compare, exportComparison, exportStudy,
+    currentGoal, homeOutcome, observeHome, setTasks, mergeTasks, followTasks, setInputs, entryPage, connect, runsOf, kindName, groupByDay, openEntry, openPortfolio, installedResult, refreshHistory, refreshStanding, compare, exportComparison, exportStudy,
     riskLinks: (task) => (task && riskLinks.task === task ? riskLinks.links : null), riskLinkRefusals: (task) => (task && riskLinks.task === task ? riskLinks.refusals || [] : []), get riskLinksError() { return riskLinks.error; },
     discoverRiskLinks: async (task) => { if (await discoverRiskLinks(task)) refresh(); },
     refreshRiskLinks: async (task) => { await discoverRiskLinks(task, true); refresh(); },

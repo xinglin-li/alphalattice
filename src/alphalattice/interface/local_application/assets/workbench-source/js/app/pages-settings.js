@@ -180,7 +180,7 @@ const Settings = (() => {
     updateReading = (async () => {
       try {
         const value = await Data.readShared('/api/research-update/automation', true);
-        if (ticket === updateTicket) update = {...update, value, refused: '', error: null};
+        if (ticket === updateTicket) { update = {...update, value, refused: '', error: null}; Data.observeHome(value); }
       } catch (e) { if (ticket === updateTicket) update = {...update, refused: String(e?.message || e), error: e}; }
       finally { updateReading = null; repaint(); }
     })();
@@ -201,7 +201,7 @@ const Settings = (() => {
   if (typeof Data !== 'undefined' && Data.followTasks) Data.followTasks(rereadUpdate);
   // the daily update's answer, read once for every page that shows it (Settings' switch, Home's Running forward)
   const dailyUpdate = () => { if (!update.read && typeof queueMicrotask === 'function') queueMicrotask(() => void readUpdate()); return update; };
-  const updateState = (v, {brief = false} = {}) => html`${t(UPDATE_STATES[v.status] || '') || codeWords(v.status)}${!brief && v.status === 'ENABLED_SERVICE_LIFETIME' && v.next_due_at ? html` · ${t('next {t}', {t: whenText(v.next_due_at)})}` : ''}`;
+  const updateState = (v) => html`${t(UPDATE_STATES[v.status] || '') || codeWords(v.status)}${v.status === 'ENABLED_SERVICE_LIFETIME' && v.next_due_at ? html` · ${t('next {t}', {t: whenText(v.next_due_at)})}` : ''}`;
   function updateRow() {
     dailyUpdate();
     const v = update.value;

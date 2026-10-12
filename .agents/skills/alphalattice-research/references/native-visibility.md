@@ -7,7 +7,7 @@ A Session binds itself when it first works on a workspace, and its first researc
 
 ## Team and the Goal's Conversation
 
-Team and the Goal's Conversation show what the product recorded of a bound Session's work: its requests, the bundles it prepared, the answers it submitted and those the Host accepted, and its usage. There is no message command; record a decision worth keeping with `goal note` ([goals](goals.md)). The lead submits every answer, so an accepted answer is filed as the lead's, its author `NOT_OBSERVED`. A prepared bundle with no accepted answer is an open assignment in `goal show`; it reminds and never blocks submission.
+Team and the Goal's Conversation show what the product recorded of a bound Session's work: its requests, the bundles it prepared, the answers it submitted and those the Host accepted, and its usage. There is no message command; record a decision worth keeping with `goal note` ([goals](goals.md)). An Evidence Analyst or CRO submits its own answer with its bundle's key, so the Host records it as that member's; a stage role's answer the lead submits is filed as the lead's, its author `NOT_OBSERVED`. A prepared bundle with no accepted answer is an open assignment in `goal show`; it reminds and never blocks submission.
 
 ## Usage
 

@@ -442,6 +442,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     )
     assert history["status"] == "AVAILABLE", history
     updates = [r for r in history["entries"] if r["kind"] == "CONTINUOUS_UPDATE"]
+    assert all(r["final_delivery"] is True for r in updates)
     assert {r["book"]["update_publication_hash"] for r in updates} == {
         c.value.content_hash,
         observed.content_hash,
@@ -450,6 +451,12 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     # admission, so a newer result never sorts after an older one.
     dated = {value.content_hash: value.published_at.isoformat() for value in (c.value, observed)}
     assert {r["book"]["update_publication_hash"]: r["recorded_at"] for r in updates} == dated
+    assert {r["book"]["update_publication_hash"]: r["positions_session"] for r in updates} == {
+        value.content_hash: (
+            value.pending_proposal or value.book
+        ).schedule.entry_session.isoformat()
+        for value in (c.value, observed)
+    }
     assert all(
         r["strategy_package_id"] == c.n.checkpoint.package.strategy_id for r in history["entries"]
     )

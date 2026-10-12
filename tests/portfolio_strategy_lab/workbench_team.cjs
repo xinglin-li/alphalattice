@@ -1,4 +1,4 @@
-// Team declarations, native provenance and owner receipts stay separate.
+// Declarations, native provenance and receipts stay distinct.
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const library=require('./workbench_library.cjs'); // the library's constants and the scripts' parameters, from the source (Q2)
 const finish=library.guard('workbench_team');
@@ -28,8 +28,8 @@ const c={console,URLSearchParams,Date,Number,Math,Set,Map,Object,Array,String,Pr
 const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes (round 72)');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
 c.Data.readShared = (...args) => c.Data.read(...args);
 library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);vm.runInContext(library.explainCodeSource(root),c);vm.runInContext(library.prerequisiteWaysSource(root),c);vm.runInContext(runShapes(root),c);library.refusal(c,root);
-for(const name of ['live-activity.js','live-team.js'])vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),c);
-vm.runInContext('globalThis.A=LiveActivity;globalThis.TM=LiveTeam;',c);
+for(const name of ['live-activity.js','team-members.js','live-team.js'])vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),c);
+vm.runInContext('globalThis.A=LiveActivity;globalThis.TM=LiveTeam;',c);const TeamMembers=vm.runInContext('TeamMembers',c);
 // Read the Workroom and Evidence of the retained session.
 const teamSection=c.TM.section;
 {const real=teamSection;c.TM.section=()=>{const was=c.app.page;c.app.page='team-evidence';const b=real();c.app.page=was;const a=real();return a+b;};} // the evidence view is painted first: a paint consumes the one-time arrival flash
@@ -56,7 +56,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
 (async()=>{
   const {A,TM}=c;
   const S1='sess-parent-1',S2='sess-parent-2';
-  // One session: native claims, product receipts, duplicates and unknown events stay distinct.
+  // One session: claims, receipts, duplicates and unknown events stay distinct.
   const long='x'.repeat(500);
   A.absorbPage(page('TAIL',[
     message(S1,S1,'research_lead','assignment','Screen the retained factor universe on the July input and report what survives.',{recipient:'child-analyst'}),
@@ -139,18 +139,17 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(html.includes('1 external event without a native session id'));
   assert.ok(!html.includes('team-select')&&!html.includes('id="teamSession"'),'one session needs no chooser');
   assert.ok(!reads.some(p=>p.includes('/api/experiments/run')),'the scene never requests a RUN');
-  // 2. Mismatched PM identity: research_lead on a child id is not the PM; the parent id without
-  //    the role is not the PM; neither manufactures a foreground PM.
+  // 2. Mismatched PM identity: research_lead on a child id, or the parent id without the role, is no PM.
   A.absorbPage(page('CONTINUED',[message(S2,'child-x','research_lead','assignment','I claim to lead.',{recipient:'child-y'}),message(S2,S2,'alternative_analyst','answer','The parent id speaking as an analyst.',{})]));
   hash.value='#page=tasks&team='+S2;html=TM.section();
   assert.ok(!html.includes('Main PM · declared foreground conversation'),'no PM manufactured');assert.ok(html.includes('no main PM declared'));
   assert.ok(html.includes('No product observations are retained in the current activity window.'),'an empty window is stated as retention, not absence (the Evidence page says it, N5: the dock is the way there)');assert.ok(!html.includes('No product operation, Task or artifact names'));
   assert.ok(html.includes('declared research_lead, not the parent session'));assert.ok(html.includes('the parent session id without the research_lead role'));
   hash.value='#page=tasks';
-  // 3. Filtering by participant is a route choice: the objection and the PM's reply to the CRO stay.
+  // 3. Filtering by participant is a route choice: the objection and the PM's reply stay.
   TM.select(S1);TM.showActor('child-cro');assert.equal(hash.value.includes('actor=child-cro'),true);
-  html=readScene();assert.ok(html.includes('Objection'));assert.ok(!html.includes(' · Question'),'other participants\' messages are filtered');assert.ok(html.includes('<strong>Main PM</strong><span class="team-mention" tabindex="0" data-tip="child-cro">→ @CRO</span><span class="team-kind">· PM response'));
-  TM.showActor('');html=readScene();assert.ok(html.includes(' · Question'));TM.select('');
+  html=readScene();assert.ok(html.includes('Objection'));assert.ok(!html.includes('<span class="team-kind">· Question'),'other participants\' messages are filtered');assert.ok(html.includes('<strong>Main PM</strong><span class="team-mention" tabindex="0" data-tip="child-cro">→ @CRO</span><span class="team-kind">· PM response'));
+  TM.showActor('');html=readScene();assert.ok(html.includes('<span class="team-kind">· Question'));TM.select('');
   // Discovery and preview are not verification; only the exact owner's readback verifies.
   TM.select(S1);await TM.resolve(P1);assert.ok(reads.some(p=>p.includes('/api/research-history')));
   assert.equal(TM.resolved().get(P1).level,'unresolved');html=readScene();assert.ok(html.includes('[metadata:unresolved]')&&html.includes('<team-verify:'+P1+'>'));
@@ -182,8 +181,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   Object.assign(c,originalWords);previewStatus='EXPIRED';
 
   assert.ok(!reads.some(p=>p.includes('/api/workbench/portfolio')),'an authored experiment verifies through its readback, not the Portfolio open');
-  // The bare-hash Verify flow as the button runs it: the hash is discovered as a saved result, the
-  // Verify button carries the display reference, and the owner's answer lands on that same row.
+  // Exact bare-hash Verify keeps its declared reference.
   await TM.resolve(RESULT);const found=TM.resolved().get(RESULT);assert.equal(found.level,'discovered','a History hit is discovery');
   assert.equal(JSON.stringify(found.target),JSON.stringify({kind:'result',ref:RESULT}));
   html=readScene();assert.ok(html.includes('<team-verify:'+RESULT+'>'),'Verify carries the reference as written');assert.ok(!html.includes('<team-verify:result:'+RESULT+'>'));
@@ -197,7 +195,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const verified=TM.resolved().get(RESULT);assert.equal(verified.level,'verified');assert.equal(verified.failure,null);assert.equal(JSON.stringify(verified.open),JSON.stringify(['history-open','result:'+RESULT]));
   html=readScene();assert.ok(html.includes('[verified:verified by Portfolio result]')&&!html.includes('<team-verify:'+RESULT+'>')&&!html.includes('owner readback failed'));
   assert.equal(TM.resolved().has('result:'+RESULT),false,'still one row: the display reference');
-  // Installed replay verifies through its exact Portfolio report, never the experiment owner.
+  // Installed replay uses its Portfolio report.
   results=[{result_hash:RESULT2,report_hash:'q'.repeat(64),program_hash:'p'.repeat(64),task_id:INSTALLED,completed_at:'2026-09-14T12:00:00Z'}];
   reportBody=(asked)=>({result_hash:asked,report_hash:'q'.repeat(64),originating_task_id:asked===RESULT2?INSTALLED:'x',used_by_task_ids:[asked===RESULT2?INSTALLED:'x']});
   await TM.resolve(INSTALLED);assert.equal(TM.resolved().get(INSTALLED).target.taskKind,'portfolio_public_development_replay');
@@ -222,9 +220,9 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   // Awaiting sessions stay open; the viewer's recorded-session fold persists.
   html=sessionsHtml();assert.ok(html.includes('<page:team:'+S1+'>')&&!html.includes('<page:team:'+S3+'>')&&!html.includes('[shown]'),'the session awaiting the Main PM is open, the recorded one folded, none marked until one is chosen: '+html.slice(0,2400));
   c.Lobby.fold('sessions:recorded');html=sessionsHtml();assert.ok(html.includes('<page:team:'+S1+'>')&&html.includes('<page:team:'+S3+'>')&&prefs.get('lobby.sessions').folded.recorded===false,'the recorded group opens and stays open');
-  TM.select(S3);html=sessionsHtml();assert.ok(/ROW\(Another PM conversation\|/.test(html)&&!html.includes('[shown]'),'a session is named by its title (F4: its first sentence where no rule of the verb table holds); the lobby marks none -- none is open while it is shown (the user, 2026-09-24: back from a session, its row stayed selected): '+html.slice(0,600));
+  TM.select(S3);html=sessionsHtml();assert.ok(/ROW\(Another PM conversation\.\|/.test(html)&&!html.includes('[shown]'),'the full declared question names the session; the lobby marks none while shown: '+html.slice(0,600));
   html=TM.section();assert.ok(html.includes('Another PM conversation.'),'the chosen session is shown');
-  TM.select(S1);assert.ok(hash.value.includes('team='+S1));assert.ok(sessionsHtml().includes('ROW(Another PM conversation|'),'the Sessions list tells the sessions apart by their titles');html=TM.section();assert.ok(!html.includes('Another PM conversation.'));assert.ok(html.includes('Screen the retained factor universe'));
+  TM.select(S1);assert.ok(hash.value.includes('team='+S1));assert.ok(sessionsHtml().includes('ROW(Another PM conversation.|'),'the Sessions list tells the sessions apart by their questions');html=TM.section();assert.ok(!html.includes('Another PM conversation.'));assert.ok(html.includes('Screen the retained factor universe'));
   A.absorbPage(page('CONTINUED',[message(S3,'child-analyst-2','alternative_analyst','answer','later work in the other session',{})]));
   html=TM.section();assert.ok(html.includes('Screen the retained factor universe')&&!html.includes('later work in the other session'),'a repaint with new rows keeps the selected session');
   assert.ok(A.section().includes('<team-open:'+S3+'>'),'the feed row of a native event offers its session\'s scene');
@@ -267,7 +265,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   vm.runInContext('readRoute()',routed);
   assert.equal(routed.app.page,'team');assert.equal(routed.location.hash,'#page=team&team=exact-session&actor=exact-actor&event=exact-event');
   const priorRead=c.Data.read;let returnedCase=P1;
-  // A case reference verifies through the owner's saved-revision read, never the evidence readback.
+  // A case reference verifies by the owner's saved-revision read, never the evidence readback.
   c.Data.read=async p=>{if(p.startsWith('/api/goals/show?'))throw Error('unexpected evidence readback');return p.startsWith('/api/goals/narrative?')?{goal_hash:returnedCase,goal:{goal_hash:returnedCase,goal_id:'11111111-1111-4111-8111-111111111111'},evidence_verification:'NOT_PERFORMED'}:priorRead(p);};
   await TM.resolve('case:'+P1);await TM.verify('case:'+P1);
   assert.equal(TM.resolved().get('case:'+P1).target.kind,'case');
@@ -275,8 +273,8 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   returnedCase=P2;await TM.verify('case:'+P1);
   assert.equal(TM.resolved().get('case:'+P1).level,'discovered');
   assert.equal(TM.resolved().get('case:'+P1).open,null,'a different revision cannot open as the requested case');
-  // 8. Relationships are explicit, unambiguous associations by the established Main PM -- never a
-  //    shared object, an earlier message, a declared word or an id that several exchanges declare.
+  // 8. Relationships are explicit associations by the Main PM -- never a shared object, an earlier
+  //    message, a declared word or an id that several exchanges declare.
   const S4='sess-parent-4',T4='0c0c0c0c-0000-4000-8000-00000000c4c4';
   A.absorbPage(page('CONTINUED',[
     message(S4,S4,'research_lead','assignment','Build the book on T4.',{recipient:'a4',reference:T4,message_id:'as-4'}),
@@ -300,7 +298,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(dupIds.every(id=>!objRow(byId('pm-dup')).includes('<team-event:'+id+'>')),'no last-write-wins target is offered');
   assert.ok(html.includes('2 objections awaiting the Main PM'));
   assert.ok(html.includes('Declared as a PM response by the analyst.'),'the non-PM declaration is not discarded');
-  // The valid explicit reply: the established Main PM, a pm_response naming the objection's unique id.
+  // The valid reply: the Main PM's pm_response naming the objection's unique id.
   A.absorbPage(page('CONTINUED',[message(S4,S4,'research_lead','pm_response','Recorded: the budget stands; the book is not frozen.',{recipient:'c4',reference:'obj-4',message_id:'pm-obj-4'})]));
   html=TM.section();
   assert.ok(objRow(byId('obj-4')).includes('data-answered="true"')&&objRow(byId('obj-4')).includes('Recorded Main PM response · not a resolution; the objection stays as recorded')&&objRow(byId('obj-4')).includes('<team-event:'+byId('pm-obj-4')+'>'),'the explicit Main PM reply is recorded and read from the objection');
@@ -314,7 +312,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   html=TM.section();
   assert.ok(objRow(byId('obj-4')).includes('data-answered="false"')&&objRow(byId('pm-obj-4')).includes('declared by 2 exchanges · ambiguous, names none'),'a duplicated objection id withdraws the attribution instead of picking one');
   assert.ok(html.includes('3 objections awaiting the Main PM'));
-  // 9. Arrivals: a Task completion is new, not verified; only the compatible owner verification is.
+  // 9. Arrivals: a Task completion is new, not verified; only owner verification is.
   const done=item('TaskControlTransition',{task_lifecycle:'SUCCEEDED',task_class:'research_experiment',disposition:'COMMAND_RETURNED',verified_prefix_count:1,total_units:1},{task_id:T4,run_id:'local-web:'+T4,authority:'TASK_CONTROL_ASSERTION',source_kind:'TASK_CONTROL'});
   A.absorbPage(page('CONTINUED',[done]));
   html=TM.section();
@@ -337,26 +335,26 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const usage5=(id,channel)=>attributed(external('NATIVE_AGENT_USAGE',{native_session_id:S5,native_agent_id:id,role:'alphalattice_cro',model:'fixture-'+id,input_channel:channel,last_at:'2026-09-30T12:00:00Z'},'Fixture usage'));
   const oldMember=attributed(message(S5,'old-member','alphalattice_cro','answer','Earlier workspace answer'),G2),usageOnly=usage5('old-member','CODEX_SESSION_FILE');
   A.absorbPage(page('CONTINUED',[oldMember,usageOnly,usage5('usage-child','CLAUDE_CODE_SESSION_FILE'),usage5('unknown','ACTOR_DECLARED'),bound(refitCase)]));hash.value='#page=team&team='+S5;c.app.page='team';TM.refresh();TM.section();await new Promise(r=>setImmediate(r));let sum=TM.summary();html=TM.section();
-  assert.equal(sum.question.title,narratives[H1].title);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H1].question)&&html.includes(narratives[H1].title));assert.equal(sum.question.goalId,G1);assert.equal(sum.participants,1);
+  assert.equal(sum.question.title,narratives[H1].title);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H1].question));assert.equal(TM.runs([TM.scene().sessions.find(s=>s.id===S5)])[0].name,narratives[H1].question);assert.equal(sum.question.goalId,G1);assert.equal(sum.participants,1);
   assert.deepEqual(narrativeReads,[H1]);assert.ok(TM.recordOf(S5).includes(oldMember.payload.summary));
-  const native5=TM.scene(false,true).sessions.find(s=>s.id===S5);
-  assert.deepEqual([...native5.participants.keys()].sort(),[S5,'old-member','usage-child'].sort());
+  const native5=TM.scene(false,true).sessions.find(s=>s.id===S5);assert.equal(TM.runs([{...native5,goalScope:G2}])[0].question,'');
+  assert.deepEqual([...native5.participants.keys()],[S5],'a thread begun elsewhere is one line');assert.equal(native5.others.count,2);
   assert.equal(TM.runs([native5])[0].participants,1);assert.equal(native5.goals.size,1);
   const paging5={pageOf:c.pageOf,pager:c.pager};c.pageOf=l=>({shown:l,page:0,pages:1});c.pager=()=>'';
-  for(const view of ['team-sessions','team-participants']){hash.value='#page='+view+'&team='+S5;c.app.page=view;const shown=teamSection();assert.equal(TM.counts().participants,1);assert.ok(view==='team-sessions'||shown.includes('fixture-old-member')&&shown.includes('fixture-usage-child')&&!shown.includes('fixture-unknown'));}
+  for(const view of ['team-sessions','team-participants']){hash.value='#page='+view+'&team='+S5;c.app.page=view;const shown=teamSection();assert.equal(TM.counts().participants,1);assert.ok(view==='team-sessions'||shown.includes(TeamMembers.othersLine(native5))&&!shown.includes('fixture-old-member'));}
   Object.assign(c,paging5);hash.value='#page=team&team='+S5;c.app.page='team';
   A.absorbPage(page('CONTINUED',[bound('case:'+H3)]));TM.refresh();await new Promise(r=>setImmediate(r));sum=TM.summary();html=TM.section();const head5=()=>TM.section().split('</header>')[0];
   assert.equal(sum.question.title,narratives[H3].title);assert.equal(sum.question.choice,false);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H3].question)&&!html.includes('<team-question:'));assert.equal(sum.question.goalId,G1);assert.equal(sum.question.groups.length,1);
-  assert.ok(head5().includes(narratives[H3].title)&&!head5().includes(H1.slice(0,8)));assert.ok(folds.some(f=>f.key===c.t('{n} earlier revision',{n:1})&&f.body.includes(H1.slice(0,8))));
+  assert.ok(head5().includes(narratives[H3].question)&&!head5().includes(H1.slice(0,8)));assert.ok(folds.some(f=>f.key===c.t('{n} earlier revision',{n:1})&&f.body.includes(H1.slice(0,8))));
   const currentMember=attributed(message(S5,'current-member','alphalattice_alpha','answer','Current Goal answer',{reference:turnoverCase}));A.absorbPage(page('CONTINUED',[currentMember]));await TM.resolve(turnoverCase);await TM.verify(turnoverCase);sum=TM.summary();
   assert.equal(sum.participants,2);assert.equal(sum.question.title,narratives[H3].title);assert.ok(TM.section().includes('team-question-related')&&TM.section().includes(narratives[H3].question));assert.ok(head5().includes('FACT('+c.t('Participants')+'=2)'));
   A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Second Goal',{reference:turnoverCase}))]));sum=TM.summary();html=TM.section();
-  assert.equal(sum.question.kind,'choice');assert.equal(sum.question.text,c.t('{n} goals declared by Main PM',{n:2}));assert.ok(html.includes('data-question="choice"')&&html.includes('<team-question:'+turnoverCase+'>')&&head5().includes(c.t('{n} goals declared by Main PM',{n:2})));assert.equal(sum.question.count,2);
+  assert.equal(sum.question.kind,'case-verified');assert.equal(sum.question.goalId,G1);assert.equal(sum.question.text,narratives[H3].question);assert.ok(html.includes('<team-question:'+turnoverCase+'>')&&head5().includes(narratives[H3].question));assert.equal(sum.question.groups.length,2);
   TM.chooseQuestion(turnoverCase);sum=TM.summary();html=TM.section();assert.equal(sum.question.goalId,G2);assert.equal(sum.question.title,narratives[H2].title);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H2].question)&&html.includes('[ready:'+c.t('chosen')+']'));
   A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Unread Goal',{reference:'case:'+H4}))]));TM.refresh();assert.equal(TM.summary().question.ref,turnoverCase);assert.ok(TM.section().includes(narratives[H2].question));await new Promise(r=>setImmediate(r));
   assert.equal(TM.resolved().get('case:'+H4).failure,'goal.revision_unknown');assert.equal(TM.summary().question.ref,turnoverCase);const readCount5=narrativeReads.length;TM.section();TM.summary();assert.equal(narrativeReads.length,readCount5);
   TM.chooseQuestion('case:'+H4);sum=TM.summary();html=TM.section();assert.equal(sum.question.kind,'case-declared');assert.equal(sum.question.text,c.t('Goal {ref}',{ref:H4.slice(0,c.SHORT.hash)}));assert.ok(html.includes('data-question="case-declared"')&&head5().includes(c.t('Goal {ref}',{ref:H4.slice(0,c.SHORT.hash)}))&&html.includes('[ready:'+c.t('chosen')+']'));
-  TM.chooseQuestion('');html=TM.section();assert.equal(TM.summary().question.text,c.t('Choose a Goal reference'));assert.ok(html.includes('data-question="choice"')&&head5().includes(c.t('Choose a Goal reference')));Object.assign(c,was5);
+  TM.chooseQuestion('');html=TM.section();assert.equal(TM.summary().question.text,narratives[H3].question);assert.ok(html.includes('data-question="case-verified"')&&head5().includes(narratives[H3].question));Object.assign(c,was5);
   const S6='sess-parent-6';
   A.absorbPage(page('CONTINUED',[
     message(S6,S6,'research_lead','assignment','Screen the August universe.',{recipient:'a6',message_id:'as-6a'}),
@@ -391,7 +389,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   entry=keys(routeUrl('team'));assert.equal(entry.team,S4,'the link keeps the unavailable selection until the reader chooses');
   sum=TM.summary();assert.equal(sum.missing,S4);assert.equal(sum.session,undefined,'the Overview names the missing selection instead of the newest');
   TM.select('');html=TM.section();sum=TM.summary();assert.equal(sum.session,S6);assert.equal(sum.missing,undefined);
-  // 12. C2 (law 140): counted folds keep their ends; exchange details open in place, quoting replies.
+  // 12. C2 (law 140): counted folds keep their ends; details open in place.
   const S7='sess-parent-7';
   A.absorbPage(page('CONTINUED',[
     message(S7,S7,'research_lead','assignment','Refit on the July input.',{recipient:'a7',message_id:'as-7'}),
@@ -432,7 +430,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   TM.toggleWords(long7);html=TM.section();
   assert.ok(html.includes('data-clamp="open"')&&html.includes('<team-words:'+long7+' aria-expanded="true" data-clamp-way >{Show less}'),'a clamped exchange opens where it stands, and closes again');
   TM.toggleWords(long7);
-  // 13. C3 (law 142): Display keeps Show and density per session; arrivals target the newest, folded or not.
+  // 13. C3 (law 142): Display keeps Show and density per session; arrivals go to the newest.
   TM.markSeen();TM.showEvent(q7);html=TM.section();
   const name7='thread.'+S7,spec7=()=>c.displays[name7],choose=(patch)=>spec7().apply(c.setDisplay(name7,patch)),actorOf=()=>new URLSearchParams(hash.value.slice(1)).get('actor')||'';
   assert.ok((html.split('<span class="team-head-tools">')[1]||'').includes('<display:'+name7+'>')&&html.includes('<span class="team-members"'),'the head carries the members (C4) and the Display');
@@ -472,16 +470,14 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(at(lastHook)<0&&new RegExp('data-holds="[^"]*'+lastHook+'"').test(html)&&html.includes('data-waypoint="#team-event-'+lastHook+', [data-holds~=\''+lastHook+'\']"')&&html.includes('{{arrow}<span>4 new exchanges</span>}'),'the newest folded into a run of hooks: the run is its place');
   TM.markSeen();html=TM.section();assert.ok(!html.includes('team-new-bar'),'arrivals marked seen leave no pill');
   c.btnAttrs=wasAttrs;
-  // U25, U31: a usage reading is its own kind, never an unknown one, and its latest reading counts; the session names
-  // the goals its rows were filed under and its usage by model; a member's tip says its models and tokens and a card
-  // that differs; a decision note reads as one; a reply names the assignment it answers (reply_to)
-  c.link=(label,pg,cls,extra)=>`LINK(${pg} ${JSON.stringify(extra||{})})${label}`; // the goals' links, as the builder takes them
+  // Usage and replies.
+  c.link=(label,pg,cls,extra)=>`LINK(${pg} ${JSON.stringify(extra||{})})${label}`;
   const S9='sess-parent-9',G9='99999999-9999-4999-8999-999999999999';
   const usage=(agent,role,counts,extra={})=>{
     const subject={native_session_id:S9,native_agent_id:agent,role,native_host:'codex',input_channel:'CODEX_SESSION_FILE',source_kind:'CODEX_SESSION_FILE',sample_time_kind:'LATEST_USAGE_RECORD_AT',last_at:'2026-09-14T12:07:00Z',model:'gpt-6',efforts:'high',pin_differs:'effort',
       responses:String(counts[0]),input_tokens:String(counts[1]),cache_read_tokens:String(counts[2]),cache_write_tokens:String(counts[3]),output_tokens:String(counts[4]),...extra};
     const observed=external('NATIVE_AGENT_USAGE',Object.fromEntries(Object.entries(subject).filter(([,value])=>value!==null&&value!==undefined&&value!=='')),'usage so far');
-    delete observed.payload.subject.source_time_kind;delete observed.payload.subject.native_event_id; // usage keeps its own sample clock and canonical snapshot identity
+    delete observed.payload.subject.source_time_kind;delete observed.payload.subject.native_event_id;
     if(subject.native_host==='claude-code'){observed.payload.producer_id='claude-code-native';observed.source_id='claude-code-native:scope1';}
     return observed;
   };
@@ -494,18 +490,18 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const s9=TM.scene().sessions.find(x=>x.id===S9);
   assert.equal(s9.unknownKinds.length,0,'a usage reading is its own kind');
   const read9=[...s9.participants.get('a9').usage.values()];
-  assert.ok(read9.length===1&&read9[0].input===120&&read9[0].output===50,'the latest reading of a model counts, never a sum of readings');
-  assert.equal(read9[0].last_at,'2026-09-14T12:07:00Z','the sample time comes from the same latest snapshot as its counts');
-  assert.equal(read9[0].source_kind,'CODEX_SESSION_FILE','the source belongs to the latest snapshot, replacing a historical unknown source');
-  assert.ok(html.includes('FACT(Goals=')&&html.includes('99999999'),'the session names the goal its rows were filed under: '+html.slice(html.indexOf('FACT('),html.indexOf('FACT(')+600));
-  assert.ok(!html.includes('FACT(Usage='),'the head holds no usage: the Participants folder is its one place (U51)');
-  assert.ok(html.includes('gpt-6 (high) · 120 in')&&/differs from its card: [Ee]ffort/.test(html),html.slice(html.indexOf('team-actor:a9'),html.indexOf('team-actor:a9')+600)+'the member\'s tip: its models, tokens and a card that differs');
-  assert.ok(html.includes('Decision')&&!html.includes('Message kind not declared'),'a decision note reads as one');
+  assert.ok(read9.length===1&&read9[0].input===120&&read9[0].output===50,'latest model reading');
+  assert.equal(read9[0].last_at,'2026-09-14T12:07:00Z','same snapshot time');
+  assert.equal(read9[0].source_kind,'CODEX_SESSION_FILE','same snapshot source');
+  assert.ok(html.includes('FACT(Goals=')&&html.includes('99999999'),'filed goal: '+html.slice(html.indexOf('FACT('),html.indexOf('FACT(')+600));
+  assert.ok(!html.includes('FACT(Usage='),'usage in Participants only');
+  assert.deepEqual([read9[0].model,[...read9[0].efforts],read9[0].responses,read9[0].input,read9[0].output,[...read9[0].pinDiffers]],['gpt-6',['high'],4,120,50,['effort']]);
+  assert.ok(html.includes(c.t('differs from its card: {what}',{what:c.codeWords('effort')})));
+  assert.ok(html.includes('Decision')&&!html.includes('Message kind not declared'),'declared decision');
   const replyId=[...s9.entries.values()].find(e=>e.messageId==='an-9').id,assignId=[...s9.entries.values()].find(e=>e.messageId==='as-9').id;
   const at9=html.indexOf('id="team-event-'+assignId+'"'),ol9=html.indexOf('<ol class="team-replies">',at9),rp9=html.indexOf('id="team-event-'+replyId+'"',ol9);
-  assert.ok(at9>=0&&ol9>at9&&rp9>ol9&&html.slice(ol9,rp9).includes('team-reply'),'a reply sits under the assignment its reply_to names');
-  // U51: the session's Participants folder -- a row a member and model: its exchanges, its model and efforts, its
-  // latest reading's tokens, a mark where it differs from its card; U196 keeps parent and child counts separate
+  assert.ok(at9>=0&&ol9>at9&&rp9>ol9&&html.slice(ol9,rp9).includes('team-reply'),'reply under assignment');
+  // Per-member readings.
   const was51={table:c.table,tr:c.tr,pageOf:c.pageOf,pager:c.pager,page:c.app.page,hint:c.hint,t:c.t,I18N:c.I18N};
   countWords.I18N.set('en');Object.assign(c,{hint:countWords.hint,t:countWords.t,I18N:countWords.I18N});
   c.table=(h,rows,note,o)=>'<table>'+h.map(x=>x.label).join('|')+' '+(Array.isArray(rows)?rows.join(''):rows)+(o&&o.foot?'<tfoot>'+o.foot.map(x=>String(x??'')).join('|')+'</tfoot>':'')+'</table>';
@@ -517,28 +513,48 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const rows9=html.split('<tr>').slice(1),row9=rows9.find((r)=>r.includes('gpt-6'))||'';
   assert.ok(rows9[0].includes('Lead')&&rows9[0].includes('no usage read'),'lead and absence: '+rows9[0]);
   assert.ok(row9.includes('gpt-6')&&row9.includes('high')&&/120\D+50\D+25\D+6/.test(row9)&&row9.includes('differs from its card'),'member reading: '+row9);
-  assert.ok(row9.includes('1 answer')&&row9.includes('1 message'),'its exchanges by kind: '+row9);
+  assert.ok(row9.includes('Answer × 1')&&row9.includes('Decision × 1'),'exchanges by kind: '+row9);
   assert.ok(!html.includes('<tfoot>')&&!html.includes('Recorded tokens so far'),'no inferred total');
-  assert.ok(row9.includes('Codex session file')&&row9.includes('sampled '),'the latest member reading names its source and source sample time: '+row9);
+  assert.ok(row9.includes('Codex session file')&&row9.includes('sampled '),'source and sample: '+row9);
   countWords.I18N.set('zh');const zh51=TM.section();
-  assert.ok(zh51.replace(/<[^>]*>/g,'').includes('智能体|活动|模型|输入|输出|缓存读取|缓存写入'),'the compact Chinese column labels keep the same meanings');
-  assert.ok(zh51.includes('data-tip="所有用量的单位均为 token。输入不含缓存读取和缓存写入。" tabindex="0">输入</span>'),'the Chinese hint keeps the same token units and uncached-input definition');
-  // U196: host siblings, absent counters and cumulative snapshots stay independent.
+  assert.ok(zh51.replace(/<[^>]*>/g,'').includes('智能体|活动|模型|输入|输出|缓存读取|缓存写入'),'Chinese columns');
+  assert.ok(zh51.includes('data-tip="所有用量的单位均为 token。输入不含缓存读取和缓存写入。" tabindex="0">输入</span>'),'Chinese token units');
+  countWords.I18N.set('en');
+  const attrs9=c.btnAttrs;c.btnAttrs=label=>'{'+label+'}';
+  const objection9=message(S9,'a9','independent_cro','objection','Review standing.');
+  const host9=['issue','correction','acceptance'].map(kind=>{
+    const e=message(S9,'host9','alphalattice_host',kind,kind);
+    Object.assign(e.payload.subject,{input_channel:'PRODUCT_REVIEW',authorship_basis:'HOST_ACCEPTED',recipient_id:'a9'});
+    return e;
+  });
+  A.absorbPage(page('CONTINUED',[objection9,...host9]));
+  html=TM.section();
+  const shared9=html.split('<tr>').slice(1),analyst9=shared9.find(r=>r.includes('Alternative Analyst')),cro9=shared9.find(r=>r.includes('{CRO}'));
+  assert.ok(analyst9&&cro9&&analyst9!==cro9,'separate role rows');
+  assert.equal(shared9.filter(r=>r.includes('gpt-6')).length,1,'usage once');
+  assert.ok(cro9.includes(c.t('Usage shown with this thread’s first role')),'shared usage disclosed');
+  assert.ok(!shared9.some(r=>r.includes('{Host}')),'Host is no agent');
+  hash.value='#page=team&team='+S9;c.app.page='team';html=TM.section();
+  for(const e of host9)assert.ok(html.includes('id="team-event-'+e.observation_id+'"'),'Host event retained');
+  c.btnAttrs=attrs9;
+  // Independent counters.
   countWords.I18N.set('en');
   for(const [host,source,label] of [['codex','CODEX_SESSION_FILE','Codex session file'],['claude-code','CLAUDE_CODE_SESSION_FILE','Claude Code session file']]){
     const sid='sess-196-'+host,childA='child-196-a-'+host,childB='child-196-b-'+host,unknown='child-196-unknown-'+host;
-    const metadata={native_session_id:sid,native_host:host,input_channel:source,source_kind:null,pin_differs:''}; // the actual bridge retains source only in input_channel
+    const metadata={native_session_id:sid,native_host:host,input_channel:source,source_kind:null,pin_differs:''};
     const declared196=[
       message(sid,sid,'research_lead','assignment','Read one exact member.',{recipient:childA}),
       message(sid,sid,'research_lead','assignment','Read the other exact member.',{recipient:childB}),
       usage(sid,'research_lead',[9,900,90,9,90],metadata),
-    ]; // allocate the owner page in commit order before constructing the inspected child snapshot
+    ];
+    metadata.first_at=declared196[0].occurred_at;
     const raw196=usage(childA,'alternative_analyst',[1,11,1,0,12],metadata);
-    assert.equal(Object.hasOwn(raw196.payload.subject,'source_kind'),false,'the current raw fixture has no duplicated source field');
+    assert.equal(Object.hasOwn(raw196.payload.subject,'source_kind'),false,'one source field');
     A.absorbPage(page('CONTINUED',[
       ...declared196,
       raw196,
       usage(childB,'alternative_analyst',[2,21,2,0,22],metadata),
+      usage('helper-'+host,null,[1,41,4,0,42],{...metadata,model:'helper-model',specialist_verified:'false',observed_role:'general-purpose'}),
       usage(unknown,'alphalattice_risk',[],{...metadata,model:'unknown-model',input_channel:'UNVERIFIED_SESSION_FILE',sample_time_kind:null,last_at:null}),
     ]));
     hash.value='#page=team-participants&team='+sid;c.app.page='team-participants';
@@ -553,6 +569,9 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
     assert.ok(rows196.filter(row=>row.includes('gpt-6')).every(row=>row.includes(label)&&row.includes('sampled ')),'source and sample');
     const unknown196=rows196.find(row=>row.includes('unknown-model'))||'';
     assert.ok(unknown196.includes('Usage source not observed')&&unknown196.includes('Sample time not observed')&&/\|\|\|\|<\/tr>/.test(unknown196),'unknown reading: '+unknown196);
+    const helper196=rows196.find(row=>row.includes('helper-model'))||'';
+    assert.equal(first196.participants.get('helper-'+host).roles.size,0);
+    assert.ok(helper196.includes('data-specialist-verified="false"')&&helper196.includes(countWords.t('Specialist identity not verified'))&&helper196.includes('|41|42|4|0'));
     assert.ok(!shown196.includes('<tfoot>')&&!shown196.includes('Recorded tokens so far'),'no inferred total');
     A.absorbPage(page('CONTINUED',[usage(childA,'alternative_analyst',[3,31,3,0,32],{...metadata,last_at:'2026-09-14T12:08:00Z'})]));
     const latest196=TM.scene().sessions.find(s=>s.id===sid);
@@ -569,8 +588,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
     assert.ok(TM.usageMetadata(metadata).includes('Sample time not observed'),'unknown sample');
   }
   Object.assign(c,{table:was51.table,tr:was51.tr,pageOf:was51.pageOf,pager:was51.pager,hint:was51.hint,t:was51.t,I18N:was51.I18N});c.app.page=was51.page;
-  // U53: the Product record leads with the session's own work; a person's reads on the Local Web are one line, closed until
-  // pressed; a group whose records differ only in time does not open
+  // Product records lead with the session's work; time-only duplicate groups stay closed.
   const S53='sess-parent-53',P53='5'.repeat(64);
   const originalGroupRow=c.evidenceRow,originalGroupLink=c.link,groupReadings=[],namedLinks=[],unnamedWhys=[];
   let unnamed53;
@@ -589,8 +607,8 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const open53=(html.split('id="teamProductFacts"')[1]||'').split('</section>')[0];
   assert.ok(open53.includes('EVIDENCE_PREVIEW'),'pressed, the person groups show');
   assert.ok(!/data-fold="group:EVIDENCE_PREVIEW/.test(open53),'a group that differs only in time does not open');
-  // V682: both folded and nonopening actual groups keep reference declarations beside their
-  // clipped main, with the original event target and declaring actor retained in the disclosure.
+  // V682: folded and nonopening groups keep reference declarations beside their clipped main,
+  // the event target and declaring actor in the disclosure.
   const withNames=groupReadings.filter(row=>row.props?.[0]);
   assert.ok(withNames.length,'the labelled Team fixture reaches actual reference-bearing groups');
   for(const row of withNames) {
@@ -602,9 +620,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(namedLinks.some(link=>link.page==='team'&&link.extra?.team===S53&&link.extra?.event===declaration53.id),'the actual reference link still names the declaring exchange');
   c.evidenceRow=originalGroupRow;c.link=originalGroupLink;
   TM.toggleFold('people');c.app.page=was51.page;
-  // U54: the session's 产出 -- the Tasks it submitted and the goals it took, from the Host's two reads by agent session
-  // (never the activity feed): each Task with its final state and its owner's readback, unavailable with the owner's
-  // code; each goal with the Host's check and its deliverables, apart from the artifacts; older pages from each foot
+  // Session outputs use Host Task and Goal readbacks, including refusals and older pages.
   const wasLink54=c.link;c.link=(label,page)=>`<a href="#page=${page}">${label}</a>`;
   const S54=S53,reads54=[],ID54=(n)=>'54540000-0000-4000-8000-00000000000'+n;
   const T54=(n,extra={})=>({task_id:ID54(n),task_kind:'research_experiment',lifecycle:'SUCCEEDED',goal_summary:'Refit '+n,last_activity_at:'2026-09-30T10:0'+n+':00Z',submitted_by:{vendor:'claude',session:S54,goal_id:null},final_state:'SUCCEEDED',artifact:null,...extra});
@@ -654,8 +670,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(refusedTasks54.includes(ID54(5).slice(0,8)),'the refusal names the Task whose projection could not be read: '+refusedTasks54);
   assert.ok(refusedTasks54.includes('href="#page=overview"')&&refusedTasks54.includes('href="#page=storage"'),'the session output offers Workspace and Storage recovery');
   assert.ok(!/undefined\s*\/\s*undefined/.test(refusedTasks54),'a refusal has no fabricated stage counts');
-  // U118 / MA4: the real panel and refusal builders expose mixed collections' box ancestry.
-  // Legacy panel stubs above deliberately print labels only; they cannot hold a nesting rule.
+  // Real builders expose box ancestry; label-only stubs cannot prove nesting.
   const before118={panel:c.panel,sectionHead:c.sectionHead,infoMark:c.infoMark,btnAttrs:c.btnAttrs,tr:c.tr};
   const components118=fs.readFileSync(path.join(root,'components.js'),'utf8');
   const panel118=components118.slice(components118.indexOf('function panel('),components118.indexOf('/* A banner'));
@@ -709,8 +724,8 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   Object.assign(c,before118);
   c.link=wasLink54;
   Object.assign(c,{table:was54.table,tr:was54.tr,btnAttrs:was54.btnAttrs,LiveGoals:was54.LiveGoals});c.Data.read=was54.read;TM.leaveOutputs();c.app.page=was54.page;
-  // A path-addressed assignment names its recorded participant on the thread; the locator
-  // remains in disclosure. No path spelling, missing basis or ambiguous binding invents one.
+  // A path-addressed assignment names its recorded participant; the locator stays in disclosure.
+  // No path spelling, missing basis or ambiguous binding invents one.
   const recipientSession='recipient-session',recipientPath='/root/alphalattice_evidence_analyst';
   const recipientHook=(agent,overrides={})=>{
     const row=hook(recipientSession,agent,'alphalattice_evidence_analyst','SubagentStart','recipient-turn');
@@ -740,18 +755,17 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
       assert.ok(!mention.includes('→ @/root/'),lang+' '+name+': no internal task path as agent name');
       assert.ok(mention.includes('data-tip="'+recipientPath+'"'),lang+' '+name+': the original recipient locator stays available');
       const retained=TM.scene().sessions.find(s=>s.id===recipientSession).entries.get(assignment.observation_id);
-      assert.equal(retained.recipient,recipientPath,'rendering does not rewrite the declared recipient');
-      assert.equal(retained.actor,recipientSession,'rendering does not change the assignment author');
+      assert.equal(retained.recipient,recipientPath,'exact recipient');
+      assert.equal(retained.actor,recipientSession,'exact assignment author');
       if(bound) {
         TM.showActor('recipient-child');
-        assert.ok(TM.section().includes('The path-addressed assignment.'),'the recorded recipient filter retains its assignment');
+        assert.ok(TM.section().includes('The path-addressed assignment.'),'recipient keeps assignment');
         TM.showActor('');
       }
     }
   }
   Object.assign(c,recipientBefore);
-  // The accepted answer is a product projection of the child's typed deliverable. It is
-  // labelled separately from a spoken turn, with its recorded submitter and admission clock.
+  // Accepted deliverables retain their submitter and admission time, apart from speech.
   const acceptedSession='66000001-0000-4000-8000-000000000001',acceptedChild='66000002-0000-4000-8000-000000000001';
   const acceptedUnknown='66000003-0000-4000-8000-000000000001',acceptedWords=library.words(root),acceptedBefore={t:c.t};
   const acceptedProse='Product accepted deliverable (ACCEPTED): The admitted evidence warrants caution.';
@@ -768,25 +782,24 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
       A.absorbPage(page('RESET',[assignment,started,answer]));
       hash.value='#page=team&team='+acceptedSession;c.app.page='team';
       const rendered=readScene(),row=rendered.match(new RegExp('<li[^>]*id="team-event-'+answer.observation_id+'"[\\s\\S]*?</li>'))?.[0]||'';
-      assert.ok(row.includes('<strong>'+acceptedWords.t('Alternative Analyst')+'</strong>'),'the accepted finding keeps its exact child role');
-      assert.ok(row.includes(acceptedProse),'the typed accepted prose remains exactly as recorded');
-      assert.ok(row.includes('· '+acceptedWords.t('Accepted answer')),'the kind distinguishes accepted deliverable from spoken answer');
-      assert.ok(row.includes('data-tip="'+acceptedWords.t('Accepted structured answer · product record, not a native spoken turn')+'"'),'the shared tooltip explains product-derived provenance');
-      assert.ok(row.includes('· '+acceptedWords.t('Submitted by')+' <span tabindex="0" data-tip="'+submitted+'">'+acceptedWords.t(submitted===acceptedSession?'Main PM':'Unidentified')+'</span>'),'submitter uses only a known recorded participant label');
-      assert.ok(row.includes(' · '+timeLabel+'"'),'the time tooltip names its immutable owner clock');
+      assert.ok(row.includes('<strong>'+acceptedWords.t('Alternative Analyst')+'</strong>'),'exact child role');
+      assert.ok(row.includes(acceptedProse),'exact accepted prose');
+      assert.ok(row.includes('· '+acceptedWords.t('Accepted answer')),'accepted answer kind');
+      assert.ok(row.includes('data-tip="'+acceptedWords.t('Accepted structured answer · product record, not a native spoken turn')+'"'),'acceptance provenance');
+      assert.ok(row.includes('· '+acceptedWords.t('Submitted by')+' <span tabindex="0" data-tip="'+submitted+'">'+acceptedWords.t(submitted===acceptedSession?'Main PM':'Unidentified')+'</span>'),'recorded submitter label');
+      assert.ok(row.includes(' · '+timeLabel+'"'),'owner time');
       const retained=TM.scene().sessions.find(s=>s.id===acceptedSession).entries.get(answer.observation_id);
-      assert.equal(retained.actor,acceptedChild,'submitter provenance never changes the child author');
-      assert.equal(retained.subject.submitted_by,submitted,'the declared submitter remains exact');
+      assert.equal(retained.actor,acceptedChild,'exact child author');
+      assert.equal(retained.subject.submitted_by,submitted,'exact submitter');
       assert.equal(retained.timeKind,timeKind);
-      assert.equal(retained.replyTo,'accepted-assignment','the accepted answer keeps its exact assignment reply');
-      assert.ok(row.includes('team-reply'),'the accepted answer is rendered under that assignment');
-      assert.ok(rendered.includes(timeLabel)&&rendered.includes(acceptedWords.t('Accepted structured answer · product record, not a native spoken turn')),'the opened record retains its time and channel provenance');
-      assert.ok(rendered.includes(timeLabel+': '+answer.occurred_at),'the repaired answer timestamp is labelled with its owner clock rather than Received');
+      assert.equal(retained.replyTo,'accepted-assignment','exact assignment reply');
+      assert.ok(row.includes('team-reply'),'under its assignment');
+      assert.ok(rendered.includes(timeLabel)&&rendered.includes(acceptedWords.t('Accepted structured answer · product record, not a native spoken turn')),'time and channel provenance');
+      assert.ok(rendered.includes(timeLabel+': '+answer.occurred_at),'owner timestamp');
     }
   }
   Object.assign(c,acceptedBefore);
-  // A nominated file and a parent relay produce no accepted output. An actual owner
-  // Task row and exact returned operation receipt appear independently of citations.
+  // Task and returned-operation receipts prove outputs; nominations and relays do not.
   const outputBefore={read:c.Data.read,link:c.link,btnAttrs:c.btnAttrs,t:c.t,page:c.app.page,hash:hash.value},outputWords=library.words(root);
   const outputLinks=[];
   c.link=(label,page,cls,extra)=>{outputLinks.push({page,extra});return outputBefore.link(label,page,cls,extra);};
@@ -817,8 +830,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
       assert.equal(TM.counts().observations,delivered?1:0,'foreign receipts never count for this exact session');
       if(!delivered)for(const destination of ['team','team-outputs'])assert.ok(outputLinks.some(x=>x.page===destination&&x.extra?.team===acceptedSession),'quiet ways keep the exact selected session');
     }
-    // Generic accepted answers are sealed artifacts, not newly submitted scientific Tasks.
-    // Older receipts can lack the refs/status; the retained accepted event is still exact.
+    // Sealed answers are not Tasks; exact accepted events support older receipts.
     for(const accepted of [false,true]) {
       outputLinks.length=0;
       const assignment=message(acceptedSession,acceptedSession,'research_lead','assignment','Interpret the assigned Risk Task.',{recipient:acceptedChild,reference:P1});
@@ -861,8 +873,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   }
   Object.assign(c,{link:outputBefore.link,btnAttrs:outputBefore.btnAttrs,t:outputBefore.t});
   c.Data.read=outputBefore.read;c.app.page=outputBefore.page;hash.value=outputBefore.hash;TM.leaveOutputs();
-  // Full accepted contributions come only from the selected observation's sealed owner.
-  // The excerpt, roles and operations remain unchanged; one detail survives only its selection.
+  // Full owner text keeps excerpts and roles.
   const detailBefore={read:c.Data.read,t:c.t,page:c.app.page,hash:hash.value},detailWords=library.words(root);
   const detailReads=[],detailSession='67000001-0000-4000-8000-000000000001';
   const fullText='The sealed interpretation retains every cited limitation. '.repeat(24)+'END OF SEALED ANSWER';
@@ -970,8 +981,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   detailReads.at(-1).resolve(detailResponse(nextDetail.answer,{text:'RETURNED PAGE ANSWER'},'e2'));await settleDetail();
   assert.ok(selectDetail(nextDetail.answer).includes('RETURNED PAGE ANSWER'),'returning displays the new owner result');
   Object.assign(c,{t:detailBefore.t});c.Data.read=detailBefore.read;c.app.page=detailBefore.page;hash.value=detailBefore.hash;TM.refresh();
-  // V631 (ST2, WD7, TE12): every owner-declared authority and lifecycle uses the real
-  // shared words, in both current projections and retained records. Participant prose stays authored.
+  // Owned authority/lifecycle; authored prose.
   const codes=library.codes(),words=library.words(root),session631='session-v631';
   assert.ok(codes.authorities.length && codes.lifecycles.length,'the owners supplied their whole enums');
   Object.assign(c,{t:words.t,codeWords:words.codeWords,stateLine:words.stateLine});
@@ -1009,8 +1019,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
       for(const authority of codes.authorities)assert.ok(!records.includes(authority),'no raw authority: '+authority);
     }
   }
-  // Labelled UI fixtures only: an actual owner return's public shape, not a native run proof.
-  // The sealed content is read from its selected receipt while attribution remains unobserved.
+  // UI fixtures prove selected sealed readback, with native attribution still unobserved.
   const productBefore={read:c.Data.read,t:c.t,page:c.app.page,hash:hash.value,tasks:c.Data.tasks};
   const productWords=library.words(root),productReads=[],productSession='68000001-0000-4000-8000-000000000001';
   const productGoal='68000002-0000-4000-8000-000000000001',productSource='local-web:'+'a'.repeat(32);
@@ -1110,7 +1119,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.notEqual(productReads.at(-1),leavingProduct,'returning uses a fresh exact product selection');
   productReads.at(-1).resolve(productResponse(currentProduct.receipt,{text:productText,references:[TASK]},'product-e2'));await settleProduct();
   assert.ok(!selectProduct(currentProduct.receipt).includes('LEFT PRODUCT PAGE'));
-  // Usage health is an optional observer field, not an activity row or research gate.
+  // Usage health.
   const usageCode='native_bridge.lead_usage_read_failed';
   const usageCatalog=JSON.parse(fs.readFileSync(path.join(__dirname,'../../src/alphalattice/interface/local_application/refusal_words.json'),'utf8'))[usageCode];
   const stableFeed={...page('CONTINUED',[]),epoch:'product-e2',cursor:changedProduct.cursor,observer:{status:'OK',native_usage:{status:'OBSERVING',reason:null}}};
@@ -1126,8 +1135,16 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
     assert.ok(shown.includes('END OF PRODUCT ANSWER'),'optional usage failure does not block accepted research content');
     assert.equal(TM.counts().exchanges,2);assert.equal(TM.counts().observations,1);
   }
-  // Default native relays are selection candidates, never HOOK artifacts. The selected
-  // owner answer binds the real correlated RETURNED receipt and keeps native authorship unknown.
+  const usageCalls=[],usageT=c.t,catchingUp={status:'OBSERVING',reason:'native_bridge.usage_catching_up',read_through:4,total_bytes:12,bytes_read:4,rescan:false,detail:'Usage read through {read} of {total} bytes; the next read continues.'};
+  c.t=(key,facts)=>{if(facts?.read!=null)usageCalls.push({key,...facts});return usageT(key,facts);};
+  const progress=()=>{A.absorbPage({...stableFeed,observer:{status:'OK',native_usage:catchingUp}});TM.refresh();};
+  progress();const usageReading=selectProduct(currentProduct.receipt);assert.ok(usageReading.includes(usageT('Reading usage')));assert.ok(!usageReading.includes('{read}')&&!usageReading.includes('{total}'));
+  assert.deepEqual(usageCalls.at(-1),{key:usageCalls[0].key,read:4,total:12});
+  const usagePaints=renders.length,usageAddress=hash.value,usageNavigations=navigations.length;
+  catchingUp.read_through=8;progress();assert.equal(renders.length,usagePaints+1);
+  assert.equal(hash.value,usageAddress);assert.equal(navigations.length,usageNavigations);
+  selectProduct(currentProduct.receipt);assert.deepEqual(usageCalls.at(-1),{key:usageCalls[0].key,read:8,total:12});c.t=usageT;
+  // RETURNED binds relays; native authorship remains unknown.
   const relayText='Fixture owner content returned for the exact default relay. '.repeat(12)+'END OF RELAY OWNER ANSWER';
   const relayFixture=(host='codex',extra={})=>{
     const assignment=message(productSession,productSession,'research_lead','assignment','Fixture lead assigns the exact relay bundle.',{recipient:'fixture-exact-child',reference:extra.bundle_reference||P1});
@@ -1194,5 +1211,8 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(!selectProduct(nextRelay.relay).includes('LATE PREVIOUS GOAL RELAY'),'late content stays with its original request and Goal');
   currentRelayRead.resolve(relayResponse(nextRelay));await settleProduct();assert.ok(selectProduct(nextRelay.relay).includes('END OF RELAY OWNER ANSWER'));
   Object.assign(c,{t:productBefore.t});c.Data.read=productBefore.read;c.Data.tasks=productBefore.tasks;c.app.page=productBefore.page;hash.value=productBefore.hash;TM.refresh();
+  await require('./workbench_team_readback.cjs').checkSessionReadback({c,root,library,vm,fs,path,A,TM,reads,message,page,usage,teamSection});
+  const ids=['01a12a2a7a','01a12a2a8b','01b00000cc'],seen={participants:new Map(ids.map(id=>[id,{}]))};
+  assert.deepEqual(ids.map(id=>TeamMembers.unique(seen,id)),['01a12a2a7','01a12a2a8','01b00000'],'WD3');
   finish();
 })().catch(e=>{console.error(e);process.exitCode=1;});

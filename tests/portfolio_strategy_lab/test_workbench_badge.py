@@ -27,7 +27,7 @@ from tests.workspace_task_runner.task_control_support import digest, task_contra
 def test_real_task_records_drive_home_badges_and_grouped_history(
     live: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:
-    """Real task records drive home badges and grouped history."""
+    """Real records drive Home attention, Tasks closure and grouped history."""
     assert live.session is not None
     registry = live.session.task_control_registry
     now = live.clock()

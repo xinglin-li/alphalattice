@@ -175,3 +175,35 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 **Measured**
 
 - One recorded run from the first product command to delivery-report export took about 46 minutes on a four-core execution budget without a product repair; this is indicative, not a runtime guarantee.
+
+## 0.1.6
+
+**Reviews by their own members**
+
+- Each Evidence Analyst and the CRO submits its own answer with a key scoped to its review thread. The Host records the issue, any correction and the acceptance as messages on that thread. A closed thread admits only its accepted answer again.
+- An accepted Analyst or CRO answer opens in full from the session that led the review, whichever session sent it.
+
+**Sessions**
+
+- A session's participants are the members who spoke in it and the threads that began within its span. Every other thread of the same agent session is summarized in one line with its usage.
+- A member's role, its messages and its usage read as one participant.
+- Usage is read incrementally, so a session kept open for weeks reads in full. Each thread reads its own usage; a reading still catching up says how far it has read.
+- Message ids are unique within a session. Short thread ids lengthen until they are unique on the page, and every message kind is labelled.
+- A session takes its title from the question of its goal.
+- A reloaded page reads the selected session's own records, so its participants and messages stay whole however much usage other threads record.
+- Usage readings are paced by elapsed time, never by the research date, and a reading's progress is kept.
+- A reference to a review thread is labelled as one and opens that thread.
+
+**Home**
+
+- Home leads with the date's outcome: its positions, review, committee verdict and report, each linked to its page. Then the decisions waiting for you, then progress.
+- Recent deliveries list each delivery once. "Running" counts only Tasks that are running.
+- A stopped Task is closed from Tasks.
+
+**Law books**
+
+- Every law in the product's and the Workbench's law books names its source: a classic principle, a form borrowed from a product or standard, or AlphaLattice's own, with its reason. Law ids and their holders are unchanged.
+
+**For developers**
+
+- The [session grader](../../src/devtools/evaluation/session.py) checks a session page's participants, ids, kinds, references and title against the records, including after a reload.

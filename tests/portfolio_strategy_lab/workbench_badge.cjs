@@ -163,7 +163,7 @@ async function groupedPair(page, place) {
     await groupedPair(page, 'tasks');
     await groupedPair(page, 'history');
     if (mode === 'badge') {
-      await reading(page, 'overview');
+      await reading(page, 'tasks');
       const stale = await page.evaluate(async id => {
         try { return await window.AlphaLattice.data.post('/api/cancel',
           {task_id: id, expected_task_hash: '0'.repeat(64)}); }
@@ -189,7 +189,7 @@ async function groupedPair(page, place) {
       await page.waitForFunction(() => !document.querySelector('#main [data-action="task-close-unrecoverable"]'),
         null, {timeout: 15000});
       await badgeCount(page, 0);
-      await screenshot(page, 'overview-closed-900');
+      await screenshot(page, 'tasks-closed-900');
     }
   }
   assert.deepEqual(errors, [], 'the served bundle has no page errors');

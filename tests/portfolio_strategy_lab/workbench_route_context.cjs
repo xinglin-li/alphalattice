@@ -40,6 +40,7 @@ function makeContext({hash='#page=overview', body=null, catalog=[],historyRows=[
     portfolioEntries:()=>historyRows.map(row=>row.raw).filter(entry=>entry && ['portfolio.policy-development','INSTALLED_RESULT'].includes(entry.kind) && entry.status==='SUCCEEDED'),
     inputVersion:()=>({available:true,date:'2026-08-03',cutoff:'2026-08-03'}), subject:()=>null, notice:()=>'',
     actionableTasks:()=>[], unrecoverableTasks:()=>[], tasks:()=>[], runs:()=>[], runsOf:()=>[], updates:()=>[], decisions:()=>[], versions:()=>[],
+    homeOutcome:()=>({selection:null,value:null,error:null,loading:false}),
     holdings:()=>[], series:()=>[], studies:()=>[], books:()=>[], recent:()=>[], riskLinks:()=>[], researchUpdate:()=>null, cpuBudget:()=>({}),
     lifecycleOf:(_id,fallback)=>fallback, declaredOf:id=>catalog.find(v=>v.task_id===id)||null,
     offers:()=>false, route:op=>library.hostRoutes()[op]?.path || '/fixture/'+op,

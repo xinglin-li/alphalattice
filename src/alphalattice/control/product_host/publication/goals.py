@@ -385,6 +385,9 @@ class GoalStore:
                     "goal_hash": value.goal_hash,
                     "title": value.declaration.title,
                     "objective": value.declaration.objective,
+                    "target_date": value.declaration.model_dump(
+                        mode="json", include={"target_date"}
+                    ).get("target_date"),
                     "kind": value.declaration.kind,
                     "research_purpose": (
                         value.declaration.research.purpose if value.declaration.research else None

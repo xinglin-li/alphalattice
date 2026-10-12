@@ -15,6 +15,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -33,8 +34,10 @@ from alphalattice.control.observation_runtime.policy import (
     ObservationSchemaPolicy,
     default_observation_policies,
 )
+from alphalattice.control.product_host.composition import native_usage_reader as usage_module
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
+    NativeUsageReader,
 )
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
@@ -46,6 +49,8 @@ from alphalattice.interface.local_application.activity import (
 )
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.client import LocalResearchClient
+from alphalattice.interface.local_application.native_bridge import BINDING_NAME
+from alphalattice.interface.local_application.native_setup import declare_project
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
@@ -98,12 +103,87 @@ def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task
         observer.close()
 
 
+def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
+    tmp_path, monkeypatch
+):
+    """One complete binding never erases another binding's pending usage progress."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    projects = [tmp_path / "a-project", usage_module.autobind_root(workspace)]
+    for project in projects:
+        (project / ".codex").mkdir(parents=True)
+        declare_project(project, "codex")
+        (project / ".codex" / BINDING_NAME).write_text(
+            json.dumps(
+                {
+                    "session_id": project.name,
+                    "host": "codex",
+                    "workspace": str(workspace),
+                    "roles": ["alphalattice_cro"],
+                }
+            ),
+            encoding="utf-8",
+        )
+    elapsed = [0.0]
+    monkeypatch.setattr(usage_module, "monotonic", lambda: elapsed[0], raising=False)
+    operations = SimpleNamespace(
+        workspace_session=SimpleNamespace(workspace=workspace),
+        dispatcher=SimpleNamespace(clock=lambda: datetime(2026, 10, 11, tzinfo=UTC)),
+        native_projects=projects,
+        goals=SimpleNamespace(attributed_goal=lambda _: None),
+    )
+    progress = {"read_through": 4, "total_bytes": 12, "bytes_read": 4, "rescan": False}
+    pending = {"status": "PARTIAL", "reason": "native_bridge.usage_catching_up", **progress}
+    receipts = [pending, {"status": "DELIVERED"}]
+
+    def read(project, binding, **kwargs):
+        receipt = receipts[projects.index(project)]
+        if isinstance(receipt, Exception):
+            raise receipt
+        return receipt
+
+    monkeypatch.setattr(usage_module, "read_session_usage", read)
+    reader = NativeUsageReader(operations)
+    assert [row["status"] for row in reader.read()["sessions"]] == ["PARTIAL", "DELIVERED"]
+    assert reader.state() == {
+        "status": "OBSERVING",
+        "reason": "native_bridge.usage_catching_up",
+        **progress,
+    }
+    assert [row["status"] for row in reader.read()["sessions"]] == ["RECENT", "RECENT"]
+    assert reader.state() == {"status": "OBSERVING", "reason": pending["reason"], **progress}
+    receipts[:] = {"status": "DELIVERED"}, {"status": "DELIVERED"}
+    elapsed[0] += 10
+    assert [row["status"] for row in reader.read()["sessions"]] == ["DELIVERED", "DELIVERED"]
+    for first, second in (
+        (pending, {"status": "UNAVAILABLE", "reason": "activity.observer_failed"}),
+        (RuntimeError("unavailable"), {"status": "DELIVERED"}),
+    ):
+        receipts[:] = first, second
+        elapsed[0] += 10
+        reader.read()
+        assert reader.state() == {
+            "status": "UNAVAILABLE",
+            "reason": second.get("reason", "native_bridge.lead_usage_read_failed"),
+        }
+    cache = workspace / "runtime/native-usage"
+    cache.mkdir(parents=True)
+    (cache / "orphan.lock").touch()
+    monkeypatch.setattr(usage_module, "usage_reading", lambda _: False)
+    assert reader.read() == {"status": "OFF", "sessions": []} and not list(cache.iterdir())
+
+
 @pytest.mark.parametrize("status", ["NOT_BOUND", "OFF", "OBSERVING", "STOPPED", "UNAVAILABLE"])
 def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_path, status):
     """Usage health exposes no callback identity, native path, content or supplied prose."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     calls = []
+    progress = (
+        {"read_through": 4, "total_bytes": 12, "bytes_read": 4, "rescan": False}
+        if status == "OBSERVING"
+        else {}
+    )
 
     def usage_state():
         calls.append("read")
@@ -115,6 +195,7 @@ def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_pat
             "conversation": "PRIVATE-NATIVE-CONVERSATION",
             "detail": "PRIVATE-CALLBACK-DETAIL",
             "next_action": "PRIVATE-CALLBACK-ACTION",
+            **progress,
         }
 
     observer = WorkspaceActivity(
@@ -129,7 +210,8 @@ def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_pat
         assert calls == ["read"]
         usage = state["native_usage"]
         assert usage["status"] == status and usage["reason"] == "activity.observer_failed"
-        assert set(usage) <= {"status", "reason", "detail", "next_action"}
+        assert set(usage) <= {"status", "reason", "detail", "next_action"} | progress.keys()
+        assert {key: usage.get(key) for key in progress} == progress
         words = refusal_words("activity.observer_failed")
         for field in ("detail", "next_action"):
             if field in usage:
@@ -137,6 +219,9 @@ def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_pat
         assert "PRIVATE-" not in json.dumps(state)
         assert state["status"] == state["recording"] == "OK"
         assert state["missing_observations"] == state["appends"] == 0
+        if progress:
+            progress.update(read_through=True, total_bytes=-1, bytes_read=1.5, rescan=0)
+            assert not progress.keys() & observer.observer_state()["native_usage"].keys()
     finally:
         observer.close()
 
@@ -805,15 +890,16 @@ def test_cursor_reconnect_restart_and_typed_read_refusals(
 def test_declared_sessions_are_read_from_their_owner_not_the_feed_tail(
     live: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:
-    """Round 88: the Team page's sessions readback. The feed's tail is bounded by
-    the newest rows of every kind, so the product's own operations push a team's
-    events out of it; the external read walks one kind and pages back by ordinal."""
+    """Session exchange paging preserves its latest usage despite a busy feed."""
 
     client = LocalResearchClient(live.workspace)
     for sequence in range(3):
         session = "session-a" if sequence < 2 else "session-b"
         assert (
-            client.publish_event(_event(sequence, producer_session=session))["status"] == "APPENDED"
+            client.publish_event(
+                _event(sequence, producer_session=session, subject={"native_session_id": session})
+            )["status"]
+            == "APPENDED"
         )
     spec = tmp_path / "spec.yaml"
     spec.write_text("{}", encoding="utf-8")
@@ -860,6 +946,54 @@ def test_declared_sessions_are_read_from_their_owner_not_the_feed_tail(
     assert "contribution" not in missing["accepted_answer"]
     assert _json(live, "/api/activity/external")["items"] == whole["items"]
 
+    for sequence in range(3, 208):
+        assert (
+            client.publish_event(
+                _event(
+                    3,
+                    event_kind="NATIVE_AGENT_USAGE",
+                    producer_sequence=sequence,
+                    subject={
+                        "native_session_id": "session-a",
+                        "native_agent_id": "member-a",
+                        "model": "test-model",
+                        "input_tokens": str(sequence),
+                    },
+                )
+            )["status"]
+            == "APPENDED"
+        )
+    scoped = _json(live, "/api/activity/external?native_session_id=session-a&limit=1")
+    assert [i["payload"]["producer_sequence"] for i in scoped["items"]] == [1]
+    assert scoped["more"] and scoped["oldest"] == scoped["items"][0]["ordinal"]
+    assert [i["payload"]["producer_sequence"] for i in scoped["snapshots"]] == [207]
+    owned = client.read_external(native_session_id="session-a")
+    assert owned["snapshots"] == scoped["snapshots"] and len(owned["items"]) == 2
+    previous = _json(
+        live,
+        f"/api/activity/external?native_session_id=session-a&limit=1&before={scoped['oldest']}",
+    )
+    assert [i["payload"]["producer_sequence"] for i in previous["items"]] == [0]
+    assert not previous["more"] and previous["snapshots"] == scoped["snapshots"]
+    other = _json(live, "/api/activity/external?native_session_id=session-b")
+    assert [i["payload"]["producer_sequence"] for i in other["items"]] == [2]
+    assert other["snapshots"] == [] and not other["snapshots_more"]
+    for sequence in range(208, 709):
+        client.publish_event(
+            _event(
+                3,
+                event_kind="NATIVE_AGENT_USAGE",
+                producer_sequence=sequence,
+                subject={
+                    "native_session_id": "session-a",
+                    "native_agent_id": "member-a",
+                    "model": f"test-model-{sequence}",
+                },
+            )
+        )
+    bounded = client.read_external(native_session_id="session-a")
+    assert len(bounded["snapshots"]) == 500 and bounded["snapshots_more"]
+
     for query, code in (
         ("limit=0", "activity.limit_invalid"),
         ("limit=201", "activity.limit_invalid"),
@@ -871,6 +1005,12 @@ def test_declared_sessions_are_read_from_their_owner_not_the_feed_tail(
         (f"observation_id={'a' * 64}&limit=1", "activity.query_selection_conflict"),
         (f"observation_id={'a' * 64}&before=1", "activity.query_selection_conflict"),
         (
+            f"observation_id={'a' * 64}&native_session_id=session-a",
+            "activity.query_selection_conflict",
+        ),
+        ("native_session_id=%00", "activity.query_parameter_invalid:native_session_id"),
+        (f"native_session_id={'x' * 201}", "activity.query_parameter_invalid:native_session_id"),
+        (
             f"observation_id={'a' * 64}&observation_id={'b' * 64}",
             "activity.query_parameter_invalid:observation_id",
         ),
@@ -878,6 +1018,8 @@ def test_declared_sessions_are_read_from_their_owner_not_the_feed_tail(
         status, _headers, body = _request(live, f"/api/activity/external?{query}")
         assert status == 400, query
         assert json.loads(body)["refused"] == code
+    words = refusal_words("activity.query_parameter_invalid:native_session_id")
+    assert "native_session_id" in words["detail"] and words["next_action"]
 
 
 def test_shutdown_closes_the_observer_after_the_worker(

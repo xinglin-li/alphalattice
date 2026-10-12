@@ -310,6 +310,8 @@ class EvidenceReviewBundles:
                 dossier, task_procedure=procedure, last_review=self._last_review(chosen)
             )
             submission = self.app._review_submission(dossier, read_at=read_at)
+        if route is not None:  # a review member's own submit, ending its README
+            bundle = replace(bundle, files=tuple(_routed(bundle.files, route)))
         return self.store_bundle(
             role=role, directory=directory, bundle=bundle, submission=submission
         )
@@ -518,3 +520,9 @@ class EvidenceReviewBundles:
         if not self.app.artifacts.exists(BUNDLE_CATEGORY, slot):
             return None
         return self.app.artifacts.load(BUNDLE_CATEGORY, slot, AgentBundleRecord)
+
+
+def _routed(files: tuple[tuple[str, str], ...], route: tuple[str, ...]) -> list[tuple[str, str]]:
+    """The bundle's files with its route closing the README, the member's one final action."""
+    end = "\n\n" + "\n\n".join(route) + "\n"
+    return [(n, t.rstrip("\n") + end if n == "README.md" else t) for n, t in files]

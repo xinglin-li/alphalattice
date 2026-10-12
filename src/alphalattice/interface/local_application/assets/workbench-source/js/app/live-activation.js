@@ -53,19 +53,13 @@ const LiveActivation = (() => {
    * stated; nothing here is computed. */
   const unstated = (word) => hint(t(word), t('Its owner does not state it yet.'));
   function datesOf(d) {
-    if (!d) return {start: unstated('Trading start not stated'), cutoff: unstated('Information cutoff not stated'), replay: '', replayRange: '', refit: unstated('Next refit not stated'), refitEach: [], startValue: unstated('Not stated'), cutoffValue: unstated('Not stated')};
-    const start = d.first_actionable_session === undefined ? unstated('Trading start not stated')
-      : d.first_actionable_session ? hint(t(d.first_actionable_basis === 'IF_ACTIVATED' ? 'Trading from {date} if activated' : 'Trading from {date}', {date: d.first_actionable_session}), t(d.first_actionable_detail || ''))
-      : hint(t('Trading start not determined'), t(d.first_actionable_detail || ''));
+    if (!d) return {replayRange: '', refit: unstated('Next refit not stated'), refitEach: [], startValue: unstated('Not stated'), cutoffValue: unstated('Not stated')};
     const missing = (d.information_sources || []).filter((s) => s.detail).map((s) => t(s.detail));
     const why = [t('The information cutoff cannot be determined from every required sealed record.'), ...missing, d.latest_dated_information ? t('Its latest dated information is {date}; that is not the cutoff.', {date: d.latest_dated_information}) : ''].filter(Boolean).join(' ');
-    const cutoff = d.information_cutoff ? hint(t('Information through {date}', {date: d.information_cutoff}), t(d.information_cutoff_detail || '')) : hint(t('Information cutoff not determined'), why);
     // the forward book decided before the trading start: said once, the replayed range in the owner's words
     const decided = d.forward_book_first_decided_session, r = d.replayed_in_sample_forward_sessions;
     const before = Boolean(decided && d.first_actionable_session && decided < d.first_actionable_session);
     const range = r?.count ? t('{first} to {last}', {first: r.first_session, last: r.last_session}) : '';
-    const words = [t('The forward book decided from {date}.', {date: decided || ''}), t(r?.detail || ''), t(d.forward_book_start_detail || '')].filter(Boolean).join(' ');
-    const replay = !before ? '' : r?.count == null ? hint(t('In-sample replay not determined'), words) : hint(countText(r.count, '{n} session replayed in-sample', '{n} sessions replayed in-sample'), range ? html`${range}. ${words}` : words);
     const replayRange = !before ? '' : html`${t('Decided from {date}', {date: decided})}${r?.count == null ? html` · ${t('In-sample replay not determined')}` : html` · ${countText(r.count, '{n} session replayed in-sample', '{n} sessions replayed in-sample')}${range ? html` (${range})` : ''}`}`;
     // the next refit: each component's next fit vintage through its grant's renewal, its words on hover
     const m = d.model_renewals, parts = m?.components || [];
@@ -81,7 +75,7 @@ const LiveActivation = (() => {
     // the panel's values beside their labels: the date alone, its words on hover
     const startValue = d.first_actionable_session === undefined ? unstated('Not stated') : d.first_actionable_session ? hint(d.first_actionable_basis === 'IF_ACTIVATED' ? t('{date} if activated', {date: d.first_actionable_session}) : d.first_actionable_session, t(d.first_actionable_detail || '')) : hint(t('Not determined'), t(d.first_actionable_detail || ''));
     const cutoffValue = d.information_cutoff ? hint(d.information_cutoff, t(d.information_cutoff_detail || '')) : hint(t('Not determined'), why);
-    return {start, cutoff, replay, replayRange, refit, refitEach, startValue, cutoffValue};
+    return {replayRange, refit, refitEach, startValue, cutoffValue};
   }
   /* V614 (U84; FIX1's `review_standing`): the book's Evidence and CRO review at the decision, as its owner states it
    * on the activation offer and its answer -- reviewed (its publication date and the CRO's route; on hover the
@@ -162,37 +156,5 @@ const LiveActivation = (() => {
     const models = (b.models || []).map((m) => [codeWords(m.component_id), countText(Number(m.reused_fits) || 0, '{n} fit reused', '{n} fits reused')]);
     openDialog(t('Strategy'), t('Runs forward'), html`${kv([...decisionRows(dates), ...(dates.replayRange ? [] : [[t('Next decision session'), b.next_decision_session || '']]), [t('Horizon'), b.horizon || ''], ...models, [t('Models fitted'), count(b.fit_calls ?? 0)], ...(b.review_standing ? [[t('Review'), reviewOf(b.review_standing)]] : [])])}${activationTiming(b)}<p class="caption">${t('Positions are held only from the trading start; its daily research update continues the forward book.')}</p>`, btn(t('Close'), 'close', '', 'button'));
   }
-  /* V593 (U81): Home's "Running forward" -- each strategy that runs forward on one line, from the daily update's answer
-   * (`runs_forward`, read through Settings): its information cutoff and trading start, its latest update's positions
-   * with their recorded date, claim and exact selector (the owner's metadata summary), its next refit as its owner
-   * states it, the daily update's state and next run. The row opens the strategy's book (this panel); its ways are the
-   * positions' review and the update's switch in Settings. Nothing is computed here. */
-  function positionsOf(l) {
-    // absent, the owner states nothing yet (before V595); null, it states that the strategy has had no update
-    if (l === undefined) return {fact: hint(t('Positions not stated'), t('Its owner does not state it yet.')), way: ''};
-    if (!l) return {fact: t('No update yet'), way: ''};
-    if (l.lifecycle !== 'SUCCEEDED') return {fact: html`${t('Update for {date}', {date: l.target_session || ''})} · ${stateLine(String(l.lifecycle || '').toLowerCase(), {next: ''})}`, way: ''};
-    if(l.status==='REFUSED')return {fact:hint(t('Positions not read'),t(l.detail || '')),way:''};
-    if(!l.review_selector)return {fact:t('Positions not stated'),way:''};
-    const fact = html`${l.positions_session ? t('Positions for {date}', {date: l.positions_session}) : ''}${l.claim ? html`${l.positions_session ? ' · ' : ''}${hint(codeWords(l.claim), t('The update is post-observed research, not timely advice.'))}` : ''}`;
-    const way = link(t('Positions'), 'evidence', 'text-btn', {review_selector: JSON.stringify(l.review_selector)});
-    return {fact, way};
-  }
-  function forwardRows() {
-    const v = Settings.dailyUpdate().value;
-    if (!v) return [];
-    const covered = new Set(v.settings?.package_ids || []), on = ['ENABLED_SERVICE_LIFETIME', 'AUTOMATION_CHECK_FAILED'].includes(v.status);
-    return (v.runs_forward || []).filter((f) => f.status === 'ACTIVE').map((f) => {
-      const {start, cutoff, replay, refit} = datesOf(f.strategy_dates), p = positionsOf(f.latest_update);
-      const update = on && covered.has(f.strategy_package_id) ? html`${t('Daily update')} · ${Settings.updateState(v)}` : t('Daily update off');
-      const briefUpdate = on && covered.has(f.strategy_package_id) ? html`${t('Daily update')} · ${Settings.updateState(v, {brief: true})}` : t('Daily update off');
-      // Full owner captions belong to this object's Facts reader; their hints and the next
-      // due time remain whole there while the dense row keeps its state and exact book route.
-      const facts = factsRef(t('Facts'), kv([[t('Strategy'), codeWords(f.strategy_package_id)], [t('Information cutoff'), cutoff], [t('Trading start'), start], [t('Forward book'), replay], [t('Positions'), p.fact], [t('Next refit'), refit], [t('Daily update'), update]]));
-      const ways = html`${p.way}${link(t('Daily update'), 'settings', 'text-btn', {row: 'researchUpdate'})}`;
-      const dated=f.latest_update?.lifecycle==='SUCCEEDED' && f.latest_update?.positions_session;
-      return objectRow({lead: tile('activity', 'accent'), name: dated ? t('Positions for {date}',{date:dated}) : codeWords(f.strategy_package_id), why: dated ? codeWords(f.strategy_package_id) : '', to: f.book_task_id ? {page: 'portfolio', extra: {book: f.book_task_id,performance:dated ? 'forward' : ''}} : null, cls: 'forward-row'}, {key: 'forward:' + f.strategy_package_id, columns: ['state', 'update', 'facts'], props: [stateLine(STATES[f.status][0], {word: t(STATES[f.status][1]), next: ''}), briefUpdate, facts], time: f.activated_at ? when(f.activated_at) : '', actions: ways});
-    });
-  }
-  return {ensure, observe, panel: panelOf, confirm, commit, read: () => ensure(Data.subject(), true), forwardRows, forwardAbsence};
+  return {ensure, observe, panel: panelOf, confirm, commit, read: () => ensure(Data.subject(), true), forwardAbsence};
 })();

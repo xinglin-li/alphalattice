@@ -1,225 +1,250 @@
 # The AlphaLattice Laws
-Date: 2026-09-26
+Date: 2026-10-11
 
-The rules for the code outside the Workbench's UI, in one place. From 2026-09-26 this file is their one
-owner: a rule is added, changed or retired here, and every card cites the laws it keeps. It gathers the
-maintainer's working agreement, the design decisions and the lessons of the project's development. The
-Workbench has its own book, indexed as chapter UI at the end and not copied.
+The maintainer's product rules, with their sources and adaptations. Local choices state their reasons; attribution names a method, not compliance or endorsement. Chapter UI links the separate Workbench book.
 
-Look a law up before writing: the chapter of what you are about to change says where it belongs and what
-must hold. Each law says what holds, why where the reason is not obvious, and what holds it:
+## Laws by source
 
-- `gate: <step>`, a step of `scripts/check_playpen.py` (the hook runs its fast steps on every commit);
-- `test: <path>::<name>`, a public test that fails when the law is broken;
-- `private-test: <name>`, a named check retained in the private verification suite;
-- `config: <path>`, a file whose content enforces it;
-- `hook`, the pre-commit hook itself; `U0`, the reopen probe
-  (`scripts/u0_probe.py`), run by every card that moves an identity;
-- `review`, when no check holds it yet. Those laws are listed at the end; each becomes a check where it
-  can, and the list only shrinks.
+- **Classic:** ID8, ID10, OW1, OW2, OW3, OW4, OW5, OW6, OW7, OW9, OW10, OP1, OP4, OP5, OP6, OP8, OP10, OP13, OP15, OP16, OP17, OP18, OP21, OP24, PA2, DA5, DA6, DA7, DA11, DA13, SC1, SC2, SC3, SC4, EV1, EV5, TE1, TE2, TE4, TE5, TE6, TE8, TE10, TE11, TE12, TE13, PR3.
+- **Borrowed:** OP2, OP3, OP9, OP14, DA4, PR6.
+- **Ours:** ID1, ID2, ID3, ID4, ID5, ID6, ID7, ID9, OW8, OW11, OW12, OP7, OP11, OP12, OP19, OP20, OP22, OP23, PA1, PA3, PA4, PA5, DA1, DA2, DA3, DA8, DA9, DA10, DA12, EV2, EV3, EV4, TE3, TE7, TE9, TE14, PR1, PR2, PR4, PR5, PR7, PR8, PR9, PR10, PR11, PR12, PR13.
 
-A holder may check part of a law. What the code does against a law, and what no holder checks yet, is
-written in the law as *Not yet held*, with its rows in the convergence list and the card that closes
-it: a law states the rule, never the rule as if the code already kept it.
+Identifiers remain stable; procedure and duplicate entries point to their owner. The maintainer decides scope, risk and releases.
 
-The maintainer is the project's creator, who decides its scope, its risk and its releases. A card is
-one unit of development work on its own branch. An id in parentheses, a convergence-list row (V662),
-a Workbench change-ledger row (U70) or a card (AX10), points into the maintainers' records, which
-are kept privately; each law states its rule without them.
-
-The private law-holder check refuses a law
-without a holder, a duplicate id, a holder that names a test, gate step or file that does not exist,
-and a review list that is not the book's.
+Holders name a `gate`, `test`, name-only `private-test`, enforcing `config`, `hook` or reopen probe. `review` means no mechanical holder; those laws are listed at the end. Partial coverage is stated explicitly, never claimed as complete enforcement.
 
 ## ID. Identity
 
-**ID1. Identity follows meaning.** A change that keeps what a study computes records its successor in
-`config/identity-successors.json`, which `is_current` reads; a change that moves a number is a new
-identity, and the studies it moves become historical: they read back, they are not current. A role
-whose code retires leaves the roles table for its `retired` list, naming the card and why; its recorded
-moves stay as history and nothing installs or compares it again (RT). *Why:* an
-identity is the promise that the same inputs and method give the same numbers; a silent move breaks every
-reuse, replay and comparison. A value bound where it is compared by equality (a Program's
-authorities, a captured source, each Factor value identity and the source-availability catalog a
-Feature catalog binds) is held at the value its recorded moves lead from (`recorded_origin`),
-as the switch table holds a byte value; its role reads the value before the hold. *Held by:* `test: tests/structural/test_source_identity.py::test_a_recorded_move_names_the_installed_authority_for_its_role_only`,
+**ID1. Identity follows meaning.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Unexplained numbers break reuse/replay/comparison.
+
+Meaning-preserving changes record successors; changed numbers receive new identities, leaving affected studies readable but historical. Retire roles with their authorizing change/reason, preserving moves as history and ending installation/comparison. Equality-bound Program authorities, captured sources, Factor value identities and Feature source-availability catalogs retain `recorded_origin`; the role reads before that hold.
+
+*Held by:* `test: tests/structural/test_source_identity.py::test_a_recorded_move_names_the_installed_authority_for_its_role_only`,
 `test: tests/structural/test_source_identity.py::test_the_committed_moves_read_and_each_predecessor_moves_once_per_role`,
 `test: tests/structural/test_source_identity.py::test_every_recorded_role_is_in_the_roles_table_and_resolves`,
 `gate: identity-closures`.
 
-**ID2. A move is proved, never assumed.** A successor carries its evidence: the identity readout before
-and after, where only the recorded roles move; U0 on both corpora, where no reopened object changes its
-verdict; and the controls that must not move. An expected hash, count or baseline is never updated
-blindly: its semantic cause is found first. *Not yet held:* the readout shows the identity roles, not
-the byte closures that read the 349 files GN's scan lists (V231, V233); and U0's corpora hold few
-studies whose replay succeeds (V234), so U0 proves reads more than replays until U0R. *Held by:*
+**ID2. A move is proved, never assumed.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Meaning needs evidence.
+
+Prove successors by before/after readouts with only recorded role moves, unchanged reopening verdicts on both corpora and unchanged controls; explain every expected hash/count/baseline update. *Not yet held:* byte closures are absent from readouts, and sparse successful-replay coverage makes reopening stronger proof of reads than replay.
+
+*Held by:*
 `U0`, review.
 
-**ID3. A closure holds what decides the number, and nothing else.** A study's identity tracks the files
-whose bytes can move its numbers, never a platform or build file, and a loader that turns bytes into
-numbers is inside it. Since R1 a study's closure is its rule closure: the import closure of its entries inside the
-number-deciding packages (`config/identity-roles.json`), with the entry files it lists by name whatever
-their package, hashed as syntax without docstrings, comments or execution spans: a span measures
-where a run's time goes and decides no number, so a module reads as if each literal `with span(...)`
-were its body (`kernel/shared_kernel/spans.py`). *Not yet held:* 50 identity sites
-still hash raw source bytes and 4 source text, each with the card IS names for it
-(the private identity inventory); the schema prose left with SH (V98, SC3). *Held by:*
+**ID3. Exact numerical closures.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Timing/support code does not decide numbers.
+
+Numerical closures include number-deciding files and byte-to-number loaders, not platform/build files. Follow imports inside registered numerical packages plus named entries anywhere, hashing syntax without docstrings, comments or timing spans: literal `with span(...)` contributes its body. *Not yet held:* raw-byte/source-text sites await migration; schema prose follows SC3.
+
+*Held by:*
 `test: tests/structural/test_source_identity.py::test_study_identities_track_no_platform_or_build_file`,
 `test: tests/structural/test_source_identity.py::test_moves_this_build_cannot_read_are_refused_not_ignored`,
 `test: tests/structural/test_source_identity.py::test_a_span_moves_no_identity_and_any_other_form_reads_as_written`.
 
-**ID4. The Risk recipe and the Risk numerical closure move only by a recorded rotation.** The
-default covariance recipe seals to the value Risk studies, and the eight legacy surfaces the original
-workspace keeps, rest on; the Risk numerical closure holds the code that can change a covariance number
-and never what measures a run. A change to either moves the Risk identities by the rule and takes
-recorded successors like any other (ID1, ID2). The frozen pin that held Risk identities before retired
-with M01 (RT, 2026-09-29); the legacy surfaces stay on disk as history (DA1). *Held by:*
+**ID4. Risk changes follow recorded rotation.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Risk follows recorded identity transitions.
+
+See ID1, ID2 and ID3 for the default Risk recipe and numerical closure; legacy surfaces remain historical under DA1. The Risk numerical closure includes code that can change covariance numbers, never what measures a run.
+
+*Held by:*
 `test: tests/researcher_methodology_surface/test_risk_development_surface.py::test_the_default_covariance_recipe_seal_does_not_move`,
 `test: tests/researcher_methodology_surface/test_risk_development_surface.py::test_runtime_measurement_cannot_move_a_covariance_identity`.
 
-**ID5. Only the maintainer edits identity records.** The successor records and the closure lists
-are changed by the maintainer's own cards only, each with ID2's evidence. *Why:* one writer per identity keeps every
-move reviewable in one history. *Held by:* review.
+**ID5. Only the maintainer edits identity records.**
 
-**ID6. The environment is provenance, not identity.** The interpreter, the installed library versions,
-the dependency declarations and lock, and thread counts are recorded beside a result through one
-helper and never hashed into an identity while the product is developed; a cache whose content they
-decide (an embedding index) keeps them as a rebuild key only. Whether a change of environment moves a
-number is shown by recomputation: the owners' numerical canaries (PA3), and at the release the corpora's
-studies recomputed under the release environment, which is then locked and recorded. U0 on both
-corpora proves that what was sealed still reads and is reused, and names each read whose numbers
-moved (V277): a change in what a read derives, never a recomputation. *Why:* dependencies are still being optimised; binding them made adding
-or removing a package move identities and demand successors with no numerical cause (the
-maintainer, 2026-09-26: dependencies are not locked while they are still being optimised). *Not yet held:* the holder below checks
-who reads the environment, not where its value is hashed. The canaries cover thread counts only,
-and the release's recomputation is phase 7's (V277). *Held by:*
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* One writer preserves reviewable history.
+
+Only the maintainer changes successor records and closure lists, with ID2 evidence.
+
+*Held by:* review.
+
+**ID6. The environment is provenance, not identity.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Dependencies are still being optimized; adding or removing a package must not demand successors without a numerical cause.
+
+One helper records interpreter/libraries, dependencies/lock and threads beside results, never hashed into an identity while the product is developed; content-dependent caches use them only as rebuild keys. Prove numerical equivalence by PA3 canaries and recomputing both release corpora under the recorded, locked environment; reopening proves reads/reuse and names derived-number changes, not recomputation. *Not yet held:* the holder checks readers, not all hashes; canaries cover threads only, and release recomputation needs separate acceptance.
+
+*Held by:*
 `test: tests/structural/test_source_identity.py::test_the_environment_is_read_by_one_helper_and_the_named_keys`,
 which admits `kernel/shared_kernel/environment.py` and names every other reader and why.
 
-**ID7. An agent's judgment is identified by its content.** What an agent submits through the seam is
-identified by the submission's content and the digest of the bundle it answered; the role card's
-digest, the model, the reasoning effort and the host are recorded beside it as provenance, as the
-environment is (ID6). No identity binds prose: rewording a role card or a Skill makes no judgment new,
-and a different answer does. *Why:* role cards and Skills are rewritten as the agents improve, and
-binding them would retire every earlier judgment for a change of words; which model judges better is
-measured apart, by the agent evaluation's planted-majors yardstick (the maintainer, 2026-09-27). *Not yet held:* an external
-submission binds its answer and what it answers (the dossier, the policy, the schema), not the
-bundle's digest; and the role card's digest is not recorded. Each answer records the host and
-the lead's session that submitted it, its author `NOT_OBSERVED`: a request names its session and
-not its subagent, and the Host reads no hook, message or native start to name which of the
-lead's specialists wrote it, so no answer is credited to another specialist and none by a guess
-by time (V555). An answer recorded earlier with `HOOK` credit keeps it as recorded; nothing new
-writes it (V677). *Held by:*
+**ID7. An agent's judgment is identified by its content.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Guidance changes must not retire unchanged judgments.
+
+Judgment identity binds submitted content and answered bundle digest, not provenance (card/model/effort/host under ID6); guidance edits create no new judgment. *Not yet held:* external answers bind answer/dossier/policy/schema, omit bundle/card digests, and record the host and submitting lead session with author `NOT_OBSERVED`; no hook/message/native-start evidence identifies the specialist, and time proximity grants no credit. Historical `HOOK` attribution remains; new answers never write it.
+
+*Held by:*
 `test: tests/alternative_evidence_desk/test_evidence_review_http_route.py::test_no_analyst_is_credited_with_another_bundles_answer`,
 `test: tests/portfolio_strategy_lab/test_accepted_answer_conversation.py::test_an_answer_of_any_recorded_basis_is_the_leads_fact_without_child_credit`,
 `private-test: test_existing_answer_contracts_publish_once_as_the_leads_product_fact`.
 
-**ID8. A consumer binds an upstream result's content, not its code.** A role's closure lists its
-owner's code as entries; a result it reads from another owner (a Panel, a Foundation, Alpha scores) is
-bound by that result's content hash, which the result's own identity already ties to the code that
-made it. Which roles an edit to each area can move is a table the gate holds, and a change that
-reaches further is refused, naming the import that did it. *Why:* measured on 2026-09-27, an edit to
-one factor family's formula moved 12 of the 20 identity roles, 2 of them the Feature materialization
-that computes it; each false reach marks results not current that nothing changed, and exploring
-becomes a chain of recomputation. Code that moves to another area is recorded under its new owner,
-with its reason. *Not yet held:* byte closures are not in the table (W8, W9b), and the live scoring
-family's reach of the factor formulas is a true one, kept (V229); the Evidence analysis policy's
-closure misses `analysis/operations.py`, which `packet.py` imports outside the number-deciding
-packages (V274, W9b). *Held by:*
-`test: tests/structural/test_source_identity.py::test_an_area_reaching_a_role_outside_its_row_is_named_with_its_import`,
-and the gate's reach step (GB, `--reach-check`).
+**ID8. Consumers bind upstream content.**
 
-**ID9. A new model is its own identity.** The Host loads an agent's model by name, never by a
-static import, so its module is its own closure: activating it adds a capability identity and
-needs no successor, and a Program binds only the models its mandate admits (V118), so no other
-identity moves. The declared adapter, its declaration and its search axes are in the number
-closures; the contract suite and the scaffold are not, so improving them moves nothing.
+- *Source:* classic: content addressing.
+- *Adapted:* Consumers bind sealed upstream results rather than importing every upstream implementation into their own numerical closure.
+
+Consumers bind upstream content hashes, retaining only their own code entries; the upstream result's identity already binds its producing code. The area-to-role table refuses excess reach with its import, and code moves name the new owner/reason. Byte-closure coverage and the imported Evidence analysis operation remain unheld; genuine live-scoring/Factor reach stays.
+
+*Held by:*
+`test: tests/structural/test_source_identity.py::test_an_area_reaching_a_role_outside_its_row_is_named_with_its_import`,
+and the gate's reach step (`--reach-check`).
+
+**ID9. A new model is its own identity.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* New models must not invalidate unrelated research.
+
+Load agent models by name with their own numerical closure: activation adds a capability without successors, and Programs bind only mandate-admitted models. Adapters, declarations and search axes enter numerical closures; contract tests and scaffolds do not, so their changes move no identity.
+
 *Held by:* `gate: identity-closures`,
 `test: tests/alpha_research/test_model_extension.py::test_the_installed_mandate_is_the_same_value_from_one_source_of_domains`.
 
+**ID10. A recipe's identity is its executed content.**
+
+- *Source:* classic: content addressing.
+- *Adapted:* Recipe identities exclude only declared presentation labels, recursively.
+
+See ID1: a recipe's name is a presentation label; its identity binds executed content.
+
+*Held by:* `test: tests/structural/test_recipe_identity.py::test_a_renamed_label_moves_no_identity`.
+
+
 ## OW. Owners and packages
 
-**OW1. One responsibility, one owner; a noun, one owner package.** Every package is registered in
-`config/package-architecture.json` with its owner and area; a noun defined in two packages is a defect
-until a merge removes it. Each noun's owner is in `config/registries/owners-map.json` (G1), and a
-decision it makes -- a type its owner's contracts declare decided -- made outside the owner is refused
-against the splits the tree held, a baseline that only shrinks (G2). *Not yet held:* a decision that
-writes a table or a path another package owns (G2's storage and artifact checks). *Held by:*
+**OW1. One responsibility, one owner.**
+
+- *Source:* classic: single responsibility and single source of truth.
+- *Adapted:* Registered ownership; shrinking exceptions.
+
+Each responsibility/noun has one registered package owner; refuse duplicates and decisions elsewhere against a shrinking split baseline. Cross-owner storage/artifact writes remain unheld.
+
+*Held by:*
 `private-test: test_package_architecture_registry_is_complete_and_enforced`,
 `test: tests/structural/test_registries.py::test_a_decision_is_refused_outside_its_owner_naming_the_owner`.
 
-**OW2. Change the owner, not a parallel path.** A change replaces the owning path and removes what it
-displaced in the same change. A compatibility path is kept only for a named current reader, with the
-rule that retires it, and is listed in the convergence list. *Not yet held:* the holding test covers the retired owners it
-lists; a parallel path elsewhere is found by review (V195: two entries reuse a Portfolio result by
-different rules). *Held by:*
+**OW2. Change the owner, not a parallel path.**
+
+- *Source:* classic: single responsibility and single source of truth.
+- *Adapted:* Apply OW1 and OW10.
+
+See OW1 and OW10: replace/remove together; compatibility requires a current reader and inventoried retirement rule, with other parallel paths review-held.
+
+*Held by:*
 `private-test: test_retired_production_owners_are_absent`.
 
-**OW3. No version-shaped names.** Modules, classes, functions, routes and capabilities carry stable
-domain names, never `V2`, `Next`, `New`, `foo_v2` or a numeric suffix that keeps two implementations
-alive. A `vN` names only a real wire, schema, checkpoint or pack compatibility identity with a current
-reader and a retirement path. *Held by:* review.
+**OW3. No version-shaped names.**
 
-**OW4. Every module has an owner and a consumer.** A new module or abstraction names its owning domain
-and its current consumer; an empty package shell is refused; every product module has a named source of
-proof. *Not yet held:* 5 modules have none (`config/internal-ownership-baseline.json`,
-`module_proof_reach.no_executable_evidence`), pinned as a set: the Portfolio inputs' preparation, which
-goes with W9b's rotation (W6's row), and four that code reads statically (the Factor publication
-repository, the model validation contracts, the Risk calibration runtime, the Risk return surface
-parity). *Held by:*
+- *Source:* classic: YAGNI.
+- *Adapted:* Apply YAGNI to domain names while retaining wire, schema, checkpoint and pack versions only for current compatibility readers.
+
+No version-shaped domain names retain parallel implementations; wire/schema/checkpoint/pack versions require real compatibility, a current reader and retirement path.
+
+*Held by:* review.
+
+**OW4. Modules have owners and consumers.**
+
+- *Source:* classic: YAGNI.
+- *Adapted:* Require present use and proof.
+
+Modules need an owner, consumer and proof; no empty shells. Input-preparation proof awaiting rotation and statically read Factor/model/Risk proof remain unheld.
+
+*Held by:*
 `private-test: test_tracked_python_packages_are_not_empty_owner_shells`,
 `private-test: test_every_product_module_has_a_named_source_of_proof`.
 
-**OW5. No cycles.** No module imports back into a module that imports it, and no two packages depend on
-each other. *Not yet held:* the holding test checks packages (its baseline records no mutual
-dependency); a cycle between modules of one package is not checked. *Held by:*
+**OW5. No cycles.**
+
+- *Source:* classic: acyclic dependencies.
+- *Adapted:* Package holder; module coverage outstanding.
+
+No module/package dependency cycles; within-package module coverage remains unheld.
+
+*Held by:*
 `private-test: test_internal_ownership_baseline_is_exact_and_non_growing`.
 
-**OW6. A composition root composes.** `control/product_host` wires owners together and holds no domain
-logic of its own; its domain parts move to their owners (O2). What it does hold is the agent's side of
-the product, which makes it agent-native: what an
-agent reads, what it may do next, how a refused request goes on and where the loop's state lives
-(OP10 to OP13). "Composition only" moves the misplaced domain judgments out and keeps that side. Its modules are a baseline
-(`config/registries/host-modules.json`): the DOMAIN ones the owner map moves out only go, and a new one
-is registered as COMPOSITION or goes to its owner. *Held by:*
+**OW6. A composition root composes.**
+
+- *Source:* classic: composition root.
+- *Adapted:* Retain Host-owned agent coordination.
+
+The Host composes owners and keeps the agent loop under OP10 to OP13; domain logic leaves, DOMAIN registrations only shrink, and new modules register COMPOSITION.
+
+*Held by:*
 `test: tests/structural/test_registries.py::test_a_new_host_module_is_refused_unless_registered_as_composition`.
 
-**OW7. Agents interpret, deterministic owners decide.** An Agent reads evidence and proposes;
-calculation, validation, permissions, provenance, publication, activation and rollback belong to
-deterministic owners, and model output is never authority. Statistical and optimisation code stays out
-of Agent tools. *Held by:*
+**OW7. Agents interpret, deterministic owners decide.**
+
+- *Source:* classic: least privilege.
+- *Adapted:* Agents interpret and propose; deterministic owners retain numerical and authorization powers.
+
+Agents interpret evidence and propose; deterministic owners calculate, validate, authorize, record provenance, publish, activate and roll back. Model output grants no authority; statistical/optimization code stays outside Agent tools.
+
+*Held by:*
 `private-test: test_host_decision_policies_name_no_agent_configuration`,
 `private-test: test_experiment_compilers_are_agent_free_and_desk_owned`,
 `private-test: test_the_agent_seam_is_a_domain_free_import_and_the_built_in_agent_is_gone`.
 
-**OW8. The agent decides on evidence; the maintainer decides scope and risk.** An open question that
-"the owner decides" is decided by the agent on its evidence and reported; product scope, risk and
-anything irreversible or outward-facing are the maintainer's. *Held by:* review.
+**OW8. Evidence decides within the maintainer's authority.**
 
-**OW9. The tree is its own dependency root.** Its interpreter, imports and hashes resolve inside this
-checkout: its own `.venv` from its lock, no parent path, no junction to another tree's environment.
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Technical delegation preserves maintainer authority.
+
+Agents resolve and report owner-assigned technical questions on evidence; the maintainer decides scope, risk and irreversible or outward-facing acts.
+
+*Held by:* review.
+
+**OW9. The tree is its own dependency root.**
+
+- *Source:* classic: hermetic environments.
+- *Adapted:* Checkout-local dependencies.
+
+Checkout interpreter/imports/hashes use its own locked environment, never parent paths or another environment's junction.
+
 *Held by:*
 `private-test: test_workspace_environment_and_identities_never_reach_the_outer_checkout`,
 `private-test: test_no_product_source_reads_or_hashes_the_outer_checkout`.
 
-**OW10. One rule, one function.** A rule two places read, a standing, a readiness, a grid of what may be submitted and run, is written once, by its owner, and every reader calls that function; a restatement is a defect even while it agrees. A second gate that guards another entry, permission or person stays, and reads the same rule. *Why:* restated rules drift when one side changes; the reviews of 2026-09-27 found the Evidence standing restated by the Host (V96), the readiness decided twice (V107) and the Portfolio grid written twice (V150), none caught by a check. A static check cannot tell a restated rule from a new one, so W2's near-duplicate comparison and the reviews find them. *Held by:* review.
+**OW10. One rule, one function.**
 
-**OW11. An agent's model enters by its declaration, and a person activates it.** An Alpha model
-an agent adds is three files where G1's owner says, written by `model scaffold` from its YAML
-declaration: the adapter under `capabilities/alpha_modeling/extensions/`, whose `fit` and
-`predict` the agent writes (its route, recipe, search domain and fit protocol are the
-declaration's), the declaration beside it, and its contract test. `model check` runs the contract
-every adapter passes, the installed ones included: route and numerical binding, every point the
-search axes' probes state admitted by the adapter's own refusals, the fit protocol, determinism
-under the recipe's seed at one thread (the operator's threads are W10's canary's to prove), a
-prediction that reads its row alone, and imports the lock holds. A library outside the lock is a
-new dependency a person approves first, and nothing is written until then. `model sandbox` tries
-the model on a copy of the workspace at rest, one Alpha study and U0 before and after, and
-records the trial; a person activates the model for one workspace after a passed trial of the
-same identity (`MODEL_ACTIVATE`, person-only) and deactivates it. The search axes are declared
-and held by the contract; they enter no identity until V309 binds them. *Why:* the maintainer,
-2026-09-30 (the model extension's design): an agent gets one way in, and a person decides what real research may
-use. *Held by:*
+- *Source:* classic: DRY and single source of truth.
+- *Adapted:* Shared owner function; distinct entry checks.
+
+Every reader calls the owner's one rule function; separate entry/authority checks remain but read it. Matching restatements are defects found by review/near-duplicate comparison.
+
+*Held by:* review.
+
+**OW11. Declared models require activation.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* One admission path preserves person authority.
+
+Scaffold three owner-held files: adapter, declaration and contract test. Agents write `fit`/`predict`; declarations fix route, recipe, search axes and fit protocol. The installed/extension contract checks routing/binding, every axis-probe point under owner refusals, fit protocol, seeded one-thread determinism, row-only prediction and locked imports; other threads follow PA3. Outside-lock libraries need person approval before writing. Sandbox records one Alpha study and before/after reopening on an at-rest workspace copy; person activation needs that identity's passed trial, applies to one workspace, and deactivation is also theirs. Contract receipt/activation bind the complete declaration hash, including axes.
+
+*Held by:*
 `test: tests/alpha_research/test_model_extension.py::test_a_model_is_scaffolded_checked_and_passes_once_it_fits_and_predicts`,
 `test: tests/alpha_research/test_model_extension.py::test_a_scaffold_refuses_a_new_dependency_and_an_existing_model`,
 `test: tests/alpha_research/test_model_extension.py::test_a_person_activates_a_sandboxed_model_and_the_workspace_catalog_installs_it`,
@@ -227,68 +252,52 @@ use. *Held by:*
 `test: tests/alpha_research/test_model_contract.py::test_an_installed_model_passes_its_contract`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_operation_only_a_person_completes_is_marked_so`.
 
-**OW12. A strategy runs forward by the person's activation of its book.** An installed
-research strategy's book replays history until the person activates a completed run of it over its
-whole support (`STRATEGY_ACTIVATE`, the person's decision, relayed by the agent on their yes, OP23;
-under a first use's delegation its agent activates the book, OP19). Activation admits the strategy's
-first update in the same act, for the first use's date while its goal is open, and that date's
-positions are reviewed on their own publication. The activation binds what the daily chain reads,
-each built from the strategy's own research: each component's models, a lifecycle grant from the
-training input its Alpha study read, so the study's fitted models are reused by their keys and
-later quarters fit on the workspace's data through the horizon; the calibration's starting
-observations, the installed authority's own lanes anchored at the book's activation formation;
-and the book's opening state, its run's sealed last state, in a checkpoint that names the
-person's activation. Nothing is fitted, replayed or built from final weights. Before a person activates, the strategy states its information cutoff, its first actionable session (the first planned entry strictly after the activation, decided before entry; earlier forward decisions are a causal replay, never out-of-sample) and the book's review standing (V589, V597, V603, V614). A book whose package
-moved since it ran is refused, and activating a new run of it is the re-bind (V458); a person
-stops it (`STRATEGY_DEACTIVATE`), and its history stays readable; past its horizon, a newer book
-is activated. *Why:* a frozen strategy's live scores are a first-release must (the maintainer,
-2026-10-02). *Held by:*
+**OW12. Activated books run forward.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Forward research needs state and authority.
+
+Activate only a completed whole-support book with relayed person approval (OP23) or first-use delegation (OP19), admitting its first update for the open first-use date; review that publication's positions. Bind component models/Alpha training-input lifecycle grants (reuse fitted keys, refit later quarters through the horizon), calibration starts, authority lanes anchored at activation formation, and sealed last state in an activation-named checkpoint; activation fits/replays nothing and builds nothing from final weights. State cutoff, review standing and first planned entry strictly after activation, decided before entry; earlier decisions are causal replay, not out-of-sample. Changed packages require a new run/rebind; person deactivation preserves history, and horizons require newer books.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_activation_readback.py::test_an_absent_or_inactive_book_keeps_its_selected_way_on`; `test: tests/portfolio_strategy_lab/test_activation_readback.py::test_every_activation_surface_reads_the_exact_books_published_review`; `test: tests/portfolio_strategy_lab/test_strategy_activation.py::test_installed_strategy_dates_follow_sealed_records_on_the_cli`,
 `test: tests/portfolio_strategy_lab/test_portfolio_decision_updates.py::test_a_persons_activation_names_its_time_and_book_and_a_qa_admission_neither`,
 `test: tests/portfolio_strategy_lab/test_portfolio_decision_updates.py::test_a_calibrated_input_is_admitted_only_with_its_axis_activation`,
 `test: tests/workspace_readiness/test_workspace_manifest_writes.py::test_a_research_installation_holds_a_persons_activation`,
 `test: tests/portfolio_strategy_lab/test_strategy_activation.py::test_a_reviewed_research_book_runs_forward_when_a_person_activates_it`.
 
+
 ## OP. Operations and interfaces
 
-**OP1. Every entry is a registered operation.** A route, a CLI command and an Agent tool are each an
-operation of the operation registry; the gate refuses one that is not. The client answers four
-commands itself and they are no operation: `serve`, `request` (any operation's document),
-`schema show` (read from the registry's table, no Host) and `activity wait` (a waiter over the
-feed's operation); the workspace, the operations, the activity feed, a declared event and the CPU
-budget are operations like any other (V266). *Held by:*
+**OP1. One operation registry.**
+
+- *Source:* classic: complete mediation; single source of truth.
+- *Adapted:* One operation registry mediates product entries.
+
+Every product route, operation command and agent tool names a registered operation; local client mechanisms are declared separately in the CLI grammar.
+
+*Held by:*
 `gate: operation-registry`.
 
-**OP2. One CLI grammar, declared, on the Unix and GNU conventions, Git's for objects and context and the agent CLIs' for execution and continuation.** `alphalattice [global
-options] <object> <action> [<id>] [--flag ...]`: the one instance a command acts on is a
-positional operand, what modifies it an option; a document is `--file <path>`, `-` reads stdin
-and `--` ends the options; help at every level; one envelope on stdout, progress on stderr, the
-exit code the outcome. An action has one meaning in every object (`list`, `show`, `preview`,
-`plan`, `run`, `verify`, ...), a flag one meaning in every command (`--file`, `--from`,
-`--choices`, `--save-declaration`), and a selector names its object (`--task`, `--plan`); no
-aliases. A reference is taken as the compact view shows it; every answer of the Host names its
-context (the workspace, the goal counted, the agent session); a command never prompts, and long work answers
-with a Task id that `task show`, `activity wait` and `task cancel` take; the top-level help
-opens with the common path and lists every object in the research's order. The compact view is
-every caller's default (a script asks `--view full`); a printed next command keeps its caller's
-context, and a continuation keeps the references it bound. The operation registry declares each command (`GRAMMAR`: its object, action, purpose,
-positional instance and document) and each field's flag, and the CLI parses from the table it
-writes, `operations.json`, with the standard library, so a command costs a process start and not
-the product's models (K1); a stale table is refused, and a text naming a command or flag the CLI
-lacks is refused. The older client and its verbs are retired (2026-10-01,
-A4). *Held by:* `gate: operation-registry`,
+**OP2. One declared CLI grammar.**
+
+- *Source:* borrowed: Unix and GNU command conventions; Git object commands.
+- *Adapted:* One table declares object/action forms without prompts or aliases; root help opens with the common path and every object in research order.
+
+The registry declares `alphalattice [global options] <object> <action> [<id>] [--flag ...]`: consistent actions/flags, positional instances, object selectors, document/stdin forms and contextual help; `--` ends options. Standard-library readers parse generated `operations.json`; stale/undocumented forms refuse. Compact is default (`--view full` overrides); long work returns a readable, waitable, cancellable Task. OP3 holds streams/outcomes; OP15 to OP17 hold selections and continuations preserving caller context and bound references.
+
+*Held by:* `gate: operation-registry`,
 `test: tests/structural/test_documented_commands.py::test_a_command_a_text_names_is_one_the_cli_has`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_saved_declaration_reads_from_stdin_and_names_its_context`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_the_option_terminator_keeps_the_following_id_as_an_operand`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_exclusive_read_selectors_are_refused_before_a_request_is_sent`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_choices_require_the_saved_answer_they_fill`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_declaration_and_choices_never_give_one_field_twice`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_command_schema_names_both_admitted_declaration_forms`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_shared_read_schema_names_each_alternative_selector`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_saved_answer_from_stdin_selects_its_read_operation`.
 
-**OP3. One answer envelope, exit by outcome.** Every command prints one envelope and exits 0 OK,
-1 INVALID_INPUT, 2 REFUSED, 3 PENDING or 4 NO_HOST; `--output` holds the owner's full answer whatever its
-status, and stdout is the compact view when saving. The compact view shows each hash and id by its
-first twelve characters, links and paths whole, and the CLI reads a value of that shape back as the
-one whole value the Host has answered with before anything is sent, refusing one that begins several
-(V393); the Host reads only whole values. The compact view is one read whatever the answer
-offers: its next requests keep a quarter of it, the owner's first in its order, `next_left`
-counting the rest, and `--list-next` lists them a page at a time (V411). `--list-next` answers in
-the one envelope (V261), and `--wait --output` saves the admission before it waits (V273).
+**OP3. One envelope and outcome code.**
+
+- *Source:* borrowed: Unix exit-status conventions.
+- *Adapted:* One envelope with a full saved answer and a bounded compact display.
+
+Exit 0 OK, 1 INVALID_INPUT, 2 REFUSED, 3 PENDING or 4 NO_HOST; `--output` saves the full answer and admission before waiting, while compact stdout shortens only typed references to uniquely resolvable twelve-character prefixes. Next requests retain the owner's order within a quarter of the display, `next_left` counts the rest, and `--list-next` pages them in the same envelope. The CLI expands each shortened reference to its whole value before sending, refusing ambiguity; the Host reads only whole values.
+
 *Held by:*
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_answer_is_one_envelope_and_exits_by_its_outcome`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_compact_answer_shows_references_short_and_they_can_be_sent_so`,
@@ -297,22 +306,14 @@ the one envelope (V261), and `--wait --output` saves the admission before it wai
 `test: tests/portfolio_strategy_lab/test_status_follow.py::test_an_interrupted_wait_keeps_the_admitted_task_in_its_output`,
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_short_reference_is_read_back_as_the_one_value_it_begins`.
 
-**OP4. A refusal is a code with words and a way on.** A refusal carries its owner's stable code, words a
-person can act on, and the next request the owner accepts; never exception text or a path. Its words
-are its owner's, else its code's own from one table (`refusal_words.json`), filled where a refusal
-leaves the Host: at the operation door for a returned refusal, at the web layer for a raised one
-(V449). Every web handler preserves a typed owner's refusal through the shared failure-code
-reader, whatever its exception class; the web response and an observed operation's record retain
-the owner's code. `handler_failed` is reserved for untyped unhandled faults (V679). A way on is a
-request the Host accepts (an offered request, which the answer check holds)
-or a person's act; never a retry of work the Host would reuse as sealed, which meets the same
-refusal (V449: words that offered a rerun of a study whose sealed file was missing). A way on that runs a plan again after a stop resumes the same Task from the stage it stopped in, and is refused by that stop's code, with its retry time where it has one, until its cause clears; no newer plan or admitted Task waits behind an update that has not ended (V600, V601, V604). A failure
-without a product code (a crash, or a validator's sentence) never reaches a caller as its own
-words: the Host answers it as its fingerprint with words and a way on, and a test that meets one
-fails unless it causes it on purpose (`untyped_failure`). *Held where a test reaches it:* the
-answer check every test's operations pass refuses a refusal without words or a way on, and an
-untyped failure; a registered code no test reaches is worded only where its owner or the table
-words it. A document that fails its contract is answered in one located shape at every operation: the owner's code, the fields by path, each field's reason and the contract's words, never a value (`failure_codes.located_failure`, V248). *Held by:*
+**OP4. A refusal is a code with words and a way on.**
+
+- *Source:* classic: fail fast; actionable errors.
+- *Adapted:* Typed owner refusals carry usable words and admitted recovery.
+
+Preserve owner codes in responses/observations, locate contract errors by field path without values, and supply owner/table words plus an admitted next action; exception text never escapes, and untyped faults become fingerprinted product failures that tests reject unless planted. A plan retry resumes the same Task at its stopped stage and is refused by the stop's code until its cause clears, retaining any retry time. Recovery never reruns sealed work or waits behind unfinished work; the answer check holds only reached codes, not all registered refusals.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_research_delivery.py::test_each_explained_refusal_keeps_its_code_and_asks_only_operations_the_host_accepts`,
 `test: tests/portfolio_strategy_lab/test_failure_codes.py::test_a_contract_failure_answers_one_located_shape`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_refusal_leaves_with_words_and_a_way_on`,
@@ -322,29 +323,30 @@ words it. A document that fails its contract is answered in one located shape at
 `test: tests/portfolio_strategy_lab/test_local_web_service.py::test_every_web_handler_preserves_every_typed_owner_exception`,
 `test: tests/portfolio_strategy_lab/test_local_web_service.py::test_a_genuine_fault_stays_a_fault_at_every_web_owner_entry`,
 `test: tests/portfolio_strategy_lab/test_failure_codes.py::test_a_contract_failure_answers_one_located_shape`.
-V679's observer regression checks the discovered typed cases through one observed operation;
+The observer regression checks the discovered typed cases through one observed operation;
 it does not establish every route and observer combination.
 
-**OP5. Offline by default.** Network and providers are off unless a workspace's control allows them
-(`control/workspace_runtime/network_access.py`); `ALPHALATTICE_NETWORK_DISABLED=1` forces a process
-offline, and every test, probe and product run uses it unless a card admits live access (a test that proves the person's switch clears it for itself, its own guards keeping every read on the machine, V600); one
-kernel function reads the switch (`kernel/shared_kernel/environment.py` `offline`), and anything but
-the control's two mappings reads as closed: a person's (version 1), and a first-use goal's
-delegation's (version 2), which carries that delegation and its end and reads closed after it at
-every read, with no write (OP19, V452). A research run is held offline while it runs,
-whatever its workspace allows (`held_offline`, V116), so a network open for an update never
-refuses a study. *Held by:*
+**OP5. Offline by default.**
+
+- *Source:* classic: fail-safe defaults; least privilege.
+- *Adapted:* Workspace consent is bounded; scientific execution stays offline.
+
+Network/providers default closed: admit only a person's version-1 control or a version-2 first-use delegation, which expires on every read without a write; one kernel reader enforces `ALPHALATTICE_NETWORK_DISABLED=1` for tests/probes/product runs except admitted live access or a switch test with local-only guards. Research remains `held_offline` regardless of workspace permission, so an update's network cannot prevent a study.
+
+*Held by:*
 `test: tests/workspace_maintenance/test_network_access.py::test_anything_but_a_version_one_mapping_with_a_boolean_reads_closed`,
 `test: tests/workspace_maintenance/test_network_access.py::test_the_written_control_opens_and_closes_the_network`,
 `test: tests/workspace_maintenance/test_network_access.py::test_a_delegated_setting_holds_until_its_end_with_no_write`,
 `test: tests/researcher_methodology_surface/test_program_execution.py::test_a_run_is_held_offline_and_a_plan_over_budget_is_refused_at_plan`, review.
 
-**OP6. A read never becomes work.** A readback, export or replay reopens what was sealed and refuses
-rather than computes. A collection reads its independent items independently: one missing or refused
-item leaves the others readable and names its own refusal with OP4's usable way on, never refusing the
-whole collection (V633). Display readers of the registry's Task collection isolate an unreadable
-canonical record; complete and control scans still refuse it, rather than treating the readable
-subset as complete authority (V661). *Held by:* `U0` for sealed readback;
+**OP6. Reads remain read-only.**
+
+- *Source:* classic: command-query separation.
+- *Adapted:* Read-only selection and partial display never become computation or authority.
+
+Sealed readback/export/replay refuse rather than compute; independent collection items isolate their own actionable failure, while complete/control scans reject missing canonical authority. Discovery reads metadata/summary and selection reads only its exact object/revision, using the named Task, Report, Goal-reference and Foundation readers; the holders cover those selections, not every owner query.
+
+*Held by:* `U0` for sealed readback;
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_each_registered_collection_read_checks_item_refusal_routes`
 for every registered collection's answer contract;
 `test: tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_foundation_seal_consumption_readback_and_refusals`
@@ -354,291 +356,223 @@ for unreadable Task records in six display readers and strict complete/control s
 the Result, History, Feature, Goal and Activity owner regressions for representative runtime
 isolation, and owner review for the remaining registered readers. The registry-wide check uses
 synthetic answers; it does not claim runtime failure injection for every owner.
-
-Collection discovery reads metadata or the owner's summary, never every item's full object;
-selection reads only the exact object and revision the person selected (V683, V688). A Task's
-Result lookup uses its metadata and one exact Report, a Goal reference uses its exact reference
-selector, and Foundation discovery uses its sealed summary. *Held by:*
+*Held by:*
 `private-test: test_the_workbench_harnesses_pass`, whose collection, route and handoff probes
 check these selected reads and reject mismatched references. These probes hold the named
 Workbench readers, not every owner query. Page and intent lifetimes belong to the Workbench's
 ST1, ST5, PG2 and ST10.
 
-**OP7. Product words.** Product text never says "supplementary", "nice-to-have" or "today", and never
-places the Evidence review as secondary. *Held by:* review.
+**OP7. Product words.**
 
-**OP8. Configuration names no code and carries no resolved authority.** Committed configuration never
-carries a resolved authority, and an authored document never names a Python module or callable. *Held by:*
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Evidence must not read as optional or secondary.
+
+Product wording never describes Evidence as secondary and avoids the three expressions prohibited by the maintainer: "supplementary", "nice-to-have" and "today".
+
+*Held by:* review.
+
+**OP8. Configuration cannot select code or authority.**
+
+- *Source:* classic: untrusted input as data; least privilege.
+- *Adapted:* Documents cannot select executable code or resolve their own authority.
+
+Committed configuration carries no resolved authority, and authored documents name no Python module or callable; the product owner resolves both code and authority.
+
+*Held by:*
 `private-test: test_committed_configuration_never_carries_resolved_authority`,
 `private-test: test_authored_documents_never_name_python_modules_or_callables`.
 
-**OP9. The CLI and YAML operate everything.** The system uses YAML so that people and agents can both
-drive it, and it must be easy to operate through the CLI together with YAML (the maintainer,
-2026-09-26). Every
-operation is reachable from `alphalattice <noun> <verb>`. A scalar selector (a Task id, a session) is a
-flag; a structured input is a YAML file, attached to its field with `@<file>` or given as the whole
-request with `alphalattice request --file <file>` (`-` reads stdin); a long document is never typed on the
-command line. `--output` with `--format yaml` saves the answer as YAML, which `--from` reads, while stdout
-stays the JSON envelope (OP3); a template or draft comes back as YAML to edit. A card
-that adds or changes an operation keeps all of this, and its help names the `@<file>` form. *Why:* a
-recipe holds too much for flags, and a file a person can read, comment and keep beside the command is
-the interface both a person and an agent use well. *Held by:*
+**OP9. The CLI and YAML operate everything.**
+
+- *Source:* borrowed: declarative YAML.
+- *Adapted:* Structured requests use readable documents; selectors follow OP2.
+
+Every operation is CLI-reachable with structured input through `@<file>` or `request --file <file>` (stdin `-`), never long inline documents, and help names that form. `--output --format yaml` preserves reusable answers for `--from`, stdout remains JSON under OP3, and templates/drafts return as editable YAML.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_local_web_client.py::test_cli_document_reader_keeps_utf8_and_byte_limits_for_files_and_stdin`,
 `test: tests/researcher_methodology_surface/test_experiment_authoring.py::test_yaml_compiles_to_an_immutable_program_with_exact_sessions`.
 
-**OP10. A specialist reads what the Host prepared.** A specialist agent (the Analyst, the CRO, any role
-the Host packs a bundle for) is given Markdown bundles the Host packs from verified owners, bounded by
-size with one index, holding only what its role needs; never raw or dirty data, a database, an
-artifact's JSON, a hash or an internal code. The main agent, who drives the CLI, reads the owners'
-answers as the envelope gives them, their identities included (OP3, OP9), a compact view leaving out
-what no decision of its own reads (a Task's `timing`, V280). Short aliases (S3, F2) stand for
-sources and findings and the Host maps them back; what could not be covered is named, and anything
-sealed from agents is checked by count before a bundle is handed over. *Why:* the agent's attention
-is the scarce resource; the Analyst's material fell from 55,859 to 11,329 proxy tokens when the Host
-packed it. Each shipped specialist card must be satisfiable
-by its declared Host's actual tools. Bundle reads stay within listed files, writes within the
-nominated answer file; stage cards retain their declared product CLI (V669). *Not yet held:*
-the card validator compares instructions with a declared native-tool set and access phrases;
-it does not invoke every tool on both Hosts. Live receipts hold only the observed card and Host
-(V669, V677). *Held by:*
+**OP10. Role-scoped specialist context.**
+
+- *Source:* classic: least privilege; economy of mechanism.
+- *Adapted:* Specialists receive bounded, role-scoped bundles; the lead retains owner answers.
+
+Verified indexed Markdown exposes only required specialist material, aliases and coverage; sealed material is counted before handoff. Raw data, databases, artifact JSON, hashes and internal codes stay outside. Reads/writes use declared bundle/answer files; cards retain admitted CLI/Host tools. Static checks and live receipts prove declared tools and observed card/Host pairs, not universal execution.
+
+*Held by:*
 `private-test: test_shipped_configs_and_all_role_cards_parse_and_match_host_tools`;
 the remaining bundle boundaries by review.
 
-**OP11. An agent answers with judgment only.** Its answer schema holds judgment fields, never a hash,
-a field the program can compute or a ritual confirmation; a subset is a valid answer and an empty
-list is one; the Host binds the answer to what it answers and marks the rest not addressed. Whether a
-task is complete is judged against its agreed scope and required evidence, never by the answer's
-size: an empty list over materials read whole is a complete answer, and only required work left
-undone makes it partial. Every shipped specialist card has a bound answer door. Evidence Analyst
-and CRO retain their typed answer operations; Alpha, Data, Factor, Portfolio and Risk retain
-their stage CLI and write one bounded generic answer file as their final action. The lead submits
-the file through `AGENT_ANSWER_SUBMIT`; the Host checks its shape and bindings, not the truth
-of its text (V698). Card and host fixtures prove the protocol, not live execution of every role.
-*Not yet held:* an answer must still name the bundle files it read whole, and one that leaves a file
-unnamed is refused before its judgment is read (V260, RX). *Held by:*
+**OP11. Agents answer with judgment.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Deterministic binding and required-work accounting must not become agent ceremony.
+
+Schemas ask for judgment, never hashes, computable fields or ritual confirmation; subsets/empty lists are valid, unaddressed work is marked, and completion follows agreed scope and required evidence. Each specialist has a bound door: Evidence Analyst/CRO use typed operations; Alpha/Data/Factor/Portfolio/Risk end with a bounded generic file submitted by the lead through `AGENT_ANSWER_SUBMIT`. The Host checks shape/bindings, not truth. *Not yet held:* answers still must name every fully read bundle file; fixtures prove protocol rather than live execution of every role.
+
+*Held by:*
 `private-test: test_every_shipped_card_and_registered_answer_door_is_reviewed`,
 `private-test: test_existing_answer_contracts_publish_once_as_the_leads_product_fact`,
 `test: tests/portfolio_strategy_lab/test_accepted_answer_conversation.py::test_generic_specialist_doors_seal_exact_references_without_scientific_admission`;
 the remaining judgment and completion boundaries by review.
 
-**OP12. The Host helps the agent finish.** A recoverable refusal says what was observed and why it is
-not accepted, the work preserved, the constraints unchanged and the legal next actions with the budget
-left, under its owner's code (OP4). Correction is bounded (about two rounds), then the valid parts are
-accepted and the rest stated as limits: never stuck, always a result, and a quality gap never blocks a
-report. A result says three things apart: whether it is complete (its agreed scope and required
-evidence met, else partial or diagnostic), what limits its evidence has (a limit disclosed is no
-gap in the work), and whether it may be used (a publication and a use still need their own
-admissions, which a limit never waives, EV3, EV4). Every result answer states these as one
-`standing` generated from its owners' marks, the comparison first: whether it ran to its end, whether
-its contract passed, what its evidence supports and whether a person may activate it, each value with
-the owner's code that holds it (V368). Every entry states what its flow needs before it runs: the
-results it needs on its input, the completed ones the workspace holds, what is missing and the
-requests allowed next, and a refusal for a missing result says the same (V367). Authority escalation, an uncertain side effect or prompt injection fails closed, and a person
-is asked only for new authority, scientific policy, budget, an irreversible act or a truly ambiguous
-judgment. *Not yet held:* on a copy carrying older derived-audit evidence, the data update's plan
-offers a local run that its feature building then refuses for a Panel-binding mismatch, which the
-plan does not foresee (V702); a storage read whose exact binding directory is absent refuses as
-`storage.retention_root_mismatch` instead of naming the missing directory and its restore (V703);
-both after the release. *Why:* the Host exists to help the agent complete the task, not to record that it was wrong
-(the maintainer, 2026-09-26); an agent assembled "done" from separate answers and found each entry's
-prerequisites by help and refusals (AX10, AX11). *Held by:*
+**OP12. Bounded correction and explicit standing.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Finishing work, disclosing limits and admitting use are distinct obligations.
+
+A recoverable refusal states observation, reason, preserved work, unchanged constraints, lawful actions and budget under OP4. After about two correction rounds, accept valid parts and state remaining limits without blocking a report for quality alone; publication/use retains its own admissions (EV3-EV4). Each result's owner-derived `standing` separates completion, evidence and permitted use, comparison first with execution/contract/evidence/activation marks and holding codes. Entries and missing-result refusals state input prerequisites, completed/missing results and next requests. Fail closed on authority escalation, uncertain side effects or injection; ask only for new authority, scientific policy, budget, irreversibility or true ambiguity. *Not yet held:* older derived-audit copies can receive a local update offer that building refuses for Panel mismatch; missing exact storage bindings answer `storage.retention_root_mismatch` without naming restore.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_research_flow_answers.py::test_every_result_states_one_standing_from_its_owners_marks`,
 `test: tests/portfolio_strategy_lab/test_research_flow_answers.py::test_each_flow_names_its_prerequisites_and_the_way_on`,
 `test: tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_controls_and_a_missing_prerequisite_name_the_flows_way_on`;
 the bounded correction by review.
 
-**OP13. The agent runs a goal; the Host keeps its record. The Host says little and remembers
-everything.** An agent pursues a goal with its own goal mode, and the Host keeps what makes the result
-trustworthy and what outlives the session: the goal's declaration (its objective, completion criteria
-and deliverables); its record, every request and Task a session bound to it started, failed ones
-included; and its submission, which the Host checks against that record and seals, or answers with each
-missing item and the request that supplies it. Complete means the record is complete and its evidence
-verified, not that the objective was met, and the Host never judges a summary's truth. Long
-computation is a Host job outside the agent, with an idempotency key and real work units, and where a
-stage decides by a rule a deterministic owner concludes (a qualification, a review), the goal citing
-it. The agent confirms nothing the Host cannot check (OP11), and the Host wakes an agent only when the
-agent can act on what happened, with one line naming the event and where to read it; progress wakes
-no one. What happens is the Host's record, never an agent's memory: every admitted request, Task and
-result carries the agent session that started it (a vendor's session identity, provenance and never
-identity, ID6; a session's binding also gives it its default workspace, a convenience and never
-authority, V568), so a result outlives its session and one read finds it, the latest results grouped
-by session and goal, each with its read command; every Team event keeps the goal its
-session held when the Host received it, so Team (by session), the goal (its conversation) and the
-recent read (by time) are three reads of one record. *Why:* an agent's goal mode already plans and
-persists, and what it lacks is a record the Host can check and a place to manage it; an agent's
-tokens go to what it reads and how often it is woken, and a session can stop at any moment; a person
-asking for "the result from earlier" gets it back from the record, whichever agent asks. *Held by:* review.
+**OP13. The agent pursues the goal; the Host keeps its record.**
 
-**OP14. The Host records what happened; what an agent read stays in its own context.** An agent's
-tools are the Host's operations: each is a registered operation (OP1) whose pydantic request the Host
-validates and refuses by name; the CLI is how an agent calls it, finding it when needed (`alphalattice
-schema show`); a YAML file is the lasting form of a structured input or a saved answer (OP9); the JSON
-envelope is the tool's answer (OP3). No second tool definition is written, and a native adapter (MCP),
-if one is ever wanted, is generated from the same registry. The Host records what changes state
-durably at its owner (a Task, a receipt, a publication, the goal's record), with the agent session as
-provenance (OP13); each observed operation (a preview, a submission, a confirmation, a Task command)
-as it happens, in the activity ledger, with its caller, provenance, the fields it named, its outcome
-and failure code, bounded by the ledger's size budget (a request made under a goal also joins the
-goal's durable record); and every refusal, reads included, counted durably by day, operation, code,
-caller kind and agent vendor, never by session, request or text (`alphalattice activity refusals`). It
-never records a read's answer, which the reader holds, nor an agent's reasoning, prompt, context or the
-text it read: the activity keeps typed codes and references only. *Why:* the system keeps one place that records the calls agents make to it (the
-maintainer, 2026-09-28). An agent's runtime keeps what it saw,
-privately and for one session; the Host keeps what happened, for every session and agent. A refusal
-is the plainest sign of where an agent fails, and it left with the transient rows. *Held by:*
+- *Source:* classic: event sourcing; idempotency.
+- *Adapted:* The Host records durable goal facts and idempotent computation, leaving planning to the agent.
+
+The agent pursues its goal; the Host records the declaration/criteria/deliverables, all bound requests/Tasks including failures, and a submission sealed against that record or answered with missing items and their requests. Record completeness does not prove objective or summary truth. Computation is idempotent Host work with real units, and deterministic conclusions are cited by the goal. The agent confirms nothing the Host cannot check under OP11. Wake only for actionable events, with the event/read in one line, never progress alone. Vendor/session is provenance, never numerical identity; session workspace defaults confer no authority. Team events retain their admission goal, and session, conversation and recent-time views project one durable record with commands to recover earlier results.
+
+*Held by:* review.
+
+**OP14. One typed observation ledger.**
+
+- *Source:* borrowed: OpenTelemetry call-record form.
+- *Adapted:* One bounded typed call ledger, with separate durable facts and privacy.
+
+Derive requests, grammar, schemas and future native adapters from the registry. Record durable owner changes and bounded calls with caller/session, named fields and outcome/code; include goal-bound requests. Refusal counters retain day/operation/code/caller/vendor, never session/request/text. Observations keep typed references, never answers, prompts, reasoning, context or read material.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_workspace_activity.py::test_every_refusal_is_counted_by_operation_code_caller_and_vendor_and_nothing_else`,
 `test: tests/portfolio_strategy_lab/test_workspace_activity.py::test_every_operation_in_the_vocabulary_is_classified_once`,
 `test: tests/portfolio_strategy_lab/test_workspace_activity.py::test_only_typed_failure_codes_and_exception_classes_are_persisted`.
 
-**OP15. A next request is a closure or a declared template, and a read reads again from itself.**
-Every request an answer offers names an operation the Host answers and only that operation's
-fields, each of the kind the grammar declares; a field it leaves to its reader is None or absent
-(`choices`), never a stand-in (`<candidate_id>`); what the Host knows it binds. The CLI's copy
-of a read's answer, printed and saved, keeps the request it sent, its whole selection
-(`read_request`, `named_read`), so `--from` reads the same read again from the answer alone, its
-target, references and every choice (a day, a page), a flag naming another value winning; the
-Host's answer stays its owner's, byte for byte, so an export's record, a measured delivery and a
-self-hash hold, and a read answers alike at every entry. *Why:* the outside reviews' continuation findings (V419, V426, V438,
-V443) and the sweep's (V449): an Evidence answer offering a unit's id as a request without an
-operation, packet requests carrying fields no packet request takes, 22 reads whose answers did
-not read again from themselves; named at the operation door first, the references broke an
-export's hash, a measured packet's bytes and an export's equality with its read (V449);
-`study show --from` a saved read of a past day read the latest one (V454).
-*Held by:* the answer check every test's operations pass (`request_problem`, the self-read, V449),
+**OP15. Closed offers and repeatable reads.**
+
+- *Source:* classic: HATEOAS.
+- *Adapted:* Offered operation documents bind known values and preserve owner bytes.
+
+An offer names its operation's declared fields/kinds, binds known values and leaves choices None/absent rather than placeholders. Client `read_request`/`named_read` metadata preserves the sent selection so `--from` repeats its target, references, day and page with allowed flag overrides, while owner bytes remain unchanged for export, measured delivery and self-hashes.
+
+*Held by:* the answer check every test's operations pass (`request_problem` and the self-read),
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_an_offered_request_is_one_the_host_accepts_as_it_stands`,
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_every_read_reads_its_whole_selection_again_from_its_answer`; `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_read_alias_preserves_its_field_map_and_explicit_selection`,
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_every_read_reads_its_whole_selection_again_from_its_answer`.
 
-**OP16. A printed command is read back as the request it came from, in the context it ran in.**
-The CLI's reading of a command line (`request_of`) is the printer's inverse for every operation,
-field and declared kind, in POSIX shells and in Windows PowerShell: a value the parser would read
-otherwise is printed so it is not (a leading `@` doubled, a leading `-` joined to its flag), and a
-request holding a double quote goes to PowerShell whole through stdin. Every command the CLI
-prints keeps the context its call ran in (its view, its language, its goal: `_kept_options`). An
-answer saved as JSON or as YAML reads back alike through `--from`. *Why:* 436 of 1,925 printed
-requests misread, Windows PowerShell 5.1 stripping every printed JSON argument's quotes, a
-bundle's submit command dropping its `--goal` (V449). *Held by:*
+**OP16. Commands round-trip with context.**
+
+- *Source:* classic: round-trip invariance.
+- *Adapted:* The real parser is the printer's inverse in POSIX and PowerShell.
+
+Every operation, declared field/value and view/language/goal context round-trips unchanged through the real shell/parser, including stdin transport where PowerShell requires it and equivalent JSON/YAML saved answers. Authored refusal/template commands also parse; registered-head extraction cannot establish arbitrary unregistered command-like prose.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_every_printed_command_reads_back_as_the_request_it_came_from`,
 `test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_a_command_printed_for_powershell_sends_the_request_it_came_from`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_next_command_keeps_the_context_its_answer_came_in`,
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_an_answer_saved_as_json_or_yaml_reads_back_alike`.
-Every executable command offered in refusal words or an answer template must also parse with
-the real CLI; a printer round trip alone does not hold those independently authored commands
-(V687, V692). *Held by:*
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_every_refusal_and_answer_template_command_parses`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_the_canary_door_operator_command_parses_through_the_real_cli`.
-The census walks the refusal and answer catalogs, client refusals, schemas and generated offers;
-its prose extraction recognizes registered command heads. *Not yet held:* that extraction does
-not detect arbitrary unregistered command-like prose (V687).
 
-**OP17. Context resolves from the request, then the file it names, then the session; a target in
-conflict is refused.** A request's target (its Task, its goal) is the one its flags name, else
-the one the saved answer `--from` names, else, where the operation declares it, the session's own
-goal (V391); a file naming no target the operation needs is refused, never read as a default, and
-a flag naming another target than the file is refused, never preferred. Any other reference the
-file names fills what the flags leave, a flag giving one winning. *Why:* `goal abandon --from
-goal-a.json` closed the session's own goal (V449, an outside review). *Held by:*
+**OP17. Bound context; refuse conflicting targets.**
+
+- *Source:* classic: fail-safe defaults.
+- *Adapted:* Ambiguous targets fail closed; explicit non-target choices can override.
+
+Resolve targets from flags, then the named answer, then a declared session default; missing required file targets and flag/file conflicts refuse. Other file references fill absent flags, and explicit non-target values win.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_request_a_listed_item_offers_is_followed`.
 
-**OP18. Every state has its exit.** Every Task state has one CLI outcome (pending, refused or
-done), read wherever an answer names it (`lifecycle`, `task_lifecycle` beside an answer's own
-`status`, or `status`: `TASK_STATE_FIELDS`), and a composite (a trial, a goal) names the part whose Task waits on a request, so a wait
-on it ends where a decision is needed; an answer that reuses, admits or resubmits work names what
-holds it (its Task, or the result or record it is, by an id or a hash at its top, or a request it
-offers naming one). *Why:* a goal waiter missed BLOCKED (V440); a
-trial whose step needed recovery read RUNNING and a wait ran on (V449); a data update's reuse
-answered no Task to read (V449); a data update's wait ended at once, its Task's state named
-`task_lifecycle` (V455). *Held by:*
+**OP18. Every state has its exit.**
+
+- *Source:* classic: finite-state machines.
+- *Adapted:* One exit rule covers every state location and composite.
+
+Each Task state has one pending/refused/completed outcome wherever `TASK_STATE_FIELDS` reads it; composites name their action-blocked part so waits stop there. Admission, reuse or resubmission names its holding Task/result/record by id/hash or bound offered request.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_catalog_of_refused_controls_is_an_answer`,
 `test: tests/portfolio_strategy_lab/test_typed_answers.py::test_every_answer_lifecycle_field_names_a_task_state_or_its_distinct_role`,
 `test: tests/portfolio_strategy_lab/test_status_follow.py::test_a_wait_on_a_trial_ends_when_a_step_needs_its_recovery`,
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_catalog_of_refused_controls_is_an_answer`,
 the answer check every test's operations pass (`exit_problem`).
 
-**OP19. A first use is the agent's, by the person's one sentence.** A goal of kind `FIRST_USE`,
-opened from the person's sentence, once per workspace and before its first preparation, delegates
-the first use's person-only steps (`FIRST_USE_STEPS`: opening the network for the preparation,
-confirming it and its resumes, deciding its data issues, confirming its membership changes, and
-activating its book, which the person deactivates) to the agent running it, while it is
-open and within its hours (`FIRST_USE_HOURS`); each runs as the person's decision carried by the
-agent and is recorded in the goal's ledger as delegated. Its book draft's declared
-unavailable-return quarantine is a data decision of that kind: the draft's policy kept and the
-effective population reported, never chosen to improve a result (V504). The network it opens holds until the
-delegation's end by the control itself (OP5), and its earlier end, by submission or abandonment,
-closes it; a deactivation, any other activation, a storage decision, an automation, a revocation
-and anything paid stay a person's, and the goal is never revised nor offers a revision. Its record names the delegation,
-its end and whether it holds, and the person's decisions name it with its Stop while it holds
-(U70). *Why:*
-the maintainer, 2026-10-01: the person gives one sentence and the agent runs the first use, the person
-able to interrupt at any time (V452); the maintainer's hands-off rule, 2026-10-07: a reversible step
-is a default the agent takes and discloses, so the reviewed book's activation and the membership its
-source names are the first use's (STOPS-1). *Held by:*
+**OP19. First-use delegation.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* One sentence can delegate reversible first use without lasting or general authority.
+
+Open `FIRST_USE` once per workspace, before first preparation, retaining the person's objective unchanged. While open and within `FIRST_USE_HOURS`, only `FIRST_USE_STEPS` are delegated: preparation network, confirmation/resumes, data issues, membership changes and that book's activation, each recorded as the person's decision. Quarantine retains the draft's policy and reports effective population, never selecting for better results. Network expires at the grant's end and closes on submission/abandonment; the non-revisable goal records validity, end and the person's Stop. Deactivation, other activation, storage, automation, revocation and paid acts remain the person's.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them`,
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised`,
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_delegated_activation_runs_forward_without_the_history_review`,
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_is_the_one_before_the_first_preparation`.
 
-**OP20. A person's decision carries by its evidence.** A retry that changes only a run or clock
-field carries the person's existing decision for the same issue, evidence and scope; changed
-evidence requires a new decision, and a different issue never borrows one (V658). A carried raw
-retention choice preserves the original sealed receipt and caveat, and matches the retained
-listing evidence, option, policy and source membership. *Not yet held:* the holder proves this
-raw-retention choice, not an enumeration of every person decision a retry can meet (V658).
+**OP20. A person's decision carries by its evidence.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Execution-only retries should not repeat consent, while changed evidence or scope cannot inherit it.
+
+Only run/clock changes carry consent for the same issue, evidence and scope; changed evidence or another issue requires its own decision. Raw-retention carry-forward preserves the sealed receipt/caveat and exact evidence, option, policy and membership; its holder proves that case, not every decision retry.
+
 *Held by:*
 `test: tests/feature_input_gateway/test_feature_input_gateway.py::test_raw_retention_choice_continues_only_for_the_same_case_on_a_derived_manifest`.
 
-**OP21. Browser authority belongs to one Host.** Two Hosts on one machine do not share a browser
-credential. Each listening port has its own cookie name and independently generated secret;
-a restart refuses its prior secret. A write checks that Host's admitted origin and matching
-cookie/header, rather than accepting another Host's token from the same browser jar (V693).
-The cookie's path remains `/`; the isolation is by name and token, not browser cookie port
-semantics. An explicit client's legacy shared-name cookie still requires that Host's current
-token. *Held by:*
+**OP21. Browser authority belongs to one Host.**
+
+- *Source:* classic: CSRF tokens.
+- *Adapted:* Bind browser write tokens to one Host's origin and port-specific cookie, including across restart.
+
+Each port has its own cookie name and secret replaced at restart; writes check that Host's origin and matching cookie/header token. The path remains `/`, and a legacy shared-name cookie still needs the same Host's current token.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_local_web_service.py::test_browser_session_cookies_are_port_scoped_and_restart_replaces_only_its_own`.
 
-**OP22. What using the product teaches ships where the person's agent reads it.** The research Skill's
-references carry what an agent should know to use the product, the operating guide among them (launch,
-the command contract, failure and recovery, waits). A friction met in real use is fixed where the agent
-meets it: in the owning answer's words and its offered way on, and in a reference only when no answer
-can carry it. A card that learns such a thing by using the product writes it there, not only in a
-record the person's agent never reads (V699). Installed guidance links to files the install carries, never to an anchor
-or an outside address, so the offline audit of every installed link holds. *Why:* an evaluation agent used the
-product twice as its first real user (V699, V701), and the whole suite on the final candidate found
-34 field-note links with anchors that no merge's test set had reached. *Held by:*
+**OP22. Guidance at the point of use.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* What use teaches must reach the next agent and remain readable offline.
+
+Keep product-use lessons in the research Skill's references, including launch, commands, recovery and waits. Fix friction in owner answers/offers first and add reference guidance only when no answer can carry it; private records alone are not shipped guidance. Installed links target shipped files, never anchors or external addresses.
+
+*Held by:*
 `test: tests/release/test_wheel_runtime.py::test_installed_configure_copies_guidance_unchanged_and_refuses_an_overwrite`;
 the guidance's content by review.
 
-**OP23. Every operation completes from one sentence of the person's.** The agent completes any
-operation from at most one sentence of the person's; a step that only a click in the Workbench
-completes is a defect. A person's decision (`PERSON_DECISIONS`: each person-only operation, and each
-first-use step outside its goal's delegation) is asked in one line, and on a clear yes the agent
-sends it with the person's words verbatim and its question (`person_confirmation`), which the
-client binds to that request's own fields (`decision_hash`). The Host accepts it as the person's
-decision, records it in the goal's ledger as the person's, relayed by the agent's session, and uses
-each once: a yes carried to another decision, or sent again, is refused by name. The Host cannot
-prove who typed the words, so it keeps them whole for audit and revocation, and the agent never
-invents or paraphrases them. The person's own Workbench action stays a second way, never the
-required one. A paid action or a real order never takes a relayed yes. *Why:* the maintainer,
-2026-10-09: every operation is completed by the agent from at most one sentence of the person's,
-and a step that needs the person's click is likely a defect; a person-only step is asked once and
-then continued. *Held by:*
+**OP23. One sentence, one decision.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Reserved choices remain the person's without requiring UI intermediation.
+
+Every operation completes from at most one sentence to the agent, never a required Workbench click. Ask `PERSON_DECISIONS` once in one line, including first-use steps outside delegation; relay unaltered words/question as `person_confirmation`, bound to that request by `decision_hash`. Record it with the agent session and consume it once, refusing reuse/transfer. The Host cannot identify the typist: retain words for audit/revocation, and the agent never invents/paraphrases them. The Workbench remains an alternative; paid acts and real orders reject relayed consent.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_persons_yes_relayed_whole_completes_their_decision_once`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_operation_only_a_person_completes_is_marked_so`.
 
-**OP24. The committee argues a date's positions and changes no number.** On a date's published
-positions the lead, as the PM, convenes the Alpha, Risk and CRO specialists on one floor per
-update (`committee`). The Host prepares each member's bundle and the tension points from the
-publication and its Evidence. Each member speaks and reads as itself by a key the Host mints, a
-specialist's in its bundle and the PM's to the session that opened the floor, and a message
-types no digit but an alias's, save the person's own relayed words. The first round is blind until all four stances are in or its time
-box ends; then challenges, replies and the PM's rulings move by event, each specialist capped,
-until the PM's verdict or the floor's time box closes it, and a silent member reads as not
-addressed. Each message the floor reveals is a row of the lead's goal conversation, on a channel
-no client may take. The sealed positions stand: the closed floor becomes the delivery's
-commentary, attributed to the committee's floor, a standing CRO dissent kept verbatim, and what the PM
-hands to the person is asked in one line (OP23). *Why:* the maintainer, 2026-10-09: a person who
-asks for a date's positions wants a report whose reasons they can follow, and the materials each
-agent needs already exist. *Held by:*
+**OP24. Committee judgment preserves positions.**
+
+- *Source:* classic: blackboard architecture.
+- *Adapted:* One role-keyed committee floor keeps stances blind until disclosure and preserves the sealed positions.
+
+The lead as PM convenes Alpha, Risk and CRO on one floor per dated update. The Host derives bundles/tension points from publication/Evidence, supplies each specialist's key in its bundle and the PM's only to the opening session, and admits figures only as aliases except relayed person words. Stances stay blind until all four arrive or time expires; event-driven challenges/replies and PM-only rulings respect specialist caps until verdict/timebox closes the floor, marking silence unaddressed. Revealed messages join the lead goal's reserved channel, which no client may take. Positions never change; the closed floor supplies attributed delivery commentary, standing CRO dissent verbatim and person decisions through OP23.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_committee.py::test_the_stances_stay_blind_until_all_four_are_in`,
 `test: tests/portfolio_strategy_lab/test_committee.py::test_a_member_speaks_only_with_its_own_key`,
 `test: tests/portfolio_strategy_lab/test_committee.py::test_a_specialist_speaks_three_times_after_its_stance_and_only_the_pm_rules`,
@@ -647,93 +581,128 @@ agent needs already exist. *Held by:*
 `test: tests/portfolio_strategy_lab/test_committee.py::test_a_dates_delivery_carries_the_closed_floor_as_its_commentary`,
 `test: tests/portfolio_strategy_lab/test_committee.py::test_a_roles_bundle_carries_its_view_of_a_dates_positions`.
 
+
 ## PA. Parameters
 
-**PA1. Three classes of parameter.** METHOD changes a result and enters an identity (its change records a
-successor or is a new recipe); EXECUTION paces work and never enters one; LIMIT bounds the product. The
-parameter registry (`config/registries/parameters.json`) holds each literal of the number-deciding
-code with its class; a new one is refused until it is registered. A literal is classed by what it
-does, never by its name: a budget that decides what a study searches, or a chunk size that shapes a
-sealed artifact's hashes, is METHOD; a provider's qualified policy, a timeout or a measured ceiling
-is LIMIT (W13). *Held by:* `gate: registries`, `test: tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it`.
+**PA1. Three classes of parameter.**
 
-**PA2. Execution parameters are the operator's.** Threads, workers, batch and cache sizes are set through
-typed configuration, the CLI and the UI, with a default the program computes from the machine; they
-never enter an identity, a sealed spec or an Agent tool's vocabulary. *Not yet held:* the Sector
-reference refresh's staging binds its worker count, so fewer workers after a rate limit cannot resume
-it (V257, RX). *Held by:*
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Effect governs identity/control.
+
+METHOD changes numbers/identity (successor or new recipe), EXECUTION paces work, LIMIT bounds the product; register numerical literals before admission by effect, not name. Search budgets/hash-shaping chunks are METHOD; qualified provider policies/timeouts/measured ceilings are LIMIT.
+
+*Held by:* `gate: registries`, `test: tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it`.
+
+**PA2. Execution parameters are the operator's.**
+
+- *Source:* classic: separation of mechanism and policy.
+- *Adapted:* Typed operator controls; machine defaults.
+
+Operator threads/workers/batch/cache use typed CLI/UI settings and machine defaults, outside identity/sealed specs/Agent vocabulary. Sector staging still binds workers, blocking reduced-worker resume after rate limits.
+
+*Held by:*
 `private-test: test_installed_numerical_adapters_declare_and_enforce_a_thread_bound`.
 
-**PA3. An execution parameter that could move a number is proved not to, or the result says it was not.**
-A sealed canary each session checks it and refuses by name on a mismatch; where no canary exists, the
-value used is recorded beside the result as provenance (the working agreement), and the result then
-claims no equality with a run under another value. A method's identity leaves execution out either
-way, and a result is identified by its content, the environment beside it. What counts as the same
-number is the owner's to state, exact bits or a tolerance it names, and a tolerance never relaxes an
-artifact's integrity check. The BLAS thread count can move the Alpha metrics' last bits (V68), so
-each Alpha run's fit log records the numerical libraries' thread counts beside the result (W10);
-a result claims no equality with a run under other counts. *Held by:*
+**PA3. An execution parameter that could move a number needs proof or recorded limits.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Execution freedom is not numerical equivalence.
+
+Check a sealed canary each session and refuse numerical mismatch by name; otherwise record execution values beside results and claim no cross-value equality. Method identity excludes execution; result identity follows content, with environment alongside. Owners define exact-bit or stated-tolerance equality; tolerance never relaxes artifact integrity. Alpha fit logs record BLAS thread counts because their changes can alter metrics' last bits, with no equality claim across counts.
+
+*Held by:*
 `test: tests/alpha_research/test_lightgbm_development_capability.py::test_lightgbm_fits_on_one_thread_unless_the_sealed_canary_holds`,
 `test: tests/workspace_maintenance/test_retrieval_recipes.py::test_a_session_whose_canary_moved_is_refused_by_name_with_its_threads`,
 `test: tests/workspace_task_runner/test_task_child.py::test_a_fit_log_records_the_numerical_thread_counts`.
 
-**PA4. No ambient knobs.** A value that steers the product lives in typed configuration, never in a
-machine-specific constant or an environment variable read deep in the code; a retired variable's
-writers go with it (V6, V61). `ALPHALATTICE_NETWORK_DISABLED` is the named exception (OP5). Scripts
-and tests carry no machine-specific absolute paths outside literal test fixtures. The evaluation's QA
-store and run tree resolve through one typed declaration with an operator override; a test gives the
-allocation its own temporary root (V651). *Held by:*
+**PA4. No ambient knobs.**
+
+- *Source:* ours.
+- *Adapted:* Explicit configuration, not ambient authority.
+- *Why:* Hidden context defeats reproducibility.
+
+Typed configuration owns steering values; no deep environment reads/machine constants, and retired variables lose writers. `ALPHALATTICE_NETWORK_DISABLED` under OP5 is the exception. Script/test absolute paths belong only to literal fixtures; evaluation stores/runs use one operator-overridable declaration, tests allocate temporary roots, and other boundaries stay review-held.
+
+*Held by:*
 `private-test: test_scripts_and_tests_have_no_machine_absolute_paths_outside_literal_fixtures`,
 `private-test: test_relative_roots_and_operator_override_resolve_from_one_typed_declaration`,
 `private-test: test_audit_accepts_the_operator_allocation_and_refuses_an_escape`;
 the other configuration boundaries by review.
 
-**PA5. A managed-storage limit is the operator's typed setting.** The storage cap is LIMIT
-(PA1), not a research method or identity. Its automatic value uses measured managed data and
-machine free space; capacity writers and observation retention use the same workspace setting.
-Changing it does not change a fresh research identity, preparation plan, Task or input seal.
-An over-cap refusal offers an accepted cap-setting or cleanup action (V680). Historical receipts
-retain their sealed budget and exact readback. *Held by:*
+**PA5. Typed managed-storage limits.**
+
+- *Source:* ours.
+- *Adapted:* The typed managed-storage cap is an operator LIMIT under PA1, outside method identity.
+- *Why:* Capacity changes must preserve sealed research.
+
+One operator cap, automatically sized from managed data/free space, governs capacity/retention without changing fresh research/plans/Tasks/input seals; accepted setting/cleanup offers resolve excess, while historical budget receipts stay exact.
+
+*Held by:*
 `test: tests/workspace_maintenance/test_current_state_storage.py::test_storage_cap_counts_managed_models_panels_and_artifacts_and_follows_the_operator`,
 `test: tests/workspace_maintenance/test_current_state_storage.py::test_cleanup_plan_checks_old_cap_receipts_and_new_plans_exclude_execution_capacity`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_storage_cap_is_one_operator_setting_through_the_real_cli`; `test: tests/portfolio_strategy_lab/test_local_web_service.py::test_a_route_that_writes_takes_the_write_check`,
 `test: tests/workspace_readiness/test_workspace_preparation.py::test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap`,
 `test: tests/unified_observation/test_unified_observation.py::test_an_open_observation_ledger_follows_the_workspace_cap_without_reidentifying_records`.
 
+
 ## DA. Data and formats
 
-**DA1. Real data only on copies.** An original workspace is never opened by a card; copy it from the
-maintainers' private QA store to a scratch directory and work on the copy. *Held by:* review.
+**DA1. Real data only on copies.**
 
-**DA2. Every table and artifact has a registered authority.** A persistent table is registered in
-`config/storage-authorities.json` with its owner, generation model and rebuildability, and an artifact
-prefix in `config/artifact-authorities.json`. Whether a table may be discarded is its group's declared
-rebuildability there, never a rule for a whole engine: the market store holds several owners' tables,
-some rebuildable and some not. A table is registered by its database and name, and its schema and
-data are written only by its registered owners: another package's data writes are a baseline that only
-shrinks (`config/registries/table-writers.json`, G2). A written path is registered under its root
-to the class that writes it, the most specific prefix winning (G2). *Not yet held:* the discovery of
-paths is AR's static scan of literal URIs and artifact-root joins, so a path built only at run time is
-not seen; the Evidence stores under `runtime/` are not in the registry yet (the storage map), nor the Feature Trial records (`runtime/feature-trials/`),
-whose damaged record also blocks its own reopening (V272, RX). *Held by:*
+- *Source:* ours.
+- *Adapted:* One-line maintainer procedure.
+- *Why:* Verification must not mutate original research.
+
+Maintainer work uses scratch copies from the QA store and never opens an original workspace.
+
+*Held by:* review.
+
+**DA2. Registered storage authority.**
+
+- *Source:* ours.
+- *Adapted:* Authority and rebuildability belong to each registered object.
+- *Why:* A shared store transfers neither write nor deletion authority.
+
+Register persistent tables by database and name, with owner, generation model and rebuildability, in `config/storage-authorities.json`; register artifact prefixes in `config/artifact-authorities.json` and writer paths under their most specific root prefix. Only registered owners write table schema and data; other packages' existing writes form a baseline that only shrinks. Discardability follows each group's declared rebuildability, never the engine that contains it.
+
+Not yet held: discovery resolves literal URIs and artifact-root joins, not runtime-only paths; Evidence stores under `runtime/` and Feature Trial records under `runtime/feature-trials/` remain unregistered, and damaged Trial records block reopening.
+
+*Held by:*
 `private-test: test_every_table_is_registered_and_written_by_its_owners`,
 `private-test: test_every_written_path_is_registered_to_its_writer`,
 `private-test: test_panel_closure_artifacts_have_explicit_non_eviction_authority`.
 
-**DA3. The store surface only shrinks.** A new public store method, table or connection is admitted by
-name with its cause. *Held by:*
+**DA3. The store surface only shrinks.**
+
+- *Source:* ours.
+- *Adapted:* Named exceptions to a shrinking surface.
+- *Why:* Store growth must not acquire authority incidentally.
+
+A new public store method, table or connection is admitted by name with its cause; otherwise the store surface may only shrink.
+
+*Held by:*
 `private-test: test_store_surface_does_not_grow`.
 
-**DA4. A DuckDB file is opened with its access mode declared.** *Held by:*
+**DA4. Declare DuckDB access mode.**
+
+- *Source:* borrowed: DuckDB connection access modes.
+- *Adapted:* Declare each file-backed connection's mode.
+
+Every file-backed DuckDB connection declares whether it is read-only or permits writes.
+
+*Held by:*
 `private-test: test_file_backed_duckdb_connections_declare_access_mode`.
 
-**DA5. Writes go through their owners.** Feature writes go through the closure coordinator, and Alpha
-fits through the Host-owned adapter. The workspace manifest is created and changed only through its
-owner; an update holds the workspace's mutation gate over its read, change, publication and readback,
-so concurrent updates keep both changes (V641). *Not yet held:* Market Data's bootstrap sets the
-lifecycle in Feature's Panel table by its own SQL (V176) and writes `remediation_execution`, registered to
-Feature (V177). The current-state migration copies only the tables it names (`WRITTEN_TABLES`),
-each registered as its write (V264). *Held by:*
+**DA5. Writes go through their owners.**
+
+- *Source:* classic: single responsibility and mutual exclusion.
+- *Adapted:* Existing write owners; one complete manifest mutation gate.
+
+Feature writes use the closure coordinator, Alpha fits the Host-owned adapter, and manifest writes its owner, whose mutation gate spans read, change, publication and readback so concurrent changes survive. Not yet held: Market Data bootstrap changes Feature Panel lifecycle by SQL and writes Feature-owned `remediation_execution`; current-state migration copies only its named `WRITTEN_TABLES`, registered as its writes.
+
+*Held by:*
 `private-test: test_production_feature_writes_cannot_bypass_the_closure_coordinator`,
 `private-test: test_alpha_model_fits_cannot_bypass_the_host_owned_adapter`,
 `private-test: test_every_table_is_registered_and_written_by_its_owners`,
@@ -741,92 +710,101 @@ each registered as its write (V264). *Held by:*
 `test: tests/workspace_readiness/test_workspace_manifest_writes.py::test_two_writers_through_the_one_write_keep_both_changes`,
 `test: tests/workspace_readiness/test_workspace_manifest_writes.py::test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding`.
 
-**DA6. A persisted format names its version, its readers and its upgraders** (the formats registry,
-`config/registries/formats.json`, with the Task kinds); a new schema name or Task kind is refused
-until it is registered, and an entry that names no version, reader or upgrader list, or a reader
-that is not a file, is refused (V267). *Held by:* `gate: registries`, `test: tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it`.
+**DA6. Versioned persisted formats.**
 
-**DA7. Private things stay out of Git.** Never secrets, provider payloads, raw prompts or tool traces,
-hidden reasoning, strategy evidence or large numerical artifacts. *Held by:* review.
+- *Source:* classic: schema evolution.
+- *Adapted:* Register format evolution and Task kinds.
 
-**DA8. Retired as a standing rule** (the maintainer, 2026-10-04, V647). That an evaluation's
-blind review set is read only as counts was the evaluation's design, not a product rule: its
-mandatory count, halt and quarantine steps are retired, a run's counted report follows it, and
-review accuracy is next measured on a fresh blind set. AXLEAN-2 (2026-10-08) retired the
-optional counting, instruction preflight and historical source screen/seal tools. No law
-replaces the retired restriction. *Held by:* the dated decision (review).
+Register each persisted format's version, readers and upgrader list, and each Task kind, before admitting a new schema name or Task kind. Refuse an entry missing any of those declarations or naming a reader that is not a file.
 
-**DA9. Each file type has one job.** Before writing a file, choose its type by who writes it and who
-reads it:
+*Held by:* `gate: registries`, `test: tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it`.
 
-| type | its job | written by | read by |
+**DA7. Private things stay out of Git.**
+
+- *Source:* classic: secret management and data minimization.
+- *Adapted:* Exclude sensitive research and execution material from repository history.
+
+Never commit secrets, provider payloads, raw prompts or tool traces, hidden reasoning, strategy evidence or large numerical artifacts.
+
+*Held by:* review.
+
+**DA8. Retired as a standing rule**
+
+- *Source:* ours.
+- *Adapted:* One-line retirement record.
+- *Why:* Evaluation procedures are not permanent product restrictions.
+
+Retired: no standing restriction replaces the historical evaluation procedures; counted reports remain with their runs, and future review-accuracy measurement uses a fresh blind set.
+
+*Held by:* the dated decision (review).
+
+**DA9. Each file type has one job.**
+
+- *Source:* ours.
+- *Adapted:* A product file-role matrix, with consumer-format exceptions.
+- *Why:* YAML suits authors; JSON preserves exact hashable records without guessed types or lost comments. Whole sources preserve required repository reads.
+
+Choose a new file's type by its writers and readers below; move a nonconforming file when its change touches it.
+
+| Type | Job | Writers | Readers |
 | --- | --- | --- | --- |
-| YAML | what a person or an agent authors for the product to act on: experiment documents and recipes, campaigns, research cases, arms, market and Agent profiles (the YAML front matter of a Markdown profile), a CLI request | people, agents | the product |
-| JSON | what the product writes and reads back: sealed records, manifests, receipts and evidence, every answer (the CLI envelope, HTTP bodies), the JSON registries and baselines under `config/` | the product; registries by an agent's card, held by the gate | the product, agents |
-| JSONL | an append-only stream: an activity or execution log | the product | the product, agents |
-| Parquet | numeric and tabular evidence: chunks, Panels, score and validation rows | the product | the product |
-| DuckDB, SQLite | operational state; each table as its group's rebuildability says (DA2); and a research input's sealed source, the market store copied whole and pooled by its digest, which its readers open through the store's own repositories (V204) | the product | the product |
-| Markdown | prose for people and agents: laws, plans, records, documentation, Agent profiles | people, agents | people, agents |
-| HTML | a rendered report and the Workbench | the product | people |
-| TOML | the Python project's build and checker settings (`pyproject.toml`) only | people | the build and its checkers |
-| an external program's, a model's or a protocol's own format | what that consumer requires: the Codex and Claude host configuration (`.codex/*.toml`), model files (ONNX), an index's memory-mapped vectors (`.f32`) | the program or its owner | the program |
+| YAML | Experiment documents, recipes, campaigns, cases, arms, market and Agent profiles (including Markdown front matter), CLI requests | People, agents | Product |
+| JSON | Sealed records, manifests, receipts, evidence, CLI envelopes, HTTP bodies, registries and baselines under `config/` | Product; agents author gated registries | Product, agents |
+| JSONL | Append-only activity and execution logs | Product | Product, agents |
+| Parquet | Numeric/tabular evidence: chunks, Panels, scores, validation rows | Product | Product |
+| DuckDB, SQLite | Operational state under DA2; sealed market sources copied whole, pooled by digest and read through their repositories | Product | Product |
+| Markdown | Laws, plans, records, documentation, Agent profiles | People, agents | People, agents |
+| HTML | Rendered reports and Workbench | Product | People |
+| TOML | Only Python build/checker settings in `pyproject.toml` | People | Build, checkers |
+| Consumer-required format | External program, model or protocol files, including native-host TOML, ONNX and `.f32` vectors | Consumer or owner | Consumer |
 
-A new file follows the table; a file that does not is moved to its type in the card that touches it.
-The table governs what the product owns; a format an external program, a model or a protocol requires is kept as
-that consumer needs it (the table's last row), never moved to the product's types.
-A sealed source stays the market store (the maintainer, 2026-09-29): its readers read 26 of its 66 tables,
-the feature rows among them, and as Parquet they are 560 MB of the measured workspace's 768 MB (IN1, V204).
-*Not yet held:* Risk's covariance chunks keep their numerical evidence as packed `.bin` blobs until
-V314's rotation (V294's Risk half), where the Portfolio lab's and Alpha's lanes moved to Parquet and
-read a store written earlier from its `.bin` files until the formats registry names their upgrader
-(V210, V294, V267).
-*Why:* YAML is kind to people and agents writing, and ambiguous for machines storing (types guessed,
-comments lost); JSON is exact and hashable but tiring to write by hand. *Held by:* review.
+These roles govern product-owned files; keep external consumer-required formats unchanged. A sealed source remains the whole market store, not selected-table exports.
 
-**DA10. Authored YAML stays the author's.** The product reads an authored document, validates it and seals
-its normalized JSON with the plan; it never writes into the author's file. What the product offers to be
-edited (a template, a draft, a next request) it gives as YAML. *Held by:*
+Not yet held: Risk covariance evidence remains packed `.bin` pending rotation; Portfolio and Alpha use Parquet but read earlier `.bin` stores until the formats registry names their upgrader.
+
+*Held by:* review.
+
+**DA10. Authored YAML stays the author's.**
+
+- *Source:* ours.
+- *Adapted:* Author's YAML and sealed JSON stay separate.
+- *Why:* Editable authorship and exact machine records have different owners.
+
+Read and validate authored YAML, seal its normalized JSON with the plan, and never overwrite the author's file. Offer editable templates, drafts and next requests as YAML.
+
+*Held by:*
 `test: tests/researcher_methodology_surface/test_experiment_authoring.py::test_the_same_document_and_authority_produce_the_same_program_identity`.
 
-**DA11. YAML is read strictly.** One owner parses the product's YAML
-(`protocols/research_authoring/selection.py`), each document in a named dialect: an authored document
-in the declaration dialect, a `yaml.SafeLoader` that refuses a duplicate key and reads an exponent
-number as a number; a document in a historical format decoded in the dialect that wrote it, then
-converted (`rewrite_in_declaration_dialect` reads an old export as PyYAML's default dialect wrote it,
-so its string `"1e-10"` stays a string). A document parses into its operation's typed contract,
-which refuses unknown keys and types dates and numbers itself; a contract cannot undo what the
-dialect already decoded, so the dialect is the owner's to name. A document names no Python module or
-callable (OP8). *Not yet held:* four Desk
-compilers (Alpha, its lifecycle, Factor, Risk) read their section as a mapping; three refuse an
-unknown key by hand, each its own way, and by the code the Alpha compiler refuses none (V249, W12);
-six sites still call `yaml.safe_load` themselves, the Alpha and Sector campaigns among them, where
-a duplicate key is silently overwritten (V276, W12); the market profile is read as a loose mapping
-(V275, W12); and the declaration dialect keeps YAML 1.1's implicit booleans and octal numbers, so an
-authored `010` reads as 8 and `on` as true (V278, W12). *Held by:*
+**DA11. YAML is read strictly.**
+
+- *Source:* classic: parse, don't validate.
+- *Adapted:* Named safe dialects before strict operation contracts.
+
+One safe YAML owner supplies named dialects, duplicate-key rejection and numeric exponents before SC2/OP8 contracts. Decode historical formats before conversion; preserve strings such as `"1e-10"`. Declarations use YAML 1.2 core scalars plus dates. *Not yet held:* Strict sections/dialects across Alpha/lifecycle/Factor/Risk compilers, independent campaign `yaml.safe_load` readers and loose market-profile mappings.
+
+*Held by:*
 `test: tests/researcher_methodology_surface/test_experiment_authoring.py::test_documents_cannot_name_python_modules_or_callables`.
 
-**DA12. A published session never moves.** A refresh changes the sessions from its effective session
-on and none before it: a membership change from the session its update computes, a Sector
-reclassification from the trading day its update observed it, the next session when that day has
-none, and never a session a Panel already published (V346); before T0 the first recorded
-classification stands in for every earlier session, a disclosed backfill. A history with no change
-binds what the backfill bound, so no identity moves until something is reclassified. *Why:* a
-refresh that applied the day's classification to every session rewrote the history published
-results were computed on, against the approximate point-in-time contract, and rebuilt every Panel
-(51.0 s against 37.9 s on the fixture; 25.7 s after). *Held by:*
+**DA12. Published sessions never move.**
+
+- *Source:* ours.
+- *Adapted:* Effective dating preserves published sessions and backfill bindings.
+- *Why:* Retroactive refresh rewrites sealed research history, breaks approximate point-in-time meaning and rebuilds unchanged Panels.
+
+Refresh only from the effective session: membership from its computed update session; Sector from its observation's trading day, or the next session if that day is not a trading day, never changing a published Panel session. Before T0, the first recorded classification backfills earlier sessions, with disclosure. Without reclassification, retain the backfill binding and identity.
+
+*Held by:*
 `test: tests/feature_engine/test_sector_forward_rule.py::test_a_planted_reclassification_is_read_forward_and_never_moves_a_published_session`,
 `test: tests/feature_engine/test_sector_forward_rule.py::test_a_published_session_keeps_its_panel_cross_section`,
 `test: tests/feature_engine/test_panel_membership_composition.py::test_membership_change_moves_only_the_sessions_from_its_effective_one`.
 
-**DA13. A published file closes over what ships.** No public file requires or names a local dependency
-the public manifest omits: the dependency ships too, or the referring file is private (V662).
-A generated dependency needs a public producer, its declared output and actual write, and public
-required inputs; declaring an output never makes an existing private file public. The check uses
-the candidate tree's current release classification, not a previously generated manifest.
-*Not yet held (V662):* arbitrary computed paths, ECMAScript module imports/exports, dynamic module loads,
-Markdown reference-style links and other generated-output families are outside V662's bounded
-static scan. Its passing result establishes only the forms that scan resolves and the enumerated
-Workbench-asset and native-binding output families.
+**DA13. A published file closes over what ships.**
+
+- *Source:* classic: dependency closure.
+- *Adapted:* Public dependencies, with bounded generated-output proof.
+
+Public dependencies ship or their referring file stays private. Generated outputs require a public producer, declaration, actual write and public inputs; no producer authorizes an existing private file. Check current candidate classification. *Not yet held:* Computed/dynamic paths, ECMAScript imports/exports, reference-style Markdown links and other generated families; proof covers resolved forms and enumerated Workbench-asset/native-binding outputs only.
+
 *Held by:* `private-test: test_every_public_file_closes_over_the_public_manifest`;
 `test: tests/structural/test_public_closure.py::test_python_import_requires_a_public_local_module`,
 `test: tests/structural/test_public_closure.py::test_markdown_links_inline_paths_and_fenced_commands_need_public_files`,
@@ -834,76 +812,67 @@ Workbench-asset and native-binding output families.
 `test: tests/structural/test_public_closure.py::test_a_generated_output_loses_permission_when_a_required_source_is_unpublished`,
 `test: tests/structural/test_public_closure.py::test_a_producer_never_authorizes_an_existing_private_output_path`.
 
+
 ## SC. Contracts
 
-A contract is the typed record at a boundary: what a person or an agent writes (a request, a
-declaration, an answer), what an owner seals and reads back (a receipt, a manifest, a Program), and what
-one owner hands another. These rules were learned building the in-process agents, whose tools and
-answers had to be contracts first, and they outlive them: how to define a contract and how to use
-Pydantic well stay the project's standing guidelines (the maintainer, 2026-09-27). The rules are
-stated for any project; their *Not yet held* notes are this product's. A contract also keeps ID1 (a
-change of meaning records its successor), DA6 (a persisted format names its version), DA10 and DA11
-(authored YAML), OP4 (a refusal) and OP11 (an agent answers with judgment only).
+Contracts govern authored inputs, sealed records and owner boundaries; identity, persisted formats, authored YAML, refusal and judgment also follow ID1, DA6, DA10, DA11, OP4 and OP11.
 
-**SC1. A record's kind follows its job.** A record that is stored, sealed, hashed or crosses a boundary
-is a pydantic contract; inside one process a value takes the kind that fits it (a frozen dataclass, a
-`NamedTuple`, a `TypedDict`), which no law chooses. *Why:* a record kept or hashed without its
-contract has neither the contract's validation nor its schema: a dataclass hashed through `asdict`
-beside a sealed contract is two sets of rules for one job. *Not yet held* (measured 2026-09-27): 17
-scopes hash or write a dataclass through `asdict`, each converted when its identity next rotates, and
-8 stored dataclasses the pin cannot see, the action audit chain's receipt among them (V258), with 28
-more to check by their call paths (SCC, the private record-kind inventory). *Held by:*
+**SC1. A record's kind follows its job.**
+
+- *Source:* classic: parse, don't validate.
+- *Adapted:* Pydantic at persistent/trust boundaries.
+
+Pydantic contracts hold stored/sealed/hashed/boundary records; process-local types fit their job. Dataclass conversions awaiting identity rotation and uncovered persistence/call paths remain unheld.
+
+*Held by:*
 `private-test: test_records_take_the_kind_their_job_names`, which
 pins those scopes.
 
-**SC2. A contract is strict and says what it admits.** It is frozen and refuses unknown fields. A closed
-vocabulary is an enum or a `Literal`; a bound, a pattern or a length is a `Field` constraint (a hash
-`^[0-9a-f]{64}$`, a count `ge=0`, a text handed to an agent `max_length`); a rule across its own fields
-is the contract's validator, never a check in its callers, while a check that needs another owner's
-state (an authority, a Task's owner, whether a reference exists) is that owner's, where the state is;
-a default that can change a result is written into the sealed normalized document (DA10). A view over another owner's answer may allow unknown
-fields, and a reader of a historical document or of the environment may ignore them, each named.
-*Why:* a contract that admits anything moves its validation into every caller, each checking a
-different part, and an agent learns the rule only by failing it. *Not yet held:* 5 contracts are
-mutable (the Evidence analyst's three submissions, the Factor agent review receipt, the Feature trial)
-and 2 progress projections ignore unknown fields
-unnamed; four Desk compilers read their section as a mapping (DA11, V249). *Held by:*
+**SC2. A contract is strict and says what it admits.**
+
+- *Source:* classic: parse, don't validate and make illegal states unrepresentable.
+- *Adapted:* Strict types; named boundary exceptions.
+
+Freeze strict contracts and refuse unknown fields, with explicit vocabularies/bounds, local cross-field validation, owner-held external-state checks and sealed defaults (DA10); name view/history/environment exceptions. Mutable Evidence/Factor/Feature contracts, unnamed loose progress and mapping-based Desk sections remain unheld.
+
+*Held by:*
 `private-test: test_contracts_are_frozen_and_strict_or_named`, which
 pins the named exceptions and the rest.
 
-**SC3. A field's meaning is written once, in its contract.** A contract's docstring and its `Field`
-descriptions are what a person or an agent reads, and `alphalattice schema` prints them from the
-owner's models, never from a copy; a role card, a Skill or a document points to the schema instead of
-restating a field. A schema's hash binds its structure (the types, constraints, required fields,
-defaults and definitions), never its prose, so a description is free to change. *Why:* an agent reads
-the contract before it writes a document, and a meaning written in two places drifts. *Held by:*
+**SC3. Field meaning has one contract owner.**
+
+- *Source:* classic: DRY and single source of truth.
+- *Adapted:* Contract meaning; prose-free structural hashes.
+
+Contract schema supplies field meaning once; guidance points there. Schema identity binds types/constraints/required fields/defaults/definitions, never prose.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_an_unknown_operation_is_answered_with_the_nearest_names`, which reads
 an answer's parts from the owner's own models;
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_field_schema_prints_is_described`;
 `test: tests/structural/test_source_identity.py::test_a_schema_hash_binds_the_structure_and_never_the_prose`,
 `test: tests/structural/test_source_identity.py::test_every_hashed_schema_goes_through_the_kernel`.
 
-**SC4. A sealed record proves itself.** A sealed contract carries its content hash, computed by one
-helper over its canonical JSON without the hash field and checked by the contract's own validator
-whenever it is built or read, so a changed record is refused before use (EV2). A contract changes
-compatibly, by a field added as optional, `None` by default, whose check accepts the hash computed
-without it while it holds `None`, or by a new version whose readers still read the old one (DA6), so
-a record sealed before still verifies; any other change of meaning records its successor (ID1). *Why:* a record that proves itself is reused as sealed (EV1) without trusting where it
-was read from. *Not yet held:* the sealing helper and the compatible check are written per owner: 288
-sealing definitions, 56 named sealers and 25 identical bodies among them (SEAL, V251, W2,
-counted before RT); the compatible hash check is written once, in the kernel
-(`shared_kernel.sealing.validate_hash_compatible`, RT `94c55fce`).
+**SC4. A sealed record proves itself.**
+
+- *Source:* classic: content addressing and self-validating immutable records.
+- *Adapted:* Self-verification; compatible historical records.
+
+One helper seals canonical content excluding its hash field, and the contract self-validates at construction/read; DA6 permits optional-None hash compatibility or old-reading new versions, otherwise ID1 applies. Centralizing owner sealers remains unheld; compatible checking is centralized.
+
 *Held by:*
 `test: tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_input_and_result_tamper_refuse_without_losing_historical_readback`.
 
+
 ## EV. Evidence and science
 
-**EV1. Sealed evidence is reused as sealed.** A resumed, recovered or replayed run takes what was sealed
-(numerical results with their metrics, receipts, reports) and never recomputes it. *Why:* recomputed on
-another host or thread count it can differ in the last bits, and the run refuses its own receipt (V69).
-Daily rolling evidence appends only newly completed outcomes and a compact content-addressed
-head linking the immutable base and increment; it never re-seals history. Earlier heads remain
-readable, and a read neither writes a missing head nor repairs a corrupt one (V690).
+**EV1. Sealed evidence is reused as sealed.**
+
+- *Source:* classic: immutability and content addressing.
+- *Adapted:* Sealed numerical recovery and append-only rolling heads.
+
+Recovery, resume and replay reuse sealed results, metrics, receipts and reports without recomputation. Rolling evidence appends only newly completed outcomes through compact content-addressed heads linking immutable base and increment, preserves earlier heads without re-sealing history, and reads neither create missing heads nor repair corrupt ones.
+
 *Held by:*
 `test: tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_alpha_process_recovery_keeps_task_and_reuses_sealed_work`,
 `test: tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_hard_process_death_recovers_the_same_task_without_reexecuting_complete_evidence`,
@@ -911,22 +880,17 @@ readable, and a read neither writes a missing head nor repairs a corrupt one (V6
 `test: tests/portfolio_strategy_lab/test_rolling_report_composition.py::test_publish_missing_heads_is_idempotent_and_reads_never_write`,
 `test: tests/portfolio_strategy_lab/test_rolling_report_composition.py::test_read_refuses_corrupt_persisted_head_without_repairing_it`.
 
-**EV2. Tamper is refused before use, and history still reads.** A changed input, chunk, receipt or result
-is refused by name before it is used, and what was published before reads back. An immutable-source
-lease reuses a full verification across requests only with a held OS change signal, exact file
-identity and read access; size and timestamps alone never grant reuse. A changed or uncertain
-signal, restart or missing proof requires full-byte verification before use (V691). Every export,
-publication and admission establishes full-content proof, freshly or through a currently valid
-lease; the saved-study sweep remains weekly and after an upgrade (VR, decision 5). A prepared
-bundle's background verification binds its actual read time,
-exact subject and policy, not a later run or clock field; actual publication must refuse expired
-evidence (V675). *Not yet held:* a Panel chunk's check binds its row hashes, not its values
-(V270, W8). The legacy study shortcut still uses path, size, time and identity; V691's immutable
-source lease checks cover the opted-in Windows helper, not that separate shortcut or an
-enumeration of every owner read and daily-chain composition that should use a lease (V691).
-The review clock holder checks delivery writers and callers; the expired-publication holder
-does not fail when background verification uses the wrong read
-time, so that verification binding lacks a direct failing holder (V675). *Held by:*
+**EV2. Tamper is refused before use, and history still reads.**
+
+- *Source:* ours.
+- *Adapted:* Integrity, expiry and bounded proof reuse remain explicit.
+- *Why:* Neither metadata nor a later clock can stand in for current evidence integrity.
+
+Refuse tampered inputs, chunks, receipts and results before use, by name, without losing earlier publication readback. Cross-request proof reuse needs a held OS change signal, exact file identity and read access, never size or timestamps alone; change, uncertainty, restart or missing proof requires full-byte verification. Every export, publication and admission needs fresh full-content proof or a valid lease; sweep saved studies weekly and after upgrades. Background verification binds actual read time, exact subject and policy, never a later run or clock; publication refuses expiry.
+
+Not yet held: Panel chunks bind row hashes, not values; the legacy path/size/time/identity shortcut is separate from the opted-in Windows lease helper. Its checks do not cover every owner read or daily-chain composition. Review-clock holders cover delivery writers/callers; the expiry holder does not fail for a wrong background read time, which lacks a direct failing holder.
+
+*Held by:*
 `test: tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_input_and_result_tamper_refuse_without_losing_historical_readback`,
 `test: tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool`,
 `test: tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_a_read_reuses_the_study_verification_while_its_files_are_unchanged`
@@ -939,17 +903,19 @@ for the immutable-source lease;
 `test: tests/alternative_evidence_desk/test_evidence_review_http_route.py::test_external_review_expiry_before_publication_keeps_the_assessment_but_not_a_publication`
 for review delivery clocks and genuine expiry, respectively.
 
-**EV3. A result claims only what its evidence shows.** A claim beyond the sealed evidence carries its
-limit, and completion is proved from sealed pages, never assumed beside a gap. Each installed-book
-read names its supported performance metrics from the exact sealed window and declared convention,
-or the reason a metric is absent. Historical views stay pinned; forward views use only settled
-outcomes for the exact book and cost lane, naming their source and as-of; proposals and unsupported
-benchmark metrics do not become measured performance (V678). A coverage-floor comparison uses
-the review owner's sealed accounted coverage, retaining reviewed, official nothing-filed and
-unreached partitions separately. Missing accounting makes the comparison unavailable; reviewed
-share never substitutes for accounted coverage (V681). Display of these partitions belongs to
-Workbench ST1. *Not yet held:* the performance checks below exercise named owner and installed-book
-paths, but do not enumerate every possible installation path (V678). *Held by:*
+**EV3. A result claims only what its evidence shows.**
+
+- *Source:* ours.
+- *Adapted:* Exact scientific claims and accounted coverage.
+- *Why:* A proposal, completed execution or partial review is not measured performance or complete coverage.
+
+Limit claims to sealed evidence and prove completion from sealed pages, never across a gap. Installed-book metrics name their exact window and convention or their absence; historical views stay pinned, while forward views use only settled outcomes for the exact book/cost lane, with source and as-of. Proposals and unsupported benchmark metrics are not measured performance.
+
+Compare coverage floors only with the review owner's sealed accounted coverage, keeping reviewed, official nothing-filed and unreached shares separate; absent accounting makes comparison unavailable, and reviewed share cannot replace it. Presentation follows Workbench ST1.
+
+Not yet held: named owner/installed-book performance checks do not cover every installation path.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_portfolio_decision_updates.py::test_daily_performance_reads_only_realized_outcomes_and_pins_the_issued_prefix`,
 `test: tests/portfolio_strategy_lab/test_portfolio_decision_updates.py::test_daily_performance_names_absence_instead_of_annualizing_an_invalid_axis`,
 `test: tests/portfolio_strategy_lab/test_strategy_activation.py::test_current_performance_follows_exact_books_daily_publications_and_keeps_history_fixed`,
@@ -957,188 +923,318 @@ paths, but do not enumerate every possible installation path (V678). *Held by:*
 `test: tests/alternative_evidence_desk/test_portfolio_review_decision.py::test_a_holding_that_filed_nothing_is_counted_apart_and_never_as_no_risk`;
 the other claim limits by review.
 
-**EV4. Science is never weakened silently.** A scientific invariant, threshold, identity, causal firewall
-or fail-closed condition changes only as an explicit old/new experiment, recommended, not activated. A
-named lifecycle range is measured whole, with development, observed-validation and stitched views; a
-diagnostic label forbids retuning on the same observations, not measuring them. *Held by:* review.
+**EV4. Science is never weakened silently.**
 
-**EV5. Unchanged work is reused, not recomputed; a cost that matters is measured.** A verified input is
-proved once per request (A5); a cost is timed directly, never inferred; an overrun is fixed at its owner,
-never met by weaker science or masked parallelism. The immutable-source helper shares a proof
-within its opted-in request scope; cross-request reuse follows EV2's change signal, never size
-or time alone (V691). *Not yet held:* the helper checks do not establish daily-chain integration
-or enumerate every owner's request composition (V691). *Held by:*
+- *Source:* ours.
+- *Adapted:* Explicit comparison; measurement remains distinct from retuning.
+- *Why:* Silent relaxation would disguise failure; refusing measurement would conceal the lifecycle's behavior.
+
+Change scientific invariants, thresholds, identity, causal firewalls or fail-closed conditions only by explicit old/new experiment, recommended rather than activated. Measure the whole named lifecycle range with development, observed-validation and stitched views; diagnostic labels forbid same-observation retuning, not measurement.
+
+*Held by:* review.
+
+**EV5. Reuse verified work; measure material costs.**
+
+- *Source:* classic: memoization and measurement before optimization.
+- *Adapted:* Verified reuse and directly measured costs.
+
+Prove unchanged verified inputs once per request, time material costs directly, and fix overruns at their owner without weaker science or masked parallelism. The helper shares proof only within opted-in scopes and across requests under EV2, never size/time alone; its holder establishes neither daily-chain integration nor every owner's composition.
+
+*Held by:*
 `test: tests/workspace_maintenance/test_verified_source_leases.py::test_unchanged_sources_verify_once_and_disabled_reuse_reads_again`;
 the remaining request compositions and measured-cost decisions by review.
+
 
 ## TE. Tests
 
 The repository will be heavily reworked, and old tests must not hold it back; and a whole-suite run
 wastes time, so it is never casual (the maintainer, 2026-09-26).
 
-**TE1. Tests are evidence, not a counter.** A test is added only for a real requirement, regression,
-tamper, recovery or uncovered boundary, reusing existing fixtures. *Held by:* review.
+**TE1. Tests are evidence, not a counter.**
 
-**TE2. The equivalence net protects a refactor.** A cut or merge proves it changed nothing the product
-answers: U0, the golden CLI transcripts (C6), the identity readout, and the contract tests of what it
-touched. *Held by:* `U0`, review.
+- *Source:* classic: Requirement-based testing; Goodhart's law.
+- *Adapted:* Requirements rather than a test-count target.
 
-**TE3. Every test is classed by what it pins**: CONTRACT (a public entry), BEHAVIOUR (an owner's rule
-through its public functions), MECHANISM (a private name, a patched internal or an environment
-variable, pinning how rather than what), DUPLICATE, each by the responsibility it holds, not its form:
-a count that proves a reuse without recomputation, a scientific minimum or a persisted layout is
-BEHAVIOUR or CONTRACT. A test goes when its responsibility retires, is duplicated or has an equivalent
-holder; one in a refactor's way is rewritten at a boundary, never deleted for being in the way. *Held by:* review.
+Tests hold requirements, regressions and uncovered boundaries; their count is not the objective.
 
-**TE4. Tests go with their owner.** Deleting or merging an owner deletes or merges its tests in the same
-card, listed in the private test signal record; a test is never ported to keep exercising code that
-is gone. *Held by:* review.
+*Held by:* review.
 
-**TE5. New tests enter through public entries**: no new private import or patched private attribute in
-`tests/` (the ratchet, `config/registries/test-private.json`, which only shrinks). *Held by:* `gate: registries`, `test: tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it`, `test: tests/structural/test_registries.py::test_the_tests_ratchet_refuses_an_entry_its_base_did_not_hold` (the gate compares the registry with the one the change started from, V16).
+**TE2. The equivalence net protects a refactor.**
 
-**TE6. A structural pin is a set or an invariant, never a count**; a moved set is re-pinned with its
-cause by name. *Held by:* review.
+- *Source:* classic: Observational equivalence.
+- *Adapted:* Answers and computational identities remain equivalent.
 
-**TE7. Development speed first; each check runs once, by one runner.** Tests are written and run by
-`tests/README.md`. Per commit, the hook's fast gate, with its test-shape check, and the nodes that
-answer for the change; a change that cannot alter behaviour is proved directly (its syntax without
-docstrings, the identity readout) rather than by running more. The maintainer's merge set runs every
-affected file whole, once, with the public release closure, and leaves real evidence to its own lane
-(TE10); a merge moving door words or Chinese includes the whole Workbench readback (V692, V696). The
-full gate (`check_playpen.py --staged` without `--fast`) and the whole suite run only at the
-maintainer's word, typically just before a product release; U0, the golden replay and the UI walk
-run once each, at the end, on the final candidate (the maintainer, 2026-09-26 and 2026-10-04:
-development speed comes first, and no work is done twice). *Held by:* `hook` for the per-commit
+Refactors preserve observable answers and recorded identities, checked through the existing acceptance and contract tests.
+
+*Held by:* `U0`, review.
+
+**TE3. Classify the requirement a test holds.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* The taxonomy separates necessary proof from implementation details.
+
+Classify by responsibility: CONTRACT pins a public entry; BEHAVIOUR pins an owner's rule through its public functions; MECHANISM pins a private name, patched internal or environment variable, testing how rather than what; DUPLICATE repeats a responsibility already held. A count proving reuse without recomputation, a scientific minimum or a persisted layout is BEHAVIOUR or CONTRACT. A test retires only when its responsibility retires, is duplicated or has an equivalent holder; a test in a refactor's way is rewritten at a boundary, never deleted for being in the way.
+
+*Held by:* review.
+
+**TE4. Tests go with their owner.**
+
+- *Source:* classic: Single responsibility; single source of truth.
+- *Adapted:* Tests retire with their owner.
+
+See OW2.
+
+*Held by:* review.
+
+**TE5. New tests enter through public entries**
+
+- *Source:* classic: Test observable behaviour, not implementation.
+- *Adapted:* Private access only shrinks.
+
+New tests drive the owner through its public boundary; the private-access ratchet admits no growth.
+
+*Held by:* `gate: registries`, `test: tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it`, `test: tests/structural/test_registries.py::test_the_tests_ratchet_refuses_an_entry_its_base_did_not_hold` (the gate compares the registry with the one the change started from).
+
+**TE6. Pin sets and invariants.**
+
+- *Source:* classic: Property-based testing.
+- *Adapted:* Exact membership, including re-pins.
+
+Structural pins name a set or invariant, not a count; changed membership names its cause.
+
+*Held by:* review.
+
+**TE7. Each check runs once.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* One runner owns each check, avoiding repeated work.
+
+Follow `tests/README.md` for test selection and the maintainer's release verification procedure.
+
+*Held by:* `hook` for the per-commit
 fast gate and the test shape;
 `private-test: test_every_chinese_translation_uses_its_owned_ui_vocabulary`,
 `private-test: test_every_public_file_closes_over_the_public_manifest`
 for the word and release-boundary checks; review for the merge set's selection.
 
-**TE8. A failure is diagnosed, never masked.** No skip, relaxed assertion or unrelated fixture churn to get
-green; the failing cluster is diagnosed and its failed nodes rerun after the fix, and the merge set
-reruns their files. A mechanism is reproduced by a targeted setup, not by rerunning until it shows; a
-heavy test runs once for evidence. *Held by:* review.
+**TE8. A failure is diagnosed, never masked.**
 
-**TE9. The quarantine names every test with its class, owner and end** (the private test signal
-record and private quarantine record); still there at its end, it is deleted or its owner decides.
+- *Source:* classic: Regression testing.
+- *Adapted:* Targeted diagnosis without weakening assertions.
+
+Reproduce and diagnose failures, then verify the corrected behaviour; never conceal a failure to get green.
+
 *Held by:* review.
 
-**TE10. Real evidence has its own lane.** A test that reads real evidence is marked `real_evidence`, reads
-roots declared in the private evidence-root declaration, leaves the routed lane, and skips by a named reason when
-a root is absent or unreadable. *Held by:*
+**TE9. Quarantine has an owner and end.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Quarantine requires an owner and an explicit end.
+
+Follow the maintainer's quarantine procedure.
+
+*Held by:* review.
+
+**TE10. Real evidence has its own lane.**
+
+- *Source:* classic: Hermetic testing.
+- *Adapted:* Separate real-evidence lane.
+
+Keep external evidence in its marked lane; missing or unreadable named roots receive an explicit skip.
+
+*Held by:*
 `private-test: test_the_routed_lane_deselects_real_evidence_and_names_it_required`,
 `private-test: test_an_evidence_root_that_cannot_be_read_is_a_named_skip`.
 
-**TE11. The tests tree keeps its boundaries.** No test module imports another, no test edits `sys.path` (one that
-needs a tool's directory uses `monkeypatch.syspath_prepend`, which restores it),
-and case studies never host the automated suite. *Held by:*
+**TE11. The tests tree keeps its boundaries.**
+
+- *Source:* classic: Test isolation.
+- *Adapted:* One package tree for automated tests.
+
+Share setup through owner support modules, never imports between test modules or permanent path mutation.
+
+*Held by:*
 `private-test: test_tests_tree_keeps_its_import_and_evidence_boundaries`,
 `private-test: test_case_studies_never_host_the_automated_test_suite`.
 
-**TE12. A seam is held by a check of its class, never by its instance.** Where two owners meet (a
-printed command and the CLI's reading of it, an offered request and the operation it names, a saved
-answer and the `--from` that reads it, a refusal and its words, a Task's state and the waiter that
-reads it, a write and the target it acts on), a fix lands with the check that holds the whole class:
-a property over the contract's table where the class can be enumerated (every operation, field and
-declared kind printed and read back, in POSIX and in Windows PowerShell; every lifecycle state
-classed; awkward values saved in both formats and read back), and the answer check every test's
-operations pass where it can only be observed (each offered request one the Host accepts as it
-stands, each refusal with words and a way on). An observed check holds only what the tests reach:
-enumerate where the table allows. *Why:* nine outside reviews in one day each found new instances
-of the same seams; the sweep found 436 of 1,925 printed requests misread and Windows PowerShell
-5.1 stripping every printed JSON argument's quotes, which no test had met (V449). *Held by:*
+**TE12. Check seams by their class.**
+
+- *Source:* classic: Contract testing; property-based testing.
+- *Adapted:* Producer-consumer classes rather than isolated examples.
+
+Check each seam as a class, enumerating its contract when possible; observation proves only reached paths.
+
+*Held by:*
 `test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_every_printed_command_reads_back_as_the_request_it_came_from`,
 `test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_a_command_printed_for_powershell_sends_the_request_it_came_from`,
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_an_answer_saved_as_json_or_yaml_reads_back_alike`,
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_an_offered_request_is_one_the_host_accepts_as_it_stands`,
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_catalog_of_refused_controls_is_an_answer`,
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_request_a_listed_item_offers_is_followed`,
-the answer check in `tests/conftest.py` (V410, V449).
+the answer check in `tests/conftest.py`.
 
-**TE13. Test temporary roots stay outside the checkout.** The resolved pytest base temporary root,
-explicit or default and through any path alias, is outside the checkout. An inside root is refused
-before collection or cleanup, with its reason and an outside command, so checkout stores, source and
-hooks cannot contaminate a product result or be deleted as test temporary files (V646). Tests' backup
-roots also stay outside the checkout. *Held by:*
+**TE13. Test roots remain outside the checkout.**
+
+- *Source:* classic: Hermetic testing.
+- *Adapted:* Resolved roots protect source and data from cleanup.
+
+Resolve test and backup roots outside the checkout; reject overlap before collection or cleanup.
+
+*Held by:*
 `private-test: test_pytest_refuses_checkout_temp_before_collection_or_cleanup`,
 `private-test: test_pytest_uses_external_test_and_backup_temp`,
 the pre-collection guard in `tests/conftest.py::pytest_configure`.
 
-**TE14. A real-browser class checks what needs real layout, within its watchdog margin.** Widths,
-focus, scrolling and motion are checked in the browser; behaviour and words are checked once, in the
-Node harness (`tests/README.md`). Every collected class in the split pinned-browser harnesses must
-run alone within half its declared watchdog and leave both files runnable whole at eight workers
-without a load-only timeout. Splitting keeps each requirement and the original watchdogs; a
-missing, unknown or repeated class selection refuses rather than silently changing coverage (V695). *Not yet held:* the roster and
-runner holders below enforce class coverage and the full watchdogs, not the half-budget margin
-or an eight-worker load bound. The per-class measurements and whole-file run are observations,
-not an automated half-budget holder (V695). *Held by:*
+**TE14. Browser classes retain watchdog margin.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Browser coverage and its timing proof must stay distinct.
+
+Check layout, focus, scrolling and motion in the browser, and behaviour and words once in Node, as `tests/README.md` specifies. Each collected browser class must run alone within half its declared watchdog and keep both owning files runnable whole at eight workers without a load-only timeout; splitting preserves each requirement and the original watchdogs, and missing, unknown or repeated class selection refuses. *Not yet held:* The roster and runner checks hold class coverage and full watchdogs, not the half-budget or eight-worker load bound; timing measurements remain observations.
+
+*Held by:*
 `private-test: test_pinned_browser_harness_class_rosters_are_collected_and_require_a_selection`,
 `private-test: test_minor_ui_classes_in_the_pinned_browser`,
 `private-test: test_workbench_repaints_and_route_identity_in_a_real_browser`.
 
+
 ## PR. Process
 
-**PR1. One development line.** The private development branch holds code, tests, plans and records;
-every card's branch enters it only by the maintainer's merge after the gate, and the public
-repository is exported from it. *Held by:* review.
+**PR1. One development line.**
 
-**PR2. Commits.** One card a branch, a commit a unit, staged by path; never a bare `git stash`,
-`--no-verify`, a push or a history rewrite; the tree left clean. *Held by:* `hook`.
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* One integration history binds verification to exported releases.
 
-**PR3. Less code first.** Retire before adding: each card reports its net lines by area, an addition
-names what it replaced, and a new path beside an old one removes it or lists it with its readers. *Held by:*
+Follow the maintainer's integration and public-export procedure.
+
+*Held by:* review.
+
+**PR2. Commits.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Atomic changes preserve hooks and an auditable history.
+
+Follow the maintainer's branch and commit procedure.
+
+*Held by:* `hook`.
+
+**PR3. Less code first.**
+
+- *Source:* classic: Single responsibility; single source of truth.
+- *Adapted:* Owner replacement also reports net code size.
+
+See OW2.
+
+*Held by:*
 review.
 
-**PR4. Living lists.** Every card adds what it found to the convergence list (removable, wrong or kept,
-with its decision and resolver) and the CLI list, and records its landing in the maintainer's plan. A card
-fixes what it finds at its owner, in its own branch, while it is open, and names each finding, fix
-and commit in its hand-back; no finding is reassigned to another card, and where the fix lies in
-code another card is changing, the finder records it for that card (the maintainer, 2026-10-04). *Held by:* review.
+**PR4. Living lists.**
 
-**PR5. Records.** A material code, identity or numerical change keeps one dated record; every new
-Markdown document starts with one H1 and a `Date:` line. *Held by:* review.
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Every finding needs an owner and a recorded disposition.
 
-**PR6. Files are LF**, but for the Windows scripts (`.ps1`, `.cmd`, `.bat`), which stay CRLF. *Held by:*
+Follow the maintainer's finding and coordination procedure.
+
+*Held by:* review.
+
+**PR5. Records.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* One receipt preserves the evidence without duplicate records.
+
+Follow the maintainer's dated-record procedure.
+
+*Held by:* review.
+
+**PR6. Files are LF**
+
+- *Source:* borrowed: Git attributes.
+- *Adapted:* LF except Windows command scripts.
+
+Follow `.gitattributes` for line endings.
+
+*Held by:*
 `config: .gitattributes`.
 
-**PR7. Who edits what.** Only the maintainer edits the identity records, closure lists, the gate
-and this book; a card edits only its own scope, and the Workbench's area changes through its own
-owner; a change keeps the page working until the UI pass (PR12). *Held by:* review.
+**PR7. Who edits what.**
 
-**PR8. Report faithfully.** A failing check is reported with its output and a skipped step is said; code
-completion is kept apart from scientific or production readiness; a hand-off gives the SHA, what landed,
-the evidence, the numerical work run, what stays open and the next lawful action. *Held by:* review.
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Explicit authority and scope keep concurrent edits reviewable.
 
-**PR9. Stop only for a real blocker**: an explicit redirect, new authority, an invalid premise, a
-required artifact unavailable, invalid evidence. Then finish the independent work and name the next
-lawful action; never interrupt a healthy, authorised numerical run. *Held by:* review.
+Follow ID5 and the maintainer's scope and Workbench-ownership procedure.
 
-**PR10. Sources and language.** Uncertain behaviour is resolved from current primary documentation or
-exact-version source, keeping observed fact, documented behaviour, inference and decision apart. Files,
-identifiers, failure codes and commits are in English; the product's Chinese translates its English. *Held by:* review.
+*Held by:* review.
 
-**PR11. Coordination is written down.** Cards are handed out, handed back and decided on a private
-coordination log: one page a day, append-only and never edited, every entry signed by its author;
-a card ends with its completion entry before its owner's next card starts. A new rule enters the
-next card, never one already running (the maintainer, 2026-10-04). *Held by:* review.
+**PR8. Report faithfully.**
 
-**PR12. The Workbench changes last, from one ledger.** No card edits the Workbench before the UI pass,
-once the development converges. A card that changes what a page reads (an answer's fields, an offered action,
-a word, a route, a paging rule) records the page's side in the private UI change ledger
-in the same commit, and keeps the page working until the pass. *Why:* the Host still moves, so a page
-fixed now is fixed twice, and scattered notes lose some (the maintainer, 2026-09-27: the UI
-changes last, once everything converges, and every change is recorded). *Held by:* review.
+- *Source:* ours.
+- *Adapted:* Evidence limits apply to development hand-offs.
+- *Why:* The next actor needs the actual proof boundary.
 
-**PR13. The ledger is filed by month and day, and code never cites it.** A finished plan or record
-goes to the private ledger by year, month and day, the day it first entered the repository. A comment, a
-docstring, a constant or an answer in `src`, `scripts` or `tests` names the law, the convergence row or
-the card, never a plan's path: a plan is filed and moved as the work goes on, and a path to it goes
-stale (the maintainer, 2026-09-28). A sealed record keeps
-the provenance path it was sealed with, since that names where an input came from, not where to read
-it. *Held by:* `private-test: test_the_ledger_is_filed_by_month_and_day`,
+See EV3.
+
+*Held by:* review.
+
+**PR9. Stop only for a real blocker**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Difficulty alone does not justify stopping authorized work.
+
+Follow the maintainer's blocker and numerical-run procedure.
+
+*Held by:* review.
+
+**PR10. Sources and language.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Facts, inference and stable identifiers must remain distinguishable.
+
+Follow the maintainer's source-verification and language procedure.
+
+*Held by:* review.
+
+**PR11. Coordination is written down.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Recorded decisions preserve ownership without retroactive rules.
+
+Follow the maintainer's signed coordination and active-card procedure.
+
+*Held by:* review.
+
+**PR12. One coordinated Workbench change procedure.**
+
+- *Source:* ours.
+- *Adapted:* Workbench coordination keeps one deferred pass.
+- *Why:* One coordinated pass avoids repairing a still-moving page twice.
+
+See PR7.
+
+*Held by:* review.
+
+**PR13. Stable citations and dated history.**
+
+- *Source:* ours.
+- *Adapted:* as is.
+- *Why:* Live citations survive filing; sealed provenance keeps its origin.
+
+Follow the maintainer's filing and stable-citation procedure.
+
+*Held by:* `private-test: test_the_ledger_is_filed_by_month_and_day`,
 `private-test: test_code_cites_no_plan_path`.
+
 
 ## UI. The Workbench
 

@@ -22,6 +22,7 @@
     "src/alphalattice/control/product_host/composition/local_web_connection.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/local_web_session.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/model_sandbox.py": "COMPOSITION",
+    "src/alphalattice/control/product_host/composition/native_usage_reader.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/pending_decisions.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/plain_refusals.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/portfolio_application.py": "COMPOSITION",
