@@ -744,19 +744,25 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         ("CRO", "CORRECT"),
         ("CRO", "DONE"),
     ]
+    # Each member's acceptance is a row of its own thread, never a relay as the lead; it opens
+    # the full accepted answer.
     rows = [
+        item
+        for item in client.read_external()["items"]
+        if item["payload"]["subject"].get("input_channel") == "PRODUCT_REVIEW"
+        and item["payload"]["subject"]["message_kind"] == "acceptance"
+    ]
+    relayed = [
         item
         for item in client.read_external()["items"]
         if item["payload"]["subject"].get("input_channel") == "PRODUCT_ACCEPTED_ANSWER"
     ]
-    assert {row["payload"]["subject"]["bundle_role"] for row in rows} == {"ANALYST", "CRO"}
+    assert len(rows) == 2 and relayed == []
     for row in rows:
         subject = row["payload"]["subject"]
-        assert subject["native_agent_id"] == subject["submitted_by"] == "bundle-review-lead"
-        assert subject["authorship_basis"] == "NOT_OBSERVED"
+        assert subject["authorship_basis"] == "HOST_ACCEPTED"
         detail = client.read_external(observation_id=row["observation_id"])["accepted_answer"]
         assert detail["status"] == "AVAILABLE", detail
-        assert detail["agent_role"] == subject["bundle_role"]
         assert detail["bundle_reference"] == subject["bundle_reference"]
     # A directory the Host never prepared, or a bundle whose evidence moved
     # on, is refused by name and nothing is read.

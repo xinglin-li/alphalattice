@@ -637,10 +637,9 @@ def floor_row(floor: Floor, message: Mapping[str, Any]) -> dict[str, Any]:
     It names its member's card under the lead's session, and the author it answers as recipient.
     """
     vendor, session = floor.opened["session"]
-    answered = {m["id"]: m["role"] for m in floor.messages}.get(str(message.get("reply_to")))
-
+    answered = next((m for m in floor.messages if m["id"] == message.get("reply_to")), None)
     reply = (
-        {"reply_to": message["reply_to"], "recipient_id": member_agent(floor, answered)}
+        {"reply_to": _qualified(floor, answered["id"]), "recipient_id": _speaker(floor, answered)}
         if answered
         else {}
     )
@@ -657,10 +656,10 @@ def floor_row(floor: Floor, message: Mapping[str, Any]) -> dict[str, Any]:
         "subject": {
             "native_host": vendor,
             "native_session_id": session,
-            "native_agent_id": member_agent(floor, message["role"]),
+            "native_agent_id": _speaker(floor, message),
             "role": _card(floor, message["role"]),
             "message_kind": str(message["kind"]).lower(),
-            "message_id": message["id"],
+            "message_id": _qualified(floor, message["id"]),
             "reference": task,
             "input_channel": REVIEW_CHANNEL if "bundle_reference" in floor.opened else CHANNEL,
             "authorship_basis": "HOST_ACCEPTED",
@@ -669,6 +668,19 @@ def floor_row(floor: Floor, message: Mapping[str, Any]) -> dict[str, Any]:
             **_references(floor, message),
         },
     }
+
+
+def _speaker(floor: Floor, message: Mapping[str, Any]) -> str:
+    """Who sent a message: a member's own native session where it answered from one, which joins
+    its role to that thread's usage; else its card under the lead's session."""
+    return str(message.get("author_session") or member_agent(floor, message["role"]))
+
+
+def _qualified(floor: Floor, number: str) -> str:
+    """A message's id as the Session reads it: a review thread's prefixed by its thread, so the
+    M1 of each bundle's thread names its own message."""
+    thread = floor.opened["update_task_id"]
+    return f"{thread[:8]}-{number}" if "bundle_reference" in floor.opened else number
 
 
 def _references(floor: Floor, message: Mapping[str, Any]) -> dict[str, str]:
@@ -1085,6 +1097,22 @@ def admit(
     return {"status": "REFUSED", "failure_code": code, **words}
 
 
+def threaded(store: GoalStore, bundle: Any) -> bool:
+    """Whether a bundle's answers are a review member's own, filed on its thread, never relayed."""
+    reference = getattr(bundle, "record_hash", None)
+    if getattr(bundle, "role", None) not in REVIEWERS or not isinstance(reference, str):
+        return False
+    return store.committee(thread_id(reference)) is not None
+
+
+def accepted_task(store: GoalStore, thread: str) -> str | None:
+    """The Task a review thread's acceptance admitted its answer into; None while it is open."""
+    floor = thread_of(store, thread)
+    taken = [m for m in (floor.messages if floor else []) if m["kind"] == "ACCEPTANCE"]
+    references = taken[0].get("references") or [] if taken else []
+    return str(references[-1]) if len(references) > 1 else None
+
+
 def _accepted(floor: Floor) -> str | None:
     """The digest of the answer the thread's acceptance took; None while it is open."""
     said = {m["id"]: m for m in floor.messages}
@@ -1099,12 +1127,22 @@ def answered(
     (role, _reference, answer), status = member, body.get("status")
     if not isinstance(floor, Floor) or status not in {"CORRECT", "ACCEPTED", "DONE"}:
         return
+    # Filed on the bundle's thread in the lead's session, the member its author, whoever sent it.
+    session, thread = floor.opened["session"], floor.opened["update_task_id"]
+    sender = getattr(REQUEST_PROVENANCE.get(), "session", None)  # the member's own thread
+    own = {"author_session": sender} if sender and sender != session[1] else {}
+    body["conversation"] = {"status": "RECORDED_ON_THREAD", "thread": thread, "host": session[0]}
+    body["conversation"] |= {
+        "session_id": session[1],
+        "author": _speaker(floor, own | {"role": role}),
+    }
     with store.lock:
         if _accepted(floor) is not None:
             return  # the accepted answer read again: its receipt, said once
         last = floor.messages[-1]["id"] if floor.messages else None  # its issue, or correction
         said = {"role": role, "kind": "ANSWER", "text": "Answer submitted.", "reply_to": last}
         said["answer_digest"] = str(canonical_hash(answer))
+        said |= own
         verdict: dict[str, Any] = {"role": "HOST", "reply_to": _append(store, floor, now, **said)}
         if status == "CORRECT":
             problems, left = len(body.get("problems") or ()), body.get("rounds_left")

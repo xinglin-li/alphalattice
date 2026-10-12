@@ -2057,9 +2057,8 @@ class PortfolioResearchOperations:
     ) -> GoalAcceptedAnswerReceipt | None:
         """Freeze the first genuine acceptance's prior packet before optional delivery.
 
-        Called while the scientific submission holds the workspace mutation gate. This
-        reads only product owner records; it never discovers native files or contacts a Host.
-        The caller isolates failures so the accepted scientific answer remains usable.
+        Called under the submission's mutation gate, it reads only product owner records, never
+        native files or a Host; its caller isolates failures from the answer.
         """
         view = body.get("answer")
         delivery = view.get("accepted_delivery") if isinstance(view, dict) else None
@@ -2100,7 +2099,9 @@ class PortfolioResearchOperations:
         *,
         accepted_receipt: GoalAcceptedAnswerReceipt | None = None,
     ) -> dict[str, object]:
-        """Keep observation optional at every registered accepted-answer return door."""
+        """Keep observation optional at each accepted-answer door; a thread files its own."""
+        if committee.threaded(self.goals.store, bundle):
+            return body
         failures = self.observer_failures
         conversation = self._observe(
             lambda: self.record_agent_answer(bundle, body, accepted_receipt=accepted_receipt)

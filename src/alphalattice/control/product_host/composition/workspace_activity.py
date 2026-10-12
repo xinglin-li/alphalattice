@@ -52,6 +52,7 @@ from alphalattice.control.observation_runtime.contracts import (
     ObservationRetentionClass,
 )
 from alphalattice.control.observation_runtime.ledger import (
+    MAXIMUM_READ_PAGE,
     ObservationLedger,
     ObservationStorageError,
     UnifiedObservationPort,
@@ -860,6 +861,8 @@ class WorkspaceActivity:
         product's own operations push a team's exchanges out of it. This read
         walks one kind in commit order; `before` pages further back. No Task
         join: a declared event names its Task as a verified flag, not a state.
+        A selected Session's latest member snapshots are independent of that
+        exchange cursor; their separate bound and truncation are disclosed.
         """
         if query.observation_id is not None:
             return self._accepted_answer_detail(query.observation_id)
@@ -869,10 +872,27 @@ class WorkspaceActivity:
             None
             if ledger is None
             else ledger.observations_of_kind(
-                EXTERNAL_ACTIVITY_SCHEMA, limit=query.limit, before=query.before
+                EXTERNAL_ACTIVITY_SCHEMA,
+                limit=query.limit,
+                before=query.before,
+                native_session_id=query.native_session_id,
             )
         )
+        snapshots = (
+            ledger.observations_of_kind(
+                EXTERNAL_ACTIVITY_SCHEMA,
+                limit=MAXIMUM_READ_PAGE,
+                native_session_id=query.native_session_id,
+                snapshots=True,
+                head_ordinal=page.head_ordinal,
+            )
+            if ledger is not None and page is not None and query.native_session_id is not None
+            else None
+        )
         items = [] if page is None else [activity_item(item) for item in page.items]
+        snapshot_items = (
+            [] if snapshots is None else [activity_item(item) for item in snapshots.items]
+        )
         return {
             "workspace_id": self.workspace_id,
             "disposition": "UNAVAILABLE" if page is None else page.disposition,
@@ -881,10 +901,21 @@ class WorkspaceActivity:
             "oldest": items[0]["ordinal"] if items else None,
             "more": False if page is None else page.more,
             "items": items,
-            "unavailable": 0 if page is None else page.unavailable_count,
+            **(
+                {
+                    "native_session_id": query.native_session_id,
+                    "snapshots": snapshot_items,
+                    "snapshots_more": False if snapshots is None else snapshots.more,
+                }
+                if query.native_session_id is not None
+                else {}
+            ),
+            "unavailable": sum(
+                current.unavailable_count for current in (page, snapshots) if current is not None
+            ),
             "observer": self.observer_state(),
             "read_cost": {
-                "observations": len(items),
+                "observations": len(items) + len(snapshot_items),
                 "elapsed_ms": int((perf_counter() - started) * 1000),
             },
         }
@@ -913,8 +944,8 @@ class WorkspaceActivity:
                     and envelope.availability is ObservationAvailability.AVAILABLE
                     and payload.get("event_kind") == "NATIVE_COORDINATION_MESSAGE"
                     and isinstance(subject, dict)
-                    and subject.get("message_kind") == "answer"
-                    and subject.get("input_channel") == "PRODUCT_ACCEPTED_ANSWER"
+                    and (subject.get("message_kind"), subject.get("input_channel"))
+                    in {("answer", "PRODUCT_ACCEPTED_ANSWER"), ("acceptance", "PRODUCT_REVIEW")}
                     and operations is not None
                     and operations.review is not None
                 ):
@@ -923,7 +954,14 @@ class WorkspaceActivity:
                             observation_id, subject
                         )
                         observations += checked
-                    else:
+                    else:  # a hook's, or a review thread's acceptance: its Task from the thread
+                        if subject.get("input_channel") == "PRODUCT_REVIEW":
+                            from alphalattice.control.product_host.composition import committee
+
+                            task = committee.accepted_task(
+                                operations.goals.store, str(subject.get("reference"))
+                            )
+                            subject = {**subject, "reference": task}
                         answer = {
                             **operations.review.read_accepted_answer(subject),
                             "observation_id": observation_id,

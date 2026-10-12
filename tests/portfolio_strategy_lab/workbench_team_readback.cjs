@@ -2,6 +2,43 @@
 // Usage: node workbench_team_readback.cjs <modules dir> <input json> [session] [actor].
 // Input: pages/history/reads/resolve/verify; output: page, exchange readers, facts and requests.
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict'),library=require('./workbench_library.cjs');
+module.exports.checkSessionReadback=async({c,root,library,vm,fs,path,A,TM,reads,message,page,usage,teamSection})=>{
+  const reviewSession='review-native-parent',reviewThread='047ec6ef-0000-4000-8000-000000000001',reviewRef='review-thread:'+reviewThread;
+  const reviewIssue=message(reviewSession,reviewSession,'research_lead','issue','Fixture bundle issued.',{reference:reviewThread,recipient:'review-native-child'});
+  reviewIssue.payload.subject.input_channel='PRODUCT_REVIEW';A.absorbPage(page('CONTINUED',[reviewIssue]));TM.select(reviewSession);
+  const reviewEntry=TM.scene().sessions.find(s=>s.id===reviewSession).entries.get(reviewIssue.observation_id);
+  assert.equal(reviewEntry.reference,reviewRef);assert.equal(reviewEntry.qualified.kind,'review_thread');
+  const reviewReads=reads.length;await TM.resolve(reviewRef);const reviewResolved=TM.resolved().get(reviewRef);
+  await TM.verify(reviewRef);assert.equal(reads.length,reviewReads);assert.equal(reviewResolved.target.kind,'review_thread');
+  assert.equal(reviewResolved.route.team,reviewSession);assert.equal(reviewResolved.route.event,reviewIssue.observation_id);
+  TM.showEvent(reviewIssue.observation_id);const reviewShown=teamSection();
+  assert.ok(reviewShown.includes(c.t('Review thread'))&&!reviewShown.includes('Task '+reviewThread.slice(0,8)),reviewShown);
+  assert.ok(reviewShown.includes('LINK(team')&&reviewShown.includes(reviewIssue.observation_id));
+  const windowSession='window-native-parent',windowGoal='82000001-0000-4000-8000-000000000001';
+  const windowBinding=message(windowSession,windowSession,'research_lead','session_bound','Fixture scoped binding.');
+  Object.assign(windowBinding.payload.subject,{input_channel:'PRODUCT_OPERATION',goal_id:windowGoal});
+  const windowIssue=message(windowSession,windowSession,'research_lead','issue','Fixture retained review.',{reference:reviewThread,recipient:'window-analyst'}),windowAnswer=message(windowSession,'window-analyst','alphalattice_evidence_analyst','answer','Fixture retained answer.',{reference:reviewThread});
+  const windowCro=message(windowSession,'window-cro','alphalattice_cro','answer','Fixture CRO answer.',{reference:reviewThread});
+  for(const e of [windowIssue,windowAnswer,windowCro])Object.assign(e.payload.subject,{input_channel:'PRODUCT_REVIEW',goal_id:windowGoal});
+  const oldUsage=Array.from({length:256},(_,i)=>usage(windowSession,'research_lead',[i+1,100,10,0,5],{native_session_id:windowSession}));
+  const latestUsage=[usage(windowSession,'research_lead',[257,101,11,0,6],{native_session_id:windowSession}),usage('window-analyst','alphalattice_evidence_analyst',[2,20,0,0,8],{native_session_id:windowSession}),usage('window-cro','alphalattice_cro',[1,10,0,0,4],{native_session_id:windowSession})];
+  for(const initial of ['team-sessions','team']) {
+    const calls=[],address={value:'#'+new URLSearchParams({page:initial,...(initial==='team'?{team:windowSession}:{})})};
+    const fresh={...c,PAGES:{},app:{page:initial},hashParams:()=>new URLSearchParams(address.value.slice(1)),replaceHash:changes=>{const q=new URLSearchParams(address.value.slice(1));for(const [k,v] of Object.entries(changes))q.set(k,v);address.value='#'+q;},
+      Data:{...c.Data,workspaceStatus:'ready',offers:()=>false,readShared:async url=>{calls.push(url);const selected=new URLSearchParams(url.split('?')[1]).get('native_session_id');return {epoch:'window-epoch',items:selected?[windowIssue,windowAnswer,windowCro]:oldUsage.slice(-200),snapshots:selected?[windowBinding,...latestUsage]:[],snapshots_more:initial==='team',more:false,oldest:null};}}};
+    library.context(fresh,root);for(const name of ['status.js','live-activity.js','team-members.js','live-team.js'])vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),fresh);
+    vm.runInContext('globalThis.WindowTeam=LiveTeam;globalThis.WindowActivity=LiveActivity;',fresh);
+    if(initial==='team-sessions')fresh.WindowActivity.absorbPage({...page('RESET',oldUsage.slice(-200)),epoch:'window-epoch'});fresh.WindowTeam.scene();await new Promise(setImmediate);
+    fresh.app.page='team';fresh.WindowTeam.select(windowSession);fresh.WindowTeam.scene();await new Promise(setImmediate);
+    const windowShown=fresh.WindowTeam.scene(false,true).sessions.find(s=>s.id===windowSession);
+    assert.equal(windowShown.goalScope,windowGoal);assert.equal(windowShown.entries.size,4,[...windowShown.entries.values()].map(e=>e.id).join(','));assert.equal(windowShown.participants.size,3,[...windowShown.participants.keys()].join(','));
+    assert.equal(windowShown.participants.get('window-analyst').usage.get('gpt-6').output,8);
+    assert.equal(calls.filter(url=>url.includes('native_session_id=')).length,1);
+    for(let i=0;i<3;i++)fresh.WindowTeam.section();await new Promise(setImmediate);
+    assert.equal(calls.length,initial==='team-sessions'?2:1);assert.equal(fresh.WindowTeam.section().includes(c.t('Older records are not read yet')),initial==='team');
+  }
+};
+if(require.main===module){
 const [root,inputPath,team='',actor='']=process.argv.slice(2);
 const input=JSON.parse(fs.readFileSync(inputPath,'utf8'));
 const pages=Array.isArray(input)?input:input.pages,reads=(input.reads)||{},requested=[],history=(input.history||[]).map(e=>({id:e.entry_id,name:e.kind,task_id:e.task_id,raw:e}));
@@ -18,8 +55,9 @@ const c={console,URLSearchParams,Date,Number,Math,Set,Map,Object,Array,String,Pr
   notRead:(title,error,words='',action='')=>`<div class="warning">${title}:${error}${words?' '+words:''}${action}</div>`,noteLine:(title,body='',tone='',action='')=>`<p class="note-line">${title}${body?' · '+body:''}${action||''}</p>`,hint:(term)=>term,factsRef:(title,body)=>`<p>${title}</p>${body}`,codeRef:(title,text)=>'<p>'+title+'</p><template>'+(typeof text==='string' ? text : JSON.stringify(text))+'</template>',refCell:(uri)=>'<span>'+uri+'</span>',hashCell:(h)=>'<span>'+(h||'—')+'</span>',readingPane:(title,kind,body,close)=>'<aside>'+title+body+'</aside>',sourceRows:(rows)=>rows.map((r)=>[r.label,r.value]),badge:(tone,label)=>`[${tone}:${label}]`,stateLine:(x,o={})=>`[${(typeof x==='string'?x:(x?.lifecycle??x?.state??x?.status??''))}:${o.word??''}]`,skeleton:(shape='rows')=>'SKELETON('+shape+')',emptyState:(s,a='')=>'EMPTY('+s+')'+(a||''),railTools:()=>'',groupHead:(label,count)=>'GROUP('+label+':'+count+')',listFoot:()=>'',evidenceRow:(type,x,o={})=>{const r=typeof type==='object'?type:{type,subject:String(x?.entity_id||x?.issue_handle||x?.span_handle||x?.finding_handle||x?.reference?.label||x?.title||''),state:String(x?.state||''),word:'',why:''};return '<div class="list-row evidence-row '+(o.cls||'')+'" data-kind="'+(r.type||'')+'">ROW('+[o.named?r.kind+' · '+r.subject:r.subject,'['+r.state+':'+(r.word||'')+']',o.why??r.why,...((o.brief?[]:(r.props||[])).concat(o.props||[])).filter(Boolean).map(p=>Array.isArray(p)?p[1]:p),o.time,o.actions,o.attrs].filter(Boolean).join('|')+')</div>';},citePill:(h)=>'<span class="es-cite">'+h+'</span>',objectRow:(s={},x)=>'ROW('+[s.name,s.why,...(((x&&x.props)||[]).filter(Boolean).map(p=>Array.isArray(p)?p[1]:p)),x&&x.time,x&&x.actions].filter(Boolean).join('|')+')'+((x&&x.under)||''),statusDot:(s,l)=>'['+s+(l?':'+l:'')+']',btn:(label,action,value)=>`<${action}:${value}>{${label}}`,btnAttrs:(label,action,value,cls,attrs)=>(['team-actor','team-fold'].includes(action)?`<${action}:${value}>{${label}}${attrs||''}`:''),banner:(a,b,tone,action)=>`(${a}|${b}|${action||''})`,icon:(n)=>`{${n}}`,panel:(title,sub,body)=>`<<${title}>>`+(Array.isArray(body)?body.join(''):body),kv:(rows)=>rows.map(r=>r.join(': ')).join(' | '), // the record in place is a grid (T4): its rows as the builder lists them
   subjectChoice:library.stubs.subjectPicker,objectHead:library.stubs.headingSubject,
   routeUrl:(page)=>'#page='+page,NAV_ATTR:'',controlAttrs:()=>'',codeWords:(code)=>String(code ?? '—'),short:(v,n=8)=>String(v||'').slice(0,n),mono:(v,n=12)=>v?'<span class="mono">'+String(v).slice(0,n)+'</span>':'—',coded:(code)=>`<span class="mono">${code ?? '—'}</span>`,actorWords:(caller)=>String(caller ?? '—'),whenText:(value)=>String(value ?? '—'),pluralText:(n,one,many,args={})=>String(Number(n)===1?one:many).replace(/\{(\w+)\}/g,(m,k)=>args&&args[k]!==undefined?args[k]:m),countText:(n,one,many)=>(Number(n)===1 ? one : many).replace('{n}',String(n)),table:(headers,rows)=>'<table>'+(Array.isArray(rows)?rows.join(''):rows)+'</table>',tr:(cells)=>'<tr>'+cells.map(String).join('|')+'</tr>'};
-c.Data.readShared = (...args) => c.Data.read(...args);
-library.context(c, root);for(const name of ['status.js','live-activity.js','live-team.js'])vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),c);
+c.Data.workspaceStatus=input.scoped_sessions?'ready':undefined;
+c.Data.readShared = (url,...args) => { const id=new URLSearchParams(url.split('?')[1]).get('native_session_id');return input.scoped_sessions?.[id]?Promise.resolve(input.scoped_sessions[id]):c.Data.read(url,...args); };
+library.context(c, root);for(const name of ['status.js','live-activity.js','team-members.js','live-team.js'])vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),c);
 vm.runInContext('globalThis.A=LiveActivity;globalThis.TM=LiveTeam;',c);
 (async()=>{
   const otherTask='11111111-2222-4333-8444-555555555555';
@@ -31,7 +69,27 @@ vm.runInContext('globalThis.A=LiveActivity;globalThis.TM=LiveTeam;',c);
   }
   for(const page of pages)c.A.absorbPage(page);
   for(const ref of input.resolve||[])await c.TM.resolve(ref);for(const ref of input.verify||[])await c.TM.verify(ref);
-  const scene=c.TM.scene();
+  const scene=input.projection?null:c.TM.scene();
+  if(input.projection){
+    const sessions=[],tr=c.tr;let rows=[];c.tr=(cells)=>{rows.push(cells.map(String));return tr(cells);};c.btnAttrs=(label,action,value)=>`<button data-action="${action}" data-value="${value}">${label}</button>`;
+    const ids=Object.keys(input.scoped_sessions||{});if(!ids.length)ids.push(...new Set(pages.flatMap(p=>p.items||[]).map(e=>e.payload?.subject?.native_session_id).filter(Boolean)));
+    for(const id of ids){
+      hash.value='#'+new URLSearchParams({page:'team-participants',team:id});c.app.page='team-participants';c.TM.scene(false,true);await new Promise(setImmediate);
+      const s=c.TM.scene(false,true).sessions.find(s=>s.id===id);if(!s)continue;rows=[];
+      const participants=c.TM.section(),run=c.TM.runs([s])[0],references=[];
+      for(const e of [...s.entries.values()].filter(e=>e.qualified&&!e.replayOf)) {
+        if(references.some(r=>r.reference===e.reference))continue;
+        if(!c.TM.resolved().has(e.reference))await c.TM.resolve(e.reference);const read=c.TM.resolved().get(e.reference),resolvedKind=read?.target?.kind||null;
+        references.push({reference:e.reference,kind:['hash','history'].includes(e.qualified.kind)?resolvedKind:e.qualified.kind,resolved_kind:resolvedKind,resolved:Boolean(read?.target&&!read.failure&&read.level!=='unresolved')});
+      }
+      sessions.push({id:s.id,title:run.name,question:run.question,goal_scope:s.goalScope,rows,references,
+        unidentified:c.t('Unidentified'),html:participants,
+        role_words:Object.fromEntries([...new Set([...s.participants.values()].flatMap(p=>[...p.roles]))].map(r=>[r,c.TM.roleName(r)])),
+        members:[...s.participants.values()].map(p=>({id:p.id,roles:[...p.roles],name:vm.runInContext('TeamMembers',c).unique(s,p.id),usage_visible:rows.some(r=>r[0].includes(`data-value="${p.id}"`)&&r.slice(3,7).every(v=>v!=='')),usage:[...p.usage.values()].map(u=>({model:u.model,responses:u.responses,input_tokens:u.input,output_tokens:u.output,cache_read_tokens:u.cacheRead,cache_write_tokens:u.cacheWrite})),first_at:[...p.usage.values()].map(u=>u.first).filter(Number.isFinite).sort()[0]})).map(p=>({...p,first_at:p.first_at?new Date(p.first_at).toISOString():null})),
+        entries:[...s.entries.values()].map(e=>({id:e.id,actor:e.actor,role:e.role,kind:e.kind,message_kind:e.messageKind,recipient:e.recipient,recipient_label:c.TM.recipientName(s,e.recipient,e)}))});
+    }
+    process.stdout.write(JSON.stringify({sessions}));return;
+  }
   {const q=new URLSearchParams(hash.value.slice(1));if(!q.get('team')&&scene.sessions[0]){q.set('team',scene.sessions[0].id);hash.value='#'+q;}}
   if(input.committee){
     const b=reads['/api/committee'],s=scene.sessions.find(s=>s.id===b.session[1]),saved=structuredClone(b),words=library.words(root);
@@ -72,10 +130,12 @@ vm.runInContext('globalThis.A=LiveActivity;globalThis.TM=LiveTeam;',c);
     hash.value=saved;
   }
   const out={feed:c.A.state(),html,readers,requested,unknown:scene.unknown.length,
-    resolved:Object.fromEntries([...c.TM.resolved()].map(([k,v])=>[k,{level:v.level,owner:v.owner||null,note:v.note||null,open:v.open||null,link:v.link||null,target:v.target||null,failure:v.failure||null,limit:v.limit||null}])),
+    resolved:Object.fromEntries([...c.TM.resolved()].map(([k,v])=>[k,{level:v.level,owner:v.owner||null,note:v.note||null,open:v.open||null,link:v.link||null,route:v.route||null,target:v.target||null,failure:v.failure||null,limit:v.limit||null}])),
     sessions:scene.sessions.map(s=>({id:s.id,producers:[...s.producers],references:[...s.references],derived:[...(s.derived||new Map())].map(([k,v])=>({ref:k,...v})),unknownKinds:s.unknownKinds.map(u=>u.item.payload.event_kind),
       participants:[...s.participants.values()].map(p=>({id:p.id,roles:[...p.roles],messages:p.messages.length,hooks:p.hooks.length})),
       entries:[...s.entries.values()].sort((a,b)=>a.ordinal-b.ordinal).map(e=>({observation:e.id,kind:e.kind,messageKind:e.messageKind||null,declaredKind:e.declaredKind||null,actor:e.actor,role:e.role,recipient:e.recipient||null,reference:e.reference||null,qualified:e.qualified?e.qualified.kind:null,truncated:e.truncated||false,bytes:e.bytes||null,textLength:(e.text||'').length,replayOf:e.replayOf,replays:e.replays||[],conflictsWith:e.conflictsWith,hookEvent:e.hookEvent||null,terminal:e.terminal||null,stopActive:e.stopActive||null,channel:e.channel,timeKind:e.timeKind,taskId:e.taskId,authority:e.authority})),
       facts:s.facts.map(f=>({observation:f.item.observation_id,schema:f.item.schema_kind,operation:f.item.payload.operation||null,phase:f.item.payload.phase||null,status:f.item.payload.status||null,failure_code:f.item.payload.failure_code||null,lifecycle:f.item.payload.task_lifecycle||null,artifact:f.item.payload.artifact_kind||null,task:f.group.task_id,named:f.named,followed:f.followed||[]}))}))};
   process.stdout.write(JSON.stringify(out));
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+}

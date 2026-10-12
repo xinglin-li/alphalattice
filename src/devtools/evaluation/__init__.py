@@ -17,6 +17,7 @@ from .forms import (
     TraceEvent,
 )
 from .intent import CommandCatalog, IntentGrader, command_errors, contains, grade, proposes
+from .session import session_findings
 
 __all__ = [
     "CommandCatalog",
@@ -40,4 +41,5 @@ __all__ = [
     "contains",
     "grade",
     "proposes",
+    "session_findings",
 ]

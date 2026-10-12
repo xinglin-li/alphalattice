@@ -1388,8 +1388,12 @@
   "next_action": "READ_ACTIVITY_THEN_USE_ITS_COMPLETE_OBSERVATION_ID"
  },
  "activity.query_selection_conflict": {
-  "detail": "An activity read selects either an older-page cursor or one exact observation, never both. Remove the other selector and read the selected page or observation again.",
+  "detail": "An exact observation read cannot include paging or a Session filter. Keep the observation selector alone, or read the selected Session's page.",
   "next_action": "KEEP_ONE_ACTIVITY_SELECTOR_THEN_READ_AGAIN"
+ },
+ "activity.query_parameter_invalid": {
+  "detail": "The activity read parameter {subject} is empty, repeated, too long or contains control characters. Send that selector once, using its recorded identifier.",
+  "next_action": "SEND_EACH_ACTIVITY_SELECTOR_ONCE_USING_ITS_RECORDED_IDENTIFIER"
  },
  "native_bridge.child_usage_binding_unverified": {
   "detail": "The child's own record does not name the bound Session as its parent, so its usage could not be linked. No child identity or usage was invented, and research can continue.",

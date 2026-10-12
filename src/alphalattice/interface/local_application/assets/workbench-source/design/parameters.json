@@ -153,8 +153,7 @@
  ],
  "counts": [
   "lobby-rows",
-  "table-rows",
-  "session-title-chars"
+  "table-rows"
  ],
  "tones": [
   "meaning-failure",
@@ -1397,10 +1396,6 @@
     "lobby-rows": {
      "base": "6",
      "about": "a lobby group's rows before `Show n more` opens the rest in place (law 136; the F0 decision 3)"
-    },
-    "session-title-chars": {
-     "base": "28",
-     "about": "a session's title where no rule of the verb table holds: its first sentence on one line, cut here (the F0 decision 2; the owner's whole text stays the conversation's first entry)"
     }
    }
   },

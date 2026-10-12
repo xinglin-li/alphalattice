@@ -968,7 +968,7 @@ Keep both configurations together and apply the declared reading changes.
 *Adapted:* One owner name, or the declared naming rule.
 
 Use one owner name everywhere, derive absent names only by the per-kind rule (sessions use
-verb table or first sentence bounded by `--session-title-chars`) and distinguish look-alikes
+the scoped Goal's question or the latest delivery's Goal question) and distinguish look-alikes
 by owner facts. One word names one thing; actors retain their actual identity or Unidentified.
 
 *Held by:* `object_title_census`,

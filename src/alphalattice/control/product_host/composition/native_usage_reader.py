@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
+from time import monotonic
 from typing import TYPE_CHECKING, Any
 
 from alphalattice.interface.local_application.cli_contract import (
@@ -48,7 +48,7 @@ class NativeUsageReader:
     failure is named in `state`, never a refusal of research.
     """
 
-    RECENT = timedelta(seconds=10)
+    RECENT = 10.0
 
     def __init__(self, operations: PortfolioResearchOperations) -> None:
         """Retain the served workspace's binding, Goal and observation owners.
@@ -58,9 +58,8 @@ class NativeUsageReader:
         """
         self.operations = operations
         self.workspace = operations.workspace_session.workspace.resolve()
-        self.clock = operations.dispatcher.clock
         self._reading = Lock()
-        self._read_at: dict[tuple[str, str], datetime] = {}
+        self._read_at: dict[tuple[str, str], float] = {}
         self._status = "NOT_BOUND"
         self._reason: str | None = None
         self._progress: dict[str, object] = {}
@@ -119,7 +118,8 @@ class NativeUsageReader:
             self._reason = self._reason or (
                 owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
             )
-        return tuple(found)
+        # Admission and the Host's root may name the same binding; differing authority stays.
+        return tuple(dict.fromkeys(found))
 
     def _remember_failure(self, reason: str | None) -> None:
         self._reason = self._reason or reason
@@ -167,7 +167,7 @@ class NativeUsageReader:
                 finally:
                     REQUEST_PROVENANCE.reset(token)
 
-        self._read_at[(binding.host, binding.session_id)] = self.clock()
+        self._read_at[(binding.host, binding.session_id)] = monotonic()
         receipt = read_session_usage(project, binding, publish=publish, goal_id=goal_id)
         self._progress = {
             key: receipt[key]
@@ -188,7 +188,7 @@ class NativeUsageReader:
         if not self._reading.acquire(blocking=False):
             return {"status": "BUSY", "sessions": []}
         try:
-            previous_reason = self._reason
+            previous_reason, previous_progress = self._reason, self._progress
             self._reason = None
             self._progress = {}
             if not usage_reading(self.workspace):
@@ -205,7 +205,7 @@ class NativeUsageReader:
                 return {"status": self._status, "sessions": []}
             self._status = "OBSERVING"
             pending_reason, pending_progress = self._reason, {}
-            now = self.clock()
+            now = monotonic()
             sessions: list[dict[str, object]] = []
             for project, binding in active:
                 key = (binding.host, binding.session_id)
@@ -231,6 +231,10 @@ class NativeUsageReader:
                     pending_progress = self._progress
                 sessions.append({"host": binding.host, **receipt})
             if pending_reason is not None:
+                if pending_reason == previous_reason and all(
+                    row["status"] == "RECENT" for row in sessions
+                ):
+                    pending_progress = previous_progress
                 self._reason, self._progress = pending_reason, pending_progress
             return {"status": "READ", "sessions": sessions}
         finally:

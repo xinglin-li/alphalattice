@@ -36,6 +36,9 @@
 "activity.query_field_unknown": {
 "owner": "activity"
 },
+"activity.query_parameter_invalid": {
+"owner": "activity"
+},
 "activity.query_selection_conflict": {
 "owner": "activity"
 },

@@ -677,6 +677,7 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
             subject_value,
             "each id, role and reference an event carries",
         ),
+        "SUBJECT_KEYS": (bridge.SUBJECT_KEYS, "==", subject_keys, "an event's subject keys"),
         "CORRELATION_CHARACTERS": (
             bridge.CORRELATION_CHARACTERS,
             "==",

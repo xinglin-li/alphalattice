@@ -281,38 +281,36 @@ class ObservationLedger:
                 )
                 """
             )
-            self._writer.execute(
-                """
-                CREATE INDEX IF NOT EXISTS unified_observation_run_order_idx
-                ON unified_observation(
-                    run_id, observed_at, source_kind, source_id,
-                    source_sequence, observation_id
+            for name, columns in (
+                (
+                    "run_order",
+                    "run_id, observed_at, source_kind, source_id, source_sequence, observation_id",
+                ),
+                (
+                    "retention",
+                    "retention_class, availability, run_id, source_kind, source_id, "
+                    "schema_kind, source_sequence",
+                ),
+                ("kind_order", "schema_kind"),
+                ("run_kind", "run_id, schema_kind"),
+                (
+                    "session_kind",
+                    """
+                    schema_kind,
+                    json_extract(inline_safe_payload_json, '$.subject.native_session_id'),
+                    json_extract(inline_safe_payload_json, '$.event_kind'),
+                    json_extract(inline_safe_payload_json, '$.subject.native_agent_id'),
+                    CASE json_extract(inline_safe_payload_json, '$.event_kind')
+                        WHEN 'NATIVE_AGENT_USAGE' THEN
+                            json_extract(inline_safe_payload_json, '$.subject.model')
+                        ELSE json_extract(inline_safe_payload_json, '$.subject.role') END
+                """,
+                ),
+            ):
+                self._writer.execute(
+                    f"CREATE INDEX IF NOT EXISTS unified_observation_{name}_idx "
+                    f"ON unified_observation({columns})"
                 )
-                """
-            )
-            self._writer.execute(
-                """
-                CREATE INDEX IF NOT EXISTS unified_observation_retention_idx
-                ON unified_observation(
-                    retention_class, availability, run_id,
-                    source_kind, source_id, schema_kind, source_sequence
-                )
-                """
-            )
-            # A reader of one kind (the declared sessions) walks that kind in commit
-            # order without scanning the other kinds between its rows.
-            self._writer.execute(
-                """
-                CREATE INDEX IF NOT EXISTS unified_observation_kind_order_idx
-                ON unified_observation(schema_kind)
-                """
-            )
-            self._writer.execute(
-                """
-                CREATE INDEX IF NOT EXISTS unified_observation_run_kind_idx
-                ON unified_observation(run_id, schema_kind)
-                """
-            )
             self._writer.execute(
                 """
                 INSERT INTO observation_store_metadata VALUES ('schema', ?)
@@ -412,7 +410,14 @@ class ObservationLedger:
         return self._read(operation)
 
     def observations_of_kind(
-        self, schema_kind: str, *, limit: int, before: int | None = None
+        self,
+        schema_kind: str,
+        *,
+        limit: int,
+        before: int | None = None,
+        native_session_id: str | None = None,
+        snapshots: bool = False,
+        head_ordinal: int | None = None,
     ) -> ObservationReadPage:
         """Read the newest rows of one schema kind in commit order.
 
@@ -421,24 +426,72 @@ class ObservationLedger:
         team events. `before` (an ordinal) reads the rows older than it, so the
         reader can walk further back one page at a time. Retention keeps every
         row; an evicted payload shows as unavailable in its place.
+        A native Session filters at the store; snapshots select the latest
+        usage per member/model, hooks per member/role and Session binding.
         """
         if not 1 <= limit <= MAXIMUM_READ_PAGE:
             raise ValueError("observation.read_limit_invalid")
-        if not schema_kind or (before is not None and before < 1):
+        if (
+            not schema_kind
+            or (before is not None and before < 1)
+            or (head_ordinal is not None and head_ordinal < 0)
+        ):
             raise ValueError("observation.read_cursor_invalid")
 
         def operation(connection: Any) -> ObservationReadPage:
-            head = int(
-                connection.execute(
-                    "SELECT COALESCE(MAX(rowid), 0) FROM unified_observation"
-                ).fetchone()[0]
-            )
+            head = head_ordinal
+            if head is None:
+                head = int(
+                    connection.execute(
+                        "SELECT COALESCE(MAX(rowid), 0) FROM unified_observation"
+                    ).fetchone()[0]
+                )
+            where = "schema_kind = ?"
+            parameters: list[str | int] = [schema_kind]
+            if native_session_id is not None:
+                where += (
+                    " AND json_extract(inline_safe_payload_json, '$.subject.native_session_id') = ?"
+                )
+                parameters.append(native_session_id)
+            if snapshots:
+                where += " AND rowid <= ?"
+                parameters.append(head)
+                selection = f"""
+                    rowid IN (
+                        SELECT MAX(rowid) FROM unified_observation
+                        INDEXED BY unified_observation_session_kind_idx WHERE {where}
+                        AND (json_extract(inline_safe_payload_json, '$.event_kind') IN (
+                            'NATIVE_AGENT_USAGE', 'NATIVE_SUBAGENT_START_HOOK',
+                            'NATIVE_SUBAGENT_STOP_HOOK') OR (
+                            json_extract(inline_safe_payload_json, '$.event_kind') =
+                                'NATIVE_COORDINATION_MESSAGE'
+                            AND json_extract(inline_safe_payload_json, '$.subject.message_kind') =
+                                'session_bound'))
+                        GROUP BY json_extract(inline_safe_payload_json, '$.event_kind'),
+                            json_extract(inline_safe_payload_json, '$.subject.native_agent_id'),
+                            CASE json_extract(inline_safe_payload_json, '$.event_kind')
+                                WHEN 'NATIVE_AGENT_USAGE' THEN
+                                    json_extract(inline_safe_payload_json, '$.subject.model')
+                                ELSE json_extract(inline_safe_payload_json, '$.subject.role') END
+                    )
+                """
+            else:
+                selection = where + " AND rowid < ?"
+                parameters.append(head + 1 if before is None else before)
+                if native_session_id is not None:
+                    selection += (
+                        " AND json_extract(inline_safe_payload_json, '$.event_kind')"
+                        " != 'NATIVE_AGENT_USAGE'"
+                    )
+            source = "unified_observation"
+            if native_session_id is not None and not snapshots:
+                source += " INDEXED BY unified_observation_session_kind_idx"
             rows = connection.execute(
                 f"""
-                SELECT rowid, {_ROW_COLUMNS} FROM unified_observation
-                WHERE schema_kind = ? AND rowid < ? ORDER BY rowid DESC LIMIT ?
+                SELECT rowid, {_ROW_COLUMNS} FROM {source}
+                WHERE {selection} ORDER BY rowid DESC LIMIT ?
                 """,
-                [schema_kind, head + 1 if before is None else before, limit + 1],
+                [*parameters, limit + 1],
             ).fetchall()
             return ObservationReadPage(
                 disposition="TAIL",

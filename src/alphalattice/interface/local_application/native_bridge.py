@@ -109,6 +109,8 @@ BINDING_RECORDS = 128
 SUBJECT_VALUE_CHARACTERS = 200
 """The longest value the Host's activity event holds in its subject: each id, role, locator
 and reference the bridge carries is bounded by it where it enters."""
+SUBJECT_KEYS = 16
+"""The most keys the Host's activity event holds in its subject."""
 CORRELATION_CHARACTERS = 128
 """The longest correlation id the event holds: the bound session's id is one."""
 MESSAGE_KEPT_CHARACTERS = 500
@@ -638,6 +640,8 @@ def _usage_content(
         subject["pin_differs"] = ",".join(usage["pin_differs"])
     if usage["last_at"] is not None:
         subject["last_at"] = usage["last_at"]
+    if usage.get("first_at") and len(subject) < SUBJECT_KEYS:  # the thread's first event: its span
+        subject["first_at"] = usage["first_at"]
     summary = (
         f"{usage['role'] or usage['agent_id']}: {usage['model']}, {usage['responses']} responses, "
         f"{usage['input_tokens']} input, {usage['cache_read_tokens']} cache-read, "

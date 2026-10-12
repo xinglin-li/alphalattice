@@ -659,11 +659,14 @@ class ExternalActivityReadQuery:
 
     The readback includes every stored ``ExternalActivityObserved``, not just
     the feed's tail. ``before`` is the ordinal preceding the page in hand.
+    A selected native Session pages exchanges separately from its latest
+    member snapshots, so cumulative usage cannot displace the conversation.
     """
 
     limit: int = ACTIVITY_MAXIMUM_LIMIT
     before: int | None = None
     observation_id: str | None = None
+    native_session_id: str | None = None
 
     @classmethod
     def from_query(cls, query: Mapping[str, list[str]]) -> ExternalActivityReadQuery:
@@ -678,14 +681,14 @@ class ExternalActivityReadQuery:
         Raises:
             LocalWebError: If a field, limit, or cursor is invalid.
         """
-        unknown = set(query) - {"limit", "before", "observation_id"}
+        unknown = set(query) - {"limit", "before", "observation_id", "native_session_id"}
         if unknown:
             raise LocalWebError("activity.query_field_unknown")
         observation_id = _single(query, "observation_id")
         if observation_id is not None:
             if re.fullmatch(r"[0-9a-f]{64}", observation_id) is None:
                 raise LocalWebError("activity.observation_id_invalid")
-            if "limit" in query or "before" in query:
+            if "limit" in query or "before" in query or "native_session_id" in query:
                 raise LocalWebError("activity.query_selection_conflict")
             return cls(observation_id=observation_id)
         limit = ACTIVITY_MAXIMUM_LIMIT
@@ -700,7 +703,13 @@ class ExternalActivityReadQuery:
             if not raw_before.isdigit() or int(raw_before) < 1:
                 raise LocalWebError("activity.cursor_invalid")
             before = int(raw_before)
-        return cls(limit=limit, before=before)
+        native_session_id = _single(query, "native_session_id")
+        if native_session_id is not None and (
+            not 1 <= len(native_session_id) <= 200
+            or any(ord(character) < 32 for character in native_session_id)
+        ):
+            raise LocalWebError("activity.query_parameter_invalid:native_session_id")
+        return cls(limit=limit, before=before, native_session_id=native_session_id)
 
 
 def _single(query: Mapping[str, list[str]], key: str) -> str | None:

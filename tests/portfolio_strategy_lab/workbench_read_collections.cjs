@@ -61,7 +61,7 @@ function fixture(owners = {}, initial = '#page=history') {
   };
   library.context(c, appDir);
   vm.runInContext(library.readingSource(appDir), c);
-  for (const name of ['status', 'data', 'router', 'live-goals', 'live-activity', 'live-team']) vm.runInContext(fs.readFileSync(path.join(appDir, name + '.js'), 'utf8'), c, {filename: name + '.js'});
+  for (const name of ['status', 'data', 'router', 'live-goals', 'live-activity', 'team-members', 'live-team']) vm.runInContext(fs.readFileSync(path.join(appDir, name + '.js'), 'utf8'), c, {filename: name + '.js'});
   vm.runInContext('render=()=>{};patchMain=render;globalThis.D=Data;globalThis.G=LiveGoals;globalThis.A=LiveActivity;globalThis.T=LiveTeam;globalThis.go=navigate;', c);
   function hold(matches) {let release; const h = {matches: typeof matches === 'function' ? matches : url => url === matches, entered: false, promise: new Promise(resolve => {release = resolve;}), release: value => release(value)}; holds.push(h); return h;}
   function goalView() {view.refusals = []; const markup = c.G.page(); return {rows: view.lobby?.items || [], foot: view.lobby?.foot || '', refusals: view.refusals, markup};}
