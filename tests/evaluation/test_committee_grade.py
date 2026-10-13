@@ -561,7 +561,7 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
     elif broken == "home_question":
         evidence["home"]["heading"] = "Session work"
     elif broken == "home_goal":
-        evidence["home"]["goal"]["goal_id"] = "another-question"
+        evidence["home"]["reference"] = "another-question"
     elif broken.startswith("missing_"):
         evidence["raw_messages" if broken == "missing_raw" else "cro_view"] = None
     problems = report_fidelity(closed, report, **evidence)

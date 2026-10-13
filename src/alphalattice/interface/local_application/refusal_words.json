@@ -1,4 +1,8 @@
 {
+ "local_web.assets_stale": {
+  "detail": "The Local Web's built files differ from this checkout's sources. Run `python scripts/build_local_web_ui.py --product`, then serve again.",
+  "next_action": "BUILD_LOCAL_WEB_ASSETS_AND_SERVE_AGAIN"
+ },
  "workspace_preparation.human_confirmation_required": {
   "detail": "Preparation needs the person's confirmation or a valid delegation. Read preparation controls and data issues, then ask the person for that confirmation or grant.",
   "next_action": "READ_PREPARATION_CONTROLS_AND_ASK_FOR_CONFIRMATION_OR_A_GRANT"

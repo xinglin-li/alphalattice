@@ -6,6 +6,7 @@ import http.client
 import http.cookiejar
 import json
 import os
+import shutil
 import socket
 import threading
 import time
@@ -116,6 +117,8 @@ def test_every_response_carries_the_local_only_headers(
 
 def test_assets_are_cached_by_content_hash_and_nothing_else_is(
     read_only_live: LocalPortfolioWebSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     "Assets are cached by content hash and nothing else is."
     manifest_path = (
@@ -158,6 +161,20 @@ def test_assets_are_cached_by_content_hash_and_nothing_else_is(
     assert {"EVIDENCE_REFRESH", "EVIDENCE_SELECT", "CRO_REVIEW", "EVIDENCE_CRO_EXPORT"} <= set(
         routes
     )
+    from alphalattice.control.product_host.composition import local_web_session as owner
+
+    copied = tmp_path / "assets"
+    shutil.copytree(owner.ASSET_ROOT, copied, ignore=shutil.ignore_patterns("workbench-source"))
+    (copied / "workbench.js").write_bytes(b"stale")
+    read_only_live.stop()
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, "ASSET_ROOT", copied)
+        with pytest.raises(ValueError, match=r"^local_web\.assets_stale$"):
+            read_only_live.start()
+    read_only_live.start()
+    words = refusal_words("local_web.assets_stale")
+    assert words["next_action"] == "BUILD_LOCAL_WEB_ASSETS_AND_SERVE_AGAIN"
+    assert "python scripts/build_local_web_ui.py --product" in words["detail"]
 
 
 def test_no_asset_reaches_outside_the_machine(read_only_live: LocalPortfolioWebSession) -> None:

@@ -210,6 +210,7 @@ from alphalattice.interface.local_application.web import (
     LocalWebService,
     report_policy,
 )
+from alphalattice.interface.local_application.workbench_assets import serve_assets
 from alphalattice.investment.alpha_research.experiments.authoring import ALPHA_EXPERIMENT_KIND
 from alphalattice.investment.alpha_research.scores.model_renewal import (
     verified_lifecycle_admissions,
@@ -1446,47 +1447,7 @@ def build_local_web_application(
         references.record(answer)
         return answer
 
-    def _asset_manifest() -> dict[str, str]:
-        """The build's map of logical asset names to their content-hashed paths; empty when
-        the assets were built without one (an older build), in which case only the plain
-        names are served."""
-        path = ASSET_ROOT / "workbench-manifest.json"
-        if not path.is_file():
-            return {}
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
-        return {str(k): str(v) for k, v in loaded.items()} if isinstance(loaded, dict) else {}
-
-    # The workbench is the product's one web entry, served at `/` and at its own name (older
-    # links). The original UI was retired on 2026-09-19; the operations only it drove (freeze,
-    # finalization, the update families) remain the Agent tool's and the automation API's.
-    web.add_asset("/", (ASSET_ROOT / "workbench.html").read_bytes(), "text/html; charset=utf-8")
-    # Each built asset answers under its plain name (revalidated every time, so an older link
-    # reads the current build) and, when the build's manifest names one, under its
-    # content-hashed path -- immutable, so a warm load fetches nothing (round 96).
-    manifest = _asset_manifest()
-    for name, content_type in (
-        ("workbench.html", "text/html; charset=utf-8"),
-        ("workbench-prelude.js", "text/javascript; charset=utf-8"),
-        ("workbench.css", "text/css; charset=utf-8"),
-        ("workbench.js", "text/javascript; charset=utf-8"),
-        ("workbench.zh.js", "text/javascript; charset=utf-8"),
-        # The workbench's one designed face (Geist, SIL OFL): served here, never fetched.
-        ("fonts/geist-latin.woff2", "font/woff2"),
-        ("fonts/geist-mono-latin.woff2", "font/woff2"),
-    ):
-        asset = ASSET_ROOT / name
-        if asset.is_file():
-            body = asset.read_bytes()
-            web.add_asset(f"/{name}", body, content_type)
-            hashed = manifest.get(name)
-            if hashed and hashed != f"/{name}" and name != "workbench.html":
-                web.add_asset(hashed, body, content_type, immutable=True)
-    # Browsers request this implicitly. Answer locally so a clean page does not
-    # produce a misleading network error for an asset the product never needs.
-    web.add_asset("/favicon.ico", b"", "image/x-icon")
+    serve_assets(web, ASSET_ROOT)
 
     def _spec_document(payload: Mapping[str, Any]) -> dict[str, object]:
         document = payload.get("spec")

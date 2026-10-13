@@ -6285,6 +6285,9 @@
 "local_web.application_absent": {
 "owner": "local_web"
 },
+"local_web.assets_stale": {
+"owner": "local_web"
+},
 "local_web.goal_header_invalid": {
 "owner": "local_web"
 },

@@ -489,6 +489,11 @@ def _home_fidelity(closed, home) -> list[str]:
     goal, problems = home.get("goal") or {}, []
     if goal.get("goal_id") != closed.get("goal_id"):
         problems.append("home.goal_mismatch")
+    if "reference" in home and home["reference"] not in {
+        goal.get("goal_id"),
+        goal.get("goal_hash"),
+    }:
+        problems.append("home.goal_mismatch")
     question = (goal.get("declaration") or {}).get("objective")
     if not question or home.get("heading") != question:
         problems.append("home.question_mismatch")
