@@ -260,6 +260,10 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 - Home keeps your authored question for the selected result. Automatic session work never supplies that question.
 - Session usage progress shows its numbers while a reading catches up and no banner once usage is fully read.
 - A reloaded session shows its own product records, even when later activity fills the recent feed.
+- A later date's update applies your declared workspace data rule within its bounds, as on the first day. It no longer cycles between recovery and replanning.
+- While a data decision is unresolved, the offered next step reads that decision before any replan.
+- Deciding a later date's data case leaves an earlier date's committee report and its export exactly as sealed.
+- In a source checkout, serving refuses Workbench files older than their sources and names the build command. Installed packages are unaffected.
 
 ### Previews
 
