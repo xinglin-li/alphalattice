@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -126,10 +128,10 @@ def test_each_card_carries_its_capability_and_graph(materialize):
         execute = rest.split("Graph (")[0]
         capability = materialize.ROLE_COMMANDS[card.stem]
         assert re.findall(r"^- `([^`]+)`", reads, flags=re.MULTILINE) == [
-            command.form for command in capability.reads
+            " ".join((*command_prefix(), command.form)) for command in capability.reads
         ]
         assert re.findall(r"^- `([^`]+)`", execute, flags=re.MULTILINE) == [
-            command.form for command in capability.execute
+            " ".join((*command_prefix(), command.form)) for command in capability.execute
         ]
         assert "task show <task>" in reads, card.name
         written = re.findall(r'--(?:output|declaration) "([^"]+)"', execute)
@@ -157,7 +159,13 @@ def test_the_skill_carries_every_command_its_paths_use(materialize):
     assert skill == materialize.skill_text()
     paths = skill.split("## Shortest paths", 1)[1].split("\n## ", 1)[0]
     used = {
-        tuple(span.split()[:2]) for span in re.findall(r"`([a-z][a-z-]* [a-z][a-z-]*)[^`]*`", paths)
+        tuple(span.split()[:2])
+        for span in re.findall(
+            r"`(?:"
+            + re.escape(" ".join(command_prefix()))
+            + r" )?([a-z][a-z-]* [a-z][a-z-]*)[^`]*`",
+            paths,
+        )
     }
     listed = {tuple(command.form.split()[:2]) for command in materialize.SKILL_COMMANDS}
     # A path names a person's command only to ask for it (`strategy activate`, `automation set`):

@@ -269,7 +269,14 @@ def _say(
     assert floor is not None
     text = fields.pop("text", f"{role} on H1.")
     message = CommitteeMessage(kind=kind, text=text, **fields)
-    return committee.submit(store, TASK, (role, key or floor.key(role)), message, now[0])
+    return committee.submit(
+        store,
+        TASK,
+        (role, key or floor.key(role)),
+        message,
+        now[0],
+        provenance=RequestProvenance(session="s-1" if role == "PM" else f"child-{role.lower()}"),
+    )
 
 
 def _read(store: GoalStore, now: list[datetime], role: str | None, seen: int) -> dict[str, Any]:
@@ -315,17 +322,17 @@ def test_a_member_speaks_only_with_its_own_key(tmp_path: Path, readback: dict[st
     store, now = _floor(tmp_path, readback)
     floor = committee.floor_of(store, TASK)
     assert floor is not None and floor.seed not in json.dumps(store.attributed(UUID(int=7)))
-    with pytest.raises(ValueError, match=r"message_refused:ROLE"):
+    with pytest.raises(ValueError, match=r"message_refused:KEY"):
         _say(store, now, "PM", "STANCE", key=floor.key("CRO"))
     assert len({floor.key(role) for role in committee.ROLES}) == 4
     assert not floor.admits("PM", None) and floor.admits("PM", floor.key("PM"))
 
 
+@pytest.mark.parametrize("sender", ["s-1", "child-alpha"])
 def test_the_floor_answers_a_member_only_with_its_own_key(
-    tmp_path: Path, readback: dict[str, Any]
+    tmp_path: Path, readback: dict[str, Any], sender: str
 ) -> None:
-    """requirement (the committee): the PM's key goes only to the session that opened the floor,
-    and a submit or a member's read with another's key, none, or a typed number is refused."""
+    """Keys bind each role; shared or distinct declared sessions keep honest receipt attribution."""
     store, now = _floor(tmp_path, readback)
     floor = committee.floor_of(store, TASK)
     assert floor is not None
@@ -349,8 +356,7 @@ def test_the_floor_answers_a_member_only_with_its_own_key(
         ask("COMMITTEE_SUBMIT", committee_role="PM", committee_key=k, committee_message=m)
         for k, m in sent
     ] + [ask("COMMITTEE_READ", committee_role="ALPHA", committee_key=k) for k in (None, "0" * 32)]
-    assert [c["failure_code"].rsplit(":")[-1] for c in codes] == ["ROLE", "NUMBER", "ROLE", "ROLE"]
-    # Each names its own rule and a way on; a key not the member's reads the floor as anyone.
+    assert [c["failure_code"].rsplit(":")[-1] for c in codes] == ["KEY", "NUMBER", "KEY", "KEY"]
     assert all(c["rule"] in c["failure_code"] and c["next_requests"]["floor"] for c in codes)
     assert "committee_key" not in codes[0]["next_requests"]["floor"]
     codes[1] = worded_refusal(codes[1])
@@ -365,13 +371,24 @@ def test_the_floor_answers_a_member_only_with_its_own_key(
         committee_message=plain,
     )
     assert stance["status"] == "COMMITTEE_MESSAGE_ACCEPTED"
+    fields = dict(committee_role="ALPHA", committee_key=floor.key("ALPHA"), committee_message=plain)
+    refused = ask("COMMITTEE_SUBMIT", session=None, **fields)
+    assert refused["rule"] == "MEMBER" and refused["next_requests"]["floor"]
+    taken = ask("COMMITTEE_SUBMIT", session=sender, **fields)
+    assert taken["status"] == "COMMITTEE_MESSAGE_ACCEPTED"
+    assert ask("COMMITTEE_SUBMIT", **fields)["message_id"] == taken["message_id"]
+    caller = RequestProvenance(session=sender)
+    with pytest.raises(ValueError, match=r"message_refused:MEMBER"):
+        committee.submit(store, TASK, ("ALPHA", None), plain, now[0], provenance=caller)
+    kept = committee.floor_of(store, TASK)
+    assert kept.messages[-1]["author_session"] == sender
+    assert committee.floor_row(kept, kept.messages[-1])["subject"]["native_agent_id"] == sender
 
 
 def test_a_review_member_answers_its_own_bundle_on_its_thread(
     tmp_path: Path, readback: dict[str, Any]
 ) -> None:
-    """requirement (the exchange): an Analyst's bundle opens its own thread; only its key submits,
-    the Host's correction and acceptance answer it there, and the lead's call reads the receipt."""
+    """Keyed review corrections and acceptance preserve the author and keyless receipt reread."""
     store, now = _floor(tmp_path, readback)
     directory = str(tmp_path / "analyst-u01")
     lead = RequestProvenance(vendor="codex", session="s-1", goal_id=str(UUID(int=7)))
@@ -386,6 +403,10 @@ def test_a_review_member_answers_its_own_bundle_on_its_thread(
         reference = committee.bundle_slot(directory)
         ready = {"status": "AGENT_BUNDLE_READY", "agent_role": "ANALYST", "task_id": "T-1"}
         committee.issued(store, {**ready, "bundle_reference": reference}, now[0], file)
+        pending = committee.thread_of(store, committee.thread_id(reference))
+        assert (
+            committee.unfiled(pending, now[0]) == []
+        )  # no guessed ISSUE recipient before admission
     finally:
         REQUEST_PROVENANCE.reset(token)
     key = route[1].split("--key ")[1][:32]
@@ -398,9 +419,15 @@ def test_a_review_member_answers_its_own_bundle_on_its_thread(
         (member, ACCEPTED_BODY, key),
         (member, ACCEPTED_BODY, None),
     ):
-        thread = committee.admit(store, sent, k)
-        assert isinstance(thread, committee.Floor)  # the last, keyless: the accepted answer's read
-        committee.answered(store, thread, sent, body, now[0], file)
+        caller = lead if k is None else replace(lead, session="child-analyst")
+        token = REQUEST_PROVENANCE.set(caller)
+        try:
+            thread = committee.admit(store, sent, k)
+            assert isinstance(thread, committee.Floor)  # accepted receipt retains its first author
+            committee.answered(store, thread, sent, body, now[0], file)
+        finally:
+            REQUEST_PROVENANCE.reset(token)
+        assert body["conversation"]["author"] == "child-analyst"
     closed = [committee.admit(store, other, k) for k in (None, key)]  # a different answer
     assert [isinstance(r, dict) and r["rule"] for r in closed] == ["ENDED", "ENDED"]
     thread = committee.thread_of(store, committee.thread_id(reference))
@@ -418,7 +445,7 @@ def test_a_review_member_answers_its_own_bundle_on_its_thread(
     assert thread_findings(forged, "ANALYST") == ["thread.author:M2", "thread.open"]
     rows = committee.unfiled(thread, now[0])
     assert {r["subject"]["input_channel"] for r in rows} == {"PRODUCT_REVIEW"}
-    assert rows[1]["subject"]["native_agent_id"] == "s-1:alphalattice_evidence_analyst:T-1"
+    assert rows[1]["subject"]["native_agent_id"] == "child-analyst"
     assert rows[-1]["subject"]["recipient_id"] == rows[1]["subject"]["native_agent_id"]
     assert rows[0]["subject"]["recipient_id"] == rows[1]["subject"]["native_agent_id"]  # issue
     assert rows[-1]["subject"]["answer_reference"] == "a" * 64 and len(filed) == 3
@@ -531,6 +558,8 @@ def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
     assert closed["stage"] == "CLOSED" and closed["verdict"]["outcome"] == "FOR_THE_PERSON"
     assert (closed["members"]["PM"], closed["members"]["ALPHA"]) == ("IN", "NOT_ADDRESSED")
     assert {p["state"] for p in closed["tension_points"]} == {"NOT_ADDRESSED"}
+    with pytest.raises(ValueError, match=r"message_refused:CLOSED"):
+        _say(store, now, "ALPHA", "STANCE")
     floor = committee.floor_of(store, TASK)
     assert floor is not None
     rows = committee.commentary(floor, now[0])
@@ -559,7 +588,12 @@ def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
     ruling = committee.unfiled(floor, now[0])[-1]["subject"]
     expected = ("M6", "research_lead", "s-1")
     assert (ruling["message_id"], ruling["role"], ruling["native_agent_id"]) == expected
-    assert ruling["recipient_id"] == "s-1:alphalattice_risk"
+    assert ruling["recipient_id"] == "child-risk"
+    legacy = replace(
+        floor, opened={k: v for k, v in floor.opened.items() if k != "member_sessions"}
+    )
+    old = {k: v for k, v in floor.messages[2].items() if k != "author_session"}
+    assert committee.floor_row(legacy, old)["subject"]["native_agent_id"] == "s-1:alphalattice_risk"
     assert ruling["input_channel"] == "PRODUCT_COMMITTEE"
     dissent = _say(store, now, "CRO", "CHALLENGE", targets=("H1",), text="H1 lacks Evidence.")
     _say(store, now, "PM", "RULING", reply_to=dissent, outcome="REJECT")
@@ -642,6 +676,11 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     way = committee.route("CRO", floor, NOW) or ()
     assert f"--role CRO --key {floor.key('CRO')}" in way[1] and "only final action" in way[-1]
     assert committee.route("CRO", None, NOW) is None  # no floor: the answer file stands
+    directory = Path("bundle with spaces 文")
+    for role in committee.ROLES[1:]:
+        offered = committee.bundle_parts(role, (readback, EVIDENCE), store, NOW, str(directory))[1]
+        assert f'--file "{(directory / "message.yaml").as_posix()}"' in offered[1]
+        assert "<message.yaml>" not in offered[1]
     exited = [{**h, "weight": 0.0} for h in floor.opened["holdings"]]
     emptied = replace(floor, opened={**floor.opened, "holdings": exited})
     assert any(

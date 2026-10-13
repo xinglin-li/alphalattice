@@ -9,9 +9,9 @@ Give each specialist a distinct question and the complete relevant projection, u
 
 Positions to hold come only from an activated installed strategy's forward update; every other book's holdings are a historical replay.
 
-1. **"Build me a reviewed book from public data."** For the first use, its answers lead to the whole-support book as the numerical check, activation with the date's update in the same act, then Evidence and CRO review of that date's published positions, the committee and its report; only that forward update yields positions. Training prepares the light lifecycle by default (one seed of each model vintage, as `model_lifecycle` in its answers says); tell the person, and when they ask for the full one plan it by name: `training plan --input <input-id> --component <component-id> --lifecycle FULL`, then `study controls --input <input-id> --component <component-id> --lifecycle FULL`.
-2. **"Try a short-term reversal factor and show me a book."** Development research: Factor → curation → Alpha → `book draft` → book study. It yields a backtest and no positions; forward positions need strategy authoring, installation, review and activation, a new decision for the person.
-3. **"What should my active strategy hold next?"** `strategy-book controls --package <package>`: if `ACTIVE` and inside its horizon, its offered update yields the positions; if `INACTIVE`, activation comes first; past the horizon, a newer book.
+1. **"Build me a reviewed book from public data."** For the first use, its answers lead to the whole-support book as the numerical check, activation with the date's update in the same act, then Evidence and CRO review of that date's published positions, the committee and its report; only that forward update yields positions. Training prepares the light lifecycle by default (one seed of each model vintage, as `model_lifecycle` in its answers says); tell the person, and when they ask for the full one plan it by name: `training plan --input <input-id> --component <component-id> --lifecycle FULL`, then `alphalattice study controls --input <input-id> --component <component-id> --lifecycle FULL`.
+2. **"Try a short-term reversal factor and show me a book."** Development research: Factor → curation → Alpha → `alphalattice book draft` → book study. It yields a backtest and no positions; forward positions need strategy authoring, installation, review and activation, a new decision for the person.
+3. **"What should my active strategy hold next?"** `alphalattice strategy-book controls --package <package>`: if `ACTIVE` and inside its horizon, its offered update yields the positions; if `INACTIVE`, activation comes first; past the horizon, a newer book.
 
 ## Review budget
 
@@ -19,7 +19,7 @@ Count review work by subject, not attempt. One CRO assessment binds one subject:
 
 ## Reading the dates
 
-`strategy-book controls` returns `strategy_dates`: `IF_ACTIVATED` before activation, measured against the current clock, and `ACTIVE` after it, against the activation time. Take a daily book whose sealed formations end on Thursday 2026-10-01, whose component records run through Friday 2026-10-02, and which the person activates on Tuesday 2026-10-06 at 02:30:51 EDT (06:30:51Z), before the open.
+`alphalattice strategy-book controls` returns `strategy_dates`: `IF_ACTIVATED` before activation, measured against the current clock, and `ACTIVE` after it, against the activation time. Take a daily book whose sealed formations end on Thursday 2026-10-01, whose component records run through Friday 2026-10-02, and which the person activates on Tuesday 2026-10-06 at 02:30:51 EDT (06:30:51Z), before the open.
 
 | Field | Value | Why |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ Read `first_use.date` before describing a named date: the owner selects the firs
 
 ## Reporting positions
 
-Read `research-update show` for the Task the run returned. Each decision forms at its formation session's close and enters at the next open (`schedule.formation_close_at`, `schedule.entry_open_at`). Name each position's basis, from `review_selector.position_basis`:
+Read `alphalattice research-update show` for the Task the run returned. Each decision forms at its formation session's close and enters at the next open (`schedule.formation_close_at`, `schedule.entry_open_at`). Name each position's basis, from `review_selector.position_basis`:
 
 - `CONDITIONAL_ESTIMATE` (`status` `PROPOSAL_PUBLISHED`): weights marked at the formation close for a conditional entry at the next open, not an execution target.
 - `OBSERVED_RESEARCH_ENTRY`: the entry settled on that open's daily bar, with cost lanes of 5 and 10 basis points a side; no venue fill is verified.
@@ -49,10 +49,10 @@ Quote the publication's `claim` with its `risk_status` and `cro_status`. They ar
 
 | Stage | Read | Your next step |
 |---|---|---|
-| The book exists | `strategy-book controls --package <package>`: the book and its dates | Name the book and the date; you activate under the first use, otherwise the person does |
+| The book exists | `alphalattice strategy-book controls --package <package>`: the book and its dates | Name the book and the date; you activate under the first use, otherwise the person does |
 | Activated, its update running | The activation answer's `update.run` | Follow that Task at once, in the background |
-| Activated, its update held | The activation answer's `update.plan.held_until` and `reading` | Tell the person the time in one line; keep `activity wait --goal` running, which wakes when the held update ends |
-| Positions published | `research-update show --task <task>`: formation, entry, basis, `claim` | Read them out with their dates; they are research positions |
-| Their review prepared | `strategy-book review --update <task>` | Start one Evidence Analyst per bundle |
-| CRO review published | `review continue` after the CRO | Cite the review beside the publication's own status |
+| Activated, its update held | The activation answer's `update.plan.held_until` and `reading` | Tell the person the time in one line; keep `alphalattice activity wait --goal <goal-id>` running, which wakes when the held update ends |
+| Positions published | `alphalattice research-update show --task <task>`: formation, entry, basis, `claim` | Read them out with their dates; they are research positions |
+| Their review prepared | `alphalattice strategy-book review --update <task> --package <package> --dir "<out>/review"` | Start one Evidence Analyst per bundle |
+| CRO review published | `alphalattice review continue --dir "<out>/review"` after the CRO | Cite the review beside the publication's own status |
 | Delivered | The goal's record | State coverage, expiry and Risk limits, then complete the goal |

@@ -37,7 +37,7 @@ or the repository already records stays there.
 # CLI
 Shell reads only (ExecCommand in Codex, Bash in Claude), to check a lesson against the current
 checkout: `git log -1 --format=%h`, a search for the file, command or field it names, and the
-product's reads `workspace show`, `goal show <goal>` and `task show <task>`, run by the
+product's reads `alphalattice workspace show`, `alphalattice goal show <goal>` and `alphalattice task show <task>`, run by the
 [Command contract](../../.agents/skills/alphalattice-research/references/operating.md). Writes
 and deletions only under `.alphalattice/user/` (ApplyPatch or the shell in Codex; Write, Edit or
 Bash in Claude).

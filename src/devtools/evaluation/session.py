@@ -112,7 +112,28 @@ def _span(subjects, shown, times):
     return set()
 
 
-def _usage(feed, shown):
+def _admitted_members(feed, shown, times):
+    """Callers of accepted member exchanges within this Session and its selected goal."""
+    span = [datetime.fromisoformat(t) for t in times]
+    accepted = {
+        "COMMITTEE_SUBMIT": ("COMMITTEE_MESSAGE_ACCEPTED",),
+        "AGENT_ANSWER_SUBMIT": ("ACCEPTED", "CORRECT", "DONE"),
+    }
+    start, end = (min(span), max(span)) if span else (None, None)
+    for item in feed["items"] if span else ():
+        payload = item.get("payload") or {}
+        sub = payload.get("subject") or {}
+        if (
+            item.get("schema_kind") == "ProductOperationObserved"
+            and payload.get("phase") == "RETURNED"
+            and payload.get("status") in accepted.get(payload.get("operation"), ())
+            and start <= datetime.fromisoformat(item["occurred_at"]) <= end
+            and (not shown.get("goal_scope") or sub.get("goal_id") == shown["goal_scope"])
+        ):
+            yield sub.get("agent_session")
+
+
+def _usage(feed, shown, times):
     latest = {}
     records = [
         item["payload"].get("subject", {})
@@ -123,6 +144,9 @@ def _usage(feed, shown):
         if record.get("native_session_id") == shown["id"] and record.get("model"):
             latest[record.get("native_agent_id"), record["model"]] = record
     members = {member["id"]: member for member in shown["members"]}
+    admitted = set(_admitted_members(feed, shown, times))
+    if {actor for actor, _model in latest if actor in admitted} - members.keys():
+        return {"session.members_missing"}
     fields = (
         "responses",
         "input_tokens",
@@ -200,7 +224,7 @@ def session_findings(feed, projection):
             subjects[sid], shown, feed.get("goals", {})
         )
         rules |= _span(subjects[sid], shown, times[sid])
-        rules |= _usage(feed, shown) | _references(shown)
+        rules |= _usage(feed, shown, times[sid]) | _references(shown)
         rules |= _retained(subjects[sid], shown)
         for rule in sorted(rules):
             failures.setdefault(rule, {"rule": rule, "session": sid, "part": "feedback"})

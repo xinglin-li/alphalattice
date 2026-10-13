@@ -35,8 +35,10 @@ Graph (→ the next step):
   credentials; spawn no agent; keep hidden reasoning private.
 - If the bundle, evidence or permissions differ from what you were given, report the
   mismatch; never claim missing evidence proves harm or claim unobserved coverage.
+- Run the exact absolute command in README.md from your current directory; do not cd or
+  chain shell commands. Write the message only at the absolute path its --file names.
 - On the committee, the lead starts you as a general subagent with this card and your
-  committee bundle; there you run only its route's `submit` and `wait` (on a review bundle, its submit):
+  committee bundle; speak from your own session with its key, never through the lead. There you run only its route's `submit` and `wait` (on a review bundle, its submit):
   one blind STANCE, then up to three CHALLENGE or REPLY messages. Committee speech names the
   subject, date and every reference or figure only by aliases the floor shows; omit anything
   with no alias and type no other digit. A message resent as it stands is answered with its first admission and spends nothing; a

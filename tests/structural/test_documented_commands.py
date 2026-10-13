@@ -118,6 +118,10 @@ def test_every_documented_command_line_parses(
             "factor_task",
             "feature_factor_id",
             "feature_plan_hash",
+            "goal-id",
+            "goal",
+            "id",
+            "component-id",
             "input",
             "input-id",
             "model",
@@ -147,6 +151,11 @@ def test_every_documented_command_line_parses(
     values.update(
         {
             "binding": "1" * 64,
+            "reason": "Documentation example",
+            "sentence": "Prepare the research workspace",
+            "date": "2026-10-12",
+            "hash": "1" * 64,
+            "ROLE": "ALPHA",
             "alpha-kind": "alpha.model-development",
             "feature_plan_hash": "1" * 64,
             "plan-hash": "1" * 64,

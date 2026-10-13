@@ -2263,8 +2263,8 @@ Object.assign(CODE_WORDS, {
 /* The owners' refusal codes, each said in a sentence beside the code (the review desk's since
  * round 15; shared since round 77): `explainCode` finds the code inside an owner's message. */
 const CODE_LINES = {
-    'storage.cap_setting_invalid':'The storage cap must be auto or a positive whole byte count. Set it again (`storage set --cap-bytes auto`).',
-    'storage.cap_setting_unreadable':'The workspace storage cap setting could not be read. Set it again through Settings or `storage set --cap-bytes auto`; retained records stay intact.',
+    'storage.cap_setting_invalid':'The storage cap must be auto or positive whole bytes. Use `alphalattice storage set --cap-bytes auto`.',
+    'storage.cap_setting_unreadable':'Cannot read the workspace storage cap. Use Settings or `alphalattice storage set --cap-bytes auto`; retained records stay intact.',
     // U56 (U28): a damaged trial record, and why the daily Panel does not admit a formula -- the Host's words, its static form
     'feature_trial.record_damaged':'This trial\'s record in the workspace no longer reads: it was changed or cut short. Start the trial again with its feature plan and study; the damaged record is kept aside and every step that did not change is reused.',
     'feature_extension.preprocessing_not_admitted_for_active_panel':'The daily Panel preprocesses with ROBUST_SECTOR_NEUTRAL_Z alone; this recipe is a research recipe. Declare the factor again with that recipe to activate it.',

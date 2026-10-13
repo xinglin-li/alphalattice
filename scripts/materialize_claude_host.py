@@ -29,6 +29,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from alphalattice.interface.local_application.failure_codes import setup_failure  # noqa: E402
@@ -562,7 +564,7 @@ def _render(
             else set()
         )
         by_flag = {"--" + table["flags"][f]: f for f in allowed if f in table["flags"]}
-        lines.append(f"- `{command.form}`: {command.does}")
+        lines.append(f"- `{' '.join(command_prefix())} {command.form}`: {command.does}")
         named = [word for word in words if word.startswith("--")] + list(command.options)
         for flag in named:
             if flag not in flags[(noun, verb)]:
@@ -599,9 +601,10 @@ def _graph(owner: str, capability: RoleCapability, nouns: set[str]) -> list[str]
         for command in re.findall(r"`([a-z][a-z-]*(?: [a-z][a-z-]*)?)`", line):
             if command.split()[0] in nouns and command not in named:
                 raise MaterializationError(f"role_graph.unknown:{owner}:{command}")
+    pattern = r"`((?:" + "|".join(nouns) + r")[^`]*)`"
     return [
-        "Graph (→ the next step; what carries over):",
-        *(f"- {line}" for line in capability.graph),
+        "Graph (operation names; use the complete commands above; references carry over):",
+        *(f"- {re.sub(pattern, r'**\1**', line)}" for line in capability.graph),
     ]
 
 
