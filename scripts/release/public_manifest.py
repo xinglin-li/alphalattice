@@ -375,9 +375,12 @@ RULES = [
         "kind": "PUBLIC",
         "patterns": [
             "src/alphalattice/**",
-            "docs/images/workbench-light.webp",
-            "docs/images/workbench-dark.webp",
-            "docs/images/goal-conversation.webp",
+            "docs/images/research-performance-light.png",
+            "docs/images/research-performance-dark.png",
+            "docs/images/research-positions-light.png",
+            "docs/images/research-positions-dark.png",
+            "docs/images/research-conversation-light.png",
+            "docs/images/research-conversation-dark.png",
         ],
         "reason": (
             "Non-Python product resources, Local Web source/build assets and "

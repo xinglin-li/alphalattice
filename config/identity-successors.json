@@ -12265,6 +12265,34 @@
    "successor": "1e01bbe0ee87720e94218c4d1159c8877b348eedbf0beb081d521028934ba252",
    "change": "PLAN-REFUSAL-OFFERS",
    "reason": "A refused plan offers only the way on its next action names; the preparation's values are equal"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "1e01bbe0ee87720e94218c4d1159c8877b348eedbf0beb081d521028934ba252",
+   "successor": "99053ede4f65bd7a12499aca6d61e82964397fcd48f6b0f8b7ee63bf947bd56c",
+   "change": "DATA-DECISIONS",
+   "reason": "Lead-authorized final preparation successor: one declared sticky rule; exact two-cause grant scope with storage preflight; current-binding predicate supplied by its owner, with unknown failing closed; verified stages and unchanged scientific controls retained."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "e13c0f600e2438f818f2cae305f279de9d855a799a88a6291dd36072c5f38cc8",
+   "successor": "ddbc8fae7f0aaa7b1ff1c82258da0ba14a77bebbe5025d4c4fa6937ffbad1cea",
+   "change": "DATA-DECISIONS",
+   "reason": "repositories.py lookup refactor and rename; equal values"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "cfb6bde97086e3ca43573e4042556b3725f75d12b06eb54d7c202265dc1da302",
+   "successor": "3a5ba3ad6b396fd19077bb4d8a8cb3073c52484c8fc493e5c71d25e35aee0b51",
+   "change": "DATA-DECISIONS",
+   "reason": "repositories.py lookup refactor and rename; equal values"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "986e4f3be50ccae0dc40c3bbd700f90ff02ca2c990f0b7771c248fae48b1bb99",
+   "successor": "179fcd4f3d4c0618d599dabaa2f1b6d1906de1841e4623889bbf59bfea1e2e55",
+   "change": "DATA-DECISIONS",
+   "reason": "repositories.py lookup refactor and rename; equal values"
   }
  ]
 }

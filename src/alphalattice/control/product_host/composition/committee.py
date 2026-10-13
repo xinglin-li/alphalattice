@@ -16,7 +16,7 @@ import hmac
 import re
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -38,6 +38,7 @@ from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
+    schema_request,
 )
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.interface.local_application.labels import label as installed_label
@@ -46,6 +47,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.actor_execution.bundles import bundle_slot
 
 ROLES: Final = ("PM", "ALPHA", "RISK", "CRO")
@@ -75,11 +77,12 @@ OUTCOMES: Final = {
     "VERDICT": frozenset({"PROCEED", "PROCEED_WITH_NOTES", "FOR_THE_PERSON"}),
 }
 """Each kind's outcomes; a kind not named takes none (SHAPE, with what it answers)."""
+COMMAND: Final = " ".join(command_prefix())
 RULE_WORDS: Final = {
     "ROLE": "Only its senders send this kind, each with the key in its own bundle: a STANCE or "
     "REPLY any member, a CHALLENGE a specialist, a RULING, VERDICT or PERSON_ANSWER the PM.",
     "STANCES": "The floor is in its blind first round, which takes only one STANCE from each "
-    "member; follow `committee wait` until the stances are revealed.",
+    f"member; follow `{COMMAND} committee wait` until the stances are revealed.",
     "DEBATE": "The floor is past its stances; it takes challenges, replies, rulings and the "
     "verdict, not a STANCE.",
     "CLOSED": "The floor is closed; it takes only the PM's answer relayed from the person to "
@@ -89,7 +92,7 @@ RULE_WORDS: Final = {
     "CAP": "This member has sent its three challenges or replies after its stance; the floor "
     "takes no more from it.",
     "TARGET": "A target, position or alias names nothing on the floor; name only the tension "
-    "points, holdings and messages `committee show` lists.",
+    f"points, holdings and messages `{COMMAND} committee show` lists.",
     "REPLY_TO": "The message named in reply_to cannot be answered by this kind: a REPLY answers "
     "any message, a RULING a challenge not yet ruled, a PERSON_ANSWER an item handed to the "
     "person. Send the corrected message the answer offers.",
@@ -99,14 +102,14 @@ RULE_WORDS: Final = {
     "offers.",
     "UNRULED": "A verdict closes the floor, so the PM rules on every challenge first and one "
     "stands unruled; read it, send its ruling in your own words, then the verdict.",
-    "MEMBER": "This bundle's member submits its own answer with its key and takes the Host's "
+    "MEMBER": "This bundle's member submits from its own session with its key and takes the Host's "
     "corrections itself; start it with its bundle, then run this again for its receipt.",
     "KEY": "This key is not this bundle's: a member's key admits only its own bundle's answer, "
     "with the command its route names.",
     "ENDED": "This bundle's answer is accepted and its key has ended; only that answer reads its "
     "receipt again. Return the receipt it gave to your lead.",
     "FACTS": "A RESERVE rests on the floor's facts: cite by S alias the facts, or the named "
-    "absences, that `committee show` lists under this member's questions, then send it again.",
+    f"absences, that `{COMMAND} committee show` lists under this member's questions; resubmit.",
     "NUMBER": "A digit is typed outside an alias ({subject}), and the Host renders every number: "
     "resubmit the same message with each typed figure or reference replaced by its alias on the "
     "floor.",
@@ -127,6 +130,7 @@ class Floor:
     opened: dict[str, Any]
     messages: list[dict[str, Any]]
     filed: frozenset[str]
+    author_session: str | None = field(default=None, compare=False)
 
     def key(self, role: str) -> str:
         """Derive the member's key on this floor from the seed the Host keeps outside records."""
@@ -200,6 +204,7 @@ def open_floor(
     opened = {
         "update_task_id": task,
         "selector": dict(readback["review_selector"]),
+        "member_sessions": True,
         # The published review the floor argues on, which its report carries.
         "review": {"review_publication_hash": standing.get("review_publication_hash")}
         if (standing := readback.get("review_standing") or {}).get("status") == "REVIEWED"
@@ -245,7 +250,12 @@ def operate(
         if request.operation == "COMMITTEE_SUBMIT":
             assert role is not None and request.committee_message is not None
             number = submit(
-                store, task, (role, request.committee_key), request.committee_message, now
+                store,
+                task,
+                (role, request.committee_key),
+                request.committee_message,
+                now,
+                provenance=provenance,
             )
             with suppress(ValueError, OSError):
                 file_floor()
@@ -260,7 +270,7 @@ def operate(
             floor = open_floor(
                 store, UUID(provenance.goal_id), *publication, session=session, now=now
             )
-            # Each specialist reads its bundle by `bundle prepare`, its key in it.
+            # Each specialist reads its bundle by `alphalattice bundle prepare`, its key in it.
             return {
                 "status": "COMMITTEE_OPEN",
                 "stage": floor.stage(now),
@@ -279,13 +289,13 @@ def operate(
         if found is None:
             raise ValueError("committee.not_open")
         if role is not None and not found.admits(role, request.committee_key):
-            raise ValueError("committee.message_refused:ROLE")
+            raise ValueError("committee.message_refused:KEY")
     except ValueError as error:
         code = public_failure(error, "committee.refused")
         refused = {"status": "REFUSED", "failure_code": code, "refused": code, **explain(code)}
         if code == "committee.not_open":
             return refused | _elsewhere(store, request, now)
-        return refused | _corrected(store, request, code.rpartition(":")[2])
+        return refused | _corrected(store, request, code.rpartition(":")[2], now)
     with suppress(ValueError, OSError):  # a time box's reveal reaches the Team page on read
         file_floor()
     read = state(found, role, request.committee_seen or 0, now)
@@ -299,23 +309,20 @@ def submit(
     member: tuple[str, str | None],
     message: CommitteeMessage,
     now: datetime,
+    *,
+    provenance: RequestProvenance | None = None,
 ) -> str:
-    """Take one member's message, sent with its key, by the round rules.
-
-    A message that breaks a rule is refused by that rule.
-
-    Raises:
-        ValueError: `committee.not_open`, or `committee.message_refused:<RULE>`.
-
-    """
+    """Take a keyed message by the round rules; an identical keyed replay keeps its author."""
     with store.lock:
         floor = floor_of(store, task)
         if floor is None:
             raise ValueError("committee.not_open")
         (role, key), (senders, stages, answers) = member, RULES[message.kind]
         # A member's message resent as it stands answers with its first admission, spending nothing.
-        if floor.admits(role, key) and (same := _same(floor, role, message)):
-            return same
+        same = _same(floor, role, message)
+        floor = _admit_member(floor, role, key, provenance, same=same)
+        if same is not None:
+            return str(same["id"])
         stage, mine = floor.stage(now), [m for m in floor.messages if m["role"] == role]
         known = _known(floor)
         target = next((m for m in floor.messages if m["id"] == message.reply_to), None)
@@ -325,7 +332,7 @@ def submit(
         named = (*message.targets, *message.positions, *ALIAS.findall(message.text))
         typed = any(c.isnumeric() for c in ALIAS.sub("", message.text))
         for rule, broken in (
-            ("ROLE", role not in senders or not floor.admits(role, key)),
+            ("ROLE", role not in senders),
             (stage, stage not in stages),
             ("STANCE_IN", message.kind == "STANCE" and any(m["kind"] == "STANCE" for m in mine)),
             ("CAP", message.kind != "STANCE" and role != "PM" and spoken >= MESSAGE_CAP),
@@ -340,7 +347,13 @@ def submit(
             if broken:
                 raise ValueError(f"committee.message_refused:{rule}")
         number = f"M{len(floor.messages) + 1}"
-        entry = {"update_task_id": task, "id": number, "role": role, "at": now.isoformat()}
+        entry = {
+            "update_task_id": task,
+            "id": number,
+            "role": role,
+            "at": now.isoformat(),
+            "author_session": floor.author_session,
+        }
         store.attribute(
             floor.goal_id, {"committee_message": {**entry, **message.model_dump(mode="json")}}
         )
@@ -368,11 +381,14 @@ def _owed(
     request: PortfolioResearchOperationRequest,
     member: dict[str, Any],
     rule: str,
+    now: datetime,
 ) -> dict[str, Any]:
     """For a verdict refused UNRULED, each ruling it owes as a template: once per unruled
     challenge and outcome, its words left to the PM. For a NUMBER refusal whose every typed
     figure is a name the floor holds under an alias, the same message with those aliases."""
     message = request.committee_message
+    if rule == "CLOSED" and floor is not None:
+        return {"report": state(floor, None, 0, now)["delivery"]}
     renamed = _typed(floor, message)[1] if rule == "NUMBER" else None
     if message is not None and renamed and not any(c.isnumeric() for c in ALIAS.sub("", renamed)):
         sent = message.model_dump(mode="json") | {"text": renamed}
@@ -408,11 +424,11 @@ def _typed(floor: Floor | None, message: CommitteeMessage | None) -> tuple[list[
     return typed, text
 
 
-def _same(floor: Floor, role: str, message: CommitteeMessage) -> str | None:
-    """The id of this member's message already on the floor exactly as sent, if any."""
+def _same(floor: Floor, role: str, message: CommitteeMessage) -> Mapping[str, Any] | None:
+    """This member's message already on the floor exactly as sent, if any."""
     sent = message.model_dump(mode="json")
     mine = (m for m in floor.messages if m["role"] == role)
-    return next((m["id"] for m in mine if all(m.get(k) == v for k, v in sent.items())), None)
+    return next((m for m in mine if all(m.get(k) == v for k, v in sent.items())), None)
 
 
 def _ruled(floor: Floor | None, message: CommitteeMessage | None) -> dict[str, Any] | None:
@@ -458,7 +474,11 @@ def _read_fields(request: PortfolioResearchOperationRequest, rule: str) -> dict[
     """The member's own fields for its floor read; a key not the member's reads as anyone."""
     given = {"committee_role": request.committee_role, "committee_key": request.committee_key}
     member = {"update_task_id": str(request.update_task_id)}
-    return member if rule == "ROLE" else member | {k: v for k, v in given.items() if v}
+    return (
+        member
+        if rule in {"ROLE", "KEY", "MEMBER"}
+        else member | {k: v for k, v in given.items() if v}
+    )
 
 
 def misshapen(message: CommitteeMessage) -> bool:
@@ -471,7 +491,7 @@ def misshapen(message: CommitteeMessage) -> bool:
 
 
 def _corrected(
-    store: GoalStore, request: PortfolioResearchOperationRequest, rule: str
+    store: GoalStore, request: PortfolioResearchOperationRequest, rule: str, now: datetime
 ) -> dict[str, Any]:
     """A refused message's own rule in its words and, where only its shape is wrong, the same
     message corrected: once for each message its kind may answer and each outcome it takes."""
@@ -483,8 +503,10 @@ def _corrected(
     message, floor = request.committee_message, floor_of(store, str(request.update_task_id))
     typed = ", ".join(_typed(floor, message)[0])
     words: dict[str, Any] = {"detail": RULE_WORDS[rule].replace("{subject}", typed), "rule": rule}
-    owed = _owed(floor, request, member, rule)
-    lead = "SEND_THE_CORRECTED_MESSAGE" if "corrected" in owed else "READ_THE_FLOOR"
+    owed = _owed(floor, request, member, rule, now)
+    lead = {"MEMBER": "START_THE_MEMBER", "CLOSED": "EXPORT_THE_REPORT"}.get(
+        rule, "SEND_THE_CORRECTED_MESSAGE" if "corrected" in owed else "READ_THE_FLOOR"
+    )
     words |= {"next_action": lead, "next_requests": floor_read | owed}
     if (ruling := _ruled(floor, message)) is not None:
         # The challenge is ruled already: the ruling stands, and no correction changes it.
@@ -619,9 +641,14 @@ def verdict(floor: Floor, now: datetime) -> dict[str, Any] | None:
 
 def member_agent(floor: Floor, role: str) -> str:
     """The member's native identity under the session that opened its thread, with its unit."""
+    for message in reversed(floor.messages):
+        if message["role"] == role and message.get("author_session"):
+            return str(message["author_session"])
     session, unit = floor.opened["session"][1], floor.opened.get("unit")
     if role in {"PM", "HOST"}:
         return str(session) if role == "PM" else "alphalattice-host"
+    if floor.opened.get("member_sessions"):
+        return ""  # Not observed yet; never invent a child identity for a new floor.
     return f"{session}:{_card(floor, role)}" + (f":{unit}" if unit else "")
 
 
@@ -632,10 +659,7 @@ def _card(floor: Floor, role: str) -> str:
 
 
 def floor_row(floor: Floor, message: Mapping[str, Any]) -> dict[str, Any]:
-    """One revealed message as the goal conversation row the Team page reads.
-
-    It names its member's card under the lead's session, and the author it answers as recipient.
-    """
+    """A revealed Team row, with the recorded speaker and recipient under the lead's session."""
     vendor, session = floor.opened["session"]
     answered = next((m for m in floor.messages if m["id"] == message.get("reply_to")), None)
     reply = (
@@ -671,9 +695,10 @@ def floor_row(floor: Floor, message: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _speaker(floor: Floor, message: Mapping[str, Any]) -> str:
-    """Who sent a message: a member's own native session where it answered from one, which joins
-    its role to that thread's usage; else its card under the lead's session."""
-    return str(message.get("author_session") or member_agent(floor, message["role"]))
+    """Own session joins usage; the card fallback reads legacy records only, until they retire."""
+    if sender := message.get("author_session"):
+        return str(sender)
+    return str(member_agent(replace(floor, messages=[]), message["role"]))
 
 
 def _qualified(floor: Floor, number: str) -> str:
@@ -696,7 +721,12 @@ def unfiled(floor: Floor, now: datetime) -> list[dict[str, Any]]:
     """The revealed messages not yet filed, as their goal conversation rows; none while blind."""
     if "selector" in floor.opened and floor.stage(now) == "STANCES":
         return []
-    return [floor_row(floor, m) for m in floor.messages if m["id"] not in floor.filed]
+    return [
+        floor_row(floor, m)
+        for m in floor.messages
+        if m["id"] not in floor.filed
+        and (m["kind"] != "ISSUE" or member_agent(floor, floor.opened["role"]))
+    ]
 
 
 def standing_messages(floor: Floor) -> dict[str, dict[str, str]]:
@@ -904,7 +934,7 @@ def role_lines(
     floor: Floor | None,
     now: datetime,
 ) -> list[str] | None:
-    """One role's view of a date's positions for its bundle (`bundle prepare --role`).
+    """One role's view of a date's positions for its bundle (`alphalattice bundle prepare --role`).
 
     While a committee floor is open on them, it adds the floor's points and how the role
     speaks there. None for a role with no view of a date's positions; the CRO's is its
@@ -983,17 +1013,19 @@ def bundle_parts(
     if dated is None:
         return None, review_route(store, role, directory)
     floor = floor_of(store, str(dated[0]["task_id"]))
-    return role_lines(role, *dated, floor, now), route(role, floor, now)
+    return role_lines(role, *dated, floor, now), route(role, floor, now, directory)
 
 
-def route(role: str, floor: Floor | None, now: datetime) -> tuple[str, ...] | None:
-    """How a member speaks on an open floor: its bundle's one final action, with its own key.
-
-    None with no open floor or for a role with no seat; the bundle then ends in its answer file.
-    """
+def route(
+    role: str, floor: Floor | None, now: datetime, directory: str | None = None
+) -> tuple[str, ...] | None:
+    """The member's keyed route on an open floor, with the bundle path as supplied."""
     if floor is None or role not in ROLES[1:] or floor.stage(now) == "CLOSED":
         return None
     task, key = floor.opened["update_task_id"], floor.key(role)
+    message = (
+        f'"{(Path(directory) / "message.yaml").as_posix()}"' if directory else "<message.yaml>"
+    )
     return (
         f"On the committee's floor you are {role}. Send one STANCE first (the round is blind); "
         "its position on each tension point (T1, never a question) is about the date's "
@@ -1001,11 +1033,14 @@ def route(role: str, floor: Floor | None, now: datetime) -> tuple[str, ...] | No
         "this bundle cannot tell, citing by S alias the facts it rests on.",
         f"Then up to {MESSAGE_CAP} CHALLENGE or REPLY, each naming its targets by alias (T1, H3, "
         "M4, a fact by its S alias); type no other digit, since the Host renders every number. "
-        "Write each message as a YAML file (kind, text, positions, targets, reply_to), send it "
-        "with `committee submit "
-        f"--update {task} --role {role} --key {key} --file <message.yaml>` and follow what is "
-        f"addressed to you with `committee wait --update {task} --role {role} --key {key} "
-        "--seen <seen>`. The key is yours alone. A refused message names its rule; where only "
+        "Write each message as a YAML file in this bundle directory "
+        "(kind, text, positions, targets, reply_to), send it "
+        f"with `{COMMAND} committee submit "
+        f"--update {task} --role {role} --key {key} --file {message}` and follow what is "
+        f"addressed to you with `{COMMAND} committee wait --update {task} "
+        f"--role {role} --key {key} "
+        "--seen <seen>`. Run these from your own session; the key is yours alone. "
+        "A refused message names its rule; where only "
         "its shape is wrong, send the corrected message the refusal offers.",
         "This route is the bundle's only final action: there is no answer file and nothing for "
         "the lead to submit. It runs these two commands, so the lead starts you as a general "
@@ -1026,8 +1061,8 @@ def review_route(store: GoalStore, role: str, directory: str | None) -> tuple[st
     thread = thread_id(bundle_slot(directory))
     with store.lock:
         held = store.committee(thread, UUID(goal)) or {}
-    answer = Path(directory) / "answer.json"
-    submit = f'alphalattice bundle submit --dir "{directory}" --file "{answer}"'
+    answer = (Path(directory) / "answer.json").as_posix()
+    submit = f'{COMMAND} bundle submit --dir "{Path(directory).as_posix()}" --file "{answer}"'
     return (
         "## Your route",
         f"You submit your own answer: `{submit} --key {member_key(held['seed'], thread, role)}`. "
@@ -1050,7 +1085,12 @@ def issued(store: GoalStore, body: dict[str, Any], now: datetime, file: Any) -> 
         if held is None or thread_of(store, thread) is not None:
             return body
         unit = body.get("task_id")
-        opened = {"update_task_id": thread, "bundle_reference": reference, "unit": unit}
+        opened = {
+            "update_task_id": thread,
+            "bundle_reference": reference,
+            "unit": unit,
+            "member_sessions": True,
+        }
         opened |= {"role": role, "session": [provenance.vendor, provenance.session]}
         store.attribute(UUID(held["goal_id"]), {"committee_open": opened})
         floor = Floor(UUID(held["goal_id"]), held["seed"], opened, [], frozenset())
@@ -1071,30 +1111,70 @@ def _append(store: GoalStore, floor: Floor, now: datetime, **message: Any) -> st
     return number
 
 
+def _admit_member(
+    floor: Floor,
+    role: str,
+    key: str | None,
+    provenance: RequestProvenance | None,
+    *,
+    same: Mapping[str, Any] | None = None,
+    ended: bool = False,
+    review_receipt: bool = False,
+) -> Floor:
+    """One capability and sender rule; receipt reads keep their author.
+
+    Sessions are client-declared and may be shared; the member key remains the capability.
+    """
+    sender = getattr(provenance, "session", None)
+    rule = "KEY" if key is not None and not floor.admits(role, key) else None
+    if rule is None and same is not None and (key is not None or review_receipt):
+        if same.get("author_session") and sender not in {
+            same["author_session"],
+            floor.opened["session"][1],
+        }:
+            raise ValueError("committee.message_refused:MEMBER")
+        return replace(floor, author_session=same.get("author_session"))
+    if rule is None and ended:
+        rule = "ENDED"
+    parent = floor.opened["session"][1]
+    if rule is None and (key is None or not sender or (role == "PM" and sender != parent)):
+        rule = "MEMBER"
+    if rule is not None:
+        raise ValueError(f"committee.message_refused:{rule}")
+    return replace(floor, author_session=sender)
+
+
 def admit(
     store: GoalStore, member: tuple[str, str, Any], key: str | None
 ) -> Floor | dict[str, Any] | None:
-    """The member's thread, read once, when its answer may go on; else a refusal by its rule.
-
-    Open, only the member's key admits it. Accepted, only the accepted answer itself does (its
-    receipt read, key or none); a different answer is ENDED, so no caller reopens the bundle.
-    """
+    """Admit a review answer by key; only its accepted answer permits a keyless receipt read."""
     role, reference, answer = member
     floor = thread_of(store, thread_id(reference)) if role in REVIEWERS else None
     if floor is None:
         return None
     accepted, digest = _accepted(floor), str(canonical_hash(answer))
-    rule = "KEY" if key is not None and not floor.admits(role, key) else None
-    if rule is None and accepted is not None:
-        rule = None if digest == accepted else "ENDED"
-    elif rule is None and key is None:
-        rule = "MEMBER"
-    if rule is None:
-        return floor
+    same = next((m for m in floor.messages if accepted == digest == m.get("answer_digest")), None)
+    try:
+        return _admit_member(
+            floor,
+            role,
+            key,
+            REQUEST_PROVENANCE.get(),
+            same=same,
+            ended=accepted is not None,
+            review_receipt=True,
+        )
+    except ValueError as error:
+        rule = str(error).rpartition(":")[2]
     lead = "RETURN_THE_RECEIPT_TO_YOUR_LEAD" if rule == "ENDED" else "START_THE_MEMBER"
     code = f"committee.message_refused:{rule}"
     words = {"detail": RULE_WORDS[rule], "rule": rule, "next_action": lead}
-    return {"status": "REFUSED", "failure_code": code, **words}
+    return {
+        "status": "REFUSED",
+        "failure_code": code,
+        **words,
+        "next_requests": {"schema": schema_request("AGENT_ANSWER_SUBMIT")},
+    }
 
 
 def threaded(store: GoalStore, bundle: Any) -> bool:
@@ -1129,8 +1209,7 @@ def answered(
         return
     # Filed on the bundle's thread in the lead's session, the member its author, whoever sent it.
     session, thread = floor.opened["session"], floor.opened["update_task_id"]
-    sender = getattr(REQUEST_PROVENANCE.get(), "session", None)  # the member's own thread
-    own = {"author_session": sender} if sender and sender != session[1] else {}
+    own = {"author_session": floor.author_session} if floor.author_session else {}
     body["conversation"] = {"status": "RECORDED_ON_THREAD", "thread": thread, "host": session[0]}
     body["conversation"] |= {
         "session_id": session[1],

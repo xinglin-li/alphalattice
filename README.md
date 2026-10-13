@@ -5,12 +5,23 @@ AlphaLattice is a local quantitative research workstation for people using Codex
 
 The [design principles](docs/public-source/design-principles.md) explain how the agent, the software and the person share the work.
 
+<!-- Hero image reserved: Codex conversation on the left, Workbench on the right. -->
+
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/workbench-dark.webp">
-  <img src="docs/images/workbench-light.webp" alt="AlphaLattice Workbench showing a recorded historical Portfolio report and its performance curve." width="1470">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/research-performance-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/research-performance-light.png">
+  <img src="docs/images/research-performance-light.png" alt="Trend Rebound Book historical research performance from 2023-10-02 to 2026-09-08." width="1280">
 </picture>
 
-*A historical research replay on recorded US market data, from 2022-07-01 to 2026-09-08. The report's figures are shown as recorded; this book is not reviewed. Historical research is not investment advice or a promise of future returns.*
+*Historical research performance for Trend Rebound Book, 2023-10-02 to 2026-09-08; this is not a record of executed trades. Historical research is not investment advice or a promise of future returns.*
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/research-positions-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/research-positions-light.png">
+  <img src="docs/images/research-positions-light.png" alt="Trend Rebound Book historical sector exposure and replay holdings on 2026-09-08." width="1280">
+</picture>
+
+*Sector exposure and historical replay weights for 2026-09-08; these are not executed trades.*
 
 ## What one sentence gets you
 
@@ -55,9 +66,13 @@ alone grants no activation or publication.
 
 ## Read results and decide
 
-![Goal Conversation with a completed study-check Task and a running data-update Task](docs/images/goal-conversation.webp)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/research-conversation-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/research-conversation-light.png">
+  <img src="docs/images/research-conversation-light.png" alt="The same run's session conversation, showing review assignments, answers and accepted submissions." width="1280">
+</picture>
 
-*A demonstration Goal Conversation with real Host Tasks and scripted fixture messages: an empty study check finished, and a data update is running. This shows the interface, not native agent authorship or research validation.*
+*The same run's recorded review conversation; the committee did not endorse action on its 2026-09-11 positions.*
 
 Use **Goals** for Timeline, Conversation and Results, **History** for saved
 studies and reviews, and **Team** for recorded sessions and usage. Acceptance

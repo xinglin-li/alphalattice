@@ -89,6 +89,13 @@ library.into = (c, appDir) => {
     const source = fs.readFileSync(path.join(appDir, 'components.js'), 'utf8');
     c.refusalParts = vm.runInNewContext(source.slice(source.indexOf('function refusalParts('), source.indexOf('function notRead(')) + ';refusalParts;');
   }
+  if (!c.dataDecisionWords) {
+    const source = fs.readFileSync(path.join(appDir,'data.js'),'utf8');
+    library.context(c);
+    const from=source.indexOf('function dataDecisionWords('), to=source.indexOf('/* ---- end of data decision words ---- */',from);
+    if(from<0 || to<0)throw Error('data decision words are not marked');
+    vm.runInContext(source.slice(from,to),c);
+  }
   // Presentation-only harnesses supply their own Data port. These defaults keep
   // their unrelated flows usable; lifetime tests load the actual Data module.
   if (c.Data && typeof c.Data === 'object') {

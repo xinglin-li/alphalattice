@@ -121,7 +121,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
     MarketDataRepository,
 )
-from alphalattice.protocols.actor_execution.contracts import ActorKind
 
 DataEngineerDiagnoser = Callable[
     [
@@ -355,7 +354,7 @@ class WorkspaceMaintenanceCoordinator:
     quality_evaluator: FeatureInputQualityEvaluator | None = None
     diagnose: DataEngineerDiagnoser | None = None
     publish_adjusted_return_revision: Callable[[], object] | None = None
-    recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None
+    recorded_data_confirmation: Callable[..., bool] | None = None
     agent_budget: AgentExecutionBudget = field(default_factory=AgentExecutionBudget)
     historical_revision_detection: str = "EVIDENCE_TRIGGERED_NO_PROVIDER_CHANGE_FEED"
     _session_authority_cache: dict[tuple[date, date], tuple[datetime, TradingSessionAuthority]] = (
@@ -2830,7 +2829,11 @@ class WorkspaceMaintenanceCoordinator:
             macro_retry_exhausted=macro_retry_exhausted,
             observed_workers=observed_workers,
             sector_unknown_listing_ids=prepared.sector_unknown,
-            raw_retention_proofs=raw_retention_decision_proofs(self.panel_state, self.market_data),
+            raw_retention_proofs=raw_retention_decision_proofs(
+                self.panel_state,
+                self.market_data,
+                historical_authority=self.recorded_data_confirmation,
+            ),
         )
         return _GovernanceEvaluation(
             prepared.manifest,
@@ -3093,23 +3096,14 @@ class WorkspaceMaintenanceCoordinator:
                     observed_at=observed_at,
                     panel_impact_after_exclusion=case_panel_impact,
                     proposal_hash=neutral_receipt.receipt_hash,
-                    human_confirmed=(
-                        actor_submission.actor_kind is ActorKind.HUMAN
-                        or (
-                            chosen is not None
-                            and actor_submission.actor_kind is ActorKind.EXTERNAL_AUTOMATION
-                            and (
-                                DataIssueDelegation(
-                                    self.market_data.path.parent
-                                ).recorded_human_authorization(
-                                    actor_submission.actor_id, case, option
-                                )
-                                or (
-                                    self.recorded_data_confirmation is not None
-                                    and self.recorded_data_confirmation(chosen)
-                                )
-                            )
-                        )
+                    human_confirmed=DataIssueDelegation(
+                        self.market_data.path.parent
+                    ).retention_confirmed(
+                        neutral_receipt,
+                        case,
+                        option,
+                        stored=chosen is not None,
+                        historical=self.recorded_data_confirmation,
                     ),
                 )
                 if execution.status is not FeatureInputExecutionStatus.DATA_TRUTH_REVIEW:

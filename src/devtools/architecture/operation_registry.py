@@ -594,6 +594,51 @@ def _a_command(phrase: tuple[str, ...], *, guide: bool, verbs: set[str]) -> bool
     return bool(prefix) or retired or (verb is None and rest.lstrip().startswith("--"))
 
 
+def _goal_store_receivers(constructor: ast.FunctionDef) -> set[str]:
+    """Resolve only attributes assigned from explicitly typed GoalStore parameters."""
+    stores = {
+        a.arg
+        for a in constructor.args.args
+        if isinstance(a.annotation, ast.Name) and a.annotation.id == "GoalStore"
+    }
+    receivers = set()
+    for node in ast.walk(constructor):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            targets = target.elts if isinstance(target, ast.Tuple) else [target]
+            values = node.value.elts if isinstance(node.value, ast.Tuple) else [node.value]
+            for assigned, value in zip(targets, values, strict=False):
+                if (
+                    isinstance(value, ast.Name)
+                    and value.id in stores
+                    and isinstance(assigned, ast.Attribute)
+                ):
+                    receivers.add(ast.unparse(assigned))
+    return receivers
+
+
+def _goal_records(tree: ast.AST) -> set[int]:
+    """Dictionaries published to the typed Goal store are records, not requests."""
+    records: set[int] = set()
+    for owner in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+        constructor = next(
+            (n for n in owner.body if isinstance(n, ast.FunctionDef) and n.name == "__init__"), None
+        )
+        if constructor is None:
+            continue
+        receivers = _goal_store_receivers(constructor)
+        for node in ast.walk(owner):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "attribute"
+                and ast.unparse(node.func.value) in receivers
+            ):
+                records.update(id(arg) for arg in node.args if isinstance(arg, ast.Dict))
+    return records
+
+
 def incomplete_offers(root: Path) -> list[str]:
     """Each next request an owner offers without a field its operation requires (V136).
 
@@ -615,8 +660,10 @@ def incomplete_offers(root: Path) -> list[str]:
         text = path.read_text(encoding="utf-8")
         if '"operation"' not in text:
             continue
-        for node in ast.walk(ast.parse(text)):
-            if not isinstance(node, ast.Dict) or None in node.keys:
+        tree = ast.parse(text)
+        records = _goal_records(tree)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Dict) or None in node.keys or id(node) in records:
                 continue
             written = {
                 key.value: value

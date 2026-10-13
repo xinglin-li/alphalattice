@@ -28,6 +28,10 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 from alphalattice.control.product_host.composition.research_update_automation import (
     first_update,
 )
+from alphalattice.control.product_host.composition.research_workspace import (
+    ResearchWorkspaceManifest,
+    publish_research_workspace_manifest,
+)
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.workspace_runtime.network_access import NetworkAccess, network_access
 from alphalattice.interface.local_application.cli_contract import (
@@ -274,6 +278,7 @@ def test_a_relayed_yes_is_held_once_and_only_from_an_agents_own_session(
 
 def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """requirement (V452, OP19): the delegation holds for the first-use steps alone, for an
     agent's request, within the goal's hours; the person's sentence is never revised."""
@@ -317,7 +322,58 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
             ),
             "EXTERNAL_AUTOMATION",
         )
+    publish_research_workspace_manifest(
+        tmp_path, ResearchWorkspaceManifest.research_only("delegated")
+    )
+    task = UUID(int=8)
+    app.store.attribute(goal.goal_id, {"task_id": str(task)})
+    decide = app.data_rule(task)
+    assert decide is not None
+    before = app.store.attributed(goal.goal_id)
+    body = {
+        "status": "CONFIRMED_PENDING_REVALIDATION",
+        "decisions_complete": True,
+        "next_requests": {
+            f"continue:{task}": {
+                "operation": "WORKSPACE_PREPARE_CONFIRM",
+                "preparation_plan_hash": "c" * 64,
+            }
+        },
+    }
+
+    def refused(_request):
+        raise ValueError("workspace_preparation.binding_changed")
+
+    with monkeypatch.context() as stopped:
+        stopped.setattr(app, "task_facts", lambda _: ("workspace_preparation", "BLOCKED", None))
+        answer = app.resume_decided(
+            goal,
+            Request(
+                operation="DATA_ISSUE_CONFIRM",
+                data_issue_case_token="a" * 64,
+                data_issue_evidence_hash="b" * 64,
+                data_issue_option_id="retain",
+                data_issue_option_hash="c" * 64,
+            ),
+            body,
+            refused,
+        )
+    assert answer["status"] == body["status"]
+    assert answer["continuation_problem"]["failure_code"] == "workspace_preparation.binding_changed"
+    assert answer["continuation_problem"]["detail"]
+    assert answer["next_requests"] == body["next_requests"]
+    case = SimpleNamespace(run_id=str(UUID(int=9)), case_token="a" * 64, evidence_hash="b" * 64)
+    with monkeypatch.context() as ended:
+        ended.setattr(app.store, "head", lambda _: goal.model_copy(update={"state": "ABANDONED"}))
+        assert (
+            decide(case, (), None, None).submission.proposal.option_id
+            == "escalate_data_truth_conflict"
+        )
     now[0] += timedelta(hours=FIRST_USE_HOURS)
+    assert (
+        decide(case, (), None, None).submission.proposal.option_id == "escalate_data_truth_conflict"
+    )
+    assert app.store.attributed(goal.goal_id) == before
     assert app.delegation(goal, "NETWORK_ACCESS_SET", "EXTERNAL_AUTOMATION") is None
     assert app.first_use_delegation(goal)["active"] is False
 
@@ -448,7 +504,8 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A first-use preparation's delegated data decision is recorded, shown and continued."""
+    """Past the Host rule's cap the first use's agent decides each case, recorded and shown; its
+    last decision resumes the same stopped Task in place (OP4, OP19)."""
     from alphalattice.control.data_platform import remediation_case
     from alphalattice.control.data_platform.contracts import (
         DataRemediationExecutionReceipt,
@@ -463,7 +520,7 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
     from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT, _source_loader_for
     from tests.workspace_readiness.unexplained_move import unexplained_move
 
-    provider, symbols = unexplained_move()
+    provider, symbols = unexplained_move(listings=3)
     live = LocalPortfolioWebSession.from_workspace(
         tmp_path / "first-use", clock=lambda: OBSERVED_AT
     )
@@ -476,6 +533,8 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         return _cli(live, "request", "--file", str(path), session=session)
 
     with live:
+        code, budget = send({"operation": "CPU_BUDGET_SET", "cpu_budget": "4"})
+        assert code == 0 and _code(budget) is None, budget
         declaration = tmp_path / "first-use.json"
         declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
         code, opened = _cli(live, "goal", "open", "--file", str(declaration))
@@ -537,6 +596,39 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
 
         code, issues = _cli(live, "issue", "list")
         assert issues["delegated_by"] == delegation
+        code, prepared = _cli(
+            live,
+            "bundle",
+            "prepare",
+            "--role",
+            "DATA",
+            "--task",
+            str(stopped.task_id),
+            "--dir",
+            str(tmp_path / "data-bundle"),
+        )
+        assert code == 0 and prepared["status"] == "AGENT_BUNDLE_READY", prepared
+        material = "\n".join(
+            (tmp_path / "data-bundle" / file["name"]).read_text("utf-8")
+            for file in prepared["files"][1:]
+        )
+        view = json.loads(material[material.index("{") :])
+        assert view["delegated_by"] == issues["delegated_by"] == delegation
+        assert str(stopped.task_id) in material
+        for issue in issues["issues"]:
+            case = issue["case"]
+            assert case["case_token"] in material and case["evidence_hash"] in material
+            assert all(option["option_id"] in material for option in case["options"])
+        # Three names of 120 move at once, past the rule's 2%: the rule leaves each to the agent.
+        assert issues["escalated_by_rule"]["listing_count"] == 3, issues
+        escalated = [
+            e
+            for e in live.operations.goals.store.attributed(UUID(opened["goal_id"]))
+            if e.get("operation") == "DATA_ISSUE_CONFIRM" and e.get("decided_by") == "RULE"
+        ]
+        assert {(e["status"], e["option_id"]) for e in escalated} == {
+            ("ESCALATED", "escalate_data_truth_conflict")
+        } and len(escalated) == 3, escalated
         assert not any(name.startswith("delegate:") for name in issues["next_requests"])
         previews = sorted(name for name in issues["next_requests"] if name.startswith("preview:"))
         choice = min(previews, key=lambda name: ("retain" not in name, name))
@@ -550,6 +642,26 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         # Another agent, outside the goal, may not decide it.
         code, refused = send(preview["next_requests"]["confirm"], session=OTHER_SESSION)
         assert code == 2 and _code(refused) == "feature_input.human_confirmation_required"
+        # A stale case, or a choice the case never offered, is refused with the way back.
+        offered = preview["next_requests"]["confirm"]
+        for wrong, failure in (
+            (
+                {**offered, "data_issue_case_token": "0" * 64},
+                "feature_input.case_no_longer_pending",
+            ),
+            (
+                {**offered, "data_issue_option_id": "use_unique_verified_alias_for_this_run"},
+                "feature_input.option_changed",
+            ),
+        ):
+            code, refused = send(wrong)
+            assert code == 2 and _code(refused) == failure, refused
+            assert refused["detail"] and refused["next_action"] == "DATA_ISSUES"
+            [read] = list(refused["next_requests"].values())
+            assert read == {"operation": "DATA_ISSUES"}
+            code, recovered = send(read)
+            assert code == 0 and recovered["case_count"] == len(issues["issues"]), recovered
+            assert registry.task(stopped.task_id) == stopped  # A recovery read applies no choice.
 
         code, decided = send(preview["next_requests"]["confirm"])
         assert code == 0 and _code(decided) is None, decided
@@ -637,6 +749,9 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
                 assert (code, repeated["status"]) == (0, "ALREADY_APPLIED")
                 assert repeated["receipt_hash"] == retained.receipt_hash
         app_dir = SCRIPT.parent.parent / "src/alphalattice/interface/local_application/assets"
+        (tmp_path / "page-feed.json").write_text(
+            json.dumps({**blocked_page, "decided": page}), encoding="utf-8"
+        )
         run_node(
             [
                 str(Path(__file__).with_name("workbench_workspace.cjs")),
@@ -650,14 +765,28 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
             check=True,
             timeout=15,
         )
-        code, successor_plan = send(decided["next_requests"][f"continue:{stopped.task_id}"])
-        assert successor_plan["predecessor_task_id"] == str(stopped.task_id), successor_plan
-        code, successor = send(successor_plan["next_requests"]["confirm"])
-        assert successor["status"] == "ADMITTED", successor
-        assert UUID(str(successor["task_id"])) != stopped.task_id
+        # The other two decided, the last resumes the same Task in the same act.
+        assert decided["decisions_complete"] is False and "continued" not in decided
+        code, issues = _cli(live, "issue", "list")
+        confirmations = [
+            value
+            for value in issues["next_requests"].values()
+            if value["operation"] == "DATA_ISSUE_CONFIRM"
+            and value["data_issue_option_id"] == "retain_isolated_raw_move_with_caveat"
+        ]
+        assert len(confirmations) == 2
+        for index, request in enumerate(confirmations):
+            code, last = send(request)
+            assert code == (0 if index == 0 else 3) and _code(last) is None, last
+        assert last["decisions_complete"] is True, last
+        assert last["continued"]["status"] == "ADMITTED"
+        assert last["continued"]["lifecycle"] == "QUEUED"
+        assert last["continued"]["task_id"] == str(stopped.task_id), last
+        assert last["next_requests"]["status"]["task_id"] == str(stopped.task_id)
         live.dispatcher.drain_for_tests(timeout=900)
-        continued = registry.task(UUID(str(successor["task_id"])))
+        continued = registry.task(stopped.task_id)
         assert continued.lifecycle.value == "SUCCEEDED", continued.failure_code
+        assert [t.task_kind for t in registry.tasks()].count("workspace_preparation") == 1
         applied = panel.feature_input_resolution(decided["case_token"])
         assert applied["receipt"] == resolution["receipt"]
         assert applied["effect"]["status"] == FeatureInputExecutionStatus.RAW_VALUE_RETAINED.value
@@ -671,7 +800,10 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         step = next(
             s
             for s in shown["record"]["delegated_steps"]
-            if s["operation"] == "DATA_ISSUE_CONFIRM" and s["agent_session"] == SESSION
+            if s["operation"] == "DATA_ISSUE_CONFIRM"
+            and s.get("agent_session") == SESSION
+            and s["status"] == "CONFIRMED_PENDING_REVALIDATION"
+            and s["case_token"] == decided["case_token"]
         )
         assert (step["delegation"], step["agent_session"]) == (delegation, SESSION)
         assert (step["case_token"], step["option_id"]) == (

@@ -13,7 +13,7 @@ and their comparisons for the lead.
 - EXECUTE: run only the operations your assignment authorizes, within its budgets.
 Your assignment names the question, mode, workspace, goal, exact references, permitted
 operations, budgets, evidence and cutoff; in EXECUTE in your own session, run
-`goal take <id>` first. Ask the lead only for what your next action needs.
+`alphalattice goal take <id>` first. Ask the lead only for what your next action needs.
 
 # Place
 The lead runs the Skill's shortest path "A book" and gives you its saved answers or one bounded assignment. A scientific stop or insufficient evidence is a valid conclusion.
@@ -21,25 +21,25 @@ The lead runs the Skill's shortest path "A book" and gives you its saved answers
 # CLI
 Follow [Command contract](../../.agents/skills/alphalattice-research/references/operating.md) for syntax, answers, continuations, files and waits. The assignment and lists below set your permissions.
 Reads (ANALYZE, REVIEW):
-- `workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
-- `study show <task>`: A book or its Alpha study, verified: `standing` first.
-- `study compare --left <task> --right <task>`: Two completed books compared by their owner; it names no winner.
+- `alphalattice workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
+- `alphalattice study show <task>`: A book or its Alpha study, verified: `standing` first.
+- `alphalattice study compare --left <task> --right <task>`: Two completed books compared by their owner; it names no winner.
   --session: The session a dated view reads, as YYYY-MM-DD; for a book, names the book with the other book fields, as a book's offered requests fill them.
-- `task show <task>`: A Task's actual state and permitted next step.
+- `alphalattice task show <task>`: A Task's actual state and permitted next step.
 EXECUTE (only as authorized):
-- `study show <alpha_task> --output "<out>/alpha.json"`: Saves the Alpha study a book draws from; `result.candidates` names each one.
-- `book draft --from "<out>/alpha.json" --candidate <candidate_id> --save-declaration "<out>/portfolio.yaml" --output "<out>/draft.json"`: Drafts a book from the Alpha study saved in alpha.json.
+- `alphalattice study show <alpha_task> --output "<out>/alpha.json"`: Saves the Alpha study a book draws from; `result.candidates` names each one.
+- `alphalattice book draft --from "<out>/alpha.json" --candidate <candidate_id> --save-declaration "<out>/portfolio.yaml" --output "<out>/draft.json"`: Drafts a book from the Alpha study saved in alpha.json.
   --candidate (required): The Alpha candidate a Portfolio draft is built from.
-- `study plan --from "<out>/draft.json" --file "<out>/portfolio.yaml" --output "<out>/book-plan.json"`: Plans it; nothing runs.
-- `study run --from "<out>/book-plan.json" --wait --output "<out>/book-run.json"`: Runs it.
-- `risk-link add --from "<out>/book-run.json" --risk-study <risk_task>`: Attaches a Risk report to the book as evidence; weights unchanged.
-- `activity wait --task <task>`: One wait, never a poll: returns when the Task ends, needs a decision or is deferred.
+- `alphalattice study plan --from "<out>/draft.json" --file "<out>/portfolio.yaml" --output "<out>/book-plan.json"`: Plans it; nothing runs.
+- `alphalattice study run --from "<out>/book-plan.json" --wait --output "<out>/book-run.json"`: Runs it.
+- `alphalattice risk-link add --from "<out>/book-run.json" --risk-study <risk_task>`: Attaches a Risk report to the book as evidence; weights unchanged.
+- `alphalattice activity wait --task <task>`: One wait, never a poll: returns when the Task ends, needs a decision or is deferred.
   --task: The Task to wait for.
-Graph (→ the next step; what carries over):
-- `workspace show` → `study show` (Alpha Task id) → `book draft` (alpha.json, a candidate) → edit portfolio.yaml → `study plan` (draft.json) → `study run` (book-plan.json) → `study show` (book Task id)
-- `study run` (book-run.json) → `risk-link add` (a Risk Task) | the lead's Evidence and CRO review (read the book's current Evidence before its CRO offers)
-- `study show` (two book Task ids) → `study compare` (both ids)
-- any answer: exit 2 → its `next_requests`; exit 3 → `activity wait` or `task show`
+Graph (operation names; use the complete commands above; references carry over):
+- **workspace show** → **study show** (Alpha Task id) → **book draft** (alpha.json, a candidate) → edit portfolio.yaml → **study plan** (draft.json) → **study run** (book-plan.json) → **study show** (book Task id)
+- **study run** (book-run.json) → **risk-link add** (a Risk Task) | the lead's Evidence and CRO review (read the book's current Evidence before its CRO offers)
+- **study show** (two book Task ids) → **study compare** (both ids)
+- any answer: exit 2 → its `next_requests`; exit 3 → **activity wait** or **task show**
 
 # Method
 - Keep Alpha scores, recipe construction, execution, hold-only sessions and realized evidence

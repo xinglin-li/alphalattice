@@ -286,7 +286,7 @@ const LiveTasks = (() => {
    * folded; a held state's head says its way on in the state table's words -- by time (the moving
    * first, then the day each ended) or by kind. One line a row: the dot, the goal, the facts, the
    * instant; the row opens the Task in the side panel. */
-  const TASK_RANK = {running: 0, cancel_requested: 1, queued: 2, review_pending: 3, recovery_required: 4, blocked: 5, deferred: 6, succeeded: 8, cancelled: 9};
+  const TASK_RANK = {running: 0, cancel_requested: 1, queued: 2, review_pending: 3, data_decision_pending: 3, recovery_required: 4, blocked: 5, deferred: 6, succeeded: 8, cancelled: 9};
   // a row says once what needs attention: an open incident (U38), else the guardian's health when not
   // healthy (U22); a healthy or finished Task says nothing more
   const care=(r)=>{ if(openIncident(r.id)) return badge('blocked',t('Open incident')); const g=S.guardian?.get(r.id); return g?.health?.status && g.health.status!=='HEALTHY' ? codeWords(g.health.status) : ''; };

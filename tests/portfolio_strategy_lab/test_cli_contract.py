@@ -205,16 +205,19 @@ def test_storage_cap_is_one_operator_setting_through_the_real_cli(
 
 
 def test_the_canary_door_operator_command_parses_through_the_real_cli(live) -> None:
-    """V680 post-merge: the recovery words and owner use the CLI's actual grammar."""
+    """The canary's capacity recovery command is executable through the CLI."""
     from alphalattice.control.product_host.composition.plain_refusals import explain
     from alphalattice.interface.local_application.cli_contract import refusal_words
+    from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
     code = "alpha_modeling.lightgbm_thread_canary_mismatch"
     detail = refusal_words(code)["detail"]
     assert explain(code)["detail"] == detail
     command = re.findall(r"`([^`]+)`", detail)
     assert len(command) == 1
-    exit_code, configured, _ = _cli(live.workspace, *shlex.split(command[0]))
+    argv, prefix = shlex.split(command[0]), list(command_prefix())
+    assert argv[: len(prefix)] == prefix
+    exit_code, configured, _ = _cli(live.workspace, *argv[len(prefix) :])
     assert exit_code == 0 and configured["data"]["cpu_budget"] == 1
 
 

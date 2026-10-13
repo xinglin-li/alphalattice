@@ -4902,6 +4902,11 @@ class PanelStateRepository(WorkspaceRepository):
             connection.close()
         if row is None:
             return None
+        return self._verified_feature_input_decision(row)
+
+    @staticmethod
+    def _verified_feature_input_decision(row) -> tuple[str, dict[str, object]]:
+        """One seal check for both exact receipt lookup and the joined decision list."""
         case_payload = json.loads(row[0])
         if _canonical_hash(case_payload) != row[1] or case_payload.get("case_token") != row[2]:
             raise ValueError("feature_input.case_record_tampered")
@@ -4910,8 +4915,10 @@ class PanelStateRepository(WorkspaceRepository):
             raise ValueError("feature_input.resolution_tampered")
         return str(row[0]), dict(resolution)
 
-    def feature_input_raw_retention_decisions(self) -> tuple[tuple[str, dict[str, object]], ...]:
-        """Read verified raw-retention cases and resolutions across manifest revisions."""
+    def feature_input_decisions(
+        self, *, effect_status: str | None = None
+    ) -> tuple[tuple[str, dict[str, object]], ...]:
+        """Read verified case/resolution pairs, optionally limited to one effect status."""
         # A workspace before data preparation holds no retention decisions. Existing
         # stores still cross the normal strict read and verification boundary.
         if not self.path.exists():
@@ -4922,25 +4929,13 @@ class PanelStateRepository(WorkspaceRepository):
                 """SELECT case_json, case_record_hash, case_token, resolution_json, resolution_hash
                    FROM feature_input_agent_case
                    WHERE case_json IS NOT NULL AND resolution_json IS NOT NULL
-                     AND json_extract_string(resolution_json, '$.effect.status') = ?
+                     AND (? IS NULL OR json_extract_string(resolution_json, '$.effect.status') = ?)
                    ORDER BY created_at, case_token""",
-                ["raw_value_retained_with_caveat"],
+                [effect_status, effect_status],
             ).fetchall()
         finally:
             connection.close()
-        decisions = []
-        for case_document, case_hash, case_token, resolution_document, resolution_hash in rows:
-            case_payload = json.loads(case_document)
-            if (
-                _canonical_hash(case_payload) != case_hash
-                or case_payload.get("case_token") != case_token
-            ):
-                raise ValueError("feature_input.case_record_tampered")
-            resolution = json.loads(resolution_document)
-            if _canonical_hash(resolution) != resolution_hash:
-                raise ValueError("feature_input.resolution_tampered")
-            decisions.append((str(case_document), dict(resolution)))
-        return tuple(decisions)
+        return tuple(self._verified_feature_input_decision(row) for row in rows)
 
     def feature_input_resolution(self, case_token: str) -> dict[str, object] | None:
         """Return a hash-verified resolution for a Feature input case."""

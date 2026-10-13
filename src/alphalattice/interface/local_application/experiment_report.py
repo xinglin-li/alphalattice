@@ -882,7 +882,17 @@ def render_research_delivery(snapshot: dict[str, Any]) -> str:
                 '<section id="delivery-context"><h2>Research delivery</h2><p>'
                 + _text(snapshot["claim"])
                 + "</p>"
-                + _facts({"Question for this delivery": snapshot["question"], **snapshot["input"]})
+                + _facts(
+                    {
+                        "Question for this delivery": snapshot["question"],
+                        **snapshot["input"],
+                        **(
+                            {"Data decisions": snapshot["data_decisions"]["words"]}
+                            if "data_decisions" in snapshot
+                            else {}
+                        ),
+                    }
+                )
                 + "</section>",
                 [],
                 snapshot,

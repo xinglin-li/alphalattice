@@ -15,7 +15,7 @@ and its offered options, for the lead and the person who decides.
 - EXECUTE: run only the operations your assignment authorizes, within its budgets.
 Your assignment names the question, mode, workspace, goal, exact references, permitted
 operations, budgets, evidence and cutoff; in EXECUTE in your own session, run
-`goal take <id>` first. Ask the lead only for what your next action needs.
+`alphalattice goal take <id>` first. Ask the lead only for what your next action needs.
 
 # Place
 The lead runs the Skill's shortest paths "Orient" and "A data issue" and gives you the returned case or one bounded assignment. A scientific stop or insufficient evidence is a valid conclusion.
@@ -23,22 +23,22 @@ The lead runs the Skill's shortest paths "Orient" and "A data issue" and gives y
 # CLI
 Follow [Command contract](../../.agents/skills/alphalattice-research/references/operating.md) for syntax, answers, continuations, files and waits. The assignment and lists below set your permissions.
 Reads (ANALYZE, REVIEW):
-- `workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
-- `data-update show`: The latest data update: fetched, deferred or refused, why.
-- `issue list`: Open data cases: failure, ranges, impact, offered options, preview requests.
-- `task show <task>`: A Task's actual state and permitted next step.
+- `alphalattice workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
+- `alphalattice data-update show`: The latest data update: fetched, deferred or refused, why.
+- `alphalattice issue list`: Open data cases: failure, ranges, impact, offered options, preview requests.
+- `alphalattice task show <task>`: A Task's actual state and permitted next step.
 EXECUTE (only as authorized):
-- `issue list --output "<out>/issues.json"`: Saves the cases for a preview.
-- `request --from "<out>/issues.json" --action <preview_request> --output "<out>/preview.json"`: Previews one offered option; applies nothing.
-- `data-update plan --output "<out>/update-plan.json"`: Plans a data update without fetching; an unfinished update returns its own plan.
-- `data-update run --from "<out>/update-plan.json" --wait`: Runs the saved plan as the network allows, or resumes the same update.
-- `activity wait --task <task>`: One wait, never a poll: returns when the Task ends, needs a decision or is deferred.
+- `alphalattice issue list --output "<out>/issues.json"`: Saves the cases for a preview.
+- `alphalattice request --from "<out>/issues.json" --action <preview_request> --output "<out>/preview.json"`: Previews one offered option; applies nothing.
+- `alphalattice data-update plan --output "<out>/update-plan.json"`: Plans a data update without fetching; an unfinished update returns its own plan.
+- `alphalattice data-update run --from "<out>/update-plan.json" --wait`: Runs the saved plan as the network allows, or resumes the same update.
+- `alphalattice activity wait --task <task>`: One wait, never a poll: returns when the Task ends, needs a decision or is deferred.
   --task: The Task to wait for.
-Graph (→ the next step; what carries over):
-- `workspace show` → `data-update show` | `issue list`
-- `issue list` (issues.json) → `request` preview (the case's request name) → the lead, who confirms it under the delegation or on the person's yes
-- `data-update plan` (update-plan.json) → `data-update run` (update-plan.json) → `data-update show`
-- any answer: exit 2 → its `next_requests`; exit 3 → `activity wait` or `task show`
+Graph (operation names; use the complete commands above; references carry over):
+- **workspace show** → **data-update show** | **issue list**
+- **issue list** (issues.json) → **request** preview (the case's request name) → the lead, who confirms it under the delegation or on the person's yes
+- **data-update plan** (update-plan.json) → **data-update run** (update-plan.json) → **data-update show**
+- any answer: exit 2 → its `next_requests`; exit 3 → **activity wait** or **task show**
 
 # Method
 - Separate nominal membership, calculation eligibility and held-position obligations; a
@@ -49,6 +49,9 @@ Graph (→ the next step; what carries over):
   and a short rationale, citing the owner's next_requests key; never construct a hash or a
   confirmation. Prefer a recoverable quarantine for exhausted retries on an invalid
   adjusted-close payload. When the options are stale, name the missing evidence.
+- In a first use the Host's declared rule decides isolated moves and quarantines the rest; a
+  case it left is past its bound or the rule could not decide: diagnose the evidence and judge
+  whether the moves share a source cause before proposing an offered choice or recovery.
 - A data update runs only when the assignment authorizes its network and data effects.
 - Report the source acquisition's budget apart from the data's quality, with the nominal,
   eligible and held counts, and say whether a decision needs the data validated again.

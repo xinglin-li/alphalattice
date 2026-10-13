@@ -1,7 +1,7 @@
 # Delivery
 Date: 2026-10-10
 
-Use the exact offered delivery request for the selected completed book or published positions; `book export` accepts that bound request. A saved delivery report offers `reopen`: `alphalattice request --from "<out>/delivery.json" --action reopen --output "<out>/report.json"`; adding `--format html` saves its HTML through the same action. A closed committee floor offers `report`: save its readback, then send `alphalattice request --from "<out>/floor.json" --action report`. Discover the references and choices from that answer; an export reads kept results without new research or a consent question.
+Use the exact offered delivery request for the selected completed book or published positions; `alphalattice book export` accepts that bound request. A saved delivery report offers `reopen`: `alphalattice request --from "<out>/delivery.json" --action reopen --output "<out>/report.json"`; adding `--format html` saves its HTML through the same action. A closed committee floor offers `report`: save its readback, then send `alphalattice request --from "<out>/floor.json" --action report`. Discover the references and choices from that answer; an export reads kept results without new research or a consent question.
 
 - Name both comparison Tasks from the actual comparison, in order, including the selected book. Incompatible inputs yield an uncomputed section, never invented metrics.
 - Select existing `risk_report_hash` and, when wanted, exact `review_publication_hash`. The product validates both. Missing evidence stays visible; never substitute a latest review or imply zero risk. A Risk link is report-only and may not cover the holdings date. An expired CRO review is historical, not current clearance.

@@ -45,6 +45,19 @@ STOPPED = "stopped and owed a way on; a deferral has its own branch (V507)"
 REGISTER: dict[tuple[str, str, str], str] = {
     (
         "control/product_host/composition/portfolio_research_operations.py",
+        "_PREPARATION_IN_FLIGHT",
+        "CANCEL_REQUESTED,QUEUED,RECOVERY_REQUIRED,RUNNING",
+    ): "an admitted preparation leaves these states by itself, including recovery; "
+    "no second admission",
+    (
+        "control/product_host/data_preparation/application.py",
+        "WorkspacePreparationApplication._resumable",
+        "CANCEL_REQUESTED,QUEUED,RECOVERY_REQUIRED,RUNNING,SUCCEEDED",
+    ): "an already admitted grant reads these own-scope states idempotently; "
+    "only truth review or catalog.replace_blocked resumes under that same exact grant; "
+    "storage preflight still runs and deferred work needs the person",
+    (
+        "control/product_host/composition/portfolio_research_operations.py",
         "_RECOVERY_SOURCES",
         "BLOCKED,CANCELLED,RECOVERY_REQUIRED",
     ): "the stopped lifecycles the recovery view and its admission both accept",
@@ -153,11 +166,6 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "_LIVE_LIFECYCLES",
         "CANCEL_REQUESTED,DEFERRED,QUEUED,RUNNING",
     ): "a status long poll waits for these to move; a deferral moves when its resume is sent",
-    (
-        "control/product_host/composition/portfolio_research_operations.py",
-        "_PREPARATION_IN_FLIGHT",
-        "CANCEL_REQUESTED,QUEUED,RUNNING",
-    ): "a confirm answers a preparation on its way; a deferred one goes to its owner (V506)",
     (
         "control/product_host/composition/portfolio_research_operations.py",
         "_FINISHED_LIFECYCLES",

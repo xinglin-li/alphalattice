@@ -8,6 +8,7 @@ considered.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter
@@ -27,6 +28,7 @@ from alphalattice.foundation.feature_engine.inputs.gateway import (
 )
 from alphalattice.foundation.market_data_ops.runtime.remediation import (
     PolicyDecision,
+    RemediationOption,
     canonical_hash,
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
@@ -41,13 +43,51 @@ if TYPE_CHECKING:
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 
 
+def _retention_binding_matches(
+    case: FeatureInputAgentCase,
+    receipt: DataRemediationExecutionReceipt,
+    effect: FeatureInputPolicyExecution,
+    option: RemediationOption,
+    policy_args_hash: str,
+    effect_base: str,
+) -> bool:
+    """An executed retention effect must bind the same sealed case, option and evidence."""
+    decision = receipt.policy_decision
+    return not (
+        decision.case_token != case.case_token
+        or decision.evidence_hash != case.evidence_hash
+        or decision.option_id != option.option_id
+        or decision.option_hash != option.option_hash
+        or decision.policy_hash != canonical_hash(option.policy_args)
+        or decision.disposition is not option.disposition
+        or receipt.execution_policy_hash != case.policy_hash
+        or effect.option_id != option.option_id
+        or effect.option_hash != option.option_hash
+        or effect.policy_args_hash != policy_args_hash
+        or effect.execution_receipt_hash
+        != canonical_hash([effect_base, "HUMAN_CONFIRMED", receipt.receipt_hash])
+        or tuple(option.target_listing_ids) != case.listing_ids
+        or tuple(sorted(effect.retained_evidence))
+        != tuple(sorted((item.listing_id, item.evidence_hash) for item in case.evidence))
+    )
+
+
 def raw_retention_decision_proofs(
     panel_state: PanelStateRepository,
     market_data: MarketDataRepository,
+    *,
+    historical_authority: Callable[..., bool] | None = None,
+    decisions: tuple[tuple[str, dict[str, object]], ...] | None = None,
 ) -> tuple[RawRetentionDecisionProof, ...]:
     """Verify original Host receipts before reusing a raw-retention caveat."""
     proofs = []
-    for case_document, resolution in panel_state.feature_input_raw_retention_decisions():
+    authority: dict[object, object] = {}
+    rows = (
+        decisions
+        if decisions is not None
+        else panel_state.feature_input_decisions(effect_status="raw_value_retained_with_caveat")
+    )
+    for case_document, resolution in rows:
         case = FeatureInputAgentCase.read_document(case_document)
         receipt_value = resolution.get("receipt")
         effect_value = resolution.get("effect")
@@ -68,7 +108,6 @@ def raw_retention_decision_proofs(
             ),
             None,
         )
-        decision = receipt.policy_decision
         policy_args_hash = (
             canonical_hash(option.policy_args.model_dump(mode="json")) if option else ""
         )
@@ -79,28 +118,15 @@ def raw_retention_decision_proofs(
             if option
             else ""
         )
-        if (
-            option is None
-            or decision.case_token != case.case_token
-            or decision.evidence_hash != case.evidence_hash
-            or decision.option_id != option.option_id
-            or decision.option_hash != option.option_hash
-            or decision.policy_hash != canonical_hash(option.policy_args)
-            or decision.disposition is not option.disposition
-            or receipt.execution_policy_hash != case.policy_hash
-            or receipt.actor_submission.actor_kind
-            not in {
-                ActorKind.HUMAN,
-                ActorKind.EXTERNAL_AUTOMATION,
-            }
-            or effect.option_id != option.option_id
-            or effect.option_hash != option.option_hash
-            or effect.policy_args_hash != policy_args_hash
-            or effect.execution_receipt_hash
-            != canonical_hash([effect_base, "HUMAN_CONFIRMED", receipt.receipt_hash])
-            or tuple(option.target_listing_ids) != case.listing_ids
-            or tuple(sorted(effect.retained_evidence))
-            != tuple(sorted((item.listing_id, item.evidence_hash) for item in case.evidence))
+        if option is None or not _retention_binding_matches(
+            case, receipt, effect, option, policy_args_hash, effect_base
+        ):
+            continue
+        actor = receipt.actor_submission.actor_kind
+        if actor not in {ActorKind.HUMAN, ActorKind.EXTERNAL_AUTOMATION} and not (
+            actor is ActorKind.HOST_FALLBACK
+            and historical_authority is not None
+            and historical_authority(receipt, authority)
         ):
             continue
         try:
@@ -132,6 +158,8 @@ def raw_retention_decision_proofs(
                 universe_components=source_manifest.universe_components,
                 research_use_class=source_manifest.research_use_class,
                 source_listing_ids=tuple(item.listing_id for item in source_manifest.listings),
+                rule_authority_verified=receipt.actor_submission.actor_kind
+                is ActorKind.HOST_FALLBACK,
             )
         )
     return tuple(proofs)

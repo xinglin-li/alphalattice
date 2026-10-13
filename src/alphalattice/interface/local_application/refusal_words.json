@@ -1,4 +1,8 @@
 {
+ "workspace_preparation.human_confirmation_required": {
+  "detail": "Preparation needs the person's confirmation or a valid delegation. Read preparation controls and data issues, then ask the person for that confirmation or grant.",
+  "next_action": "READ_PREPARATION_CONTROLS_AND_ASK_FOR_CONFIRMATION_OR_A_GRANT"
+ },
  "local_client.problem_report_ready": {
   "detail": "Review this redacted report. Ask the person before sending it to the developers; without their yes, keep it local.",
   "next_action": "REVIEW_REPORT_AND_ASK_BEFORE_SENDING"
@@ -20,15 +24,15 @@
   "next_action": "PREPARE_AND_ANALYSE_THE_EVIDENCE"
  },
  "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY": {
-  "detail": "No issuer registry and listing authority are admitted for this workspace, so a book's holdings cannot be named as issuers and no evidence is prepared; use the offered `evidence install` setup in the running Host to install and admit them.",
+  "detail": "No issuer registry and listing authority are admitted for this workspace, so a book's holdings cannot be named as issuers and no evidence is prepared; use the offered `alphalattice evidence install` setup in the running Host to install and admit them.",
   "next_action": "ADMIT_ISSUER_REGISTRY_AND_LISTING_AUTHORITY"
  },
  "REFUSED_NO_ADMITTED_EVIDENCE_RUNTIME": {
-  "detail": "This workspace has no admitted evidence runtime, so nothing is acquired; use the offered `evidence install` setup in the running Host to install and admit it.",
+  "detail": "This workspace has no admitted evidence runtime, so nothing is acquired; use the offered `alphalattice evidence install` setup in the running Host to install and admit it.",
   "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME"
  },
  "REFUSED_NO_ADMITTED_REVIEW_ACTOR": {
-  "detail": "No reviewer is admitted for a managed review in this workspace; the CRO's review is written by an agent from its bundle (`bundle prepare --role CRO`).",
+  "detail": "No reviewer is admitted for a managed review in this workspace; the CRO's review is written by an agent from its bundle (`alphalattice bundle prepare --role CRO`).",
   "next_action": "PREPARE_THE_CRO_BUNDLE"
  },
  "REFUSED_NO_BOOK_TO_REVIEW": {
@@ -40,7 +44,7 @@
   "next_action": "READ_ACTIVITY_EVENT_CONTRACT"
  },
  "activity.event_task_unknown": {
-  "detail": "The event names a Task this workspace does not hold; name one `task list` shows, or leave the Task out.",
+  "detail": "The event names a Task this workspace does not hold; name one `alphalattice task list` shows, or leave the Task out.",
   "next_action": "NAME_AN_EXISTING_TASK_OR_OMIT_IT"
  },
  "activity.failure_detail_withheld": {
@@ -120,15 +124,15 @@
   "next_action": "TELL_YOUR_LEAD"
  },
  "alpha_research.authoring_model_recipe_not_admissible": {
-  "detail": "The declaration's model, or one of its parameters, is outside what the installed Alpha capability admits; `study controls` lists each admitted model and every parameter's range.",
+  "detail": "The declaration's model, or one of its parameters, is outside what the installed Alpha capability admits; `alphalattice study controls` lists each admitted model and every parameter's range.",
   "next_action": "EDIT_DECLARATION_AND_PLAN"
  },
  "alpha_research.development_receipt_child_unavailable": {
-  "detail": "A file this Alpha study's receipt names is missing or unreadable in the workspace, so its readback is not complete; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
+  "detail": "A file this Alpha study's receipt names is missing or unreadable in the workspace, so its readback is not complete; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "alpha_research.development_training_policy_not_installed": {
-  "detail": "The model the declaration names needs a training policy this build does not install; choose a model `study controls` lists for this study kind.",
+  "detail": "The model the declaration names needs a training policy this build does not install; choose a model `alphalattice study controls` lists for this study kind.",
   "next_action": "EDIT_DECLARATION_AND_PLAN"
  },
  "alpha_research.development_work_budget_exceeded": {
@@ -140,15 +144,15 @@
   "next_action": "PLAN_FROM_THE_FACTOR_HANDOFF"
  },
  "alpha_research.frozen_inference_manifest_invalid": {
-  "detail": "The installed strategy's frozen inference record does not read as its contract says, so nothing is scored; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "detail": "The installed strategy's frozen inference record does not read as its contract says, so nothing is scored; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "alpha_research.frozen_input_content_invalid": {
-  "detail": "A frozen input the score reads no longer matches the content its record names, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "detail": "A frozen input the score reads no longer matches the content its record names, so it is not read; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "alpha_research.heterogeneous_closure_file_absent": {
-  "detail": "A file the installed strategy's model closure names is missing from the workspace, so its scores are not made; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "detail": "A file the installed strategy's model closure names is missing from the workspace, so its scores are not made; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "alternative_evidence.acquisition_deadline_exceeded": {
@@ -284,7 +288,7 @@
   "next_action": "READ_WORKSPACE_SHOW_OR_RESTORE_A_BACKUP"
  },
  "data.truth_review_required": {
-  "detail": "A data decision is needed before this Task can continue: the data owner found an unexplained move and asks for a permitted response, which the agent takes under the first use's delegation or asks the person for in one line.",
+  "detail": "A data decision is needed before this Task can continue: unexplained moves ask for a permitted response, which the agent takes under the first use's delegation or asks the person for in one line; the last one resumes this same Task.",
   "next_action": "DATA_ISSUES"
  },
  "evidence_review.budget_exceeds_consent": {
@@ -352,7 +356,7 @@
   "next_action": "SET_AUTO_OR_A_WHOLE_NUMBER_OF_CORES"
  },
  "factor_research.curation_outside_report_axis": {
-  "detail": "A curation chooses among the factors the study's report selected, and a choice names one outside them; the report's items list them (`study show --section result.evidence_report`).",
+  "detail": "A curation chooses among the factors the study's report selected, and a choice names one outside them; the report's items list them (`alphalattice study show --section result.evidence_report`).",
   "next_action": "EDIT_THE_CURATION_AND_SUBMIT_AGAIN"
  },
  "factor_research.curation_report_stale": {
@@ -396,19 +400,19 @@
   "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
  },
  "feature_input.case_manifest_unavailable": {
-  "detail": "The case names a workspace manifest revision that cannot be read. Inspect the workspace (`workspace show`) and its kept backups (`backup list`); restore a generation that holds the recorded manifest into a new directory before reading this case there.",
+  "detail": "The case names a workspace manifest revision that cannot be read. Inspect the workspace (`alphalattice workspace show`) and its kept backups (`alphalattice backup list`); restore a generation that holds the recorded manifest into a new directory before reading this case there.",
   "next_action": "INSPECT_WORKSPACE_AND_RESTORE_RECORDED_MANIFEST"
  },
  "goal.closed_open_a_follow_up": {
-  "detail": "The goal this request works for is closed, so nothing more counts toward it; read its standing (`goal show`), or open a follow-up goal and work under it.",
+  "detail": "The goal this request works for is closed, so nothing more counts toward it; read its standing (`alphalattice goal show`), or open a follow-up goal and work under it.",
   "next_action": "NAME_AN_OPEN_GOAL_OR_NONE"
  },
  "goal.first_use_after_preparation": {
-  "detail": "This workspace is prepared already, so its first use is over: ask the person in one line for each step that is theirs, and relay their yes. Open a goal of another kind for this work (`goal schema` prints one to edit).",
+  "detail": "This workspace is prepared already, so its first use is over: ask the person in one line for each step that is theirs, and relay their yes. Open a goal of another kind for this work (`alphalattice goal schema` prints one to edit).",
   "next_action": "OPEN_A_GOAL_OF_ANOTHER_KIND"
  },
  "goal.first_use_already_opened": {
-  "detail": "This workspace has had its first use: a first-use goal opens once, from the person's sentence, and the person decides each step after it. Open a goal of another kind for this work (`goal schema` prints one to edit).",
+  "detail": "This workspace has had its first use: a first-use goal opens once, from the person's sentence, and the person decides each step after it. Open a goal of another kind for this work (`alphalattice goal schema` prints one to edit).",
   "next_action": "OPEN_A_GOAL_OF_ANOTHER_KIND"
  },
  "goal.first_use_is_not_revised": {
@@ -420,7 +424,7 @@
   "next_action": "COPY_THE_GOAL_ID_FROM_THE_GOAL_LIST"
  },
  "goal.not_found": {
-  "detail": "No goal in this workspace has that id; `goal list` names every goal by its id.",
+  "detail": "No goal in this workspace has that id; `alphalattice goal list` names every goal by its id.",
   "next_action": "COPY_THE_GOAL_ID_FROM_THE_GOAL_LIST"
  },
  "guanyin.remedy_not_offered": {
@@ -428,7 +432,7 @@
   "next_action": "CHOOSE_AN_OFFERED_REMEDY"
  },
  "local_application.confirmation_stale": {
-  "detail": "The Task changed since the hash this request confirms was read; read the Task again (`task show`) and confirm against its current hash.",
+  "detail": "The Task changed since the hash this request confirms was read; read the Task again (`alphalattice task show`) and confirm against its current hash.",
   "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"
  },
  "portfolio_research.recovery_context_pair_required": {
@@ -444,11 +448,11 @@
   "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"
  },
  "local_application.expected_task_hash_invalid": {
-  "detail": "`expected_task_hash` is a Task record's 64-character hash, as `task show` answers it.",
+  "detail": "`expected_task_hash` is a Task record's 64-character hash, as `alphalattice task show` answers it.",
   "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"
  },
  "local_application.expected_task_hash_required": {
-  "detail": "Recovering a Task is confirmed against the record read: give its current hash (`expected_task_hash`) from `task show` or its recovery view.",
+  "detail": "Recovering a Task is confirmed against the record read: give its current hash (`expected_task_hash`) from `alphalattice task show` or its recovery view.",
   "next_action": "READ_THE_TASK_AND_CONFIRM_AGAIN"
  },
  "local_application.request_refused": {
@@ -484,11 +488,11 @@
   "next_action": "RUN_THE_BOOK_AGAIN_AND_ACTIVATE_IT"
  },
  "portfolio_calibration.plan_required": {
-  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the calibration again (`calibration plan`) for the same package and score, then run the plan hash the new answer names.",
+  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the calibration again (`alphalattice calibration plan`) for the same package and score, then run the plan hash the new answer names.",
   "next_action": "PLAN_THE_CALIBRATION_AGAIN"
  },
  "portfolio_calibration.result_evidence_invalid": {
-  "detail": "The calibration's stored result does not match the plan, score and observations its record names, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "detail": "The calibration's stored result does not match the plan, score and observations its record names, so it is not read; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "portfolio_research.alpha_development_required": {
@@ -496,7 +500,7 @@
   "next_action": "NAME_AN_ALPHA_DEVELOPMENT_STUDY"
  },
  "portfolio_research.alpha_parent_required": {
-  "detail": "A Portfolio study is drafted from an Alpha study's Task, and the Task named is another kind; `study list` names the Alpha studies.",
+  "detail": "A Portfolio study is drafted from an Alpha study's Task, and the Task named is another kind; `alphalattice study list` names the Alpha studies.",
   "next_action": "NAME_AN_ALPHA_STUDY"
  },
  "portfolio_research.book_end_under_scored": {
@@ -516,19 +520,19 @@
   "next_action": "NAME_ONE_OF_THE_STUDYS_SESSIONS"
  },
  "portfolio_strategy_lab.artifact_absent": {
-  "detail": "A stored file this study's record names is absent from the workspace, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "detail": "A stored file this study's record names is absent from the workspace, so it is not read; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "portfolio_strategy_lab.artifact_tampered": {
-  "detail": "A stored artifact of this study no longer matches the hash its record names, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
+  "detail": "A stored artifact of this study no longer matches the hash its record names, so it is not read; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "portfolio_strategy_lab.eligible_pool_short": {
-  "detail": "On {subject} fewer listings are both tradable and scored than the strategy book selects per rebalance, so the run stopped before writing any of its book. Read that session's data issues (`issue list`) and the strategy's scoring (`score show`); a book whose controls admit it runs again with fewer names per rebalance (`top_k`).",
+  "detail": "On {subject} fewer listings are both tradable and scored than the strategy book selects per rebalance, so the run stopped before writing any of its book. Read that session's data issues (`alphalattice issue list`) and the strategy's scoring (`alphalattice score show`); a book whose controls admit it runs again with fewer names per rebalance (`top_k`).",
   "next_action": "READ_THE_SESSIONS_DATA_AND_SCORES"
  },
  "portfolio_update.eligible_pool_short": {
-  "detail": "On {subject} fewer listings are both tradable and scored than the active book selects per rebalance, so the update stopped before proposing its positions. Read that session's data issues (`issue list`) and its scoring (`score show`), and plan the update again once they cover enough names, or a person activates a book run with fewer names.",
+  "detail": "On {subject} fewer listings are both tradable and scored than the active book selects per rebalance, so the update stopped before proposing its positions. Read that session's data issues (`alphalattice issue list`) and its scoring (`alphalattice score show`), and plan the update again once they cover enough names, or a person activates a book run with fewer names.",
   "next_action": "READ_THE_SESSIONS_DATA_AND_SCORES"
  },
  "portfolio_update.not_installed": {
@@ -564,7 +568,7 @@
   "next_action": "NAME_ONE_OF_THE_STUDYS_SESSIONS"
  },
  "product_host.evidence_review_experiment_not_published": {
-  "detail": "The Task named has published no study book at that session -- it is not a Task of this workspace, it is still running, or it stopped -- so there is nothing to review; read the Task (`task show`) and name the study's book as its readback offers it.",
+  "detail": "The Task named has published no study book at that session -- it is not a Task of this workspace, it is still running, or it stopped -- so there is nothing to review; read the Task (`alphalattice task show`) and name the study's book as its readback offers it.",
   "next_action": "READ_THE_TASK"
  },
  "product_host.evidence_review_experiment_receipt_mismatch": {
@@ -628,7 +632,7 @@
   "next_action": "NAME_THE_UPDATES_OWN_TASK"
  },
  "product_host.evidence_task_adapter_absent": {
-  "detail": "This Host has no admitted evidence source package and retrieval runtime, so no evidence is prepared or read here; under the source consent already given, use the offered `evidence install` setup to install them in the running Host.",
+  "detail": "This Host has no admitted evidence source package and retrieval runtime, so no evidence is prepared or read here; under the source consent already given, use the offered `alphalattice evidence install` setup to install them in the running Host.",
   "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME"
  },
  "research_authoring.document_unparsable": {
@@ -636,15 +640,15 @@
   "next_action": "CORRECT_DECLARATION_AND_REPLAN"
  },
  "research_authoring.evidence_artifact_invalid": {
-  "detail": "A stored evidence file of this study does not read as its record says; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
+  "detail": "A stored evidence file of this study does not read as its record says; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "research_authoring.evidence_unavailable_for_replay": {
-  "detail": "This study's sealed evidence is not in the workspace, so it is not read back or replayed; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
+  "detail": "This study's sealed evidence is not in the workspace, so it is not read back or replayed; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read the study there. Running the same declaration again reuses this sealed Task and meets the same missing file.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "research_authoring.experiment_section_missing": {
-  "detail": "A declaration holds an `experiment` section at its top level; `study controls` answers a template that has one.",
+  "detail": "A declaration holds an `experiment` section at its top level; `alphalattice study controls` answers a template that has one.",
   "next_action": "CORRECT_DECLARATION_AND_REPLAN"
  },
  "research_experiment.agent_execution_not_admitted": {
@@ -652,7 +656,7 @@
   "next_action": "SEND_IT_IN_THE_AGENT_SESSION"
  },
  "research_experiment.document_invalid": {
-  "detail": "The declaration does not meet its contract; `study controls` answers a template that does, and `schema show EXPERIMENT_PLAN` names every field.",
+  "detail": "The declaration does not meet its contract; `alphalattice study controls` answers a template that does, and `schema show EXPERIMENT_PLAN` names every field.",
   "next_action": "CORRECT_DECLARATION_AND_REPLAN"
  },
  "research_experiment.execution_binding_changed": {
@@ -660,11 +664,11 @@
   "next_action": "PLAN_AGAIN_AND_RUN_THE_NEW_PREVIEW"
  },
  "research_experiment.input_file_set_changed": {
-  "detail": "The research input's files are not the set its binding recorded (a file was added or removed); bind the input again (`input plan`, which a person confirms) and plan from the new binding.",
+  "detail": "The research input's files are not the set its binding recorded (a file was added or removed); bind the input again (`alphalattice input plan`, which a person confirms) and plan from the new binding.",
   "next_action": "ASK_A_PERSON_TO_CONFIRM_A_NEW_INPUT_BINDING"
  },
  "research_experiment.input_file_tampered": {
-  "detail": "A file of the research input no longer holds the content its binding recorded; restore the file, or bind the input again (`input plan`, which a person confirms) and plan from the new binding.",
+  "detail": "A file of the research input no longer holds the content its binding recorded; restore the file, or bind the input again (`alphalattice input plan`, which a person confirms) and plan from the new binding.",
   "next_action": "ASK_A_PERSON_TO_CONFIRM_A_NEW_INPUT_BINDING"
  },
  "research_experiment.insufficient_listing_support": {
@@ -684,7 +688,7 @@
   "next_action": "PLAN_AGAIN_AND_RUN_THE_NEW_PREVIEW"
  },
  "research_experiment.preview_required": {
-  "detail": "A study runs the plan its preview answered: plan it first (`study plan`), then run the plan hash the preview names.",
+  "detail": "A study runs the plan its preview answered: plan it first (`alphalattice study plan`), then run the plan hash the preview names.",
   "next_action": "PLAN_THEN_RUN_THE_PREVIEW"
  },
  "research_experiment.refused": {
@@ -692,19 +696,19 @@
   "next_action": "READ_CAPABILITIES_SCHEMA"
  },
  "research_experiment.task_binding_mismatch": {
-  "detail": "A stored study Task no longer matches the contract this release rebuilds for it, so nothing was planned or run. The study is unchanged; the release reads it wrongly. Report it with the Task list (`task list`).",
+  "detail": "A stored study Task no longer matches the contract this release rebuilds for it, so nothing was planned or run. The study is unchanged; the release reads it wrongly. Report it with the Task list (`alphalattice task list`).",
   "next_action": "REPORT_THE_TASK_BINDING"
  },
  "research_foundation.admission_artifact_unavailable": {
-  "detail": "The admission's recorded artifacts cannot be read. Inspect Research inputs (`input list`) and start a new Factor study (`study controls`, then `study plan`) with an explicit declaration; no earlier source graph is inferred.",
+  "detail": "The admission's recorded artifacts cannot be read. Inspect Research inputs (`alphalattice input list`) and start a new Factor study (`alphalattice study controls`, then `alphalattice study plan`) with an explicit declaration; no earlier source graph is inferred.",
   "next_action": "READ_INPUTS_AND_PLAN_A_FACTOR_STUDY"
  },
  "research_foundation.admission_binding_mismatch": {
-  "detail": "The sealed Foundation admission disagrees with its recorded Foundation binding, so it is not read. Read `backup list --view full`; restore a verified generation that holds both records into a new or empty directory outside the backup root and the original workspace with `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>`, then open the restored workspace and read the admission there.",
+  "detail": "The sealed Foundation admission disagrees with its recorded Foundation binding, so it is not read. Read `alphalattice backup list --view full`; restore a verified generation that holds both records into a new or empty directory outside the backup root and the original workspace with `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>`, then open the restored workspace and read the admission there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "research_foundation.admission_identity_invalid": {
-  "detail": "This sealed Foundation admission no longer matches the hash it is named by, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read it there. Sealing the same Foundation again reuses the sealed admission and meets the same file.",
+  "detail": "This sealed Foundation admission no longer matches the hash it is named by, so it is not read; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and read it there. Sealing the same Foundation again reuses the sealed admission and meets the same file.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "research_foundation.preview_required": {
@@ -720,11 +724,11 @@
   "next_action": "LIST_THE_HISTORY"
  },
  "research_input.preview_required": {
-  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the input's capture again (`input plan`), then confirm the plan hash the new answer names.",
+  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the input's capture again (`alphalattice input plan`), then confirm the plan hash the new answer names.",
   "next_action": "PLAN_THE_CAPTURE_AGAIN"
  },
  "research_input.version_not_admitted": {
-  "detail": "The binding named is not a version of this research input; `input list` lists each input's versions.",
+  "detail": "The binding named is not a version of this research input; `alphalattice input list` lists each input's versions.",
   "next_action": "SELECT_INPUT_VERSION"
  },
  "research_strategy.completed_parent_required": {
@@ -764,11 +768,11 @@
   "next_action": "NAME_PARENTS_OF_ONE_INPUT"
  },
  "research_strategy.parent_kind_or_component_mismatch": {
-  "detail": "A strategy needs one Alpha lifecycle study for each component its controls require (`required_components`) and one Risk covariance study, and the studies named do not match. Read the strategy's controls (`strategy controls`) for what each component needs.",
+  "detail": "A strategy needs one Alpha lifecycle study for each component its controls require (`required_components`) and one Risk covariance study, and the studies named do not match. Read the strategy's controls (`alphalattice strategy controls`) for what each component needs.",
   "next_action": "READ_THE_STRATEGY_CONTROLS"
  },
  "research_strategy.preview_required": {
-  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the strategy's preparation again (`strategy plan`) from the same declaration, then run the plan hash the new answer names.",
+  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the strategy's preparation again (`alphalattice strategy plan`) from the same declaration, then run the plan hash the new answer names.",
   "next_action": "PLAN_THE_STRATEGY_AGAIN"
  },
  "research_strategy.risk_history_insufficient": {
@@ -780,15 +784,15 @@
   "next_action": "STUDY_RISK_OVER_THE_NEEDED_WINDOW"
  },
  "research_strategy.task_kind_mismatch": {
-  "detail": "The Task named is not a strategy preparation; read it with `task show` and name the strategy's own preparation Task.",
+  "detail": "The Task named is not a strategy preparation; read it with `alphalattice task show` and name the strategy's own preparation Task.",
   "next_action": "READ_THE_TASK"
  },
  "research_update.binding_changed": {
-  "detail": "The update was planned on bindings that have changed since -- the strategy's activation or models, its catalog or the workspace's declaration -- so it no longer runs or resumes, and no later update of the strategy is planned while it waits; cancel its Task (`research-update show --package <package>` names it), then plan the update again.",
+  "detail": "The update was planned on bindings that have changed since -- the strategy's activation or models, its catalog or the workspace's declaration -- so it no longer runs or resumes, and no later update of the strategy is planned while it waits; cancel its Task (`alphalattice research-update show --package <package>` names it), then plan the update again.",
   "next_action": "CANCEL_THE_UPDATE_AND_PLAN_AGAIN"
  },
  "research_input.publication_unavailable": {
-  "detail": "The publication record cannot be read. Inspect the workspace (`workspace show`), storage and kept backups (`backup list`); restore a generation that holds it into a new directory before reading this input there. No input identity or published state is inferred from unreadable bytes.",
+  "detail": "The publication record cannot be read. Inspect the workspace (`alphalattice workspace show`), storage and kept backups (`alphalattice backup list`); restore a generation that holds it into a new directory before reading this input there. No input identity or published state is inferred from unreadable bytes.",
   "next_action": "INSPECT_STORAGE_AND_RESTORE_THE_PUBLICATION"
  },
  "research_update.input_source_access_not_admitted": {
@@ -812,7 +816,7 @@
   "next_action": "READ_THE_TASK_OR_THE_STRATEGYS_OWN_LATEST"
  },
  "research_workspace.manifest_refused": {
-  "detail": "The workspace's manifest does not read as its contract says (`{subject}`: each field refused and its rule), so nothing in it runs; restore the workspace from a backup that holds a readable manifest (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "detail": "The workspace's manifest does not read as its contract says (`{subject}`: each field refused and its rule), so nothing in it runs; restore the workspace from a backup that holds a readable manifest (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "research_workspace.manifest_unreadable": {
@@ -840,15 +844,15 @@
   "next_action": "SELECT_THE_BOOK_AND_PREVIEW_EVIDENCE"
  },
  "risk_report.completed_risk_required": {
-  "detail": "A risk report links a Risk study that has published, and the Task named has not; run it, or name one `study list` shows published.",
+  "detail": "A risk report links a Risk study that has published, and the Task named has not; run it, or name one `alphalattice study list` shows published.",
   "next_action": "NAME_A_PUBLISHED_RISK_STUDY"
  },
  "risk_research.formation_selection_requested_axis_unavailable": {
-  "detail": "The Risk study asks for formation sessions its estimator cannot form: each needs its lookback of earlier sessions in the research input. Start the window where that history exists; for a book's Risk study, the Alpha study's scored formations, whose first and last `study show` of the Alpha study names.",
+  "detail": "The Risk study asks for formation sessions its estimator cannot form: each needs its lookback of earlier sessions in the research input. Start the window where that history exists; for a book's Risk study, the Alpha study's scored formations, whose first and last `alphalattice study show` of the Alpha study names.",
   "next_action": "START_THE_WINDOW_AFTER_THE_LOOKBACK"
  },
  "risk_research.parameter_value_not_admitted": {
-  "detail": "A Risk parameter's value is not one the installed estimator admits; `study controls` lists each parameter's admitted values.",
+  "detail": "A Risk parameter's value is not one the installed estimator admits; `alphalattice study controls` lists each parameter's admitted values.",
   "next_action": "EDIT_DECLARATION_AND_PLAN"
  },
  "setup.command_failed": {
@@ -880,15 +884,15 @@
   "next_action": "REPORT_THE_SANITIZED_CAUSE_AND_SETUP_INPUTS"
  },
  "storage.cleanup_interrupted": {
-  "detail": "The approved cleanup stopped at a file the system would not release (held by another program, or not removable); it is journalled where it stopped, and a person resumes it (`storage confirm` on its plan) once the file is free.",
+  "detail": "The approved cleanup stopped at a file the system would not release (held by another program, or not removable); it is journalled where it stopped, and a person resumes it (`alphalattice storage confirm` on its plan) once the file is free.",
   "next_action": "ASK_A_PERSON_TO_RESUME_THE_CLEANUP"
  },
  "storage.cleanup_plan_stale": {
-  "detail": "What the cleanup would release changed since it was planned (a reference moved, or an input went); plan the cleanup again (`storage plan`) for a person to confirm.",
+  "detail": "What the cleanup would release changed since it was planned (a reference moved, or an input went); plan the cleanup again (`alphalattice storage plan`) for a person to confirm.",
   "next_action": "PLAN_THE_CLEANUP_AGAIN"
  },
  "storage.cleanup_recovery_required": {
-  "detail": "An approved cleanup has not finished; a person resumes it (`storage confirm` on its plan) before another is planned or an input changes.",
+  "detail": "An approved cleanup has not finished; a person resumes it (`alphalattice storage confirm` on its plan) before another is planned or an input changes.",
   "next_action": "ASK_A_PERSON_TO_RESUME_THE_CLEANUP"
  },
  "storage.cleanup_target_in_use": {
@@ -896,15 +900,15 @@
   "next_action": "CONFIRM_THE_CLEANUP_LATER"
  },
  "storage.cleanup_target_protected": {
-  "detail": "A target of the cleanup is not eligible under the current roots (something still uses it, or only its owner may release it); plan the cleanup again (`storage plan`).",
+  "detail": "A target of the cleanup is not eligible under the current roots (something still uses it, or only its owner may release it); plan the cleanup again (`alphalattice storage plan`).",
   "next_action": "PLAN_THE_CLEANUP_AGAIN"
  },
  "storage.input_binding_missing": {
-  "detail": "The retained input manifest at {subject}/manifest.json is missing, so storage cannot verify its retained references. Restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "detail": "The retained input manifest at {subject}/manifest.json is missing, so storage cannot verify its retained references. Restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "storage.managed_capacity_exceeded": {
-  "detail": "Managed storage exceeds the workspace cap. Raise the cap (`storage set --cap-bytes <bytes>`) or preview a cleanup (`storage plan`) for the person to confirm.",
+  "detail": "Managed storage exceeds the workspace cap. Raise the cap (`alphalattice storage set --cap-bytes <bytes>`) or preview a cleanup (`alphalattice storage plan`) for the person to confirm.",
   "next_action": "RAISE_THE_CAP_OR_PLAN_A_CLEANUP"
  },
  "strategy_activation.refused": {
@@ -924,7 +928,7 @@
   "next_action": "READ_THE_TASK_OR_THE_STRATEGYS_OWN_LATEST"
  },
  "strategy_score.alpha_artifact_unreadable": {
-  "detail": "A stored Alpha file this score reads is missing, stale or no longer matches its record, so it is not read; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
+  "detail": "A stored Alpha file this score reads is missing, stale or no longer matches its record, so it is not read; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "strategy_score.input_preparation_not_installed": {
@@ -936,7 +940,7 @@
   "next_action": "RUN_THE_BOOK_AGAIN_AND_ACTIVATE_IT"
  },
  "strategy_score.plan_required": {
-  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the score again (`score plan`) for the same package, then run the plan hash the new answer names.",
+  "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the score again (`alphalattice score plan`) for the same package, then run the plan hash the new answer names.",
   "next_action": "PLAN_THE_SCORE_AGAIN"
  },
  "strategy_score.strategy_package_required": {
@@ -948,7 +952,7 @@
   "next_action": "READ_THE_TASK_OR_THE_STRATEGYS_OWN_LATEST"
  },
  "strategy_score.workspace_inputs_not_ready": {
-  "detail": "The workspace's data is not ready to score on ({subject}): a provider's deferral or a data case holds it, an update of it has not finished, or its features are being built. The Task that holds it goes on by its own way, a deferral once its retry time has passed; with none, a data update settles it (`data-update plan`, then run its plan) and its read names any data case. Then plan again.",
+  "detail": "The workspace's data is not ready to score on ({subject}): a provider's deferral or a data case holds it, an update of it has not finished, or its features are being built. The Task that holds it goes on by its own way, a deferral once its retry time has passed; with none, a data update settles it (`alphalattice data-update plan`, then run its plan) and its read names any data case. Then plan again.",
   "next_action": "SETTLE_THE_WORKSPACE_DATA"
  },
  "task_control.child_start_failed": {
@@ -972,11 +976,11 @@
   "next_action": "SERVE_WITH_A_WRITABLE_BACKUP_ROOT"
  },
  "workspace_data_update.archive_failed": {
-  "detail": "The last data update's backup could not be taken, neither while the Host was idle after it nor again when this update started; nothing was changed. Read `backup list`, whose last automatic attempt names the cause, resolve it, then run this update again. What the last update published stands.",
+  "detail": "The last data update's backup could not be taken, neither while the Host was idle after it nor again when this update started; nothing was changed. Read `alphalattice backup list`, whose last automatic attempt names the cause, resolve it, then run this update again. What the last update published stands.",
   "next_action": "READ_BACKUP_LIST_THEN_RUN_THE_UPDATE_AGAIN"
  },
  "workspace_data_update.artifact_missing": {
-  "detail": "A file the data update's record names is missing from the workspace; restore the workspace from a backup that holds it (`backup list`, then `backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and update there.",
+  "detail": "A file the data update's record names is missing from the workspace; restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and update there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "workspace_data_update.existing_owner_action_required": {
@@ -992,7 +996,7 @@
   "next_action": "DATA_UPDATE_READBACK"
  },
  "workspace_data_update.plan_required": {
-  "detail": "A data update's plan stays runnable for 60 minutes after its answer, across a Host restart, and a change plan until its person confirms it; this one is past that or was never planned in this workspace, so nothing ran. Plan the update again (`data-update plan`), then run the plan hash the new answer names.",
+  "detail": "A data update's plan stays runnable for 60 minutes after its answer, across a Host restart, and a change plan until its person confirms it; this one is past that or was never planned in this workspace, so nothing ran. Plan the update again (`alphalattice data-update plan`), then run the plan hash the new answer names.",
   "next_action": "PLAN_THE_UPDATE_AGAIN"
  },
  "workspace_data_update.refused": {
@@ -1064,11 +1068,11 @@
   "next_action": "INSPECT_BACKUPS_AND_RESTORE_TASK_CONTROL_INTO_A_NEW_DIRECTORY"
  },
  "storage.cap_setting_invalid": {
-  "detail": "The storage cap must be auto or a positive whole byte count. Set it again (`storage set --cap-bytes auto`).",
+  "detail": "The storage cap must be auto or a positive whole byte count. Set it again (`alphalattice storage set --cap-bytes auto`).",
   "next_action": "SET_THE_STORAGE_CAP"
  },
  "storage.cap_setting_unreadable": {
-  "detail": "The workspace storage cap setting could not be read. Set it again (`storage set --cap-bytes auto`); retained records stay intact.",
+  "detail": "The workspace storage cap setting could not be read. Set it again (`alphalattice storage set --cap-bytes auto`); retained records stay intact.",
   "next_action": "SET_THE_STORAGE_CAP"
  },
  "alternative_evidence.table_view_correspondence_unproved": {
@@ -1080,7 +1084,7 @@
   "next_action": "RETRY_THE_ADMITTED_MODEL_INSTALLATION"
  },
  "task_control.queue_full": {
-  "detail": "Every waiting Task place is occupied. Read `task list` and `cpu-budget show`; the agent may change `tasks_waiting` with `cpu-budget set --queue <tasks_waiting>` before submitting another Task, or wait for a queued Task to finish or cancel it.",
+  "detail": "Every waiting Task place is occupied. Read `alphalattice task list` and `alphalattice cpu-budget show`; the agent may change `tasks_waiting` with `alphalattice cpu-budget set --queue <tasks_waiting>` before submitting another Task, or wait for a queued Task to finish or cancel it.",
   "next_action": "READ_TASKS_OR_CHANGE_TASKS_WAITING"
  },
  "local_client.codex_queue_unavailable": {
@@ -1088,7 +1092,7 @@
   "next_action": "WAIT_IN_THE_TURN"
  },
  "alpha_modeling.lightgbm_thread_canary_mismatch": {
-  "detail": "LightGBM on this machine grew other trees at the CPU budget's thread count than the sealed canary, so the study did not fit. Set the workspace's CPU budget to 1 (`cpu-budget set --cores 1`) and run it again: on one thread it fits as the method was sealed.",
+  "detail": "LightGBM on this machine grew other trees at the CPU budget's thread count than the sealed canary, so the study did not fit. Set the workspace's CPU budget to 1 (`alphalattice cpu-budget set --cores 1`) and run it again: on one thread it fits as the method was sealed.",
   "next_action": "SET_CPU_BUDGET_TO_ONE_AND_RUN_STUDY_AGAIN"
  },
  "alternative_evidence.delivery_budget_below_minimum_unit": {
@@ -1308,7 +1312,7 @@
   "next_action": "SERVE_THE_WORKSPACE_THEN_BIND_THE_NATIVE_SESSION"
  },
  "goal.reference_not_found": {
-  "detail": "The saved Goal revision has no reference with this ID. Read its narrative (`goal narrative --revision <goal_hash>`) and choose a reference recorded there.",
+  "detail": "The saved Goal revision has no reference with this ID. Read its narrative (`alphalattice goal narrative --revision <goal_hash>`) and choose a reference recorded there.",
   "next_action": "READ_THE_SAVED_REVISION_AND_CHOOSE_A_REFERENCE"
  },
  "operations.schema_reference_not_local": {
@@ -1504,7 +1508,7 @@
   "next_action": "ASK_THE_PERSON_AGAIN"
  },
  "research_update.refused": {
-  "detail": "The update could not be planned or admitted, and the strategy's activation stands. Plan it again from the offered `update` request, or with `research-update plan --package <package>`, adding `--through <session>` for a named date's update.",
+  "detail": "The update could not be planned or admitted, and the strategy's activation stands. Plan it again from the offered `update` request, or with `alphalattice research-update plan --package <package>`, adding `--through <session>` for a named date's update.",
   "next_action": "PLAN_THE_UPDATE_AGAIN"
  },
  "first_use.date_outside_calendar": {
@@ -1512,7 +1516,7 @@
   "next_action": "TELL_THE_PERSON_THE_DATE_IS_NOT_A_SESSION"
  },
  "committee.not_open": {
-  "detail": "No committee is open on this update; open it with `committee open --update <task>`.",
+  "detail": "No committee is open on this update; open it with `alphalattice committee open --update <task>`.",
   "next_action": "OPEN_THE_COMMITTEE"
  },
  "committee.publication_required": {
@@ -1536,7 +1540,7 @@
   "next_action": "SEND_THE_OFFERED_SELECTOR"
  },
  "committee.message_refused": {
-  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias. On a review bundle's thread: MEMBER, an answer sent without the bundle's key; KEY, another bundle's key; ENDED, a different answer after its accepted one. Read the floor with `committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
+  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias. For review and committee members: MEMBER, a missing own session or bundle key; KEY, another member's key; ENDED, changed work after the thread ends. Read the floor with `alphalattice committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
   "next_action": "READ_THE_FLOOR"
  },
  "committee.session_required": {
@@ -1548,7 +1552,7 @@
   "next_action": "READ_OR_WAIT_FOR_THE_EXISTING_TASK"
  },
  "task_control.wake_task_stopped": {
-  "detail": "The Task is {subject}, so it moves only on a request and a wake would never come. Read its way on with `task show <task>` and follow the recovery it offers.",
+  "detail": "The Task is {subject}, so it moves only on a request and a wake would never come. Read its way on with `alphalattice task show <task>` and follow the recovery it offers.",
   "next_action": "READ_THE_TASKS_WAY_ON"
  },
  "research_update.target_not_completed": {
@@ -1583,6 +1587,10 @@
   "detail": "This case is no longer waiting for a decision, so nothing was applied. Read the data issues for where it stands now and follow its offer.",
   "next_action": "DATA_ISSUES"
  },
+ "feature_input.option_changed": {
+  "detail": "The option or evidence does not match this data case's current offered catalogue, so nothing was applied. Read the data issues and use an exact offered choice.",
+  "next_action": "DATA_ISSUES"
+ },
  "feature_input.resolution_conflict": {
   "detail": "Another decision for this case is already recorded, so this one conflicts with it and was not applied. Read the data issues for where the case stands now and follow its offer.",
   "next_action": "DATA_ISSUES"
@@ -1590,5 +1598,9 @@
  "feature_input.case_already_decided": {
   "detail": "A decision for this case is already recorded and stands, so it takes no other choice now. Read the data issues for where it stands and follow its offer.",
   "next_action": "DATA_ISSUES"
+ },
+ "workspace_preparation.binding_changed": {
+  "detail": "This preparation's implementation has changed since its plan. Read preparation controls and plan again; verified stages and current data choices remain kept.",
+  "next_action": "WORKSPACE_PREPARE_PLAN"
  }
 }

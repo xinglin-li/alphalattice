@@ -381,7 +381,7 @@ from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task imp
     TASK_KIND as CRO_REVIEW_TASK_KIND,
 )
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AgentRun
-from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord, answer_read
+from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord, AgentRole, answer_read
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
@@ -611,39 +611,7 @@ class PortfolioResearchOperations:
             self._task_facts,
             workspace=self.workspace_session.workspace,
         )
-        self.preparation = WorkspacePreparationApplication(
-            self.workspace_session,
-            clock=self.dispatcher.clock,
-            provider=self.data_update.provider if self.data_update else None,
-            source_loader=self.data_update.source_loader if self.data_update else None,
-            recorded_data_confirmation=self.goals.recorded_data_confirmation,
-        )
-        if self.data_update is not None:
-            self.data_update.recorded_data_confirmation = self.goals.recorded_data_confirmation
-        self.storage = ResearchInputStorage(
-            self.workspace_session,
-            evidence=self._evidence_storage_binding(),
-            clock=self.dispatcher.clock,
-        )
-        self._bind_evidence_storage_admission()
-        self.data_issues = WorkspaceDataIssueApplication(
-            self.workspace_session, self.dispatcher.clock
-        )
-        self.input_capture = ResearchInputCaptureApplication(
-            self.workspace_session, clock=self.dispatcher.clock
-        )
-        self.model_training_inputs = ModelTrainingInputApplication(
-            self.workspace_session, clock=self.dispatcher.clock
-        )
-        self.feature_builds = ResearchFeatureBuildApplication(
-            self.workspace_session, clock=self.dispatcher.clock
-        )
-        self.research_strategies = ResearchStrategyPreparation(
-            self.workspace_session,
-            clock=self.dispatcher.clock,
-            read_experiment=lambda task_id: self.experiments.readback(task_id),
-            list_experiments=self.experiments.listing,
-        )
+        self._compose_input_owners()
         self.trials = FeatureTrials(
             workspace=self.workspace_session.workspace,
             experiments=self.experiments,
@@ -707,6 +675,46 @@ class PortfolioResearchOperations:
             clock=self.dispatcher.clock,
             execute=lambda request: self.execute(request, caller="SERVICE_AUTOMATION"),
             resume=partial(resume_held, self),
+        )
+
+    def _compose_input_owners(self) -> None:
+        """Compose input owners under one retained session and the Goal's exact data authority."""
+        self.preparation = WorkspacePreparationApplication(
+            self.workspace_session,
+            clock=self.dispatcher.clock,
+            provider=self.data_update.provider if self.data_update else None,
+            source_loader=self.data_update.source_loader if self.data_update else None,
+            recorded_data_confirmation=self.goals.recorded_data_confirmation,
+            data_rule=self.goals.data_rule,
+        )
+        if self.data_update is not None:
+            self.data_update.recorded_data_confirmation = self.goals.recorded_data_confirmation
+        self.storage = ResearchInputStorage(
+            self.workspace_session,
+            evidence=self._evidence_storage_binding(),
+            clock=self.dispatcher.clock,
+        )
+        self._bind_evidence_storage_admission()
+        self.data_issues = WorkspaceDataIssueApplication(
+            self.workspace_session,
+            self.dispatcher.clock,
+            recorded_data_confirmation=self.goals.recorded_data_confirmation,
+            preparation_current=self.preparation.binding_current,
+        )
+        self.input_capture = ResearchInputCaptureApplication(
+            self.workspace_session, clock=self.dispatcher.clock
+        )
+        self.model_training_inputs = ModelTrainingInputApplication(
+            self.workspace_session, clock=self.dispatcher.clock
+        )
+        self.feature_builds = ResearchFeatureBuildApplication(
+            self.workspace_session, clock=self.dispatcher.clock
+        )
+        self.research_strategies = ResearchStrategyPreparation(
+            self.workspace_session,
+            clock=self.dispatcher.clock,
+            read_experiment=lambda task_id: self.experiments.readback(task_id),
+            list_experiments=self.experiments.listing,
         )
 
     def _worker_idle(self) -> None:
@@ -894,6 +902,9 @@ class PortfolioResearchOperations:
             )
         )
         self._settle_first_use(goal)
+        body = self.goals.resume_decided(
+            goal, request, body, lambda r: self.execute(r, caller=caller)
+        )
         # The goal the request counted toward, which the answer's context names (V401).
         return worded_refusal(
             _carried({**body, "attributed_goal_id": str(goal.goal_id)}, request),
@@ -1283,6 +1294,34 @@ class PortfolioResearchOperations:
             gate.task_admitted(request.operation, plan_hash, task_id)
         return body
 
+    def _delivery_export(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        """Export the selected sealed update or research result with its standing disclosures."""
+        from .research_delivery import export_research_delivery, export_update_delivery
+
+        if request.update_task_id is not None:
+            task, now = str(request.update_task_id), self.dispatcher.clock()
+            self._file_floor(task, now)
+            readback = self._read_review_update(
+                request.update_task_id, str(request.update_publication_hash)
+            )
+            context = cast(dict[str, Any] | None, readback.get("committee_context"))
+            floor = committee.floor_of(self.goals.store, task) if context else None
+            return export_update_delivery(
+                request=request,
+                readback=self._positions(readback, committee_context=context),
+                review=self.review,
+                committee=None if floor is None else committee.commentary(floor, now),
+                data_decisions=self.data_issues.rule_decisions(),
+            )
+        return export_research_delivery(
+            request=request,
+            experiments=self.experiments,
+            review=self.review,
+            caller=caller,
+        )
+
     def _execute(
         self,
         request: PortfolioResearchOperationRequest,
@@ -1525,28 +1564,7 @@ class PortfolioResearchOperations:
                 if request.operation == "EXPERIMENT_VERIFY_ALL":
                     return self.verify_all()
                 if request.operation == "EXPERIMENT_DELIVERY_EXPORT":
-                    from .research_delivery import export_research_delivery, export_update_delivery
-
-                    if request.update_task_id is not None:
-                        task, now = str(request.update_task_id), self.dispatcher.clock()
-                        self._file_floor(task, now)
-                        readback = self._read_review_update(
-                            request.update_task_id, str(request.update_publication_hash)
-                        )
-                        context = cast(dict[str, Any] | None, readback.get("committee_context"))
-                        floor = committee.floor_of(self.goals.store, task) if context else None
-                        return export_update_delivery(
-                            request=request,
-                            readback=self._positions(readback, committee_context=context),
-                            review=self.review,
-                            committee=None if floor is None else committee.commentary(floor, now),
-                        )
-                    return export_research_delivery(
-                        request=request,
-                        experiments=self.experiments,
-                        review=self.review,
-                        caller=caller,
-                    )
+                    return self._delivery_export(request, caller)
                 return self.experiments.operate(
                     request, caller=caller, agent_execution=agent_execution
                 )
@@ -2142,6 +2160,24 @@ class PortfolioResearchOperations:
             }
         return body
 
+    @staticmethod
+    def _review_bundle_refusal(
+        error: Exception, role: AgentRole | None, selector: BookSelector | None
+    ) -> dict[str, object] | None:
+        """A bundle selector names its missing fields; an unavailable unit names its read."""
+        code = public_failure(error, "agent_bundle.refused")
+        # A packet named without its Task or unit is told how to name it (V242).
+        if str(error).partition(":")[0] in PACKET_SELECTOR_CODES | {
+            "agent_bundle.specialist_task_required",
+            "agent_bundle.reference_bound_exceeded",
+        }:
+            return agent_bundle_refusal(code, role=role)
+        # A unit that was not prepared says why and where the prepared ones are.
+        unit = unit_refusal(code, None if selector is None else selector.request_fields())
+        if unit is None:
+            return None
+        return unit
+
     def _review_operation(
         self,
         request: PortfolioResearchOperationRequest,
@@ -2154,7 +2190,7 @@ class PortfolioResearchOperations:
         """Research review does not require installing a frozen strategy.
 
         ``read_files`` is what an agent's answer named as read and ``agent_run`` who made it,
-        both kept with the answer (V260, V300).
+        both kept with the answer.
         """
         if request.operation not in {
             "EVIDENCE_CRO",
@@ -2198,22 +2234,15 @@ class PortfolioResearchOperations:
                         dispatcher=self.dispatcher,
                         view=parts[0],
                         route=parts[1],
+                        issue_view=lambda: self.data_issues.readback(
+                            limit=50, delegated_by=self._data_decisions(caller)
+                        ),
                     )
                 except (PortfolioEvidenceReviewError, ValueError) as error:
-                    code = public_failure(error, "agent_bundle.refused")
-                    # A packet named without its Task or unit is told how to name it (V242).
-                    if str(error).partition(":")[0] in PACKET_SELECTOR_CODES | {
-                        "agent_bundle.specialist_task_required",
-                        "agent_bundle.reference_bound_exceeded",
-                    }:
-                        return agent_bundle_refusal(code, role=request.agent_role)
-                    # A unit that was not prepared says why and where the prepared ones are (V388).
-                    unit = unit_refusal(
-                        code, None if selector is None else selector.request_fields()
-                    )
-                    if unit is None:
+                    refusal = self._review_bundle_refusal(error, request.agent_role, selector)
+                    if refusal is None:
                         raise
-                    return unit
+                    return refusal
                 return committee.issued(store, _review_outcome_body(prepared), now, file)
             case "AGENT_ANSWER_SUBMIT":
                 # The bundle's own submission and answer.
@@ -2275,7 +2304,7 @@ class PortfolioResearchOperations:
                     except ValueError as error:
                         # A packet prepared under authority the Host no longer holds -- an install
                         # replaced its package -- is refused by what moved, with the book's preview
-                        # that prepares the unit again (V547).
+                        # that prepares the unit again.
                         if not str(error).startswith(STALE_PACKET):
                             raise
                         return stale_packet_refusal(
@@ -2388,7 +2417,7 @@ class PortfolioResearchOperations:
                 if outcome.task_id is not None:
                     packets = self.review.packet_requests(selector, task_id=outcome.task_id)
                     chosen = self.review.default_selector(selector)
-                    # Nothing new: the CRO's review carries forward with its Task and book (V434).
+                    # Nothing new: the CRO's review carries forward with its Task and book.
                     carried: dict[str, dict[str, Any]] = {
                         "task": {"operation": "STATUS", "task_id": str(outcome.task_id)},
                         **(
@@ -3087,27 +3116,9 @@ class PortfolioResearchOperations:
                     ),
                 )
             case "DATA_ISSUE_CONFIRM" | "DATA_ISSUE_PREVIEW" | "DATA_ISSUE_DELEGATE":
-                assert request.data_issue_case_token is not None
-                assert request.data_issue_evidence_hash is not None
-                assert request.data_issue_option_id is not None
-                assert request.data_issue_option_hash is not None
-                if request.operation == "DATA_ISSUE_DELEGATE":
-                    assert request.task_id is not None
-                choice = dict(
-                    case_token=request.data_issue_case_token,
-                    evidence_hash=request.data_issue_evidence_hash,
-                    option_id=request.data_issue_option_id,
-                    option_hash=request.data_issue_option_hash,
-                )
                 return cast(
                     dict[str, object],
-                    self.data_issues.preview(**choice, delegated_by=self._data_decisions(caller))
-                    if request.operation == "DATA_ISSUE_PREVIEW"
-                    else self.data_issues.delegate(**choice, task_id=request.task_id, caller=caller)
-                    if request.operation == "DATA_ISSUE_DELEGATE"
-                    else self.data_issues.confirm(
-                        **choice, caller=caller, grant_hash=request.data_issue_grant_hash
-                    ),
+                    self.data_issues.operate(request, caller, self._data_decisions(caller)),
                 )
             case "RESEARCH_INPUTS":
                 # Discovery isolates each unreadable publication; exact input selection remains
@@ -3264,7 +3275,7 @@ class PortfolioResearchOperations:
                         WorkspaceDataUpdateCommand(self.data_update, plan)
                     )
                     # The update's Task as it is now, a stopped one reopened where its stop allows
-                    # (V600).
+                    # .
                     answer = self._run_answer(submitted, plan)
                     return {
                         **answer,
@@ -4050,7 +4061,7 @@ class PortfolioResearchOperations:
         elif projection.lifecycle.value == "DEFERRED":
             # A deferred Task waits on its retry time and then on its plan sent again, which no
             # waiter outlasts: its read says when and by which request, as its owner's readback
-            # words it, and a waiter ends on it with that (V507; V449: every state has its exit).
+            # words it, and a waiter ends on it with that.
             body.update(self._deferred_way(projection.task_kind, task_id))
         registry = self.workspace_session.task_control_registry
         try:
@@ -6837,12 +6848,13 @@ _LIVE_LIFECYCLES = frozenset(
 _PREPARATION_IN_FLIGHT = frozenset(
     {
         TaskLifecycle.QUEUED,
+        TaskLifecycle.RECOVERY_REQUIRED,
         TaskLifecycle.RUNNING,
         TaskLifecycle.CANCEL_REQUESTED,
     }
 )
-"""A preparation Task still on its way: its plan confirmed again answers it, never another
-(V430: the check named `IN_PROGRESS`, which no Task holds, and missed every running one). A
+"""A preparation Task still on its way, a resumed one among them: its plan confirmed again
+answers it, never another (V430: the check named `IN_PROGRESS`, which no Task holds). A
 deferred one is not on its way: its plan confirmed again goes to its owner, which refuses it
 before the retry time and resumes the same Task after (V375; answered here as in flight,
 the offered `resume` never reached the owner)."""

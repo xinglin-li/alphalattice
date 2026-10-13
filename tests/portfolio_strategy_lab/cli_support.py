@@ -60,7 +60,7 @@ def _assert_commands_parse(
             except ValueError as error:
                 failures.append((location, command, str(error)))
             capsys.readouterr()
-    assert commands and failures == []
+    assert commands and failures == [], failures
 
 
 """Move the existing project/session builders to their shared support owner."""

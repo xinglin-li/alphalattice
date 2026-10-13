@@ -346,7 +346,7 @@ const Data = (() => {
       if (!successor) {
         let front = references.get(fact.successor_task_id);
         if (!front) {
-          front = {id: fact.successor_task_id, task_id: fact.successor_task_id, kind: 'Task', name: 'Task', status: stateName(fact.successor_lifecycle), successorReference: fact, earlierStops: []};
+          front = {id: fact.successor_task_id, task_id: fact.successor_task_id, kind: 'Task', name: 'Task', status: stateName(lifecycleOf(fact.successor_task_id, fact.successor_lifecycle)), successorReference: fact, earlierStops: []};
           references.set(fact.successor_task_id, front); fronts.set(row, front);
         }
         front.earlierStops.push(row); folded.add(row); continue;
@@ -459,10 +459,12 @@ const Data = (() => {
    * the date, by the owner's instant -- the date itself, never a relative day word (round 96:
    * a recorded instant is a fact; a word about the present is a claim the replay must not make). */
   const RUN_KINDS = {update: new Set(['workspace_data_update', 'workspace_preparation'])};
+  // A Task stopped for a data decision is waiting for it (A2A's input-required), not broken.
+  const decisionOwed = (v) => v.lifecycle === 'BLOCKED' && (v.latest_failure_code || v.failure_code) === 'data.truth_review_required';
   function runsOf(kind = 'task') {
     if (kind === 'session') return typeof LiveTeam !== 'undefined' && LiveTeam.runs ? LiveTeam.runs() : [];
     const starter = (id) => (typeof LiveActivity !== 'undefined' && LiveActivity.starterOf ? LiveActivity.starterOf(id) : '');
-    return activeTasks.filter((v) => kind === 'task' || RUN_KINDS[kind].has(v.task_kind)).map((v) => ({id: v.task_id, kind: v.task_kind, name: LiveViews.nameOf(v).name, markup: LiveViews.nameOf(v).markup || null, state: v.lifecycle, starter: starter(v.task_id), started: v.running_since || '', finished: stateMoving(v.lifecycle) ? '' : v.last_activity_at || '', running_seconds: v.running_seconds, current: v.current_stage || '', verified: [v.verified_stage_count, v.total_stage_count], object: v}));
+    return activeTasks.filter((v) => kind === 'task' || RUN_KINDS[kind].has(v.task_kind)).map((v) => ({id: v.task_id, kind: v.task_kind, name: LiveViews.nameOf(v).name, markup: LiveViews.nameOf(v).markup || null, state: decisionOwed(v) ? 'DATA_DECISION_PENDING' : v.lifecycle, starter: starter(v.task_id), started: v.running_since || '', finished: stateMoving(v.lifecycle) ? '' : v.last_activity_at || '', running_seconds: v.running_seconds, current: v.current_stage || '', verified: [v.verified_stage_count, v.total_stage_count], object: v}));
   }
   const runAt = (r) => String(r.finished || r.started || '');
   function groupByDay(runs) {
@@ -930,3 +932,17 @@ const Data = (() => {
     raw: () => source,
   };
 })();
+
+/* A recorded data choice names its actual executor and its retained delegation. */
+function dataDecisionWords(receipt) {
+  const actor=receipt?.actor_submission, rationale=receipt?.submission?.proposal?.rationale || '';
+  const delegated=rationale.startsWith('first-use-goal:') || actor?.actor_id?.startsWith('first-use-goal:');
+  const rule=rationale.split('; rule:')[1];
+  const ruled=actor?.actor_kind==='HOST_FALLBACK' && /^[a-f0-9]{64}$/.test(rule || '') && actor.actor_id==='host-rule:'+rule.slice(0,16);
+  return {word:t(actor?.actor_kind==='HUMAN'?'Your decision':'Decision'), facts:[
+    ruled ? ['',t('Decided by rule')] : [t('Decided by'),actor?.actor_kind && !(delegated && actor.actor_kind==='HUMAN') ? actorWords(actor.actor_kind) : ''],
+    [t('Decision'),delegated ? t('Decided under first-use delegation') : ''],
+  ].filter(([,value])=>value)};
+}
+
+/* ---- end of data decision words ---- */

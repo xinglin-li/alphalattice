@@ -635,3 +635,37 @@ def test_every_hashed_schema_goes_through_the_kernel() -> None:
                     )
                     found.add((path.relative_to(ROOT).as_posix(), name))
     assert found == _SCHEMA_DISPLAYS
+
+
+def test_preparation_identity_tracks_the_data_rule_and_not_grant_mechanics(tmp_path, monkeypatch):
+    """Grant mechanics leave preparation identity unchanged; data decision logic rotates it."""
+    from alphalattice.control.product_host.data_preparation import application
+
+    tree = ast.parse(Path(application.__file__).read_text(encoding="utf-8"))
+    function = next(
+        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_implementation"
+    )
+    paths = next(
+        ast.literal_eval(k.value)
+        for n in ast.walk(function)
+        if isinstance(n, ast.Call)
+        for k in n.keywords
+        if k.arg == "tracked_paths"
+    )
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config/identity-roles.json").write_bytes(
+        (ROOT / "config/identity-roles.json").read_bytes()
+    )
+    for relative in paths:
+        file = tmp_path / relative
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text("VALUE = 1\n", encoding="utf-8")
+    grant = tmp_path / "src/alphalattice/control/data_platform/delegation.py"
+    grant.write_text("GRANT = 1\n", encoding="utf-8")
+    monkeypatch.setattr(application, "resolve_playpen_root", lambda _: tmp_path)
+    before = application._implementation()
+    grant.write_text("GRANT = 2\n", encoding="utf-8")
+    assert application._implementation() == before
+    rule = tmp_path / "src/alphalattice/control/data_platform/data_decision_rule.py"
+    rule.write_text("VALUE = 2\n", encoding="utf-8")
+    assert application._implementation() != before

@@ -39,6 +39,55 @@ _OPERATOR_SWITCH = "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
 _ENDING = ("_CANCEL", "_ABANDON", "_STOP")
 
 
+def data_decision_findings(
+    feed: dict[str, Any], projection: dict[str, Any]
+) -> list[dict[str, str]]:
+    """The visible Task and rule attribution agree with their data owner, without a successor."""
+    shown = projection.get("data_decision", {})
+    task_id = feed["task_id"]
+    rows = [r for r in shown.get("rows", []) if r.get("id") == task_id]
+    runs = [r for r in shown.get("runs", []) if r.get("id") == task_id]
+    rules = set()
+    if len(rows) != 1 or len(runs) != 1:
+        rules.add("data.task_row")
+    waiting = (
+        feed.get("lifecycle") == "BLOCKED"
+        and feed.get("failure_code") == "data.truth_review_required"
+    )
+    expected = (
+        ("data_decision_pending", "warning", "Waiting for a decision")
+        if waiting
+        else ("succeeded", "good", "Completed")
+        if feed.get("lifecycle") == "SUCCEEDED"
+        else None
+    )
+    if expected and (
+        any((r.get("status"), r.get("tone"), r.get("word")) != expected for r in rows)
+        or any(str(r.get("state")).lower() != expected[0] for r in runs)
+    ):
+        rules.add("data.decision_state")
+    by_case = {r["case_token"]: r for r in shown.get("rule_labels", [])}
+    if any(
+        (
+            by_case.get(r["case_token"], {}).get("label"),
+            by_case.get(r["case_token"], {}).get("word"),
+        )
+        != ("", "Decided by rule")
+        for r in feed.get("rule_decisions", [])
+    ):
+        rules.add("data.rule_disclosure")
+    return [
+        {
+            "rule": rule,
+            "loop_part": "feedback",
+            "owner": "assets/workbench-source/js/app/live-workspace.js"
+            if rule == "data.rule_disclosure"
+            else "assets/workbench-source/js/app/data.js",
+        }
+        for rule in sorted(rules)
+    ]
+
+
 def _said(value: Any) -> Iterator[str]:
     """Each sentence an answer says, leaving out the operator's offline switch: the harness's
     own boundary, which only the person who launched the Host lifts."""
@@ -193,6 +242,9 @@ class Explorer:
     mutation_kinds: set[str] | None = None
     findings: list[dict[str, Any]] = field(default_factory=list)
     mutated: set[str] = field(default_factory=set)
+    observe: Callable[[dict[str, Any]], None] = lambda _: None
+    terminal: Callable[[dict[str, Any]], bool] = lambda _: False
+    terminal_reached: bool = False
 
     def inject(
         self,
@@ -481,6 +533,8 @@ class Explorer:
     def explore(self, starts: list[list[str]]) -> tuple[Grade, Trace]:
         """Walk every path from each start; the grade names each broken path and its part."""
         for argv in starts:
+            if self.terminal_reached:
+                break
             self._follow(self._send(argv, " ".join(argv)), (" ".join(argv),), {})
         trace = Trace(tuple(self.events))
         text = "\n".join(
@@ -523,6 +577,7 @@ class Explorer:
         settled = self._settled(answer, where)
         if settled is None:
             return  # the Task outlived the scenario's time box: a horizon, not a failure
+        self.observe(settled)
         code = str(settled.get("failure_code") or "")
         stops = self._grade(settled, where, code)
         if self._horizon(path, code, settled):
@@ -557,7 +612,9 @@ class Explorer:
             self.sent.add(sent_as)
             self._confirm_probe(settled, sent, step, where)
             failed = sent.get("outcome") in {"REFUSED", "FAILED"} or _state(sent) in STOPPED
-            self._follow(sent, (*path, name), {**seen, key: _way(sent)} if failed else seen)
+            # A decision taken moves the state: the same Task stopping again after it is no loop.
+            after = {} if decision.count(":") else seen
+            self._follow(sent, (*path, name), {**seen, key: _way(sent)} if failed else after)
 
     def _confirm_probe(
         self,
@@ -609,7 +666,8 @@ class Explorer:
         """A step limit, the walk's budget, or a way on that waits for its time."""
         timed = "not_due" in code and "retry_after_at" in json.dumps(answer)
         walked = sum("alphalattice.mutation" not in e.attributes for e in self.events)
-        return len(path) >= DEPTH or walked >= self.steps or timed
+        self.terminal_reached |= self.terminal(answer)
+        return self.terminal_reached or len(path) >= DEPTH or walked >= self.steps or timed
 
     def _settled(self, answer: dict[str, Any], where: str) -> dict[str, Any] | None:
         """The answer once its admitted Task has ended or stopped; None past the time box."""
@@ -644,6 +702,8 @@ class Explorer:
 
     def _step(self, name: str, step: dict[str, Any] | str, where: str) -> dict[str, Any] | None:
         """Send one offered request as it stands, or run one offered command as typed."""
+        if self.terminal_reached:
+            return None
         if isinstance(step, str):
             return self._send([step], where + f" > {name}", run=lambda argv: self.shell(argv[0]))
         document = self.work / f"offer-{len(self.events)}.json"

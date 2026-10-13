@@ -953,12 +953,7 @@ def explain(
         }
     if code == "alpha_modeling.lightgbm_thread_canary_mismatch":
         return {
-            "detail": (
-                "LightGBM on this machine grew other trees at the CPU budget's thread count "
-                "than the sealed canary, so the study did not fit. Set the workspace's CPU "
-                "budget to 1 (`cpu-budget set --cores 1`) and run it again: on one thread it "
-                "fits as the method was sealed."
-            ),
+            **refusal_words(code),
             "next_requests": {"status": {"operation": "STATUS", **task}} if task else {},
         }
     if code == "task_not_succeeded":

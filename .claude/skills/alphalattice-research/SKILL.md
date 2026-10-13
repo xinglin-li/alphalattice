@@ -12,19 +12,19 @@ At first use and any refusal naming a missing dependency, run `python -m alphala
 
 ## Shortest paths
 
-Begin at the person's own target (a date's positions, a named request), else at `workspace show`'s first `intents` entry, and each answer offers the next request ([command contract](references/operating.md)). One exact read needs no goal; multi-step work runs under one ([goals](references/goals.md)).
+Begin at the person's own target (a date's positions, a named request), else at `alphalattice workspace show`'s first `intents` entry, and each answer offers the next request ([command contract](references/operating.md)). One exact read needs no goal; multi-step work runs under one ([goals](references/goals.md)).
 
-- **First use from one sentence**: `first-use prepare --sentence` with the person's exact sentence and `--date` the date it names, then each answer's next action along its `first_use.road`: data, models and Risk, the book, activation with the date's update, the review of that date's positions ([guide](../../../AGENTS.md); [where a first use stands](references/research-lead.md)).
-- **Orient**: `workspace show` → the first intent's offered request.
-- **Run an installed research strategy forward**: `strategy-book controls` → activation, which admits its update → `research-update show` → `strategy-book review --update` → `review continue` ([leading research](references/research-lead.md)).
-- **Evidence and CRO review of a date's positions**: `strategy-book review --update`, then `review continue` after the Analysts and again after the CRO; without `--update`, of the whole-support book when asked ([specialists](references/specialist-handoff.md)).
-- **The committee on a date's positions**: `committee open --update` → `bundle prepare` for Alpha, Risk and the CRO → start them → your stance with the open's `pm_key` → `committee wait --role PM --key`, a ruling on every challenge, then the verdict → `committee show` → its offered report; a resent message answers with its first admission, and a refusal's offered way back is sent as it stands ([guide](../../../AGENTS.md)).
-- **A Factor study**: `study controls` → `study plan` → `study run` → `study show`.
-- **An Alpha study from a Factor study**: the Factor study's offered curation, then the handoff it offers → `study plan` → `study run`.
-- **A Risk study**: `study controls --kind risk.covariance-development` → `study plan` → `study run`.
-- **A book**: `book draft` → `study plan` → `study run` → `study show` ([research contract](references/research-contract.md)).
-- **A formula factor**: `feature controls` → its offered plan, trial and review.
-- **A data issue**: `issue list` → its offered `request` ([pipeline issues](references/pipeline-issues.md)).
+- **First use from one sentence**: `alphalattice first-use prepare --sentence "<sentence>" --date <date>` with the person's exact sentence and `--date` the date it names, then each answer's next action along its `first_use.road`: data, models and Risk, the book, activation with the date's update, the review of that date's positions ([guide](../../../AGENTS.md); [where a first use stands](references/research-lead.md)).
+- **Orient**: `alphalattice workspace show` → the first intent's offered request.
+- **Run an installed research strategy forward**: `alphalattice strategy-book controls` → activation, which admits its update → `alphalattice research-update show` → `alphalattice strategy-book review --update <task> --package <package> --dir "<out>/review"` → `alphalattice review continue --dir "<out>/review"` ([leading research](references/research-lead.md)).
+- **Evidence and CRO review of a date's positions**: `alphalattice strategy-book review --update <task> --package <package> --dir "<out>/review"`, then `alphalattice review continue --dir "<out>/review"` after the Analysts and again after the CRO; without `--update`, of the whole-support book when asked ([specialists](references/specialist-handoff.md)).
+- **The committee on a date's positions**: `alphalattice committee open --update <task>` → `alphalattice bundle prepare` for Alpha, Risk and the CRO → start them → your stance with the open's `pm_key` → `alphalattice committee wait --update <task> --role PM --key <key>`, a ruling on every challenge, then the verdict → `alphalattice committee show` → its offered report; a resent message answers with its first admission, and a refusal's offered way back is sent as it stands ([guide](../../../AGENTS.md)).
+- **A Factor study**: `alphalattice study controls` → `alphalattice study plan` → `alphalattice study run` → `alphalattice study show`.
+- **An Alpha study from a Factor study**: the Factor study's offered curation, then the handoff it offers → `alphalattice study plan` → `alphalattice study run`.
+- **A Risk study**: `alphalattice study controls --kind risk.covariance-development` → `alphalattice study plan` → `alphalattice study run`.
+- **A book**: `alphalattice book draft` → `alphalattice study plan` → `alphalattice study run` → `alphalattice study show` ([research contract](references/research-contract.md)).
+- **A formula factor**: `alphalattice feature controls` → its offered plan, trial and review.
+- **A data issue**: `alphalattice issue list` → its offered `request` ([pipeline issues](references/pipeline-issues.md)).
 - **Report a problem**: `problem report --output "<out>/report.json"` → show the report → ask before sending (the “Report a problem” section of the [operating contract](references/operating.md)).
 
 Before activating, read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
@@ -34,30 +34,30 @@ Hold positions only from the first actionable session; sessions before it are a 
 ## Commands
 
 Each command's exact form; the [Command contract](references/operating.md) covers answers, continuations and waits.
-- `workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
-- `problem report --output "<out>/report.json"`: Writes a redacted local problem report; show it and ask before sending it.
-- `first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09`: Opens the first use from the person's exact sentence and prepares its data; its answer lays out the whole first use.
-- `strategy build`: Runs the strategy's required Alpha and Risk studies on their defaults, then prepares and installs it.
-- `strategy-book controls --package <package>`: The installed strategy's activation, book, horizon and review standing.
-- `strategy-book review --package <package> --dir "<out>/analysts"`: Runs or reuses the whole-support book, prepares its Evidence, writes the Analyst bundles.
-- `review continue --dir "<out>/analysts" --cro-dir "<out>/cro"`: Submits the answers in the folder, follows them, then writes the CRO's bundle or, with --package, reads the review and the activation offer.
-- `committee open --update <task>`: Opens the committee on a date's positions; offers each specialist's bundle.
-- `bundle prepare --role ALPHA --task <task> --dir "<out>/committee/alpha"`: A specialist's bundle; on a date's update, its view of the positions and the floor.
-- `committee wait --update <task> --role PM --key <key>`: Waits, as one member, for what the floor addresses to it, or its close.
-- `committee show --update <task> --output "<out>/committee/floor.json"`: The floor: its stage, members, tension points, messages and, once closed, the report.
-- `research-update plan --package <package> --output "<out>/research-update-plan.json"`: Plans the strategy's next sessions and offers `run`.
-- `research-update run --from "<out>/research-update-plan.json" --wait`: Runs the saved plan, or resumes or reuses the same update.
-- `research-update show --task <task>`: The update's published positions, their dates and claim.
-- `study controls --input <input> --save-declaration "<out>/study.yaml"`: A new study's declaration to edit: Factor, or the kind --kind names.
-- `study plan --input <input> --file "<out>/study.yaml" --output "<out>/plan.json"`: Plans a declaration; nothing runs.
-- `study run --from "<out>/plan.json" --wait --output "<out>/run.json"`: Runs a plan.
-- `study show <task> --output "<out>/study.json"`: A study, verified: `standing` first.
-- `book draft --from "<out>/alpha.json" --candidate <candidate_id> --save-declaration "<out>/portfolio.yaml" --output "<out>/draft.json"`: Drafts a book from the Alpha study saved in alpha.json.
-- `feature controls --binding <binding> --save-declaration "<out>/feature.yaml"`: The formula language and a feature declaration to edit.
-- `issue list --output "<out>/issues.json"`: Open data cases and their preview requests.
-- `request --from "<out>/issues.json" --action <preview_request> --output "<out>/preview.json"`: Previews one offered option; applies nothing.
-- `task show <task>`: A Task's actual state and permitted next step.
-- `activity wait --task <task>`: One wait, never a poll: returns when the Task ends, needs a decision or is deferred.
+- `alphalattice workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
+- `alphalattice problem report --output "<out>/report.json"`: Writes a redacted local problem report; show it and ask before sending it.
+- `alphalattice first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09`: Opens the first use from the person's exact sentence and prepares its data; its answer lays out the whole first use.
+- `alphalattice strategy build`: Runs the strategy's required Alpha and Risk studies on their defaults, then prepares and installs it.
+- `alphalattice strategy-book controls --package <package>`: The installed strategy's activation, book, horizon and review standing.
+- `alphalattice strategy-book review --package <package> --dir "<out>/analysts"`: Runs or reuses the whole-support book, prepares its Evidence, writes the Analyst bundles.
+- `alphalattice review continue --dir "<out>/analysts" --cro-dir "<out>/cro"`: Submits the answers in the folder, follows them, then writes the CRO's bundle or, with --package, reads the review and the activation offer.
+- `alphalattice committee open --update <task>`: Opens the committee on a date's positions; offers each specialist's bundle.
+- `alphalattice bundle prepare --role ALPHA --task <task> --dir "<out>/committee/alpha"`: A specialist's bundle; on a date's update, its view of the positions and the floor.
+- `alphalattice committee wait --update <task> --role PM --key <key>`: Waits, as one member, for what the floor addresses to it, or its close.
+- `alphalattice committee show --update <task> --output "<out>/committee/floor.json"`: The floor: its stage, members, tension points, messages and, once closed, the report.
+- `alphalattice research-update plan --package <package> --output "<out>/research-update-plan.json"`: Plans the strategy's next sessions and offers `run`.
+- `alphalattice research-update run --from "<out>/research-update-plan.json" --wait`: Runs the saved plan, or resumes or reuses the same update.
+- `alphalattice research-update show --task <task>`: The update's published positions, their dates and claim.
+- `alphalattice study controls --input <input> --save-declaration "<out>/study.yaml"`: A new study's declaration to edit: Factor, or the kind --kind names.
+- `alphalattice study plan --input <input> --file "<out>/study.yaml" --output "<out>/plan.json"`: Plans a declaration; nothing runs.
+- `alphalattice study run --from "<out>/plan.json" --wait --output "<out>/run.json"`: Runs a plan.
+- `alphalattice study show <task> --output "<out>/study.json"`: A study, verified: `standing` first.
+- `alphalattice book draft --from "<out>/alpha.json" --candidate <candidate_id> --save-declaration "<out>/portfolio.yaml" --output "<out>/draft.json"`: Drafts a book from the Alpha study saved in alpha.json.
+- `alphalattice feature controls --binding <binding> --save-declaration "<out>/feature.yaml"`: The formula language and a feature declaration to edit.
+- `alphalattice issue list --output "<out>/issues.json"`: Open data cases and their preview requests.
+- `alphalattice request --from "<out>/issues.json" --action <preview_request> --output "<out>/preview.json"`: Previews one offered option; applies nothing.
+- `alphalattice task show <task>`: A Task's actual state and permitted next step.
+- `alphalattice activity wait --task <task>`: One wait, never a poll: returns when the Task ends, needs a decision or is deferred.
 
 ## Authority and evidence
 

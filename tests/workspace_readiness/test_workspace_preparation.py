@@ -26,7 +26,8 @@ from alphalattice.control.product_host.data_preparation.application import (
     WorkspacePreparationApplication,
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import read_factor_bundle
-from alphalattice.control.task_control.contracts import TaskLifecycle
+from alphalattice.control.task_control.contracts import TaskLifecycle, WorkItemLifecycle
+from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
@@ -367,7 +368,7 @@ def test_a_preparation_with_pending_truth_decisions_offers_issues_before_confirm
     provider = recording_provider()
     decision_reads: list[bool] = []
 
-    def current_decisions_ready(_owner: WorkspaceDataIssueApplication) -> bool:
+    def current_decisions_ready(_owner: WorkspaceDataIssueApplication, **_facts) -> bool:
         decision_reads.append(decisions_ready)
         return decisions_ready
 
@@ -427,7 +428,7 @@ def test_a_preparation_with_pending_truth_decisions_offers_issues_before_confirm
 def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A delegated data decision carries its preparation past a storage stop."""
+    """An exact live grant resumes the same Task after data and storage stops."""
 
     from alphalattice.interface.local_application.cli import main as client_main
     from alphalattice.interface.local_application.client import LocalResearchClient
@@ -435,6 +436,15 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
     from tests.workspace_readiness.unexplained_move import unexplained_move
 
     provider, symbols = unexplained_move()
+    calls = []
+    for name in ("fetch_daily", "fetch_action_history", "fetch_adjusted_close_history"):
+        original = getattr(provider, name)
+
+        def tracked(*args, method=original, **kwargs):
+            calls.append(tuple(args[0]) if args else (kwargs["provider_symbol"],))
+            return method(*args, **kwargs)
+
+        monkeypatch.setattr(provider, name, tracked)
     root = tmp_path / "delegated"
     live = LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT)
     live.data_provider = provider
@@ -458,9 +468,19 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
         # The person delegates the decision, on the Workbench's route.
         issues = _json(live, "/api/workspace/data-issues")
         agent = LocalResearchClient(root)
+        # Its own confirm, sent before any decision, is refused with the way to the issues.
         pending = agent.request(issues["next_requests"][f"continue:{stopped.task_id}"])
-        assert pending.get("predecessor_task_id") == str(stopped.task_id), pending
-        assert pending["next_requests"] == {"issues": {"operation": "DATA_ISSUES"}}
+        code = "workspace_preparation.human_confirmation_required"
+        assert (pending["refused"], pending["status"], pending["failure_code"]) == (
+            code,
+            "REFUSED",
+            code,
+        ), pending
+        words = refusal_words(code)
+        assert (
+            pending["detail"] == words["detail"] and pending["next_action"] == words["next_action"]
+        )
+        assert app.tasks() == (registry.task(stopped.task_id),)
         offers = {
             name: value
             for name, value in issues["next_requests"].items()
@@ -476,47 +496,29 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
         assert delegated["status"] == "DELEGATED" and not delegated["effect_applied"]
         grant = delegated["grant"]["grant_hash"]
 
-        # The agent decides it under the grant, then plans and confirms the successor.
+        # The agent decides it under the grant; its continuation is the stopped Task's own
+        # confirm, carrying the grant, and resumes that same Task (OP4).
         decided = agent.request(delegated["next_requests"]["confirm"])
         assert decided.get("failure_code") is None, decided
         continuation = decided["next_requests"][f"continue:{stopped.task_id}"]
-        recovery_source = {
-            "recovery_task_id": str(stopped.task_id),
-            "recovery_task_hash": stopped.record_hash,
-        }
-        assert continuation == {"operation": "WORKSPACE_PREPARE_PLAN", **recovery_source}
-        assert decided["next_requests"]["preparation_plan"] == continuation
-        successor_plan = agent.request(continuation)
-        assert successor_plan["predecessor_task_id"] == str(stopped.task_id)
-        confirm = successor_plan["next_requests"][f"confirm_with_grant:{grant}"]
-        assert confirm == {
+        assert continuation == {
             "operation": "WORKSPACE_PREPARE_CONFIRM",
-            "preparation_plan_hash": successor_plan["plan_hash"],
+            "preparation_plan_hash": stopped.input.payload["plan"]["plan_hash"],
             "data_issue_grant_hash": grant,
-            **recovery_source,
         }
-        previews = registry.recovery_links(stopped.task_id)
-        assert any(
-            link.source_record_hash == stopped.record_hash
-            and link.successor_task_id is None
-            and link.admission_request
-            == {key: value for key, value in confirm.items() if key not in recovery_source}
-            for link in previews
-        )
-        confirmed = agent.request(confirm)
-        successor = UUID(str(confirmed["task_id"]))
-        assert successor != stopped.task_id
-        link = next(
-            link
-            for link in registry.recovery_links(stopped.task_id)
-            if link.successor_task_id == successor
-        )
-        assert link.source_record_hash == stopped.record_hash
-        assert registry.task(successor).input.payload["source_task_id"] == str(stopped.task_id)
-        assert registry.task(successor).plan.plan_hash != stopped.plan.plan_hash
+        assert "preparation_plan" not in decided["next_requests"]
 
-        # A storage failure stops the successor: its records cannot be replaced.
-        records = app._path(successor, "progress").parent
+        # In-place continuation keeps verified source work and never re-fetches its listings.
+        captured = app._load(stopped.task_id, "freeze_sources")
+        calls_before = len(calls)
+        verified_before = {
+            item.stage_id: item.attempt_count
+            for item in registry.work_items(stopped.task_id)
+            if item.lifecycle is WorkItemLifecycle.VERIFIED
+        }
+        assert verified_before
+        # A storage failure stops it again: its records cannot be replaced.
+        records = app._path(stopped.task_id, "progress").parent
         real_replace = os.replace
 
         def refused(source: Any, destination: Any) -> None:
@@ -526,22 +528,53 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
 
         monkeypatch.setattr(persistence.os, "replace", refused)
         monkeypatch.setattr(persistence.time, "sleep", lambda _: None)
+        confirmed = agent.request(continuation)
+        assert confirmed["task_id"] == str(stopped.task_id), confirmed
         live.dispatcher.drain_for_tests(timeout=900)
-        halted = registry.task(successor)
+        halted = registry.task(stopped.task_id)
         assert (halted.lifecycle, halted.failure_code) == (
             TaskLifecycle.BLOCKED,
             "catalog.replace_blocked",
-        ), live.dispatcher.failure(successor)
-        assert live.operations.recovery_view(stopped.task_id)["attention"]["unresolved"] is True
+        ), live.dispatcher.failure(stopped.task_id)
         monkeypatch.setattr(persistence.os, "replace", real_replace)
+        assert halted.input == stopped.input
+        assert app.delegated_resume_allowed(continuation["preparation_plan_hash"], grant)
+        assert not app.delegated_resume_allowed("0" * 64, grant)
+        for lifecycle, failure in (
+            (TaskLifecycle.BLOCKED, "other.stop"),
+            (TaskLifecycle.DEFERRED, "catalog.replace_blocked"),
+        ):
+            with monkeypatch.context() as outside:
+                outside.setattr(
+                    app,
+                    "tasks",
+                    lambda lifecycle=lifecycle, failure=failure: (
+                        halted.model_copy(update={"lifecycle": lifecycle, "failure_code": failure}),
+                    ),
+                )
+                assert not app.delegated_resume_allowed(
+                    continuation["preparation_plan_hash"], grant
+                )
+        with monkeypatch.context() as expired:
+            expired.setattr(
+                app, "clock", lambda: datetime.fromisoformat(delegated["grant"]["expires_at"])
+            )
+            with pytest.raises(ValueError, match=r"feature_input\.delegation_expired"):
+                app.require_confirmation_caller(
+                    continuation["preparation_plan_hash"],
+                    caller="EXTERNAL_AUTOMATION",
+                    grant_hash=grant,
+                )
 
         # Its readback says what stopped it and offers the confirm that resumes it; the agent
         # resumes it from that answer, naming no grant.
-        held = agent.request({"operation": "WORKSPACE_PREPARE_READBACK", "task_id": str(successor)})
+        held = agent.request(
+            {"operation": "WORKSPACE_PREPARE_READBACK", "task_id": str(stopped.task_id)}
+        )
         assert held["failure_code"] == "catalog.replace_blocked", held
         assert "another program" in held["detail"], held
         assert held["next_requests"]["confirm"]["operation"] == "WORKSPACE_PREPARE_CONFIRM", held
-        readback = tmp_path / "successor.json"
+        readback = tmp_path / "stopped.json"
         readback.write_text(json.dumps(held), encoding="utf-8")
         resumed = tmp_path / "resumed.json"
         code = client_main(
@@ -558,22 +591,35 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
             serve=lambda _: pytest.fail("the confirm must use the running Host"),
         )
         answer = json.loads(resumed.read_text(encoding="utf-8"))
-        assert code in {0, 3} and answer["task_id"] == str(successor), (code, answer)
+        assert code in {0, 3} and answer["task_id"] == str(stopped.task_id), (code, answer)
         live.dispatcher.drain_for_tests(timeout=900)
-        assert registry.task(successor).lifecycle is TaskLifecycle.SUCCEEDED, (
-            live.dispatcher.failure(successor)
+        assert registry.task(stopped.task_id).lifecycle is TaskLifecycle.SUCCEEDED, (
+            live.dispatcher.failure(stopped.task_id)
         )
-        source = live.operations.recovery_view(stopped.task_id)
-        assert source["lifecycle"] == "BLOCKED"
-        assert source["task_record_hash"] == stopped.record_hash
-        assert source["attention"]["resolution"] == "SUCCESSOR_SUCCEEDED"
-        assert source["attention"]["successor_task_id"] == str(successor)
-
-    from tests.portfolio_strategy_lab.local_web_support import _walk_badge_records
-
-    _walk_badge_records(
-        root, tmp_path / "preparation-pair-browser", str(stopped.task_id), str(successor)
-    )
+        assert app.tasks() == (registry.task(stopped.task_id),)
+        assert app._load(stopped.task_id, "freeze_sources") == captured
+        assert (
+            verified_before.items()
+            <= {
+                item.stage_id: item.attempt_count
+                for item in registry.work_items(stopped.task_id)
+                if item.lifecycle is WorkItemLifecycle.VERIFIED
+            }.items()
+        )
+        assert not [call for call in calls[calls_before:] if call != ("SPY",)]
+        revoked = _json(
+            live,
+            "/api/workspace/data-issues/revoke",
+            method="POST",
+            payload={"data_issue_grant_hash": grant},
+        )
+        assert revoked["status"] == "REVOKED"
+        with pytest.raises(ValueError, match=r"feature_input\.delegation_revoked"):
+            app.require_confirmation_caller(
+                continuation["preparation_plan_hash"],
+                caller="EXTERNAL_AUTOMATION",
+                grant_hash=grant,
+            )
 
 
 def test_optional_progress_delivery_never_governs_the_stage(
@@ -1761,7 +1807,7 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
             monkeypatch.setattr(
                 WorkspaceDataIssueApplication,
                 "current_decisions_ready",
-                lambda _owner: decisions_ready,
+                lambda _owner, **_facts: decisions_ready,
             )
             # The same registered implementation-change seam also holds truth recovery:
             # unresolved cases still lead to issues; only completed choices offer preview.
@@ -1823,11 +1869,11 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
         assert work["sources_may_be_accessed"] == ["yfinance"]
         assert proposed["candidate_count"] == 2
         estimate = proposed["resource_estimate"]
-        assert (estimate["wall_seconds"], estimate["wall_status"], estimate["elapsed_scope"]) == (
-            None,
+        assert (estimate["wall_status"], estimate["elapsed_scope"]) == (
             "UNKNOWN",
             "REMAINING_WORK",
         )
+        assert estimate["wall_seconds"] is None
         assert estimate["memory_scope"] == "FULL_TASK_CONSERVATIVE"
         confirmation = live.operations.execute(
             PortfolioResearchAgentRequest.model_validate(
@@ -1859,7 +1905,9 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
         )
 
 
-@pytest.mark.parametrize("lifecycle", ["QUEUED", "RUNNING", "CANCEL_REQUESTED"])
+@pytest.mark.parametrize(
+    "lifecycle", ["QUEUED", "RECOVERY_REQUIRED", "RUNNING", "CANCEL_REQUESTED"]
+)
 def test_a_plan_confirmed_while_its_task_runs_answers_that_task(lifecycle: str) -> None:
     """A plan confirmed while its task runs answers that task."""
 

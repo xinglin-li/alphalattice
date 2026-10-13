@@ -9,12 +9,18 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal, cast
+from functools import partial
+from typing import TYPE_CHECKING, Any, Final, Literal, cast
 from uuid import UUID
 
 from alphalattice.control.data_platform.contracts import (
     DataRemediationExecutionReceipt,
     DataRemediationExecutionSubmission,
+)
+from alphalattice.control.data_platform.data_decision_rule import (
+    QUARANTINE,
+    RETAIN,
+    DataDecisionRule,
 )
 from alphalattice.control.data_platform.delegation import DataIssueDelegation
 from alphalattice.control.guanyin.data.workspace_maintenance import maintenance_failure_detail
@@ -45,6 +51,10 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     refusal_words,
+)
+from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchOperationRequest,
 )
 from alphalattice.protocols.actor_execution import (
     ActorKind,
@@ -119,8 +129,8 @@ def preparation_replan_refusal(
     return None
 
 
-def _reread_issues(code: str) -> dict[str, object]:
-    """A decision the case no longer takes, refused with the read of where it stands now."""
+def reread_data_issues(code: str) -> dict[str, object]:
+    """A stale selection recovers through the current cases, without applying any effect."""
     return {
         "status": "REFUSED",
         "failure_code": code,
@@ -128,19 +138,6 @@ def _reread_issues(code: str) -> dict[str, object]:
         "next_requests": {"issues": {"operation": "DATA_ISSUES"}},
         "effect_applied": False,
     }
-
-
-def _decided_elsewhere(
-    run: Callable[[Callable[[], dict[str, object]]], dict[str, object]],
-    accept: Callable[[], dict[str, object]],
-) -> dict[str, object]:
-    """Run a decision; one the case's recorded decision conflicts with reads where it stands."""
-    try:
-        return run(accept)
-    except ValueError as error:
-        if not str(error).startswith("feature_input.resolution_conflict"):
-            raise
-        return _reread_issues(str(error))
 
 
 def _choice_request(
@@ -157,6 +154,13 @@ def _choice_request(
     }
 
 
+_RULE_CAVEATS: Final = {
+    RETAIN: "An unexplained one-day move is kept as reported; it may be a data error.",
+    QUARANTINE: "Set aside until its next recheck; the original inputs are kept.",
+}
+"""What each choice of the Host's rule means for the research, said beside the listing."""
+
+
 class WorkspaceDataIssueApplication:
     """Human choice over the existing persisted Feature Input catalog.
 
@@ -164,18 +168,76 @@ class WorkspaceDataIssueApplication:
     evidence before applying it; the response never claims an unexecuted effect.
     """
 
-    def __init__(self, session: WorkspaceApplicationSession, clock: Callable[[], datetime]) -> None:
+    def __init__(
+        self,
+        session: WorkspaceApplicationSession,
+        clock: Callable[[], datetime],
+        *,
+        recorded_data_confirmation: Callable[..., bool] | None = None,
+        preparation_current: Callable[[TaskRecord], bool] | None = None,
+    ) -> None:
         """Wire retained mutation authority, Data/Panel readers and exact issue delegation.
 
         Args:
             session: Retained workspace writer/task session.
             clock: Explicit observed-time source.
+            recorded_data_confirmation: Original authority for retained rule decisions.
+            preparation_current: Owner predicate for exact continuation; absent fails closed.
         """
         self.session = session
         self.clock = clock
+        self.preparation_current = preparation_current
         self.market = MarketDataRepository(session.workspace)
         self.panel = PanelStateRepository(self.market.database, market_data=self.market)
+        self.retention_proofs = partial(
+            raw_retention_decision_proofs,
+            self.panel,
+            self.market,
+            historical_authority=recorded_data_confirmation,
+        )
         self.delegation = DataIssueDelegation(session.workspace)
+
+    def operate(
+        self, request: PortfolioResearchOperationRequest, caller: str, delegated_by: str | None
+    ) -> dict[str, object]:
+        """Route the admitted data choice and recover a stale choice through its current read."""
+        assert request.data_issue_case_token is not None
+        assert request.data_issue_evidence_hash is not None
+        assert request.data_issue_option_id is not None
+        assert request.data_issue_option_hash is not None
+        if request.operation == "DATA_ISSUE_DELEGATE":
+            assert request.task_id is not None
+        choice = dict(
+            case_token=request.data_issue_case_token,
+            evidence_hash=request.data_issue_evidence_hash,
+            option_id=request.data_issue_option_id,
+            option_hash=request.data_issue_option_hash,
+        )
+        if request.operation == "DATA_ISSUE_PREVIEW":
+            return cast(
+                dict[str, object],
+                self.preview(**choice, delegated_by=delegated_by),
+            )
+        if request.operation == "DATA_ISSUE_DELEGATE":
+            return cast(
+                dict[str, object],
+                self.delegate(**choice, task_id=request.task_id, caller=caller),
+            )
+        try:
+            return cast(
+                dict[str, object],
+                self.confirm(**choice, caller=caller, grant_hash=request.data_issue_grant_hash),
+            )
+        except ValueError as error:
+            if not str(error).startswith(
+                (
+                    "feature_input.resolution_conflict",
+                    "feature_input.case_no_longer_pending",
+                    "feature_input.option_changed",
+                )
+            ):
+                raise
+            return reread_data_issues(public_failure(error, "feature_input.refused"))
 
     def _cases(
         self,
@@ -200,7 +262,11 @@ class WorkspaceDataIssueApplication:
             )
         )
 
-    def _case_index(self, manifest: UniverseManifest | None) -> dict[str, object]:
+    def _case_index(
+        self, manifest: UniverseManifest | None, *, limit: int = 25, cursor: str | None = None
+    ) -> tuple[
+        tuple[FeatureInputAgentCase, ...], tuple[FeatureInputAgentCase, ...], dict[str, object]
+    ]:
         """Every current case named in a line, beside the page of whole ones (V236, V172).
 
         A whole page of cases is longer than an agent's tool return (AX1d cut it five times),
@@ -208,33 +274,49 @@ class WorkspaceDataIssueApplication:
         that, and ``next_page`` the next whole cases.
         """
         if manifest is None:
-            return {"case_count": 0, "case_index": []}
+            return (), (), {"case_count": 0, "case_index": []}
         every = self._cases(manifest_revision=manifest.revision_sha256)
-        return {
-            "case_count": len(every),
-            "case_index": [
-                {
-                    "case_token": case.case_token,
-                    "failure_code": case.failure_code,
-                    "listing_count": len(case.listing_ids),
-                }
-                for case in every
-            ],
-        }
+        selected = tuple(case for case in every if cursor is None or case.case_token > cursor)[
+            : limit + 1
+        ]
+        return (
+            every,
+            selected,
+            {
+                "case_count": len(every),
+                "case_index": [
+                    {
+                        "case_token": case.case_token,
+                        "failure_code": case.failure_code,
+                        "listing_count": len(case.listing_ids),
+                    }
+                    for case in every
+                ],
+            },
+        )
 
-    def current_decisions_ready(self) -> bool:
+    def current_decisions_ready(self, *, proofs=None, resolutions=None, cases=None) -> bool:
         """All active cases have a standing choice for preparation to revalidate."""
         manifest = self._active_manifest()
         if manifest is None:
             return False
         now = self.clock()
         with self.market.database.retain(read_only=True):
-            cases = self._cases(manifest_revision=manifest.revision_sha256)
+            cases = (
+                cases
+                if cases is not None
+                else self._cases(manifest_revision=manifest.revision_sha256)
+            )
             if not cases:
                 return False
-            proofs = raw_retention_decision_proofs(self.panel, self.market)
+            proofs = proofs if proofs is not None else self.retention_proofs()
+            if resolutions is None:
+                resolutions = {
+                    FeatureInputAgentCase.read_document(d).case_token: r
+                    for d, r in self.panel.feature_input_decisions()
+                }
             for case in cases:
-                resolution = self.panel.feature_input_resolution(case.case_token)
+                resolution = resolutions.get(case.case_token)
                 if resolution is None:
                     continued = matching_raw_retention_proof(
                         panel_state=self.panel,
@@ -259,16 +341,20 @@ class WorkspaceDataIssueApplication:
         if task.task_kind != "workspace_preparation":
             run = {"update_plan_hash": plan["content_hash"]}
             return "DATA_UPDATE_RUN", "/api/data-update/run", run
+        if self.preparation_current is None or not self.preparation_current(task):
+            return (
+                "WORKSPACE_PREPARE_PLAN",
+                "/api/workspace/preparation/plan",
+                {"recovery_task_id": str(task.task_id)},
+            )
         registry = self.session.task_control_registry
         if task.lifecycle.value == "BLOCKED" and preparation_replan_refusal(
             registry, self.session.workspace, task
         ):
             return None
-        if task.lifecycle.value != "BLOCKED" or task.failure_code != "data.truth_review_required":
-            confirm = {"preparation_plan_hash": plan["plan_hash"]}
-            return "WORKSPACE_PREPARE_CONFIRM", "/api/workspace/preparation/confirm", confirm
-        recovery = {"recovery_task_id": str(task.task_id), "recovery_task_hash": task.record_hash}
-        return "WORKSPACE_PREPARE_PLAN", "/api/workspace/preparation/plan", recovery
+        # A decided stop resumes the same Task at its retained stage.
+        confirm = {"preparation_plan_hash": plan["plan_hash"]}
+        return "WORKSPACE_PREPARE_CONFIRM", "/api/workspace/preparation/confirm", confirm
 
     def _governance(self) -> FeatureInputGovernanceService:
         """The same judgement owner the maintenance cycle uses, over the same stores."""
@@ -278,6 +364,136 @@ class WorkspaceDataIssueApplication:
             mutation_gate=self.session.mutation_gate,
             gateway=FeatureInputGateway(),
         )
+
+    @staticmethod
+    def _ruled_choice(saved):
+        """Disclose only an applied choice whose rule hash names its Host signer."""
+        receipt = saved.get("receipt")
+        if (
+            not receipt
+            or receipt["actor_submission"]["actor_kind"] != "HOST_FALLBACK"
+            or (saved.get("effect") or {}).get("failure_reasons")
+        ):
+            return None
+        option = receipt["submission"]["proposal"]["option_id"]
+        rule = receipt["submission"]["proposal"]["rationale"].partition("; rule:")[2]
+        if (
+            option not in _RULE_CAVEATS
+            or not rule
+            or receipt["actor_submission"].get("actor_id") != f"host-rule:{rule[:16]}"
+            or not saved.get("effect")
+        ):
+            return None
+        return option, rule
+
+    def rule_decisions(
+        self,
+        manifest: UniverseManifest | None = None,
+        every: tuple[FeatureInputAgentCase, ...] | None = None,
+        *,
+        input_available: bool = True,
+        choices=None,
+    ) -> dict[str, Any] | None:
+        """The data issues the Host's rule decided, in one line.
+
+        Each listing with its choice and caveat, the population left after its quarantines, and
+        the rule's identity; None when it decided none. The rule acts only in a first use's own
+        preparation, so its choices are the Host-signed ones among the open and resolved cases.
+        """
+        if not input_available:
+            return None
+        manifest = manifest or self._active_manifest()
+        if manifest is None:
+            return None
+        if every is None:
+            every = self._cases(manifest_revision=manifest.revision_sha256)
+        choices = choices if choices is not None else self.panel.feature_input_decisions()
+        active = {
+            q.listing_id
+            for q in self.panel.active_listing_quarantines(
+                manifest.revision_sha256, include_profile_history=True
+            )
+        }
+        manifests = {manifest.revision_sha256: manifest}
+        symbols = {item.listing_id: item.symbol for item in manifest.listings}
+        decided, rules, aside = [], set(), set()
+        for document, saved in choices:
+            case = FeatureInputAgentCase.read_document(document)
+            choice = self._ruled_choice(saved)
+            if choice is None:
+                continue
+            option, rule = choice
+            rules.add(rule)
+            if option == QUARANTINE:
+                aside.update(set(case.listing_ids) & active)
+            if not set(case.listing_ids) <= symbols.keys():  # set aside: its own manifest names it
+                if case.manifest_revision not in manifests:
+                    manifests[case.manifest_revision] = self.market.load_universe_manifest_revision(
+                        case.manifest_revision
+                    )
+                symbols |= {
+                    item.listing_id: item.symbol
+                    for item in manifests[case.manifest_revision].listings
+                }
+            decided += [
+                {
+                    "listing_id": listing,
+                    "symbol": symbols.get(listing),
+                    "option_id": option,
+                    "caveat": _RULE_CAVEATS[option]
+                    if option != QUARANTINE or listing in active
+                    else "The earlier quarantine is no longer active; this listing was readmitted.",
+                }
+                for listing in case.listing_ids
+            ]
+        if not decided:
+            return None
+        names = {item.listing_id for item in manifest.listings}
+        source, left = len(names | aside), len(names - aside)
+        return {
+            "words": f"{len(decided)} data issue{'s' * (len(decided) > 1)} decided by rule; {left} "
+            f"of {source} names "
+            "remain in the research population.",
+            "decided": sorted(decided, key=lambda d: d["listing_id"]),
+            "source_population": source,
+            "effective_population": left,
+            "rule_hashes": sorted(rules),
+        }
+
+    def _escalation(
+        self,
+        delegated_by: str | None,
+        manifest: UniverseManifest | None,
+        every: tuple[FeatureInputAgentCase, ...],
+        task_ids: set[str],
+    ) -> dict[str, object]:
+        """Why the Host's rule left a first use's issues to its agent: past its cap (jidoka)."""
+        if delegated_by is None or manifest is None or not every:
+            return {}
+        from alphalattice.control.product_host.publication.goals import GoalStore
+
+        configured = read_research_workspace_manifest(self.session.workspace)
+        rule = configured.data_decision_rule or DataDecisionRule()
+        records = GoalStore(
+            self.session.workspace / "artifacts", configured.workspace_id
+        ).attributed(UUID(delegated_by.removeprefix("first-use-goal:")))
+        scope = rule.scope(
+            every, len(manifest.listings), (r for r in records if r.get("task_id") in task_ids)
+        )
+        if not scope["capped"]:
+            return {}
+        case_count, listing_count = scope["case_count"], scope["affected_listing_count"]
+        return {
+            "escalated_by_rule": {
+                "words": f"{case_count} cases affect {listing_count} listings, past the "
+                f"rule's cap of {rule.max_cases} cases or {rule.max_population_share:.0%} of "
+                "listings. Many at once may be a source problem, "
+                "so the whole set is yours to judge.",
+                "listing_count": listing_count,
+                "case_count": case_count,
+                "rule_hash": rule.rule_hash,
+            }
+        }
 
     def _active_manifest(self) -> UniverseManifest | None:
         if not self.market.path.is_file():
@@ -429,56 +645,8 @@ class WorkspaceDataIssueApplication:
             )
         return {"standing": notes} if notes else None
 
-    def readback(
-        self, *, limit: int = 25, cursor: str | None = None, delegated_by: str | None = None
-    ) -> dict[str, object]:
-        """Read bounded current issue choices, recorded decisions and exact continuation grants.
-
-        Args:
-            limit: Explicit page size from 1 through 50.
-            cursor: Optional exact case-token cursor.
-            delegated_by: The first-use delegation under which the reader confirms these cases
-                itself; the person's grant is then not offered.
-
-        Returns:
-            Cases, current choices, historical effects, active grants and permitted next requests;
-            no data-truth/current-readiness claim.
-
-        Raises:
-            ValueError: Case page bound or cursor is invalid.
-        """
-        if not 1 <= limit <= 50 or (
-            cursor is not None
-            and (len(cursor) != 64 or any(c not in "0123456789abcdef" for c in cursor))
-        ):
-            raise ValueError("feature_input.case_page_invalid")
-        active_manifest = self._active_manifest()
-        selected = (
-            self._cases(
-                limit=limit + 1,
-                cursor=cursor,
-                manifest_revision=active_manifest.revision_sha256,
-            )
-            if active_manifest is not None
-            else ()
-        )
-        cases = selected[:limit]
-        now = self.clock()
-        batch = self.session.task_control_registry.record_collection()
-        # Supersession and continuation need the complete Task authority. Cases remain readable.
-        recorded_tasks = batch.records if not batch.refused_task_ids else ()
-        superseded = superseded_preparations(self.session.task_control_registry, recorded_tasks)
-        tasks = [
-            task
-            for task in recorded_tasks
-            if task.task_kind in {"workspace_preparation", "workspace_data_update"}
-            and task.lifecycle.value in {"DEFERRED", "BLOCKED", "REVIEW_PENDING"}
-            and (
-                task.task_kind == "workspace_data_update"
-                or str(task.failure_code or "").startswith(("data.", "feature_input."))
-            )
-            and str(task.task_id) not in superseded
-        ]
+    def _continuations(self, tasks):
+        """Only stopped Tasks with an admitted owner way on are offered for continuation."""
         continuations = []
         next_requests: dict[str, dict[str, str]] = {}
         for task in tasks:
@@ -498,6 +666,49 @@ class WorkspaceDataIssueApplication:
                     "payload": payload,
                 }
             )
+        return continuations, next_requests
+
+    def readback(
+        self, *, limit: int = 25, cursor: str | None = None, delegated_by: str | None = None
+    ) -> dict[str, object]:
+        """Read bounded current issue choices, recorded decisions and exact continuation grants.
+
+        Args:
+            limit: Explicit page size from 1 through 50.
+            cursor: Optional exact case-token cursor.
+            delegated_by: First-use confirmation authority; no person's grant is then offered.
+
+        Returns:
+            Cases, choices, effects, grants and next requests; no current-readiness claim.
+
+        Raises:
+            ValueError: Case page bound or cursor is invalid.
+        """
+        if not 1 <= limit <= 50 or (
+            cursor is not None
+            and (len(cursor) != 64 or any(c not in "0123456789abcdef" for c in cursor))
+        ):
+            raise ValueError("feature_input.case_page_invalid")
+        active_manifest = self._active_manifest()
+        every, selected, case_index = self._case_index(active_manifest, limit=limit, cursor=cursor)
+        cases = selected[:limit]
+        now = self.clock()
+        batch = self.session.task_control_registry.record_collection()
+        # Supersession and continuation need the complete Task authority. Cases remain readable.
+        recorded_tasks = batch.records if not batch.refused_task_ids else ()
+        superseded = superseded_preparations(self.session.task_control_registry, recorded_tasks)
+        tasks = [
+            task
+            for task in recorded_tasks
+            if task.task_kind in {"workspace_preparation", "workspace_data_update"}
+            and task.lifecycle.value in {"DEFERRED", "BLOCKED", "REVIEW_PENDING"}
+            and (
+                task.task_kind == "workspace_data_update"
+                or str(task.failure_code or "").startswith(("data.", "feature_input."))
+            )
+            and str(task.task_id) not in superseded
+        ]
+        continuations, next_requests = self._continuations(tasks)
         issues = []
         refused_cases: list[dict[str, object]] = []
         manifests: dict[str, UniverseManifest] = {}
@@ -513,7 +724,9 @@ class WorkspaceDataIssueApplication:
                 # refusal. The selected active manifest and case catalog were read above.
                 unavailable_revisions.add(revision)
         standing_by_revision: dict[str, dict[str, ListingQuarantine]] = {}
-        retention_proofs = raw_retention_decision_proofs(self.panel, self.market)
+        choices = self.panel.feature_input_decisions()
+        retention_proofs = self.retention_proofs(decisions=choices)
+        resolutions = {FeatureInputAgentCase.read_document(d).case_token: r for d, r in choices}
         for case in cases:
             if case.manifest_revision in unavailable_revisions:
                 code = "feature_input.case_manifest_unavailable"
@@ -542,7 +755,7 @@ class WorkspaceDataIssueApplication:
                     }
                 )
                 continue
-            resolution = self.panel.feature_input_resolution(case.case_token)
+            resolution = resolutions.get(case.case_token)
             continuation = (
                 matching_raw_retention_proof(
                     panel_state=self.panel,
@@ -700,8 +913,12 @@ class WorkspaceDataIssueApplication:
             if tasks
             else "NO_PENDING_CASE_CATALOG",
             "issues": issues,
-            **self._case_index(active_manifest),
+            **case_index,
             "continuations": continuations,
+            "decided_by_rule": self.rule_decisions(active_manifest, every, choices=choices),
+            **self._escalation(
+                delegated_by, active_manifest, every, {str(t.task_id) for t in tasks}
+            ),
             "next_cursor": following,
             "recorded_decisions": history,
             "delegations": [
@@ -731,6 +948,9 @@ class WorkspaceDataIssueApplication:
                 self._continued_dispositions(active_manifest) if active_manifest is not None else []
             ),
             "next_requests": next_requests,
+            "decisions_complete": self.current_decisions_ready(
+                proofs=retention_proofs, resolutions=resolutions, cases=every
+            ),
             **({"delegated_by": delegated_by} if delegated_by is not None else {}),
             "claim_limit": "NO_DATA_TRUTH_OR_CURRENT_READINESS_CLAIM",
         }
@@ -822,15 +1042,18 @@ class WorkspaceDataIssueApplication:
             raise ValueError("feature_input.resolution_policy_changed")
         if not case.options_current_at(self.clock().astimezone(UTC)):
             raise ValueError("feature_input.case_expired_reassess_required")
-        option = gateway.validate_agent_selection(
-            case,
-            run_id=case.run_id,
-            case_token=case_token,
-            evidence_hash=evidence_hash,
-            option_id=option_id,
-            current_evidence_hash=case.evidence_hash,
-            rediagnosis_count=case.rediagnosis_count,
-        )
+        try:
+            option = gateway.validate_agent_selection(
+                case,
+                run_id=case.run_id,
+                case_token=case_token,
+                evidence_hash=evidence_hash,
+                option_id=option_id,
+                current_evidence_hash=case.evidence_hash,
+                rediagnosis_count=case.rediagnosis_count,
+            )
+        except ValueError as error:
+            raise ValueError("feature_input.option_changed") from error
         if option.option_hash != option_hash:
             raise ValueError("feature_input.option_changed")
         if not self._confirmable(option):
@@ -862,7 +1085,7 @@ class WorkspaceDataIssueApplication:
             source.
         """
         if self._decided(self.panel.feature_input_resolution(case_token), self.clock()):
-            return _reread_issues("feature_input.case_already_decided")
+            return reread_data_issues("feature_input.case_already_decided")
         try:
             case, option = self._selection(
                 case_token=case_token,
@@ -871,9 +1094,12 @@ class WorkspaceDataIssueApplication:
                 option_hash=option_hash,
             )
         except ValueError as error:
-            if str(error) != "feature_input.case_no_longer_pending":
+            if str(error) not in {
+                "feature_input.case_no_longer_pending",
+                "feature_input.option_changed",
+            }:
                 raise
-            return _reread_issues(str(error))
+            return reread_data_issues(str(error))
         return {
             "status": "CONFIRMATION_REQUIRED",
             "confirmation": "HUMAN" if delegated_by is None else "FIRST_USE_DELEGATION",
@@ -1158,23 +1384,13 @@ class WorkspaceDataIssueApplication:
             self.panel.record_feature_input_resolution(case_token, receipt.model_dump(mode="json"))
             followup = self.readback()
             requests = cast(dict[str, dict[str, str]], followup.get("next_requests", {}))
-            preparation_plans = [
-                value
-                for key, value in requests.items()
-                if key.startswith("continue:") and value["operation"] == "WORKSPACE_PREPARE_PLAN"
-            ]
-            preparation_request = (
-                preparation_plans[0]
-                if len(preparation_plans) == 1
-                else {"operation": "WORKSPACE_PREPARE_PLAN"}
-                if not preparation_plans
-                else None
-            )
+            continued = any(key.startswith("continue:") for key in requests)
             return {
                 "status": "CONFIRMED_PENDING_REVALIDATION",
                 "receipt_hash": receipt.receipt_hash,
                 "case_token": case_token,
                 "next_action": "RESUME_APPROVED_WORK",
+                "decisions_complete": followup["decisions_complete"],
                 "continuations": followup["continuations"],
                 "next_requests": {
                     "issues": {"operation": "DATA_ISSUES"},
@@ -1189,11 +1405,11 @@ class WorkspaceDataIssueApplication:
                         if key.startswith("continue:")
                     },
                     **(
-                        {"preparation_plan": preparation_request}
-                        if preparation_request is not None
-                        else {}
+                        {}
+                        if continued
+                        else {"preparation_plan": {"operation": "WORKSPACE_PREPARE_PLAN"}}
                     ),
                 },
             }
 
-        return _decided_elsewhere(self.session.mutation_gate.run, accept)
+        return self.session.mutation_gate.run(accept)

@@ -2263,8 +2263,8 @@ Object.assign(CODE_WORDS, {
 /* The owners' refusal codes, each said in a sentence beside the code (the review desk's since
  * round 15; shared since round 77): `explainCode` finds the code inside an owner's message. */
 const CODE_LINES = {
-    'storage.cap_setting_invalid':'The storage cap must be auto or a positive whole byte count. Set it again (`storage set --cap-bytes auto`).',
-    'storage.cap_setting_unreadable':'The workspace storage cap setting could not be read. Set it again through Settings or `storage set --cap-bytes auto`; retained records stay intact.',
+    'storage.cap_setting_invalid':'The storage cap must be auto or positive whole bytes. Use `alphalattice storage set --cap-bytes auto`.',
+    'storage.cap_setting_unreadable':'Cannot read the workspace storage cap. Use Settings or `alphalattice storage set --cap-bytes auto`; retained records stay intact.',
     // U56 (U28): a damaged trial record, and why the daily Panel does not admit a formula -- the Host's words, its static form
     'feature_trial.record_damaged':'This trial\'s record in the workspace no longer reads: it was changed or cut short. Start the trial again with its feature plan and study; the damaged record is kept aside and every step that did not change is reused.',
     'feature_extension.preprocessing_not_admitted_for_active_panel':'The daily Panel preprocesses with ROBUST_SECTOR_NEUTRAL_Z alone; this recipe is a research recipe. Declare the factor again with that recipe to activate it.',
@@ -2340,10 +2340,10 @@ const codeWords = (code) => {
  * the whole id on hover; a list shows its first `n` and how many more. */
 const featureName = (id) => { const s = String(id ?? ''), [family, name, variant] = s.includes('::') ? s.split('::') : ['', s, '']; return html`<span class="mono" data-tip="${s}">${name || family}${variant && variant !== 'current' ? ` · ${variant}` : ''}</span>`; };
 const featureList = (ids, n = 3) => { const list = ids || []; return html`${list.slice(0, n).map((id, i) => html`${i ? ', ' : ''}${featureName(id)}`)}${list.length > n ? ` +${list.length - n}` : ''}`; };
-/* The actors (round 63): who did a thing, by who they are -- the person at this window is "You";
+/* Actors name the person, agent or declared rule;
  * the agent through the automation API is the agent; a hook's producer names the host session
  * (Codex, Claude Code); a subagent keeps its retained name. */
-const ACTORS = {HOST_FALLBACK: 'Host fallback', HUMAN: 'You', EXTERNAL_AUTOMATION: 'Agent · API', INSTALLED_AGENT: 'Installed Agent', SERVICE_AUTOMATION: 'Service', EXTERNAL_CLIENT: 'External client', TASK_CONTROL: 'Task Control'};
+const ACTORS = {HOST_FALLBACK: 'Host', HUMAN: 'You', EXTERNAL_AUTOMATION: 'Agent · API', INSTALLED_AGENT: 'Installed Agent', SERVICE_AUTOMATION: 'Service', EXTERNAL_CLIENT: 'External client', TASK_CONTROL: 'Task Control'};
 const PRODUCERS = {codex: 'Codex', 'codex-cli': 'Codex', 'openai-codex': 'Codex', 'claude-code': 'Claude Code', claude_code: 'Claude Code', claude: 'Claude Code'};
 /* Round 90: an owner's attribution sentence (`Assessed by HUMAN: local-web-human.`) reads as the role;
  * the id stays on hover, and beside the words where the reader asked for facts (`o.facts`). */
@@ -2571,3 +2571,4 @@ function dateRange(a, b) {
 function dateMove(a, b) {
   return html`<span class="nowrap">${a || ''}</span> → <span class="nowrap">${b || ''}</span>`;
 }
+
