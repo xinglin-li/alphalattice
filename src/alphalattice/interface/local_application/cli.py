@@ -51,6 +51,7 @@ from alphalattice.interface.local_application.cli_contract import (
     BOUND_WORKSPACE,
     EXIT_CODES,
     SESSION_LAUNCHES,
+    SURFACE_USE,
     WORKSPACE_FROM,
     Outcome,
     agent_session,
@@ -1382,9 +1383,13 @@ def main(
     launches = SESSION_LAUNCHES.set(count_launch())
     # Read before the line parses, so the parser's own refusal reads in it too (V582).
     language = ANSWER_LANGUAGE.set(_line_language(arguments))
+    surface_token = SURFACE_USE.set(())
     try:
         parser = _parser(_named(arguments))
         args = parser.parse_args(arguments)
+        form = " ".join(filter(None, (args.noun, getattr(args, "verb", ""))))
+        tags = tuple(f"option:{form}/{a.split('=')[0]}" for a in arguments if a.startswith("-"))
+        SURFACE_USE.set((f"command:{form}", *tags))
         if getattr(args, "client_command", None) == ("answer", "show"):
             return _saved_answer(args, started)
         if getattr(args, "client_command", None) in WORKSPACE_FREE:
@@ -1402,6 +1407,7 @@ def main(
             WORKSPACE_FROM.reset(chosen_token)
             BOUND_WORKSPACE.reset(bound_token)
     finally:
+        SURFACE_USE.reset(surface_token)
         ANSWER_LANGUAGE.reset(language)
         SESSION_LAUNCHES.reset(launches)
 

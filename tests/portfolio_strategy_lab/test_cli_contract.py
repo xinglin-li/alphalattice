@@ -804,6 +804,35 @@ def test_an_answer_carries_the_titles_of_the_installed_ids_it_names() -> None:
     assert "titles" not in plain
 
 
+def test_a_deprecated_command_still_answers_and_names_its_replacement(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """A successful command keeps its answer while disclosing its announced retirement."""
+    from alphalattice.interface.local_application import cli_contract
+
+    manifest = {
+        "surface_version": 1,
+        "retirements": {
+            "command:schema show": {
+                "status": "Deprecated",
+                "replacement": "operation:OPERATION_LIST",
+                "announced": "0.2.0",
+                "earliest_removal": "0.3.0",
+                "reason": "Use the filtered operation read",
+            }
+        },
+    }
+    monkeypatch.setattr(cli_contract, "agent_surface_manifest", lambda: manifest)
+    code, answer, _ = _inprocess_cli(tmp_path, "schema", "show", "STATUS", capsys=capsys)
+    assert code == 0 and answer["outcome"] == "OK" and answer["operation"] == "SCHEMA"
+    assert answer["surface_version"] == 1
+    assert answer["deprecations"] == [
+        {"entry": "command:schema show", **manifest["retirements"]["command:schema show"]}
+    ]
+    assert answer["data"]["operation"] == "STATUS"
+    assert cli_contract.SURFACE_USE.get() == ()
+
+
 def test_every_field_schema_prints_is_described() -> None:
     """requirement (SC3): a field's meaning is written once, in its contract, and `schema show`
     prints it: every request field of every operation, every field of a typed answer and every

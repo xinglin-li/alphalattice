@@ -3328,6 +3328,7 @@ def run(
             {"navigation": client.navigation(document, body)} if compact and not viewed else {}
         )
         answer = envelope(
+            request=document,
             operation=document.get("operation") or args.command,
             outcome=outcome,
             body=body,
@@ -3394,8 +3395,6 @@ def run(
         if sum(getattr(args, field, None) == Path("-") for field in ("file", "from_response")) > 1:
             raise LocalResearchClientError("local_client.document_multiple_stdin_sources")
         output = getattr(args, "output", None)
-        # Compact unless asked: one read, every caller alike; `--view full` is the
-        # exact form a script reads, and `--output` keeps it whatever is shown (V408).
         display_view = args.view or "compact"
         if output is not None and output.exists():
             raise LocalResearchClientError("local_client.output_exists_choose_another_path")
@@ -3403,7 +3402,6 @@ def run(
             args.workspace, timeout=args.request_timeout, goal=getattr(args, "goal", None)
         )
         if callable(document_override):
-            # Read after the Host is found, as a request file is: no Host answers NO_HOST.
             document = document_override()
         if args.command == "activity-wait":
             body = _wait(client, args)
@@ -3529,6 +3527,7 @@ def run(
             json.dumps(
                 envelope(
                     operation=document.get("operation") or args.command,
+                    request=document,
                     outcome=refusal.outcome,
                     body=None,
                     elapsed_seconds=time.perf_counter() - started,

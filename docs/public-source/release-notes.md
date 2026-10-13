@@ -224,7 +224,7 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 
 ### Removed
 
-- None.
+- `refusal:native_bridge.child_not_a_specialist` was removed in 0.1.6 without an earlier deprecation notice. Usage is read independently of specialist-role verification; the separate verification fact remains.
 
 ### Fixed
 

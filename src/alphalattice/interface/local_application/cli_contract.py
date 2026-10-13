@@ -26,9 +26,42 @@ from pathlib import Path
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
 
 SCHEMA_VERSION: Final = 1
+SURFACE_USE: ContextVar[tuple[str, ...]] = ContextVar("surface_use", default=())
+
+
+@functools.cache
+def agent_surface_manifest() -> dict[str, Any]:
+    """Read the shipped compatibility and retirement registry once per process."""
+    path = resolve_playpen_root(Path(__file__)) / "config/registries/agent-surface.json"
+    return json.loads(path.read_bytes())  # type: ignore[no-any-return]
+
+
+def deprecation_notices(
+    operation: str | None, body: Mapping[str, Any], request: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Disclose a retired interface only when this answer actually uses it."""
+    manifest = agent_surface_manifest()
+    used = set(SURFACE_USE.get()) | {f"operation:{operation}"}
+    used.update(f"answer:{operation}.{key}" for key in body)
+    used.update(f"request:Request.{key}" for key in request)
+    for key in ("failure_code", "refused"):
+        used.add(f"refusal:{str(body.get(key, '')).partition(':')[0]}")
+    message = request.get("committee_message", body.get("committee_message", body))
+    if isinstance(message, Mapping):
+        used.add(f"message:RULES/{message.get('kind')}")
+    notices = [
+        {"entry": key, **row}
+        for key, row in manifest["retirements"].items()
+        if key in used and row["status"] == "Deprecated"
+    ]
+    return {
+        "surface_version": manifest["surface_version"],
+        **({"deprecations": notices} if notices else {}),
+    }
+
 
 CLIENT_HEADER: Final = "X-Alphalattice-Client"
 WORKSPACE_HEADER: Final = "X-Alphalattice-Workspace"
@@ -1415,6 +1448,7 @@ def envelope(
     status: str | None = None,
     failure_code: str | None = None,
     detail: str | None = None,
+    request: Mapping[str, Any] | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
     """Wrap an owner answer in the CLI's stable envelope.
@@ -1428,6 +1462,7 @@ def envelope(
         status: Optional status override for a client-side answer.
         failure_code: Optional client-side failure code.
         detail: Optional client-side explanation.
+        request: The sent fields, used only to match announced interface retirements.
         extra: Additional stable envelope fields.
 
     Returns:
@@ -1461,6 +1496,11 @@ def envelope(
             else {}
         ),
         **extra,
+        **deprecation_notices(
+            operation,
+            owner | {"failure_code": failure_code or owner.get("failure_code")},
+            request or {},
+        ),
     }
 
 
