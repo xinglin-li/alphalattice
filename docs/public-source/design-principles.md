@@ -201,4 +201,28 @@ The [verification workflow](../../.github/workflows/ci.yml) checks the source ch
 
 Claims stay within their evidence. Windows is the verified platform; macOS and Linux are not yet verified. A completed study establishes its recorded result under its inputs and method, and promises no return. Every known limit ships with the release that carries it.
 
+## 15. One door for work and exchanges
+
+The local Host is the common entry for agents and people. Commands and Workbench actions reach the same owners and admission rules. Exchanges between agents also pass through it, so assignments, answers and acceptances become records that can be checked together. This keeps the account of the work beside the rules that admit it.
+
+In the committee, each member sends its message with its own key. The Host records its author and admits it to the floor, where the person can inspect the exchange.
+
+## 16. The result comes from the loop
+
+Formulas and declared rules belong to the program, judgment under ambiguity to the agent, and authority to the person. The program computes and records, then offers a next request or explains a refusal; the agent reads it, judges and acts again. This loop connects interpretation to checkable facts.
+
+The person can be in the loop at a decision, on it by watching and intervening, or out of it for explicitly delegated acts. Each act retains its scope and authority limits. The first use shows this: its named preparation decisions proceed under a delegation that expires with the goal or its allotted hours.
+
+## 17. Management by exception
+
+A decision that a declared rule can make belongs to the Host. Under the same rule, the same evidence receives the same decision, recorded and disclosed. The agent is asked only where no rule resolves the case or a bound is exceeded; authority remains the person's. Judgment goes where it can change the outcome.
+
+The first-use data rule retains an isolated verified move with its caveat or sets it aside recoverably, and escalates beyond its bound. When the Host itself fails, the agent keeps a recorded way in through diagnostics and recovery requests. Recovery follows the same door and authority checks, preserving earlier verified work.
+
+## 18. What agents have learned keeps working
+
+Commands, answer fields, codes and message kinds are versioned interfaces. We take Linux's concern for its userspace as a design reference: what agents have learned keeps working. A retirement is announced as deprecated, with its replacement, before removal. A stable contract lets research continue across upgrades.
+
+A command being retired names its replacement while the old form still works. Guidance and release notes carry the change together, so the next session can follow it deliberately.
+
 the maintainer
