@@ -485,10 +485,13 @@ def test_a_specialist_speaks_three_times_after_its_stance_and_only_the_pm_rules(
         _say(store, now, "CRO", "REPLY", reply_to=challenge, text="Once more.")
     with pytest.raises(ValueError, match=r"message_refused:SHAPE"):
         _say(store, now, "PM", "RULING", reply_to=challenge)
+    with pytest.raises(ValueError, match=r"message_refused:SHAPE"):
+        _say(store, now, "PM", "RULING", reply_to=challenge, outcome="DECLINE")
 
 
+@pytest.mark.parametrize("outcome", ["PROCEED_WITH_NOTES", "DECLINE"])
 def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
-    tmp_path: Path, readback: dict[str, Any]
+    tmp_path: Path, readback: dict[str, Any], outcome: str
 ) -> None:
     """The Report keeps rejected CRO dissent and relayed answers in their authors' words."""
     store, now = _floor(tmp_path, readback)
@@ -501,7 +504,7 @@ def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
     asked = _say(store, now, "RISK", "CHALLENGE", targets=("T2",))
     handed = _say(store, now, "PM", "RULING", reply_to=asked, outcome="FOR_THE_PERSON")
     _say(store, now, "PM", "PERSON_ANSWER", reply_to=handed, text="Cap at 5%.")  # their digits
-    _say(store, now, "PM", "VERDICT", outcome="PROCEED_WITH_NOTES")
+    _say(store, now, "PM", "VERDICT", outcome=outcome)
     with pytest.raises(ValueError, match=r"message_refused:CLOSED"):
         _say(store, now, "RISK", "CHALLENGE", targets=("T1",))
     floor = committee.floor_of(store, TASK)
@@ -510,15 +513,19 @@ def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
     held = floor.opened["holdings"]
     holding = committee.render("H1", held)
     assert rows[0]["attribution_word"] == "Committee verdict: {outcome}"
-    assert rows[0]["attribution_words"] == {"outcome": "PROCEED_WITH_NOTES"}
+    assert rows[0]["attribution_words"] == {"outcome": outcome}
     assert rows[1]["attribution_word"] == "CRO dissent stands on {targets}"
     assert rows[1]["attribution_words"] == {"message": challenge, "targets": holding}
     assert rows[1]["text"] == committee.render(dissent, held)
     assert rows[2]["attribution_word"] == "CRO dissent stands"
     assert rows[2]["attribution_words"] == {"message": untargeted, "targets": ""}
     final = [r for r in rows if r["attribution_word"] == "{member}, final view"]
+    pm = next(r for r in final if r["attribution_words"]["member"] == "PM")
+    assert pm["attribution_words"]["message"] == next(
+        m["id"] for m in reversed(floor.messages) if m["kind"] == "RULING"
+    )
     views = {r["attribution_words"]["member"]: r["text"] for r in final}
-    spoken = [m for m in floor.messages if m["kind"] in {"STANCE", "CHALLENGE", "REPLY"}]
+    spoken = [m for m in floor.messages if m["kind"] in {"STANCE", "CHALLENGE", "REPLY", "RULING"}]
     said = {m["role"]: committee.render(m["text"], held) for m in spoken}
     assert views == said
     assert not any(row.get("text_word") for row in rows if row["text"] in said.values())
@@ -703,8 +710,18 @@ def test_the_risk_member_reads_the_dates_predicted_risk(tmp_path: Path, readback
         "top_contributors": [top],
         "covered_weight": 1.0,
     }
-    view = committee.role_lines("RISK", {**readback, "date_risk": risk}, EVIDENCE, None, NOW)
+    record = {
+        **readback,
+        "publication": {
+            **readback["publication"],
+            "risk_status": "NOT_EVALUATED_FOR_THIS_PROPOSAL",
+        },
+        "date_risk": risk,
+    }
+    view = committee.role_lines("RISK", record, EVIDENCE, None, NOW)
     assert view is not None and all(f in view[1] for f in ("1.10%", "17.5%", "H1 21%"))
+    assert "Dated" in view[1] and "EVALUATED" in view[1].split("Historical")[0]
+    assert "NOT_EVALUATED_FOR_THIS_PROPOSAL" in view[1].split("Historical")[1]
     kinds = [(p["kind"], p["targets"]) for p in committee.tension_points(held, EVIDENCE, risk)]
     assert ("TOP_RISK_CONTRIBUTORS", ["H1"]) in kinds
     manifest = ResearchWorkspaceManifest.create(

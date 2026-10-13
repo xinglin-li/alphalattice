@@ -1781,8 +1781,7 @@ function pctText(s, threshold = null) {
 }
 // a fraction of one (0.6 -> "60%")
 /* ---- reading helpers: an owner's code in words (the code itself stays on hover and in the
-   exports), a count with its noun, a session id told apart from its neighbours, an instant as a
-   reader sees it. Nothing here changes a value; the owner's exact strings stay in the details. */
+   exports). Owner strings stay in the details; displayed meanings change no value. */
 const CODE_WORDS = {
   "EVIDENCE_AUTHORITY_NOT_ADMITTED": "Evidence authority not admitted",
   "risk_research.installed_risk_surface_absent": "Installed risk surface not available",
@@ -1791,7 +1790,7 @@ const CODE_WORDS = {
   "risk_research.positions_outside_the_risk_axis": "Positions are outside the risk model coverage",
 
   PM:'Main PM', CRO:'CRO',
-  STANCES:'Blind stances', DEBATE:'Debate', CLOSED:'Closed', NOT_YET:'Not yet received', ADOPTED:'Adopted', ADOPT:'Adopt', REJECT:'Rejected', FOR_THE_PERSON:'For you', PROCEED:'Proceed', PROCEED_WITH_NOTES:'Proceed with notes',
+  STANCES:'Blind stances', DEBATE:'Debate', CLOSED:'Closed', NOT_YET:'Not yet received', ADOPTED:'Adopted', ADOPT:'Adopt', REJECT:'Rejected', FOR_THE_PERSON:'For you', PROCEED:'Proceed', PROCEED_WITH_NOTES:'Proceed with notes', DECLINE:'Decline endorsement',
   RESEARCH_DELIVERY_EXPORTED:'Delivery exported', COMMITTEE_FLOOR:'Committee floor', CONDITIONAL_ESTIMATE:'Conditional estimated weights',
   UNRECOVERABLE: 'Unrecoverable execution',
   SETTLE_EVIDENCE_CONTINUATION: 'Settle evidence continuation',

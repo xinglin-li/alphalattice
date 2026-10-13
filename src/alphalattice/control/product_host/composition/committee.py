@@ -74,7 +74,7 @@ RULES: Final[dict[str, tuple[tuple[str, ...], frozenset[str], str | None]]] = {
 (a challenge, any message, or an item the PM handed to the person)."""
 OUTCOMES: Final = {
     "RULING": frozenset({"ADOPT", "REJECT", "FOR_THE_PERSON"}),
-    "VERDICT": frozenset({"PROCEED", "PROCEED_WITH_NOTES", "FOR_THE_PERSON"}),
+    "VERDICT": frozenset({"PROCEED", "PROCEED_WITH_NOTES", "DECLINE", "FOR_THE_PERSON"}),
 }
 """Each kind's outcomes; a kind not named takes none (SHAPE, with what it answers)."""
 COMMAND: Final = " ".join(command_prefix())
@@ -859,6 +859,9 @@ def _views(floor: Floor, targets: Callable[..., str]) -> list[tuple[Any, ...]]:
     position or a challenge (`standing_messages`), each verbatim with its id, the points it
     holds and its positions; a CRO dissent is shown as one already."""
     last = {m["role"]: m for m in floor.messages if m["kind"] in _VIEWS}
+    rulings = [m for m in floor.messages if m["role"] == "PM" and m["kind"] == "RULING"]
+    if rulings:
+        last["PM"] = rulings[-1]
     held, shown = standing_messages(floor), {m["id"] for m in standing_dissents(floor)}
     items: list[tuple[Any, ...]] = []
     for r in ROLES:
@@ -959,8 +962,10 @@ def role_lines(
         ]
     elif role == "RISK":
         risk = floor.opened.get("date_risk") if floor else readback.get("date_risk")
-        sealed = f"Risk status sealed at publication: {publication.get('risk_status')}. "
-        view = [sealed + risk_view(risk, held) + concentration(held), *table]
+        linked = (
+            f"Historical linked Risk study for this proposal: {publication.get('risk_status')}. "
+        )
+        view = [risk_view(risk, held) + linked + concentration(held), *table]
     elif role == "CRO":
         gap = evidence_gap(evidence)
         view = [
@@ -1033,6 +1038,8 @@ def route(
         "this bundle cannot tell, citing by S alias the facts it rests on.",
         f"Then up to {MESSAGE_CAP} CHALLENGE or REPLY, each naming its targets by alias (T1, H3, "
         "M4, a fact by its S alias); type no other digit, since the Host renders every number. "
+        "The PM may approve (PROCEED), approve with conditions (PROCEED_WITH_NOTES), decline "
+        "endorsement (DECLINE), or hand the decision to the person (FOR_THE_PERSON). "
         "Write each message as a YAML file in this bundle directory "
         "(kind, text, positions, targets, reply_to), send it "
         f"with `{COMMAND} committee submit "

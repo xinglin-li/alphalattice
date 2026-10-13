@@ -139,11 +139,12 @@ class CommitteeMessage(BaseModel):  # type: ignore[misc]
     )
     """A stance's position on each tension point it takes."""
     outcome: (
-        Literal["ADOPT", "REJECT", "FOR_THE_PERSON", "PROCEED", "PROCEED_WITH_NOTES"] | None
+        Literal["ADOPT", "REJECT", "FOR_THE_PERSON", "PROCEED", "PROCEED_WITH_NOTES", "DECLINE"]
+        | None
     ) = None
     """Required of a RULING (ADOPT, REJECT, FOR_THE_PERSON) and the VERDICT (PROCEED,
-    PROCEED_WITH_NOTES, FOR_THE_PERSON); no other kind takes one. The floor refuses a message
-    its kind's shape does not fit by name, with the same message corrected."""
+    PROCEED_WITH_NOTES, DECLINE, FOR_THE_PERSON); other kinds take none. A wrong shape is
+    refused with its corrected message."""
 
 
 type PortfolioResearchOperation = Literal[

@@ -15,7 +15,7 @@ ALIAS = re.compile(r"\b[CHMST][0-9]{1,4}\b")
 ROLES = {"PM", "ALPHA", "RISK", "CRO"}
 OUTCOMES = {
     "RULING": {"ADOPT", "REJECT", "FOR_THE_PERSON"},
-    "VERDICT": {"PROCEED", "PROCEED_WITH_NOTES", "FOR_THE_PERSON"},
+    "VERDICT": {"PROCEED", "PROCEED_WITH_NOTES", "DECLINE", "FOR_THE_PERSON"},
 }
 MESSAGE_KINDS = {"STANCE", "CHALLENGE", "REPLY", "RULING", "VERDICT", "PERSON_ANSWER"}
 POSITIONS = {"SUPPORT", "OBJECT", "RESERVE"}
@@ -383,6 +383,27 @@ def _standing_fidelity(messages, rows, page) -> list[str]:
     return problems
 
 
+def _final_view_fidelity(messages, rows) -> list[str]:
+    """A PM final-view label names its last ruling, with that ruling's exact words."""
+    problems = []
+    rulings = [m for m in messages if m["role"] == "PM" and m["kind"] == "RULING"]
+    if rulings:
+        final = [
+            r
+            for r in rows
+            if r.get("attribution_word") == "{member}, final view"
+            and (r.get("attribution_words") or {}).get("member") == "PM"
+        ]
+        latest = rulings[-1]
+        if (
+            len(final) != 1
+            or final[0].get("attribution_words", {}).get("message") != latest["id"]
+            or final[0].get("text") != latest["text"]
+        ):
+            problems.append(f"report.final_view_superseded:PM:{latest['id']}")
+    return problems
+
+
 def _floor_fidelity(messages, rows, page, raw) -> list[str]:
     problems = []
     verdict = next((i for i, m in enumerate(messages) if m["kind"] == "VERDICT"), len(messages))
@@ -474,7 +495,11 @@ def report_fidelity(
     messages, rows = closed.get("messages", []), report.get("commentary", [])
     page = html.unescape(str(report.get("html", "")))
     raw = {m["id"]: m["text"] for m in raw_messages or []}
-    problems = _standing_fidelity(messages, rows, page) + _floor_fidelity(messages, rows, page, raw)
+    problems = (
+        _standing_fidelity(messages, rows, page)
+        + _final_view_fidelity(messages, rows)
+        + _floor_fidelity(messages, rows, page, raw)
+    )
     if raw_messages is None or {m["id"] for m in raw_messages} != {m["id"] for m in messages}:
         problems.append("UNPROVED:raw_messages")
     else:

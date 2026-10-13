@@ -2,6 +2,8 @@
  * English phrase is worded differently in another part of the product. Generated data; edit
  * translations here, never in the templates. */
 window.ALPHA_ZH = {
+  "Required of a RULING (ADOPT, REJECT, FOR_THE_PERSON) and the VERDICT (PROCEED, PROCEED_WITH_NOTES, DECLINE, FOR_THE_PERSON); other kinds take none. A wrong shape is refused with its corrected message.": "裁决消息必须给出采纳、否决或交给本人；结论消息必须给出继续、附注继续、不予认可或交给本人；其他消息种类不使用该字段。格式错误时会拒绝，并提供修正后的消息。",
+  "Decline endorsement": "不予认可",
   "The stage's write exceeds the workspace storage cap. Raise the cap (`storage set --cap-bytes <bytes>`), or preview a cleanup and confirm it on the person's yes, then resume the Task's offered request; its verified stages and retained results stay intact.": "此阶段的写入超过工作区存储上限。请提高上限（`storage set --cap-bytes <bytes>`），或预览清理并在用户同意后确认，然后按任务提供的请求继续；已核验阶段和保留结果保持完整。",
   "The Task named is a `{subject}` Task, not a study, so a study's selector does not name its book. `task show` reads it, with the requests its owner offers.": "所指定的任务是 `{subject}` 任务，而不是研究，因此研究的选择器无法指向它的账本。`task show` 会读取它，并给出其所有者提供的请求。",
   "--research-input-id names the admitted research input the book's study was built on, as `study show <id>` names it; --research-input-hash names that input's exact sealed binding, also named by `study show <id>`, never inferred from the latest data.": "--research-input-id 指定账本的研究所基于的、已准入的研究输入，与 `study show <id>` 所给的一致；--research-input-hash 指定该输入确切的已封存绑定，同样由 `study show <id>` 给出，绝不从最新数据推断。",

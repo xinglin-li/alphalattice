@@ -545,7 +545,7 @@ def risk_view(risk: Mapping[str, Any] | None, held: Sequence[Mapping[str, Any]])
     """The date's predicted risk as the Host renders it, report only; members type no digit."""
     if not risk or risk.get("risk_status") != "EVALUATED":
         reason = (risk or {}).get("reason") or "risk_research.date_risk_unavailable"
-        return f"Predicted risk of these positions: not evaluated ({reason}); "
+        return f"Dated positions Risk assessment: NOT_EVALUATED; unavailable ({reason}); "
     alias = {h["listing_id"]: h["alias"] for h in held}
     top = ", ".join(
         f"{alias.get(c['listing_id'], c['listing_id'])} {c['share']:.0%}"
@@ -553,7 +553,7 @@ def risk_view(risk: Mapping[str, Any] | None, held: Sequence[Mapping[str, Any]])
     )
     later = risk["sessions_before_the_positions"]
     return (
-        f"Predicted risk of these positions at {risk['risk_as_of']}"
+        f"Dated positions Risk assessment: EVALUATED. Predicted risk at {risk['risk_as_of']}"
         + (f", {later} sessions before them" if later else "")
         + f" (the installed recipe, report only): volatility {risk['volatility_per_session']:.2%} "
         f"a session, {risk['volatility_annualized']:.1%} a year; systematic share "

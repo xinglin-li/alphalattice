@@ -56,3 +56,8 @@ Quote the publication's `claim` with its `risk_status` and `cro_status`. They ar
 | Their review prepared | `alphalattice strategy-book review --update <task> --package <package> --dir "<out>/review"` | Start one Evidence Analyst per bundle |
 | CRO review published | `alphalattice review continue --dir "<out>/review"` after the CRO | Cite the review beside the publication's own status |
 | Delivered | The goal's record | State coverage, expiry and Risk limits, then complete the goal |
+
+The committee's PM may approve with PROCEED, approve with conditions with PROCEED_WITH_NOTES,
+or decline endorsement of action with DECLINE. FOR_THE_PERSON remains available. A decline
+closes the discussion and retains the research record and positions. The report labels the
+PM's last ruling as its final view, keeping earlier standing views under their own labels.
