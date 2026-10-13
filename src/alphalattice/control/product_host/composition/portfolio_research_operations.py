@@ -2804,11 +2804,7 @@ class PortfolioResearchOperations:
         return {**activated, **first_update(self, activated, provenance)}
 
     def _committee(self, request: PortfolioResearchOperationRequest) -> dict[str, object]:
-        """The investment committee on a date's published positions (`committee`).
-
-        Its floor is the opening goal's ledger; each message it reveals is filed as a row of
-        that goal's conversation, so the Team page shows the floor as it moves.
-        """
+        """The date's committee, under its workspace's agenda rule, on the Goal's own ledger."""
         task, now = str(request.update_task_id), self.dispatcher.clock()
         return committee.operate(
             self.goals.store,
@@ -2817,6 +2813,7 @@ class PortfolioResearchOperations:
             provenance=REQUEST_PROVENANCE.get(),
             dated=lambda: self._dated(task),
             file_floor=lambda: self._file_floor(task, now),
+            agenda_limit=self.workspace_manifest.committee_agenda_limit or committee.AGENDA_LIMIT,
         )
 
     def _date_risk(

@@ -21,6 +21,31 @@ from alphalattice.interface.local_application.failure_codes import (
     setup_failure,
     untyped_failure,
 )
+from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchRequestDocument,
+)
+
+
+def test_a_committee_document_refusal_keeps_its_members_own_read() -> None:
+    """An invalid member message offers that member's keyed floor read."""
+    member = dict(
+        update_task_id="00000000-0000-0000-0000-000000000001",
+        committee_role="ALPHA",
+        committee_key="a" * 32,
+    )
+    request = dict(
+        operation="COMMITTEE_SUBMIT",
+        **member,
+        committee_message=dict(
+            kind="STANCE",
+            text="Support.",
+            positions=dict.fromkeys((f"T{i}" for i in range(1, 34)), "SUPPORT"),
+        ),
+    )
+    with pytest.raises(ValidationError) as caught:
+        PortfolioResearchRequestDocument.model_validate(request)
+    answer = located_failure(caught.value, "local_client.request_invalid", request=request)
+    assert answer["next_requests"]["valid_values"] == {"operation": "COMMITTEE_READ", **member}
 
 
 def test_a_contract_failure_answers_one_located_shape() -> None:

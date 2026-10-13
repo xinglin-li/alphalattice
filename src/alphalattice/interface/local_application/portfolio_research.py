@@ -137,7 +137,7 @@ class CommitteeMessage(BaseModel):  # type: ignore[misc]
     positions: dict[str, Literal["SUPPORT", "OBJECT", "RESERVE"]] = Field(
         default_factory=dict, max_length=32
     )
-    """A stance's position on each tension point it takes."""
+    """A stance's position on each agenda point."""
     outcome: (
         Literal["ADOPT", "REJECT", "FOR_THE_PERSON", "PROCEED", "PROCEED_WITH_NOTES", "DECLINE"]
         | None

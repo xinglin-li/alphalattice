@@ -616,6 +616,14 @@
         "type": "string"
       }
     },
+    "answer:COMMITTEE_READ.agenda": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
+      }
+    },
     "answer:COMMITTEE_READ.closes_at": {
       "required": true,
       "schema": {
@@ -46119,6 +46127,7 @@
     "refusal:local_web.agent_session_invalid": {},
     "refusal:local_web.analysis_publication_hash_required": {},
     "refusal:local_web.application_absent": {},
+    "refusal:local_web.assets_stale": {},
     "refusal:local_web.goal_header_invalid": {},
     "refusal:local_web.goal_id_invalid": {},
     "refusal:local_web.handler_failed": {},
@@ -47742,6 +47751,7 @@
     "refusal:research_workspace.artifact_keys_invalid": {},
     "refusal:research_workspace.artifact_path_invalid": {},
     "refusal:research_workspace.binding_field_unknown": {},
+    "refusal:research_workspace.committee_agenda_limit_invalid": {},
     "refusal:research_workspace.configuration_changed_restart_required": {},
     "refusal:research_workspace.evidence_review_path_invalid": {},
     "refusal:research_workspace.experiment_input_duplicate": {},

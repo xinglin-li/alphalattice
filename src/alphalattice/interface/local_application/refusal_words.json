@@ -819,6 +819,10 @@
   "detail": "Research update Task {subject} is another strategy's than the one --package names, so it is not read as that strategy's: read the Task without --package, or the strategy's own latest with --package alone.",
   "next_action": "READ_THE_TASK_OR_THE_STRATEGYS_OWN_LATEST"
  },
+ "research_workspace.committee_agenda_limit_invalid": {
+  "detail": "`committee_agenda_limit` must be a strict integer from 1 through 24. Omit the field to use 12, or correct the workspace declaration and retry.",
+  "next_action": "CORRECT_THE_WORKSPACE_DECLARATION"
+ },
  "research_workspace.manifest_refused": {
   "detail": "The workspace's manifest does not read as its contract says (`{subject}`: each field refused and its rule), so nothing in it runs; restore the workspace from a backup that holds a readable manifest (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
@@ -1544,7 +1548,7 @@
   "next_action": "SEND_THE_OFFERED_SELECTOR"
  },
  "committee.message_refused": {
-  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias. For review and committee members: MEMBER, a missing own session or bundle key; KEY, another member's key; ENDED, changed work after the thread ends. Read the floor with `alphalattice committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
+  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias; AGENDA, an unraised below-line point or more than one point raised by a PM reply. For review and committee members: MEMBER, a missing own session or bundle key; KEY, another member's key; ENDED, changed work after the thread ends. Read the floor with `alphalattice committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
   "next_action": "READ_THE_FLOOR"
  },
  "committee.session_required": {

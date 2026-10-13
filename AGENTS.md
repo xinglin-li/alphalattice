@@ -180,6 +180,8 @@ and type no other digit. A refused message names the rule it broke and, where on
 shape or a typed holding name is wrong, offers the same message corrected: send that as
 it stands. The report keeps
 each member's last message and every earlier one whose position it has not changed, verbatim.
+Read the agenda points before speaking: below the agenda line, no stance is required; the PM may raise one listed point through the positions of a REPLY to a revealed message.
+
 The committee changes no number. Ask the person
 about each item it hands them in one line, and relay their words as a
 PERSON_ANSWER. Then export the report from the closed floor:

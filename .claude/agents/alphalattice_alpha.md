@@ -61,7 +61,7 @@ Graph (operation names; use the complete commands above; references carry over):
 - On the committee, speak from your own session with your bundle's key; the lead never
   submits for you. Your bundle's route is your one final action, in place of an answer
   file: run only its `submit` and `wait`, one blind STANCE on the
-  tension points, then up to three CHALLENGE or REPLY messages, each naming its targets by
+  agenda points, then up to three CHALLENGE or REPLY messages, each naming its targets by
   alias (T2, H3, M4, a component by its C alias); the Host renders every number. A message resent as it stands is answered with its first admission and spends nothing; a
   refusal names its rule and offers its way back, which you send as it stands. Your position
   on each point stays in the report verbatim until you change it on that point.

@@ -17,7 +17,7 @@ from uuid import UUID, uuid4
 import numpy as np
 import pytest
 
-from alphalattice.control.product_host.composition import committee
+from alphalattice.control.product_host.composition import committee, committee_materials
 from alphalattice.control.product_host.composition import portfolio_result_context as context
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.portfolio_result_context import date_risk
@@ -25,6 +25,7 @@ from alphalattice.control.product_host.composition.research_delivery import (
     export_update_delivery,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
+    ResearchWorkspaceError,
     ResearchWorkspaceManifest,
 )
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
@@ -51,6 +52,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     portfolio_update_positions,
 )
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSurfaceError
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from devtools.evaluation.committee import thread_findings
 from tests.portfolio_strategy_lab.local_web_support import run_node
@@ -276,6 +278,202 @@ def _say(
         message,
         now[0],
         provenance=RequestProvenance(session="s-1" if role == "PM" else f"child-{role.lower()}"),
+    )
+
+
+def test_a_populated_floor_bounds_stances_and_discloses_every_other_point(tmp_path, readback):
+    """A ranked agenda bounds judgments without hiding any exception or preventing PM discussion."""
+    store, now = _floor(tmp_path, readback)
+    task = str(UUID(int=12))
+    evidence = {
+        "evidence_as_of": "2026-09-09",
+        "issuer_rows": [
+            {"tickers": [name], "adverse_issue_count": 1}
+            for name in readback["listing_labels"].values()
+        ],
+    }
+    floor = committee.open_floor(
+        store,
+        UUID(int=7),
+        readback | {"task_id": task},
+        evidence,
+        session=("claude-code", "s-1"),
+        now=now[0],
+    )
+    assert len(floor.opened["tension_points"]) > 12
+    view = committee.state(floor, "ALPHA", 0, now[0])
+    agenda = view["agenda"]
+    assert len(agenda["aliases"]) == 12
+    assert len(view["tension_points"]) == len(agenda["aliases"]) + agenda["below_count"]
+    first, second = next(
+        (a, b) for i, a in enumerate(agenda["below"]) for b in agenda["below"][i + 1 :] if a > b
+    )
+    message = {
+        "kind": "STANCE",
+        "text": "H1 has a recorded exception.",
+        "positions": {a: "OBJECT" for a in [*agenda["aliases"], first]},
+        "targets": [agenda["aliases"][0], first],
+    }
+    request = Request(
+        operation="COMMITTEE_SUBMIT",
+        update_task_id=UUID(task),
+        committee_role="ALPHA",
+        committee_key=floor.key("ALPHA"),
+        committee_message=message,
+    )
+
+    def send(given):
+        return committee.operate(
+            store,
+            given,
+            now[0],
+            provenance=RequestProvenance(
+                session="s-1" if given.committee_role == "PM" else "child-alpha"
+            ),
+            dated=lambda: None,
+            file_floor=lambda: None,
+        )
+
+    for fields in (
+        {"targets": [first]},
+        {"text": f"Discuss {first}."},
+        {"positions": {"H1": "OBJECT"}},
+        {"positions": {floor.opened["facts"][0]["alias"]: "OBJECT"}},
+    ):
+        given = replace(
+            request,
+            committee_message=CommitteeMessage(
+                kind="STANCE",
+                text=fields.get("text", "Discuss this exception."),
+                **{k: v for k, v in fields.items() if k != "text"},
+            ),
+        )
+        refused = send(given)
+        assert refused["failure_code"] == "committee.message_refused:AGENDA"
+        if "text" in fields:
+            assert "corrected" not in refused["next_requests"]
+            assert refused["author_revision_fields"] == ["committee_message.text"]
+            assert set(refused["next_requests"]) == {"floor", "schema"}
+    refused = send(request)
+    assert refused["failure_code"] == "committee.message_refused:AGENDA"
+    assert refused["agenda_size"] == 12
+    corrected = Request(**refused["next_requests"]["corrected"])
+    assert set(corrected.committee_message.positions) == set(agenda["aliases"])
+    assert corrected.committee_message.targets == (agenda["aliases"][0],)
+    assert corrected.committee_message.text == message["text"]
+    assert send(corrected)["status"] == "COMMITTEE_MESSAGE_ACCEPTED"
+    now[0] += timedelta(minutes=11)
+    assert send(corrected)["status"] == "COMMITTEE_MESSAGE_ACCEPTED"
+
+    def message_request(role, **fields):
+        return replace(
+            request,
+            committee_role=role,
+            committee_key=floor.key(role),
+            committee_message=CommitteeMessage(text="Discuss this exception.", **fields),
+        )
+
+    for kind, fields in (
+        ("CHALLENGE", {}),
+        ("REPLY", {"reply_to": "M1"}),
+        ("VERDICT", {"outcome": "PROCEED"}),
+    ):
+        role = "PM" if kind == "VERDICT" else "ALPHA"
+        for names in ({"targets": [first]}, {"positions": {first: "OBJECT"}}):
+            assert send(message_request(role, kind=kind, **fields, **names))["failure_code"] == (
+                "committee.message_refused:AGENDA"
+            )
+    challenge = message_request("ALPHA", kind="CHALLENGE", targets=[agenda["aliases"][0]])
+    assert send(challenge)["status"] == "COMMITTEE_MESSAGE_ACCEPTED"
+    for kind, fields in (
+        ("RULING", {"reply_to": "M2", "outcome": "FOR_THE_PERSON"}),
+        ("PERSON_ANSWER", {"reply_to": "M3"}),
+    ):
+        refused = send(message_request("PM", kind=kind, targets=[first], **fields))
+        assert refused["failure_code"] == "committee.message_refused:AGENDA"
+        if kind == "RULING":
+            assert send(message_request("PM", kind=kind, **fields))["status"] == (
+                "COMMITTEE_MESSAGE_ACCEPTED"
+            )
+    targets_only = message_request("PM", kind="REPLY", reply_to="M1", targets=[first])
+    assert send(targets_only)["failure_code"] == "committee.message_refused:AGENDA"
+    multiple = message_request(
+        "PM", kind="REPLY", reply_to="M1", positions={second: "OBJECT", first: "SUPPORT"}
+    )
+    corrected_raise = Request(**send(multiple)["next_requests"]["corrected"])
+    assert corrected_raise.committee_message.positions == {first: "SUPPORT"}
+    assert send(corrected_raise)["status"] == "COMMITTEE_MESSAGE_ACCEPTED"
+    assert send(message_request("PM", kind="REPLY", reply_to="M1", positions={second: "OBJECT"}))[
+        "status"
+    ] == ("COMMITTEE_MESSAGE_ACCEPTED")
+    floor = committee.floor_of(store, task)
+    raised = committee.state(floor, None, 0, now[0])
+    assert raised["agenda"]["raised"] == [first, second]
+    assert next(p for p in raised["tension_points"] if p["alias"] == first)["state"] == "OPEN"
+    now[0] += timedelta(minutes=40)
+    rows = committee.commentary(floor, now[0])
+    disclosure = next(r for r in rows if "agenda" in r)
+    assert disclosure["agenda"] == committee.state(floor, None, 0, now[0])["agenda"]
+    assert {r["point"] for r in rows if "point" in r} == {
+        p["alias"] for p in view["tension_points"]
+    }
+
+
+def test_a_small_floor_and_its_report_stay_exact_under_the_agenda_rule(
+    tmp_path, readback, monkeypatch
+):
+    """A small floor stays exact while declared agenda changes bind bounded floors."""
+    store, now = _floor(tmp_path, readback)
+    unchanged = committee.floor_of(store, TASK)
+    assert "agenda" not in unchanged.opened
+    assert "each tension point" in committee.route("ALPHA", unchanged, now[0])[0]
+    other, _ = _floor(tmp_path / "other", readback)
+    task = str(UUID(int=13))
+    arguments = {"session": ("claude-code", "s-1"), "now": now[0]}
+    first = committee.open_floor(
+        store, UUID(int=7), readback | {"task_id": task}, EVIDENCE, agenda_limit=12, **arguments
+    )
+    second = committee.open_floor(
+        other, UUID(int=7), readback | {"task_id": task}, EVIDENCE, agenda_limit=24, **arguments
+    )
+    assert first.opened == second.opened
+    at = now[0] + timedelta(minutes=41)
+    assert committee.state(first, None, 0, at) == committee.state(second, None, 0, at)
+    assert committee.commentary(first, at) == committee.commentary(second, at)
+    manifest = ResearchWorkspaceManifest.research_only("synthetic")
+    configured = manifest.with_bindings(committee_agenda_limit=12)
+    assert configured.manifest_hash == manifest.manifest_hash
+    assert (
+        configured.with_bindings(committee_agenda_limit=24).manifest_hash
+        != configured.manifest_hash
+    )
+    for invalid in (0, 25, True, 1.5):
+        with pytest.raises(ResearchWorkspaceError) as failure:
+            manifest.with_bindings(committee_agenda_limit=invalid)
+        assert str(failure.value) == "research_workspace.committee_agenda_limit_invalid"
+        words = worded_refusal({"failure_code": str(failure.value), "status": "REFUSED"})
+        assert words["next_action"] == "CORRECT_THE_WORKSPACE_DECLARATION"
+        assert all(term in words["detail"] for term in ("committee_agenda_limit", "1", "24"))
+    policy = {
+        "rule_version": 1,
+        "limit": 1,
+        "rank_keys": (
+            ("affected_holding_weight", "desc"),
+            ("adverse_count", "desc"),
+            ("original_alias_number", "asc"),
+        ),
+    }
+    points, held = first.opened["tension_points"][:2], first.opened["holdings"]
+    before = committee_materials.agenda(points, held, 1)["agenda"]
+    monkeypatch.setattr(committee_materials, "AGENDA_RANKING", "Same ordering.")
+    after = committee_materials.agenda(points, held, 1)["agenda"]
+    assert all(before[key] == value for key, value in policy.items())
+    assert before["ranking"] != after["ranking"]
+    assert before["rule_hash"] == after["rule_hash"] == canonical_hash(policy)
+    assert canonical_hash(policy | {"rule_version": 2}) != before["rule_hash"]
+    assert (
+        canonical_hash(policy | {"rank_keys": tuple(reversed(policy["rank_keys"]))})
+        != before["rule_hash"]
     )
 
 

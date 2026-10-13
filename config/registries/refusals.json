@@ -11097,6 +11097,9 @@
 "research_workspace.binding_field_unknown": {
 "owner": "research_workspace"
 },
+"research_workspace.committee_agenda_limit_invalid": {
+"owner": "research_workspace"
+},
 "research_workspace.configuration_changed_restart_required": {
 "owner": "research_workspace"
 },

@@ -13,6 +13,49 @@ from typing import Any, Final
 
 import numpy as np
 
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+AGENDA_LIMIT: Final = 12
+AGENDA_RANKING: Final = "Affected holding weight, then adverse count, then original alias."
+
+
+def agenda(
+    points: Sequence[Mapping[str, Any]], held: Sequence[Mapping[str, Any]], limit: int
+) -> dict[str, Any]:
+    """A bounded, identity-bearing agenda; a small floor keeps its original record exactly."""
+    if len(points) <= limit:
+        return {}
+    weights = {h["alias"]: h["weight"] for h in held}
+    ranked = sorted(
+        points,
+        key=lambda p: (
+            -sum(weights.get(a, 0) for a in p["targets"])
+            if p["targets"]
+            else -sum(weights.values()),
+            -p.get("words", {}).get("n", 0),
+            int(p["alias"][1:]),
+        ),
+    )
+    policy = {
+        "rule_version": 1,
+        "limit": limit,
+        "rank_keys": (
+            ("affected_holding_weight", "desc"),
+            ("adverse_count", "desc"),
+            ("original_alias_number", "asc"),
+        ),
+    }
+    return {
+        "agenda": {
+            **policy,
+            "ranking": AGENDA_RANKING,
+            "rule_hash": canonical_hash(policy),
+            "aliases": [p["alias"] for p in ranked[:limit]],
+            "below": [p["alias"] for p in ranked[limit:]],
+        }
+    }
+
+
 QUESTIONS: Final = {
     "PM": {
         "PM.change": "What changed, and what did it cost?",

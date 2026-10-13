@@ -10424,7 +10424,13 @@
     "name": "tension_points",
     "kind": "array",
     "required": true,
-    "meaning": "The Host's tension points, each with its alias, words, targets, `state` (`OPEN`, `ADOPTED`, `REJECTED`, `FOR_THE_PERSON`), `ruling_id`, and the CRO challenges on it whose dissent stands (`dissent_stands`, `dissents`)."
+    "meaning": "The Host's tension points, each with its alias, words, targets, `state` (`OPEN`, `ADOPTED`, `REJECTED`, `FOR_THE_PERSON`, `BELOW_AGENDA`), `ruling_id`, and the CRO challenges on it whose dissent stands (`dissent_stands`, `dissents`). `BELOW_AGENDA` means no stance is required until the PM raises that point."
+   },
+   {
+    "name": "agenda",
+    "kind": "object",
+    "required": false,
+    "meaning": "On a bounded floor: the saved `limit`, integer `rule_version`, ordered `rank_keys` (affected_holding_weight descending, adverse_count descending, original_alias_number ascending), display `ranking` and `rule_hash`, the agenda's `aliases`, points `raised` by the PM, and the remaining `below` aliases and `below_count`. A small floor has no agenda field."
    },
    {
     "name": "holdings",

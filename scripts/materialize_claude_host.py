@@ -405,7 +405,8 @@ SKILL_COMMANDS: tuple[RoleCommand, ...] = (
     ),
     RoleCommand(
         'committee show --update <task> --output "<out>/committee/floor.json"',
-        "The floor: its stage, members, tension points, messages and, once closed, the report.",
+        "The floor: its stage, members, agenda points, below-line points, messages and, "
+        "once closed, the report.",
         ("--update",),
     ),
     RoleCommand(

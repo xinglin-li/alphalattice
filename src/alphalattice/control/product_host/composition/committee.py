@@ -24,7 +24,11 @@ from typing import Any, Final
 from uuid import UUID
 
 from alphalattice.control.product_host.composition.committee_materials import (
+    AGENDA_LIMIT as AGENDA_LIMIT,
+)
+from alphalattice.control.product_host.composition.committee_materials import (
     QUESTIONS,
+    agenda,
     concentration,
     evidence_gap,
     facts,
@@ -113,6 +117,10 @@ RULE_WORDS: Final = {
     "NUMBER": "A digit is typed outside an alias ({subject}), and the Host renders every number: "
     "resubmit the same message with each typed figure or reference replaced by its alias on the "
     "floor.",
+    "AGENDA": "This message's point selection does not fit the agenda of {subject} points. The PM "
+    "may raise one below-line point through REPLY positions; other messages name only agenda or "
+    "raised tension points. Read the floor and send the offered correction, or revise the named "
+    "text field.",
 }
 """Each floor rule's own words, as its refusal says them."""
 _VIEWS: Final = frozenset({"STANCE", "CHALLENGE", "REPLY"})
@@ -200,6 +208,7 @@ def open_floor(
     *,
     session: tuple[str, str],
     now: datetime,
+    agenda_limit: int = AGENDA_LIMIT,
 ) -> Floor:
     """Open the update's floor in the lead's goal, or read the one already open.
 
@@ -228,6 +237,7 @@ def open_floor(
         "tension_points": tension_points(held, evidence, readback.get("date_risk"), readback),
         "facts": facts(readback, evidence, held),
     }
+    opened.update(agenda(opened["tension_points"], held, agenda_limit))
     with store.lock:
         kept = store.committee(task, goal_id)
         assert kept is not None
@@ -246,6 +256,7 @@ def operate(
     provenance: RequestProvenance | None,
     dated: Callable[[], tuple[dict[str, Any], dict[str, Any]] | None],
     file_floor: Callable[[], None],
+    agenda_limit: int = AGENDA_LIMIT,
 ) -> dict[str, object]:
     """Open, speak on or read an update's floor (`committee`), as the CLI answers it.
 
@@ -276,7 +287,12 @@ def operate(
                 raise ValueError("committee.session_required")
             session = (str(provenance.vendor), provenance.session)
             floor = open_floor(
-                store, UUID(provenance.goal_id), *publication, session=session, now=now
+                store,
+                UUID(provenance.goal_id),
+                *publication,
+                session=session,
+                now=now,
+                agenda_limit=agenda_limit,
             )
             # Each specialist reads its bundle by `alphalattice bundle prepare`, its key in it.
             return {
@@ -338,6 +354,7 @@ def submit(
         ruled = _ruled(floor, message)
         spoken = sum(m["kind"] != "STANCE" for m in mine)
         named = (*message.targets, *message.positions, *ALIAS.findall(message.text))
+        agenda_points = _agenda_points(floor, role, message)
         typed = any(c.isnumeric() for c in ALIAS.sub("", message.text))
         for rule, broken in (
             ("ROLE", role not in senders),
@@ -351,6 +368,7 @@ def submit(
             # The Host renders every number; the person's own relayed words keep theirs.
             ("NUMBER", message.kind != "PERSON_ANSWER" and typed),
             ("FACTS", _unsourced(floor, role, message)),
+            ("AGENDA", _outside_agenda(message, named, agenda_points)),
         ):
             if broken:
                 raise ValueError(f"committee.message_refused:{rule}")
@@ -366,6 +384,27 @@ def submit(
             floor.goal_id, {"committee_message": {**entry, **message.model_dump(mode="json")}}
         )
         return number
+
+
+def _outside_agenda(
+    message: CommitteeMessage, named: Sequence[str], points: set[str] | None
+) -> bool:
+    """No message names an unraised point, and a stance judges only agenda or raised points."""
+    return points is not None and (
+        any(a.startswith("T") and a not in points for a in named)
+        or (message.kind == "STANCE" and not set(message.positions) <= points)
+    )
+
+
+def _agenda_points(floor: Floor, role: str | None, message: CommitteeMessage) -> set[str] | None:
+    """The agenda and raised points, plus one point explicitly raised by this PM reply."""
+    bounded = agenda_view(floor).get("agenda")
+    if bounded is None:
+        return None
+    allowed = set(bounded["aliases"]) | set(bounded["raised"])
+    if role == "PM" and message.kind == "REPLY":
+        allowed.update(next(((a,) for a in bounded["below"] if a in message.positions), ()))
+    return allowed
 
 
 def _unsourced(floor: Floor, role: str, message: CommitteeMessage) -> bool:
@@ -397,6 +436,26 @@ def _owed(
     message = request.committee_message
     if rule == "CLOSED" and floor is not None:
         return {"report": state(floor, None, 0, now)["delivery"]}
+    if rule == "AGENDA":
+        assert floor is not None
+        assert message is not None
+        aliases = _agenda_points(floor, request.committee_role, message)
+        assert aliases is not None
+        blocked = set(floor.opened["agenda"]["below"]) - aliases
+        offered = {"schema": schema_request("COMMITTEE_SUBMIT")}
+        if blocked & set(ALIAS.findall(message.text)):
+            return offered
+        sent = message.model_dump(mode="json") | {
+            "positions": {
+                a: p
+                for a, p in message.positions.items()
+                if a in aliases or (message.kind != "STANCE" and a not in blocked)
+            },
+            "targets": [a for a in message.targets if a not in blocked],
+        }
+        return offered | {
+            "corrected": {"operation": "COMMITTEE_SUBMIT", **member, "committee_message": sent},
+        }
     renamed = _typed(floor, message)[1] if rule == "NUMBER" else None
     if message is not None and renamed and not any(c.isnumeric() for c in ALIAS.sub("", renamed)):
         sent = message.model_dump(mode="json") | {"text": renamed}
@@ -498,6 +557,20 @@ def misshapen(message: CommitteeMessage) -> bool:
     )
 
 
+def _rule_words(
+    floor: Floor | None, message: CommitteeMessage | None, rule: str, corrected: bool
+) -> dict[str, Any]:
+    """The rule's words name its figures, agenda size and any text the author must revise."""
+    size = len(getattr(floor, "opened", {}).get("agenda", {}).get("aliases", ()))
+    subject = str(size) if rule == "AGENDA" else ", ".join(_typed(floor, message)[0])
+    words: dict[str, Any] = {"detail": RULE_WORDS[rule].replace("{subject}", subject), "rule": rule}
+    if rule == "AGENDA":
+        words["agenda_size"] = size
+        if not corrected:
+            words["author_revision_fields"] = ["committee_message.text"]
+    return words
+
+
 def _corrected(
     store: GoalStore, request: PortfolioResearchOperationRequest, rule: str, now: datetime
 ) -> dict[str, Any]:
@@ -509,9 +582,8 @@ def _corrected(
     member = _read_fields(request, rule)
     floor_read = {"floor": {"operation": "COMMITTEE_READ", **member}}
     message, floor = request.committee_message, floor_of(store, str(request.update_task_id))
-    typed = ", ".join(_typed(floor, message)[0])
-    words: dict[str, Any] = {"detail": RULE_WORDS[rule].replace("{subject}", typed), "rule": rule}
     owed = _owed(floor, request, member, rule, now)
+    words = _rule_words(floor, message, rule, "corrected" in owed)
     lead = {"MEMBER": "START_THE_MEMBER", "CLOSED": "EXPORT_THE_REPORT"}.get(
         rule, "SEND_THE_CORRECTED_MESSAGE" if "corrected" in owed else "READ_THE_FLOOR"
     )
@@ -566,7 +638,7 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
     addressed to the reader: the revealed stances, a challenge for the PM, a reply or ruling on
     its message, or the close.
     """
-    summary = context(floor, now)
+    summary = context(floor, now) | agenda_view(floor)
     stage, held = summary["stage"], floor.opened["holdings"]
     authors = {m["id"]: m["role"] for m in floor.messages}
     visible = [m for m in floor.messages if stage != "STANCES" or m["role"] == role]
@@ -590,7 +662,7 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
         "members": {r: _member(floor, r, stage) for r in ROLES},
         "member_cards": dict(CARDS),
         "member_agents": {r: member_agent(floor, r) for r in ROLES},
-        "tension_points": _points(floor, stage),
+        "tension_points": _points(floor, stage, summary.get("agenda", {})),
         "questions": QUESTIONS,
         "facts": floor.opened.get("facts", []),
         "messages": [
@@ -849,6 +921,29 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
             if m["kind"] == "RULING"
         ),
     ]
+    if disclosed := agenda_view(floor).get("agenda"):
+        items.append(
+            (
+                "Committee agenda",
+                {},
+                f"Agenda: {len(disclosed['aliases'])}; below the agenda line: "
+                f"{disclosed['below_count']}. {disclosed['ranking']}",
+                {"agenda": disclosed},
+            )
+        )
+        items.extend(
+            (
+                "Raised by PM"
+                if p["alias"] in disclosed["raised"]
+                else "Agenda point"
+                if p["alias"] in disclosed["aliases"]
+                else "Below the agenda line, no stance required",
+                {},
+                f"{p['alias']}: {p['text']}",
+                {"point": p["alias"]},
+            )
+            for p in floor.opened["tension_points"]
+        )
     held = floor.opened["holdings"]
     return [
         {
@@ -998,18 +1093,30 @@ def role_lines(
     )
     if floor is None or role == "DATA":
         return [head, *view]
-    return [
-        head,
-        *(f"{p['alias']}: {p['text']}" for p in floor.opened["tension_points"]),
-        *_asked(role, floor),
-        *view,
-    ]
+    return [head, *_asked(role, floor), *view]
 
 
 def _asked(role: str, floor: Floor) -> list[str]:
     """A role's questions, each with the floor's facts that answer it."""
     said = floor.opened.get("facts", ())
-    return [
+    below = (agenda_view(floor).get("agenda") or {}).get("below", ())
+    bounded = floor.opened.get("agenda")
+    points = [
+        *(
+            [
+                f"Agenda: {', '.join(bounded['aliases'])}. {bounded['ranking']} "
+                f"Below the agenda line: {len(below)} points, no stance required."
+            ]
+            if bounded
+            else []
+        ),
+        *(
+            f"{p['alias']}: {p['text']}"
+            + (" Below the agenda line, no stance required." if p["alias"] in below else "")
+            for p in floor.opened["tension_points"]
+        ),
+    ]
+    return points + [
         f"{q} {words} " + " ".join(f"{f['alias']}: {f['text']}" for f in said if f["question"] == q)
         for q, words in QUESTIONS.get(role, {}).items()
     ]
@@ -1039,9 +1146,10 @@ def route(
     message = (
         f'"{(Path(directory) / "message.yaml").as_posix()}"' if directory else "<message.yaml>"
     )
+    point = "agenda" if "agenda" in floor.opened else "tension"
     return (
         f"On the committee's floor you are {role}. Send one STANCE first (the round is blind); "
-        "its position on each tension point (T1, never a question) is about the date's "
+        f"its position on each {point} point (T1, never a question) is about the date's "
         "positions: SUPPORT, they may stand; OBJECT, they should not stand as they are; RESERVE, "
         "this bundle cannot tell, citing by S alias the facts it rests on.",
         f"Then up to {MESSAGE_CAP} CHALLENGE or REPLY, each naming its targets by alias (T1, H3, "
@@ -1269,7 +1377,7 @@ def render(
     return ALIAS.sub(lambda m: named.get(m.group(0), m.group(0)), text)
 
 
-def _points(floor: Floor, stage: str) -> list[dict[str, Any]]:
+def _points(floor: Floor, stage: str, bounded: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Each tension point with its last ruling's state.
 
     A CRO challenge on it that is rejected or never ruled leaves its dissent standing
@@ -1279,7 +1387,14 @@ def _points(floor: Floor, stage: str) -> list[dict[str, Any]]:
     standing = {m["id"] for m in standing_dissents(floor)}
     states = {"ADOPT": "ADOPTED", "REJECT": "REJECTED", "FOR_THE_PERSON": "FOR_THE_PERSON"}
     out = []
-    for point in floor.opened["tension_points"]:
+    order = {
+        a: n
+        for n, a in enumerate(
+            (*bounded.get("aliases", ()), *bounded.get("raised", ()), *bounded.get("below", ()))
+        )
+    }
+    points = floor.opened["tension_points"]
+    for point in sorted(points, key=lambda p: order.get(p["alias"], 0)):
         aimed = [
             m for m in floor.messages if m["kind"] == "CHALLENGE" and point["alias"] in m["targets"]
         ]
@@ -1296,13 +1411,38 @@ def _points(floor: Floor, stage: str) -> list[dict[str, Any]]:
                 },
                 "state": states.get(
                     last.get("outcome", ""), "NOT_ADDRESSED" if stage == "CLOSED" else "OPEN"
-                ),
+                )
+                if point["alias"] not in bounded.get("below", ())
+                else "BELOW_AGENDA",
                 "ruling_id": last.get("id"),
                 "dissent_stands": bool(dissents),
                 "dissents": dissents,
             }
         )
     return out
+
+
+def agenda_view(floor: Floor) -> dict[str, Any]:
+    """Disclose the seeded agenda and points the PM brought into debate, from the same ledger."""
+    bounded = floor.opened.get("agenda")
+    if bounded is None:
+        return {}
+    raised = {
+        a
+        for m in floor.messages
+        if m["role"] == "PM" and m["kind"] == "REPLY"
+        for a in m["positions"]
+        if a in bounded["below"]
+    }
+    below = [a for a in bounded["below"] if a not in raised]
+    return {
+        "agenda": {
+            **bounded,
+            "raised": [a for a in bounded["below"] if a in raised],
+            "below": below,
+            "below_count": len(below),
+        }
+    }
 
 
 def _member(floor: Floor, role: str, stage: str) -> str:

@@ -17,10 +17,11 @@ from pathlib import Path, PurePosixPath
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdateBinding
+from alphalattice.control.product_host.composition.committee_materials import AGENDA_LIMIT
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
@@ -225,6 +226,10 @@ class ResearchWorkspaceManifest(_Contract):
     data_decision_rule: DataDecisionRule | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    committee_agenda_limit: int | None = Field(
+        default=None, ge=1, le=24, strict=True, exclude_if=lambda v: v in (None, AGENDA_LIMIT)
+    )
+    """Identity-bearing maximum seeded agenda size; absent uses the shipped committee default."""
     score_inputs: tuple[ResearchWorkspaceScoreInput, ...] | None = None
     calibration_inputs: tuple[ResearchWorkspaceCalibrationInput, ...] | None = None
     decision_updates: tuple[ResearchWorkspaceDecisionUpdate, ...] | None = None
@@ -243,6 +248,7 @@ class ResearchWorkspaceManifest(_Contract):
         evidence_review: ResearchWorkspaceEvidenceReview | None = None,
         data_update: WorkspaceDataUpdateBinding | None = None,
         data_decision_rule: DataDecisionRule | None = None,
+        committee_agenda_limit: int | None = None,
         score_inputs: tuple[ResearchWorkspaceScoreInput, ...] | None = None,
         calibration_inputs: tuple[ResearchWorkspaceCalibrationInput, ...] | None = None,
         decision_updates: tuple[ResearchWorkspaceDecisionUpdate, ...] | None = None,
@@ -260,6 +266,7 @@ class ResearchWorkspaceManifest(_Contract):
             evidence_review: Optional admitted review declaration.
             data_update: Optional admitted data update declaration.
             data_decision_rule: Optional operator-declared, identity-bearing data policy.
+            committee_agenda_limit: Optional identity-bearing maximum seeded committee agenda.
             score_inputs: Optional score source declarations.
             calibration_inputs: Optional calibration source declarations.
             decision_updates: Optional decision checkpoint declarations.
@@ -286,6 +293,15 @@ class ResearchWorkspaceManifest(_Contract):
             values["data_update"] = data_update
         if data_decision_rule is not None:
             values["data_decision_rule"] = data_decision_rule
+        if committee_agenda_limit is not None:
+            try:
+                values["committee_agenda_limit"] = TypeAdapter(
+                    cls.model_fields["committee_agenda_limit"].rebuild_annotation()
+                ).validate_python(committee_agenda_limit)
+            except ValidationError as error:
+                raise ResearchWorkspaceError(
+                    "research_workspace.committee_agenda_limit_invalid"
+                ) from error
         if score_inputs is not None:
             values["score_inputs"] = score_inputs
         if calibration_inputs is not None:
@@ -385,6 +401,7 @@ class ResearchWorkspaceManifest(_Contract):
             "evidence_review",
             "data_update",
             "data_decision_rule",
+            "committee_agenda_limit",
             "score_inputs",
             "calibration_inputs",
             "decision_updates",

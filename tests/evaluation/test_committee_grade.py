@@ -30,11 +30,13 @@ from alphalattice.control.product_host.composition.committee_materials import (
     sufficiency,
     tension_points,
 )
+from alphalattice.interface.local_application.experiment_report import render_research_delivery
 from alphalattice.interface.local_application.portfolio_research import CommitteeMessage
 from devtools.evaluation import Scenario, Trace, TraceEvent
 from devtools.evaluation.committee import (
     ALIAS,
     CommitteeGrader,
+    agenda_findings,
     committee_problems,
     materials_findings,
     report_fidelity,
@@ -420,6 +422,61 @@ def test_a_reply_only_replaces_the_positions_it_explicitly_states(role, point, f
     closed["messages"][1]["positions"] = {point: "SUPPORT"}
     evidence["raw_messages"] = deepcopy(closed["messages"])
     assert report_fidelity(closed, report, **evidence) == []
+
+
+def test_the_agenda_grader_refuses_a_hidden_point_or_a_changed_rule():
+    """A bounded agenda's disclosure preserves its rule and every original point."""
+    closed, report, evidence = fidelity_floor()
+    closed.update(
+        agenda={
+            "aliases": ["T1"],
+            "below": ["T2"],
+            "limit": 1,
+            "below_count": 1,
+            "rule_hash": "a" * 64,
+            "ranking": "weight",
+            "raised": [],
+        },
+        tension_points=[{"alias": "T1"}, {"alias": "T2"}],
+    )
+    projection = {"agenda": deepcopy(closed["agenda"]), "points": ["T1", "T2"]}
+    report["commentary"] += [
+        {
+            "attribution": "Committee agenda",
+            "text": "Agenda: 1; below: 1. weight",
+            "agenda": projection["agenda"],
+        },
+        {"attribution": "Agenda point", "text": "T1", "point": "T1"},
+        {"attribution": "Below the agenda line, no stance required", "text": "T2", "point": "T2"},
+    ]
+    report.update(
+        claim="Research delivery.", question="Study H1.", input={}, commentary_provenance={}
+    )
+    report["sections"]["positions"] = {"value": {"html": "<html><h1>Positions</h1></html>"}}
+    rendered = render_research_delivery(
+        report | {"sections": report["sections"] | {"evidence_cro": {"status": "ABSENT"}}}
+    )
+    for fragment in (
+        "Agenda: 1; below: 1. weight",
+        "T2",
+        "Below the agenda line, no stance required",
+    ):
+        report["html"] = rendered.replace(fragment, "", 1)
+        assert "agenda.report_hidden" in report_fidelity(closed, report, **evidence)
+    report["html"] = rendered
+    assert agenda_findings(closed, projection) == []
+    projection["summary"] = "Agenda: 1; below: 1. weight"
+    assert agenda_findings(closed, projection) == []
+    projection["summary"] = "Agenda: 1; below: 0. weight"
+    assert agenda_findings(closed, projection) == ["agenda.summary_changed"]
+    projection.pop("summary")
+    assert report_fidelity(closed, report, **evidence) == []
+    projection["points"].pop()
+    assert agenda_findings(closed, projection) == ["agenda.point_hidden"]
+    report["commentary"].pop()
+    assert "agenda.point_hidden" in report_fidelity(closed, report, **evidence)
+    projection["agenda"]["limit"] = 2
+    assert "agenda.rule_or_count_changed" in agenda_findings(closed, projection)
 
 
 @pytest.mark.parametrize("kind", ["missing", "unused"])
