@@ -288,7 +288,7 @@
   "next_action": "READ_WORKSPACE_SHOW_OR_RESTORE_A_BACKUP"
  },
  "data.truth_review_required": {
-  "detail": "A data decision is needed before this Task can continue: unexplained moves ask for a permitted response, which the agent takes under the first use's delegation or asks the person for in one line; the last one resumes this same Task.",
+  "detail": "A data decision is needed before this Task can continue. The declared workspace rule decides within its bound; a case outside the rule or without its authority goes to the agent, or to the person for consent. Read Data issues, settle the named case, then resume this same Task.",
   "next_action": "DATA_ISSUES"
  },
  "evidence_review.budget_exceeds_consent": {
@@ -1610,5 +1610,9 @@
  "local_client.bundle_workspace_invalid": {
   "detail": "The bundle's workspace locator must be a JSON object containing one absolute workspace path. Ask the lead to prepare a fresh bundle in a new directory; do not guess a workspace or edit another session's binding.",
   "next_action": "ASK_THE_LEAD_TO_PREPARE_A_FRESH_BUNDLE"
+ },
+ "research_update.workspace_transition_required": {
+  "detail": "The workspace's inputs have an unfinished transition or data decision. The current positions are kept. Follow the offered input owner's request, then plan this date again.",
+  "next_action": "SETTLE_INPUTS_THEN_PLAN_THE_DATE"
  }
 }

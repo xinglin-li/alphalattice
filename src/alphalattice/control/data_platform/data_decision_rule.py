@@ -24,7 +24,7 @@ from alphalattice.protocols.actor_execution.contracts import ActorKind
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class DataDecisionRule:
-    """The Host's declared rule for a first use's own data issues, never its results.
+    """The Host's declared workspace rule for data issues, never its results.
 
     An isolated verified move (one listing, one unexplained session, identity verified, no
     provider correction, retries spent) is retained with its caveat; any other case is
@@ -123,7 +123,12 @@ class DataDecisionRule:
         return next((option for option in preferred if option in offered), ESCALATE)
 
     def submission(
-        self, case: FeatureInputAgentCase, option_id: str, goal_id: str
+        self,
+        case: FeatureInputAgentCase,
+        option_id: str,
+        goal_id: str,
+        *,
+        authority: str = "first-use-goal",
     ) -> DataRemediationActorSubmission:
         """The Host's signed choice: HOST_FALLBACK, the goal's delegation and this rule."""
         proposal = DataRemediationProposal(
@@ -131,7 +136,7 @@ class DataDecisionRule:
             case_token=case.case_token,
             evidence_hash=case.evidence_hash,
             option_id=option_id,
-            rationale=f"first-use-goal:{goal_id}; rule:{self.rule_hash}",
+            rationale=f"{authority}:{goal_id}; rule:{self.rule_hash}",
         )
         payload = {
             "kind": "DataRemediationExecutionSubmission",

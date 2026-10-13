@@ -73,7 +73,7 @@ def refusal_codes():
         if isinstance(n, ast.FunctionDef) and n.name == "maintenance_failure_detail"
     )
     maintenance = next(
-        set(ast.literal_eval(n.value))
+        {ast.literal_eval(key) for key in n.value.keys}
         for n in owner.body
         if isinstance(n, ast.Assign)
         and any(isinstance(t, ast.Name) and t.id == "details" for t in n.targets)

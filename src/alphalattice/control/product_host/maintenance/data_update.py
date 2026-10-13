@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import duckdb
@@ -530,6 +531,7 @@ class WorkspaceDataUpdateApplication:
     (V188)."""
     portfolio_obligations: Callable[[], BookObligations] | None = None
     recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None
+    data_rule: Callable[[UUID], Any] | None = None
 
     @property
     def manifest(self) -> ResearchWorkspaceManifest:
@@ -2007,24 +2009,25 @@ class WorkspaceDataUpdateApplication:
         *,
         cancelled: Callable[[], bool],
         bound_to: tuple[TaskRecord, TaskExecution] | None = None,
+        decision_task: UUID | None = None,
     ) -> StageExecutionResult:
-        """Domain maintenance shared by standalone and captured advancement Tasks.
-
-        `bound_to` names the Task and execution running this step: their work progress
-        is then kept beside the Task as well as in the workspace projection. A captured
-        advancement Task passes nothing and keeps the projection alone, as before.
-        """
+        """Share maintenance; keep telemetry and rule decisions on their exact owning Task."""
         self._require_plan(plan)
-        if stage == _STAGES[0]:
-            return self._step(plan, stage, cancelled=cancelled, bound_to=bound_to)
-        # The data stage and the receipt's publication each keep one writable instance of the
-        # market store from their first read to their last write, so the cycles' holds, the
-        # runner's units and every other thread's reads attach to it instead of reopening the
-        # file with a cold cache and checkpointing it at each close. Writable, it is no lock:
-        # every thread attaches without waiting, and each cycle still releases the write gate
-        # at its network edges.
-        with WorkspaceDatabase(self.session.workspace).retain(read_only=False):
-            return self._step(plan, stage, cancelled=cancelled, bound_to=bound_to)
+        scope = (
+            nullcontext()
+            if stage == _STAGES[0]
+            else WorkspaceDatabase(self.session.workspace).retain(read_only=False)
+        )
+        with scope:
+            rule_task = decision_task or (bound_to[0].task_id if bound_to else None)
+            diagnose = (
+                self.data_rule(rule_task)
+                if self.data_rule and rule_task and stage == _STAGES[1]
+                else None
+            )
+            return self._step(
+                plan, stage, cancelled=cancelled, bound_to=bound_to, diagnose=diagnose
+            )
 
     def _step(
         self,
@@ -2033,6 +2036,7 @@ class WorkspaceDataUpdateApplication:
         *,
         cancelled: Callable[[], bool],
         bound_to: tuple[TaskRecord, TaskExecution] | None,
+        diagnose: Any,
     ) -> StageExecutionResult:
         if stage == _STAGES[0]:
             # The last update's backup, if the Host never took it or it failed, is taken first.
@@ -2176,18 +2180,17 @@ class WorkspaceDataUpdateApplication:
             )
             try:
                 if bound_to is not None:
-                    # The Feature owner and the maintenance runner report through this one
-                    # sink (the coordinator hands it to the runner it builds).
                     runtime.feature_foundation.progress_sink = self.telemetry.bound_progress_sink(
                         *bound_to, stage, runtime.progress_publisher
                     )
                 gate = self._readiness(runtime.market_data)
-                # A catalog an activation made opens its own closure before its first build.
+
                 runtime.prepare_feature_closure()
                 coordinator = runtime.maintenance_coordinator(
                     readiness_gate=gate,
                     clock=self.clock,
                     recorded_data_confirmation=self.recorded_data_confirmation,
+                    diagnose=diagnose,
                 )
                 while True:
                     if cancelled():

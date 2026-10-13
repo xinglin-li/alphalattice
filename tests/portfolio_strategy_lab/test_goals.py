@@ -2139,3 +2139,32 @@ def test_goal_list_keeps_readable_rows_and_scopes_only_provable_head_refusals(go
     assert [row["goal_id"] for row in theirs["goals"]] == [str(other_id)]
     assert "refused" not in theirs
     assert theirs["goals"][0]["goal_hash"] == other["goal_hash"]
+
+
+def test_dated_goal_lookup_shares_records_and_bounds_rule_disclosure(goal_app):
+    """A date reads its own recorded rule cases, with legacy first-use scope retained."""
+    app, opened, _calls, _body, _tasks = goal_app
+    goal = UUID(opened["goal_id"])
+    task = str(UUID(int=31))
+    app.store.attribute(goal, {"operation": "RESEARCH_UPDATE_RUN", "task_id": task})
+    for target, token, delegation in (
+        (task, "a" * 64, "workspace-rule-goal:" + str(goal)),
+        (str(UUID(int=32)), "b" * 64, "workspace-rule-goal:" + str(goal)),
+        (str(UUID(int=33)), "c" * 64, "first-use-goal:" + str(goal)),
+    ):
+        app.store.attribute(
+            goal,
+            {
+                "operation": "DATA_ISSUE_CONFIRM",
+                "decided_by": "RULE",
+                "task_id": target,
+                "case_token": token,
+                "delegation": delegation,
+            },
+        )
+    records = {}
+    answer = app.store.listing(limit=1, cursor=None, task_id=task, records=records)
+    assert answer["current_goal"]["goal_id"] == str(goal)
+    assert app.store.rule_cases(task, records[str(goal)]) == frozenset(("a" * 64, "c" * 64))
+    absent = app.store.listing(limit=1, cursor=None, task_id=UUID(int=34), records={})
+    assert absent["current_goal"] is None

@@ -26,7 +26,12 @@ from pathlib import Path
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
+from alphalattice.kernel.shared_kernel.project_layout import (
+    REFUSAL_WORDS_RESOURCE,
+    command_prefix,
+    resolve_playpen_root,
+    runtime_json,
+)
 
 SCHEMA_VERSION: Final = 1
 SURFACE_USE: ContextVar[tuple[str, ...]] = ContextVar("surface_use", default=())
@@ -339,9 +344,7 @@ def refused(body: dict[str, Any]) -> bool:
     )
 
 
-_REFUSAL_WORDS: Final = Path(__file__).with_name("refusal_words.json")
-"""Each refusal code's words and way on, where its owner gives none in place (OP4, V449)."""
-
+# Each refusal code's words and way on, now from the shared resource cache (OP4, V449).
 NETWORK_ACCESS_REFUSALS: Final = frozenset(
     {
         "research_update.input_source_access_not_admitted",
@@ -351,12 +354,6 @@ NETWORK_ACCESS_REFUSALS: Final = frozenset(
     }
 )
 """Permission refusals whose way on reads the effective network decision (OP5, TE12)."""
-
-
-@functools.cache
-def _refusal_table() -> dict[str, dict[str, str]]:
-    table: dict[str, dict[str, str]] = json.loads(_REFUSAL_WORDS.read_text(encoding="utf-8"))
-    return table
 
 
 def refusal_words(code: str, *, workspace: Path | None = None) -> dict[str, Any]:
@@ -370,7 +367,7 @@ def refusal_words(code: str, *, workspace: Path | None = None) -> dict[str, Any]
         Its ``detail`` and ``next_action``; empty for a code the table does not word.
     """
     base, _sep, subject = code.partition(":")
-    found = _refusal_table().get(base)
+    found = runtime_json(REFUSAL_WORDS_RESOURCE).get(base)
     if found is None:
         return {}
     words: dict[str, Any] = {
@@ -1434,7 +1431,7 @@ _OTHER = ClientRefusal(
 def client_refusal(code: str) -> ClientRefusal:
     """The outcome, next action and words of a refusal the client raised itself."""
     if code in {"local_client.workspace_context_mismatch", "local_client.bundle_workspace_invalid"}:
-        words = _refusal_table()[code]
+        words = runtime_json(REFUSAL_WORDS_RESOURCE)[code]
         return ClientRefusal("INVALID_INPUT", words["next_action"], words["detail"])
     for prefix, refusal in _CLIENT_REFUSALS:
         # A prefix ends in `_`, `:` or `.`: a code's family, a code's subjects, an owner's codes.

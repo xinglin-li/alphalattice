@@ -131,6 +131,7 @@ class Floor:
     messages: list[dict[str, Any]]
     filed: frozenset[str]
     author_session: str | None = field(default=None, compare=False)
+    rule_cases: frozenset[str] = field(default=frozenset(), compare=False)
 
     def key(self, role: str) -> str:
         """Derive the member's key on this floor from the seed the Host keeps outside records."""
@@ -181,7 +182,14 @@ def thread_of(store: GoalStore, thread: str) -> Floor | None:
         for e in entries
         if e.get("input_channel") == channel and e.get("reference") == thread
     }
-    return Floor(UUID(held["goal_id"]), held["seed"], found[0], found[1:], frozenset(rows))
+    return Floor(
+        UUID(held["goal_id"]),
+        held["seed"],
+        found[0],
+        found[1:],
+        frozenset(rows),
+        rule_cases=store.rule_cases(thread, entries),
+    )
 
 
 def open_floor(

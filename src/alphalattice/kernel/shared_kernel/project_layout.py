@@ -2,8 +2,21 @@
 
 from __future__ import annotations
 
+import json
+from functools import cache
 from importlib.resources import files
 from pathlib import Path
+from typing import Any, Final
+
+REFUSAL_WORDS_RESOURCE: Final = "src/alphalattice/interface/local_application/refusal_words.json"
+
+
+@cache
+def runtime_json(relative: str) -> dict[str, Any]:
+    """Read one shipped JSON resource once per process, on either runtime leg."""
+    root = resolve_playpen_root(Path(__file__))
+    payload: dict[str, Any] = json.loads(resource_path(root, relative).read_text(encoding="utf-8"))
+    return payload
 
 
 def resolve_playpen_root(source_path: Path) -> Path:

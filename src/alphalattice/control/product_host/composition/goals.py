@@ -556,21 +556,45 @@ class GoalApplication:
                 index.setdefault(key, []).append(entry)
         return index
 
-    def data_rule(self, task_id: UUID) -> Callable[..., Any] | None:
-        """The Host's rule for this preparation's data issues, while its first use delegates them.
+    def _data_rule_scope(
+        self, task_id: UUID, goal_hash: str | None = None, goal_id: UUID | None = None
+    ) -> tuple[Goal, tuple[dict[str, object], ...], str] | None:
+        """The exact open Goal owns this Task; a dated book uses workspace policy."""
+        kind = (self.task_facts(task_id) or (None,))[0]
+        goals = (
+            [self.store.load(goal_hash)]
+            if goal_hash
+            else [self.store.head(g) for g in self.store.goal_ids()]
+        )
+        found = []
+        for goal in goals:
+            if (
+                goal is None
+                or goal.state != "OPEN"
+                or (goal_id is not None and goal.goal_id != goal_id)
+            ):
+                continue
+            entries = self.store.attributed(goal.goal_id)
+            own = [e for e in entries if e.get("task_id") == str(task_id)]
+            if kind == "portfolio_public_watermark_advancement" and any(
+                e.get("operation") == "RESEARCH_UPDATE_RUN" for e in own
+            ):
+                found.append((goal, entries, "workspace-rule-goal"))
+            elif own and self.first_use_open(goal):
+                found.append((goal, entries, "first-use-goal"))
+        return found[0] if len(found) == 1 else None
 
-        Only the open first-use goal's own preparation. Each choice the rule takes is kept
-        in the goal's record, once per case, which proves it as the agent's confirm is proved.
-        """
-        goal = self.first_use()
-        if goal is None or not self.first_use_open(goal):
+    def data_rule(self, task_id: UUID) -> Callable[..., Any] | None:
+        """Keep each bounded rule choice in its owning open Goal, with readable authority."""
+        scope_owner = self._data_rule_scope(task_id)
+        if scope_owner is None:
             return None
-        entries = self.store.attributed(goal.goal_id)
-        if not any(e.get("task_id") == str(task_id) for e in entries):
-            return None
+        goal, entries, authority = scope_owner
         manifest = read_research_workspace_manifest(self.workspace)
         rule = manifest.data_decision_rule or DataDecisionRule()
-        delegation = f"first-use-goal:{goal.goal_id}"
+        if rule.max_cases == 0 or rule.max_population_share == 0:
+            return None
+        delegation = f"{authority}:{goal.goal_id}"
         panel = PanelStateRepository(self.workspace)
         index = self._data_index(entries)
         recorded = set(index)
@@ -580,8 +604,12 @@ class GoalApplication:
         def decide(case: Any, evidence: Any, _impact: Any, _budget: Any) -> Any:
             nonlocal scope_evidence, scope
             current = self.store.head(goal.goal_id)
-            if current is None or not self.first_use_open(current):
-                return rule.submission(case, ESCALATE, str(goal.goal_id))
+            if current is None or not (
+                self.first_use_open(current)
+                if authority == "first-use-goal"
+                else current.state == "OPEN"
+            ):
+                return rule.submission(case, ESCALATE, str(goal.goal_id), authority=authority)
             if evidence is not scope_evidence:
                 cases = tuple(
                     map(
@@ -608,6 +636,8 @@ class GoalApplication:
                         "status": "DECIDED_BY_RULE" if option != ESCALATE else "ESCALATED",
                         "task_id": str(task_id),
                         "delegation": delegation,
+                        "goal_hash": current.goal_hash,
+                        "authority": authority,
                         "case_token": case.case_token,
                         "option_id": option,
                         "listing_ids": list(case.listing_ids),
@@ -624,7 +654,7 @@ class GoalApplication:
                     },
                 )
                 recorded.add(choice)
-            return rule.submission(case, option, str(goal.goal_id))
+            return rule.submission(case, option, str(goal.goal_id), authority=authority)
 
         return decide
 
@@ -707,20 +737,21 @@ class GoalApplication:
     def recorded_data_confirmation(
         self, receipt: DataRemediationExecutionReceipt, authority: dict[UUID, Any] | None = None
     ) -> bool:
-        """Read the original accepted first-use authority for an exact retained decision.
-
-        The receipt's rationale selects the goal; only its owned declaration and accepted
-        request record prove delegation. That historical authority survives the goal's end.
-        """
+        """Verify original rule or delegated authority for this exact retained decision."""
         actor = receipt.actor_submission
         rationale, _, rule = receipt.submission.proposal.rationale.partition("; rule:")
-        if actor.actor_kind not in {
-            ActorKind.EXTERNAL_AUTOMATION,
-            ActorKind.HOST_FALLBACK,
-        } or not rationale.startswith("first-use-goal:"):
+        if not all(
+            (
+                actor.actor_kind in {ActorKind.EXTERNAL_AUTOMATION, ActorKind.HOST_FALLBACK},
+                rationale.startswith(("first-use-goal:", "workspace-rule-goal:")),
+            )
+        ):
+            return False
+        workspace_rule = rationale.startswith("workspace-rule-goal:")
+        if workspace_rule and actor.actor_kind is not ActorKind.HOST_FALLBACK:
             return False
         try:
-            goal_id = UUID(rationale.removeprefix("first-use-goal:"))
+            goal_id = UUID(rationale.split(":", 1)[1])
             memo = authority if authority is not None else {}
             if goal_id not in memo:
                 head = self.store.head(goal_id)
@@ -729,10 +760,15 @@ class GoalApplication:
                     self._data_index(self.store.attributed(goal_id)) if head else {},
                 )
             goal, index = memo[goal_id]
-            if (
-                goal is None
-                or goal.declaration.kind != "FIRST_USE"
-                or rationale != f"first-use-goal:{goal.goal_id}"
+            if goal is None:
+                return False
+            if not all(
+                (
+                    workspace_rule or goal.declaration.kind == "FIRST_USE",
+                    rationale
+                    == ("workspace-rule-goal:" if workspace_rule else "first-use-goal:")
+                    + str(goal.goal_id),
+                )
             ):
                 return False
             key = (
@@ -744,11 +780,23 @@ class GoalApplication:
                 # The index already binds operation, case, option and rule.
                 if entry.get("delegation") != rationale:
                     continue
-                if not (
-                    isinstance(recorded_at := entry.get("recorded_at"), str)
-                    and goal.intent_registered_at
-                    <= datetime.fromisoformat(recorded_at)
-                    < self.delegation_ends(goal)
+                if workspace_rule:
+                    scoped = self._data_rule_scope(
+                        UUID(str(entry["task_id"])), str(entry["goal_hash"]), goal_id
+                    )
+                    if not all(
+                        (scoped is not None, entry.get("authority") == "workspace-rule-goal")
+                    ):
+                        continue
+                recorded_at = entry.get("recorded_at")
+                if not isinstance(recorded_at, str):
+                    continue
+                stamped = datetime.fromisoformat(recorded_at)
+                if not all(
+                    (
+                        goal.intent_registered_at <= stamped,
+                        workspace_rule or stamped < self.delegation_ends(goal),
+                    )
                 ):
                     continue
                 if self._recorded_data_actor(entry, actor, rule):

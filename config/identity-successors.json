@@ -12293,6 +12293,20 @@
    "successor": "179fcd4f3d4c0618d599dabaa2f1b6d1906de1841e4623889bbf59bfea1e2e55",
    "change": "DATA-DECISIONS",
    "reason": "repositories.py lookup refactor and rename; equal values"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "ddbc8fae7f0aaa7b1ff1c82258da0ba14a77bebbe5025d4c4fa6937ffbad1cea",
+   "successor": "88c27d2310a20b2d139ea4e6f2b0f4acf54490a246f68ccf8d36b297d83e0e33",
+   "change": "daily workspace rule",
+   "reason": "a captured date passes its own Task to the declared workspace rule; equal values with no data issue; no-issue-equality.json, recorded under maintainer signature"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "99053ede4f65bd7a12499aca6d61e82964397fcd48f6b0f8b7ee63bf947bd56c",
+   "successor": "6e28c39d0301d4cd97d880180730b75b4599c55900eceef6ef96c788f2c7147f",
+   "change": "daily workspace rule",
+   "reason": "the shared rule submission accepts an explicit workspace-rule Goal authority; equal values with no data issue; no-issue-equality.json, recorded under maintainer signature"
   }
  ]
 }

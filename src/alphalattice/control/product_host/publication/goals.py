@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from secrets import token_hex
 from threading import RLock
@@ -446,6 +446,18 @@ class GoalStore:
             default=None,
         )
 
+    @staticmethod
+    def rule_cases(task: str, entries: Sequence[Mapping[str, object]]) -> frozenset[str]:
+        """Only this dated Task's choices, plus its Goal's legacy first-use scope."""
+        cases = set()
+        for entry in entries:
+            if entry.get("decided_by") == "RULE" and (
+                entry.get("task_id") == task
+                or str(entry.get("delegation", "")).startswith("first-use-goal:")
+            ):
+                cases.add(str(entry["case_token"]))
+        return frozenset(cases)
+
     def listing(
         self,
         *,
@@ -453,16 +465,14 @@ class GoalStore:
         cursor: str | None,
         agent_session: str | None = None,
         task_id: UUID | str | None = None,
+        records: dict[str, tuple[dict[str, object], ...]] | None = None,
     ) -> dict[str, object]:
-        """Discover paged metadata, scoped sessions and named item refusals, newest first.
-
-        The current question binds a selected Task independently of the requested page.
-        """
+        """List scoped Goal metadata and share its verified records within this read."""
         rows = []
         refused: list[dict[str, object]] = []
         sessions: dict[str, list[dict[str, str]]] = {}
         heads: list[tuple[Goal, dict[str, object]]] = []
-        records: dict[str, tuple[dict[str, object], ...]] = {}
+        records = {} if records is None else records
         for path in (self.content.root / "heads").glob("*.json"):
             try:
                 goal_id = UUID(path.stem)
@@ -524,7 +534,9 @@ class GoalStore:
             "current_goal": current,
             "goals": page,
             "next_cursor": (
-                page_candidates[-1]["goal_hash"] if page_candidates and len(rows) > limit else None
+                page_candidates[-1]["goal_hash"]
+                if all((page_candidates, len(rows) > limit))
+                else None
             ),
             "claim": "METADATA_DISCOVERY_NOT_EVIDENCE_VERIFICATION",
         }

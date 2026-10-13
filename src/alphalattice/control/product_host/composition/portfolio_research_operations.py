@@ -678,7 +678,7 @@ class PortfolioResearchOperations:
         )
 
     def _compose_input_owners(self) -> None:
-        """Compose input owners under one retained session and the Goal's exact data authority."""
+        """Compose input owners with the Goal's data authority."""
         self.preparation = WorkspacePreparationApplication(
             self.workspace_session,
             clock=self.dispatcher.clock,
@@ -689,6 +689,7 @@ class PortfolioResearchOperations:
         )
         if self.data_update is not None:
             self.data_update.recorded_data_confirmation = self.goals.recorded_data_confirmation
+            self.data_update.data_rule = self.goals.data_rule
         self.storage = ResearchInputStorage(
             self.workspace_session,
             evidence=self._evidence_storage_binding(),
@@ -1280,7 +1281,7 @@ class PortfolioResearchOperations:
     def _delivery_export(
         self, request: PortfolioResearchOperationRequest, caller: OperationCaller
     ) -> dict[str, object]:
-        """Export the selected sealed update or research result with its standing disclosures."""
+        """Export dated sealed disclosures."""
         from .research_delivery import export_research_delivery, export_update_delivery
 
         if request.update_task_id is not None:
@@ -1296,7 +1297,9 @@ class PortfolioResearchOperations:
                 readback=self._positions(readback, committee_context=context),
                 review=self.review,
                 committee=None if floor is None else committee.commentary(floor, now),
-                data_decisions=self.data_issues.rule_decisions(),
+                read_data_decisions=self.data_issues.rule_decisions,
+                goal_store=self.goals.store,
+                floor=floor,
             )
         return export_research_delivery(
             request=request,
@@ -4221,8 +4224,7 @@ class PortfolioResearchOperations:
         }
 
     def _inputs_way(self, answer: dict[str, Any]) -> dict[str, Any]:
-        """Name the update that settles inputs and its timed way on, or a data update with its
-        case; another kind holding the running place cannot claim to hold these inputs."""
+        """Name the input owner's update, its retry time or its data case."""
         code = str(answer.get("failure_code") or "")
         if code != "strategy_score.workspace_inputs_not_ready":
             return answer
@@ -4551,7 +4553,14 @@ class PortfolioResearchOperations:
         return body
 
     def _task_replan(self, task: TaskRecord) -> dict[str, object] | None:
-        """Ask the same composed owner that declares this Task's preview to bind it."""
+        """Bind a stopped Task's preview through its composed owner."""
+        code = getattr(task, "failure_code", None)
+        if code == "data.truth_review_required":
+            return {
+                "failure_code": code,
+                **refusal_words(code),
+                "next_requests": {"issues": {"operation": "DATA_ISSUES"}},
+            }
         owned = self._task_replan_owner(task)
         if owned is None:
             return None
@@ -4566,7 +4575,7 @@ class PortfolioResearchOperations:
             else cast(dict[str, object], cast(Any, owner).replan_request(task))
         )
         if task.lifecycle in _RECOVERY_SOURCES:
-            # Its owner may refuse the resume; then the unbound plan reads on.
+            # A refused resume leaves its unbound plan read.
             if code := getattr(owner, "replan_refusal", lambda _: None)(task):
                 refused = {"failure_code": code, **refusal_words(code)}
                 return {**refused, "next_requests": {"plan": request}}
@@ -4850,12 +4859,7 @@ class PortfolioResearchOperations:
         }
 
     def _stopped_answer(self, projection: TaskSafeProjection) -> dict[str, Any]:
-        """A stopped Task's code, words and way on, or one owing a recovery's way on, as every
-        read of it names them; nothing for a Task in any other state.
-
-        A blocked one says why, as a refusal does, since a read of it answers REFUSED (V424); a
-        stop its plan's rerun resumes offers that rerun beside its recovery (V600).
-        """
+        """A stop's owned words and action; truth review leads to decisions before recovery."""
         state = projection.lifecycle.value
         if state not in {"BLOCKED", "RECOVERY_REQUIRED"}:
             return {}
@@ -4875,7 +4879,11 @@ class PortfolioResearchOperations:
         answer["next_requests"] = {
             **cast(dict[str, Any], way.get("next_requests") or {}),
             **(self._resume_offer(task_id) if state == "BLOCKED" else {}),
-            "recovery": {"operation": "TASK_RECOVERY", "task_id": str(task_id)},
+            **(
+                {"recovery": {"operation": "TASK_RECOVERY", "task_id": str(task_id)}}
+                if code != "data.truth_review_required"
+                else {}
+            ),
         }
         return answer
 
@@ -4907,8 +4915,7 @@ class PortfolioResearchOperations:
         return {"resume": {"operation": door, "update_plan_hash": str(plan["content_hash"])}}
 
     def _stopped_way(self, task_id: UUID, code: str, lifecycle: str) -> dict[str, Any]:
-        """A stopped Task's owner's words and way on, a Portfolio study's bound to the Alpha
-        study and candidate its plan names (V511)."""
+        """Name this stopped Task's lawful continuation."""
         book = (
             self.experiments.book_source(task_id)
             if code.startswith("portfolio_research.")

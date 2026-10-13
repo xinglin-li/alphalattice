@@ -522,10 +522,7 @@ class DecisionAdvancementApplication:
             if task.input.input_schema_id == SCHEMA
             and task.lifecycle is not TaskLifecycle.CANCELLED
         ]
-        # An update of this strategy that has not ended answers its own plan, whatever target was
-        # asked: its run follows it, or resumes a deferred one once due (V601), and a later
-        # session is planned once it ends. Planned anew, the later update queued behind the
-        # deferral, or was refused while the deferral held the workspace's inputs (V604).
+        # An unfinished update owns its plan; a later date waits for it to end.
         for task in tasks:
             if task.lifecycle in (
                 TaskLifecycle.QUEUED,
@@ -666,16 +663,18 @@ class DecisionAdvancementApplication:
             historical.extend(existing[d].snapshot_hash for d in sorted(existing) if d <= target)
         requests.sort(key=lambda item: (item[1], item[0]))
         score_days = tuple(sorted({d for _, d in requests}))
-        # Its own data plan, sealed into its own Task, never a data update's that waits (V604).
+        # Seal this Task's own data plan.
         state = self.data.plan(fresh=True)
         if state["status"] != "PLANNED":
-            raise ValueError("research_update.workspace_transition_required")
-        # The plan this call made, by the hash its answer names, never the data owner's last
-        # one, which a concurrent plan may have replaced (V534).
+            state.setdefault("next_requests", {"issues": {"operation": "DATA_ISSUES"}})
+            return {
+                **state,
+                "status": "REFUSED",
+                "failure_code": "research_update.workspace_transition_required",
+            }
+        # Read only the plan this call made, by its exact hash.
         data_plan = self.data.prepare(str(state["plan_hash"]))
-        # A bounded QA target never authorizes acquisition through today's date. The candidate
-        # rechecks due were planned for today's target, so a bounded request leaves them due
-        # for the update that reaches it (V467).
+        # A bounded target grants no later data; its candidate rechecks stay due.
         request = data_plan.request.with_changes(
             target_market_session=target,
             **(
@@ -970,13 +969,14 @@ class DecisionAdvancementApplication:
                     (plan.data_plan.before.content_hash,),
                     score_source_identity(plan.data_plan.before),
                 )
+            registry = self.session.task_control_registry
             for s in DATA_STAGES[1:]:
                 result = self.data.execute_step(
                     plan.data_plan,
                     s,
+                    decision_task=task.task_id,
                     cancelled=lambda: (
-                        self.session.task_control_registry.task(task.task_id).lifecycle
-                        is TaskLifecycle.CANCEL_REQUESTED
+                        registry.task(task.task_id).lifecycle is TaskLifecycle.CANCEL_REQUESTED
                     ),
                 )
                 if result.disposition is StageDisposition.CANCELLED:
@@ -1026,8 +1026,7 @@ class DecisionAdvancementApplication:
             if first_input not in calendar:
                 raise ValueError("research_update.calibration_seed_history_unavailable")
             warm_start = calendar[max(0, calendar.index(first_input) - 20)]
-            # Tradability needs twenty prior sessions; model inputs have their
-            # own captured preparation. Do not duplicate unused decades here.
+            # Tradability uses twenty prior sessions; models retain their captured history.
             market_start = min(warm_start, checkpoint.initial_book.schedule.formation_session)
             with span("materialize", "market_snapshot"):
                 snapshot = read_local_qa_market_snapshot(

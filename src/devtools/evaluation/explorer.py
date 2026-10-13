@@ -88,6 +88,53 @@ def data_decision_findings(
     ]
 
 
+def daily_findings(feed: dict[str, Any], projection: dict[str, Any]) -> list[dict[str, str]]:
+    """Today's rendered outcome, members and decisions preserve the previous sealed day."""
+    from .session import session_findings
+
+    current, home = feed["current"], projection.get("home", {})
+    selected, value = home.get("selection") or {}, home.get("value") or {}
+    sessions, previous = projection.get("session", {}), projection.get("previous") or {}
+    shown = {m["id"]: m for s in sessions.get("sessions", []) for m in s.get("members", [])}
+    sealed = ("task_id", "publication", "review_selector", "position_rows", "schedule", "date_risk")
+    failures = {
+        "daily.home_stale": selected.get("task_id") != current["task_id"],
+        "daily.home_publication": value.get("review_selector") != current["review_selector"],
+        "daily.home_date": value.get("schedule") != current.get("schedule"),
+        "daily.home_positions": not any(
+            k.startswith("positions:" + current["task_id"] + ":") for k in home.get("rows", [])
+        ),
+        "daily.previous_changed": any(previous.get(k) != feed["previous"].get(k) for k in sealed),
+        "daily.previous_report_changed": bool(feed.get("previous_report"))
+        and (projection.get("previous_report") or {}).get("export_hash")
+        != feed["previous_report"].get("export_hash"),
+        "daily.data_disclosure": set(projection.get("data_cases", []))
+        != set(feed.get("rule_cases", [])),
+        "daily.member_missing": bool(set(feed.get("members", [])) - shown.keys()),
+        "daily.usage_missing": any(
+            not shown.get(sid, {}).get("usage_visible") or not shown.get(sid, {}).get("usage")
+            for sid in feed.get("usage_members", [])
+        ),
+    }
+    owners = {
+        "daily.data_disclosure": "live-data.js",
+        "daily.member_missing": "team-members.js",
+        "daily.usage_missing": "team-members.js",
+    }
+    findings = [
+        {
+            "rule": rule,
+            "loop_part": "feedback",
+            "owner": "assets/workbench-source/js/app/" + owners.get(rule, "data.js"),
+        }
+        for rule, failed in failures.items()
+        if failed
+    ]
+    if feed.get("session"):
+        findings += session_findings(feed["session"], sessions)
+    return findings
+
+
 def _said(value: Any) -> Iterator[str]:
     """Each sentence an answer says, leaving out the operator's offline switch: the harness's
     own boundary, which only the person who launched the Host lifts."""

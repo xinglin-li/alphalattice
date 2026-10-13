@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
 from typing import Any, cast
@@ -9,6 +10,7 @@ from uuid import UUID
 
 from pydantic_core import to_jsonable_python
 
+from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.product_host.research_authoring.comparison import (
     compare_experiment_reports,
 )
@@ -21,6 +23,7 @@ from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
+from .committee import Floor
 from .evidence_review_application import EvidenceReviewApplication
 from .evidence_review_delivery import EvidenceReviewDelivery
 from .research_experiments import ResearchExperimentApplication
@@ -282,6 +285,9 @@ def export_update_delivery(
     review: EvidenceReviewApplication | None,
     committee: list[dict[str, str]] | None,
     data_decisions: dict[str, Any] | None = None,
+    read_data_decisions: Callable[..., dict[str, Any] | None] | None = None,
+    goal_store: GoalStore | None = None,
+    floor: Floor | None = None,
 ) -> dict[str, object]:
     """A date's published positions as the delivery.
 
@@ -290,6 +296,20 @@ def export_update_delivery(
     """
     from alphalattice.interface.local_application.experiment_report import render_research_delivery
 
+    if read_data_decisions is not None:
+        records: dict[str, tuple[dict[str, object], ...]] = {}
+        if floor is None:
+            assert goal_store is not None
+            owner = goal_store.listing(
+                limit=1, cursor=None, task_id=request.update_task_id, records=records
+            ).get("current_goal")
+            cases = goal_store.rule_cases(
+                str(request.update_task_id),
+                records.get(str(cast(dict[str, object], owner or {}).get("goal_id")), ()),
+            )
+        else:
+            cases = floor.rule_cases
+        data_decisions = read_data_decisions(case_tokens=cases)
     publication = readback.get("publication")
     subject = {
         "update_task_id": str(request.update_task_id),
