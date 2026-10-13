@@ -207,3 +207,31 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 **For developers**
 
 - The [session grader](../../src/devtools/evaluation/session.py) checks a session page's participants, ids, kinds, references and title against the records, including after a reload.
+
+## 0.1.7
+
+### Added
+
+- Committee members answer from their own sessions through the same admission used for reviews. Their messages and usage stay joined after a page reload.
+
+### Changed
+
+- The README shows one recorded research run in light and dark themes: historical performance, sector exposure and replay holdings, and the session conversation. The captions distinguish historical weights from the positions discussed; neither is a record of executed trades.
+
+### Deprecated
+
+- None.
+
+### Removed
+
+- None.
+
+### Fixed
+
+- Committee member instructions give full executable commands with quoted absolute paths to their message files.
+- A refusal after the committee closes explains what is still allowed and offers the report export.
+
+### Previews
+
+- **Data decisions by rule (preview).** During first use, a declared rule retains an isolated verified data move with its caveat or quarantines it recoverably. Past its bound, the rule leaves the decision to your agent. The Data page labels recorded decisions "Decided by rule" and shows an amber row while a decision is waiting. Once the required decisions are complete, the stopped preparation resumes as the same Task, with its earlier work kept.
+- **Investment committee (preview).** Members judge research positions and the portfolio manager records their decision; they change no position number. Own-session messages and usage have been checked in a native run, not investment outcomes.
