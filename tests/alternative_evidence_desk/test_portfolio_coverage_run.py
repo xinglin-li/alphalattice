@@ -211,7 +211,10 @@ def test_the_cro_cli_bundle_names_every_unreviewed_holding(
             entry["name"]: (directory / entry["name"]).read_text(encoding="utf-8")
             for entry in bundle["files"]
         }
-        assert set(files) == {path.name for path in directory.iterdir()}
+        assert set(files) | {"workspace.json"} == {path.name for path in directory.iterdir()}
+        assert json.loads((directory / "workspace.json").read_text("utf-8")) == {
+            "workspace": str(workspace.resolve())
+        }
         all_text = " ".join(" ".join(files.values()).split())
         assert {entity for entity in unreviewed if entity in all_text} == unreviewed
         for reason in reasons:

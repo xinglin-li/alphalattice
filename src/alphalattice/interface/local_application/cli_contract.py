@@ -201,7 +201,7 @@ BOUND_WORKSPACE: ContextVar[Path | None] = ContextVar("alphalattice_bound_worksp
 it is bound to none (V568). Set by `cli.main`; a printed command for this workspace leaves
 `--workspace` out (`entry`), since the session's next command finds it the same way."""
 
-WORKSPACE_FROM: ContextVar[Literal["OPTION", "BINDING"]] = ContextVar(
+WORKSPACE_FROM: ContextVar[Literal["OPTION", "BINDING", "BUNDLE"]] = ContextVar(
     "alphalattice_workspace_from", default="OPTION"
 )
 """How this command's workspace was chosen, which every answer's `context` names (V568): named
@@ -252,6 +252,8 @@ _ZH_TABLE: Final = Path(__file__).parent / "assets" / "workbench-source" / "js" 
 """The UI owner's Chinese table, English source text to Chinese; the CLI reads it, never a copy."""
 
 _ZH_ENTRY: Final = re.compile(r'^\s*("(?:[^"\\]|\\.)*")\s*:\s*("(?:[^"\\]|\\.)*"),?\s*$', re.M)
+
+BUNDLE_WORKSPACE: Final = "workspace.json"
 
 MAXIMUM_REQUEST_BODY_BYTES: Final[int] = 128 * 1024
 """The largest request body this service will read, named rather than implied.
@@ -1431,6 +1433,9 @@ _OTHER = ClientRefusal(
 
 def client_refusal(code: str) -> ClientRefusal:
     """The outcome, next action and words of a refusal the client raised itself."""
+    if code in {"local_client.workspace_context_mismatch", "local_client.bundle_workspace_invalid"}:
+        words = _refusal_table()[code]
+        return ClientRefusal("INVALID_INPUT", words["next_action"], words["detail"])
     for prefix, refusal in _CLIENT_REFUSALS:
         # A prefix ends in `_`, `:` or `.`: a code's family, a code's subjects, an owner's codes.
         if code == prefix or (prefix.endswith(("_", ":", ".")) and code.startswith(prefix)):

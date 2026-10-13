@@ -7202,4 +7202,7 @@ window.ALPHA_ZH = {
   "A data decision is needed before this Task can continue: unexplained moves ask for a permitted response, which the agent takes under the first use's delegation or asks the person for in one line; the last one resumes this same Task.": "此任务需要数据决策后才能继续：无法解释的变动需要允许的处理方式，由代理根据首次使用授权执行，或用一句话请人决定；最后一项决定将恢复同一个任务。",
   "This preparation's implementation has changed since its plan. Read preparation controls and plan again; verified stages and current data choices remain kept.": "此准备工作的实现自计划生成后已更改。请读取准备控制并重新制定计划；已验证阶段和当前数据选项会保留。",
   "The earlier quarantine is no longer active; this listing was readmitted.": "之前的隔离已解除；此证券已重新准入。",
+  "This request names a bundle from another workspace, or this session's existing binding differs from the requested workspace. Nothing was submitted. Host locations and availability are shown in binding_context. Run the offered commands in this caller's session, then send the unchanged request again; never remove a parent's binding.": "此请求指定的任务包来自另一个工作空间，或本会话的现有绑定与请求指定的工作空间不同。尚未提交任何内容。绑定上下文列出了宿主地址和可用状态。请在当前调用者的会话中执行提供的命令，再原样重试请求；不要移除父会话的绑定。",
+  "Selected workspace: {subject}; requested workspace: {subject}.": "选定工作空间：{subject}；请求指定的工作空间：{subject}。",
+  "The bundle's workspace locator must be a JSON object containing one absolute workspace path. Ask the lead to prepare a fresh bundle in a new directory; do not guess a workspace or edit another session's binding.": "任务包的工作空间定位信息必须是只包含一个绝对工作空间路径的 JSON 对象。请让主代理在新目录中准备新的任务包；不要猜测工作空间，也不要修改其他会话的绑定。",
 };

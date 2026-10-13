@@ -720,7 +720,33 @@ def test_a_next_command_keeps_the_context_its_answer_came_in(
     workspace = tmp_path / "workspace"
     prefix = entry(workspace, ("--lang", "zh", "--goal", "goal-g"))
     body = {"status": "AGENT_BUNDLE_READY", "files": [{"name": "README.md", "text": "Read.\n"}]}
-    bundle = client._write_bundle(tmp_path / "bundle", body, prefix=prefix)
+    folder = tmp_path / "bundle"
+    bundle = client._write_bundle(folder, body, prefix=prefix, workspace=workspace)
+    assert cli.bundle_workspace(folder) == workspace.resolve()
+    assert cli._workspace(workspace, folder)[::2] == (workspace, "OPTION")
+    assert cli._workspace(None, folder)[::2] == (workspace.resolve(), "BUNDLE")
+    readme = folder / "workspace.json"
+    kept = readme.read_text("utf-8")
+    assert (folder / "README.md").read_text("utf-8") == body["files"][0]["text"]
+    for malformed in (
+        '{"workspace":"relative"}',
+        '{"workspace":3}',
+        '{"workspace":"',
+        json.dumps({"workspace": str(workspace) + chr(0)}),
+    ):
+        readme.write_text(malformed, "utf-8")
+        with pytest.raises(
+            client.LocalResearchClientError, match=r"^local_client\.bundle_workspace_invalid$"
+        ):
+            cli.bundle_workspace(folder)
+    readme.unlink()
+    assert cli.bundle_workspace(folder) is None
+    (folder / "README.md").write_text(
+        "<!-- AlphaLattice workspace: " + kept.strip() + " -->\nRead.\n", "utf-8"
+    )
+    assert cli.bundle_workspace(folder) == workspace.resolve()
+    assert cli._workspace(workspace, folder)[::2] == (workspace, "OPTION")
+    readme.write_text(kept, "utf-8")
     assert bundle["submit_arguments"][:6] == [*prefix[1:]]
     assert bundle["submit_arguments"][6:8] == ["bundle", "submit"]
     if "submit_command" in bundle:

@@ -57,7 +57,13 @@ def test_each_role_card_becomes_one_subagent_with_its_sandbox_tools(materialize)
         evidence = name in {"alphalattice_evidence_analyst", "alphalattice_cro"}
         assert card["sandbox_mode"] == "workspace-write"
         stage = {"Read", "Grep", "Glob", "Edit", "Write", "Bash"}
-        routed = {"Read", "Write", "Bash(alphalattice bundle submit:*)"}
+        routed = {
+            "Read",
+            "Write",
+            "Bash(alphalattice bundle submit:*)",
+            "Bash(alphalattice session unbind:*)",
+            "Bash(alphalattice --workspace * session bind:*)",
+        }
         assert tools == (routed if evidence else stage)
         assert (fields["model"], fields["effort"]) == ("haiku", "high")
         assert body.strip().endswith(card["developer_instructions"].strip())
@@ -89,7 +95,8 @@ def test_each_card_says_its_place_on_the_skills_paths(materialize):
         names = re.findall(r'"([^"]+)"', place.split(". ", 1)[0])
         assert names and set(names) <= paths, (card.name, set(names) - paths)
         if card.stem in materialize.BUNDLE_ROLES:
-            assert "no product command but your route's submit" in place, card.name
+            assert "Permitted product commands are your route's submit" in place, card.name
+            assert "exact session binding recovery" in place, card.name
         else:
             assert (
                 "- EXECUTE: run only the operations your assignment authorizes"

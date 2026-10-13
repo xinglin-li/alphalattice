@@ -18665,7 +18665,8 @@
       "allowed": [
         "agent_session",
         "history_cursor",
-        "history_limit"
+        "history_limit",
+        "task_id"
       ],
       "required": []
     },
@@ -29037,6 +29038,12 @@
       "type": null
     },
     "option:goal list/--session-id": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:goal list/--task": {
       "choices": null,
       "nargs": null,
       "required": false,
@@ -46048,6 +46055,7 @@
     "refusal:local_client.boolean_invalid": {},
     "refusal:local_client.bundle_directory_exists": {},
     "refusal:local_client.bundle_response_invalid": {},
+    "refusal:local_client.bundle_workspace_invalid": {},
     "refusal:local_client.bundle_write_refused": {},
     "refusal:local_client.codex_notify_needs_task": {},
     "refusal:local_client.codex_queue_unavailable": {},
@@ -46104,6 +46112,7 @@
     "refusal:local_client.short_reference_unknown": {},
     "refusal:local_client.wait_subject_required": {},
     "refusal:local_client.workspace_bound_to_another_session": {},
+    "refusal:local_client.workspace_context_mismatch": {},
     "refusal:local_client.workspace_mismatch": {},
     "refusal:local_client.workspace_unbound": {},
     "refusal:local_runtime.dependency_unavailable": {},

@@ -6096,6 +6096,9 @@
 "local_client.bundle_response_invalid": {
 "owner": "local_client"
 },
+"local_client.bundle_workspace_invalid": {
+"owner": "local_client"
+},
 "local_client.bundle_write_refused": {
 "owner": "local_client"
 },
@@ -6259,6 +6262,9 @@
 "owner": "local_client"
 },
 "local_client.workspace_bound_to_another_session": {
+"owner": "local_client"
+},
+"local_client.workspace_context_mismatch": {
 "owner": "local_client"
 },
 "local_client.workspace_mismatch": {

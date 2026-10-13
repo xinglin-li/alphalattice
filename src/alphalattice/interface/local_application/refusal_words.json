@@ -1602,5 +1602,13 @@
  "workspace_preparation.binding_changed": {
   "detail": "This preparation's implementation has changed since its plan. Read preparation controls and plan again; verified stages and current data choices remain kept.",
   "next_action": "WORKSPACE_PREPARE_PLAN"
+ },
+ "local_client.workspace_context_mismatch": {
+  "detail": "This request names a bundle from another workspace, or this session's existing binding differs from the requested workspace. Nothing was submitted. Host locations and availability are shown in binding_context. Run the offered commands in this caller's session, then send the unchanged request again; never remove a parent's binding.",
+  "next_action": "REBIND_THIS_SESSION_THEN_RETRY_THE_SAME_REQUEST"
+ },
+ "local_client.bundle_workspace_invalid": {
+  "detail": "The bundle's workspace locator must be a JSON object containing one absolute workspace path. Ask the lead to prepare a fresh bundle in a new directory; do not guess a workspace or edit another session's binding.",
+  "next_action": "ASK_THE_LEAD_TO_PREPARE_A_FRESH_BUNDLE"
  }
 }
