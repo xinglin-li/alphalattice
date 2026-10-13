@@ -203,7 +203,7 @@ from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
     read_workspace_inputs,
 )
-from alphalattice.control.product_host.publication.goals import GoalStore
+from alphalattice.control.product_host.publication.goals import GoalStore, session_work_declaration
 from alphalattice.control.product_host.research_authoring.feature_research import (
     ResearchFeatureDefinitions,
 )
@@ -332,7 +332,7 @@ from alphalattice.interface.local_application.native_setup import (
     autobind_root,
     autobind_session,
 )
-from alphalattice.interface.local_application.operations import GRAMMAR, OPERATIONS, PERSON_ONLY
+from alphalattice.interface.local_application.operations import OPERATIONS, PERSON_ONLY
 from alphalattice.interface.local_application.portfolio_research import (
     FrozenCandidateProjection,
     LocalApplicationError,
@@ -922,37 +922,20 @@ class PortfolioResearchOperations:
         Nothing here refuses the request (AUTOBIND).
         """
         assert provenance is not None and provenance.vendor is not None
-        command = GRAMMAR[operation]
-        name = "Claude Code" if provenance.vendor == "claude-code" else "Codex"
-        declaration = {
-            "title": f"Session work: {command.noun} {command.verb}",
-            "objective": (
-                f"The work this {name} session began with `{command.noun} {command.verb}`: "
-                f"{command.purpose}"
-            )[:2400],
-            "kind": "RESEARCH",
-            "scope": (
-                "Opened by the Host at the session's first research request, which held no "
-                "goal; the session may open its own goal to replace it."
-            ),
-            "criteria": [
-                {
-                    "criterion_id": "recorded",
-                    "text": "The session's requests, Tasks and results are recorded here.",
-                }
-            ],
-        }
         try:
             opened = self.goals.operate(
                 PortfolioResearchOperationRequest(
-                    operation="GOAL_OPEN", goal_declaration=declaration
+                    operation="GOAL_OPEN",
+                    goal_declaration=session_work_declaration(operation, provenance.vendor),
                 ),
                 "EXTERNAL_AUTOMATION",
                 provenance,
             )
             if opened.get("status") != "GOAL_SAVED":
                 return None
-            return self.goals.store.head(UUID(str(opened["goal_id"])))
+            goal_id = UUID(str(opened["goal_id"]))
+            self.goals.store.attribute(goal_id, {"goal_origin": "SESSION_WORK"})
+            return self.goals.store.head(goal_id)
         except Exception:
             return None
 

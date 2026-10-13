@@ -416,9 +416,9 @@ const LiveViews = (() => {
     const prep = Data.preparation(), unprepared = Boolean(prep) && !prep.inputs?.length;
     const f = resumeFacts(prep, unprepared);
     const meta = html`<span>${icon('task')}${countText(openTaskCount(), '{n} Task needs a decision', '{n} Tasks need a decision')}</span><span>${icon('lock')}${t('Local workspace')}</span>`;
-    const goal=Data.currentGoal(), title=t(goal?.title || goal?.declaration?.title || 'Home'), date=goal?.target_date || goal?.declaration?.target_date;
+    const goal=Data.currentGoal(), title=goal?.question || t('Home'), date=goal?.target_date || goal?.declaration?.target_date;
     const facts=homeChips().filter(Boolean);
-    if(goal)facts.unshift([t('Current goal'),html`${btn(title,'goal-open',goal.goal_hash || goal.goal_id,'text-btn')}${date ? html` · ${date}` : ''}`]);
+    if(goal)facts.unshift([t('Current goal'),html`${btn(t(goal.title || goal.declaration?.title || 'Goal'),'goal-open',goal.goal_hash || goal.goal_id,'text-btn')}${date ? html` · ${date}` : ''}`]);
     return html`${objectHead(title, meta, html`${f.secondary}${f.primary}`, f.state, HOME_TOOLS(), {object:true,facts})}${unprepared || LiveWorkspace.selectedTask('welcome') ? html`<section class="first-use" aria-label="${t('First use')}">${LiveWorkspace.firstUse()}</section>` : ''}<section class="home-groups" aria-label="${t('Home')}">${homeGroups(unprepared)}</section>`;
   }
   function tasks() {

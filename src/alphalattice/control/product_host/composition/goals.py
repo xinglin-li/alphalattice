@@ -1099,6 +1099,7 @@ class GoalApplication:
         ]
         return {
             "sessions": sessions_of(entries),
+            "question": self.store.question(goal, entries),
             "tasks": [t.model_dump(mode="json") for t in tasks],
             # The person's delegation and each step it took, as the ledger keeps it (V452).
             **(
@@ -1150,6 +1151,7 @@ class GoalApplication:
                 limit=request.history_limit or 25,
                 cursor=request.history_cursor,
                 agent_session=request.agent_session,
+                task_id=request.task_id,
             )
         if request.operation == "GOAL_OPEN":
             return self._open(request, caller, provenance)
@@ -1168,8 +1170,7 @@ class GoalApplication:
             prior = self._selected(request)
             declaration = GoalDeclaration.model_validate(request.goal_declaration)
             if "FIRST_USE" in {prior.declaration.kind, declaration.kind}:
-                # Its objective is the person's sentence and its hours run from its opening;
-                # neither is revised, nor does another goal become one (V452).
+                # A first use keeps its original sentence, kind and opening time (V452).
                 raise ValueError("goal.first_use_is_not_revised")
             if prior.declaration.intent() != declaration.intent():
                 # The previous objective's pre-execution timing must not be attributed

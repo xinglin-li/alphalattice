@@ -385,7 +385,7 @@ def fidelity_floor(role="CRO", point="T1", following=None):
     ]
     rows = [{"attribution": m["id"], "text": m["text"]} for m in messages]
     selected = {"review_publication_hash": "a" * 64}
-    closed = {"messages": messages, "delivery": selected}
+    closed = {"messages": messages, "delivery": selected, "goal_id": "owned-question"}
     report = {
         "commentary": rows,
         "selection": dict(selected),
@@ -398,6 +398,10 @@ def fidelity_floor(role="CRO", point="T1", following=None):
         "raw_messages": deepcopy(messages),
         "cro_view": ["Review now: REVIEWED."],
         "review_standing": {"status": "REVIEWED", **selected},
+        "home": {
+            "goal": {"goal_id": closed["goal_id"], "declaration": {"objective": "Study H1."}},
+            "heading": "Study H1.",
+        },
     }
     return closed, report, evidence
 
@@ -492,6 +496,8 @@ def test_standing_message_mirror_agrees_with_the_floor_owner(change):
         "alias_attribution",
         "stale_status",
         "closed_hash",
+        "home_question",
+        "home_goal",
     ],
 )
 def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
@@ -552,6 +558,10 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
         evidence["cro_view"] = ['{"old": "REVIEWED"}', "Review now: NOT_REVIEWED."]
     elif broken == "closed_hash":
         closed["delivery"] = {}
+    elif broken == "home_question":
+        evidence["home"]["heading"] = "Session work"
+    elif broken == "home_goal":
+        evidence["home"]["goal"]["goal_id"] = "another-question"
     elif broken.startswith("missing_"):
         evidence["raw_messages" if broken == "missing_raw" else "cro_view"] = None
     problems = report_fidelity(closed, report, **evidence)
@@ -562,3 +572,5 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
         assert "UNPROVED:cro_view" in problems
     if broken == "closed_hash":
         assert "report.review_hash_mismatch" in problems
+    if broken.startswith("home_"):
+        assert "home." + broken.removeprefix("home_") + "_mismatch" in problems

@@ -870,8 +870,9 @@ const Data = (() => {
   }
   const currentGoal = () => {
     const followed = typeof LiveActivity !== 'undefined' ? LiveActivity.currentGoal?.() : null;
-    const goals = workspace?.research_context?.goals?.goals || [];
-    return followed || goals.find(goal => goal.state === 'OPEN' && goal.target_date) || goals.find(goal => goal.state === 'OPEN') || goals[0] || null;
+    const exact = hashParams().get('follow')?.startsWith('goal:');
+    if (!exact && home.navigation && navigationCurrent(home.navigation) && home.value) return home.goal || null;
+    return exact ? followed : (home.navigation && navigationCurrent(home.navigation) ? home.goal : null) || (followed?.question ? followed : null) || workspace?.research_context?.goals?.current_goal || null;
   };
   const selectorKey = selector => JSON.stringify(Object.entries(selector || {}).sort(([a], [b]) => a.localeCompare(b)));
   function observeHome(automation) {
@@ -883,10 +884,14 @@ const Data = (() => {
     if (home.key === key) return;
     const reading = home = {key, selection, value: null, error: null, loading: Boolean(selection), navigation};
     if (!selection) return;
-    void pageRead('/api/research-update?' + new URLSearchParams({task_id: selection.task_id})).then(value => {
+    void Promise.all([
+      pageRead('/api/research-update?' + new URLSearchParams({task_id: selection.task_id})),
+      pageRead('/api/goals?' + new URLSearchParams({task_id: selection.task_id})),
+    ]).then(([value, goals]) => {
       if (home !== reading || !navigationCurrent(navigation)) return;
       if (selectorKey(value.review_selector) !== selectorKey(selection.review_selector)) throw new Error('The selected positions changed. Open the current positions.');
       reading.value = value;
+      reading.goal = goals.current_goal;
     }).catch(error => { if (home === reading && navigationCurrent(navigation)) reading.error = error; }).finally(() => {
       if (home === reading && navigationCurrent(navigation)) { reading.loading = false; refresh(); }
     });

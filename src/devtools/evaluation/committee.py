@@ -483,6 +483,18 @@ def materials_findings(closed: Mapping[str, Any]) -> list[str]:
     return found
 
 
+def _home_fidelity(closed, home) -> list[str]:
+    if home is None:
+        return []
+    goal, problems = home.get("goal") or {}, []
+    if goal.get("goal_id") != closed.get("goal_id"):
+        problems.append("home.goal_mismatch")
+    question = (goal.get("declaration") or {}).get("objective")
+    if not question or home.get("heading") != question:
+        problems.append("home.question_mismatch")
+    return problems
+
+
 def report_fidelity(
     closed: Mapping[str, Any],
     report: Mapping[str, Any],
@@ -490,6 +502,7 @@ def report_fidelity(
     raw_messages: list[Mapping[str, Any]] | None = None,
     cro_view: list[str] | str | None = None,
     review_standing: Mapping[str, Any] | None = None,
+    home: Mapping[str, Any] | None = None,
 ) -> list[str]:
     """Check a delivery against explicit standing positions and the admitted raw messages."""
     messages, rows = closed.get("messages", []), report.get("commentary", [])
@@ -499,6 +512,7 @@ def report_fidelity(
         _standing_fidelity(messages, rows, page)
         + _final_view_fidelity(messages, rows)
         + _floor_fidelity(messages, rows, page, raw)
+        + _home_fidelity(closed, home)
     )
     if raw_messages is None or {m["id"] for m in raw_messages} != {m["id"] for m in messages}:
         problems.append("UNPROVED:raw_messages")

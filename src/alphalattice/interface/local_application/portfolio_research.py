@@ -825,13 +825,13 @@ class PortfolioResearchOperationRequest:
         requirements = {
             "GOAL_LIST": (
                 frozenset(),
-                frozenset({"agent_session", "history_limit", "history_cursor"}),
+                frozenset({"agent_session", "history_limit", "history_cursor", "task_id"}),
             ),
             "GOAL_OPEN": (
                 frozenset({"goal_declaration"}),
                 frozenset({"goal_id", "goal_declaration", "change_reason"}),
             ),
-            # A bound session's goal and head are the defaults, so neither is required (V391).
+            # Bound sessions default the Goal and head (V391).
             "GOAL_REVISE": (
                 frozenset({"goal_declaration", "change_reason"}),
                 frozenset({"goal_id", "goal_hash", "goal_declaration", "change_reason"}),

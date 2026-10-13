@@ -628,9 +628,12 @@ def test_one_research_command_binds_the_session_and_opens_its_goal(
         if row["payload"]["subject"].get("message_kind") == "session_bound"
     ]
     assert [row["payload"]["subject"]["native_session_id"] for row in bound] == ["fixture-lead"]
-    goals = client.request({"operation": "GOAL_LIST"})["goals"]
+    listing = client.request({"operation": "GOAL_LIST"})
+    assert listing["current_goal"] is None
+    goals = listing["goals"]
     assert len(goals) == 1, goals
     record = client.request({"operation": "GOAL_SHOW", "goal_id": goals[0]["goal_id"]})["record"]
+    assert record["question"] is None
     requests = [
         row for row in record["conversation"] if row.get("input_channel") == "PRODUCT_OPERATION"
     ]

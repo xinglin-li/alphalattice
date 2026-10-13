@@ -18,8 +18,32 @@ from alphalattice.interface.local_application.failure_codes import public_failur
 from alphalattice.interface.local_application.goals import (
     Goal,
     GoalAcceptedAnswerContext,
+    GoalDeclaration,
     GoalSession,
 )
+from alphalattice.interface.local_application.operations import GRAMMAR
+
+
+def session_work_declaration(operation: str, vendor: str) -> dict[str, object]:
+    """The Host's automatic declaration, also identifying exact historical declarations."""
+    command = GRAMMAR[operation]
+    name = "Claude Code" if vendor == "claude-code" else "Codex"
+    return {
+        "title": f"Session work: {command.noun} {command.verb}",
+        "objective": (
+            f"The work this {name} session began with `{command.noun} {command.verb}`: "
+            f"{command.purpose}"
+        )[:2400],
+        "kind": "RESEARCH",
+        "scope": "Opened by the Host at the session's first research request, which held no "
+        "goal; the session may open its own goal to replace it.",
+        "criteria": [
+            {
+                "criterion_id": "recorded",
+                "text": "The session's requests, Tasks and results are recorded here.",
+            }
+        ],
+    }
 
 
 def _deliverables(goal: Goal) -> list[dict[str, object]] | None:
@@ -44,6 +68,33 @@ def _deliverables(goal: Goal) -> list[dict[str, object]] | None:
         }
         for answer in goal.submission.deliverables
     ]
+
+
+def _metadata(value: Goal) -> dict[str, object]:
+    """The same owner facts in discovery rows and the selected question."""
+    return {
+        "goal_id": str(value.goal_id),
+        "goal_hash": value.goal_hash,
+        "title": value.declaration.title,
+        "objective": value.declaration.objective,
+        "target_date": value.declaration.model_dump(mode="json", include={"target_date"}).get(
+            "target_date"
+        ),
+        "kind": value.declaration.kind,
+        "research_purpose": value.declaration.research.purpose
+        if value.declaration.research
+        else None,
+        "state": value.state,
+        "outcome": value.submission.outcome if value.submission else None,
+        "revision": value.revision,
+        "recorded_at": value.recorded_at.isoformat(),
+        "reference_count": len(value.references),
+        "statement_count": len(value.statements),
+        "deliverables": _deliverables(value),
+        "completion": None
+        if value.completion is None
+        else {"checked_at": value.completion.checked_at.isoformat()},
+    }
 
 
 def sessions_of(entries: Iterable[Mapping[str, object]]) -> list[dict[str, str]]:
@@ -320,29 +371,98 @@ class GoalStore:
         except (TypeError, ValueError, OSError) as error:
             raise ValueError("goal.attribution_invalid") from error
 
+    def question(self, goal: Goal, entries: tuple[dict[str, object], ...]) -> str | None:
+        """Authored intent, never an automatic session label; old records remain unchanged."""
+        if goal.revision == 1 and any(e.get("goal_origin") == "SESSION_WORK" for e in entries):
+            return None
+        first = next((e for e in entries if e.get("operation")), {})
+        operation, vendor = first.get("operation"), first.get("agent_vendor")
+        if (
+            isinstance(operation, str)
+            and operation in GRAMMAR
+            and vendor in {"codex", "claude-code"}
+            and goal.declaration
+            == (
+                GoalDeclaration.model_validate(
+                    session_work_declaration(str(operation), str(vendor))
+                )
+            )
+        ):
+            return None
+        return goal.declaration.objective
+
+    def current_question(
+        self,
+        heads: list[tuple[Goal, dict[str, object]]],
+        records: dict[str, tuple[dict[str, object], ...]],
+        sessions: dict[str, list[dict[str, str]]],
+        task_id: UUID | str | None = None,
+        refused: list[dict[str, object]] | None = None,
+    ) -> dict[str, object] | None:
+        """The dated delivery's bound question, otherwise the newest authored Goal."""
+        questions, dated = {}, []
+        for goal, metadata in heads:
+            key = str(goal.goal_id)
+            try:
+                if key not in records:
+                    records[key] = self.attributed(goal.goal_id)
+                entries = records[key]
+                if key not in sessions:
+                    sessions[key] = sessions_of(entries)
+                question = self.question(goal, entries)
+            except (ValueError, OSError) as error:
+                if refused is not None:
+                    refused.append(_goal_item_refusal(key, error, item="SESSION_ATTRIBUTION"))
+                continue
+            if question is None:
+                continue
+            questions[key] = {**metadata, "question": question}
+            for entry in entries:
+                floor = entry.get("committee_open")
+                if isinstance(floor, dict) and (
+                    date := (floor.get("schedule") or {}).get("entry_session")
+                ):
+                    dated.append((date, str(floor["update_task_id"]), key))
+        if task_id:
+            task = str(task_id)
+            binding = self.committee(task)
+            if binding:
+                return questions.get(binding["goal_id"])
+            admitted = {
+                str(g.goal_id)
+                for g, _metadata in heads
+                if any(
+                    e.get("task_id") == task and e.get("operation") == "RESEARCH_UPDATE_RUN"
+                    for e in records.get(str(g.goal_id), ())
+                )
+            }
+            return questions.get(next(iter(admitted))) if len(admitted) == 1 else None
+        if dated:
+            _date, _task, key = max(dated)
+            return questions[key]
+        return max(
+            questions.values(),
+            key=lambda row: (str(row["recorded_at"]), str(row["goal_id"])),
+            default=None,
+        )
+
     def listing(
-        self, *, limit: int, cursor: str | None, agent_session: str | None = None
+        self,
+        *,
+        limit: int,
+        cursor: str | None,
+        agent_session: str | None = None,
+        task_id: UUID | str | None = None,
     ) -> dict[str, object]:
-        """The goals, newest first, as metadata to discover them, not as evidence.
+        """Discover paged metadata, scoped sessions and named item refusals, newest first.
 
-        Each row names its deliverables with what the submission put in each, and when the Host
-        checked the record complete; `agent_session` keeps the goals whose record names that
-        session (U54).
-
-        Args:
-            limit: How many goals one page holds.
-            cursor: The `next_cursor` the previous page answered.
-            agent_session: An agent session whose goals to list; none lists every goal.
-
-        Returns:
-            The readable page, where the next one starts, and any named goal-item refusals.
-
-        Raises:
-            ValueError: `goal.cursor_moved_reload` for a cursor the listing no longer holds.
+        The current question binds a selected Task independently of the requested page.
         """
         rows = []
         refused: list[dict[str, object]] = []
         sessions: dict[str, list[dict[str, str]]] = {}
+        heads: list[tuple[Goal, dict[str, object]]] = []
+        records: dict[str, tuple[dict[str, object], ...]] = {}
         for path in (self.content.root / "heads").glob("*.json"):
             try:
                 goal_id = UUID(path.stem)
@@ -372,41 +492,19 @@ class GoalStore:
             if agent_session is not None:
                 # A session's goals: read once for every goal, kept for its row (U23, U54).
                 try:
-                    named = sessions_of(self.attributed(goal_id))
+                    records[str(goal_id)] = self.attributed(goal_id)
+                    named = sessions_of(records[str(goal_id)])
                 except (ValueError, OSError):
                     # A scoped result can include only records whose session is established.
                     continue
                 if not any(item["session_id"] == agent_session for item in named):
                     continue
                 sessions[str(value.goal_id)] = named
-            rows.append(
-                {
-                    "goal_id": str(value.goal_id),
-                    "goal_hash": value.goal_hash,
-                    "title": value.declaration.title,
-                    "objective": value.declaration.objective,
-                    "target_date": value.declaration.model_dump(
-                        mode="json", include={"target_date"}
-                    ).get("target_date"),
-                    "kind": value.declaration.kind,
-                    "research_purpose": (
-                        value.declaration.research.purpose if value.declaration.research else None
-                    ),
-                    "state": value.state,
-                    "outcome": value.submission.outcome if value.submission else None,
-                    "revision": value.revision,
-                    "recorded_at": value.recorded_at.isoformat(),
-                    "reference_count": len(value.references),
-                    "statement_count": len(value.statements),
-                    "deliverables": _deliverables(value),
-                    "completion": (
-                        None
-                        if value.completion is None
-                        else {"checked_at": value.completion.checked_at.isoformat()}
-                    ),
-                }
-            )
+            metadata = _metadata(value)
+            heads.append((value, metadata))
+            rows.append(metadata)
         rows.sort(key=lambda r: (str(r["recorded_at"]), str(r["goal_id"])), reverse=True)
+        current = self.current_question(heads, records, sessions, task_id, refused)
         if cursor:
             position = next((i for i, r in enumerate(rows) if r["goal_hash"] == cursor), None)
             if position is None:
@@ -418,18 +516,12 @@ class GoalStore:
         page = []
         for row in page_candidates:
             page_goal_id = str(row["goal_id"])
-            page_sessions = sessions.get(page_goal_id)
-            if page_sessions is None:
-                try:
-                    page_sessions = sessions_of(self.attributed(UUID(page_goal_id)))
-                except (ValueError, OSError) as error:
-                    refused.append(
-                        _goal_item_refusal(page_goal_id, error, item="SESSION_ATTRIBUTION")
-                    )
-                    continue
-            page.append({**row, "sessions": page_sessions})
+            if page_goal_id not in sessions:
+                continue
+            page.append({**row, "sessions": sessions[page_goal_id]})
         answer: dict[str, object] = {
             "status": "AVAILABLE",
+            "current_goal": current,
             "goals": page,
             "next_cursor": (
                 page_candidates[-1]["goal_hash"] if page_candidates and len(rows) > limit else None

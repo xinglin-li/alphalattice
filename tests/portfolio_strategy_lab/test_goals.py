@@ -23,7 +23,7 @@ import pytest
 from pydantic import BaseModel, ConfigDict
 
 from alphalattice.control.product_host.composition.goals import GoalApplication
-from alphalattice.control.product_host.publication.goals import GoalStore
+from alphalattice.control.product_host.publication.goals import GoalStore, session_work_declaration
 from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
 from alphalattice.interface.local_application.cli_contract import RequestProvenance
 from alphalattice.interface.local_application.portfolio_research import (
@@ -1961,6 +1961,82 @@ def test_a_goals_head_keeps_a_missing_or_corrupt_revisions_refusal(goal_app):
     assert not calls
 
 
+def test_home_question_uses_the_dated_binding_and_excludes_session_work(goal_app):
+    """A dated delivery owns Home's question; absent a delivery the newest authored Goal wins."""
+    app, first, _calls, _body, _tasks = goal_app
+    app.clock = lambda: NOW + timedelta(minutes=1)
+    authored = app.operate(
+        Request(
+            operation="GOAL_OPEN",
+            goal_id=UUID(int=10),
+            goal_declaration={**DECLARATION, "objective": "Another question?"},
+        ),
+        "HUMAN",
+    )
+    app.clock = lambda: NOW + timedelta(minutes=2)
+    automatic = app.operate(
+        Request(
+            operation="GOAL_OPEN",
+            goal_id=UUID(int=11),
+            goal_declaration=session_work_declaration("COMMITTEE_SUBMIT", "codex"),
+        ),
+        "EXTERNAL_AUTOMATION",
+    )
+    auto_goal = app.store.load(automatic["goal_hash"])
+    # Retained pre-origin-marker attribution, through its existing storage owner.
+    app.store.attribute(
+        auto_goal.goal_id,
+        {
+            "operation": "COMMITTEE_SUBMIT",
+            "agent_vendor": "codex",
+            "agent_session": SESSION.session,
+        },
+    )
+    latest = app.operate(Request(operation="GOAL_LIST", history_limit=1), "HUMAN")
+    assert latest["goals"][0]["goal_id"] == automatic["goal_id"]
+    assert latest["current_goal"]["goal_id"] == authored["goal_id"]
+    assert latest["current_goal"]["question"] == "Another question?"
+    assert (
+        app.operate(Request(operation="GOAL_NARRATIVE", goal_id=auto_goal.goal_id), "HUMAN")[
+            "record"
+        ]["question"]
+        is None
+    )
+    app.store.attribute(auto_goal.goal_id, {"goal_origin": "SESSION_WORK"})
+    task = str(UUID(int=20))
+    app.store.committee(task, UUID(first["goal_id"]))
+    app.store.attribute(
+        UUID(first["goal_id"]),
+        {"committee_open": {"update_task_id": task, "schedule": {"entry_session": "2026-09-16"}}},
+    )
+    delivered = app.operate(Request(operation="GOAL_LIST", history_limit=1), "HUMAN")
+    assert delivered["current_goal"]["goal_id"] == first["goal_id"]
+    assert delivered["current_goal"]["question"] == DECLARATION["objective"]
+    assert delivered["current_goal"]["target_date"] is None
+    exact = app.operate(Request(operation="GOAL_LIST", task_id=UUID(task)), "HUMAN")
+    assert exact["current_goal"]["goal_id"] == first["goal_id"]
+    another_task = UUID(int=21)
+    entry = {"operation": "RESEARCH_UPDATE_RUN", "task_id": str(another_task)}
+    app.store.attribute(UUID(first["goal_id"]), entry)
+    assert (
+        app.operate(Request(operation="GOAL_LIST", task_id=another_task), "HUMAN")["current_goal"][
+            "goal_id"
+        ]
+        == first["goal_id"]
+    )
+    app.store.attribute(UUID(authored["goal_id"]), entry)
+    assert (
+        app.operate(Request(operation="GOAL_LIST", task_id=another_task), "HUMAN")["current_goal"]
+        is None
+    )
+    assert (
+        app.operate(
+            Request(operation="GOAL_NARRATIVE", goal_id=UUID(authored["goal_id"])), "HUMAN"
+        )["record"]["question"]
+        == "Another question?"
+    )
+
+
 def test_goal_list_keeps_readable_rows_and_scopes_only_provable_head_refusals(goal_app):
     """A corrupt head cannot hide other goals or disclose an unproved session association."""
     app, _opened, _calls, _body, _tasks = goal_app
@@ -1994,6 +2070,7 @@ def test_goal_list_keeps_readable_rows_and_scopes_only_provable_head_refusals(go
 
     clean = app.operate(Request(operation="GOAL_LIST"), "HUMAN")
     assert "refused" not in clean
+    assert clean["current_goal"]["question"] == DECLARATION["objective"]
     assert {row["target_date"] for row in clean["goals"]} == {None, "2026-08-12"}
     assert {row["goal_id"] for row in clean["goals"]} == {
         str(UUID(int=1)),

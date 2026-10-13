@@ -253,7 +253,7 @@ const LiveActivity = (() => {
           if (scope === 'latest') {
             const list = await Data.readShared('/api/goals');
             if (!wanted()) return;
-            G.id = (list.goals || []).find(v => v.state === 'OPEN')?.goal_id || '';
+            G.id = list.current_goal?.goal_id || '';
             if (!G.id) { G.body = null; G.stamp = stamp; return; }
           }
           const body = await Data.readShared('/api/goals/narrative?' + new URLSearchParams({goal_id: G.id}));
@@ -542,7 +542,7 @@ const LiveActivity = (() => {
     window.addEventListener('pagehide', stop);
     window.addEventListener('pageshow', (event) => { if (event.persisted) resume(); });
   }
-  return {currentGoal: () => G.body?.goal || null, section, logLines, starterOf, recordOf, refresh, markSeen, bind, facts, nextRead, absorbPage, open, openSavedResult, cadence, stop, resume, follow, pin, setFollowing, pauseFollowing, followAgain, followWord, followPaused: () => S.paused, taskSettled, setNotices, noticesState, readSessionUsage,
+  return {currentGoal: () => G.body ? {...G.body.goal, question: G.body.record?.question} : null, section, logLines, starterOf, recordOf, refresh, markSeen, bind, facts, nextRead, absorbPage, open, openSavedResult, cadence, stop, resume, follow, pin, setFollowing, pauseFollowing, followAgain, followWord, followPaused: () => S.paused, taskSettled, setNotices, noticesState, readSessionUsage,
     retained: () => [...S.groups.values()],
     nativeUsageState: () => S.observer?.native_usage || null,
     state: () => ({cursor: S.cursor, epoch: S.epoch, groups: S.groups.size, unseen: S.unseen, error: S.error, notice: S.notice, tasks: Object.keys(S.tasks).length, watermark: S.watermark, disposition: S.disposition, stale: S.stale, stopped: S.stopped, fetching: Boolean(S.fetching), timer: S.timer !== null, following: S.following, pendingOpen: S.pendingOpen, opening: Boolean(S.opening), generation: S.followGeneration}),
