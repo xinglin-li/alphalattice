@@ -235,3 +235,34 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 
 - **Data decisions by rule (preview).** During first use, a declared rule retains an isolated verified data move with its caveat or quarantines it recoverably. Past its bound, the rule leaves the decision to your agent. The Data page labels recorded decisions "Decided by rule" and shows an amber row while a decision is waiting. Once the required decisions are complete, the stopped preparation resumes as the same Task, with its earlier work kept.
 - **Investment committee (preview).** Members judge research positions and the portfolio manager records their decision; they change no position number. Own-session messages and usage have been checked in a native run, not investment outcomes.
+
+## 0.1.8
+
+### Added
+
+- [Design principles](design-principles.md) now describe one Host door, the loop between program, agent and person, decisions by declared rules and compatibility for interfaces agents have learned.
+
+### Changed
+
+- The README begins with what you can ask your agent to do, explains the workflow and its limits, and shows an earlier worked example. The committee image and example-report link remain reserved for the final 0.2.0 run.
+- The light-theme historical performance and holdings images and both Conversation images are sharper, captured at twice their displayed width. The dark performance and holdings images are unchanged.
+
+### Deprecated
+
+- None. The current deprecation list is empty.
+
+### Removed
+
+- No new removal in this release. The compatibility record documents a refusal for a native child not recognized as a specialist, removed in 0.1.6 without an earlier deprecation notice; usage reading is independent of specialist-role verification, which remains separately recorded.
+
+### Fixed
+
+- Home keeps your authored question for the selected result. Automatic session work never supplies that question.
+- Session usage progress shows its numbers while a reading catches up and no banner once usage is fully read.
+- A reloaded session shows its own product records, even when later activity fills the recent feed.
+
+### Previews
+
+- **Committee decisions (preview).** The committee can decline endorsement without changing research positions. The Risk bundle separately states whether the date's risk was evaluated and whether the historical Risk study applied. Where the portfolio manager made rulings, the report labels the last ruling as its final view; earlier standing views remain readable.
+- **Agent compatibility (preview).** Answers name the agent interface version. A deprecated entry stays available while its notice names the replacement and earliest removal release; compatibility checks refuse an undeclared removal or an incompatible typed change.
+- **Bundle routing (preview).** A review bundle carries its workspace location. If a binding points elsewhere, the refusal names the conflicting workspaces and offers the exact binding recovery. Member keys and authority checks still apply.
