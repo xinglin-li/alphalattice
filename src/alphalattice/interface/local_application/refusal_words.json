@@ -1,4 +1,8 @@
 {
+ "workspace_preparation.human_confirmation_required": {
+  "detail": "Preparation needs the person's confirmation or a valid delegation. Read preparation controls and data issues, then ask the person for that confirmation or grant.",
+  "next_action": "READ_PREPARATION_CONTROLS_AND_ASK_FOR_CONFIRMATION_OR_A_GRANT"
+ },
  "local_client.problem_report_ready": {
   "detail": "Review this redacted report. Ask the person before sending it to the developers; without their yes, keep it local.",
   "next_action": "REVIEW_REPORT_AND_ASK_BEFORE_SENDING"
@@ -284,7 +288,7 @@
   "next_action": "READ_WORKSPACE_SHOW_OR_RESTORE_A_BACKUP"
  },
  "data.truth_review_required": {
-  "detail": "A data decision is needed before this Task can continue: the data owner found an unexplained move and asks for a permitted response, which the agent takes under the first use's delegation or asks the person for in one line.",
+  "detail": "A data decision is needed before this Task can continue: unexplained moves ask for a permitted response, which the agent takes under the first use's delegation or asks the person for in one line; the last one resumes this same Task.",
   "next_action": "DATA_ISSUES"
  },
  "evidence_review.budget_exceeds_consent": {
@@ -1583,6 +1587,10 @@
   "detail": "This case is no longer waiting for a decision, so nothing was applied. Read the data issues for where it stands now and follow its offer.",
   "next_action": "DATA_ISSUES"
  },
+ "feature_input.option_changed": {
+  "detail": "The option or evidence does not match this data case's current offered catalogue, so nothing was applied. Read the data issues and use an exact offered choice.",
+  "next_action": "DATA_ISSUES"
+ },
  "feature_input.resolution_conflict": {
   "detail": "Another decision for this case is already recorded, so this one conflicts with it and was not applied. Read the data issues for where the case stands now and follow its offer.",
   "next_action": "DATA_ISSUES"
@@ -1590,5 +1598,9 @@
  "feature_input.case_already_decided": {
   "detail": "A decision for this case is already recorded and stands, so it takes no other choice now. Read the data issues for where it stands and follow its offer.",
   "next_action": "DATA_ISSUES"
+ },
+ "workspace_preparation.binding_changed": {
+  "detail": "This preparation's implementation has changed since its plan. Read preparation controls and plan again; verified stages and current data choices remain kept.",
+  "next_action": "WORKSPACE_PREPARE_PLAN"
  }
 }

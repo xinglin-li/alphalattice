@@ -953,6 +953,11 @@ def test_generic_specialist_doors_seal_exact_references_without_scientific_admis
         bundle.allowed_references
     )
     assert "does not contain numerical diagnostics" in prepared["files"][0]["text"]
+    if role == "DATA":
+        [material] = [file["text"] for file in prepared["files"] if file["name"] != "README.md"]
+        view = json.loads(material[material.index("{") :])
+        assert view["task_id"] == str(task.task_id) and view["status"] == "UNAVAILABLE"
+        assert "issues" not in view and "next_requests" not in view
     result = submit()
     assert result["status"] == "ACCEPTED"
     assert result["receipt"]["task_id"] == str(task.task_id)

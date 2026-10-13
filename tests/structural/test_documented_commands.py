@@ -192,3 +192,29 @@ def test_an_incomplete_offer_names_its_missing_required_choice(tmp_path: Path) -
     )
     (line,) = incomplete_offers(tmp_path)
     assert "without its required candidate_id" in line
+
+
+def test_goal_record_operations_are_validated_without_request_selectors(tmp_path: Path) -> None:
+    """A typed ledger record carries an operation; actual offers still carry its selectors."""
+    owner = tmp_path / "src/alphalattice/owner.py"
+    owner.parent.mkdir(parents=True)
+    owner.write_text(
+        """class Owner:
+    def __init__(self, store: GoalStore):
+        self.store, self.clock = store, clock
+    def record(self):
+        self.store.attribute(goal_id, {"operation": "DATA_ISSUE_CONFIRM", "case_token": "case"})
+    def offer(self):
+        return {"operation": "EXPERIMENT_PORTFOLIO_DRAFT", "task_id": "t-1"}
+""",
+        encoding="utf-8",
+    )
+    (line,) = incomplete_offers(tmp_path)
+    assert "EXPERIMENT_PORTFOLIO_DRAFT" in line and "candidate_id" in line
+    from devtools.architecture.operation_registry import _offered
+
+    assert set(_offered(tmp_path)) == {"DATA_ISSUE_CONFIRM", "EXPERIMENT_PORTFOLIO_DRAFT"}
+    owner.write_text(
+        owner.read_text(encoding="utf-8").replace("GoalStore", "OtherStore"), encoding="utf-8"
+    )
+    assert len(incomplete_offers(tmp_path)) == 5

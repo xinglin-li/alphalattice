@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdateBinding
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.interface.local_application.failure_codes import public_failure
@@ -221,6 +222,9 @@ class ResearchWorkspaceManifest(_Contract):
     strategy_artifacts: tuple[ResearchWorkspaceArtifact, ...]
     evidence_review: ResearchWorkspaceEvidenceReview | None = None
     data_update: WorkspaceDataUpdateBinding | None = None
+    data_decision_rule: DataDecisionRule | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     score_inputs: tuple[ResearchWorkspaceScoreInput, ...] | None = None
     calibration_inputs: tuple[ResearchWorkspaceCalibrationInput, ...] | None = None
     decision_updates: tuple[ResearchWorkspaceDecisionUpdate, ...] | None = None
@@ -238,6 +242,7 @@ class ResearchWorkspaceManifest(_Contract):
         strategy_artifacts: tuple[ResearchWorkspaceArtifact, ...],
         evidence_review: ResearchWorkspaceEvidenceReview | None = None,
         data_update: WorkspaceDataUpdateBinding | None = None,
+        data_decision_rule: DataDecisionRule | None = None,
         score_inputs: tuple[ResearchWorkspaceScoreInput, ...] | None = None,
         calibration_inputs: tuple[ResearchWorkspaceCalibrationInput, ...] | None = None,
         decision_updates: tuple[ResearchWorkspaceDecisionUpdate, ...] | None = None,
@@ -254,6 +259,7 @@ class ResearchWorkspaceManifest(_Contract):
             strategy_artifacts: Explicit artifacts ordered by artifact key.
             evidence_review: Optional admitted review declaration.
             data_update: Optional admitted data update declaration.
+            data_decision_rule: Optional operator-declared, identity-bearing data policy.
             score_inputs: Optional score source declarations.
             calibration_inputs: Optional calibration source declarations.
             decision_updates: Optional decision checkpoint declarations.
@@ -278,6 +284,8 @@ class ResearchWorkspaceManifest(_Contract):
             values["evidence_review"] = evidence_review
         if data_update is not None:
             values["data_update"] = data_update
+        if data_decision_rule is not None:
+            values["data_decision_rule"] = data_decision_rule
         if score_inputs is not None:
             values["score_inputs"] = score_inputs
         if calibration_inputs is not None:
@@ -376,6 +384,7 @@ class ResearchWorkspaceManifest(_Contract):
         allowed = {
             "evidence_review",
             "data_update",
+            "data_decision_rule",
             "score_inputs",
             "calibration_inputs",
             "decision_updates",

@@ -650,6 +650,14 @@ class RawRetentionDecisionProof:
     universe_components: tuple[str, ...]
     research_use_class: str
     source_listing_ids: tuple[str, ...]
+    rule_authority_verified: bool = False
+
+    @property
+    def actor_verified(self) -> bool:
+        """A rule actor is admitted only by the proof producer's historical check."""
+        return self.actor_kind in {"HUMAN", "EXTERNAL_AUTOMATION"} or (
+            self.actor_kind == "HOST_FALLBACK" and self.rule_authority_verified
+        )
 
 
 def matching_raw_retention_proof(
@@ -709,7 +717,7 @@ def matching_raw_retention_proof(
             or option.option_hash != proof.option_hash
             or tuple(sorted(proof.retained_evidence)) != current_evidence
             or proof.execution_policy_hash != policy_hash
-            or proof.actor_kind not in {"HUMAN", "EXTERNAL_AUTOMATION"}
+            or not proof.actor_verified
             or not proof.actor_id
             or not proof.receipt_hash
             or not proof.execution_receipt_hash

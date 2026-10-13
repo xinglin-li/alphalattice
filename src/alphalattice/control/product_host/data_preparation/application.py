@@ -14,6 +14,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
+from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.delegation import DataIssueDelegation
 from alphalattice.control.data_platform.maintenance.contracts import (
     MaintenanceStatus,
@@ -110,6 +111,7 @@ from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import 
     ListingUnitObservation,
     listing_outcome_category,
 )
+from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.sources.providers import (
     MarketDataProvider,
     YFinanceMarketDataProvider,
@@ -406,7 +408,7 @@ so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md I
 
 def _implementation() -> str:
     root = resolve_playpen_root(Path(__file__))
-    return source_rule_closure_hash(
+    source = source_rule_closure_hash(
         root=root,
         semantic_owner="product_host",
         numerical_role="WORKSPACE_PREPARATION",
@@ -414,11 +416,15 @@ def _implementation() -> str:
             "src/alphalattice/control/product_host/data_preparation/application.py",
             "src/alphalattice/control/data_platform/readiness.py",
             "src/alphalattice/control/data_platform/candidate_requalification.py",
+            "src/alphalattice/control/data_platform/data_decision_rule.py",
             "src/alphalattice/control/product_host/composition/workspace.py",
             "src/alphalattice/control/product_host/research_authoring/factor_inputs.py",
             "src/alphalattice/foundation/feature_engine/runtime/closure_genesis.py",
             "src/alphalattice/kernel/shared_kernel/persistence.py",
         ),
+    )
+    return str(
+        canonical_hash({"source": source, "data_decision_rule": DataDecisionRule().rule_hash})
     )
 
 
@@ -500,6 +506,7 @@ class WorkspacePreparationApplication:
         provider: MarketDataProvider | None = None,
         source_loader: SourceLoader | None = None,
         recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None,
+        data_rule: Callable[[UUID], Any] | None = None,
     ):
         """Wire retained preparation authority, optional sources and task telemetry.
 
@@ -509,10 +516,12 @@ class WorkspacePreparationApplication:
             provider: Optional admitted market data provider.
             source_loader: Optional admitted source capture loader.
             recorded_data_confirmation: Owner proof of a retained first-use data decision.
+            data_rule: The Host's rule for a first use's own data issues, by its Task.
         """
         self.session, self.clock = session, clock
         self.provider, self.source_loader = provider, source_loader
         self.recorded_data_confirmation = recorded_data_confirmation
+        self.data_rule = data_rule or (lambda _task_id: None)
         self.last_plan: WorkspacePreparationPlan | None = None
         # The newest plan, sealed on disk: a confirm after a restart finds it, and a newer
         # plan removes it, one preparation running at a time (V525).
@@ -572,15 +581,38 @@ class WorkspacePreparationApplication:
             return {"subject_refusal": refused("workspace_preparation.task_not_admitted")}
         return {"subject_context": {"date": plan.target_session.isoformat()}}
 
+    def _data_issue_view(
+        self, latest: TaskRecord | None, successor: TaskRecord | None, inputs: object
+    ) -> tuple[dict[str, object], bool]:
+        """Read data once when a prepared input discloses it or a stopped Task owes a choice."""
+        stopped = bool(
+            latest
+            and successor is None
+            and latest.lifecycle is TaskLifecycle.BLOCKED
+            and latest.failure_code == "data.truth_review_required"
+        )
+        if not inputs and not stopped:
+            return {"decided_by_rule": None, "decisions_complete": False}, False
+        view = WorkspaceDataIssueApplication(
+            self.session,
+            self.clock,
+            recorded_data_confirmation=self.recorded_data_confirmation,
+            preparation_current=self.binding_current,
+        ).readback()
+        return view, stopped and not bool(view["decisions_complete"])
+
+    def binding_current(self, task: TaskRecord) -> bool:
+        """The preparation owner alone decides whether a sealed implementation can continue."""
+        return is_current(
+            IMPLEMENTATION_ROLE, self._stored_plan(task).implementation_hash, _implementation()
+        )
+
     def readback(self, task_id: UUID | None = None) -> dict[str, Any]:
         """Read the selected preparation task and its exact retained verified input state.
 
-        The preparation as one Task tells it: the selected Task when `task_id` names
-        one, otherwise the latest preparation Task (the discovery a bare entry makes). A
-        selected Task that does not exist, or is not a preparation Task, is a typed
-        refusal, never a fall-back to the latest. The `inputs` are the selected Task's own
-        published and verified input as the workspace still lists it; without a Task they
-        are the workspace's inputs.
+        An explicit Task selects its own published input, never another Task's. Missing or
+        wrong-kind selections refuse by name. A bare read discovers the latest preparation,
+        or the workspace's verified inputs when no preparation exists.
         """
         manifest = read_research_workspace_manifest(self.session.workspace)
         tasks = self.tasks()
@@ -631,15 +663,7 @@ class WorkspacePreparationApplication:
                 _implementation(),
             )
         )
-        truth_review_pending = bool(
-            latest
-            and successor is None
-            and latest.lifecycle is TaskLifecycle.BLOCKED
-            and latest.failure_code == "data.truth_review_required"
-            and not WorkspaceDataIssueApplication(
-                self.session, self.clock
-            ).current_decisions_ready()
-        )
+        issues_view, truth_review_pending = self._data_issue_view(latest, successor, inputs)
         return {
             "status": latest.lifecycle.value
             if latest
@@ -713,6 +737,7 @@ class WorkspacePreparationApplication:
             "plan_hash": latest.input.payload["plan"]["plan_hash"] if latest else None,
             "failure_code": latest.failure_code if latest else None,
             "inputs": inputs,
+            "data_decisions_by_rule": issues_view["decided_by_rule"] if inputs else None,
             "published_binding_hash": published["binding_hash"] if published else None,
             "profile": "us-current-index-research",
             "sources": [
@@ -766,10 +791,26 @@ class WorkspacePreparationApplication:
         )
         return refused
 
-    def _resumable(self, task: TaskRecord) -> bool:
-        """Whether a stopped preparation's confirm can make progress: BLOCKED, and the rule
-        `replan_refusal` reads refuses no resume of it."""
-        return task.lifecycle is TaskLifecycle.BLOCKED and self.replan_refusal(task) is None
+    def _resumable(self, task: TaskRecord, *, already_admitted: bool = False) -> bool:
+        """An admitted grant covers data review and cleared storage, never deferred work."""
+        return (
+            already_admitted
+            and task.lifecycle
+            in {
+                TaskLifecycle.RECOVERY_REQUIRED,
+                TaskLifecycle.QUEUED,
+                TaskLifecycle.RUNNING,
+                TaskLifecycle.CANCEL_REQUESTED,
+                TaskLifecycle.SUCCEEDED,
+            }
+        ) or (
+            task.lifecycle is TaskLifecycle.BLOCKED
+            and (
+                not already_admitted
+                or task.failure_code in {"data.truth_review_required", "catalog.replace_blocked"}
+            )
+            and self.replan_refusal(task) is None
+        )
 
     def _resume_progress(self, task: TaskRecord) -> dict[str, Any]:
         """A stopped preparation's progress, its confirm refused by name where no resume can make
@@ -847,12 +888,6 @@ class WorkspacePreparationApplication:
                     and (
                         recovery_task_id is None
                         or previous.failure_code == "data.truth_review_required"
-                    )
-                    and not (
-                        previous.failure_code == "data.truth_review_required"
-                        and WorkspaceDataIssueApplication(
-                            self.session, self.clock
-                        ).current_decisions_ready()
                     )
                 )
             ):
@@ -1041,10 +1076,18 @@ class WorkspacePreparationApplication:
             (task for task in tasks if str(task.task_id) == grant["preparation_task_id"]),
             None,
         )
-        if predecessor is None or not self.data_issue_delegation.matches_resume(
+        if predecessor is None or (
+            grant["preparation_task_id"],
+            grant["preparation_plan_hash"],
+        ) != (str(predecessor.task_id), predecessor.input.payload["plan"]["plan_hash"]):
+            return False
+        if plan_hash == grant["preparation_plan_hash"]:
+            if not self._resumable(predecessor, already_admitted=True):
+                return False
+        elif not self.data_issue_delegation.matches_resume(
             grant,
             task_id=str(predecessor.task_id),
-            plan_hash=predecessor.input.payload["plan"]["plan_hash"],
+            plan_hash=grant["preparation_plan_hash"],
             lifecycle=predecessor.lifecycle.value,
             failure_code=predecessor.failure_code,
         ):
@@ -1052,27 +1095,26 @@ class WorkspacePreparationApplication:
         market = MarketDataRepository(self.session.workspace)
         panel = PanelStateRepository(market.database, market_data=market)
         resolution = panel.feature_input_resolution(grant["case_token"])
-        receipt = resolution.get("receipt") if isinstance(resolution, dict) else None
-        submission = receipt.get("actor_submission") if isinstance(receipt, dict) else None
-        decision = receipt.get("policy_decision") if isinstance(receipt, dict) else None
-        if (
-            not isinstance(submission, dict)
-            or submission.get("actor_kind") != "EXTERNAL_AUTOMATION"
-            or submission.get("actor_id") != self.data_issue_delegation.actor_id(grant_hash)
-            or not isinstance(decision, dict)
-            or any(
-                decision.get(field) != grant[source]
-                for field, source in (
-                    ("case_token", "case_token"),
-                    ("evidence_hash", "evidence_hash"),
-                    ("option_id", "option_id"),
-                    ("option_hash", "option_hash"),
-                )
+        try:
+            receipt = DataRemediationExecutionReceipt.model_validate(
+                (resolution or {}).get("receipt")
             )
+        except (ValueError, TypeError):
+            return False
+        if (receipt.actor_submission.actor_kind.value, receipt.actor_submission.actor_id) != (
+            "EXTERNAL_AUTOMATION",
+            self.data_issue_delegation.actor_id(grant_hash),
+        ) or tuple(
+            getattr(receipt.policy_decision, key)
+            for key in ("case_token", "evidence_hash", "option_id", "option_hash")
+        ) != tuple(
+            grant[key] for key in ("case_token", "evidence_hash", "option_id", "option_hash")
         ):
             return False
         if plan_hash == predecessor.input.payload["plan"]["plan_hash"]:
             return True
+        # Retire this successor reader only after no retained BLOCKED Task carries a
+        # non-current implementation hash; the old grant still binds its exact predecessor.
         # A grant-bound successor can be repeated or recovered after a Host
         # restart. Its admitted envelope, rather than this process's last
         # preview, proves the exact predecessor and grant scope.
@@ -1129,6 +1171,20 @@ class WorkspacePreparationApplication:
                 ),
                 None,
             )
+            if grant_hash is None:
+                # The original Human Task keeps its grant in the exact accepted decision,
+                # not a rewritten input. New work still validates the live term and receipt.
+                grant_hash = next(
+                    (
+                        grant["grant_hash"]
+                        for grant in self.data_issue_delegation.active_grants(now=self.clock())
+                        if grant["preparation_plan_hash"] == plan_hash
+                        and self.delegated_resume_allowed(plan_hash, grant["grant_hash"])
+                    ),
+                    None,
+                )
+                if grant_hash is not None:
+                    return
         if caller != "HUMAN" and not (
             caller == "EXTERNAL_AUTOMATION" and self.delegated_resume_allowed(plan_hash, grant_hash)
         ):
@@ -1730,139 +1786,7 @@ class WorkspacePreparationApplication:
             assert ready.manifest is not None
             return {"manifest_revision": ready.manifest.revision_sha256}
         if stage == STAGES[2]:
-            self._sources_allowed()
-            data = self._load(task.task_id, STAGES[1])
-            assert data is not None
-            # A retry after the recoverable sector exclusion below must compose
-            # the runtime over the membership the readiness owner has already
-            # activated (the derived child), not the admission ancestor the
-            # data stage recorded; on a first pass both name the same revision.
-            readiness_record = gate.market_data.readiness.load(plan.binding.market_profile_id)
-            active_revision = (
-                readiness_record.active_manifest_revision
-                if readiness_record is not None
-                and readiness_record.active_manifest_revision is not None
-                and readiness_record.status == "FEATURE_BUILDING"
-                else data["manifest_revision"]
-            )
-            manifest = gate.market_data.load_universe_manifest_revision(active_revision)
-            runtime = WorkspaceRuntime.create(
-                workspace=root,
-                manifest=manifest,
-                provider=gate.provider,
-                artifact_root=root / "artifacts",
-                max_live_symbols=1000,
-                feature_catalog=workspace_feature_catalog(root),
-                application_controls=self.session,
-            )
-            # The Feature owners report their finer work (listings materialized,
-            # panel years computed) through the runtime's progress sink; bound
-            # here to this Task, execution and stage so the page can show it for
-            # the selected Task.
-            runtime.feature_foundation.progress_sink = self._bound_progress_sink(
-                task, execution, stage, runtime.progress_publisher
-            )
-            try:
-                self._capacity(task)
-                self._save(
-                    task,
-                    "progress",
-                    {"phase": stage, "status": "PREPARING_FEATURE_CLOSURE"},
-                    progress=True,
-                )
-                runtime.prepare_feature_closure()
-                coordinator = runtime.maintenance_coordinator(
-                    readiness_gate=gate,
-                    clock=self.clock,
-                    recorded_data_confirmation=self.recorded_data_confirmation,
-                )
-                request = WorkspaceMaintenanceRequest.create(
-                    market_profile_id=plan.binding.market_profile_id,
-                    target_market_session=plan.target_session,
-                    knowledge_cutoff_at=None,
-                    requested_at=plan.planned_at,
-                    trigger=MaintenanceTrigger.ONBOARDING,
-                    membership_revision=manifest.revision_sha256,
-                    data_policy_hash=workspace_maintenance_data_policy_hash(),
-                    feature_policy_hash=canonical_hash(
-                        {
-                            "catalog": runtime.feature_foundation.catalog.binding.catalog_hash,
-                            "invalidation": "domain-topology",
-                            "snapshot": "annual-content-addressed-zstd",
-                        }
-                    ),
-                )
-                while True:
-                    if cancelled():
-                        return StageExecutionResult(StageDisposition.CANCELLED)
-                    self._capacity(task)
-                    # The coordinator may derive and activate a reduced child
-                    # membership during first-use governance (a qualified listing
-                    # whose provider reports no current sector is quarantined,
-                    # not invented). It answers RUNNING and continues only for a
-                    # request bound to that exact active membership, so rebind
-                    # before every call instead of re-presenting the admission
-                    # ancestor and blocking on membership_revision_mismatch.
-                    if coordinator.manifest.revision_sha256 != request.membership_revision:
-                        request = WorkspaceMaintenanceRequest.create(
-                            market_profile_id=request.market_profile_id,
-                            target_market_session=request.target_market_session,
-                            knowledge_cutoff_at=request.knowledge_cutoff_at,
-                            requested_at=request.requested_at,
-                            trigger=request.trigger,
-                            membership_revision=coordinator.manifest.revision_sha256,
-                            data_policy_hash=request.data_policy_hash,
-                            feature_policy_hash=request.feature_policy_hash,
-                        )
-                    outcome = coordinator.run(
-                        request, observed_at=self.clock(), maintenance_work_budget=1
-                    )
-                    self._save(
-                        task,
-                        "progress",
-                        {
-                            "phase": stage,
-                            "status": outcome.status.value,
-                            # This call may have activated a child, even when it
-                            # completes; report the result scope, not its request.
-                            "membership_revision": coordinator.manifest.revision_sha256,
-                            "retry_after_at": outcome.retry_after_at.isoformat()
-                            if outcome.retry_after_at
-                            else None,
-                        },
-                        progress=True,
-                    )
-                    if outcome.status is not MaintenanceStatus.RUNNING:
-                        break
-                if outcome.status not in {MaintenanceStatus.COMPLETED, MaintenanceStatus.NOOP}:
-                    return StageExecutionResult(
-                        StageDisposition.DEFERRED
-                        if outcome.status is MaintenanceStatus.DEFERRED
-                        else StageDisposition.BLOCKED,
-                        failure_code=outcome.failure_code
-                        or "workspace_preparation.feature_incomplete",
-                        failure_cause=StageFailureCause.from_facts(outcome.failure_cause),
-                    )
-                snapshot = runtime.panel_state.feature_panel_snapshot_for_active(
-                    plan.binding.market_profile_id
-                )
-                if snapshot is None:
-                    raise ValueError("workspace_preparation.panel_absent")
-            finally:
-                runtime.close()
-            check = PreFactorWorkspaceHost(
-                ProductWorkspacePaths.at(root), PROFILE
-            )._run_data_truth_preflight(
-                market_profile_id=plan.binding.market_profile_id,
-                as_of_session=plan.target_session,
-                now=self.clock(),
-            )
-            if check is not None and check.blocks_research_ready:
-                raise ValueError(check.blocking_failure_code)
-            return {
-                "snapshot_hash": str(snapshot["snapshot_hash"]),
-                "manifest_ref": str(snapshot["manifest_uri"]),
-            }
+            return self._qualify_features(task, plan, execution, gate, cancelled)
         if stage == STAGES[3]:
             self._capacity(task)
             feature = self._load(task.task_id, STAGES[2])
@@ -1898,6 +1822,162 @@ class WorkspacePreparationApplication:
             )
             return {"binding_hash": inputs["binding_hash"], "status": "RESEARCH_INPUTS_READY"}
         raise ValueError("workspace_preparation.stage_unknown")
+
+    def _feature_runtime(
+        self,
+        task: TaskRecord,
+        plan: WorkspacePreparationPlan,
+        execution: TaskExecution,
+        gate: WorkspaceReadinessGate,
+    ) -> tuple[WorkspaceRuntime, UniverseManifest]:
+        """Bind Feature work to its active membership, catalog and retained progress sink."""
+        root, stage = self.session.workspace, STAGES[2]
+        data = self._load(task.task_id, STAGES[1])
+        assert data is not None
+        # A retry after the recoverable sector exclusion below must compose
+        # the runtime over the membership the readiness owner has already
+        # activated (the derived child), not the admission ancestor the
+        # data stage recorded; on a first pass both name the same revision.
+        readiness_record = gate.market_data.readiness.load(plan.binding.market_profile_id)
+        active_revision = (
+            readiness_record.active_manifest_revision
+            if readiness_record is not None
+            and readiness_record.active_manifest_revision is not None
+            and readiness_record.status == "FEATURE_BUILDING"
+            else data["manifest_revision"]
+        )
+        manifest = gate.market_data.load_universe_manifest_revision(active_revision)
+        runtime = WorkspaceRuntime.create(
+            workspace=root,
+            manifest=manifest,
+            provider=gate.provider,
+            artifact_root=root / "artifacts",
+            max_live_symbols=1000,
+            feature_catalog=workspace_feature_catalog(root),
+            application_controls=self.session,
+        )
+        # The Feature owners report their finer work (listings materialized,
+        # panel years computed) through the runtime's progress sink; bound
+        # here to this Task, execution and stage so the page can show it for
+        # the selected Task.
+        runtime.feature_foundation.progress_sink = self._bound_progress_sink(
+            task, execution, stage, runtime.progress_publisher
+        )
+        return runtime, manifest
+
+    def _qualify_features(
+        self,
+        task: TaskRecord,
+        plan: WorkspacePreparationPlan,
+        execution: TaskExecution,
+        gate: WorkspaceReadinessGate,
+        cancelled: Callable[[], bool],
+    ) -> dict[str, Any] | StageExecutionResult:
+        """Qualify the bound Feature closure, then admit only its rechecked data truth."""
+        root, stage = self.session.workspace, STAGES[2]
+        self._sources_allowed()
+        runtime, manifest = self._feature_runtime(task, plan, execution, gate)
+        try:
+            self._capacity(task)
+            self._save(
+                task,
+                "progress",
+                {"phase": stage, "status": "PREPARING_FEATURE_CLOSURE"},
+                progress=True,
+            )
+            runtime.prepare_feature_closure()
+            coordinator = runtime.maintenance_coordinator(
+                readiness_gate=gate,
+                clock=self.clock,
+                recorded_data_confirmation=self.recorded_data_confirmation,
+                diagnose=self.data_rule(task.task_id),
+            )
+            request = WorkspaceMaintenanceRequest.create(
+                market_profile_id=plan.binding.market_profile_id,
+                target_market_session=plan.target_session,
+                knowledge_cutoff_at=None,
+                requested_at=plan.planned_at,
+                trigger=MaintenanceTrigger.ONBOARDING,
+                membership_revision=manifest.revision_sha256,
+                data_policy_hash=workspace_maintenance_data_policy_hash(),
+                feature_policy_hash=canonical_hash(
+                    {
+                        "catalog": runtime.feature_foundation.catalog.binding.catalog_hash,
+                        "invalidation": "domain-topology",
+                        "snapshot": "annual-content-addressed-zstd",
+                    }
+                ),
+            )
+            while True:
+                if cancelled():
+                    return StageExecutionResult(StageDisposition.CANCELLED)
+                self._capacity(task)
+                # The coordinator may derive and activate a reduced child
+                # membership during first-use governance (a qualified listing
+                # whose provider reports no current sector is quarantined,
+                # not invented). It answers RUNNING and continues only for a
+                # request bound to that exact active membership, so rebind
+                # before every call instead of re-presenting the admission
+                # ancestor and blocking on membership_revision_mismatch.
+                if coordinator.manifest.revision_sha256 != request.membership_revision:
+                    request = WorkspaceMaintenanceRequest.create(
+                        market_profile_id=request.market_profile_id,
+                        target_market_session=request.target_market_session,
+                        knowledge_cutoff_at=request.knowledge_cutoff_at,
+                        requested_at=request.requested_at,
+                        trigger=request.trigger,
+                        membership_revision=coordinator.manifest.revision_sha256,
+                        data_policy_hash=request.data_policy_hash,
+                        feature_policy_hash=request.feature_policy_hash,
+                    )
+                outcome = coordinator.run(
+                    request, observed_at=self.clock(), maintenance_work_budget=1
+                )
+                self._save(
+                    task,
+                    "progress",
+                    {
+                        "phase": stage,
+                        "status": outcome.status.value,
+                        # This call may have activated a child, even when it
+                        # completes; report the result scope, not its request.
+                        "membership_revision": coordinator.manifest.revision_sha256,
+                        "retry_after_at": outcome.retry_after_at.isoformat()
+                        if outcome.retry_after_at
+                        else None,
+                    },
+                    progress=True,
+                )
+                if outcome.status is not MaintenanceStatus.RUNNING:
+                    break
+            if outcome.status not in {MaintenanceStatus.COMPLETED, MaintenanceStatus.NOOP}:
+                return StageExecutionResult(
+                    StageDisposition.DEFERRED
+                    if outcome.status is MaintenanceStatus.DEFERRED
+                    else StageDisposition.BLOCKED,
+                    failure_code=outcome.failure_code or "workspace_preparation.feature_incomplete",
+                    failure_cause=StageFailureCause.from_facts(outcome.failure_cause),
+                )
+            snapshot = runtime.panel_state.feature_panel_snapshot_for_active(
+                plan.binding.market_profile_id
+            )
+            if snapshot is None:
+                raise ValueError("workspace_preparation.panel_absent")
+        finally:
+            runtime.close()
+        check = PreFactorWorkspaceHost(
+            ProductWorkspacePaths.at(root), PROFILE
+        )._run_data_truth_preflight(
+            market_profile_id=plan.binding.market_profile_id,
+            as_of_session=plan.target_session,
+            now=self.clock(),
+        )
+        if check is not None and check.blocks_research_ready:
+            raise ValueError(check.blocking_failure_code)
+        return {
+            "snapshot_hash": str(snapshot["snapshot_hash"]),
+            "manifest_ref": str(snapshot["manifest_uri"]),
+        }
 
     def _capacity(self, task: TaskRecord) -> None:
         from alphalattice.control.product_host.storage.retention import require_no_pending_cleanup

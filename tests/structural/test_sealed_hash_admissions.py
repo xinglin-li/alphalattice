@@ -259,3 +259,74 @@ def test_a_sealed_root_admission_reads_recorded_moves() -> None:
         }
         assert set(readers) <= called, key
         assert key not in sites, key
+
+
+class _RecordKinds(ast.NodeVisitor):
+    """Each scope that hashes or writes a dataclass through `asdict`."""
+
+    _SINKS = ("hash", "dumps", "dump", "write_text")
+
+    def __init__(self, relative: str) -> None:
+        self.relative = relative
+        self.scope: list[str] = []
+        self.hashed: set[str] = set()
+
+    @staticmethod
+    def _last(node: ast.expr) -> str:
+        return ast.unparse(node).rsplit(".", 1)[-1]
+
+    def _where(self) -> str:
+        return f"{self.relative}::{'.'.join(self.scope) or '<module>'}"
+
+    def _enter(self, node: ast.AST, name: str) -> None:
+        self.scope.append(name)
+        self.generic_visit(node)
+        self.scope.pop()
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._enter(node, node.name)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._enter(node, node.name)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._enter(node, node.name)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        name = self._last(node.func)
+        if name.endswith(self._SINKS) and any(
+            isinstance(inner, ast.Call) and self._last(inner.func) == "asdict"
+            for inner in ast.walk(node)
+            if inner is not node
+        ):
+            self.hashed.add(self._where())
+        self.generic_visit(node)
+
+
+def test_records_take_the_kind_their_job_names() -> None:
+    """Records take the kind their job names."""
+
+    hashed: set[str] = set()
+    for path in sorted((ROOT / "src/alphalattice").rglob("*.py")):
+        kinds = _RecordKinds(path.relative_to(ROOT / "src").as_posix())
+        kinds.visit(ast.parse(path.read_text(encoding="utf-8")))
+        hashed |= kinds.hashed
+    # Product dataclass writers become contracts on identity rotation (ID1).
+    assert hashed == {
+        "alphalattice/capabilities/portfolio_inputs/tradability/surface.py::HistoricalTradabilityBuilder._prepare_inputs",
+        "alphalattice/control/product_host/composition/research_history.py::HistoryEntry.body",
+        # Frozen policy declaration: the version names its record; bound edits rotate its hash.
+        "alphalattice/control/data_platform/data_decision_rule.py::DataDecisionRule.rule_hash",
+        "alphalattice/control/data_platform/candidate_requalification.py::CandidateDataRequalification._transition",
+        "alphalattice/control/data_platform/maintenance/contracts.py::AgentExecutionBudget.policy_hash",
+        "alphalattice/control/data_platform/maintenance/contracts.py::DataRemediationFailureReceipt.__post_init__",
+        "alphalattice/control/data_platform/maintenance/coordinator.py::WorkspaceMaintenanceCoordinator._quality_evidence",
+        "alphalattice/control/data_platform/maintenance/data_changes.py::WorkspaceDataChanges.maintain_valuation",
+        "alphalattice/control/data_platform/maintenance/data_changes.py::WorkspaceDataChanges.verified_valuation",
+        "alphalattice/foundation/feature_engine/catalog/contracts.py::FeatureCatalog.from_payload",
+        "alphalattice/foundation/feature_engine/contracts.py::FeatureBuildOutcome.safe_hash",
+        "alphalattice/foundation/feature_engine/contracts.py::PanelAdmissionSummary.summary_hash",
+        "alphalattice/foundation/feature_engine/contracts.py::PanelTemporalRisk.risk_hash",
+        "alphalattice/foundation/market_data_ops/sources/manifest.py::default_qualification_policy_hash",
+        "alphalattice/investment/portfolio_strategy_lab/research_loop/paired_alpha_portfolio.py::_audit_summary",
+    }, sorted(hashed)

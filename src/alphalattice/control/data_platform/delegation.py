@@ -8,16 +8,21 @@ workspace are the trust boundary, not a multi-user identity system.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputAgentCase
+from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
+from alphalattice.foundation.feature_engine.inputs.gateway import (
+    FeatureInputAgentCase,
+)
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.foundation.market_data_ops.runtime.remediation import (
     RemediationOption,
     canonical_hash,
 )
+from alphalattice.protocols.actor_execution import ActorKind
 
 # An older conversation-approved grant remains recognizable in historical Task receipts.
 _HISTORICAL_REVIEW_SHA256 = "7ddb12e50553a8e54f9c631119418d6e28995b6800657367872c1202069567a0"
@@ -260,39 +265,25 @@ class DataIssueDelegation:
             return False
         return self.matches_choice(grant, case, option)
 
-    def permits_resume(
+    def retention_confirmed(
         self,
-        grant_hash: str,
+        receipt: DataRemediationExecutionReceipt,
+        case: FeatureInputAgentCase,
+        option: RemediationOption,
         *,
-        task_id: str,
-        plan_hash: str,
-        lifecycle: str,
-        failure_code: str | None,
-        now: datetime,
+        stored: bool,
+        historical: Callable[..., bool] | None,
     ) -> bool:
-        """Validate an active grant and compare the blocked preparation scope.
-
-        Args:
-            grant_hash: Canonical identity of the delegation grant.
-            task_id: Preparation task identifier bound by the delegation.
-            plan_hash: Exact preparation or update plan identity being bound.
-            lifecycle: Current preparation task lifecycle.
-            failure_code: Stable failure code retained for diagnosis.
-            now: Clock used to assess the active delegation or deadline.
-
-        Returns:
-            Whether the grant matches a truth-review-blocked preparation task and plan.
-
-        Raises:
-            ValueError: The grant cannot be read and validated at the supplied clock.
-        """
-        grant = self.read(grant_hash, now=now)
-        return self.matches_resume(
-            grant,
-            task_id=task_id,
-            plan_hash=plan_hash,
-            lifecycle=lifecycle,
-            failure_code=failure_code,
+        """Fresh external submissions cannot borrow historical authority; stored ones may."""
+        actor = receipt.actor_submission
+        if actor.actor_kind is ActorKind.HUMAN:
+            return True
+        if actor.actor_kind is not ActorKind.HOST_FALLBACK and not (
+            stored and actor.actor_kind is ActorKind.EXTERNAL_AUTOMATION
+        ):
+            return False
+        return self.recorded_human_authorization(actor.actor_id, case, option) or (
+            historical is not None and historical(receipt)
         )
 
     @staticmethod
@@ -360,6 +351,8 @@ class DataIssueDelegation:
         Returns:
             Whether caller, historical delegation commitment and source task match.
         """
+        # Keep this reader until no retained BLOCKED preparation has a non-current
+        # implementation binding; a current-source reachability census alone cannot retire it.
         return (
             payload.get("caller") == "EXTERNAL_AUTOMATION"
             and payload.get("user_delegation_sha256") == _HISTORICAL_REVIEW_SHA256

@@ -529,7 +529,7 @@ Open `FIRST_USE` once per workspace, before first preparation, retaining the per
 Only run/clock changes carry consent for the same issue, evidence and scope; changed evidence or another issue requires its own decision. Raw-retention carry-forward preserves the sealed receipt/caveat and exact evidence, option, policy and membership; its holder proves that case, not every decision retry.
 
 *Held by:*
-`test: tests/feature_input_gateway/test_feature_input_gateway.py::test_raw_retention_choice_continues_only_for_the_same_case_on_a_derived_manifest`.
+`test: tests/feature_input_gateway/test_raw_retention_authority.py::test_raw_retention_choice_continues_only_for_the_same_case_on_a_derived_manifest`.
 
 **OP21. Browser authority belongs to one Host.**
 

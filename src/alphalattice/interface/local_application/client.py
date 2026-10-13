@@ -2645,8 +2645,7 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
     pending = outcome_of(prepared) == "PENDING"
     if (ended := chain.followed("evidence", prepared)) is not None:
         return ended
-    # The run's own bundles, at its cutoff: the same preparation asked again reuses it, where a
-    # new preview at a later clock would pack other units.
+    # The run's own bundles at its cutoff: the same preparation asked again reuses it.
     current = chain.send("evidence_prepared", prepare) if pending else prepared
     bundles: list[dict[str, Any]] = []
     for name, request in offered_requests(current).items():
@@ -2899,17 +2898,7 @@ _NOT_RECORDED: Final = (
 
 
 def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """`first-use prepare`: the first use opened from the person's sentence and its data
-    prepared under its delegation, in one call, its answer the plan of the whole first use.
-
-    It opens the workspace's FIRST_USE goal with the sentence (the same sentence again reuses
-    it), resumes a preparation stopped on data issues once every decision is confirmed, else
-    plans the preparation, confirms it and follows its Task. The first answer that stops it is
-    the answer: data issues to decide, each option's confirm offered; a refused or waiting
-    decision; a network refusal with its request; any refusal. Every answer carries
-    ``first_use.road``, the whole first use as its commands, and ``ask_now``, what only the
-    person decides that it will need.
-    """
+    """Prepare the person's first use under its Goal, keeping stops and the full road visible."""
     chain = _chain(client, args, "first_use")
     try:
         named = target_sessions(date.fromisoformat(str(args.target_date)))
@@ -2980,23 +2969,29 @@ def _prepared(
     resumes = [
         request
         for name, request in (issues.get("next_requests") or {}).items()
-        if name.startswith("continue:") and request.get("operation") == "WORKSPACE_PREPARE_PLAN"
+        if name.startswith("continue:")
+        and request.get("operation") in {"WORKSPACE_PREPARE_CONFIRM", "WORKSPACE_PREPARE_PLAN"}
     ]
-    # A stopped preparation resumes once every decision is confirmed; an open, refused or
-    # waiting one, or two stopped preparations, are the agent's to judge.
-    decided = all(
-        issue.get("status") == "CONFIRMED_PENDING_REVALIDATION"
-        for issue in issues.get("issues", [])
-    )
-    if resumes and (len(resumes) > 1 or not decided):
+    # One admitted owner continuation, once every case is decided; never choose among Tasks.
+    if resumes and (
+        len(resumes) != 1
+        or any(
+            issue["status"] != "CONFIRMED_PENDING_REVALIDATION"
+            for issue in issues.get("issues", ())
+        )
+    ):
         return chain.stop("issues", issues), note
-    plan = chain.send("plan", resumes[0] if resumes else {"operation": "WORKSPACE_PREPARE_PLAN"})
-    if plan.get("status") == "ALREADY_PREPARED":
-        return plan, note
-    confirm = chain.offered(plan, "confirm")
-    if confirm is None and outcome_of(plan) != "PENDING":
-        return chain.stop("plan", plan), note
-    started = plan if confirm is None else chain.send("confirm", confirm)
+    resume = resumes[0] if resumes else {"operation": "WORKSPACE_PREPARE_PLAN"}
+    if resume["operation"] == "WORKSPACE_PREPARE_CONFIRM":
+        started = chain.send("confirm", resume)
+    else:
+        plan = chain.send("plan", resume)
+        if plan.get("status") == "ALREADY_PREPARED":
+            return plan, note
+        confirm = chain.offered(plan, "confirm")
+        if confirm is None and outcome_of(plan) != "PENDING":
+            return chain.stop("plan", plan), note
+        started = plan if confirm is None else chain.send("confirm", confirm)
     if (ended := chain.followed("preparation", started)) is not None:
         if "data.truth_review_required" in {
             ended.get("failure_code"),

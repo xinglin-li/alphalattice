@@ -49,6 +49,9 @@ Graph (→ the next step; what carries over):
   and a short rationale, citing the owner's next_requests key; never construct a hash or a
   confirmation. Prefer a recoverable quarantine for exhausted retries on an invalid
   adjusted-close payload. When the options are stale, name the missing evidence.
+- In a first use the Host's declared rule decides isolated moves and quarantines the rest; a
+  case it left is past its bound or the rule could not decide: diagnose the evidence and judge
+  whether the moves share a source cause before proposing an offered choice or recovery.
 - A data update runs only when the assignment authorizes its network and data effects.
 - Report the source acquisition's budget apart from the data's quality, with the nominal,
   eligible and held counts, and say whether a decision needs the data validated again.

@@ -21,7 +21,9 @@ from threading import Event, get_ident
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
+from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.product_host.composition import (
     evidence_authority_setup,
     portfolio_application,
@@ -90,6 +92,44 @@ def test_a_new_workspace_is_created_once(tmp_path: Path) -> None:
         ResearchWorkspaceError, match=re.escape("research_workspace.manifest_exists")
     ):
         create_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("x"))
+
+
+def test_a_declared_data_rule_changes_identity_and_survives_other_manifest_writes(
+    tmp_path: Path,
+) -> None:
+    """Typed data policy carries its identity through other manifest publications."""
+    before = ResearchWorkspaceManifest.research_only("ws")
+    payload = before.model_dump(mode="json", exclude_none=True)
+    from pydantic import TypeAdapter
+
+    nested = TypeAdapter(dict[str, ResearchWorkspaceManifest]).dump_python(
+        {"workspace_manifest": before}, mode="json"
+    )
+    assert "data_decision_rule" not in nested["workspace_manifest"]
+    assert "data_decision_rule" not in payload
+    assert ResearchWorkspaceManifest.model_validate(payload) == before
+    create_research_workspace_manifest(tmp_path, before)
+    _, changed = update_research_workspace_manifest(
+        tmp_path,
+        lambda manifest: manifest.with_bindings(data_decision_rule=DataDecisionRule(max_cases=3)),
+        gate=WorkspaceMutationGate(),
+    )
+    assert changed.manifest_hash != before.manifest_hash
+    assert read_research_workspace_manifest(tmp_path).data_decision_rule == DataDecisionRule(
+        max_cases=3
+    )
+    assert (
+        changed.with_bindings(experiment_inputs=(_input("first", "a"),)).data_decision_rule
+        == changed.data_decision_rule
+    )
+    for values in (
+        {"max_cases": -1},
+        {"max_cases": "3"},
+        {"max_population_share": 1.1},
+        {"unknown": 1},
+    ):
+        with pytest.raises(ValidationError):
+            DataDecisionRule(**values)
 
 
 def _recorded_setup_source(root: Path) -> tuple[Path, str, Path]:

@@ -15,6 +15,7 @@ const STATES = {
   recheck_due: {word: 'Recheck due', tone: TONE.attention, line: 'Listings the owner will check again at the next update; nothing is needed from you.'},
   // held: at its owner, or waiting for a person
   review_pending: {word: 'Waiting for a decision', tone: TONE.decision, line: 'Waiting for an authorized decision.', next: 'decide', held: true},
+  data_decision_pending: {word: 'Waiting for a decision', tone: TONE.attention, line: 'Waiting for an authorized decision.', next: 'decide on Data issues', held: true},
   blocked: {word: 'Blocked', tone: TONE.attention, line: 'The owner stopped the Task and recorded why.', next: 'read the reason, then take the way its Task offers', held: true},
   recovery_required: {word: 'Needs recovery', tone: TONE.attention, line: 'The Task was interrupted; its owner needs a supported recovery.', next: 'resume or cancel', held: true},
   deferred: {word: 'Deferred', tone: TONE.attention, line: 'Waiting for a condition or a scheduled retry at its owner; nothing is needed from you yet.', held: true},

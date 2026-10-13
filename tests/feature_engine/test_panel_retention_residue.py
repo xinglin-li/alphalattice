@@ -181,9 +181,9 @@ def test_retention_decision_discovery_is_empty_only_before_a_store_exists(
     panel = PanelStateRepository(tmp_path / "workspace")
     assert not panel.path.exists()
     if store == "absent":
-        assert panel.feature_input_raw_retention_decisions() == ()
+        assert panel.feature_input_decisions(effect_status="raw_value_retained_with_caveat") == ()
         assert not panel.path.exists()
     else:
         panel.path.write_bytes(b"synthetic invalid database")
         with pytest.raises(duckdb.IOException):
-            panel.feature_input_raw_retention_decisions()
+            panel.feature_input_decisions(effect_status="raw_value_retained_with_caveat")

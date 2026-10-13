@@ -1087,7 +1087,7 @@ const LiveWorkspace = (() => {
   const issueName=(subjects,code)=>`${subjects.join(', ') || t('Unnamed listing')} · ${codeWords(code)}`;
   const subjectsOf=(issue)=>(issue.case.listing_ids || []).map(id=>issue.subjects[id] || short(id,SHORT.id));
   const firstMove=(c)=>(c.evidence || [])[0]?.unexplained_moves?.[0] || null;
-  /* A data issue's own page (F2; law 137, Decided 2): its listing and kind the title, its state under
+  /* A data issue's own page: its listing and kind the title, its state under
    * it; the move as figures, the owner's checks, the decisions before it and yours -- the form
    * while it is asked, the record after -- then the exact record. The move's session and who decided
    * are the head's line (N2, law 126 amended); the listing, the kind and the case are its title and id. */
@@ -1095,18 +1095,17 @@ const LiveWorkspace = (() => {
     const history=b.recorded_decisions || [], standing=b.continued_dispositions || [];
     const issue=(b.issues || []).find(v=>v.case.case_token===token);
     if(issue) {
-      const [tone,word]=ISSUE_STATUS[issue.status] || ['review_pending',issue.status], m=firstMove(issue.case), receipt=issue.resolution?.receipt, actor=receipt?.actor_submission;
-      const delegated=receipt?.submission?.proposal?.rationale?.startsWith('first-use-goal:') || actor?.actor_id?.startsWith('first-use-goal:');
+      const [tone,word]=ISSUE_STATUS[issue.status] || ['review_pending',issue.status], m=firstMove(issue.case), receipt=issue.resolution?.receipt;
       // the way on once decided (N6): the Task that waits for the reader, offered as on the lobby -- only when no case asks first
       const asking=(b.issues || []).some(v=>['AWAITING_CHOICE','OPTION_REFUSED'].includes(v.status)), decided=(b.issues || []).some(v=>v.status==='CONFIRMED_PENDING_REVALIDATION');
-      return html`${objectHead(issueName(subjectsOf(issue),issue.case.failure_code),'','',stateLine(tone,{word:t(issueAgent(issue) ? 'Agent is deciding data issues' : word),next:''}),[],{object:true,id:token,facts:[[t('Move session'),m?.session || ''],[t('Decided by'),actor?.actor_kind && !(delegated && actor.actor_kind==='HUMAN') ? actorWords(actor.actor_kind) : ''],[t('Decision'),delegated ? t('Decided under first-use delegation') : '']].filter(([,v])=>v)})}${issueBody(issue,history)}${asking ? '' : (b.continuations || []).map((c,i)=>continuationCard(c,i,decided))}`;
+      return html`${objectHead(issueName(subjectsOf(issue),issue.case.failure_code),'','',stateLine(tone,{word:t(issueAgent(issue) ? 'Agent is deciding data issues' : word),next:''}),[],{object:true,id:token,facts:[[t('Move session'),m?.session || ''],...dataDecisionWords(receipt).facts].filter(([,v])=>v)})}${issueBody(issue,history)}${asking ? '' : (b.continuations || []).map((c,i)=>continuationCard(c,i,decided))}`;
     }
     const names=Object.assign({},...(b.issues || []).map(x=>x.subjects || {}));
     const h=history.find(v=>v.case_token===token);
     if(h) {
-      const listings=(h.listing_ids || []).map(id=>names[id] || short(id,SHORT.id)), option=h.resolution?.receipt?.policy_decision?.option_id;
-      const main=html`<section class="panel issue-card" data-box="decision" data-issue-status="RECORDED"><div class="panel-body">${option ? html`<p class="issue-decision">${icon('checkcircle')}<span>${t('Your decision')}: <strong>${optionText({option_id:option})}</strong></span></p>` : ''}${detail(h,'Exact case, evidence and decision record')}</div></section>`;
-      return html`${objectHead(issueName(listings,h.failure_code),'','',stateLine('recorded',{word:t('Recorded'),next:''}),[],{object:true,id:token})}${main}`;
+      const decision=dataDecisionWords(h.resolution?.receipt), listings=(h.listing_ids || []).map(id=>names[id] || short(id,SHORT.id)), option=h.resolution?.receipt?.policy_decision?.option_id;
+      const main=html`<section class="panel issue-card" data-box="decision" data-issue-status="RECORDED"><div class="panel-body">${option ? html`<p class="issue-decision">${icon('checkcircle')}<span>${decision.word}: <strong>${optionText({option_id:option})}</strong></span></p>` : ''}${detail(h,'Exact case, evidence and decision record')}</div></section>`;
+      return html`${objectHead(issueName(listings,h.failure_code),'','',stateLine('recorded',{word:t('Recorded'),next:''}),[],{object:true,id:token,facts:decision.facts})}${main}`;
     }
     const d=standing.find(v=>'q:'+v.listing_id===token);
     if(d) return html`${objectHead(`${d.symbol || short(d.listing_id,SHORT.id)} · ${t('standing quarantine')}`,'','',stateLine('deferred',{word:t('Standing quarantine'),next:''}),[],{object:true,id:token})}${dispositionCard(d)}`;
@@ -1199,7 +1198,7 @@ const LiveWorkspace = (() => {
     const roles=[v.configured_default ? t('configured default') : '',inputLifecycle(v.lifecycle),v.end && v.end===latestEnd ? t('latest cutoff') : ''].filter(Boolean);
     const use=isChosen ? '' : typedBtn(t('Use for a new Factor draft'),'workspace-input',key,'button primary',heldInput(v));
     const why=kept ? (kept.roots.length ? kept.roots.map(r=>t(ROOT_TEXT[r] || r)).join(' · ') : t('no root: eligible for cleanup')) : store?.body ? t('Not in the storage inventory') : t('Reading the storage inventory');
-    // N2 (law 126 amended): one section of the version's own facts in the lane's columns -- its interval is the
+    // One section of the version's own facts in the lane's columns -- its interval is the
     // title, its family the path, its binding the head's id and its publication in the exact record
     const main=v.unreadable ? panel(t('This version'),'',html`${kv([[t('Source files'),coded(v.unreadable)],[t('Why'),html`<span class="owner-text">${v.detail || ''}</span>`],[t('Kept because'),html`${why} · ${link(t('Storage & retention'),'storage','inline-link')}`]],'kv-columns')}${detail(v)}`)
       : panel(t('This version'),'',html`${kv([[t('Roles'),html`${roles.map((w,i)=>html`${i ? ' · ' : ''}<span class="nowrap">${w}</span>`)}`],[t('Lifecycle'),inputLifecycle(v.lifecycle)],[t('Source files'),t(v.available ? 'present' : 'unavailable: source files missing')],[t('Kept because'),html`${why} · ${link(t('Storage & retention'),'storage','inline-link')}`]],'kv-columns')}${detail(v)}`);

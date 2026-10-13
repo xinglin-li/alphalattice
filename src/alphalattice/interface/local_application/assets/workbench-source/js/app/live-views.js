@@ -309,7 +309,7 @@ const LiveViews = (() => {
       case 'DATA_ISSUE': { // the first case stands for them all
         if (list.find((x) => x.kind === 'DATA_ISSUE') !== d) return null;
         const n = list.filter((x) => x.kind === 'DATA_ISSUE').length;
-        return {lead: 'data', place: 'data', name: countText(n, '{n} data issue waits for a choice', '{n} data issues wait for a choice'), why: t('Only a person may confirm its options; preview one to see what it would change'), to: {page: 'issues'}};
+        return {lead: 'data', place: 'data', name: countText(n, '{n} data issue waits for a choice', '{n} data issues wait for a choice'), why: t('A person confirms, or your agent relays a yes; preview what it would change'), to: {page: 'issues'}};
       }
       case 'UPGRADE':
         return {lead: 'refresh', name: t('Read what the upgrade changed'), why: t('The installed code changed since this workspace last acknowledged it'), to: {page: 'upgrade'}}; // the row's name says what the overview does (LS2, WD4: 2026-09-30, Home at 182 words with it)

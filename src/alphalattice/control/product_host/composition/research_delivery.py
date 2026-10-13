@@ -281,11 +281,12 @@ def export_update_delivery(
     readback: dict[str, Any],
     review: EvidenceReviewApplication | None,
     committee: list[dict[str, str]] | None,
+    data_decisions: dict[str, Any] | None = None,
 ) -> dict[str, object]:
     """A date's published positions as the delivery.
 
     Its publication, the exact review it names and, once the committee closed, its floor as the
-    commentary, which the Host accepted.
+    commentary, which the Host accepted; beside them, the data issues the Host's rule decided.
     """
     from alphalattice.interface.local_application.experiment_report import render_research_delivery
 
@@ -351,6 +352,7 @@ def export_update_delivery(
         "summary": {"section_status": {"positions": "PRESENT", "evidence_cro": evidence["status"]}},
         "commentary": committee or [],
         **({"committee_context": context} if context else {}),
+        **({"data_decisions": data_decisions} if data_decisions else {}),
         "commentary_provenance": {"submitted_by": "HOST", "attribution": "COMMITTEE_FLOOR"},
         "next_requests": {"reopen": selection},
         "claim": (

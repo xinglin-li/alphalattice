@@ -8,12 +8,13 @@ surface (card C, 2026-09-25): it reads the application; the application never re
 
 from __future__ import annotations
 
+import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, get_args
+from typing import TYPE_CHECKING, Any, Final, get_args
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -197,6 +198,47 @@ ANSWER_FILE: Final = (
 """A specialist bundle's final action, unless a committee floor gives its route instead."""
 
 
+def data_issue_view(task_id: UUID, kind: str, failure: object, issues: Mapping[str, Any]) -> str:
+    """One Task's bounded current data catalog, or its honest unavailable reason."""
+    continuations = issues.get("continuations", [])
+    own = [c for c in continuations if isinstance(c, dict) and c.get("task_id") == str(task_id)]
+    current = kind == "workspace_preparation" and failure == "data.truth_review_required"
+    if current and len(own) == len(continuations) == 1:
+        grants = [
+            d for d in issues.get("delegations", []) if d.get("preparation_task_id") == str(task_id)
+        ]
+        shown = {
+            **{
+                key: issues.get(key)
+                for key in (
+                    "status",
+                    "issues",
+                    "case_count",
+                    "case_index",
+                    "escalated_by_rule",
+                    "delegated_by",
+                    "next_cursor",
+                    "claim_limit",
+                )
+            },
+            "continuations": own,
+            "delegations": grants,
+            "next_requests": {
+                key: request
+                for key, request in issues.get("next_requests", {}).items()
+                if request.get("task_id", str(task_id)) == str(task_id)
+                and request.get("data_issue_grant_hash")
+                in {None, *(d["grant_hash"] for d in grants)}
+            },
+        }
+    else:
+        shown = {
+            "status": "UNAVAILABLE",
+            "reason": "No current issue catalog belongs to this Task.",
+        }
+    return json.dumps({"task_id": str(task_id), **shown}, ensure_ascii=False, default=str, indent=2)
+
+
 class EvidenceReviewBundles:
     """Every agent bundle the section hands out, over the application it serves."""
 
@@ -219,6 +261,7 @@ class EvidenceReviewBundles:
         dispatcher: LocalBackgroundDispatcher | None = None,
         view: list[str] | None = None,
         route: tuple[str, ...] | None = None,
+        issue_view: Callable[[], dict[str, object]] | None = None,
     ) -> dict[str, object] | ReviewOutcome:
         """Prepare one exact role-specific agent bundle and retained submission association.
 
@@ -238,7 +281,12 @@ class EvidenceReviewBundles:
             raise PortfolioEvidenceReviewError("agent_bundle.directory_not_absolute")
         if role not in TASK_PROCEDURES or view is not None:
             return self.prepare_specialist_bundle(
-                role=role, directory=directory, task_id=task_id, view=view, route=route
+                role=role,
+                directory=directory,
+                task_id=task_id,
+                view=view,
+                route=route,
+                issue_view=issue_view,
             )
         chosen = self.app._review_selector(selector)
         if isinstance(chosen, ReviewOutcome):
@@ -324,6 +372,7 @@ class EvidenceReviewBundles:
         task_id: UUID | None,
         view: list[str] | None = None,
         route: tuple[str, ...] | None = None,
+        issue_view: Callable[[], dict[str, object]] | None = None,
     ) -> dict[str, object]:
         """Prepare one interpretation from exact retained Task metadata and references.
 
@@ -334,6 +383,14 @@ class EvidenceReviewBundles:
             raise PortfolioEvidenceReviewError("agent_bundle.specialist_task_required")
         registry = self.app.session.task_control_registry
         task = registry.task(task_id)
+        if role == "DATA" and issue_view is not None:
+            view = [
+                *(view or []),
+                "Current data issue readback for this Task",
+                *data_issue_view(
+                    task_id, task.task_kind, task.failure_code, issue_view()
+                ).splitlines(),
+            ]
         projection = registry.safe_projection(task_id)
         references = [str(task_id), task.record_hash, task.input.input_hash]
         for reference in projection.artifact_refs:
@@ -371,8 +428,10 @@ class EvidenceReviewBundles:
                     if view is None
                     else (
                         BundleSection(
-                            key="positions",
-                            heading="The date's positions as this role reads them",
+                            key="data" if role == "DATA" else "positions",
+                            heading="The Task's data and issues"
+                            if role == "DATA"
+                            else "The date's positions as this role reads them",
                             blocks=(BundleBlock(lines=tuple(view)),),
                         ),
                     )

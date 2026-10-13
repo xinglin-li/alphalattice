@@ -1,5 +1,13 @@
 {
 "entries": {
+"src/alphalattice/control/data_platform/delegation.py::DataDecisionRule.max_cases::10": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/control/data_platform/delegation.py::DataDecisionRule.max_population_share::0.02": {
+"class": "METHOD",
+"count": 1
+},
 "src/alphalattice/capabilities/portfolio_inputs/tradability/surface.py::decision_eligible_at_closes::-20": {
 "class": "METHOD",
 "count": 1

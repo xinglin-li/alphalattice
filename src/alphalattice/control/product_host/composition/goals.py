@@ -24,14 +24,24 @@ from uuid import UUID, uuid5
 
 from pydantic import ValidationError
 
-from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
+from alphalattice.control.data_platform.contracts import (
+    DataRemediationActorSubmission,
+    DataRemediationExecutionReceipt,
+)
+from alphalattice.control.data_platform.data_decision_rule import ESCALATE, DataDecisionRule
 from alphalattice.control.product_host.composition.goal_check import missing_items
 from alphalattice.control.product_host.composition.plain_refusals import explain
+from alphalattice.control.product_host.composition.research_workspace import (
+    read_research_workspace_manifest,
+)
 from alphalattice.control.product_host.publication.goals import GoalStore, sessions_of
+from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputAgentCase
+from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
 from alphalattice.interface.local_application.cli_contract import (
     RequestProvenance,
     join,
+    refusal_words,
     shell,
 )
 from alphalattice.interface.local_application.failure_codes import located_failure, public_failure
@@ -535,43 +545,213 @@ class GoalApplication:
         """
         return None if goal is None else self.delegation(goal, "DATA_ISSUE_CONFIRM", caller)
 
-    def recorded_data_confirmation(self, receipt: DataRemediationExecutionReceipt) -> bool:
+    @staticmethod
+    def _data_index(
+        entries: Sequence[Mapping[str, object]],
+    ) -> dict[tuple[object, ...], list[Mapping[str, object]]]:
+        index: dict[tuple[object, ...], list[Mapping[str, object]]] = {}
+        for entry in entries:
+            if entry.get("operation") == "DATA_ISSUE_CONFIRM":
+                key = tuple(entry.get(k) for k in ("case_token", "option_id", "rule_hash"))
+                index.setdefault(key, []).append(entry)
+        return index
+
+    def data_rule(self, task_id: UUID) -> Callable[..., Any] | None:
+        """The Host's rule for this preparation's data issues, while its first use delegates them.
+
+        Only the open first-use goal's own preparation. Each choice the rule takes is kept
+        in the goal's record, once per case, which proves it as the agent's confirm is proved.
+        """
+        goal = self.first_use()
+        if goal is None or not self.first_use_open(goal):
+            return None
+        entries = self.store.attributed(goal.goal_id)
+        if not any(e.get("task_id") == str(task_id) for e in entries):
+            return None
+        manifest = read_research_workspace_manifest(self.workspace)
+        rule = manifest.data_decision_rule or DataDecisionRule()
+        delegation = f"first-use-goal:{goal.goal_id}"
+        panel = PanelStateRepository(self.workspace)
+        index = self._data_index(entries)
+        recorded = set(index)
+        scope_evidence: Any = None
+        scope: dict[str, Any] = {}
+
+        def decide(case: Any, evidence: Any, _impact: Any, _budget: Any) -> Any:
+            nonlocal scope_evidence, scope
+            current = self.store.head(goal.goal_id)
+            if current is None or not self.first_use_open(current):
+                return rule.submission(case, ESCALATE, str(goal.goal_id))
+            if evidence is not scope_evidence:
+                cases = tuple(
+                    map(
+                        FeatureInputAgentCase.read_document,
+                        panel.feature_input_case_documents(case.manifest_revision),
+                    )
+                )
+                scope_evidence = evidence
+                scope = rule.scope(
+                    cases,
+                    len({item.listing_id for item in evidence}),
+                    (e for e in entries if e.get("task_id") == str(task_id)),
+                )
+            available = case.case_token in scope["case_tokens"]
+            option = rule.decide(case, evidence, scope)
+            choice = (case.case_token, option, rule.rule_hash)
+            if choice not in recorded:
+                self.store.attribute(
+                    goal.goal_id,
+                    {
+                        "recorded_at": self.clock().isoformat(),
+                        "operation": "DATA_ISSUE_CONFIRM",
+                        "decided_by": "RULE",
+                        "status": "DECIDED_BY_RULE" if option != ESCALATE else "ESCALATED",
+                        "task_id": str(task_id),
+                        "delegation": delegation,
+                        "case_token": case.case_token,
+                        "option_id": option,
+                        "listing_ids": list(case.listing_ids),
+                        "rule_hash": rule.rule_hash,
+                        **{
+                            k: scope[k]
+                            for k in ("case_count", "affected_listing_count", "population_count")
+                        },
+                        "escalation_reason": "CASE_CATALOG_UNAVAILABLE"
+                        if not available
+                        else "RULE_BOUND_EXCEEDED"
+                        if scope["capped"]
+                        else None,
+                    },
+                )
+                recorded.add(choice)
+            return rule.submission(case, option, str(goal.goal_id))
+
+        return decide
+
+    def resume_decided(
+        self,
+        goal: Goal,
+        request: PortfolioResearchOperationRequest,
+        body: dict[str, object],
+        send: Callable[[PortfolioResearchOperationRequest], dict[str, object]],
+    ) -> dict[str, object]:
+        """The last owed decision resumes the first use's own stopped preparation in the same act.
+
+        The same Task continues at its stage under the goal's delegation: no plan,
+        run or wait turn. Any other answer passes as it is.
+        """
+        requests = body.get("next_requests")
+        if (
+            request.operation != "DATA_ISSUE_CONFIRM"
+            or body.get("decisions_complete") is not True
+            or not self.first_use_open(goal)
+            or not isinstance(requests, dict)
+        ):
+            return body
+        own = {e.get("task_id") for e in self.store.attributed(goal.goal_id)}
+        for key, value in requests.items():
+            task = key.removeprefix("continue:")
+            facts = self.task_facts(UUID(task)) if key != task and task in own else None
+            if facts is not None and facts[:2] == ("workspace_preparation", "BLOCKED"):
+                try:
+                    continued = send(PortfolioResearchOperationRequest(**value))
+                except ValueError as error:
+                    code = public_failure(error, "workspace_preparation.refused")
+                    continued = {"failure_code": code, **refusal_words(code), **explain(code)}
+                if not continued.get("task_id"):
+                    return {
+                        **body,
+                        "continuation_problem": {
+                            k: v
+                            for k, v in continued.items()
+                            if k not in {"status", "outcome", "next_requests"}
+                        },
+                        "next_requests": continued.get("next_requests") or requests,
+                    }
+                return {
+                    **body,
+                    "continued": continued,
+                    "task_id": continued["task_id"],
+                    "lifecycle": continued.get("lifecycle"),
+                    "next_action": "WAIT_FOR_TASK",
+                    "next_requests": {
+                        "issues": {"operation": "DATA_ISSUES"},
+                        "status": {"operation": "STATUS", "task_id": continued["task_id"]},
+                    },
+                }
+        return body
+
+    @staticmethod
+    def _recorded_data_actor(
+        entry: Mapping[str, object], actor: DataRemediationActorSubmission, rule: str
+    ) -> bool:
+        """A saved choice names either its exact rule actor or its actual agent session."""
+        if actor.actor_kind is ActorKind.HOST_FALLBACK:
+            if (entry.get("decided_by"), entry.get("rule_hash"), actor.actor_id) == (
+                "RULE",
+                rule,
+                f"host-rule:{rule[:16]}",
+            ):
+                return True
+        elif (
+            entry.get("status") == "CONFIRMED_PENDING_REVALIDATION"
+            and isinstance(vendor := entry.get("agent_vendor"), str)
+            and isinstance(session := entry.get("agent_session"), str)
+            and vendor
+            and session
+            and actor.actor_id == f"{vendor}:{session}"
+        ):
+            return True
+        return False
+
+    def recorded_data_confirmation(
+        self, receipt: DataRemediationExecutionReceipt, authority: dict[UUID, Any] | None = None
+    ) -> bool:
         """Read the original accepted first-use authority for an exact retained decision.
 
         The receipt's rationale selects the goal; only its owned declaration and accepted
         request record prove delegation. That historical authority survives the goal's end.
         """
         actor = receipt.actor_submission
-        rationale = receipt.submission.proposal.rationale
-        if actor.actor_kind is not ActorKind.EXTERNAL_AUTOMATION or not rationale.startswith(
-            "first-use-goal:"
-        ):
+        rationale, _, rule = receipt.submission.proposal.rationale.partition("; rule:")
+        if actor.actor_kind not in {
+            ActorKind.EXTERNAL_AUTOMATION,
+            ActorKind.HOST_FALLBACK,
+        } or not rationale.startswith("first-use-goal:"):
             return False
         try:
-            goal = self.store.head(UUID(rationale.removeprefix("first-use-goal:")))
+            goal_id = UUID(rationale.removeprefix("first-use-goal:"))
+            memo = authority if authority is not None else {}
+            if goal_id not in memo:
+                head = self.store.head(goal_id)
+                memo[goal_id] = (
+                    head,
+                    self._data_index(self.store.attributed(goal_id)) if head else {},
+                )
+            goal, index = memo[goal_id]
             if (
                 goal is None
                 or goal.declaration.kind != "FIRST_USE"
                 or rationale != f"first-use-goal:{goal.goal_id}"
             ):
                 return False
-            for entry in self.store.attributed(goal.goal_id):
-                if (
-                    entry.get("operation") == "DATA_ISSUE_CONFIRM"
-                    and entry.get("status") == "CONFIRMED_PENDING_REVALIDATION"
-                    and entry.get("delegation") == rationale
-                    and entry.get("case_token") == receipt.submission.proposal.case_token
-                    and entry.get("option_id") == receipt.submission.proposal.option_id
-                    and isinstance(vendor := entry.get("agent_vendor"), str)
-                    and isinstance(session := entry.get("agent_session"), str)
-                    and vendor
-                    and session
-                    and actor.actor_id == f"{vendor}:{session}"
-                    and isinstance(recorded_at := entry.get("recorded_at"), str)
+            key = (
+                receipt.submission.proposal.case_token,
+                receipt.submission.proposal.option_id,
+                rule if actor.actor_kind is ActorKind.HOST_FALLBACK else None,
+            )
+            for entry in index.get(key, ()):
+                # The index already binds operation, case, option and rule.
+                if entry.get("delegation") != rationale:
+                    continue
+                if not (
+                    isinstance(recorded_at := entry.get("recorded_at"), str)
                     and goal.intent_registered_at
                     <= datetime.fromisoformat(recorded_at)
                     < self.delegation_ends(goal)
                 ):
+                    continue
+                if self._recorded_data_actor(entry, actor, rule):
                     return True
         except (KeyError, OSError, TypeError, ValueError):
             return False

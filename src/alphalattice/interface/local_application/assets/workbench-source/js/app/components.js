@@ -2340,10 +2340,10 @@ const codeWords = (code) => {
  * the whole id on hover; a list shows its first `n` and how many more. */
 const featureName = (id) => { const s = String(id ?? ''), [family, name, variant] = s.includes('::') ? s.split('::') : ['', s, '']; return html`<span class="mono" data-tip="${s}">${name || family}${variant && variant !== 'current' ? ` · ${variant}` : ''}</span>`; };
 const featureList = (ids, n = 3) => { const list = ids || []; return html`${list.slice(0, n).map((id, i) => html`${i ? ', ' : ''}${featureName(id)}`)}${list.length > n ? ` +${list.length - n}` : ''}`; };
-/* The actors (round 63): who did a thing, by who they are -- the person at this window is "You";
+/* Actors name the person, agent or declared rule;
  * the agent through the automation API is the agent; a hook's producer names the host session
  * (Codex, Claude Code); a subagent keeps its retained name. */
-const ACTORS = {HOST_FALLBACK: 'Host fallback', HUMAN: 'You', EXTERNAL_AUTOMATION: 'Agent · API', INSTALLED_AGENT: 'Installed Agent', SERVICE_AUTOMATION: 'Service', EXTERNAL_CLIENT: 'External client', TASK_CONTROL: 'Task Control'};
+const ACTORS = {HOST_FALLBACK: 'Host', HUMAN: 'You', EXTERNAL_AUTOMATION: 'Agent · API', INSTALLED_AGENT: 'Installed Agent', SERVICE_AUTOMATION: 'Service', EXTERNAL_CLIENT: 'External client', TASK_CONTROL: 'Task Control'};
 const PRODUCERS = {codex: 'Codex', 'codex-cli': 'Codex', 'openai-codex': 'Codex', 'claude-code': 'Claude Code', claude_code: 'Claude Code', claude: 'Claude Code'};
 /* Round 90: an owner's attribution sentence (`Assessed by HUMAN: local-web-human.`) reads as the role;
  * the id stays on hover, and beside the words where the reader asked for facts (`o.facts`). */
@@ -2571,3 +2571,4 @@ function dateRange(a, b) {
 function dateMove(a, b) {
   return html`<span class="nowrap">${a || ''}</span> → <span class="nowrap">${b || ''}</span>`;
 }
+
