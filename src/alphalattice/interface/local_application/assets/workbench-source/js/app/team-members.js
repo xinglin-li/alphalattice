@@ -21,6 +21,18 @@ const TeamMembers = (() => {
     for (const e of mine) by.set(e.messageKind || '', (by.get(e.messageKind || '') || 0) + 1);
     return {mine, latest: mine.at(-1), made: [...by].map(([k, n]) => kinds[k] ? `${t(kinds[k][0])} × ${count(n)}` : countText(n, '{n} message', '{n} messages')).join(' · ')};
   };
+  function externalItems(X) {
+    const merged = new Map(X.items);
+    for (const g of LiveActivity.retained()) for (const item of g.items) if (item.schema_kind === 'ExternalActivityObserved') merged.set(item.observation_id, item);
+    const usage = new Map(), usageKey = item => { const sub = item.payload?.subject || {}; return [sub.native_session_id, sub.native_agent_id, sub.model].join('|'); };
+    for (const item of merged.values()) if (item.payload?.event_kind === 'NATIVE_AGENT_USAGE') { const key = usageKey(item), held = usage.get(key); if (!held || held.ordinal < item.ordinal) usage.set(key, item); }
+    const items = [...merged.values()].filter(item => {
+      if (item.payload?.event_kind !== 'NATIVE_AGENT_USAGE' || usage.get(usageKey(item)) === item) return true;
+      X.items.delete(item.observation_id); return false;
+    }).sort((a, b) => a.ordinal - b.ordinal);
+    if (items.length > X.keep) { for (const item of items.splice(0, items.length - X.keep)) X.items.delete(item.observation_id); }
+    return items;
+  }
   function prune(sessions) {
     for (const s of sessions) {
       const times = [...s.facts.map((f) => f.item.occurred_at), ...[...s.entries.values()].map((e) => e.at)];
@@ -41,5 +53,5 @@ const TeamMembers = (() => {
     const words = [t('{n} in', {n: count(o.input)}), t('{n} out', {n: count(o.output)})].join(' · ');
     return noteLine(countText(o.count, '{n} other thread of this native session', '{n} other threads of this native session'), words, 'neutral');
   };
-  return {unique, rows, countOf, activities, prune, othersLine};
+  return {unique, rows, countOf, activities, externalItems, prune, othersLine};
 })();

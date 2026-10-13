@@ -889,7 +889,14 @@ class WorkspaceActivity:
             if ledger is not None and page is not None and query.native_session_id is not None
             else None
         )
-        items = [] if page is None else [activity_item(item) for item in page.items]
+        records = [] if page is None else [activity_item(item) for item in page.items]
+        by_kind: dict[str, list[dict[str, Any]]] = {
+            EXTERNAL_ACTIVITY_SCHEMA: [],
+            PRODUCT_OPERATION_SCHEMA: [],
+        }
+        for item in records:
+            by_kind[item["schema_kind"]].append(item)
+        items, product_items = by_kind[EXTERNAL_ACTIVITY_SCHEMA], by_kind[PRODUCT_OPERATION_SCHEMA]
         snapshot_items = (
             [] if snapshots is None else [activity_item(item) for item in snapshots.items]
         )
@@ -898,13 +905,14 @@ class WorkspaceActivity:
             "disposition": "UNAVAILABLE" if page is None else page.disposition,
             "epoch": None if page is None else page.store_epoch,
             "head": 0 if page is None else page.head_ordinal,
-            "oldest": items[0]["ordinal"] if items else None,
+            "oldest": records[0]["ordinal"] if records else None,
             "more": False if page is None else page.more,
             "items": items,
             **(
                 {
                     "native_session_id": query.native_session_id,
                     "snapshots": snapshot_items,
+                    "product_items": product_items,
                     "snapshots_more": False if snapshots is None else snapshots.more,
                 }
                 if query.native_session_id is not None
@@ -915,7 +923,7 @@ class WorkspaceActivity:
             ),
             "observer": self.observer_state(),
             "read_cost": {
-                "observations": len(items) + len(snapshot_items),
+                "observations": len(records) + len(snapshot_items),
                 "elapsed_ms": int((perf_counter() - started) * 1000),
             },
         }

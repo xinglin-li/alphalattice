@@ -48,6 +48,38 @@ _ROW_COLUMNS = (
     "run_id, task_id, stage_id, payload_hash, policy_hash, availability, "
     "envelope_json, observation_id"
 )
+_SESSION_KEY = (
+    "COALESCE(json_extract(inline_safe_payload_json, '$.subject.native_session_id'), "
+    "json_extract(inline_safe_payload_json, '$.subject.agent_session'))"
+)
+
+_INDEXES = (
+    (
+        "run_order",
+        "run_id, observed_at, source_kind, source_id, source_sequence, observation_id",
+    ),
+    (
+        "retention",
+        "retention_class, availability, run_id, source_kind, source_id, "
+        "schema_kind, source_sequence",
+    ),
+    ("kind_order", "schema_kind"),
+    ("run_kind", "run_id, schema_kind"),
+    ("session_span", f"{_SESSION_KEY}, schema_kind"),
+    (
+        "session_kind",
+        """
+        schema_kind,
+        json_extract(inline_safe_payload_json, '$.subject.native_session_id'),
+        json_extract(inline_safe_payload_json, '$.event_kind'),
+        json_extract(inline_safe_payload_json, '$.subject.native_agent_id'),
+        CASE json_extract(inline_safe_payload_json, '$.event_kind')
+            WHEN 'NATIVE_AGENT_USAGE' THEN
+                json_extract(inline_safe_payload_json, '$.subject.model')
+            ELSE json_extract(inline_safe_payload_json, '$.subject.role') END
+    """,
+    ),
+)
 
 
 class ObservationStorageError(RuntimeError):
@@ -281,32 +313,7 @@ class ObservationLedger:
                 )
                 """
             )
-            for name, columns in (
-                (
-                    "run_order",
-                    "run_id, observed_at, source_kind, source_id, source_sequence, observation_id",
-                ),
-                (
-                    "retention",
-                    "retention_class, availability, run_id, source_kind, source_id, "
-                    "schema_kind, source_sequence",
-                ),
-                ("kind_order", "schema_kind"),
-                ("run_kind", "run_id, schema_kind"),
-                (
-                    "session_kind",
-                    """
-                    schema_kind,
-                    json_extract(inline_safe_payload_json, '$.subject.native_session_id'),
-                    json_extract(inline_safe_payload_json, '$.event_kind'),
-                    json_extract(inline_safe_payload_json, '$.subject.native_agent_id'),
-                    CASE json_extract(inline_safe_payload_json, '$.event_kind')
-                        WHEN 'NATIVE_AGENT_USAGE' THEN
-                            json_extract(inline_safe_payload_json, '$.subject.model')
-                        ELSE json_extract(inline_safe_payload_json, '$.subject.role') END
-                """,
-                ),
-            ):
+            for name, columns in _INDEXES:
                 self._writer.execute(
                     f"CREATE INDEX IF NOT EXISTS unified_observation_{name}_idx "
                     f"ON unified_observation({columns})"
@@ -419,15 +426,10 @@ class ObservationLedger:
         snapshots: bool = False,
         head_ordinal: int | None = None,
     ) -> ObservationReadPage:
-        """Read the newest rows of one schema kind in commit order.
+        """Read a kind or selected Session's exchanges and attributed facts in commit order.
 
-        The tail of a kind, not of the store: a reader of the declared sessions
-        is not bounded by how many product operations were recorded between two
-        team events. `before` (an ordinal) reads the rows older than it, so the
-        reader can walk further back one page at a time. Retention keeps every
-        row; an evicted payload shows as unavailable in its place.
-        A native Session filters at the store; snapshots select the latest
-        usage per member/model, hooks per member/role and Session binding.
+        Session facts share its exchange span, cursor and epoch; snapshots keep
+        the latest usage, hooks and binding independently of that cursor.
         """
         if not 1 <= limit <= MAXIMUM_READ_PAGE:
             raise ValueError("observation.read_limit_invalid")
@@ -448,7 +450,20 @@ class ObservationLedger:
                 )
             where = "schema_kind = ?"
             parameters: list[str | int] = [schema_kind]
-            if native_session_id is not None:
+            selected = (
+                native_session_id is not None
+                and not snapshots
+                and schema_kind == "ExternalActivityObserved"
+            )
+            if selected and native_session_id is not None:
+                # Operations belong to the Session span; its last message is not its endpoint.
+                where = f"""{_SESSION_KEY} = ? AND (schema_kind = 'ExternalActivityObserved' OR (
+                    schema_kind = 'ProductOperationObserved' AND source_kind = 'PRODUCT_OPERATION'
+                    AND authority_kind = 'OPERATIONAL_ASSERTION'
+                    AND json_extract(inline_safe_payload_json, '$.subject.agent_vendor')
+                        IN ('codex', 'claude-code')))"""
+                parameters = [native_session_id]
+            elif native_session_id is not None:
                 where += (
                     " AND json_extract(inline_safe_payload_json, '$.subject.native_session_id') = ?"
                 )
@@ -477,15 +492,15 @@ class ObservationLedger:
                 """
             else:
                 selection = where + " AND rowid < ?"
-                parameters.append(head + 1 if before is None else before)
+                parameters.append(head + 1 if before is None else min(before, head + 1))
                 if native_session_id is not None:
                     selection += (
                         " AND json_extract(inline_safe_payload_json, '$.event_kind')"
-                        " != 'NATIVE_AGENT_USAGE'"
+                        " IS NOT 'NATIVE_AGENT_USAGE'"
                     )
             source = "unified_observation"
-            if native_session_id is not None and not snapshots:
-                source += " INDEXED BY unified_observation_session_kind_idx"
+            if selected:
+                source += " INDEXED BY unified_observation_session_span_idx"
             rows = connection.execute(
                 f"""
                 SELECT rowid, {_ROW_COLUMNS} FROM {source}

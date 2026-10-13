@@ -59,7 +59,7 @@ class NativeUsageReader:
         self.operations = operations
         self.workspace = operations.workspace_session.workspace.resolve()
         self._reading = Lock()
-        self._read_at: dict[tuple[str, str], float] = {}
+        self._read_at: dict[tuple[str, str], tuple[float, dict[str, object]]] = {}
         self._status = "NOT_BOUND"
         self._reason: str | None = None
         self._progress: dict[str, object] = {}
@@ -167,8 +167,8 @@ class NativeUsageReader:
                 finally:
                     REQUEST_PROVENANCE.reset(token)
 
-        self._read_at[(binding.host, binding.session_id)] = monotonic()
         receipt = read_session_usage(project, binding, publish=publish, goal_id=goal_id)
+        self._read_at[(binding.host, binding.session_id)] = (monotonic(), receipt)
         self._progress = {
             key: receipt[key]
             for key in ("read_through", "total_bytes", "bytes_read", "rescan")
@@ -188,7 +188,6 @@ class NativeUsageReader:
         if not self._reading.acquire(blocking=False):
             return {"status": "BUSY", "sessions": []}
         try:
-            previous_reason, previous_progress = self._reason, self._progress
             self._reason = None
             self._progress = {}
             if not usage_reading(self.workspace):
@@ -210,31 +209,31 @@ class NativeUsageReader:
             for project, binding in active:
                 key = (binding.host, binding.session_id)
                 last = self._read_at.get(key)
-                if last is not None and now - last < self.RECENT:
-                    if pending_reason in {None, "native_bridge.usage_catching_up"}:
-                        pending_reason = previous_reason or pending_reason
+                if last is not None and now - last[0] < self.RECENT:
+                    receipt = last[1]
                     sessions.append({"host": binding.host, "status": "RECENT"})
-                    continue
-                try:
-                    self._progress = {}
-                    receipt = self.read_binding(project, binding)
-                except Exception as error:
-                    receipt = {
-                        "status": "UNAVAILABLE",
-                        "reason": owner_failure_code(error)
-                        or "native_bridge.lead_usage_read_failed",
-                    }
+                else:
+                    try:
+                        self._progress = {}
+                        receipt = self.read_binding(project, binding)
+                    except Exception as error:
+                        receipt = {
+                            "status": "UNAVAILABLE",
+                            "reason": owner_failure_code(error)
+                            or "native_bridge.lead_usage_read_failed",
+                        }
+                        self._read_at[key] = (monotonic(), receipt)
+                    sessions.append({"host": binding.host, **receipt})
                 if pending_reason in {None, "native_bridge.usage_catching_up"} and receipt.get(
                     "status"
                 ) not in {"DELIVERED", "SKIPPED"}:
                     pending_reason = safe_failure_code(receipt.get("reason"))
-                    pending_progress = self._progress
-                sessions.append({"host": binding.host, **receipt})
+                    pending_progress = {
+                        k: receipt[k]
+                        for k in ("read_through", "total_bytes", "bytes_read", "rescan")
+                        if k in receipt
+                    }
             if pending_reason is not None:
-                if pending_reason == previous_reason and all(
-                    row["status"] == "RECENT" for row in sessions
-                ):
-                    pending_progress = previous_progress
                 self._reason, self._progress = pending_reason, pending_progress
             return {"status": "READ", "sessions": sessions}
         finally:
