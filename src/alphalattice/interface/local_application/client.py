@@ -24,6 +24,7 @@ from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_HEADER,
     AGENT_VENDOR_HEADER,
     ANSWER_LANGUAGE,
+    BUNDLE_WORKSPACE,
     CLIENT_HEADER,
     EXIT_CODES,
     INSTANCE_HEADER,
@@ -77,13 +78,13 @@ class LocalResearchClientError(ValueError):
 
     document_location: dict[str, int | str] | None = None
     document_size: dict[str, int | None] | None = None
-    """A document over the request bound: its `bytes` (None when read from standard input)
-    and the `limit_bytes` it exceeds (V372)."""
+    """Oversized document bytes (None for stdin) and limit_bytes (V372)."""
     short_reference: dict[str, object] | None = None
-    """A short reference read back as no value or several: its `field`, its `value` and the
-    `candidates` it begins (V393)."""
+    """Ambiguous short reference: field, value and candidates (V393)."""
     sections: list[str] | None = None
     """The available sibling paths when a saved answer lacks the requested section."""
+    binding_context: dict[str, Any] | None = None
+    next_commands: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -871,19 +872,19 @@ def _located(answer: dict[str, Any], *keys: str) -> str:
 
 
 def _write_bundle(
-    directory: Path, body: dict[str, Any], *, prefix: tuple[str, ...]
+    directory: Path, body: dict[str, Any], workspace: Path | None = None, *, prefix: tuple[str, ...]
 ) -> dict[str, Any]:
-    """Write the Host's bundle into a new directory.
-
-    Show files by name and size, never their text, beside the answer file for
-    the specialist and the one submit command for the lead.
-    """
+    """Write a new bundle; return file sizes, answer path and the scoped submit command."""
     files = body.get("files")
     if not isinstance(files, list) or not files:
         raise LocalResearchClientError("local_client.bundle_response_invalid")
     listing: list[dict[str, object]] = []
     try:
         directory.mkdir(parents=True, exist_ok=False)
+        if workspace is not None:
+            (directory / BUNDLE_WORKSPACE).write_bytes(
+                (json.dumps({"workspace": str(workspace.resolve())}) + "\n").encode()
+            )
         for item in files:
             name, text = str(item.get("name", "")), item.get("text")
             if not name or Path(name).name != name or not isinstance(text, str):
@@ -896,9 +897,7 @@ def _write_bundle(
     except OSError as error:
         raise LocalResearchClientError("local_client.bundle_write_refused") from error
     answer = directory / "answer.json"
-    # The one command as the specialist runs it, from any directory: the checkout's entry with
-    # the context this call kept, its goal included (`_entry_of`, V406, V449), quoted for the
-    # shell in use, as every printed command is (V439).
+    # Preserve entry/goal and shell quoting (_entry_of; V406, V449, V439).
     width = prefix.index("--workspace") if "--workspace" in prefix else len(prefix)
     arguments = [
         *prefix[width:],
@@ -2496,15 +2495,20 @@ class _Chain:
         request = offered_requests(body).get(name)
         return None if not isinstance(request, dict) or choices(request) else dict(request)
 
-    def bundle(self, step: str, request: dict[str, Any], directory: Path) -> dict[str, Any]:
-        """Prepare one specialist's bundle into ``directory`` and write it as `bundle prepare`
-        does: its files, its answer path and its one submit command."""
+    def bundle(
+        self, step: str, request: dict[str, Any], directory: Path, *, collection: Path | None = None
+    ) -> dict[str, Any]:
+        """Prepare the specialist's files, locator and scoped submit command."""
         document = _chosen(_request_fields(request, {"bundle_directory": str(directory)}))
         target = _bundle_directory(document)
         body = self.send(step, document)
         if outcome_of(body) != "OK" or target is None or not body.get("files"):
             return body
-        written = _write_bundle(target, body, prefix=_entry_of(self.client))
+        written = _write_bundle(target, body, self.client.workspace, prefix=_entry_of(self.client))
+        if collection is not None and not (collection / BUNDLE_WORKSPACE).exists():
+            (collection / BUNDLE_WORKSPACE).write_bytes(
+                (json.dumps({"workspace": str(self.client.workspace)}) + "\n").encode()
+            )
         return {
             "status": written.get("status"),
             "bundle_directory": written.get("bundle_directory", str(target)),
@@ -2559,17 +2563,9 @@ def _next_output(output: str | Path) -> Path:
 
 
 def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """`strategy-book review`: an installed strategy's whole-support book, run or reused, its
-    Evidence prepared and every Analyst bundle written, in one call (AGENT-TIME verb 2).
+    """Prepare Evidence and Analyst bundles for a book or dated positions (AGENT-TIME verb 2).
 
-    It sends the requests the answers offer, in their order, and follows each Task to its end:
-    the strategy's controls, its book's run with their defaults, the book's saved result and its
-    report, or with ``--update`` that update's published positions, bound by their
-    publication; then Evidence's preview and preparation, and each unit the preparation itself
-    offers, at its own cutoff, as an Analyst bundle into ``--dir``. The first answer that
-    stops it (a refusal, a missing prerequisite, a Task waiting on a decision or the wait's cap)
-    is the answer, with the steps it took; nothing runs beyond this call, and every step stays
-    its own command for an agent that would choose otherwise.
+    Follow offered steps in order to their first stop; no later work runs detached.
     """
     package = str(args.strategy_package_id)
     root = Path(args.bundle_root).resolve()
@@ -2653,7 +2649,10 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
             continue
         unit = name.removeprefix("analyst_bundle").lstrip("_") or "book"
         written = chain.bundle(
-            "analyst_bundle", request, root / ("analyst-" + _UNIT_NAME.sub("-", unit))
+            "analyst_bundle",
+            request,
+            root / ("analyst-" + _UNIT_NAME.sub("-", unit)),
+            collection=root,
         )
         if "answer_file" not in written:
             return chain.stop("analyst_bundle", written)
@@ -3328,6 +3327,7 @@ def run(
             {"navigation": client.navigation(document, body)} if compact and not viewed else {}
         )
         answer = envelope(
+            request=document,
             operation=document.get("operation") or args.command,
             outcome=outcome,
             body=body,
@@ -3394,8 +3394,6 @@ def run(
         if sum(getattr(args, field, None) == Path("-") for field in ("file", "from_response")) > 1:
             raise LocalResearchClientError("local_client.document_multiple_stdin_sources")
         output = getattr(args, "output", None)
-        # Compact unless asked: one read, every caller alike; `--view full` is the
-        # exact form a script reads, and `--output` keeps it whatever is shown (V408).
         display_view = args.view or "compact"
         if output is not None and output.exists():
             raise LocalResearchClientError("local_client.output_exists_choose_another_path")
@@ -3403,7 +3401,6 @@ def run(
             args.workspace, timeout=args.request_timeout, goal=getattr(args, "goal", None)
         )
         if callable(document_override):
-            # Read after the Host is found, as a request file is: no Host answers NO_HOST.
             document = document_override()
         if args.command == "activity-wait":
             body = _wait(client, args)
@@ -3452,7 +3449,7 @@ def run(
                 and directory is not None
                 and body.get("status") == "AGENT_BUNDLE_READY"
             ):
-                body = _write_bundle(directory, body, prefix=_entry_of(client))
+                body = _write_bundle(directory, body, client.workspace, prefix=_entry_of(client))
         if output is not None:
             # The owner's exact answer, a refusal included, so a script reading --output
             # never loses one and --from can continue a blocked owner's next requests.
@@ -3529,6 +3526,7 @@ def run(
             json.dumps(
                 envelope(
                     operation=document.get("operation") or args.command,
+                    request=document,
                     outcome=refusal.outcome,
                     body=None,
                     elapsed_seconds=time.perf_counter() - started,

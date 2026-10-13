@@ -207,6 +207,32 @@ def _retained(subjects, shown):
     return rules
 
 
+def _product_records(feed, shown):
+    if "attributed_fact_ids" not in shown:
+        return set()
+    expected = {
+        item["observation_id"]
+        for item in feed["items"]
+        if item.get("schema_kind") == "ProductOperationObserved"
+        and item.get("source_kind") == "PRODUCT_OPERATION"
+        and item.get("authority") == "OPERATIONAL_ASSERTION"
+        and (item.get("payload") or {}).get("subject", {}).get("agent_session") == shown["id"]
+        and (item.get("payload") or {}).get("subject", {}).get("agent_vendor")
+        in {"codex", "claude-code"}
+    }
+    actual = set(shown["attributed_fact_ids"])
+    complete = not shown.get("product_more")
+    return (
+        {"session.product_records"}
+        if (
+            actual - expected
+            or (complete and actual != expected)
+            or shown.get("product_count", 0) != len(set(shown.get("fact_ids", actual)))
+        )
+        else set()
+    )
+
+
 def session_findings(feed, projection):
     """Return one row per broken visible requirement, without retaining message content."""
     subjects, times, failures = defaultdict(list), defaultdict(list), {}
@@ -220,12 +246,20 @@ def session_findings(feed, projection):
         sid = shown["id"]
         cells = [[unescape(re.sub(r"<[^>]*>", "", str(v))) for v in r] for r in shown["rows"]]
         rules = _visible(shown, cells) | _roles(subjects[sid], shown, cells)
+        if re.search(r"\{[A-Za-z_]\w*\}", shown.get("page_text", "")):
+            rules.add("session.placeholder")
+        if (
+            shown.get("usage_notice") == "CATCHING_UP"
+            and (feed.get("usage_readings", {}).get(sid) or {}).get("status") == "DELIVERED"
+        ):
+            rules.add("session.usage_catching_up")
         rules |= _recipient(subjects[sid], shown) | _goal(
             subjects[sid], shown, feed.get("goals", {})
         )
         rules |= _span(subjects[sid], shown, times[sid])
         rules |= _usage(feed, shown, times[sid]) | _references(shown)
         rules |= _retained(subjects[sid], shown)
+        rules |= _product_records(feed, shown)
         for rule in sorted(rules):
             failures.setdefault(rule, {"rule": rule, "session": sid, "part": "feedback"})
     return list(failures.values())

@@ -47,7 +47,11 @@ from alphalattice.interface.local_application.activity import (
     RECORDS_ITSELF,
     ActivityReadQuery,
 )
-from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.interface.local_application.cli_contract import (
+    REQUEST_PROVENANCE,
+    RequestProvenance,
+    refusal_words,
+)
 from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.native_bridge import BINDING_NAME
 from alphalattice.interface.local_application.native_setup import declare_project
@@ -103,6 +107,39 @@ def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task
         observer.close()
 
 
+def test_selected_session_product_facts_share_its_span_and_paging(live, tmp_path, monkeypatch):
+    """Session receipts share its span and paging, independently of the feed tail."""
+    observer = live.activity
+    monkeypatch.setattr(observer, "clock", lambda: datetime(2026, 9, 14, 12, 0, 1, tzinfo=UTC))
+    client = LocalResearchClient(live.workspace)
+    request = PortfolioResearchRequestDocument(
+        operation="AGENT_ANSWER_SUBMIT",
+        bundle_directory=str(tmp_path),
+        agent_answer={"text": "Fixture answer", "references": []},
+    ).to_operation_request()
+    token = REQUEST_PROVENANCE.set(RequestProvenance(vendor="codex", session="session-a"))
+    try:
+        client.publish_event(_event(0, subject={"native_session_id": "session-a"}))
+        span = observer.entered(request, caller="EXTERNAL_AUTOMATION")
+        observer.returned(span, {"status": "ACCEPTED"})
+        client.publish_event(_event(2, subject={"native_session_id": "session-a"}))
+        page = _json(live, "/api/activity/external?native_session_id=session-a&limit=2")
+        assert page["epoch"] == client.activity(limit=1)["epoch"] and page["more"]
+        assert len(page["items"]) == len(page["product_items"]) == 1
+        older = client.read_external(native_session_id="session-a", before=page["oldest"])
+        assert not older["more"] and older["oldest"] < page["oldest"]
+        assert {i["payload"]["phase"] for i in page["product_items"] + older["product_items"]} == {
+            "REQUESTED",
+            "RETURNED",
+        }
+        monkeypatch.setattr(observer, "clock", lambda: datetime(2026, 9, 14, 12, 0, 3, tzinfo=UTC))
+        observer.returned(span, {"status": "ACCEPTED"})
+        assert len(client.read_external(native_session_id="session-a")["product_items"]) == 3
+        assert client.read_external(native_session_id="session-b")["product_items"] == []
+    finally:
+        REQUEST_PROVENANCE.reset(token)
+
+
 def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
     tmp_path, monkeypatch
 ):
@@ -155,6 +192,23 @@ def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
     receipts[:] = {"status": "DELIVERED"}, {"status": "DELIVERED"}
     elapsed[0] += 10
     assert [row["status"] for row in reader.read()["sessions"]] == ["DELIVERED", "DELIVERED"]
+    for project in projects:
+        path = project / ".codex" / BINDING_NAME
+        binding = json.loads(path.read_text("utf-8"))
+        binding["session_id"] = "shared-session"
+        path.write_text(json.dumps(binding), encoding="utf-8")
+    receipts[:] = pending, pending
+    elapsed[0] += 10
+    reader.read()
+    receipts[:] = {"status": "DELIVERED"}, {"status": "DELIVERED"}
+    elapsed[0] += 10
+    assert [row["status"] for row in reader.read()["sessions"]] == ["DELIVERED", "RECENT"]
+    assert reader.state()["reason"] is None
+    for project in projects:
+        path = project / ".codex" / BINDING_NAME
+        binding = json.loads(path.read_text("utf-8"))
+        binding["session_id"] = project.name
+        path.write_text(json.dumps(binding), encoding="utf-8")
     for first, second in (
         (pending, {"status": "UNAVAILABLE", "reason": "activity.observer_failed"}),
         (RuntimeError("unavailable"), {"status": "DELIVERED"}),

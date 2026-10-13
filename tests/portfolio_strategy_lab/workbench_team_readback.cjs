@@ -36,6 +36,17 @@ module.exports.checkSessionReadback=async({c,root,library,vm,fs,path,A,TM,reads,
     assert.equal(calls.filter(url=>url.includes('native_session_id=')).length,1);
     for(let i=0;i<3;i++)fresh.WindowTeam.section();await new Promise(setImmediate);
     assert.equal(calls.length,initial==='team-sessions'?2:1);assert.equal(fresh.WindowTeam.section().includes(c.t('Older records are not read yet')),initial==='team');
+    const words=library.words(root);Object.assign(fresh,{t:words.t,I18N:words.I18N,icon:()=>'',tile:n=>String(n)});
+    for(const locale of ['en','zh']) {
+      words.I18N.set(locale==='zh'?'zh-CN':'en');
+      for(const status of ['OBSERVING','DELIVERED']) {
+        fresh.WindowActivity.absorbPage({...page('CONTINUED',[]),epoch:'window-epoch',observer:{native_usage:{status,reason:'native_bridge.usage_catching_up',read_through:4,total_bytes:12}}});
+        const rendered=fresh.WindowTeam.section();
+        assert.equal(rendered.includes('data-usage-notice="CATCHING_UP"'),status==='OBSERVING');
+        if(status==='OBSERVING')assert.ok(rendered.includes(words.t('Usage read through {read} of {total} bytes; the next read continues.',{read:4,total:12})));
+        assert.ok(!/\{(?:read|total)\}/.test(rendered));
+      }
+    }
   }
 };
 if(require.main===module){
@@ -71,6 +82,7 @@ vm.runInContext('globalThis.A=LiveActivity;globalThis.TM=LiveTeam;',c);
   for(const ref of input.resolve||[])await c.TM.resolve(ref);for(const ref of input.verify||[])await c.TM.verify(ref);
   const scene=input.projection?null:c.TM.scene();
   if(input.projection){
+    const words=library.words(root);Object.assign(c,{t:words.t,I18N:words.I18N,icon:()=>'',tile:n=>String(n)});
     const sessions=[],tr=c.tr;let rows=[];c.tr=(cells)=>{rows.push(cells.map(String));return tr(cells);};c.btnAttrs=(label,action,value)=>`<button data-action="${action}" data-value="${value}">${label}</button>`;
     const ids=Object.keys(input.scoped_sessions||{});if(!ids.length)ids.push(...new Set(pages.flatMap(p=>p.items||[]).map(e=>e.payload?.subject?.native_session_id).filter(Boolean)));
     for(const id of ids){
@@ -83,6 +95,8 @@ vm.runInContext('globalThis.A=LiveActivity;globalThis.TM=LiveTeam;',c);
         references.push({reference:e.reference,kind:['hash','history'].includes(e.qualified.kind)?resolvedKind:e.qualified.kind,resolved_kind:resolvedKind,resolved:Boolean(read?.target&&!read.failure&&read.level!=='unresolved')});
       }
       sessions.push({id:s.id,title:run.name,question:run.question,goal_scope:s.goalScope,rows,references,
+        fact_ids:s.facts.map(f=>f.item.observation_id),attributed_fact_ids:s.facts.filter(f=>f.attributed).map(f=>f.item.observation_id),product_count:c.TM.counts().observations,product_more:Boolean(input.scoped_sessions?.[id]?.more),
+        page_text:participants.replace(/<[^>]*>/g,''),usage_notice:/data-usage-notice="CATCHING_UP"/.test(participants)?'CATCHING_UP':null,
         unidentified:c.t('Unidentified'),html:participants,
         role_words:Object.fromEntries([...new Set([...s.participants.values()].flatMap(p=>[...p.roles]))].map(r=>[r,c.TM.roleName(r)])),
         members:[...s.participants.values()].map(p=>({id:p.id,roles:[...p.roles],name:vm.runInContext('TeamMembers',c).unique(s,p.id),usage_visible:rows.some(r=>r[0].includes(`data-value="${p.id}"`)&&r.slice(3,7).every(v=>v!=='')),usage:[...p.usage.values()].map(u=>({model:u.model,responses:u.responses,input_tokens:u.input,output_tokens:u.output,cache_read_tokens:u.cacheRead,cache_write_tokens:u.cacheWrite})),first_at:[...p.usage.values()].map(u=>u.first).filter(Number.isFinite).sort()[0]})).map(p=>({...p,first_at:p.first_at?new Date(p.first_at).toISOString():null})),

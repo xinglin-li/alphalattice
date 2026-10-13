@@ -810,3 +810,52 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
             preview["next_requests"]["confirm"]["data_issue_case_token"],
             preview["next_requests"]["confirm"]["data_issue_option_id"],
         )
+
+
+def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tmp_path):
+    """A workspace rule authorizes its dated Task, never a closed or unrelated Goal."""
+    from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
+
+    now, task, goal_id = datetime(2026, 10, 2, tzinfo=UTC), UUID(int=8), UUID(int=7)
+    app = GoalApplication(
+        GoalStore(tmp_path, "workspace"),
+        lambda: now,
+        lambda *_: {},
+        lambda _: now,
+        {task: ("portfolio_public_watermark_advancement", "RUNNING", None)}.get,
+        workspace=tmp_path,
+    )
+    app.operate(
+        Request(
+            operation="GOAL_OPEN",
+            goal_id=goal_id,
+            goal_declaration={**FIRST_USE, "kind": "RESEARCH"},
+            change_reason="Daily use",
+        ),
+        "EXTERNAL_AUTOMATION",
+    )
+    publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("daily"))
+    assert app.data_rule(task) is None
+    app.store.attribute(goal_id, {"task_id": str(task), "operation": "STATUS"})
+    assert app.data_rule(task) is None
+    app.store.attribute(goal_id, {"task_id": str(task), "operation": "RESEARCH_UPDATE_RUN"})
+    assert app.data_rule(task) is not None
+    assert app.data_rule(UUID(int=9)) is None
+    publish_research_workspace_manifest(
+        tmp_path,
+        ResearchWorkspaceManifest.create(
+            workspace_id="daily",
+            default_strategy_package_id=None,
+            default_score_source_mode=None,
+            strategy_artifacts=(),
+            data_decision_rule=DataDecisionRule(max_cases=0),
+            strategy_installation="NOT_INSTALLED",
+        ),
+    )
+    assert app.data_rule(task) is None
+    publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("daily"))
+    app.operate(
+        Request(operation="GOAL_ABANDON", goal_id=goal_id, change_reason="Finished elsewhere"),
+        "EXTERNAL_AUTOMATION",
+    )
+    assert app.data_rule(task) is None

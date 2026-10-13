@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from alphalattice.kernel.shared_kernel.project_layout import REFUSAL_WORDS_RESOURCE, runtime_json
+
 
 def maintenance_failure_detail(code: str) -> str:
     """Explain a maintenance stop by its stable code or governed fallback.
@@ -40,12 +42,9 @@ def maintenance_failure_detail(code: str) -> str:
             "audit evidence: a listing's evidence is missing, expired or changed since "
             "the audit. Run the update again to re-audit before the membership changes."
         ),
-        # The owner's own words (refusal_words.json), so the stop and its Chinese read alike.
-        "data.truth_review_required": (
-            "A data decision is needed before this Task can continue: unexplained moves ask "
-            "for a permitted response, which the agent takes under the first use's delegation "
-            "or asks the person for in one line; the last one resumes this same Task."
-        ),
+        "data.truth_review_required": runtime_json(REFUSAL_WORDS_RESOURCE)[
+            "data.truth_review_required"
+        ]["detail"],
         "workspace_maintenance.membership_revision_mismatch": (
             "The research membership changed after this update was planned, so it stopped "
             "before using it. Plan the update again: a stock-list change that stopped "

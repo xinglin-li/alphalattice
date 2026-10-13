@@ -1,18 +1,9 @@
-"""The operation registry agrees with every place an operation is named (C1 rule 3), and the CLI
-answers every one of them in its contract without a Host (the CLI walk).
+"""Audit operation registrations, documented commands and userspace compatibility.
 
-An operation is named in the request's literal, its field contract and its two field lists,
-the activity ledger's sets, the Host's routes, the research-case sets, the Task-work sets, and
-in every next request an owner offers. Registering one by hand in eight places was how an
-operation reached the Web and not the CLI, or was offered as a next request the CLI could not
-send. This check reads them all and refuses a tree where they disagree; the walk runs every
-``alphalattice <noun> <verb>`` against a workspace no Host serves and with a required field
-missing, and checks the envelope, the exit code, and that no answer carries a traceback. Every
-command a product text names in backticks, and each flag it names, must be the CLI's (V124).
+The registry checks request, route, activity and offer owners; the CLI walk needs no Host.
+    python -m devtools.architecture.operation_registry [--write | --write-surface]
 
-    python -m devtools.architecture.operation_registry [--write]
-
-``--write`` first writes the CLI's command table, ``operations.json``, from the registry.
+``--write`` refreshes commands; ``--write-surface`` freezes additions, preserving old entries.
 """
 
 from __future__ import annotations
@@ -23,12 +14,14 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
+import tomllib
 from collections.abc import Iterable
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, cast, get_args
 
 from devtools.architecture.neutral_changes import source_syntax_tree
 
@@ -44,6 +37,201 @@ _ENVELOPE = {
     "next_requests",
     "timing",
 }
+
+SURFACE = "config/registries/agent-surface.json"
+
+
+def _typed(value: Any, key: str = "") -> Any:
+    """Keep interface constraints, excluding prose and presentation metadata."""
+    if isinstance(value, dict):
+        prose = set() if key in {"properties", "$defs"} else {"title", "description", "examples"}
+        return {k: _typed(v, k) for k, v in value.items() if k not in prose}
+    return [_typed(v) for v in value] if isinstance(value, (list, tuple)) else value
+
+
+def _schema_surface(name: str, schema: dict[str, Any]) -> dict[str, Any]:
+    models = {name: schema} | {f"{name}/{k}": v for k, v in schema.get("$defs", {}).items()}
+    return {model: _typed(spec) for model, spec in models.items() if "properties" not in spec} | {
+        f"{model}.{field}": {"required": field in spec.get("required", []), "schema": _typed(value)}
+        for model, spec in models.items()
+        for field, value in spec.get("properties", {}).items()
+    }
+
+
+def _parser_surface() -> dict[str, Any]:
+    import argparse
+
+    from alphalattice.interface.local_application.cli import _parser
+
+    found: dict[str, Any] = {}
+
+    def visit(parser: argparse.ArgumentParser, name: str, inherited: dict[str, Any]) -> None:
+        options = dict(inherited)
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                continue
+            for option in action.option_strings:
+                options[option] = {
+                    "nargs": action.nargs,
+                    "required": action.required,
+                    "type": getattr(action.type, "__name__", None),
+                    "choices": _typed(action.choices),
+                }
+        found[f"command:{name}"] = {}
+        found.update({f"option:{name}/{k}": v for k, v in options.items()})
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                for child, nested in action.choices.items():
+                    visit(nested, f"{name} {child}".strip(), options)
+
+    visit(_parser(), "", {})
+    return found
+
+
+def agent_surface(root: Path) -> dict[str, Any]:
+    """Inventory the typed agent interface from its current owners."""
+    from alphalattice.interface.local_application.answers import ANSWERS
+    from alphalattice.interface.local_application.cli_contract import SCHEMA_VERSION, Outcome
+    from alphalattice.interface.local_application.operations import table
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchRequestDocument,
+    )
+
+    entries = _parser_surface()
+    registry = table()
+    local = root / "src/alphalattice/interface/local_application"
+    entries.update(
+        {f"command:{name}": {"operations": ops} for name, ops in registry["commands"].items()}
+    )
+    entries.update({f"operation:{op}": value for op, value in registry["fields"].items()})
+    document = PortfolioResearchRequestDocument.model_json_schema()
+    entries.update(_schema_surface("request:Request", document))
+    for operation, model in ANSWERS.items():
+        entries.update(_schema_surface(f"answer:{operation}", model.model_json_schema()))
+    refusals = json.loads((root / "config/registries/refusals.json").read_bytes())["entries"]
+    words = json.loads((local / "refusal_words.json").read_bytes())
+    entries.update({f"refusal:{code}": {} for code in refusals.keys() | words.keys()})
+    entries.update({f"envelope:{key}": {} for key in _ENVELOPE})
+    entries["envelope:outcome"] = {"enum": list(get_args(Outcome))}
+    entries["envelope:schema_version"] = {"const": SCHEMA_VERSION}
+    for book, scope in (
+        (root / "LAWS.md", "product"),
+        (local / "assets/workbench-source/LAWS.md", "workbench"),
+    ):
+        entries.update(
+            {
+                f"law:{scope}/{key}": {}
+                for key in re.findall(r"\*\*([A-Z]+\d+)\.", book.read_text(encoding="utf-8"))
+            }
+        )
+    committee = root / "src/alphalattice/control/product_host/composition/committee.py"
+    tree = source_syntax_tree(committee)
+    for node in tree.body:
+        match node:
+            case ast.AnnAssign(
+                target=ast.Name(id=("RULES" | "OUTCOMES") as kind),
+                value=ast.Dict(keys=keys, values=values),
+            ):
+                for key, value in zip(keys, values, strict=True):
+                    assert key is not None
+                    entries[f"message:{kind}/{ast.literal_eval(key)}"] = (
+                        {"enum": sorted(ast.literal_eval(cast(ast.Call, value).args[0]))}
+                        if kind == "OUTCOMES"
+                        else ast.unparse(value)
+                    )
+            case ast.AnnAssign(target=ast.Name(id="ROLES"), value=value):
+                entries["message:roles"] = {"enum": list(ast.literal_eval(value))}
+    for source in [committee, local / "native_bridge.py"]:
+        text = source.read_text(encoding="utf-8")
+        for kind in re.findall(r'(?:kind=|"(?:message_)?kind":\s*)"([A-Za-z_]+)"', text):
+            entries[f"exchange:{kind}"] = {}
+    return entries
+
+
+def _compatible(before: Any, after: Any, key: str = "") -> bool:
+    if isinstance(before, dict) and isinstance(after, dict):
+        if key != "properties" and before.keys() != after.keys():
+            return False
+        return all(k in after and _compatible(v, after[k], k) for k, v in before.items())
+    if key in {"enum", "allowed", "choices"} and isinstance(before, list):
+        if not isinstance(after, list):
+            return False
+        return all(v in after for v in before)
+    if key in {"anyOf", "oneOf", "allOf"} and isinstance(before, list) and isinstance(after, list):
+        return len(before) == len(after) and all(
+            any(_compatible(a, b) for b in after) for a in before
+        )
+    return bool(before == after)
+
+
+def surface_problems(
+    manifest: dict[str, Any], live: dict[str, Any], *, previous: dict[str, Any] | None = None
+) -> list[str]:
+    """Refuse silent interface loss, including edits that erase frozen obligations."""
+    from packaging.version import Version
+
+    out, retirements = [], manifest.get("retirements", {})
+    prefix = f"USERSPACE {SURFACE}:1"
+    release = Version(manifest["release"])
+    for key, row in retirements.items():
+        try:
+            valid = all((bool(row["reason"]), row["status"] in {"Deprecated", "Removed"}))
+            if row["status"] == "Deprecated":
+                valid &= all(
+                    (
+                        row["replacement"] in live,
+                        Version(row["announced"]) < Version(row["earliest_removal"]),
+                    )
+                )
+                if key not in live:
+                    valid &= release >= Version(row["earliest_removal"])
+            else:
+                valid &= key not in live and Version(row["removed_in"]) <= release
+            if key in live and key in manifest["entries"]:
+                valid &= _compatible(manifest["entries"][key], live[key])
+            if previous and key in previous["entries"] and key not in live:
+                prior = previous.get("retirements", {}).get(key, {})
+                valid &= prior.get("status") == "Deprecated"
+                valid &= release >= Version(prior.get("earliest_removal", manifest["release"]))
+        except (KeyError, ValueError, TypeError):
+            valid = False
+        if not valid:
+            out.append(f"{prefix} {key}: invalid retirement; name replacement and removal release")
+    frozen = manifest["entries"]
+    for key, value in (previous or manifest)["entries"].items():
+        if not _compatible(value, frozen.get(key)):
+            out.append(f"{prefix} {key}: frozen obligation edited; keep it and record retirement")
+    for key in (previous or {}).get("retirements", {}):
+        if key not in retirements:
+            out.append(f"{prefix} {key}: retirement erased; retain its history")
+    for key, value in frozen.items():
+        if not _compatible(value, live.get(key)) and key not in retirements:
+            out.append(f"{prefix} {key}: interface changed; restore or declare Deprecated")
+    return out
+
+
+def userspace_problems(root: Path) -> list[str]:
+    path = root / SURFACE
+    if not path.is_file():
+        return [f"USERSPACE {SURFACE}:1 missing manifest; restore the frozen registry"]
+    manifest = json.loads(path.read_bytes())
+    command = ["git", "show", f"HEAD:{SURFACE}"]
+    old = subprocess.run(command, cwd=root, capture_output=True)
+    if old.stdout == path.read_bytes():
+        command[-1] = f"HEAD^:{SURFACE}"
+        old = subprocess.run(command, cwd=root, capture_output=True)
+    previous = json.loads(old.stdout) if old.returncode == 0 else None
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    manifest["release"] = project["version"]
+    out = surface_problems(manifest, agent_surface(root), previous=previous)
+    notes = (root / "docs/public-source/release-notes.md").read_text(encoding="utf-8")
+    for key, row in manifest["retirements"].items():
+        section = re.search(rf"### {row['status']}\n(.*?)(?=\n### |\n## |\Z)", notes, re.S)
+        if not section or key not in section[1] or row["reason"] not in section[1]:
+            out.append(
+                f"USERSPACE docs/public-source/release-notes.md:1 {key}: add {row['status']}"
+            )
+    return out
 
 
 def _route_operations(root: Path) -> set[str]:
@@ -493,25 +681,14 @@ _NAMED = re.compile(
 def _cli_options() -> dict[tuple[str, str], set[str]]:
     """Each ``(noun, verb)`` the CLI parses, ``verb`` empty for a noun alone, with its options."""
 
-    import argparse
-
-    from alphalattice.interface.local_application import cli
-
-    def children(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
-        found = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]
-        return dict(found[0].choices) if found else {}
-
-    def own(parser: argparse.ArgumentParser) -> set[str]:
-        return {option for action in parser._actions for option in action.option_strings}
-
-    top = cli._parser()
-    shared = own(top)
-    options: dict[tuple[str, str], set[str]] = {}
-    for noun, noun_parser in children(top).items():
-        options[(noun, "")] = shared | own(noun_parser)
-        for verb, verb_parser in children(noun_parser).items():
-            options[(noun, verb)] = shared | own(verb_parser)
-    return options
+    surface = _parser_surface()
+    return {
+        name.partition(" ")[::2]: {
+            key.rsplit("/", 1)[1] for key in surface if key.startswith(f"option:{name}/")
+        }
+        for entry in surface
+        if (name := entry.removeprefix("command:")) and entry.startswith("command:")
+    }
 
 
 def named_commands(root: Path) -> list[str]:
@@ -812,6 +989,7 @@ def problems(root: Path) -> list[str]:
     out.extend(text_served_as_code(root))
     out.extend(named_commands(root))
     out.extend(incomplete_offers(root))
+    out.extend(userspace_problems(root))
     table = root / "src/alphalattice/interface/local_application/operations.json"
     if not table.is_file() or table.read_text(encoding="utf-8") != table_text():
         out.append(
@@ -979,6 +1157,18 @@ def _walk(root: Path, cli: Any) -> list[str]:
 
 def main() -> int:
     root = Path(__file__).resolve().parents[3]
+    if sys.argv[1:] == ["--write-surface"]:
+        path = root / SURFACE
+        manifest = json.loads(path.read_bytes())
+        live = agent_surface(root)
+        for key, value in manifest["entries"].items():
+            if not _compatible(value, live.get(key)):
+                live[key] = value
+        manifest["entries"] = live
+        path.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+        )
+        return 0
     if sys.argv[1:] == ["--write"]:
         from alphalattice.interface.local_application.operations import TABLE, table_text
 

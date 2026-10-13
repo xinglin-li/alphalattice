@@ -2,6 +2,9 @@
  * English phrase is worded differently in another part of the product. Generated data; edit
  * translations here, never in the templates. */
 window.ALPHA_ZH = {
+  "The Local Web's built files differ from this checkout's sources. Run `python scripts/build_local_web_ui.py --product`, then serve again.": "本地网页的构建文件与当前检出的源代码不一致。请运行 `python scripts/build_local_web_ui.py --product`，然后重新启动服务。",
+  "Required of a RULING (ADOPT, REJECT, FOR_THE_PERSON) and the VERDICT (PROCEED, PROCEED_WITH_NOTES, DECLINE, FOR_THE_PERSON); other kinds take none. A wrong shape is refused with its corrected message.": "裁决消息必须给出采纳、否决或交给本人；结论消息必须给出继续、附注继续、不予认可或交给本人；其他消息种类不使用该字段。格式错误时会拒绝，并提供修正后的消息。",
+  "Decline endorsement": "不予认可",
   "The stage's write exceeds the workspace storage cap. Raise the cap (`storage set --cap-bytes <bytes>`), or preview a cleanup and confirm it on the person's yes, then resume the Task's offered request; its verified stages and retained results stay intact.": "此阶段的写入超过工作区存储上限。请提高上限（`storage set --cap-bytes <bytes>`），或预览清理并在用户同意后确认，然后按任务提供的请求继续；已核验阶段和保留结果保持完整。",
   "The Task named is a `{subject}` Task, not a study, so a study's selector does not name its book. `task show` reads it, with the requests its owner offers.": "所指定的任务是 `{subject}` 任务，而不是研究，因此研究的选择器无法指向它的账本。`task show` 会读取它，并给出其所有者提供的请求。",
   "--research-input-id names the admitted research input the book's study was built on, as `study show <id>` names it; --research-input-hash names that input's exact sealed binding, also named by `study show <id>`, never inferred from the latest data.": "--research-input-id 指定账本的研究所基于的、已准入的研究输入，与 `study show <id>` 所给的一致；--research-input-hash 指定该输入确切的已封存绑定，同样由 `study show <id>` 给出，绝不从最新数据推断。",
@@ -7197,7 +7200,12 @@ window.ALPHA_ZH = {
   "This bundle's member submits from its own session with its key and takes the Host's corrections itself; start it with its bundle, then run this again for its receipt.": "该包的成员应在自己的会话中使用自己的密钥提交，并自行处理宿主提出的修订；请用该包启动成员，然后再次运行此请求读取回执。",
   "The storage cap must be auto or positive whole bytes. Use `alphalattice storage set --cap-bytes auto`.": "存储上限必须为自动值或正整数字节数。请使用 `alphalattice storage set --cap-bytes auto`。",
   "Cannot read the workspace storage cap. Use Settings or `alphalattice storage set --cap-bytes auto`; retained records stay intact.": "无法读取工作区存储上限。请通过设置或 `alphalattice storage set --cap-bytes auto` 处理；已保留记录保持完整。",
-  "A data decision is needed before this Task can continue: unexplained moves ask for a permitted response, which the agent takes under the first use's delegation or asks the person for in one line; the last one resumes this same Task.": "此任务需要数据决策后才能继续：无法解释的变动需要允许的处理方式，由代理根据首次使用授权执行，或用一句话请人决定；最后一项决定将恢复同一个任务。",
+  "A data decision is needed before this Task can continue. The declared workspace rule decides within its bound; a case outside the rule or without its authority goes to the agent, or to the person for consent. Read Data issues, settle the named case, then resume this same Task.": "此任务需要数据决策后才能继续。工作区声明的规则处理其范围内的情况；超出规则或缺少其权限的情况交给代理，需要同意时请人决定。读取数据问题，处理指定情况，再恢复同一个任务。",
   "This preparation's implementation has changed since its plan. Read preparation controls and plan again; verified stages and current data choices remain kept.": "此准备工作的实现自计划生成后已更改。请读取准备控制并重新制定计划；已验证阶段和当前数据选项会保留。",
   "The earlier quarantine is no longer active; this listing was readmitted.": "之前的隔离已解除；此证券已重新准入。",
+  "The workspace's inputs have an unfinished transition or data decision. The current positions are kept. Follow the offered input owner's request, then plan this date again.": "工作区输入仍有未完成的变更或数据决策。当前仓位保留。按提供的输入所有者请求继续，之后重新规划该日期。",
+
+  "This request names a bundle from another workspace, or this session's existing binding differs from the requested workspace. Nothing was submitted. Host locations and availability are shown in binding_context. Run the offered commands in this caller's session, then send the unchanged request again; never remove a parent's binding.": "此请求指定的任务包来自另一个工作空间，或本会话的现有绑定与请求指定的工作空间不同。尚未提交任何内容。绑定上下文列出了宿主地址和可用状态。请在当前调用者的会话中执行提供的命令，再原样重试请求；不要移除父会话的绑定。",
+  "Selected workspace: {subject}; requested workspace: {subject}.": "选定工作空间：{subject}；请求指定的工作空间：{subject}。",
+  "The bundle's workspace locator must be a JSON object containing one absolute workspace path. Ask the lead to prepare a fresh bundle in a new directory; do not guess a workspace or edit another session's binding.": "任务包的工作空间定位信息必须是只包含一个绝对工作空间路径的 JSON 对象。请让主代理在新目录中准备新的任务包；不要猜测工作空间，也不要修改其他会话的绑定。",
 };

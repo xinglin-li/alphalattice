@@ -2,6 +2,7 @@
 
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 
@@ -176,7 +177,9 @@ def test_panel_completion_needs_a_provider_only_when_its_market_reference_is_mis
 
 
 @pytest.mark.parametrize("due,missing", ((False, False), (True, False), (False, True)))
-def test_research_plan_names_the_same_source_need_its_stage_refuses(due, missing, monkeypatch):
+def test_research_plan_names_the_same_source_need_its_stage_refuses(
+    due, missing, monkeypatch, tmp_path
+):
     from alphalattice.control.product_host.composition.decision_advancement import (
         STAGES,
         DecisionAdvancementApplication,
@@ -201,14 +204,16 @@ def test_research_plan_names_the_same_source_need_its_stage_refuses(due, missing
         score_sessions=(),
         data_plan=data_plan,
     )
-    owner = object.__new__(DecisionAdvancementApplication)
     checkpoint = SimpleNamespace(
         epoch_end=date(2026, 12, 31), recipe=SimpleNamespace(components=[])
     )
-    owner.updates = SimpleNamespace(
-        store=SimpleNamespace(load_decision_checkpoint=lambda _hash: checkpoint)
+    updates = SimpleNamespace(
+        store=SimpleNamespace(load_decision_checkpoint=lambda _hash: checkpoint),
+        calibration=SimpleNamespace(scoring=SimpleNamespace()),
+        session=SimpleNamespace(workspace=tmp_path, task_control_registry=SimpleNamespace()),
+        clock=lambda: datetime(2026, 10, 3, 12, tzinfo=UTC),
     )
-    owner.data = _owner()
+    owner = DecisionAdvancementApplication(updates, _owner())
     planned = owner._plan_body(plan, False)
     assert planned["source_access"] == (
         "EXPLICIT_NETWORK_REQUIRED" if due or missing else "LOCAL_ADMITTED_INPUTS"
@@ -222,7 +227,7 @@ def test_research_plan_names_the_same_source_need_its_stage_refuses(due, missing
         StageDisposition.BLOCKED, failure_code="workspace_data_update.source_access_not_admitted"
     )
     with pytest.raises(ValueError) as failed:
-        owner._execute(plan, STAGES[1], SimpleNamespace())
+        owner._execute(plan, STAGES[1], SimpleNamespace(task_id=UUID(int=1)))
     code = str(failed.value)
     words = explain(code)
     assert all(need in words["detail"] for need in needs.values())

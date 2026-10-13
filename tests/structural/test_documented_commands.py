@@ -2,16 +2,84 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-from devtools.architecture.operation_registry import incomplete_offers, named_commands
+from devtools.architecture.operation_registry import (
+    agent_surface,
+    incomplete_offers,
+    named_commands,
+    surface_problems,
+    userspace_problems,
+)
 from tests.portfolio_strategy_lab.cli_support import _assert_commands_parse
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
+
+
+@pytest.mark.parametrize("change", ["remove", "type", "required", "enum", "baseline"])
+def test_the_userspace_ratchet_refuses_silent_interface_changes(change: str) -> None:
+    """Frozen names and typed contracts survive edits to code or the baseline."""
+    entry = {"required": False, "schema": {"type": "string", "enum": ["A", "B"]}}
+    frozen = {"release": "0.2.0", "entries": {"answer:STATUS.state": entry}, "retirements": {}}
+    live = {
+        "answer:STATUS.state": {
+            "required": False,
+            "schema": {"type": "string", "enum": ["A", "B", "C"]},
+        }
+    }
+    assert surface_problems(frozen, live) == []
+    previous = json.loads(json.dumps(frozen))
+    if change == "remove":
+        live.clear()
+    elif change == "baseline":
+        frozen["entries"].clear()
+    elif change == "required":
+        live["answer:STATUS.state"]["required"] = True
+    else:
+        live["answer:STATUS.state"]["schema"][change] = "integer" if change == "type" else ["A"]
+    assert any(
+        "answer:STATUS.state" in p for p in surface_problems(frozen, live, previous=previous)
+    )
+
+
+def test_retirement_is_announced_before_removal_and_cannot_be_erased() -> None:
+    """A deprecated interface works until its declared removal release."""
+    row = {
+        "status": "Deprecated",
+        "reason": "Use the typed read",
+        "replacement": "operation:STATUS",
+        "announced": "0.2.0",
+        "earliest_removal": "0.3.0",
+    }
+    frozen = {
+        "release": "0.2.0",
+        "entries": {"command:old": {}},
+        "retirements": {"command:old": row},
+    }
+    live = {"command:old": {}, "operation:STATUS": {}}
+    assert surface_problems(frozen, live) == []
+    del live["command:old"]
+    assert surface_problems(frozen, live)
+    frozen["release"] = "0.3.0"
+    assert surface_problems(frozen, live) == []
+    previous = json.loads(json.dumps(frozen))
+    frozen["retirements"].clear()
+    assert any("retirement erased" in p for p in surface_problems(frozen, live, previous=previous))
+
+
+def test_the_frozen_surface_and_release_retirements_match_the_owners() -> None:
+    """The live typed surface obeys the shipped manifest and release list."""
+    root = SCRIPT.parents[1]
+    assert userspace_problems(root) == []
+    entries = agent_surface(root)
+    assert "command:committee show" in entries and "option:committee show/--update" in entries
+    assert "law:product/PR1" in entries and "law:workbench/PR1" in entries
+    assert "message:RULES/STANCE" in entries and "exchange:CORRECTION" in entries
 
 
 def test_a_command_a_text_names_is_one_the_cli_has(tmp_path: Path) -> None:

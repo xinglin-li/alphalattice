@@ -1,4 +1,8 @@
 {
+ "local_web.assets_stale": {
+  "detail": "The Local Web's built files differ from this checkout's sources. Run `python scripts/build_local_web_ui.py --product`, then serve again.",
+  "next_action": "BUILD_LOCAL_WEB_ASSETS_AND_SERVE_AGAIN"
+ },
  "workspace_preparation.human_confirmation_required": {
   "detail": "Preparation needs the person's confirmation or a valid delegation. Read preparation controls and data issues, then ask the person for that confirmation or grant.",
   "next_action": "READ_PREPARATION_CONTROLS_AND_ASK_FOR_CONFIRMATION_OR_A_GRANT"
@@ -288,7 +292,7 @@
   "next_action": "READ_WORKSPACE_SHOW_OR_RESTORE_A_BACKUP"
  },
  "data.truth_review_required": {
-  "detail": "A data decision is needed before this Task can continue: unexplained moves ask for a permitted response, which the agent takes under the first use's delegation or asks the person for in one line; the last one resumes this same Task.",
+  "detail": "A data decision is needed before this Task can continue. The declared workspace rule decides within its bound; a case outside the rule or without its authority goes to the agent, or to the person for consent. Read Data issues, settle the named case, then resume this same Task.",
   "next_action": "DATA_ISSUES"
  },
  "evidence_review.budget_exceeds_consent": {
@@ -1602,5 +1606,17 @@
  "workspace_preparation.binding_changed": {
   "detail": "This preparation's implementation has changed since its plan. Read preparation controls and plan again; verified stages and current data choices remain kept.",
   "next_action": "WORKSPACE_PREPARE_PLAN"
+ },
+ "local_client.workspace_context_mismatch": {
+  "detail": "This request names a bundle from another workspace, or this session's existing binding differs from the requested workspace. Nothing was submitted. Host locations and availability are shown in binding_context. Run the offered commands in this caller's session, then send the unchanged request again; never remove a parent's binding.",
+  "next_action": "REBIND_THIS_SESSION_THEN_RETRY_THE_SAME_REQUEST"
+ },
+ "local_client.bundle_workspace_invalid": {
+  "detail": "The bundle's workspace locator must be a JSON object containing one absolute workspace path. Ask the lead to prepare a fresh bundle in a new directory; do not guess a workspace or edit another session's binding.",
+  "next_action": "ASK_THE_LEAD_TO_PREPARE_A_FRESH_BUNDLE"
+ },
+ "research_update.workspace_transition_required": {
+  "detail": "The workspace's inputs have an unfinished transition or data decision. The current positions are kept. Follow the offered input owner's request, then plan this date again.",
+  "next_action": "SETTLE_INPUTS_THEN_PLAN_THE_DATE"
  }
 }

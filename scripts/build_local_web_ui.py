@@ -226,7 +226,9 @@ def dictionary(source: str) -> str:
     return body + "\nwindow.ALPHA_ZH_READY = true;\n"
 
 
-def render_outputs(*, product: bool = True) -> dict[str, bytes]:
+def render_outputs(
+    *, product: bool = True, fonts: dict[str, bytes] | None = None
+) -> dict[str, bytes]:
     """Render every built asset without writing it, from the named sources.
 
     Source CSS order and JavaScript semantics are preserved; trusted code is
@@ -240,10 +242,11 @@ def render_outputs(*, product: bool = True) -> dict[str, bytes]:
 
     # the fonts: their bytes are the product's, so their paths carry their hash
     for rel in FONT_FILES:
-        data = (ASSETS / rel).read_bytes()
+        data = fonts[rel] if fonts is not None else (ASSETS / rel).read_bytes()
         manifest[rel] = hashed(rel, data)
 
-    css = parameters_css() + "\n" + concat(CSS_FILES, "css")
+    source_parameters = parameters()
+    css = parameters_css(source_parameters) + "\n" + concat(CSS_FILES, "css")
     for rel in FONT_FILES:
         css = css.replace(f"url(/{rel})", f"url({manifest[rel]})")
     outputs["workbench.css"] = css.encode("utf-8")
@@ -252,7 +255,7 @@ def render_outputs(*, product: bool = True) -> dict[str, bytes]:
     outputs["workbench.zh.js"] = zh.encode("utf-8")
 
     engines = concat(ENGINE_FILES, "engine")
-    app = parameters_js() + labels_js() + concat(APP_FILES, "app")
+    app = parameters_js(source_parameters) + labels_js() + concat(APP_FILES, "app")
     scripts = (
         'window.ALPHA_PRODUCT=true; window.ALPHA_ENTRY={page:"history"};',
         engines,

@@ -14,7 +14,7 @@ const LiveTeam = (() => {
   const onTeam = () => PAGES_SET.has(app.page);
   /* One owner feed merges native records and arrivals; epoch/session keys prevent repeat reads. */
   const EXTERNAL_LIMIT = 200, EXTERNAL_KEEP = 400;
-  const X = {items: new Map(), epoch: null, fetching: null, error: '', read: false, more: false, oldest: null, keep: EXTERNAL_KEEP, selectedKey: '', selectedMore: false, selectedOldest: null};
+  const X = {items: new Map(), product: [], productSession: '', epoch: null, fetching: null, error: '', read: false, more: false, oldest: null, keep: EXTERNAL_KEEP, selectedKey: '', selectedMore: false, selectedOldest: null};
   function ensureExternal() {
     if (X.fetching || Data.workspaceStatus !== 'ready') return;
     const epoch = LiveActivity.state().epoch, session = onTeam() && app.page !== 'team-sessions' ? selection().session : '', key = [epoch, session].join('|');
@@ -22,8 +22,9 @@ const LiveTeam = (() => {
     if (session) { X.selectedMore = false; X.selectedOldest = null; }
     const query = new URLSearchParams({limit: EXTERNAL_LIMIT, ...(session ? {native_session_id: session} : {})});
     X.fetching = Data.readShared('/api/activity/external?' + query).then((body) => {
-      if (X.epoch && body.epoch && X.epoch !== body.epoch) { X.items.clear(); X.read = false; X.selectedKey = ''; X.keep = EXTERNAL_KEEP; }
+      if (X.epoch && body.epoch && X.epoch !== body.epoch) { X.items.clear(); X.product = []; X.productSession = ''; X.read = false; X.selectedKey = ''; X.keep = EXTERNAL_KEEP; }
       for (const item of [...(body.items || []), ...(body.snapshots || [])]) X.items.set(item.observation_id, item);
+      if (session) { X.product = body.product_items || []; X.productSession = session; }
       X.epoch = body.epoch || epoch; X.keep = Math.max(X.keep, X.items.size); X.error = '';
       if (session) { X.selectedMore = Boolean(body.more); X.selectedOldest = body.oldest ?? null; }
       else { X.more = Boolean(body.more); X.oldest = body.oldest ?? null; }
@@ -41,24 +42,12 @@ const LiveTeam = (() => {
     if (X.fetching || !more || before == null) return;
     X.fetching = Data.readShared('/api/activity/external?' + new URLSearchParams({limit: EXTERNAL_LIMIT, before, ...(session ? {native_session_id: session} : {})})).then((body) => {
       for (const item of [...(body.items || []), ...(body.snapshots || [])]) X.items.set(item.observation_id, item);
+      if (session && X.productSession === session) X.product = Data.uniqueRows([...X.product, ...(body.product_items || [])], i => i.observation_id);
       X.keep += (body.items || []).length; X.error = body.snapshots_more ? t('Older records are not read yet') : '';
       if (session) { X.selectedMore = Boolean(body.more); X.selectedOldest = body.oldest ?? before; }
       else { X.more = Boolean(body.more); X.oldest = body.oldest ?? before; }
     }, (e) => { X.error = String(e?.message || e); }).finally(() => { X.fetching = null; S.paintKey = ''; paint(); });
     paint();
-  }
-  function externalItems() {
-    ensureExternal();
-    const merged = new Map(X.items);
-    for (const g of LiveActivity.retained()) for (const item of g.items) if (item.schema_kind === 'ExternalActivityObserved') merged.set(item.observation_id, item);
-    const usage = new Map(), usageKey = item => { const sub = item.payload?.subject || {}; return [sub.native_session_id, sub.native_agent_id, sub.model].join('|'); };
-    for (const item of merged.values()) if (item.payload?.event_kind === 'NATIVE_AGENT_USAGE') { const key = usageKey(item), held = usage.get(key); if (!held || held.ordinal < item.ordinal) usage.set(key, item); }
-    const items = [...merged.values()].filter(item => {
-      if (item.payload?.event_kind !== 'NATIVE_AGENT_USAGE' || usage.get(usageKey(item)) === item) return true;
-      X.items.delete(item.observation_id); return false;
-    }).sort((a, b) => a.ordinal - b.ordinal);
-    if (items.length > X.keep) { for (const item of items.splice(0, items.length - X.keep)) X.items.delete(item.observation_id); }
-    return items;
   }
   const S = {resolved: new Map(), busy: new Set(), visible: 50, incoming: new Set(), flash: new Set(), factNew: new Set(), factVerified: new Set(), factFlash: new Set(), paintKey: '', retained: null, question: new Map(), unfolded: new Set(), replies: new Set(), words: new Set(), factKind: '', answerDetail: null};
   /* Session labels keep a short head plus the differing suffix across retained peers; short ids stay whole. */
@@ -104,7 +93,8 @@ const LiveTeam = (() => {
   const sessionState = id => ({id, participants: new Map(), entries: new Map(), byEvent: new Map(), references: new Set(), producers: new Set(), facts: [], unknownKinds: [], goals: new Set(), last: 0});
   function scene(fullRecord = false, includeSessionMembers = false) {
     const sessions = new Map(), unknown = [];
-    const external = externalItems(), scopes = new Map(), contributors = new Map();
+    ensureExternal();
+    const external = TeamMembers.externalItems(X), scopes = new Map(), contributors = new Map();
     for (const item of external) {
       const sub = item.payload?.subject || {}, id = sub.native_session_id;
       if (sub.message_kind === 'session_bound' && sub.input_channel === 'PRODUCT_OPERATION' && sub.native_agent_id === id && UUID.test(sub.goal_id || '')) scopes.set(id, sub.goal_id);
@@ -167,10 +157,12 @@ const LiveTeam = (() => {
     // Requests name their session; this proves no native authorship. Other facts join exact
     // references or one owner's Task return, never an External payload in a mixed group.
     for (const s of sessions.values()) {
-      const product = [];
-      for (const g of LiveActivity.retained()) {
+      const product = [], held = new Set(), selected = (X.productSession === s.id ? X.product : []).map(item => ({key: item.task_id || item.payload?.operation_ref || item.observation_id, task_id: item.task_id || null, items: [item]}));
+      for (const g of [...LiveActivity.retained(), ...selected]) {
         if (g.items.every((v) => v.schema_kind === 'ExternalActivityObserved')) continue;
         for (const item of g.items) if (item.schema_kind !== 'ExternalActivityObserved') {
+          if (held.has(item.observation_id)) continue;
+          held.add(item.observation_id);
           const p = item.payload || {}, sub = p.subject || {};
           const attributed = item.schema_kind === 'ProductOperationObserved'
             && item.source_kind === 'PRODUCT_OPERATION' && item.authority === 'OPERATIONAL_ASSERTION'
@@ -957,7 +949,9 @@ const LiveTeam = (() => {
       : !chosen ? noteLine(t('Selected session not retained'), html`<span class="mono">${sessionLabel(sel.session)}</span> ${t('is not in the retained activity window (reset, gap or retention).')}`, 'neutral', btn(t('Choose a session'), 'team-select', '', 'button compact'))
       : view === 'team-committee' ? committeeView(chosen, sel.actor) : view === 'team-evidence' ? evidenceView(chosen) : view === 'team-participants' ? participantsView(chosen) : view === 'team-outputs' ? outputsView(chosen) : sessionView(chosen, sel.actor);
     const state = LiveActivity.state();
-    const usage = LiveActivity.nativeUsageState?.(), usageFailure = usage?.reason === 'native_bridge.usage_catching_up' ? noteLine(t('Reading usage'), html`${t('Usage read through {read} of {total} bytes; the next read continues.', {read: usage.read_through, total: usage.total_bytes})}${usage.detail ? infoMark(t(usage.detail, {read: usage.read_through, total: usage.total_bytes})) : ''}`, 'neutral') : usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : usage?.rescan ? noteLine(t('Usage rescanned'), t('The session file changed; its usage was read again.'), 'neutral') : '';
+    const usage = LiveActivity.nativeUsageState?.(), catching = usage?.status === 'OBSERVING' && usage?.reason === 'native_bridge.usage_catching_up';
+    const measured = Number.isSafeInteger(usage?.read_through) && Number.isSafeInteger(usage?.total_bytes);
+    const usageFailure = catching ? noteLine(t('Reading usage'), html`<span data-usage-notice="CATCHING_UP">${measured ? t('Usage read through {read} of {total} bytes; the next read continues.', {read: usage.read_through, total: usage.total_bytes}) : ''}</span>${usage.detail && measured ? infoMark(t(usage.detail, {read: usage.read_through, total: usage.total_bytes})) : ''}`, 'neutral') : usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : usage?.rescan ? noteLine(t('Usage rescanned'), t('The session file changed; its usage was read again.'), 'neutral') : '';
     // The feed's own condition, said once at the top: current, not current, or unreachable.
     const feed = state.error ? ['unreachable', t('Feed unreachable')] : state.stale || ['RESET', 'UNAVAILABLE'].includes(state.disposition) ? ['stale', t('Feed not current')] : ['live', t('Live feed')];
     // All session tabs share its state and facts; the floor's standing is a fact.
@@ -1190,7 +1184,7 @@ const LiveTeam = (() => {
   function counts() {
     const s = scene().sessions.find((v) => v.id === selection().session);
     // U54's 产出 carries no count: known only once both its reads answer, it would appear on one tab and move the others
-    return s ? {exchanges: entriesOf(s).filter((e) => !e.replayOf && e.channel !== 'PRODUCT_COMMITTEE').length, participants: participantCount(s), observations: s.facts.length} : {};
+    return s ? {exchanges: entriesOf(s).filter((e) => !e.replayOf && e.channel !== 'PRODUCT_COMMITTEE').length, participants: participantCount(s), observations: s.facts.length, more: X.selectedMore} : {};
   }
   return {pages: PAGES_SET, hasCommittee, readCommittee, chooseCommitteePoint, committeeRead: () => { const sel = selection(), s = scene().sessions.find(s => s.id === sel.session) || (sel.session && sel.committee ? sessionState(sel.session) : null); if (s) void readCommittee(s, true); }, usageCount, usageTokenWords, usageMetadata, sessionLabel, roleName, recipientName, section, scene, select, counts, openMember, turnParticipants, turnOutputs, outputsOlder, outputsRead, leaveOutputs, setFactKind, readOlder, toggleWords, showActor, showEvent, revealExchange, more, toggleReplies, toggleFold, markSeen, arrivals, refresh, open, resolve, verify, sessionOf, qualify, productReferences, summary, recordOf, sessionsNaming, questionSource, chooseQuestion, routeContext, runs, retained: () => S.retained, resolved: () => S.resolved};
 })();

@@ -720,7 +720,33 @@ def test_a_next_command_keeps_the_context_its_answer_came_in(
     workspace = tmp_path / "workspace"
     prefix = entry(workspace, ("--lang", "zh", "--goal", "goal-g"))
     body = {"status": "AGENT_BUNDLE_READY", "files": [{"name": "README.md", "text": "Read.\n"}]}
-    bundle = client._write_bundle(tmp_path / "bundle", body, prefix=prefix)
+    folder = tmp_path / "bundle"
+    bundle = client._write_bundle(folder, body, prefix=prefix, workspace=workspace)
+    assert cli.bundle_workspace(folder) == workspace.resolve()
+    assert cli._workspace(workspace, folder)[::2] == (workspace, "OPTION")
+    assert cli._workspace(None, folder)[::2] == (workspace.resolve(), "BUNDLE")
+    readme = folder / "workspace.json"
+    kept = readme.read_text("utf-8")
+    assert (folder / "README.md").read_text("utf-8") == body["files"][0]["text"]
+    for malformed in (
+        '{"workspace":"relative"}',
+        '{"workspace":3}',
+        '{"workspace":"',
+        json.dumps({"workspace": str(workspace) + chr(0)}),
+    ):
+        readme.write_text(malformed, "utf-8")
+        with pytest.raises(
+            client.LocalResearchClientError, match=r"^local_client\.bundle_workspace_invalid$"
+        ):
+            cli.bundle_workspace(folder)
+    readme.unlink()
+    assert cli.bundle_workspace(folder) is None
+    (folder / "README.md").write_text(
+        "<!-- AlphaLattice workspace: " + kept.strip() + " -->\nRead.\n", "utf-8"
+    )
+    assert cli.bundle_workspace(folder) == workspace.resolve()
+    assert cli._workspace(workspace, folder)[::2] == (workspace, "OPTION")
+    readme.write_text(kept, "utf-8")
     assert bundle["submit_arguments"][:6] == [*prefix[1:]]
     assert bundle["submit_arguments"][6:8] == ["bundle", "submit"]
     if "submit_command" in bundle:
@@ -802,6 +828,35 @@ def test_an_answer_carries_the_titles_of_the_installed_ids_it_names() -> None:
     assert rebound is not None and chinese["titles"]["RETURN_G6_MU_ONLY"] == rebound.title_zh
     plain = envelope(operation="STATUS", outcome="OK", body={"status": "OK"}, elapsed_seconds=0)
     assert "titles" not in plain
+
+
+def test_a_deprecated_command_still_answers_and_names_its_replacement(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """A successful command keeps its answer while disclosing its announced retirement."""
+    from alphalattice.interface.local_application import cli_contract
+
+    manifest = {
+        "surface_version": 1,
+        "retirements": {
+            "command:schema show": {
+                "status": "Deprecated",
+                "replacement": "operation:OPERATION_LIST",
+                "announced": "0.2.0",
+                "earliest_removal": "0.3.0",
+                "reason": "Use the filtered operation read",
+            }
+        },
+    }
+    monkeypatch.setattr(cli_contract, "agent_surface_manifest", lambda: manifest)
+    code, answer, _ = _inprocess_cli(tmp_path, "schema", "show", "STATUS", capsys=capsys)
+    assert code == 0 and answer["outcome"] == "OK" and answer["operation"] == "SCHEMA"
+    assert answer["surface_version"] == 1
+    assert answer["deprecations"] == [
+        {"entry": "command:schema show", **manifest["retirements"]["command:schema show"]}
+    ]
+    assert answer["data"]["operation"] == "STATUS"
+    assert cli_contract.SURFACE_USE.get() == ()
 
 
 def test_every_field_schema_prints_is_described() -> None:

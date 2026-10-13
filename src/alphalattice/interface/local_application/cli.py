@@ -49,8 +49,11 @@ from alphalattice.interface.local_application import client
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
     BOUND_WORKSPACE,
+    BUNDLE_WORKSPACE,
     EXIT_CODES,
+    MAXIMUM_REQUEST_BODY_BYTES,
     SESSION_LAUNCHES,
+    SURFACE_USE,
     WORKSPACE_FROM,
     Outcome,
     agent_session,
@@ -58,10 +61,13 @@ from alphalattice.interface.local_application.cli_contract import (
     command_table,
     count_launch,
     declaration_operations,
+    entry,
     envelope,
     flag,
+    join,
     offered_requests,
     operation_schema,
+    shell,
     worded,
 )
 from alphalattice.interface.local_application.failure_codes import (
@@ -1382,19 +1388,27 @@ def main(
     launches = SESSION_LAUNCHES.set(count_launch())
     # Read before the line parses, so the parser's own refusal reads in it too (V582).
     language = ANSWER_LANGUAGE.set(_line_language(arguments))
+    surface_token = SURFACE_USE.set(())
     try:
         parser = _parser(_named(arguments))
         args = parser.parse_args(arguments)
+        form = " ".join(filter(None, (args.noun, getattr(args, "verb", ""))))
+        tags = tuple(f"option:{form}/{a.split('=')[0]}" for a in arguments if a.startswith("-"))
+        SURFACE_USE.set((f"command:{form}", *tags))
         if getattr(args, "client_command", None) == ("answer", "show"):
             return _saved_answer(args, started)
         if getattr(args, "client_command", None) in WORKSPACE_FREE:
             return _unbind(args, started)
         # Read anywhere on the line (V412); left out, it is the session's binding's (V568).
         try:
-            args.workspace, bound, chosen_by = _workspace(getattr(args, "workspace", None))
+            directory = _routing_bundle(parser, args)
+            args.workspace, bound, chosen_by = _workspace(
+                getattr(args, "workspace", None), directory, args.request_timeout
+            )
         except client.LocalResearchClientError as error:
-            return _refused(str(error), started)
+            return _refused(error, started)
         bound_token = BOUND_WORKSPACE.set(bound)
+        args.bound_workspace = bound
         chosen_token = WORKSPACE_FROM.set(chosen_by)
         try:
             return _command(parser, args, started, serve=serve, restore=restore, sandbox=sandbox)
@@ -1402,15 +1416,90 @@ def main(
             WORKSPACE_FROM.reset(chosen_token)
             BOUND_WORKSPACE.reset(bound_token)
     finally:
+        SURFACE_USE.reset(surface_token)
         ANSWER_LANGUAGE.reset(language)
         SESSION_LAUNCHES.reset(launches)
 
 
-def _workspace(named: Path | None) -> tuple[Path, Path | None, Literal["OPTION", "BINDING"]]:
+def bundle_workspace(directory: Path | None) -> Path | None:
+    """Read a bundle's location, never its authority; legacy bundles keep their route."""
+    if directory is None:
+        return None
+    locator = directory / BUNDLE_WORKSPACE
+    try:
+        if locator.is_file():
+            with locator.open("rb") as stream:
+                raw = stream.read(MAXIMUM_REQUEST_BODY_BYTES + 1)
+            if len(raw) > MAXIMUM_REQUEST_BODY_BYTES:
+                raise ValueError
+            record = json.loads(raw)
+        elif (directory / "README.md").is_file():
+            # Read already-written packets; new locators stay out of the human packet.
+            with (directory / "README.md").open("rb") as stream:
+                line = stream.readline(MAXIMUM_REQUEST_BODY_BYTES + 1)
+            marker = b"<!-- AlphaLattice workspace: "
+            if not line.startswith(marker):
+                return None
+            if len(line) > MAXIMUM_REQUEST_BODY_BYTES or not line.rstrip().endswith(b" -->"):
+                raise ValueError
+            record = json.loads(line[len(marker) :].rstrip()[:-4])
+        else:
+            return None
+        if not isinstance(record, dict) or set(record) != {"workspace"}:
+            raise ValueError
+        value = record["workspace"]
+        if not isinstance(value, str) or not Path(value).is_absolute() or "\x00" in value:
+            raise ValueError
+        value.encode("utf-8")
+        return Path(value)
+    except (OSError, UnicodeError, ValueError) as error:
+        raise client.LocalResearchClientError("local_client.bundle_workspace_invalid") from error
+
+
+def _routing_bundle(parser: _Parser, args: argparse.Namespace) -> Path | None:
+    """Read a named request once before an inherited binding can misroute its bundle."""
+    args.routed_document = None
+    try:
+        if args.noun == "request":
+            fields = vars(args) | {
+                "primary_file": args.file if args.from_response is not None else None,
+                "file": args.choices if args.from_response is not None else args.file,
+            }
+            args.routed_document = client._next_request(argparse.Namespace(**fields))
+        elif any("bundle_directory" in _fields(op)[1] for op in getattr(args, "operations", ())):
+            args.routed_document = _line_document(parser, args)()
+    except client.LocalResearchClientError as error:
+        args.routed_document = error  # Keep no-Host precedence without rereading the input.
+    document = args.routed_document if isinstance(args.routed_document, dict) else {}
+    value = (
+        document.get("bundle_directory")
+        or getattr(args, "bundle_directory", None)
+        or getattr(args, "bundle_root", None)
+    )
+    if isinstance(value, (str, Path)):
+        return Path(value)
+    operation = document.get("operation")
+    source = getattr(args, "primary_file", None) or getattr(args, "file", None)
+    if (
+        (operation == "COMMITTEE_SUBMIT" or "COMMITTEE_SUBMIT" in getattr(args, "operations", ()))
+        and source
+        and str(source) != "-"
+    ):
+        return Path(source).parent
+    return None
+
+
+def _workspace(
+    named: Path | None,
+    directory: Path | None = None,
+    timeout: float = client.DEFAULT_HTTP_WAIT_SECONDS,
+) -> tuple[Path, Path | None, Literal["OPTION", "BINDING", "BUNDLE"]]:
     """The workspace a command works in, the one its agent session is bound to, and which chose
     it (V568).
 
-    Named on the line, it is used as named. Left out, it is the session's binding's: the nearest
+    Named on the line, it overrides the binding when it matches any named bundle. A bundle
+    locator is location only; a mismatched target offers caller-owned binding recovery.
+    Otherwise the default is the nearest
     binding up from the working directory, when it names this session or this session is one of
     its own specialists (`NativeResearchBinding.serves`). Any other session, or none, is refused
     in words, never given another workspace.
@@ -1419,7 +1508,7 @@ def _workspace(named: Path | None) -> tuple[Path, Path | None, Literal["OPTION",
         named: The workspace the line names, if it names one.
 
     Returns:
-        The workspace, the one the session is bound to (or None), and ``OPTION`` or ``BINDING``.
+        The workspace, its binding (or None), and ``OPTION``, ``BINDING`` or ``BUNDLE``.
 
     Raises:
         LocalResearchClientError: ``local_client.workspace_unbound`` or
@@ -1439,13 +1528,68 @@ def _workspace(named: Path | None) -> tuple[Path, Path | None, Literal["OPTION",
             found = NativeResearchBinding.find(Path.cwd(), session=session)
         if found is not None and found[1].serves(session):
             bound = found[1].workspace.resolve()
+    intended = bundle_workspace(directory)
+    selected = named if named is not None else bound
+    if intended is not None and selected is not None and intended.resolve() != selected.resolve():
+        raise _binding_mismatch(
+            selected,
+            intended,
+            bound=bound,
+            own=found is not None and session is not None and found[1].session_id == session[1],
+            timeout=timeout,
+        )
     if named is not None:
         return named, bound, "OPTION"
+    if intended is not None:
+        return intended, bound, "BUNDLE"
     if bound is not None:
         return bound, bound, "BINDING"
     if found is not None:
         raise client.LocalResearchClientError("local_client.workspace_bound_to_another_session")
     raise client.LocalResearchClientError("local_client.workspace_unbound")
+
+
+def _binding_mismatch(
+    selected: Path,
+    intended: Path,
+    *,
+    bound: Path | None,
+    own: bool,
+    timeout: float,
+    serving: client.LocalResearchClient | None = None,
+) -> client.LocalResearchClientError:
+    """Diagnose both Hosts; recovery changes only this caller's binding."""
+    hosts = {}
+    for name, workspace in (("selected", selected), ("requested", intended)):
+        try:
+            transport = (
+                serving
+                if name == "requested" and serving is not None
+                else client.LocalResearchClient(workspace, timeout=timeout)
+            )
+            if transport is not serving:
+                transport.request(
+                    {"operation": "OPERATION_LIST", "schema_operation": "WORKSPACE_SHOW"}
+                )
+            hosts[name] = {"status": "SERVING", "url": transport.connection.url}
+        except client.LocalResearchClientError as unavailable:
+            hosts[name] = {
+                "status": "UNAVAILABLE",
+                "failure_code": public_failure(unavailable, "local_client.connection_unreadable"),
+            }
+    error = client.LocalResearchClientError("local_client.workspace_context_mismatch")
+    error.binding_context = {
+        "bound_workspace": str(bound) if bound else None,
+        "selected_workspace": str(selected.resolve()),
+        "requested_workspace": str(intended.resolve()),
+        "hosts": hosts,
+    }
+    prefix = entry(intended)
+    commands = [(*prefix, "session", "bind")]
+    if own:
+        commands.insert(0, (*prefix, "session", "unbind"))
+    error.next_commands = [join(list(parts), shell()) for parts in commands]
+    return error
 
 
 def _saved_answer(args: argparse.Namespace, started: float) -> int:
@@ -1509,9 +1653,19 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
     return exit_code
 
 
-def _refused(code: str, started: float) -> int:
+def _refused(error: str | client.LocalResearchClientError, started: float) -> int:
     """A refusal the client raised before sending anything, in the one envelope (V568)."""
+    code = str(error)
     refusal = client_refusal(code)
+    context = getattr(error, "binding_context", None)
+    detail = str(worded(refusal.detail))
+    if context:
+        detail += " " + str(
+            worded("Selected workspace: {subject}; requested workspace: {subject}.")
+        )
+        detail = detail.replace("{subject}", context["selected_workspace"], 1).replace(
+            "{subject}", context["requested_workspace"], 1
+        )
     print(
         json.dumps(
             envelope(
@@ -1521,8 +1675,13 @@ def _refused(code: str, started: float) -> int:
                 elapsed_seconds=time.perf_counter() - started,
                 status="REFUSED",
                 failure_code=code,
-                detail=refusal.detail,
+                detail=detail,
                 next_action=refusal.next_action,
+                **(
+                    {"binding_context": context, "next_commands": error.next_commands}
+                    if context and isinstance(error, client.LocalResearchClientError)
+                    else {}
+                ),
             ),
             sort_keys=True,
         )
@@ -1631,6 +1790,23 @@ def _bind(args: argparse.Namespace, started: float) -> int:
     outcome: Outcome = "REFUSED" if bound.get("status") == "REFUSED" else "OK"
     if outcome == "REFUSED":
         code = str(bound.get("failure_code", "native_bridge.binding_invalid"))
+        previous = args.bound_workspace
+        if (
+            code == "native_bridge.existing_configuration_differs"
+            and previous is not None
+            and previous != Path(args.workspace).resolve()
+        ):
+            return _refused(
+                _binding_mismatch(
+                    previous,
+                    Path(args.workspace),
+                    bound=previous,
+                    own=True,
+                    timeout=args.request_timeout,
+                    serving=transport,
+                ),
+                started,
+            )
         bound = {
             **bound,
             "failure_code": "local_client.session_bind_refused:" + code,
@@ -1740,11 +1916,18 @@ def _command(
     def after(document: dict[str, Any], answer: dict[str, Any]) -> None:
         _read_lead(document, workspace=args.workspace, goal=args.goal, after=True, answer=answer)
 
+    routed = args.routed_document
+    if isinstance(routed, client.LocalResearchClientError):
+
+        def delayed() -> dict[str, Any]:
+            raise args.routed_document
+
+        routed = delayed
     if whole:
-        return client.run(request, before_send=before, after_send=after)
+        return client.run(request, document_override=routed, before_send=before, after_send=after)
     return client.run(
         request,
-        document_override=_line_document(parser, args),
+        document_override=routed or _line_document(parser, args),
         before_send=before,
         after_send=after,
     )

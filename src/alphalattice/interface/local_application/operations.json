@@ -1691,7 +1691,8 @@
    "allowed": [
     "agent_session",
     "history_cursor",
-    "history_limit"
+    "history_limit",
+    "task_id"
    ],
    "required": []
   },

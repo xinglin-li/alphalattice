@@ -393,12 +393,13 @@ class WorkspaceDataIssueApplication:
         *,
         input_available: bool = True,
         choices=None,
+        case_tokens: set[str] | None = None,
     ) -> dict[str, Any] | None:
         """The data issues the Host's rule decided, in one line.
 
         Each listing with its choice and caveat, the population left after its quarantines, and
-        the rule's identity; None when it decided none. The rule acts only in a first use's own
-        preparation, so its choices are the Host-signed ones among the open and resolved cases.
+        the rule's identity; None when it decided none. Host-signed choices include first-use
+        preparation and dated books' workspace policy, among open and resolved cases.
         """
         if not input_available:
             return None
@@ -419,6 +420,8 @@ class WorkspaceDataIssueApplication:
         decided, rules, aside = [], set(), set()
         for document, saved in choices:
             case = FeatureInputAgentCase.read_document(document)
+            if case_tokens is not None and case.case_token not in case_tokens:
+                continue
             choice = self._ruled_choice(saved)
             if choice is None:
                 continue

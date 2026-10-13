@@ -523,7 +523,11 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
 
     def files_of(bundle: dict[str, Any]) -> dict[str, str]:
         directory = Path(bundle["bundle_directory"])
-        return {path.name: path.read_text(encoding="utf-8") for path in directory.iterdir()}
+        files = {path.name: path.read_text(encoding="utf-8") for path in directory.iterdir()}
+        assert json.loads(files.pop("workspace.json")) == {
+            "workspace": str(service.session.workspace.resolve())
+        }
+        return files
 
     def unrouted(bundle: dict[str, Any]) -> dict[str, str]:
         """Its files as rendered, the route its README ends with set apart."""

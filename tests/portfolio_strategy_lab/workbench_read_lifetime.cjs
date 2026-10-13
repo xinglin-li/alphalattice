@@ -222,11 +222,14 @@ async function homeOutcome() {
   const selector = {update_task_id: task, update_publication_hash: 'publication', position_basis: 'FINAL'};
   const selected = {task_id: task, positions_session: day, status: 'SUCCEEDED', review_selector: selector};
   const automation = {runs_forward: [{latest_update: selected}]};
+  const goal = {goal_id: 'publication-question', question: 'Study H1.', target_date: day};
   const f = fixture({'/api/research-update': () => ({review_selector: selector, schedule: {entry_session: day}}),
+    '/api/goals': () => ({current_goal: goal}),
     '/api/session': () => ({session_token: 'fixture-token', research_context: {goals: {goals: [{state: 'OPEN', target_date: '2024-08-13'}]}}})}, '#page=overview'); await f.D.connect();
   const answer = f.hold(url => url.startsWith('/api/research-update?'));
   f.D.observeHome(automation); f.D.observeHome(automation); await entered(answer);
   assert.equal(prefixCount(f, '/api/research-update?'), 1);
+  assert.equal(prefixCount(f, '/api/goals?'), 1);
   f.c.go('history'); answer.release({review_selector: selector, schedule: {entry_session: day}}); await tick();
   assert.equal(f.c.app.page, 'history'); assert.equal(f.D.homeOutcome().value, null);
   f.c.go('overview');
@@ -237,6 +240,8 @@ async function homeOutcome() {
   assert.equal(f.D.homeOutcome().value, null); assert.ok(f.D.homeOutcome().error);
   f.c.go('history'); f.c.go('overview'); f.D.observeHome(automation); await tick();
   assert.equal(f.D.homeOutcome().value.schedule.entry_session, day);
+  assert.equal(f.D.currentGoal().goal_id, goal.goal_id);
+  assert.equal(f.D.currentGoal().question, goal.question);
   f.c.location.hash += '&task=' + task; f.D.observeHome(automation); await tick();
   assert.equal(f.D.homeOutcome().value.schedule.entry_session, day);
 }

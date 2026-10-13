@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from dataclasses import replace
+from datetime import UTC, datetime
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -14,7 +16,10 @@ from alphalattice.control.product_host.composition.committee import (
     ALIAS as OWNER_ALIAS,
 )
 from alphalattice.control.product_host.composition.committee import (
+    Floor,
+    commentary,
     misshapen,
+    render,
 )
 from alphalattice.control.product_host.composition.committee import (
     standing_messages as owner_standing,
@@ -380,7 +385,7 @@ def fidelity_floor(role="CRO", point="T1", following=None):
     ]
     rows = [{"attribution": m["id"], "text": m["text"]} for m in messages]
     selected = {"review_publication_hash": "a" * 64}
-    closed = {"messages": messages, "delivery": selected}
+    closed = {"messages": messages, "delivery": selected, "goal_id": "owned-question"}
     report = {
         "commentary": rows,
         "selection": dict(selected),
@@ -393,6 +398,10 @@ def fidelity_floor(role="CRO", point="T1", following=None):
         "raw_messages": deepcopy(messages),
         "cro_view": ["Review now: REVIEWED."],
         "review_standing": {"status": "REVIEWED", **selected},
+        "home": {
+            "goal": {"goal_id": closed["goal_id"], "declaration": {"objective": "Study H1."}},
+            "heading": "Study H1.",
+        },
     }
     return closed, report, evidence
 
@@ -487,6 +496,8 @@ def test_standing_message_mirror_agrees_with_the_floor_owner(change):
         "alias_attribution",
         "stale_status",
         "closed_hash",
+        "home_question",
+        "home_goal",
     ],
 )
 def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
@@ -499,17 +510,35 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
     answer = floor_message("M6", "PM", "PERSON_ANSWER", reply_to="M5", text=words)
     closed["messages"][2:2] = [challenge, ruling, answer]
     evidence["raw_messages"] = deepcopy(closed["messages"])
-    answer["text"] = words.replace("H1", "Synthetic holding.")
-    relayed = dict(answer=words, relay_word="Relayed", text=answer["text"])
-    relayed["attribution_words"] = {"message": "M5"}
-    report["commentary"].append(relayed)
-    report["html"] += " " + words
+    floor = Floor(
+        UUID(int=0),
+        "0" * 64,
+        {
+            "holdings": [{"alias": "H1", "name": "Synthetic holding", "weight": 1.0}],
+            "tension_points": [],
+        },
+        [
+            {
+                "targets": [],
+                "positions": {},
+                "reply_to": None,
+                "outcome": "PROCEED" if m["kind"] == "VERDICT" else None,
+                "at": "2026-10-12T00:00:00Z",
+                **m,
+            }
+            for m in evidence["raw_messages"]
+        ],
+        frozenset(),
+    )
+    report["commentary"] = commentary(floor, datetime(2026, 10, 12, tzinfo=UTC))
+    report["html"] = json.dumps(report["commentary"])
+    answer["text"] = render(words, floor.opened["holdings"])
     if broken == "ruling":
         closed["messages"][3]["role"] = "RISK"
     elif broken == "after":
         closed["messages"].append(closed["messages"].pop(3))
     elif broken == "relay":
-        report["commentary"][-1]["relay_word"] = None
+        next(row for row in report["commentary"] if row.get("answer") == words)["relay_word"] = None
     elif broken == "hash":
         report["selection"]["review_publication_hash"] = "b" * 64
     elif broken == "standing":
@@ -521,11 +550,18 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
     elif broken == "raw":
         evidence["raw_messages"].pop()
     elif broken == "alias_attribution":
-        report["commentary"][0]["attribution"] = "M10"
+        row = next(
+            r for r in report["commentary"] if r.get("attribution_words", {}).get("message") == "M1"
+        )
+        row["attribution"] = row["attribution_words"]["message"] = "M10"
     elif broken == "stale_status":
         evidence["cro_view"] = ['{"old": "REVIEWED"}', "Review now: NOT_REVIEWED."]
     elif broken == "closed_hash":
         closed["delivery"] = {}
+    elif broken == "home_question":
+        evidence["home"]["heading"] = "Session work"
+    elif broken == "home_goal":
+        evidence["home"]["reference"] = "another-question"
     elif broken.startswith("missing_"):
         evidence["raw_messages" if broken == "missing_raw" else "cro_view"] = None
     problems = report_fidelity(closed, report, **evidence)
@@ -536,3 +572,5 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
         assert "UNPROVED:cro_view" in problems
     if broken == "closed_hash":
         assert "report.review_hash_mismatch" in problems
+    if broken.startswith("home_"):
+        assert "home." + broken.removeprefix("home_") + "_mismatch" in problems

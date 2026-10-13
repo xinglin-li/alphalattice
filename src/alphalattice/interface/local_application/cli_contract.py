@@ -26,9 +26,47 @@ from pathlib import Path
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+from alphalattice.kernel.shared_kernel.project_layout import (
+    REFUSAL_WORDS_RESOURCE,
+    command_prefix,
+    resolve_playpen_root,
+    runtime_json,
+)
 
 SCHEMA_VERSION: Final = 1
+SURFACE_USE: ContextVar[tuple[str, ...]] = ContextVar("surface_use", default=())
+
+
+@functools.cache
+def agent_surface_manifest() -> dict[str, Any]:
+    """Read the shipped compatibility and retirement registry once per process."""
+    path = resolve_playpen_root(Path(__file__)) / "config/registries/agent-surface.json"
+    return json.loads(path.read_bytes())  # type: ignore[no-any-return]
+
+
+def deprecation_notices(
+    operation: str | None, body: Mapping[str, Any], request: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Disclose a retired interface only when this answer actually uses it."""
+    manifest = agent_surface_manifest()
+    used = set(SURFACE_USE.get()) | {f"operation:{operation}"}
+    used.update(f"answer:{operation}.{key}" for key in body)
+    used.update(f"request:Request.{key}" for key in request)
+    for key in ("failure_code", "refused"):
+        used.add(f"refusal:{str(body.get(key, '')).partition(':')[0]}")
+    message = request.get("committee_message", body.get("committee_message", body))
+    if isinstance(message, Mapping):
+        used.add(f"message:RULES/{message.get('kind')}")
+    notices = [
+        {"entry": key, **row}
+        for key, row in manifest["retirements"].items()
+        if key in used and row["status"] == "Deprecated"
+    ]
+    return {
+        "surface_version": manifest["surface_version"],
+        **({"deprecations": notices} if notices else {}),
+    }
+
 
 CLIENT_HEADER: Final = "X-Alphalattice-Client"
 WORKSPACE_HEADER: Final = "X-Alphalattice-Workspace"
@@ -168,7 +206,7 @@ BOUND_WORKSPACE: ContextVar[Path | None] = ContextVar("alphalattice_bound_worksp
 it is bound to none (V568). Set by `cli.main`; a printed command for this workspace leaves
 `--workspace` out (`entry`), since the session's next command finds it the same way."""
 
-WORKSPACE_FROM: ContextVar[Literal["OPTION", "BINDING"]] = ContextVar(
+WORKSPACE_FROM: ContextVar[Literal["OPTION", "BINDING", "BUNDLE"]] = ContextVar(
     "alphalattice_workspace_from", default="OPTION"
 )
 """How this command's workspace was chosen, which every answer's `context` names (V568): named
@@ -219,6 +257,8 @@ _ZH_TABLE: Final = Path(__file__).parent / "assets" / "workbench-source" / "js" 
 """The UI owner's Chinese table, English source text to Chinese; the CLI reads it, never a copy."""
 
 _ZH_ENTRY: Final = re.compile(r'^\s*("(?:[^"\\]|\\.)*")\s*:\s*("(?:[^"\\]|\\.)*"),?\s*$', re.M)
+
+BUNDLE_WORKSPACE: Final = "workspace.json"
 
 MAXIMUM_REQUEST_BODY_BYTES: Final[int] = 128 * 1024
 """The largest request body this service will read, named rather than implied.
@@ -304,9 +344,7 @@ def refused(body: dict[str, Any]) -> bool:
     )
 
 
-_REFUSAL_WORDS: Final = Path(__file__).with_name("refusal_words.json")
-"""Each refusal code's words and way on, where its owner gives none in place (OP4, V449)."""
-
+# Each refusal code's words and way on, now from the shared resource cache (OP4, V449).
 NETWORK_ACCESS_REFUSALS: Final = frozenset(
     {
         "research_update.input_source_access_not_admitted",
@@ -316,12 +354,6 @@ NETWORK_ACCESS_REFUSALS: Final = frozenset(
     }
 )
 """Permission refusals whose way on reads the effective network decision (OP5, TE12)."""
-
-
-@functools.cache
-def _refusal_table() -> dict[str, dict[str, str]]:
-    table: dict[str, dict[str, str]] = json.loads(_REFUSAL_WORDS.read_text(encoding="utf-8"))
-    return table
 
 
 def refusal_words(code: str, *, workspace: Path | None = None) -> dict[str, Any]:
@@ -335,7 +367,7 @@ def refusal_words(code: str, *, workspace: Path | None = None) -> dict[str, Any]
         Its ``detail`` and ``next_action``; empty for a code the table does not word.
     """
     base, _sep, subject = code.partition(":")
-    found = _refusal_table().get(base)
+    found = runtime_json(REFUSAL_WORDS_RESOURCE).get(base)
     if found is None:
         return {}
     words: dict[str, Any] = {
@@ -1398,6 +1430,9 @@ _OTHER = ClientRefusal(
 
 def client_refusal(code: str) -> ClientRefusal:
     """The outcome, next action and words of a refusal the client raised itself."""
+    if code in {"local_client.workspace_context_mismatch", "local_client.bundle_workspace_invalid"}:
+        words = runtime_json(REFUSAL_WORDS_RESOURCE)[code]
+        return ClientRefusal("INVALID_INPUT", words["next_action"], words["detail"])
     for prefix, refusal in _CLIENT_REFUSALS:
         # A prefix ends in `_`, `:` or `.`: a code's family, a code's subjects, an owner's codes.
         if code == prefix or (prefix.endswith(("_", ":", ".")) and code.startswith(prefix)):
@@ -1415,6 +1450,7 @@ def envelope(
     status: str | None = None,
     failure_code: str | None = None,
     detail: str | None = None,
+    request: Mapping[str, Any] | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
     """Wrap an owner answer in the CLI's stable envelope.
@@ -1428,6 +1464,7 @@ def envelope(
         status: Optional status override for a client-side answer.
         failure_code: Optional client-side failure code.
         detail: Optional client-side explanation.
+        request: The sent fields, used only to match announced interface retirements.
         extra: Additional stable envelope fields.
 
     Returns:
@@ -1461,6 +1498,11 @@ def envelope(
             else {}
         ),
         **extra,
+        **deprecation_notices(
+            operation,
+            owner | {"failure_code": failure_code or owner.get("failure_code")},
+            request or {},
+        ),
     }
 
 
