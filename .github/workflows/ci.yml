@@ -110,10 +110,11 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      UV_TOOL_DIR: ${{ runner.temp }}/uv-tools
-      UV_TOOL_BIN_DIR: ${{ runner.temp }}/uv-bin
     steps:
+      - name: Set isolated tool paths
+        run: |
+          temp="${RUNNER_TEMP//\\//}"
+          printf 'UV_TOOL_DIR=%s/uv-tools\nUV_TOOL_BIN_DIR=%s/uv-bin\n' "$temp" "$temp" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
