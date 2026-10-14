@@ -589,7 +589,9 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         return _cli(live, "request", "--file", str(path), session=session)
 
     with live:
-        code, budget = send({"operation": "CPU_BUDGET_SET", "cpu_budget": "4"})
+        code, budget = send(
+            {"operation": "CPU_BUDGET_SET", "cpu_budget": str(min(4, os.cpu_count() or 1))}
+        )
         assert code == 0 and _code(budget) is None, budget
         declaration = tmp_path / "first-use.json"
         declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
