@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     EvidenceTopic,
@@ -41,6 +41,7 @@ def _documents(
     *,
     revisions: tuple[str, ...] = ("release", "transcript"),
     suffix: str = "",
+    now: datetime = _NOW,
 ) -> tuple[RecordedEvidenceDocument, ...]:
     """Two current official releases per issuer corroborate its planted claim."""
 
@@ -52,17 +53,20 @@ def _documents(
             ),
             revision=f"{entity.casefold()}-2026-q3-{revision}",
             document_type="8-K",
+            now=now,
         )
         for entity in entities
         for revision in revisions
     )
 
 
-def _registry(tickers: tuple[str, ...] = TICKERS) -> SecIssuerRegistrySnapshot:
+def _registry(
+    tickers: tuple[str, ...] = TICKERS, *, now: datetime = _NOW
+) -> SecIssuerRegistrySnapshot:
     return seal_contract(
         SecIssuerRegistrySnapshot,
         "registry_hash",
-        captured_at=_NOW - timedelta(days=1),
+        captured_at=now - timedelta(days=1),
         entries=tuple(
             SecIssuerRegistryEntry(
                 entity_id=ticker,

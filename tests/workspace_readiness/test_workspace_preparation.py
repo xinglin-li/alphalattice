@@ -1,4 +1,4 @@
-"""First-use preparation uses real numerical owners, with recorded source adapters."""
+"""Preparation and recovery use real owners and recorded sources."""
 
 from __future__ import annotations
 
@@ -26,7 +26,10 @@ from alphalattice.control.product_host.data_preparation.application import (
     WorkspacePreparationApplication,
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import read_factor_bundle
-from alphalattice.control.task_control.contracts import TaskLifecycle, WorkItemLifecycle
+from alphalattice.control.task_control.contracts import (
+    TaskLifecycle,
+    WorkItemLifecycle,
+)
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
@@ -39,6 +42,9 @@ from tests.researcher_methodology_surface.real_workspace import (
     OBSERVED_AT,
     _source_loader_for,
 )
+from tests.workspace_task_runner.task_control_support import task_execution
+
+NO_READY = "data.current_universe_no_feature_ready_listings"
 
 
 def test_initialization_creates_real_factor_inputs_and_reopens_without_strategies(fresh_prepared):
@@ -64,10 +70,12 @@ def test_initialization_creates_real_factor_inputs_and_reopens_without_strategie
         assert any(name.startswith("research_controls:") for name in planned["next_requests"])
 
 
+@pytest.mark.parametrize("at_cutoff", [False, True])
 def test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap(
     tmp_path: Path,
+    at_cutoff: bool,
 ) -> None:
-    """V680: real previews and admission retain one plan/Task at 10 and 20 GiB; no run."""
+    """Date-bound previews, admission and acquisition retain one plan/Task at either storage cap."""
     from alphalattice.control.workspace_runtime.storage.capacity import StorageCapStore
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
@@ -75,41 +83,74 @@ def test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap(
         tmp_path, ResearchWorkspaceManifest.research_only("operator-cap-isolation")
     )
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        cutoff = (OBSERVED_AT - timedelta(days=16)).replace(hour=20)
+        now = [cutoff if at_cutoff else OBSERVED_AT]
+        acquired_at = []
+        load = _source_loader_for(("AAA", "BBB"))
+
+        def bounded_source(*, observed_at):
+            acquired_at.append(observed_at)
+            return load(observed_at=observed_at)
+
         app = WorkspacePreparationApplication(
             session,
-            clock=lambda: OBSERVED_AT,
+            clock=lambda: now[0],
             provider=recording_provider(),
-            source_loader=_source_loader_for(("AAA", "BBB")),
+            source_loader=bounded_source,
         )
         store = StorageCapStore(tmp_path)
         previews = []
+        requested = cutoff.date()
+        scope = {
+            "requested_formation_session": requested,
+            "requested_information_cutoff_at": cutoff,
+        }
         for gib in (10, 20):
             store.write(gib * 1024**3, chosen_by="HUMAN", chosen_at=OBSERVED_AT)
-            previews.append(app.plan())
+            previews.append(app.plan(**scope))
+        assert previews[0]["target_session"] == str(
+            requested - timedelta(days=1) if at_cutoff else requested
+        )
         assert previews[0]["plan_hash"] == previews[1]["plan_hash"]
         tasks = []
-        readings = []
         for gib, preview in zip((10, 20), previews, strict=True):
             store.write(gib * 1024**3, chosen_by="HUMAN", chosen_at=OBSERVED_AT)
             task = session.task_control_registry.task(
                 app.confirm(preview["plan_hash"], caller="HUMAN").task_id
             )
             tasks.append(task)
-            readings.append(
-                {
-                    "cap_gib": gib,
-                    "plan_hash": task.input.payload["plan"]["plan_hash"],
-                    "input_hash": task.input.input_hash,
-                    "goal_hash": task.goal.goal_hash,
-                    "workflow_hash": task.plan.plan_hash,
-                    "record_hash": task.record_hash,
-                }
-            )
         assert tasks[0] == tasks[1]
         assert tasks[0].lifecycle is TaskLifecycle.QUEUED
-        (tmp_path / "cap-identity-pairs.json").write_text(
-            json.dumps(readings, indent=2) + "\n", encoding="utf-8", newline="\n"
+        stored_cutoff = tasks[0].input.payload["plan"].get("information_cutoff_at")
+        assert (datetime.fromisoformat(stored_cutoff) if stored_cutoff else None) == (
+            None if at_cutoff else cutoff
         )
+        execution = task_execution(tasks[0], app.compatibility(tasks[0]), now[0])
+        if at_cutoff:
+            now[0] += timedelta(hours=1)
+        app.execute_stage(task=tasks[0], execution=execution, work_item=tasks[0].plan.work_items[0])
+        frozen = app._load(tasks[0].task_id, "freeze_sources")
+        assert frozen["captured_at"] == now[0].isoformat()
+        assert acquired_at == [now[0]]
+    if at_cutoff:
+        for bounded in (False, True):
+            root = tmp_path / str(bounded)
+            publish_research_workspace_manifest(
+                root, ResearchWorkspaceManifest.research_only("arrival")
+            )
+            now[0] = cutoff.replace(hour=21, minute=59)
+            with WorkspaceApplicationSession.acquire(root) as session:
+                app = WorkspacePreparationApplication(
+                    session,
+                    clock=lambda: now[0],
+                    provider=recording_provider(),
+                    source_loader=load,
+                )
+                preview = app.plan(**(scope if bounded else {}))
+                assert preview == app.plan(), "held scope must leave the ordinary plan exact"
+                now[0] += timedelta(minutes=1)
+                with pytest.raises(ValueError, match=r"^workspace_preparation\.preview_stale$"):
+                    app.confirm(preview["plan_hash"], caller="HUMAN")
 
 
 @pytest.mark.parametrize("budget_defect", ["cap", "resealed_derivation", "policy_hash"])
@@ -120,7 +161,6 @@ def test_historical_frozen_budget_is_fully_checked_but_never_grants_current_capa
     """V680: legacy outer/inner seals and derivation hold; admission reads the live cap."""
 
     from alphalattice.control.product_host.storage.contracts import resolve_storage_budget
-    from alphalattice.control.task_control.contracts import TaskExecution
     from alphalattice.control.task_control.runner import StageDisposition
     from alphalattice.control.workspace_runtime.storage.capacity import StorageCapStore
     from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -143,17 +183,7 @@ def test_historical_frozen_budget_is_fully_checked_but_never_grants_current_capa
         task = session.task_control_registry.task(
             app.confirm(plan["plan_hash"], caller="HUMAN").task_id
         )
-        execution_id = uuid4()
-        execution = TaskExecution.from_identity(
-            execution_id=execution_id,
-            task_id=task.task_id,
-            graph_thread_id=f"workspace-task:{task.task_id}:{execution_id}",
-            worker_instance_id=uuid4(),
-            compatibility=app.compatibility(task),
-            started_at=OBSERVED_AT,
-            last_heartbeat_at=OBSERVED_AT,
-            checkpoint_disposition="active",
-        )
+        execution = task_execution(task, app.compatibility(task), OBSERVED_AT)
         freeze, prepare = task.plan.work_items[:2]
         fresh = app.execute_stage(task=task, execution=execution, work_item=freeze)
         assert fresh.disposition is StageDisposition.READY
@@ -289,14 +319,12 @@ def test_an_agent_resumes_a_granted_preparation_from_its_own_answer(
 ) -> None:
     """An agent resumes a granted preparation from its own answer."""
 
-    from alphalattice.control.product_host.composition.portfolio_research_operations import (
-        PortfolioResearchOperations,
-    )
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     grant = "9" * 64
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("grant"))
-    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+    with LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT) as live:
+        session = live.session
         app = WorkspacePreparationApplication(
             session,
             clock=lambda: OBSERVED_AT,
@@ -306,8 +334,6 @@ def test_an_agent_resumes_a_granted_preparation_from_its_own_answer(
         asked: list[str | None] = []
 
         def person_granted(_plan_hash: str, grant_hash: str | None) -> bool:
-            # The validator stands for a person's grant over this plan; its own checks of a
-            # grant's term and scope are unchanged, and what it is asked is what this holds.
             asked.append(grant_hash)
             return grant_hash == grant
 
@@ -324,7 +350,7 @@ def test_an_agent_resumes_a_granted_preparation_from_its_own_answer(
             def submit(self, *_args: object, **_kwargs: object) -> None:
                 raise AssertionError("the plan's own Task was submitted again")
 
-        operations = PortfolioResearchOperations.__new__(PortfolioResearchOperations)
+        operations = live.operations
         operations.preparation = app  # type: ignore[assignment]
         operations.dispatcher = Dispatcher()  # type: ignore[assignment]
         asked.clear()
@@ -633,7 +659,6 @@ def test_optional_progress_delivery_never_governs_the_stage(
         WorkProgressUpdate,
         WorkspaceProgressPublisher,
     )
-    from alphalattice.control.task_control.contracts import TaskExecution
     from alphalattice.kernel.shared_kernel import persistence
     from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
     from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -652,17 +677,7 @@ def test_optional_progress_delivery_never_governs_the_stage(
         task = session.task_control_registry.task(
             app.confirm(app.plan()["plan_hash"], caller="HUMAN").task_id
         )
-        execution_id = uuid4()
-        execution = TaskExecution.from_identity(
-            execution_id=execution_id,
-            task_id=task.task_id,
-            graph_thread_id=f"workspace-task:{task.task_id}:{execution_id}",
-            worker_instance_id=uuid4(),
-            compatibility=app.compatibility(task),
-            started_at=OBSERVED_AT,
-            last_heartbeat_at=OBSERVED_AT,
-            checkpoint_disposition="active",
-        )
+        execution = task_execution(task, app.compatibility(task), OBSERVED_AT)
         publisher = WorkspaceProgressPublisher(tmp_path / "artifacts")
         sink = app._bound_progress_sink(task, execution, "prepare_features", publisher)
         update = WorkProgressUpdate(
@@ -1000,7 +1015,6 @@ def test_listing_activity_is_bound_bounded_and_optional(
 def test_listing_counts_follow_each_listings_own_transition(tmp_path: Path) -> None:
     """Listing counts follow each listing's own transition."""
 
-    from alphalattice.control.task_control.contracts import TaskExecution
     from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
         CurrentUniverseOnboardingOutcome,
         CurrentUniverseOnboardingStatus,
@@ -1019,17 +1033,7 @@ def test_listing_counts_follow_each_listings_own_transition(tmp_path: Path) -> N
         task = session.task_control_registry.task(
             app.confirm(app.plan()["plan_hash"], caller="HUMAN").task_id
         )
-        execution_id = uuid4()
-        execution = TaskExecution.from_identity(
-            execution_id=execution_id,
-            task_id=task.task_id,
-            graph_thread_id=f"workspace-task:{task.task_id}:{execution_id}",
-            worker_instance_id=uuid4(),
-            compatibility=app.compatibility(task),
-            started_at=OBSERVED_AT,
-            last_heartbeat_at=OBSERVED_AT,
-            checkpoint_disposition="active",
-        )
+        execution = task_execution(task, app.compatibility(task), OBSERVED_AT)
         # The store at stage entry: X FEATURE_READY, V QUALITY_ELIGIBLE, W RAW_READY, the
         # retained Y and the fresh Z still PENDING; one more candidate untouched.
         seed = CurrentUniverseOnboardingOutcome(
@@ -1123,7 +1127,6 @@ def test_listing_delivery_stays_cheap_under_persistent_refusal(
     """Listing delivery stays cheap under persistent refusal."""
 
     from alphalattice.control.product_host.data_preparation import application as owner
-    from alphalattice.control.task_control.contracts import TaskExecution
     from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
         CurrentUniverseOnboardingOutcome,
         CurrentUniverseOnboardingStatus,
@@ -1156,17 +1159,7 @@ def test_listing_delivery_stays_cheap_under_persistent_refusal(
         task = session.task_control_registry.task(
             app.confirm(app.plan()["plan_hash"], caller="HUMAN").task_id
         )
-        execution_id = uuid4()
-        execution = TaskExecution.from_identity(
-            execution_id=execution_id,
-            task_id=task.task_id,
-            graph_thread_id=f"workspace-task:{task.task_id}:{execution_id}",
-            worker_instance_id=uuid4(),
-            compatibility=app.compatibility(task),
-            started_at=OBSERVED_AT,
-            last_heartbeat_at=OBSERVED_AT,
-            checkpoint_disposition="active",
-        )
+        execution = task_execution(task, app.compatibility(task), OBSERVED_AT)
         seed = CurrentUniverseOnboardingOutcome(
             onboarding_id="o",
             status=CurrentUniverseOnboardingStatus.RUNNING,
@@ -1494,7 +1487,9 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
         bind_existing_data_workspace,
         inspect_existing_data_workspace,
     )
+    from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
     from tests.researcher_methodology_surface.real_workspace import build_real_risk_workspace
+    from tests.workspace_readiness.storage_support import future_sample
 
     data = build_real_risk_workspace(
         tmp_path / "known-data", symbols=tuple(f"F{i:03d}" for i in range(120))
@@ -1520,6 +1515,41 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
     start = LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT)
     start.data_provider = NoSources()
     with start as live:
+        before_read = (root / "market-data.duckdb").read_bytes()
+        too_late = live.operations.preparation.plan(
+            requested_formation_session=datetime.fromisoformat(
+                inspection["inputs"]["panel_through"]
+            ).date()
+            - timedelta(days=1),
+        )
+        assert too_late["failure_code"] == "workspace_preparation.local_inputs_after_requested_date"
+        assert (root / "market-data.duckdb").read_bytes() == before_read
+        assert not live.session.task_control_registry.tasks()
+        through = datetime.fromisoformat(inspection["inputs"]["panel_through"]).date()
+        late = through + timedelta(days=7)
+        market = MarketDataRepository(root)
+        assert market.manifest_raw_range(data.manifest) == market.market_reference_raw_range("SPY")
+        for table, field in (
+            ("raw_daily_bar_current", "data_through"),
+            ("provider_adjusted_close_current", "adjusted_through"),
+        ):
+            with future_sample(
+                market,
+                live.session.mutation_gate,
+                table,
+                data.manifest.listings[0].listing_id,
+                late,
+            ):
+                mutated = (root / "market-data.duckdb").read_bytes()
+                refused = live.operations.preparation.plan(requested_formation_session=through)
+                assert refused["source_inputs"][field] == str(through)
+                assert refused["source_through"] == str(late)
+                assert (
+                    refused["failure_code"]
+                    == "workspace_preparation.local_inputs_after_requested_date"
+                )
+                assert not live.session.task_control_registry.tasks()
+                assert (root / "market-data.duckdb").read_bytes() == mutated
         perform = live.operations.preparation._perform
 
         def interrupt_before_publication(task, plan, stage, execution):
@@ -1745,19 +1775,20 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
 
 
 @pytest.mark.parametrize(
-    ("terminal", "failure_code", "decisions_ready", "same_binding"),
+    ("terminal", "failure_code", "decisions_ready", "same_binding", "dated"),
     [
-        ("CANCELLED", None, None, False),
-        ("BLOCKED", "data.preparation_fixture_fix_required", None, False),
-        ("BLOCKED", "data.preparation_fixture_fix_required", None, True),
-        ("BLOCKED", "data.truth_review_required", False, False),
-        ("BLOCKED", "data.truth_review_required", True, False),
+        ("CANCELLED", None, None, False, False),
+        ("BLOCKED", "data.preparation_fixture_fix_required", None, False, False),
+        ("BLOCKED", "data.preparation_fixture_fix_required", None, True, False),
+        ("BLOCKED", "data.truth_review_required", False, False, False),
+        ("BLOCKED", "data.truth_review_required", True, False, False),
+        ("BLOCKED", NO_READY, None, False, False),
+        ("BLOCKED", NO_READY, None, False, True),
     ],
 )
 def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
-    tmp_path, monkeypatch, terminal, failure_code, decisions_ready, same_binding
+    tmp_path, monkeypatch, terminal, failure_code, decisions_ready, same_binding, dated
 ):
-
     from alphalattice.control.product_host.data_preparation import application as preparation_owner
     from alphalattice.control.product_host.data_preparation.remediation import (
         WorkspaceDataIssueApplication,
@@ -1769,8 +1800,9 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
     provider = recording_provider()
     with LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT) as live:
         session = live.session
+        registry = session.task_control_registry
 
-        def cancel_before_raw_work(app):
+        def stop_raw(app):
             perform = app._perform
 
             def wrapped(task, plan, stage, execution):
@@ -1780,8 +1812,8 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
                             StageDisposition.BLOCKED,
                             failure_code=failure_code,
                         )
-                    current = session.task_control_registry.task(task.task_id)
-                    session.task_control_registry.request_cancel(
+                    current = registry.task(task.task_id)
+                    registry.request_cancel(
                         task_id=task.task_id,
                         expected_task_hash=current.record_hash,
                         observed_at=app.clock(),
@@ -1796,11 +1828,15 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
             provider=provider,
             source_loader=_source_loader_for(("AAA", "BBB")),
         )
-        cancel_before_raw_work(first)
-        original = first.plan()
+        stop_raw(first)
+        cutoff = OBSERVED_AT - timedelta(days=2)
+        original = first.plan(
+            requested_formation_session=cutoff.date() if dated else None,
+            requested_information_cutoff_at=cutoff if dated else None,
+        )
         task = first.confirm(original["plan_hash"], caller="HUMAN")
         first.execute(task.task_id)
-        assert session.task_control_registry.task(task.task_id).lifecycle.value == terminal
+        assert registry.task(task.task_id).lifecycle.value == terminal
         if terminal == "BLOCKED" and not same_binding:
             monkeypatch.setattr(preparation_owner, "_implementation", lambda: "f" * 64)
         if decisions_ready is not None:
@@ -1809,9 +1845,7 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
                 "current_decisions_ready",
                 lambda _owner, **_facts: decisions_ready,
             )
-            # The same registered implementation-change seam also holds truth recovery:
-            # unresolved cases still lead to issues; only completed choices offer preview.
-            stopped = session.task_control_registry.task(task.task_id)
+            stopped = registry.task(task.task_id)
             view = first.readback(task.task_id)
             assert view["execution_binding_changed"] is True
             assert view["failure_code"] == "data.truth_review_required"
@@ -1824,9 +1858,7 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
             assert view["next_requests"] == (
                 {} if decisions_ready else {"issues": {"operation": "DATA_ISSUES"}}
             )
-            assert (
-                session.task_control_registry.task(task.task_id).record_hash == stopped.record_hash
-            )
+            assert registry.task(task.task_id).record_hash == stopped.record_hash
             assert first.tasks() == (stopped,)
             assert provider.calls == []
             return
@@ -1840,19 +1872,30 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
             provider=provider,
             source_loader=no_discovery,
         )
-        cancel_before_raw_work(retry)
+        stop_raw(retry)
+        if dated:
+            before = registry.task(task.task_id)
+            for recovery in (None, task.task_id):
+                with pytest.raises(ValueError, match=failure_code):
+                    retry.plan(recovery_task_id=recovery)
+            assert retry.tasks() == (before,) and provider.calls == []
+            assert first._load(task.task_id, "freeze_sources") == retry._load(
+                task.task_id, "freeze_sources"
+            )
+            return
         if same_binding:
             assert retry.plan()["task_id"] == str(task.task_id)
         live.operations.preparation = retry
+        if failure_code == NO_READY:
+            from alphalattice.control.product_host.composition.plain_refusals import explain
+
+            assert explain(failure_code) == explain("data.provider_fetch_failed")
         recovery = live.operations.recovery_view(task.task_id)["next_requests"]["replan"]
         proposed = live.operations.execute(
             PortfolioResearchAgentRequest.model_validate(recovery).to_operation_request()
         )
         assert proposed.get("failure_code") is None, proposed
-        assert (
-            session.task_control_registry.task(task.task_id).record_hash
-            == recovery["recovery_task_hash"]
-        )
+        assert registry.task(task.task_id).record_hash == recovery["recovery_task_hash"]
         assert proposed["predecessor_task_id"] == str(task.task_id)
         assert proposed["resume_from_cancelled_task"] == (
             str(task.task_id) if terminal == "CANCELLED" else None
@@ -1880,18 +1923,13 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
                 proposed["next_requests"]["confirm"]
             ).to_operation_request()
         )
-        resumed = session.task_control_registry.task(UUID(confirmation["task_id"]))
-        assert (
-            session.task_control_registry.recovery_links(task.task_id)[-1].successor_task_id
-            == resumed.task_id
-        )
+        resumed = registry.task(UUID(confirmation["task_id"]))
+        assert registry.recovery_links(task.task_id)[-1].successor_task_id == resumed.task_id
         with pytest.raises(ValueError, match=r"workspace_preparation\.resume_scope_changed"):
             retry.plan(recovery_task_id=task.task_id)
-        assert (
-            resumed.task_id != task.task_id
-        )  # Cancellation is terminal; Human requested a new task.
+        assert resumed.task_id != task.task_id
         live.dispatcher.drain_for_tests()
-        assert session.task_control_registry.task(resumed.task_id).lifecycle.value == terminal
+        assert registry.task(resumed.task_id).lifecycle.value == terminal
         assert provider.calls == []
         assert (
             retry._load(resumed.task_id, "freeze_sources")["candidate"]
@@ -1908,12 +1946,8 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
 @pytest.mark.parametrize(
     "lifecycle", ["QUEUED", "RECOVERY_REQUIRED", "RUNNING", "CANCEL_REQUESTED"]
 )
-def test_a_plan_confirmed_while_its_task_runs_answers_that_task(lifecycle: str) -> None:
+def test_a_plan_confirmed_while_its_task_runs_answers_that_task(tmp_path, lifecycle: str) -> None:
     """A plan confirmed while its task runs answers that task."""
-
-    from alphalattice.control.product_host.composition.portfolio_research_operations import (
-        PortfolioResearchOperations,
-    )
 
     task_id = uuid4()
     running = SimpleNamespace(
@@ -1937,15 +1971,16 @@ def test_a_plan_confirmed_while_its_task_runs_answers_that_task(lifecycle: str) 
         def submit(self, *_args: object, **_kwargs: object) -> None:
             raise AssertionError("an in-flight plan was submitted again")
 
-    operations = PortfolioResearchOperations.__new__(PortfolioResearchOperations)
-    operations.preparation = Preparation()  # type: ignore[assignment]
-    operations.dispatcher = Dispatcher()  # type: ignore[assignment]
-    answer = operations._workspace_operation(
-        PortfolioResearchOperationRequest(
-            operation="WORKSPACE_PREPARE_CONFIRM", preparation_plan_hash="a" * 64
-        ),
-        caller="HUMAN",
-    )
+    with LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT) as live:
+        operations = live.operations
+        operations.preparation = Preparation()  # type: ignore[assignment]
+        operations.dispatcher = Dispatcher()  # type: ignore[assignment]
+        answer = operations._workspace_operation(
+            PortfolioResearchOperationRequest(
+                operation="WORKSPACE_PREPARE_CONFIRM", preparation_plan_hash="a" * 64
+            ),
+            caller="HUMAN",
+        )
     assert answer == {"status": "REUSED_IN_FLIGHT", "task_id": str(task_id)}
 
 

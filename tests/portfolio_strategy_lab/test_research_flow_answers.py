@@ -647,7 +647,6 @@ def test_a_provider_that_limits_or_changes_its_interface_is_worded_with_the_way_
     assert "retry_after_at" not in timeout and "next_requests" not in timeout, timeout
     for code in (
         "data.provider_fetch_failed",
-        "data.current_universe_no_feature_ready_listings",
         "data.listing_updates_incomplete",
     ):
         assert "interface" in explain(code)["detail"], code

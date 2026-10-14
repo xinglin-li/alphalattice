@@ -18,9 +18,11 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     PortfolioResearchOperations,
 )
+from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.interface.local_application import client as client_module
 from alphalattice.interface.local_application import retrieval_environment
@@ -1233,14 +1235,26 @@ class _FirstUseHost:
         self.workspace, self.goal, self.prepared = workspace, None, prepared
         self.stopped, self.resumes = list(stopped), 1
         self.sent: list[dict[str, Any]] = []
+        self.goals = GoalApplication(
+            GoalStore(workspace / "artifacts", "client-goal"),
+            lambda: datetime(2026, 10, 10, tzinfo=UTC),
+            lambda *_: {},
+            lambda _: datetime(2026, 10, 10, tzinfo=UTC),
+            {}.get,
+            workspace=workspace,
+            preparation_completed=lambda: self.prepared,
+        )
 
     def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
         self.sent.append(document)
         match document["operation"]:
-            case "GOAL_OPEN" if self.prepared:
-                return {"status": "REFUSED", "failure_code": "goal.first_use_after_preparation"}
             case "GOAL_OPEN":
-                return {"status": "OPENED", "goal_id": "g-1"}
+                try:
+                    return self.goals.operate(
+                        PortfolioResearchOperationRequest(**document), "EXTERNAL_AUTOMATION"
+                    )
+                except ValueError as error:
+                    return {"status": "REFUSED", "failure_code": str(error)}
             case "DATA_ISSUES":
                 resume = {"operation": "WORKSPACE_PREPARE_PLAN"}
                 offers = {
@@ -1271,9 +1285,9 @@ class _FirstUseHost:
         raise AssertionError(document)
 
 
-def _first_use(host: _FirstUseHost, named: str = "2026-10-10") -> dict[str, Any]:
+def _first_use(host: _FirstUseHost, named: str = "2026-10-12") -> dict[str, Any]:
     args = SimpleNamespace(
-        objective="Positions for Saturday.",
+        objective="Positions for Monday.",
         target_date=named,
         max_wait=None,
         notify=None,
@@ -1291,10 +1305,12 @@ def test_a_first_use_opens_its_goal_from_the_sentence_and_stops_at_its_data_issu
     stopped = _first_use(host)
 
     declaration = host.sent[0]["goal_declaration"]
-    assert declaration["objective"] == "Positions for Saturday."
-    assert declaration["target_date"] == "2026-10-10"
+    assert declaration["objective"] == "Positions for Monday."
+    assert declaration["target_date"] == "2026-10-12"
     assert "2026-10-12" in declaration["criteria"][0]["text"]
-    assert host.goal == "g-1" and stopped["first_use"]["stopped_at"] == "issues"
+    assert host.goals.first_use() is not None
+    assert host.goal == str(host.goals.first_use().goal_id)
+    assert stopped["first_use"]["stopped_at"] == "issues"
     assert "confirm:c1:retain" in stopped["next_requests"]
 
 
@@ -1334,9 +1350,9 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
     monkeypatch.setattr(retrieval_environment, "load", lambda: False)
     answer = _first_use(_FirstUseHost(tmp_path / "workspace", prepared=True))
 
-    # A Saturday names no session: the positions enter on Monday, decided at Friday's close.
+    # Monday's positions are decided at Friday's close.
     date_ = answer["first_use"]["date"]
-    assert (date_["named_is_session"], date_["entry_session"]) == (False, "2026-10-12")
+    assert (date_["named_is_session"], date_["entry_session"]) == (True, "2026-10-12")
     assert date_["formation_session"] == "2026-10-09"
     road = answer["first_use"]["road"]
     assert [step["step"] for step in road] == [
@@ -1360,21 +1376,28 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
 @pytest.mark.parametrize(
     ("named", "read"),
     [
-        ("2026-09-07", (False, "2026-09-08", "2026-09-04")),
+        ("2026-09-07", "first_use.date_not_session"),
         ("2026-10-09", (True, "2026-10-09", "2026-10-08")),
         ("2026-13-01", "local_client.first_use_date_invalid"),
+        ("0001-01-01", "local_client.first_use_date_outside_calendar"),
         ("2099-01-02", "local_client.first_use_date_outside_calendar"),
     ],
 )
 def test_a_first_use_reads_the_named_date_by_the_exchange_calendars(
     tmp_path: Path, named: str, read: object
 ) -> None:
-    """requirement (the person's date): a holiday enters on the next session, a session date on
-    itself; a date that is not one, or that the calendars do not plan, is refused by name."""
-    answer = _first_use(_FirstUseHost(tmp_path / "workspace", prepared=True), named)
+    """Preparation refuses non-session dates before opening a Goal and names its nearest entry."""
+    host = _FirstUseHost(tmp_path / "workspace", prepared=True)
+    answer = _first_use(host, named)
 
     if isinstance(read, str):
         assert answer["failure_code"] == read and answer["detail"], answer
+        assert all(d["operation"] == "GOAL_OPEN" for d in host.sent)
+        assert host.goals.first_use() is None
+        if read == "first_use.date_not_session":
+            assert answer["target_date"] == named and answer["nearest_date"] == "2026-09-08"
+            assert "2026-09-08" in answer["next_command"]
+            assert "Positions for Monday." in answer["next_command"]
         return
     date_ = answer["first_use"]["date"]
     assert (date_["named_is_session"], date_["entry_session"], date_["formation_session"]) == read

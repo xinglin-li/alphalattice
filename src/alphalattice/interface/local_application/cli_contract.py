@@ -1904,7 +1904,9 @@ def request_problem(request: Mapping[str, object]) -> str | None:
     return "; ".join(problems) or None
 
 
-def entry(workspace: Path, options: tuple[str, ...] = ()) -> tuple[str, ...]:
+def entry(
+    workspace: str | Path, options: tuple[str, ...] = (), *, full: bool = False
+) -> tuple[str, ...]:
     """The client's own root command for one workspace, as a printed command starts (V123).
 
     The command is ``alphalattice`` on either leg. It names the workspace, except the one the
@@ -1915,10 +1917,13 @@ def entry(workspace: Path, options: tuple[str, ...] = ()) -> tuple[str, ...]:
     Args:
         workspace: The workspace the command acts on.
         options: The global options the caller gave besides the workspace.
+        full: Keep the explicit as-given workspace for another workspace's initial phase.
 
     Returns:
         The command, the workspace flag with its value unless bound, and the options.
     """
+    if full:
+        return (*command_prefix(), "--workspace", str(workspace), *options)
     resolved = Path(workspace).resolve()
     if BOUND_WORKSPACE.get() == resolved:
         return (*command_prefix(), *options)

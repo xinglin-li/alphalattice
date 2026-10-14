@@ -364,8 +364,12 @@ SKILL_COMMANDS: tuple[RoleCommand, ...] = (
     ),
     RoleCommand(
         'first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09',
-        "Opens the first use from the person's exact sentence and prepares its data; its answer "
-        "lays out the whole first use.",
+        "Opens the first use from the person's exact sentence and prepares numerical inputs "
+        "through the preceding formation session's information cutoff; activation publishes "
+        "the requested date's "
+        "positions once that information is available, or holds until then; follow a calendar "
+        "or source refusal's exact offered recovery. The declared current universe and Sector stay "
+        "retrospective, with observation times recorded; historical membership is not claimed.",
     ),
     RoleCommand(
         "strategy build",

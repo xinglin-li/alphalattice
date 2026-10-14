@@ -12307,6 +12307,41 @@
    "successor": "6e28c39d0301d4cd97d880180730b75b4599c55900eceef6ef96c788f2c7147f",
    "change": "daily workspace rule",
    "reason": "the shared rule submission accepts an explicit workspace-rule Goal authority; equal values with no data issue; no-issue-equality.json, recorded under maintainer signature"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "88c27d2310a20b2d139ea4e6f2b0f4acf54490a246f68ccf8d36b297d83e0e33",
+   "successor": "5e44d755ed137076e472dc6323021f415159616923c11fc866861df310204afe",
+   "change": "first-use dated preparation and review",
+   "reason": "Lead signatures 2026-10-13 23:22 and 2026-10-14 02:39: workspace Goal caps preparation and confirmation; available-at admission, recorded terminal scope and through-bound input MAX read with no new store API. Arithmetic, recipe and backfill unchanged. Accepted held h2 equal-values control, availability/ordinary BLOCKED controls and qualified local RAW/adjusted future-row proof. inv-past-date-review/011907-checks-5ffa04cd."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "3a5ba3ad6b396fd19077bb4d8a8cb3073c52484c8fc493e5c71d25e35aee0b51",
+   "successor": "d72a611e4e3690d3aab43b4a884a832a8cf5eb9d1be99d7cd56ccb5fa196926b",
+   "change": "first-use dated preparation and review",
+   "reason": "Lead signatures 2026-10-13 23:22 and 2026-10-14 02:39: workspace Goal caps preparation and confirmation; available-at admission, recorded terminal scope and through-bound input MAX read with no new store API. Arithmetic, recipe and backfill unchanged. Accepted held h2 equal-values control, availability/ordinary BLOCKED controls and qualified local RAW/adjusted future-row proof. inv-past-date-review/011907-checks-5ffa04cd."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "436b4da670042958b641cf6da8fb13267453e838c9a221dd2f395d9e3a43364d",
+   "successor": "601126983364bc0c3b74ac8a6e735d8a783e8683239ea657e1d1b4443354b588",
+   "change": "first-use dated preparation and review",
+   "reason": "Lead signatures 2026-10-13 23:22 and 2026-10-14 02:39: workspace Goal caps preparation and confirmation; available-at admission, recorded terminal scope and through-bound input MAX read with no new store API. Arithmetic, recipe and backfill unchanged. Accepted held h2 equal-values control, availability/ordinary BLOCKED controls and qualified local RAW/adjusted future-row proof. inv-past-date-review/011907-checks-5ffa04cd."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "179fcd4f3d4c0618d599dabaa2f1b6d1906de1841e4623889bbf59bfea1e2e55",
+   "successor": "96eae0c7ab252f8ff00f9bf3072d80a7875ae862339f4f8f70d2f9dad479a5e0",
+   "change": "first-use dated preparation and review",
+   "reason": "Lead signatures 2026-10-13 23:22 and 2026-10-14 02:39: workspace Goal caps preparation and confirmation; available-at admission, recorded terminal scope and through-bound input MAX read with no new store API. Arithmetic, recipe and backfill unchanged. Accepted held h2 equal-values control, availability/ordinary BLOCKED controls and qualified local RAW/adjusted future-row proof. inv-past-date-review/011907-checks-5ffa04cd."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "6e28c39d0301d4cd97d880180730b75b4599c55900eceef6ef96c788f2c7147f",
+   "successor": "4a0e342103ed22beb4790cb8e3b53a5de6ad66d34bcc5c2d2095cf97ce4893a8",
+   "change": "first-use dated preparation review and reds",
+   "reason": "Lead signature 2026-10-14 03:59: date preflight respects retained BLOCKED Task replan refusal before cutoff validation, restoring ordinary inputs_already_published. Available-at, stale comparison, arithmetic, recipe, source MAX and date bounds unchanged. Earlier signed 02:39 five-role/equal-values controls stand; unchanged served scenario red/green: inv-past-date-reds/035248-checks-71ed14c7. Branch-only 73cad entry replaced as instructed."
   }
  ]
 }

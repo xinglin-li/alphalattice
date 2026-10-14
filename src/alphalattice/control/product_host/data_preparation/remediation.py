@@ -120,6 +120,11 @@ def preparation_replan_refusal(
         return "workspace_preparation.resume_in_place"
     if task.lifecycle not in {TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED}:
         return "workspace_preparation.resume_scope_changed"
+    if (
+        task.failure_code == "data.current_universe_no_feature_ready_listings"
+        and task.input.payload["plan"].get("information_cutoff_at") is not None
+    ):
+        return task.failure_code
     if read_research_workspace_manifest(workspace).experiment_inputs:
         return "workspace_preparation.inputs_already_published"
     if str(task.task_id) in superseded_preparations(registry, registry.tasks()):

@@ -67,6 +67,7 @@
    "product_host.research_strategy_preparation",
    "product_host.strategy_calibration",
    "product_host.strategy_scoring",
+   "product_host.workspace_preparation",
    "research_experiment.alpha.model-development.implementation",
    "research_experiment.alpha.model-development.lifecycle.implementation",
    "research_experiment.alpha.qualification.implementation",

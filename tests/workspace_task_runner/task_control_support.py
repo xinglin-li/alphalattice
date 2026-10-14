@@ -2,16 +2,38 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from uuid import uuid4
+
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
     TaskEvidence,
-    TaskExecutionCompatibility,
+    TaskExecution,
     TaskInputEnvelope,
+    TaskRecord,
     WorkItemDefinition,
+)
+from alphalattice.control.task_control.contracts import (
+    TaskExecutionCompatibility as Compatibility,
 )
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+
+def task_execution(task: TaskRecord, compatibility: Compatibility, at: datetime) -> TaskExecution:
+    """Allocate a worker/execution identity and bind its thread and clock to this Task."""
+    execution_id = uuid4()
+    return TaskExecution.from_identity(
+        execution_id=execution_id,
+        task_id=task.task_id,
+        graph_thread_id=f"workspace-task:{task.task_id}:{execution_id}",
+        worker_instance_id=uuid4(),
+        compatibility=compatibility,
+        started_at=at,
+        last_heartbeat_at=at,
+        checkpoint_disposition="active",
+    )
 
 
 def digest(label: str) -> str:
@@ -64,9 +86,9 @@ def task_contract(*, salt: str = "first") -> tuple[TaskInputEnvelope, ResearchGo
     return envelope, goal, plan
 
 
-def compatibility(plan: ResearchPlan) -> TaskExecutionCompatibility:
+def compatibility(plan: ResearchPlan) -> Compatibility:
     """The execution compatibility a Task of this plan is admitted under."""
-    return TaskExecutionCompatibility.create(
+    return Compatibility.create(
         task_contract_hash=digest("task-contract"),
         workflow_definition_hash=plan.workflow_definition_hash,
         input_schema_id="factor-research.confirmed-mandate",

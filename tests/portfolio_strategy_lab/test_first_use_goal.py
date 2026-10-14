@@ -1,6 +1,4 @@
-"""The first-use goal (V452, LAWS OP19): from the person's one sentence the agent runs the
-first use, the first use's person-only steps delegated for the goal's life and recorded in its
-ledger, and nothing granted after it."""
+"""First-use authority is recorded, bounded and never silently widened."""
 
 from __future__ import annotations
 
@@ -9,6 +7,7 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+import alphalattice.interface.local_application.portfolio_research as research_requests
 from alphalattice.control.product_host.composition import (
     portfolio_research_operations as operations,
 )
@@ -32,6 +32,9 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
     publish_research_workspace_manifest,
 )
+from alphalattice.control.product_host.data_preparation.application import (
+    WorkspacePreparationApplication,
+)
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.workspace_runtime.network_access import NetworkAccess, network_access
 from alphalattice.interface.local_application.cli_contract import (
@@ -39,13 +42,14 @@ from alphalattice.interface.local_application.cli_contract import (
     RequestProvenance,
 )
 from alphalattice.interface.local_application.goals import FIRST_USE_HOURS, target_sessions
-from alphalattice.interface.local_application.portfolio_research import (
-    PortfolioResearchOperationRequest as Request,
-)
-from alphalattice.interface.local_application.portfolio_research import decision_hash
-from tests.portfolio_strategy_lab.local_web_support import run_node
+from tests.portfolio_strategy_lab.local_web_support import _json, run_node
+from tests.researcher_methodology_surface.real_workspace import _source_loader_for
+from tests.workspace_maintenance.local_data_provider import recording_provider
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
+Request = research_requests.PortfolioResearchOperationRequest
+PortfolioResearchRequestDocument = research_requests.PortfolioResearchRequestDocument
+decision_hash = research_requests.decision_hash
 SESSION = "00000000-0000-4000-8000-0000000000f1"
 OTHER_SESSION = "00000000-0000-4000-8000-0000000000f2"
 RELAY = ("--person-said", "Yes, go ahead.", "--asked", "May I widen the SEC budget?")
@@ -105,7 +109,6 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     code, set_ = _cli(live, "network", "set", "--enabled", "true")
     assert code == 0 and set_["status"] == "NETWORK_ACCESS", set_
     assert _network(live)
-    # The preparation is the person's to confirm, carried by the agent: only the plan is asked.
     code, confirmed = _cli(live, "preparation", "confirm", "--plan", plan)
     assert _code(confirmed) != "workspace_preparation.human_confirmation_required", confirmed
     # A step the goal does not delegate stays the person's.
@@ -277,54 +280,72 @@ def test_a_relayed_yes_is_held_once_and_only_from_an_agents_own_session(
 
 
 def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised(
-    tmp_path: Path,
+    live: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """requirement (V452, OP19): the delegation holds for the first-use steps alone, for an
-    agent's request, within the goal's hours; the person's sentence is never revised."""
-
+    """First-use authority expires, while every caller keeps its open immutable date cap."""
+    caller = "EXTERNAL_AUTOMATION"
     now = [datetime(2026, 10, 2, tzinfo=UTC)]
-    app = GoalApplication(
-        GoalStore(tmp_path, "workspace"),
-        lambda: now[0],
-        lambda *_: {},
-        lambda _: now[0],
-        {}.get,
-        workspace=tmp_path,
+    app = live.operations.goals
+    monkeypatch.setattr(app, "clock", lambda: now[0])
+    monkeypatch.setattr(app, "task_facts", {}.get)
+    opening = Request(
+        operation="GOAL_OPEN",
+        goal_id=UUID(int=7),
+        goal_declaration={**FIRST_USE, "target_date": "2026-10-02"},
+        change_reason="The person's sentence",
     )
-    app.operate(
-        Request(
-            operation="GOAL_OPEN",
-            goal_id=UUID(int=7),
-            goal_declaration=FIRST_USE,
-            change_reason="The person's sentence",
-        ),
-        "EXTERNAL_AUTOMATION",
-    )
+    for named, code, nearest in (
+        ("2026-09-07", "first_use.date_not_session", "2026-09-08"),
+        ("2026-10-06", "first_use.date_after_clock", "2026-10-02"),
+    ):
+        declaration = {**FIRST_USE, "target_date": named}
+        refused = app.operate(replace(opening, goal_declaration=declaration), caller)
+        assert refused["failure_code"] == code and refused["target_date"] == named
+        assert refused["nearest_date"] == nearest and app.first_use() is None
+    app.operate(opening, caller)
     goal = app.store.head(UUID(int=7))
     assert goal is not None and app.first_use() == goal
-    delegated = app.delegation(goal, "NETWORK_ACCESS_SET", "EXTERNAL_AUTOMATION")
+    delegated = app.delegation(goal, "NETWORK_ACCESS_SET", caller)
     assert delegated == f"first-use-goal:{goal.goal_id}"
-    assert app.delegation(goal, "MODEL_ACTIVATE", "EXTERNAL_AUTOMATION") is None
-    # Its membership changes and its reviewed book's activation are delegated; the person
-    # deactivates (STOPS-1).
+    assert app.delegation(goal, "MODEL_ACTIVATE", caller) is None
     for step in ("DATA_CHANGE_CONFIRM", "STRATEGY_ACTIVATE"):
-        assert app.delegation(goal, step, "EXTERNAL_AUTOMATION") == delegated
-    assert app.delegation(goal, "STRATEGY_DEACTIVATE", "EXTERNAL_AUTOMATION") is None
+        assert app.delegation(goal, step, caller) == delegated
+    assert app.delegation(goal, "STRATEGY_DEACTIVATE", caller) is None
     assert app.delegation(goal, "NETWORK_ACCESS_SET", "HUMAN") is None
     with pytest.raises(ValueError, match=r"goal\.first_use_is_not_revised"):
-        app.operate(
-            Request(
-                operation="GOAL_REVISE",
-                goal_id=goal.goal_id,
-                goal_declaration={**FIRST_USE, "objective": "A longer window."},
-                change_reason="Widened",
-            ),
-            "EXTERNAL_AUTOMATION",
+        revised = replace(
+            opening,
+            operation="GOAL_REVISE",
+            goal_declaration={**FIRST_USE, "objective": "A longer window."},
+            change_reason="Widened",
         )
-    publish_research_workspace_manifest(
-        tmp_path, ResearchWorkspaceManifest.research_only("delegated")
+        app.operate(revised, caller)
+    publish_research_workspace_manifest(live.workspace, live.workspace_manifest)
+    owner = WorkspacePreparationApplication(
+        live.session,
+        clock=lambda: now[0] + timedelta(days=1),
+        provider=recording_provider(),
+        source_loader=_source_loader_for(("AAA",)),
     )
+    live.operations.preparation = owner
+    uncapped = owner.plan()
+    for retained in (False, True):
+        if retained:
+            admitted = owner.confirm(uncapped["plan_hash"], caller="HUMAN")
+            snapshot = live.session.task_control_registry.task(admitted.task_id)
+        refused_plan = _json(
+            live,
+            "/api/workspace/preparation/confirm",
+            method="POST",
+            payload={"preparation_plan_hash": uncapped["plan_hash"]},
+        )
+        assert refused_plan["failure_code"] == "workspace_preparation.preview_stale", refused_plan
+        assert refused_plan["detail"] and refused_plan["next_requests"]["replan"] == {
+            "operation": "WORKSPACE_PREPARE_PLAN"
+        }
+        if retained:
+            assert live.session.task_control_registry.task(admitted.task_id) == snapshot
     task = UUID(int=8)
     app.store.attribute(goal.goal_id, {"task_id": str(task)})
     decide = app.data_rule(task)
@@ -374,15 +395,51 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
         decide(case, (), None, None).submission.proposal.option_id == "escalate_data_truth_conflict"
     )
     assert app.store.attributed(goal.goal_id) == before
-    assert app.delegation(goal, "NETWORK_ACCESS_SET", "EXTERNAL_AUTOMATION") is None
+    assert app.delegation(goal, "NETWORK_ACCESS_SET", caller) is None
     assert app.first_use_delegation(goal)["active"] is False
+
+    def history_refused(**scope: Any) -> dict[str, Any]:
+        assert scope["network_delegation"] is None
+        assert scope["requested_formation_session"].isoformat() == "2026-10-01"
+        raise ValueError("data.current_universe_no_feature_ready_listings")
+
+    preparation = Request(operation="WORKSPACE_PREPARE_PLAN")
+    for provenance in (
+        None,
+        RequestProvenance(vendor="claude-code", session=OTHER_SESSION),
+        RequestProvenance(goal_id=str(goal.goal_id)),
+    ):
+        token = REQUEST_PROVENANCE.set(provenance)
+        try:
+            recovery = app.prepare(preparation, "HUMAN", history_refused)
+        finally:
+            REQUEST_PROVENANCE.reset(token)
+    with monkeypatch.context() as web:
+        web.setattr(live.operations.preparation, "plan", history_refused)
+        assert _json(live, "/api/workspace/preparation/plan", method="POST", payload={}) == recovery
+    assert recovery["nearest_date_support"] == "UNAVAILABLE"
+    assert recovery["new_workspace"]["choose"] == ["workspace", "supported_date"]
+    assert set(recovery["next_requests"]) == {"readback", "goal", "abandon"}
+    show = PortfolioResearchRequestDocument.model_validate(recovery["next_requests"]["goal"])
+    shown = app.operate(show.to_operation_request(), "HUMAN")
+    assert shown["goal_hash"] == goal.goal_hash
+    abandon = PortfolioResearchRequestDocument.model_validate(recovery["next_requests"]["abandon"])
+    app.operate(abandon.to_operation_request(), "HUMAN")
+    ended_goal = app.store.head(goal.goal_id)
+    assert ended_goal.state == "ABANDONED" and ended_goal.declaration == goal.declaration
+    past = ended_goal.declaration.model_copy(update={"target_date": datetime(2099, 1, 2).date()})
+    historical_goal = ended_goal.model_copy(update={"declaration": past})
+    with monkeypatch.context() as historical:
+        historical.setattr(app.store, "head", lambda _: historical_goal)
+        ordinary = app.prepare(preparation, "HUMAN", lambda **scope: scope)
+        assert ordinary["requested_formation_session"] is None
+        assert ordinary["requested_information_cutoff_at"] is None
 
 
 def test_a_delegated_activation_runs_forward_without_the_history_review(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """requirement (the review on the date's positions): under the first-use delegation the
-    agent activates a book whose history is not reviewed, and the date's update comes with it."""
+    """Delegated activation also admits the date's update without requiring historical review."""
 
     owner = SimpleNamespace(
         activations=SimpleNamespace(activate=lambda _task: {"status": "ACTIVATED"}),
@@ -401,8 +458,7 @@ def test_a_delegated_activation_runs_forward_without_the_history_review(
 
 
 def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_path: Path) -> None:
-    """requirement (activate and update in one act): activation plans the update for the first
-    use's named date and admits its run under the goal; a Codex lead's session is woken."""
+    """Activation admits the first-use date's update and wakes the lead under its Goal."""
 
     sent: list[Request] = []
     wakes: list[tuple[object, ...]] = []

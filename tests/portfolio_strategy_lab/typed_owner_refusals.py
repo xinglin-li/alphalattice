@@ -196,6 +196,24 @@ def make_owner_exception(cls: type[Exception]) -> tuple[Exception, str]:
         ), "INVALID_EXPERIMENT:FEATURE_AXIS_AUTHORITY_MISMATCH"
     if name == "FeatureBaselinePopulationError":
         return cls({}), "feature.baseline_qualified_population_insufficient"
+    if name == "PreparationInputAfterDate":
+        from alphalattice.control.data_platform.maintenance.contracts import WorkspaceInputStatus
+
+        day = date(2026, 1, 2)
+        state = WorkspaceInputStatus.seal(
+            manifest_revision="fixture",
+            data_revision_hash="a" * 64,
+            data_through=day,
+            adjusted_through=day,
+            panel_hash="b" * 64,
+            panel_through=day,
+            readiness_status="RESEARCH_READY",
+            sources_checked_at=datetime(2026, 1, 3, tzinfo=UTC),
+            foundation_hash=None,
+            foundation_panel_hash=None,
+            foundation_disposition="MISSING",
+        )
+        return cls(day, state), cls.failure_code
     if name == "DataTargetSessionLag":
         day = date(2026, 1, 2)
         return cls(target=day, reaching=0, total=1, minimum=1, latest=day), cls.failure_code

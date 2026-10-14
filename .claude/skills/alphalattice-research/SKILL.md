@@ -36,7 +36,7 @@ Hold positions only from the first actionable session; sessions before it are a 
 Each command's exact form; the [Command contract](references/operating.md) covers answers, continuations and waits.
 - `alphalattice workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
 - `alphalattice problem report --output "<out>/report.json"`: Writes a redacted local problem report; show it and ask before sending it.
-- `alphalattice first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09`: Opens the first use from the person's exact sentence and prepares its data; its answer lays out the whole first use.
+- `alphalattice first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09`: Opens the first use from the person's exact sentence and prepares numerical inputs through the preceding formation session's information cutoff; activation publishes the requested date's positions once that information is available, or holds until then; follow a calendar or source refusal's exact offered recovery. The declared current universe and Sector stay retrospective, with observation times recorded; historical membership is not claimed.
 - `alphalattice strategy build`: Runs the strategy's required Alpha and Risk studies on their defaults, then prepares and installs it.
 - `alphalattice strategy-book controls --package <package>`: The installed strategy's activation, book, horizon and review standing.
 - `alphalattice strategy-book review --package <package> --dir "<out>/analysts"`: Runs or reuses the whole-support book, prepares its Evidence, writes the Analyst bundles.

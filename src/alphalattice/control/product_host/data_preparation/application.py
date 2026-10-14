@@ -13,6 +13,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from alphalattice.capabilities.causal_inputs.availability import information_available_at
 from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.delegation import DataIssueDelegation
@@ -60,6 +61,7 @@ from alphalattice.control.product_host.data_preparation.remediation import (
 )
 from alphalattice.control.product_host.maintenance.data_update import (
     PROFILE,
+    PreparationInputAfterDate,
     installed_data_update_binding,
     read_workspace_inputs,
 )
@@ -132,6 +134,7 @@ from alphalattice.kernel.shared_kernel.source_identity import source_rule_closur
 
 TASK_KIND = "workspace_preparation"
 STAGES = ("freeze_sources", "prepare_data", "prepare_features", "publish_inputs", "verify_inputs")
+
 
 ListingUnitState = Literal[
     "PENDING",
@@ -442,6 +445,9 @@ class WorkspacePreparationPlan(BaseModel):  # type: ignore[misc]
         default=None, exclude_if=lambda v: v is None
     )
     predecessor_task_id: UUID | None = Field(default=None, exclude_if=lambda v: v is None)
+    information_cutoff_at: AwareDatetime | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
 
     @classmethod
     def create(cls, **values: Any) -> Self:
@@ -458,6 +464,12 @@ class WorkspacePreparationPlan(BaseModel):  # type: ignore[misc]
             pydantic.ValidationError: Fields or declared consistency violate the concrete model.
         """
         return seal_model(cls, values, field="plan_hash")
+
+    def target_changed(self, latest: date) -> bool:
+        """An ordinary preview follows the latest session; an explicit dated cap may precede it."""
+        if self.information_cutoff_at:
+            latest = min(latest, self.information_cutoff_at.date())
+        return self.target_session != latest
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -820,28 +832,76 @@ class WorkspacePreparationApplication:
         progress: dict[str, Any] = self._load(task.task_id, "progress", optional=True) or {}
         return progress
 
+    def _source_plan(
+        self,
+        manifest: ResearchWorkspaceManifest,
+        resume: UUID | None,
+        requested_formation_session: date | None,
+        requested_information_cutoff_at: datetime | None,
+        now: datetime,
+    ) -> WorkspacePreparationPlan | dict[str, Any]:
+        """Admit exact local/predecessor coverage or bind new acquisition to the date's cutoff."""
+        existing_inputs, predecessor = None, None
+        if resume is not None:
+            task = self.session.task_control_registry.task(resume)
+            if refused := self.replan_refusal(task):
+                raise ValueError(refused)
+            predecessor = self._stored_plan(task)
+            existing_inputs = predecessor.existing_inputs
+        elif (self.session.workspace / "market-data.duckdb").exists():
+            if manifest.data_update is None:
+                raise ValueError("workspace_preparation.existing_data_requires_explicit_binding")
+            try:
+                existing_inputs = read_workspace_inputs(
+                    self.session.workspace,
+                    manifest.data_update,
+                    through=requested_formation_session,
+                )
+            except PreparationInputAfterDate as error:
+                return {
+                    "status": "REFUSED",
+                    "failure_code": error.failure_code,
+                    "target_session": str(requested_formation_session),
+                    "source_through": str(error.through),
+                    "source_inputs": error.state.model_dump(mode="json"),
+                    "next_requests": {"readback": {"operation": "WORKSPACE_PREPARE_READBACK"}},
+                }
+            if existing_inputs.readiness_status != "RESEARCH_READY":
+                raise ValueError("workspace_preparation.qualified_local_inputs_required")
+        target = (
+            predecessor.target_session
+            if predecessor is not None
+            else existing_inputs.panel_through
+            if existing_inputs is not None
+            else _latest_common_us_session(on_or_before=now.date(), observed_at=now)
+        )
+        return WorkspacePreparationPlan.create(
+            workspace_manifest=manifest,
+            binding=installed_data_update_binding(self.session.workspace),
+            target_session=min(target, requested_formation_session)
+            if requested_formation_session is not None
+            else target,
+            planned_at=now,
+            implementation_hash=_implementation(),
+            existing_inputs=existing_inputs,
+            predecessor_task_id=resume,
+            information_cutoff_at=predecessor.information_cutoff_at
+            if predecessor is not None
+            else requested_information_cutoff_at
+            if requested_information_cutoff_at is not None
+            and information_available_at(requested_information_cutoff_at) <= now
+            else None,
+        )
+
     def plan(
         self,
         *,
         network_delegation: str | None = None,
         recovery_task_id: UUID | None = None,
+        requested_formation_session: date | None = None,
+        requested_information_cutoff_at: datetime | None = None,
     ) -> dict[str, Any]:
-        """Preview preparation or exact checkpoint recovery without acquiring new sources.
-
-        Qualified local inputs are reused without download. Unfinished tasks retain their authority;
-        a blocked or cancelled predecessor is resumed only within its exact scope.
-
-        Args:
-            network_delegation: Active first-use authority validated by the Host.
-            recovery_task_id: The exact stopped Task whose offered continuation is being read.
-
-        Returns:
-            Existing preparation state or explicit confirmation preview with source-access refusal,
-            exact predecessor and legal next requests.
-
-        Raises:
-            ValueError: Existing local data lacks an explicit qualified binding.
-        """
+        """Preview preparation or exact recovery within its retained date and authority."""
         recovery = (
             self.session.task_control_registry.task(recovery_task_id)
             if recovery_task_id is not None
@@ -900,31 +960,16 @@ class WorkspacePreparationApplication:
                     else self.readback()
                 )
             resume = previous.task_id
-        existing_inputs = None
-        predecessor_plan = None
-        if resume is not None:
-            predecessor_plan = self._stored_plan(self.session.task_control_registry.task(resume))
-            existing_inputs = predecessor_plan.existing_inputs
-        elif (self.session.workspace / "market-data.duckdb").exists():
-            if manifest.data_update is None:
-                raise ValueError("workspace_preparation.existing_data_requires_explicit_binding")
-            existing_inputs = read_workspace_inputs(self.session.workspace, manifest.data_update)
-            if existing_inputs.readiness_status != "RESEARCH_READY":
-                raise ValueError("workspace_preparation.qualified_local_inputs_required")
         now = self.clock()
-        candidate_plan = WorkspacePreparationPlan.create(
-            workspace_manifest=manifest,
-            binding=installed_data_update_binding(self.session.workspace),
-            target_session=predecessor_plan.target_session
-            if predecessor_plan is not None
-            else existing_inputs.panel_through
-            if existing_inputs is not None
-            else _latest_common_us_session(on_or_before=now.date(), observed_at=now),
-            planned_at=now,
-            implementation_hash=_implementation(),
-            existing_inputs=existing_inputs,
-            predecessor_task_id=resume,
+        candidate_plan = self._source_plan(
+            manifest,
+            resume,
+            requested_formation_session,
+            requested_information_cutoff_at,
+            now,
         )
+        if isinstance(candidate_plan, dict):
+            return candidate_plan
         prior = self.last_plan
         plan = (
             prior
@@ -938,6 +983,7 @@ class WorkspacePreparationApplication:
                     "implementation_hash",
                     "existing_inputs",
                     "predecessor_task_id",
+                    "information_cutoff_at",
                 )
             )
             else candidate_plan
@@ -1140,20 +1186,18 @@ class WorkspacePreparationApplication:
         return True
 
     def require_confirmation_caller(
-        self, plan_hash: str, *, caller: str, grant_hash: str | None
+        self,
+        plan_hash: str,
+        *,
+        caller: str,
+        grant_hash: str | None,
+        requested_formation_session: date | None = None,
+        requested_information_cutoff_at: datetime | None = None,
     ) -> None:
-        """Require human confirmation or an exact granted external-automation resume.
-
-        Args:
-            plan_hash: Exact preparation plan.
-            caller: Declared operation caller.
-            grant_hash: Optional exact delegation grant. An external resume of a Task admitted
-                under one, naming none, runs under that Task's own grant, checked again (V484).
-
-        Raises:
-            ValueError: A human supplies delegation or a non-human lacks the exact admitted resume
-                grant.
-        """
+        """Require lawful caller authority and the open first use's bound on the exact plan."""
+        self._require_requested_date(
+            plan_hash, requested_formation_session, requested_information_cutoff_at
+        )
         if caller == "HUMAN" and grant_hash is not None:
             raise ValueError("workspace_preparation.human_confirmation_does_not_use_delegation")
         if caller == "EXTERNAL_AUTOMATION" and grant_hash is None:
@@ -1189,6 +1233,32 @@ class WorkspacePreparationApplication:
             caller == "EXTERNAL_AUTOMATION" and self.delegated_resume_allowed(plan_hash, grant_hash)
         ):
             raise ValueError("workspace_preparation.human_confirmation_required")
+
+    def _require_requested_date(
+        self, plan_hash: str, formation: date | None, cutoff: datetime | None
+    ) -> None:
+        """A retained Task or runnable preview cannot cross the workspace's dated boundary."""
+        if formation is None:
+            return
+        retained = next(
+            (t for t in self.tasks() if t.input.payload["plan"]["plan_hash"] == plan_hash), None
+        )
+        if (
+            retained is not None
+            and retained.lifecycle is TaskLifecycle.BLOCKED
+            and (refused := self.replan_refusal(retained))
+        ):
+            raise ValueError(refused)
+        plan = self._stored_plan(retained) if retained else self._planned(plan_hash)
+        if plan is not None and (
+            plan.target_session > formation
+            or (
+                cutoff is not None
+                and information_available_at(cutoff) <= self.clock()
+                and (plan.information_cutoff_at is None or plan.information_cutoff_at > cutoff)
+            )
+        ):
+            raise ValueError("workspace_preparation.preview_stale")
 
     def confirm(
         self, plan_hash: str, *, caller: str, grant_hash: str | None = None
@@ -1252,9 +1322,10 @@ class WorkspacePreparationApplication:
             if (
                 resume is None
                 and plan.existing_inputs is None
-                and plan.target_session
-                != _latest_common_us_session(
-                    on_or_before=approved_at.date(), observed_at=approved_at
+                and plan.target_changed(
+                    _latest_common_us_session(
+                        on_or_before=approved_at.date(), observed_at=approved_at
+                    )
                 )
             ):
                 raise ValueError("workspace_preparation.preview_stale")
@@ -1300,6 +1371,7 @@ class WorkspacePreparationApplication:
             return CommandAdmission(task_id=task.task_id, lifecycle=task.lifecycle.value)
 
     def _require(self, plan: WorkspacePreparationPlan) -> None:
+        through = cutoff.date() if (cutoff := plan.information_cutoff_at) else None
         current = read_research_workspace_manifest(self.session.workspace)
         restored = current.with_bindings(
             data_update=plan.workspace_manifest.data_update,
@@ -1313,7 +1385,12 @@ class WorkspacePreparationApplication:
             raise ValueError("workspace_preparation.binding_changed")
         if (
             plan.existing_inputs is not None
-            and read_workspace_inputs(self.session.workspace, plan.binding) != plan.existing_inputs
+            and read_workspace_inputs(
+                self.session.workspace,
+                plan.binding,
+                through=through,
+            )
+            != plan.existing_inputs
         ):
             raise ValueError("workspace_preparation.local_inputs_changed_new_scope_required")
 
@@ -1353,7 +1430,13 @@ class WorkspacePreparationApplication:
         original = self._stored_plan(previous)
         if previous.lifecycle not in {TaskLifecycle.CANCELLED, TaskLifecycle.BLOCKED} or any(
             getattr(original, key) != getattr(plan, key)
-            for key in ("workspace_manifest", "binding", "target_session", "existing_inputs")
+            for key in (
+                "workspace_manifest",
+                "binding",
+                "target_session",
+                "existing_inputs",
+                "information_cutoff_at",
+            )
         ):
             raise ValueError("workspace_preparation.resume_scope_changed")
         frozen = self._load(previous.task_id, STAGES[0])
