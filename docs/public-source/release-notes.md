@@ -270,3 +270,31 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 - **Committee decisions (preview).** The committee can decline endorsement without changing research positions. The Risk bundle separately states whether the date's risk was evaluated and whether the historical Risk study applied. Where the portfolio manager made rulings, the report labels the last ruling as its final view; earlier standing views remain readable.
 - **Agent compatibility (preview).** Answers name the agent interface version. A deprecated entry stays available while its notice names the replacement and earliest removal release; compatibility checks refuse an undeclared removal or an incompatible typed change.
 - **Bundle routing (preview).** A review bundle carries its workspace location. If a binding points elsewhere, the refusal names the conflicting workspaces and offers the exact binding recovery. Member keys and authority checks still apply.
+
+## 0.1.9
+
+### Added
+
+- None.
+
+### Changed
+
+- The guide and research Skill describe how a past date is read. A past date's positions are decided only with information through that date's close, and earlier forward sessions are shown as a causal replay.
+
+### Deprecated
+
+- None.
+
+### Removed
+
+- None.
+
+### Fixed
+
+- A first use for a past date whose information is already available now publishes that date's positions. Previously, preparation could use market data from after the date, and the date's positions could not be published. Prices, Features, outcomes and model fits are now bounded at the date's close. Current sector classifications remain the declared current-universe assumption.
+- A date the first use cannot support is refused before any model is fitted, with the nearest supported date or the next request. This covers a date that is not a session, is too far ahead, falls before the data, or lacks enough history.
+- Local data that extends past the requested date is refused before it is copied into the workspace.
+
+### Previews
+
+- **Committee agenda (preview).** The committee argues a bounded agenda of its most material points, twelve by default, ranked by affected holding weight. The remaining points are listed below the agenda line, and the portfolio manager may raise one through a reply.
