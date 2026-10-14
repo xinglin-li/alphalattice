@@ -16,7 +16,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, fields, replace
 from dataclasses import field as dataclass_field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from secrets import token_hex
 from typing import Any, Self
@@ -39,10 +39,14 @@ from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputAg
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
 from alphalattice.interface.local_application.cli_contract import (
+    REQUEST_PROVENANCE,
     RequestProvenance,
     join,
     refusal_words,
     shell,
+)
+from alphalattice.interface.local_application.cli_contract import (
+    entry as command_entry,
 )
 from alphalattice.interface.local_application.failure_codes import located_failure, public_failure
 from alphalattice.interface.local_application.goals import (
@@ -58,6 +62,7 @@ from alphalattice.interface.local_application.goals import (
     GoalStatement,
     GoalSubmission,
     GoalTaskFact,
+    target_sessions,
 )
 from alphalattice.interface.local_application.operations import FIRST_USE_STEPS
 from alphalattice.interface.local_application.portfolio_research import (
@@ -72,6 +77,10 @@ from alphalattice.protocols.actor_execution.bundles import bundle_directory_key,
 GOAL_NAMESPACE = UUID("8f1d6c63-3c3e-4f5f-9f0e-5c4b2a7e8d10")
 """A goal opened without an id is named from its declaration and who opened it, so a retried
 open answers the goal it made rather than a second one."""
+_SOURCE_DATE_REFUSALS = (
+    "workspace_preparation.local_inputs_after_requested_date",
+    "data.current_universe_no_feature_ready_listings",
+)
 
 TaskFacts = Callable[[UUID], tuple[str, str, datetime | None] | None]
 """A Task's kind, Task Control lifecycle and canonical update time, or nothing when absent."""
@@ -459,6 +468,7 @@ class GoalApplication:
         task_facts: TaskFacts,
         *,
         workspace: Path,
+        preparation_completed: Callable[[], bool] = lambda: False,
     ) -> None:
         """Bind the goal store, the clock, the owners' reader and Task Control's facts.
 
@@ -466,20 +476,22 @@ class GoalApplication:
         """
         self.store, self.clock, self.read = store, clock, read
         self.admitted_at, self.task_facts = admitted_at, task_facts
-        self.workspace = workspace
+        self.workspace, self.preparation_completed = workspace, preparation_completed
 
     # ------------------------------------------------------------------ attribution
 
-    def attributed_goal(self, provenance: RequestProvenance | None) -> Goal | None:
-        """The open goal a request works for: the one it names, else its session's.
+    def attributed_goal(self, provenance: RequestProvenance | Goal | None) -> Goal | None:
+        """The current Goal snapshot or the request's attributed Goal; neither grants authority.
 
         A named goal that is absent or closed is refused by name, so no work is recorded
         under a goal it cannot count toward (OP13).
         """
+        if isinstance(provenance, Goal):
+            return provenance
         if provenance is None:
             return None
         if provenance.goal_id is not None:
-            head = self.store.head(UUID(provenance.goal_id))
+            head = self.store.head(UUID(str(provenance.goal_id)))
             if head is None:
                 raise ValueError("goal.not_found")
             if head.state != "OPEN":
@@ -495,6 +507,123 @@ class GoalApplication:
             if head is not None and head.declaration.kind == "FIRST_USE":
                 return head
         return None
+
+    def network_delegation(
+        self, subject: Goal | RequestProvenance | None, caller: str
+    ) -> str | None:
+        """The attributed Goal's current preparation network authority, shared by both entries."""
+        try:
+            goal = self.attributed_goal(subject)
+        except ValueError:
+            return None
+        return None if goal is None else self.delegation(goal, "NETWORK_ACCESS_SET", caller)
+
+    def prepare(
+        self,
+        request: PortfolioResearchOperationRequest,
+        caller: str,
+        plan: Callable[..., dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Plan within the first use's authority, cutoff and immutable-date recovery."""
+        goal = self.first_use()
+        try:
+            answer = plan(
+                network_delegation=self.network_delegation(REQUEST_PROVENANCE.get(), caller),
+                recovery_task_id=request.recovery_task_id,
+                **self.preparation_scope(goal),
+            )
+        except ValueError as error:
+            if str(error) not in _SOURCE_DATE_REFUSALS:
+                raise
+            answer = {
+                "status": "REFUSED",
+                "failure_code": public_failure(error, "workspace_preparation.refused"),
+            }
+        return self.preparation_recovery(answer, goal)
+
+    def preparation_scope(self, goal: Goal | None = None) -> dict[str, Any]:
+        """An open workspace first use caps preparation, independently of caller authority."""
+        goal = goal or self.first_use()
+        named = goal.declaration.target_date if goal and goal.state == "OPEN" else None
+        dated = {} if named is None else target_sessions(named, self.clock())
+        formation, cutoff = dated.get("formation_session"), dated.get("information_cutoff_at")
+        return {
+            "requested_formation_session": date.fromisoformat(str(formation))
+            if formation
+            else None,
+            "requested_information_cutoff_at": datetime.fromisoformat(str(cutoff))
+            if cutoff
+            else None,
+        }
+
+    def preparation_recovery(
+        self,
+        answer: dict[str, Any],
+        subject: Goal | RequestProvenance | None,
+        code: str | None = None,
+    ) -> dict[str, Any]:
+        """Keep the original Goal, or explicitly choose a different date in a new workspace."""
+        code = code or answer.get("failure_code") or answer.get("latest_failure_code")
+        if code not in _SOURCE_DATE_REFUSALS:
+            return answer
+        subject = subject or self.first_use()
+        try:
+            subject = self.attributed_goal(subject)
+        except ValueError:
+            return answer
+        if (
+            subject is None
+            or subject.declaration.kind != "FIRST_USE"
+            or subject.state != "OPEN"
+            or subject.declaration.target_date is None
+        ):
+            return answer
+        nearest = None
+        source = answer.get("source_inputs") or {}
+        if source.get("readiness_status") == "RESEARCH_READY" and source.get(
+            "panel_through"
+        ) == answer.get("source_through"):
+            through = date.fromisoformat(source["panel_through"])
+            nearest = target_sessions(through + timedelta(days=1))["entry_session"]
+        gid = str(subject.goal_id)
+        objective, named = subject.declaration.objective, str(nearest or "<supported-date>")
+        requests = dict(answer.get("next_requests") or {})
+        if code == "data.current_universe_no_feature_ready_listings":
+            requests.clear()
+        requests.setdefault("readback", {"operation": "WORKSPACE_PREPARE_READBACK"})
+        requests["goal"] = {"operation": "GOAL_SHOW", "goal_id": gid}
+        requests["abandon"] = {"operation": "GOAL_ABANDON", "goal_id": gid, "change_reason": code}
+        return {
+            **answer,
+            **refusal_words(code),
+            **(
+                {
+                    "detail": "The acquired source admits no listing with sufficient research "
+                    "history and quality for the requested date. Features and fits did not begin. "
+                    "Source qualification is terminal; read the offered preparation state. "
+                    "This acquired source supports no lawful date nearby. Any existing Goal keeps "
+                    "its original date, and each workspace has one first use; after any offered "
+                    "abandonment, ask the person to choose a new workspace and a supported date "
+                    "for its first-use command.",
+                    "next_action": "READ_THE_SOURCE_SUPPORT_AND_KEEP_THE_GOAL_DATE",
+                }
+                if code == "data.current_universe_no_feature_ready_listings"
+                else {}
+            ),
+            "nearest_date": nearest,
+            "nearest_date_support": "QUALIFIED_LOCAL_INPUTS" if nearest else "UNAVAILABLE",
+            "new_workspace": {
+                "choose": ["workspace", *([] if nearest else ["supported_date"])],
+                "command_template": self._first_use_command("<new-workspace>", objective, named),
+            },
+            "next_requests": requests,
+        }
+
+    @staticmethod
+    def _first_use_command(workspace: str | Path, objective: str, named: str) -> str:
+        """Quote first-use recovery through the shared CLI grammar."""
+        fields = ("first-use", "prepare", "--sentence", objective, "--date", named)
+        return join([*command_entry(workspace, fields, full=True)], shell())
 
     @staticmethod
     def delegation_ends(goal: Goal) -> datetime:
@@ -1344,6 +1473,21 @@ class GoalApplication:
                 answer = {"status": "REUSED_EXACT", **self._identity_of(prior)}
                 return {**answer, **self._bind(prior, session)}
             raise ValueError("goal.already_open_revise_it")
+        if declaration.kind == "FIRST_USE" and declaration.target_date is not None:
+            dated = target_sessions(declaration.target_date, self.clock(), for_preparation=True)
+            if code := dated.get("failure_code"):
+                return {
+                    "status": "REFUSED",
+                    "failure_code": code,
+                    "target_date": dated["target_date"],
+                    "nearest_date": dated["nearest_date"],
+                    "next_command": self._first_use_command(
+                        self.workspace, declaration.objective, str(dated["nearest_date"])
+                    ),
+                    **refusal_words(str(code) + ":" + str(dated["nearest_date"])),
+                }
+        if declaration.kind == "FIRST_USE" and self.preparation_completed():
+            raise ValueError("goal.first_use_after_preparation")
         if (
             declaration.parent_goal_id is not None
             and self.store.head(declaration.parent_goal_id) is None

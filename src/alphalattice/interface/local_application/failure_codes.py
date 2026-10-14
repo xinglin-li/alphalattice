@@ -352,6 +352,7 @@ def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> 
             }
         except ValueError:
             return {"operation": "TASKS"}
+        read.update({k: request[k] for k in ("committee_role", "committee_key") if k in request})
         return read
     return {}
 

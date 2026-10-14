@@ -17,14 +17,13 @@ import pytest
 from alphalattice.interface.local_application import cli, client
 from alphalattice.interface.local_application.cli import request_of
 from alphalattice.interface.local_application.cli_contract import (
+    BOUND_WORKSPACE,
     choices,
     command,
     command_table,
     entry,
 )
-from tests.portfolio_strategy_lab.cli_support import (
-    _assert_commands_parse,
-)
+from tests.portfolio_strategy_lab.cli_support import _assert_commands_parse
 from tests.structural.refusal_support import door_words, fill_subject
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
@@ -343,10 +342,17 @@ def test_every_printed_command_reads_back_as_the_request_it_came_from(
         for group in groups
     }
 
-    workspace = tmp_path / "a book's workspace"
+    workspace = tmp_path / "a book's workspace 中"
     request = {"operation": "ACTIVITY_LIST", "after": "@file"}
     prefix = entry(workspace)
     assert prefix == ("alphalattice", "--workspace", str(workspace.resolve()))
+    token = BOUND_WORKSPACE.set(workspace.resolve())
+    try:
+        assert entry(workspace) == ("alphalattice",)
+        for initial in (str(workspace), "<new-workspace>"):
+            assert entry(initial, full=True) == ("alphalattice", "--workspace", initial)
+    finally:
+        BOUND_WORKSPACE.reset(token)
     posix = command(request, prefix=prefix, quoting="posix")
     assert posix is not None and shlex.split(posix)[: len(prefix)] == list(prefix)
     assert request_of(shlex.split(posix)[1:]) == request

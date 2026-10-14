@@ -610,6 +610,9 @@ class PortfolioResearchOperations:
             lambda task_id: self.workspace_session.task_control_registry.task(task_id).admitted_at,
             self._task_facts,
             workspace=self.workspace_session.workspace,
+            preparation_completed=lambda: any(
+                t.lifecycle.value == "SUCCEEDED" for t in self.preparation.tasks()
+            ),
         )
         self._compose_input_owners()
         self.trials = FeatureTrials(
@@ -625,7 +628,9 @@ class PortfolioResearchOperations:
         self._packages = {}
         if self.review is not None:
             self.review.read_experiment = self.experiments.readback
-            self.review.network_delegation = self._network_delegation
+            self.review.network_delegation = lambda caller: self.goals.network_delegation(
+                REQUEST_PROVENANCE.get(), caller
+            )
         if self.application is None:
             return
         assert self.review is not None
@@ -793,14 +798,6 @@ class PortfolioResearchOperations:
         except ValueError:
             goal = None
         return self.goals.data_decisions(goal, caller)
-
-    def _network_delegation(self, caller: str) -> str | None:
-        """The attributed first-use goal's current network authority for this caller."""
-        try:
-            goal = self.goals.attributed_goal(REQUEST_PROVENANCE.get())
-        except ValueError:
-            return None
-        return None if goal is None else self.goals.delegation(goal, "NETWORK_ACCESS_SET", caller)
 
     def _task_facts(self, task_id: UUID) -> tuple[str, str, datetime | None] | None:
         """A Task's kind, lifecycle and canonical update clock; nothing when absent."""
@@ -1374,16 +1371,6 @@ class PortfolioResearchOperations:
             return common
         if request.operation.startswith("GOAL_"):
             try:
-                if (
-                    request.operation == "GOAL_OPEN"
-                    and isinstance(request.goal_declaration, dict)
-                    and request.goal_declaration.get("kind") == "FIRST_USE"
-                    and self.goals.first_use() is None
-                    and any(t.lifecycle.value == "SUCCEEDED" for t in self.preparation.tasks())
-                ):
-                    # A first use is the one before the workspace's first preparation (V452);
-                    # its own sentence opened again after it reuses the goal it opened.
-                    raise ValueError("goal.first_use_after_preparation")
                 answer = self.goals.operate(request, caller, REQUEST_PROVENANCE.get())
                 if request.operation in {"GOAL_SUBMIT", "GOAL_ABANDON"}:
                     self._settle_first_use(self.goals.first_use())
@@ -1405,7 +1392,7 @@ class PortfolioResearchOperations:
             return self.observer.refusals(days=request.view_last_days or ACTIVITY_REFUSAL_DAYS)
         if request.operation == "NETWORK_ACCESS":
             return network_access(self.workspace_session.workspace).body(
-                delegation=self._network_delegation(caller)
+                delegation=self.goals.network_delegation(REQUEST_PROVENANCE.get(), caller)
             )
         if request.operation == "NETWORK_ACCESS_SET":
             # Network access is an authority, like the background update settings: a
@@ -2804,11 +2791,7 @@ class PortfolioResearchOperations:
         return {**activated, **first_update(self, activated, provenance)}
 
     def _committee(self, request: PortfolioResearchOperationRequest) -> dict[str, object]:
-        """The investment committee on a date's published positions (`committee`).
-
-        Its floor is the opening goal's ledger; each message it reveals is filed as a row of
-        that goal's conversation, so the Team page shows the floor as it moves.
-        """
+        """The date's committee, under its workspace's agenda rule, on the Goal's own ledger."""
         task, now = str(request.update_task_id), self.dispatcher.clock()
         return committee.operate(
             self.goals.store,
@@ -2817,6 +2800,7 @@ class PortfolioResearchOperations:
             provenance=REQUEST_PROVENANCE.get(),
             dated=lambda: self._dated(task),
             file_floor=lambda: self._file_floor(task, now),
+            agenda_limit=self.workspace_manifest.committee_agenda_limit or committee.AGENDA_LIMIT,
         )
 
     def _date_risk(
@@ -2942,8 +2926,7 @@ class PortfolioResearchOperations:
                             **definitions.controls(
                                 request.input_binding_hash, request.feature_plan_hash
                             ),
-                            # What a trial of a factor on this input runs against, before
-                            # anything is built (V367, V354).
+                            # V367, V354: trial controls precede the factor build.
                             **self.experiments.prerequisites_of(
                                 "FEATURE_TRIAL", binding_hash=request.input_binding_hash
                             ),
@@ -2975,8 +2958,7 @@ class PortfolioResearchOperations:
                         v.binding_hash for v in self.experiments.manifest.experiment_inputs or ()
                     ]
                     if isinstance(error, FileNotFoundError) and named and named not in held:
-                        # A binding the workspace does not hold names the field, the bindings
-                        # it holds and each one's controls; nothing is repaired (V380).
+                        # V380: refused bindings offer their field and admitted controls.
                         return {
                             "status": "REFUSED",
                             "failure_code": "feature_research.input_binding_unresolved",
@@ -3107,8 +3089,7 @@ class PortfolioResearchOperations:
                     self.data_issues.operate(request, caller, self._data_decisions(caller)),
                 )
             case "RESEARCH_INPUTS":
-                # Discovery isolates each unreadable publication; exact input selection remains
-                # strict in ResearchInputRevisions.select/lineage.
+                # Discovery isolates unreadable publications; exact selection stays strict.
                 return self.input_capture.revisions.versions()
             case "RESEARCH_INPUT_PLAN":
                 assert request.research_input_id is not None
@@ -3134,17 +3115,23 @@ class PortfolioResearchOperations:
             case "WORKSPACE_PREPARE_READBACK":
                 return self._preparation_readback(request.task_id)
             case "WORKSPACE_PREPARE_PLAN":
-                return self.preparation.plan(
-                    network_delegation=self._network_delegation(caller),
-                    recovery_task_id=request.recovery_task_id,
-                )
+                return self.goals.prepare(request, caller, self.preparation.plan)
             case "WORKSPACE_PREPARE_CONFIRM":
                 assert request.preparation_plan_hash is not None
-                self.preparation.require_confirmation_caller(
-                    request.preparation_plan_hash,
-                    caller=caller,
-                    grant_hash=request.data_issue_grant_hash,
-                )
+                try:
+                    self.preparation.require_confirmation_caller(
+                        request.preparation_plan_hash,
+                        caller=caller,
+                        grant_hash=request.data_issue_grant_hash,
+                        **self.goals.preparation_scope(),
+                    )
+                except ValueError as error:
+                    if str(error) != "workspace_preparation.preview_stale":
+                        raise
+                    return {
+                        **refused("workspace_preparation.preview_stale"),
+                        "next_requests": {"replan": {"operation": "WORKSPACE_PREPARE_PLAN"}},
+                    }
                 previous = next(
                     (
                         t
@@ -3155,14 +3142,15 @@ class PortfolioResearchOperations:
                     None,
                 )
                 if previous is not None:
-                    if previous.lifecycle.value == "SUCCEEDED":
-                        return {
-                            "status": "REUSED_EXACT",
-                            "task_id": None,
-                            "publication_task_id": str(previous.task_id),
-                        }
-                    if previous.lifecycle in _PREPARATION_IN_FLIGHT:
-                        return {"status": "REUSED_IN_FLIGHT", "task_id": str(previous.task_id)}
+                    tid = str(previous.task_id)
+                    reused = {
+                        TaskLifecycle.SUCCEEDED: ("REUSED_EXACT", None, tid),
+                        **dict.fromkeys(_PREPARATION_IN_FLIGHT, ("REUSED_IN_FLIGHT", tid)),
+                    }.get(previous.lifecycle)
+                    if reused is not None:
+                        return dict(
+                            zip(("status", "task_id", "publication_task_id"), reused, strict=False)
+                        )
                 sent = self.dispatcher.submit(
                     WorkspacePreparationCommand(
                         self.preparation,
@@ -3172,21 +3160,16 @@ class PortfolioResearchOperations:
                     )
                 )
                 return {
-                    # The preparation's Task as it is now, a stopped one confirmed again reopened
-                    # (V600).
                     **self._run_answer(sent),
-                    # A refused admission's words, a provider's wait among them (V375).
-                    **(
-                        explain(sent.refusal_detail, workspace=self.workspace_session.workspace)
-                        if sent.refusal_detail
-                        else {}
+                    **explain(
+                        sent.refusal_detail or "", workspace=self.workspace_session.workspace
                     ),
-                    # A preview past its hour or superseded: preview the preparation again (V543).
-                    **(
-                        {"next_requests": {"replan": {"operation": "WORKSPACE_PREPARE_PLAN"}}}
-                        if sent.refusal_detail == "workspace_preparation.preview_required"
-                        else {}
-                    ),
+                    **{
+                        None: {},
+                        "workspace_preparation.preview_required": {
+                            "next_requests": {"replan": {"operation": "WORKSPACE_PREPARE_PLAN"}}
+                        },
+                    }.get(sent.refusal_detail, {}),
                 }
             case "STORAGE_CAP_SHOW":
                 return self.storage.cap_readback()
@@ -3236,8 +3219,7 @@ class PortfolioResearchOperations:
                     plan = self.data_update.prepare(request.update_plan_hash)
                     reused = self.data_update.reusable(plan)
                     if reused is not None:
-                        # The update it reused, by the Task that sealed it, which a read follows
-                        # (V449: every state has its exit).
+                        # V449: follow the Task that sealed the reused update.
                         sealed = self.data_update.receipt_task(reused)
                         return {
                             "status": "REUSED_EXACT",
@@ -3260,8 +3242,7 @@ class PortfolioResearchOperations:
                     submitted = self.dispatcher.submit(
                         WorkspaceDataUpdateCommand(self.data_update, plan)
                     )
-                    # The update's Task as it is now, a stopped one reopened where its stop allows
-                    # .
+                    # Read the Task's current state after any admitted reopening.
                     answer = self._run_answer(submitted, plan)
                     return {
                         **answer,
@@ -3330,8 +3311,7 @@ class PortfolioResearchOperations:
                 confirmed = request.expected_task_hash
                 retry: dict[str, object] | None = None
                 if before["lifecycle"] == "BLOCKED":
-                    # The owner reopens only the confirmed BLOCKED version, when its
-                    # refusal names a repairable artifact.
+                    # Reopen the confirmed BLOCKED version only for a repairable artifact.
                     record = self.workspace_session.task_control_registry.task(request.task_id)
                     raised = _runner_retry_reason(record) is not None
                     if record.task_kind != RESEARCH_EXPERIMENT_TASK_KIND and not raised:
@@ -4093,11 +4073,10 @@ class PortfolioResearchOperations:
         return body
 
     def _preparation_readback(self, task_id: UUID | None) -> dict[str, Any]:
-        """A preparation's readback; one the provider deferred says why, when, and how it
-        resumes (V375): its owner takes the same plan again once the time has passed."""
+        """Read recovery and timed provider deferrals on the same plan (V375)."""
         prepared = self.preparation.readback(task_id)
         if prepared.get("status") != "DEFERRED":
-            return prepared
+            return self.goals.preparation_recovery(prepared, REQUEST_PROVENANCE.get())
         return deferral(
             prepared,
             failure_code=prepared.get("failure_code"),
@@ -4940,7 +4919,7 @@ class PortfolioResearchOperations:
                 else cast(dict[str, Any], request.get("next_requests") or {})
             )
             way = {**way, "next_requests": {**offered, **continuation}}
-        return way
+        return self.goals.preparation_recovery(way, REQUEST_PROVENANCE.get(), code)
 
     def guardian(self) -> dict[str, object]:
         """Read every Task not finished at once, as Guanyin sees it, for the PM.

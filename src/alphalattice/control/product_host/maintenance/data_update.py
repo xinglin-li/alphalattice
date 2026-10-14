@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import duckdb
@@ -172,16 +172,7 @@ _RECOVERABLE_BLOCKS = {
 
 
 def installed_data_update_binding(workspace: Path | None = None) -> WorkspaceDataUpdateBinding:
-    """The binding a workspace's data update runs under.
-
-    The profile, the data policy and the daily catalog the workspace's activations make (EX).
-
-    Args:
-        workspace: The workspace; none binds the shipped catalog.
-
-    Returns:
-        The binding.
-    """
+    """Bind the profile, data policy and workspace's catalog, or the shipped catalog (EX)."""
     return WorkspaceDataUpdateBinding.seal(
         profile_file_hash=sha256(PROFILE.read_bytes()).hexdigest(),
         data_policy_hash=workspace_maintenance_data_policy_hash(),
@@ -209,8 +200,23 @@ def _confined_workspace(root: Path) -> Path:
     return root
 
 
+class PreparationInputAfterDate(ValueError):
+    """Keep the proved source date beside its request's refusal."""
+
+    failure_code: ClassVar[str] = "workspace_preparation.local_inputs_after_requested_date"
+
+    def __init__(self, through: date, state: WorkspaceInputStatus):
+        """Bind the proved source date and input state to the stable refusal code."""
+        self.through, self.state = through, state
+        super().__init__(self.failure_code)
+
+
 def read_workspace_inputs(
-    root: Path, binding: WorkspaceDataUpdateBinding, *, allow_transition: bool = False
+    root: Path,
+    binding: WorkspaceDataUpdateBinding,
+    *,
+    allow_transition: bool = False,
+    through: date | None = None,
 ) -> WorkspaceInputStatus:
     """Local metadata/immutable-manifest read; never instantiate maintenance."""
     root = _confined_workspace(root)
@@ -221,7 +227,19 @@ def read_workspace_inputs(
     # instance serves them all. A write attempted inside is refused, not
     # upgraded; this is a read-only consumer and stays one.
     with market.database.retain(read_only=True):
-        return _read_workspace_inputs(root, binding, market, allow_transition=allow_transition)
+        state = _read_workspace_inputs(root, binding, market, allow_transition=allow_transition)
+        if through is not None:
+            with market.database.connect(read_only=True) as connection:
+                physical = connection.execute(
+                    "SELECT max(d) FROM (SELECT session_date d FROM raw_daily_bar_current "
+                    "UNION ALL SELECT session_date FROM provider_adjusted_close_current)"
+                ).fetchone()
+            if not physical or physical[0] is None:
+                raise ValueError("workspace_preparation.qualified_local_inputs_required")
+            latest = max(physical[0], state.panel_through)
+            if latest > through:
+                raise PreparationInputAfterDate(latest, state)
+        return state
 
 
 def _read_workspace_inputs(
@@ -235,8 +253,9 @@ def _read_workspace_inputs(
     if readiness is None or readiness.active_manifest_id is None:
         raise ValueError("workspace_data_update.initialization_required")
     manifest = market.load_universe_manifest(readiness.active_manifest_id)
+    revision = manifest.revision_sha256
     if (
-        manifest.revision_sha256 != readiness.active_manifest_revision
+        revision != readiness.active_manifest_revision
         or manifest.profile.market_profile_id != binding.market_profile_id
     ):
         raise ValueError("workspace_data_update.manifest_mismatch")
@@ -249,9 +268,8 @@ def _read_workspace_inputs(
         profile.daily_price_basis,
     ) != ("US", "USD", "yfinance", "XNYS_XNAS", "split_adjusted"):
         raise ValueError("workspace_data_update.profile_not_admitted")
-    snapshot = PanelStateRepository(
-        market.database, market_data=market
-    ).feature_panel_snapshot_for_active(binding.market_profile_id)
+    panels = PanelStateRepository(market.database, market_data=market)
+    snapshot = panels.feature_panel_snapshot_for_active(binding.market_profile_id)
     if snapshot is None:
         raise ValueError("workspace_data_update.active_panel_required")
     resolver = ArtifactResolver(root / "artifacts")
@@ -276,7 +294,7 @@ def _read_workspace_inputs(
             and feature_catalog_for(root, str(snapshot["catalog_hash"])) is None
         )
         or (
-            snapshot["manifest_revision"] != manifest.revision_sha256
+            snapshot["manifest_revision"] != revision
             and not (allow_transition and readiness.status == "FEATURE_BUILDING")
         )
     ):
@@ -286,15 +304,13 @@ def _read_workspace_inputs(
     input_status = local.status.value if local else readiness.status
     if (
         input_status == "RESEARCH_READY"
-        and PanelStateRepository(market.database, market_data=market)
-        .feature_input_quality_disclosure(result_manifest_revision=manifest.revision_sha256)
-        .get("gateway_qualified")
+        and panels.feature_input_quality_disclosure(result_manifest_revision=revision).get(
+            "gateway_qualified"
+        )
         is not True
     ):
         input_status = "FEATURE_BUILDING"
-    if PanelStateRepository(market.database, market_data=market).has_unresolved_feature_input(
-        manifest.revision_sha256
-    ):
+    if panels.has_unresolved_feature_input(revision):
         input_status = "DATA_REVIEW_PENDING"
     foundation_hash = foundation_panel = None
     disposition = "MISSING"
@@ -321,8 +337,11 @@ def _read_workspace_inputs(
         pass
     except ValueError:
         disposition = "UNREADABLE"
+    source_failed = source_verification_failed(
+        readiness.last_checked_at, readiness.source_check_failed_at
+    )
     return WorkspaceInputStatus.seal(
-        manifest_revision=manifest.revision_sha256,
+        manifest_revision=revision,
         data_revision_hash=market.maintenance_revision_fingerprint(
             manifest, listing_ids=tuple(market.research_listing_sources(manifest))
         ),
@@ -332,25 +351,13 @@ def _read_workspace_inputs(
         panel_through=snapshot["as_of_session"],
         readiness_status=input_status,
         sources_checked_at=readiness.last_checked_at,
-        source_check_failed_at=(
-            readiness.source_check_failed_at
-            if source_verification_failed(
-                readiness.last_checked_at, readiness.source_check_failed_at
-            )
-            else None
-        ),
-        source_disclosure=(
-            "LAST_KNOWN_MEMBERSHIP_AFTER_SOURCE_FAILURE"
-            if source_verification_failed(
-                readiness.last_checked_at, readiness.source_check_failed_at
-            )
-            else None
-        ),
+        source_check_failed_at=(readiness.source_check_failed_at if source_failed else None),
+        source_disclosure=("LAST_KNOWN_MEMBERSHIP_AFTER_SOURCE_FAILURE" if source_failed else None),
         foundation_hash=foundation_hash,
         foundation_panel_hash=foundation_panel,
         foundation_disposition=disposition,
         panel_manifest_revision=str(snapshot["manifest_revision"])
-        if snapshot["manifest_revision"] != manifest.revision_sha256
+        if snapshot["manifest_revision"] != revision
         else None,
         listing_set_hash=panel_as_of_listing_identity(panel)[0],
     )
@@ -964,22 +971,10 @@ class WorkspaceDataUpdateApplication:
         }
 
     def confirm(self, plan_hash: str, *, caller: str) -> CommandAdmission:
-        """Require human consent and revalidate an exact current change under the mutation gate.
+        """Revalidate the exact change under the mutation gate and refuse invalid scope or caller.
 
-        A stock-list change is the person's to approve. The full-history audit its listings
-        owe is a default the agent takes and discloses (person-stops row 49), so an agent may
-        confirm a `FULL_HISTORY_AUDIT` plan, which a stopped change then resumes on.
-
-        Args:
-            plan_hash: Exact retained membership/change proposal.
-            caller: HUMAN, or any caller for a full-history audit.
-
-        Returns:
-            Exact reused or newly admitted change task.
-
-        Raises:
-            ValueError: Caller/change scope is invalid, proposal is stale or another task must
-                finish or recover.
+        Membership changes need human consent; the agent's declared full-history audit default
+        may confirm and resume a stopped change (person-stops row 49).
         """
         plan = self.changes.load_plan(plan_hash)
         change = plan.change
@@ -1297,16 +1292,10 @@ class WorkspaceDataUpdateApplication:
     _MAINTENANCE_ROWS = 96
 
     def _maintenance_readback(self, plan: WorkspaceDataUpdatePlan) -> dict[str, object] | None:
-        """The maintenance runner's durable listing units of the selected Task's own cycle,
-        keyed by the run the cycle recorded when it admitted them (the manifest bound for
-        that cycle: a transition or a candidate recheck runs under one the request does not
-        name, and today's active manifest is another update's scope). A cycle recorded
-        before that record existed is resolved from its own request, and only when the run
-        found says the same manifest revision. Counts over every unit, and the newest moved
-        units (UPDATED or FAILED, by their own update instant, at most `_MAINTENANCE_ROWS`)
-        with what each one changed. None before a cycle is admitted or before the runner
-        admitted units for it; a scope the store no longer resolves, or units it cannot
-        read, are unavailable by name -- never replaced by current data."""
+        """Read units of the Task's admitted cycle; legacy runs must match its manifest revision.
+        Count every unit and show at most _MAINTENANCE_ROWS newest UPDATED/FAILED units and changes.
+        Absent or unreadable historical scopes stay unavailable, never replaced by current data.
+        """
         try:
             cycle = self._cycle(plan)
         except ValueError:

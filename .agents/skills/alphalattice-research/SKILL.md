@@ -36,7 +36,7 @@ Hold positions only from the first actionable session; sessions before it are a 
 Each command's exact form; the [Command contract](references/operating.md) covers answers, continuations and waits.
 - `alphalattice workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
 - `alphalattice problem report --output "<out>/report.json"`: Writes a redacted local problem report; show it and ask before sending it.
-- `alphalattice first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09`: Opens the first use from the person's exact sentence and prepares its data; its answer lays out the whole first use.
+- `alphalattice first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09`: Opens the first use from the person's exact sentence and prepares numerical inputs through the preceding formation session's information cutoff; activation publishes the requested date's positions once that information is available, or holds until then; follow a calendar or source refusal's exact offered recovery. The declared current universe and Sector stay retrospective, with observation times recorded; historical membership is not claimed.
 - `alphalattice strategy build`: Runs the strategy's required Alpha and Risk studies on their defaults, then prepares and installs it.
 - `alphalattice strategy-book controls --package <package>`: The installed strategy's activation, book, horizon and review standing.
 - `alphalattice strategy-book review --package <package> --dir "<out>/analysts"`: Runs or reuses the whole-support book, prepares its Evidence, writes the Analyst bundles.
@@ -44,7 +44,7 @@ Each command's exact form; the [Command contract](references/operating.md) cover
 - `alphalattice committee open --update <task>`: Opens the committee on a date's positions; offers each specialist's bundle.
 - `alphalattice bundle prepare --role ALPHA --task <task> --dir "<out>/committee/alpha"`: A specialist's bundle; on a date's update, its view of the positions and the floor.
 - `alphalattice committee wait --update <task> --role PM --key <key>`: Waits, as one member, for what the floor addresses to it, or its close.
-- `alphalattice committee show --update <task> --output "<out>/committee/floor.json"`: The floor: its stage, members, tension points, messages and, once closed, the report.
+- `alphalattice committee show --update <task> --output "<out>/committee/floor.json"`: The floor: its stage, members, agenda points, below-line points, messages and, once closed, the report.
 - `alphalattice research-update plan --package <package> --output "<out>/research-update-plan.json"`: Plans the strategy's next sessions and offers `run`.
 - `alphalattice research-update run --from "<out>/research-update-plan.json" --wait`: Runs the saved plan, or resumes or reuses the same update.
 - `alphalattice research-update show --task <task>`: The update's published positions, their dates and claim.

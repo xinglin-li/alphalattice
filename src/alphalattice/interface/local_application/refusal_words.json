@@ -819,6 +819,10 @@
   "detail": "Research update Task {subject} is another strategy's than the one --package names, so it is not read as that strategy's: read the Task without --package, or the strategy's own latest with --package alone.",
   "next_action": "READ_THE_TASK_OR_THE_STRATEGYS_OWN_LATEST"
  },
+ "research_workspace.committee_agenda_limit_invalid": {
+  "detail": "`committee_agenda_limit` must be a strict integer from 1 through 24. Omit the field to use 12, or correct the workspace declaration and retry.",
+  "next_action": "CORRECT_THE_WORKSPACE_DECLARATION"
+ },
  "research_workspace.manifest_refused": {
   "detail": "The workspace's manifest does not read as its contract says (`{subject}`: each field refused and its rule), so nothing in it runs; restore the workspace from a backup that holds a readable manifest (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
@@ -1025,6 +1029,10 @@
  },
  "workspace_preparation.preview_required": {
   "detail": "A preparation starts from the exact preview it was planned from, and this plan has none the Host holds; plan it (`preparation plan`) and confirm the plan hash that preview names.",
+  "next_action": "PLAN_THE_PREPARATION_AGAIN"
+ },
+ "workspace_preparation.preview_stale": {
+  "detail": "The preparation preview no longer fits the current session or the open first use's formation cutoff. Send the offered preparation plan again before confirming.",
   "next_action": "PLAN_THE_PREPARATION_AGAIN"
  },
  "workspace_preparation.source_access_not_admitted": {
@@ -1516,8 +1524,24 @@
   "next_action": "PLAN_THE_UPDATE_AGAIN"
  },
  "first_use.date_outside_calendar": {
-  "detail": "The first use's date is not a session the exchange calendars plan, so its positions cannot be made for that date, and the activation stands. The goal's date never changes: tell the person, then close the goal by its procedure or start a new first use on a session date.",
+  "detail": "The date is outside the exchange calendars' planned range, so its update cannot be planned. Any existing Goal keeps its declared date, and any existing activation stands. Tell the person: read a retained Goal's recorded stop before closing it, or ask for a planned session date before opening a first use.",
   "next_action": "TELL_THE_PERSON_THE_DATE_IS_NOT_A_SESSION"
+ },
+ "first_use.date_not_session": {
+  "detail": "target_date is not a common XNYS/XNAS trading session. The nearest entry on or after it is {subject}; confirm that date with the person, then send the offered preparation command. No Goal was opened.",
+  "next_action": "PREPARE_THE_NEAREST_SESSION"
+ },
+ "first_use.date_after_clock": {
+  "detail": "target_date needs information from a formation after the Host's current exchange date. The latest supported entry is {subject}; confirm that date with the person, then send the offered preparation command. No Goal was opened.",
+  "next_action": "PREPARE_THE_NEAREST_SESSION"
+ },
+ "workspace_preparation.local_inputs_after_requested_date": {
+  "detail": "The qualified local inputs extend after the requested formation, so they cannot be reused within this Goal's information cutoff. Read the offered preparation state. This Goal keeps its original date, and each workspace has one first use; a different supported date needs a new workspace after the offered abandonment.",
+  "next_action": "READ_THE_SOURCE_SUPPORT_AND_KEEP_THE_GOAL_DATE"
+ },
+ "data.current_universe_no_feature_ready_listings": {
+  "detail": "The acquired source yielded no listing ready for Feature inputs. Read `issue list` for each failed listing and the provider cause. Retained source data is unchanged; follow the offered preparation recovery after correcting the source.",
+  "next_action": "DATA_ISSUES"
  },
  "committee.not_open": {
   "detail": "No committee is open on this update; open it with `alphalattice committee open --update <task>`.",
@@ -1544,7 +1568,7 @@
   "next_action": "SEND_THE_OFFERED_SELECTOR"
  },
  "committee.message_refused": {
-  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias. For review and committee members: MEMBER, a missing own session or bundle key; KEY, another member's key; ENDED, changed work after the thread ends. Read the floor with `alphalattice committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
+  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias; AGENDA, an unraised below-line point or more than one point raised by a PM reply. For review and committee members: MEMBER, a missing own session or bundle key; KEY, another member's key; ENDED, changed work after the thread ends. Read the floor with `alphalattice committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
   "next_action": "READ_THE_FLOOR"
  },
  "committee.session_required": {

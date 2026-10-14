@@ -92,8 +92,8 @@ class GoalDeclaration(GoalContract):
     parent_goal_id: UUID | None = None
     target_date: date | None = Field(
         default=None,
-        description="The date the person named for the positions: they are entered on the first "
-        "XNYS/XNAS session on or after it, decided at the close before.",
+        description="The person's common XNYS/XNAS entry session, decided at the close before. "
+        "Preparation refuses non-session dates; historical goals retain their date mapping.",
     )
 
     @model_serializer(mode="wrap")  # type: ignore[untyped-decorator]
@@ -135,7 +135,11 @@ def update_offers(update: object, named: date | None, task: object) -> dict[str,
 
 
 def target_sessions(
-    named: date, now: datetime | None = None, here: tzinfo | None = None
+    named: date,
+    now: datetime | None = None,
+    here: tzinfo | None = None,
+    *,
+    for_preparation: bool = False,
 ) -> dict[str, object]:
     """The sessions a named date's positions stand on, and when their information is available.
 
@@ -147,6 +151,7 @@ def target_sessions(
         named: The date the person named.
         now: The clock the reading is told against; the current time when omitted.
         here: The reader's zone; the machine's when omitted.
+        for_preparation: Check entry admission, using the Host's clock only when supplied.
 
     Returns:
         The named date, whether it is a session, the entry session (the first common XNYS/XNAS
@@ -167,7 +172,7 @@ def target_sessions(
 
     try:
         schedule = planned_local_qa_schedule(named - timedelta(days=14), named)
-    except (ValueError, KeyError, LookupError) as error:
+    except (ValueError, KeyError, LookupError, OverflowError) as error:
         raise ValueError("first_use.date_outside_calendar") from error
     point = next((p for p in schedule if p.entry_session >= named), None)
     if point is None:
@@ -181,7 +186,7 @@ def target_sessions(
         else f" ({mine:%H:%M}{'' if mine.date() == exchange.date() else f' on {mine.date()}'} "
         "your time)"
     )
-    return {
+    reading: dict[str, object] = {
         "named_date": named.isoformat(),
         "named_is_session": point.entry_session == named,
         "entry_session": point.entry_session.isoformat(),
@@ -201,6 +206,22 @@ def target_sessions(
             }
         ),
     }
+    if for_preparation:
+        code, nearest = None, None
+        clock_date = None if now is None else now.astimezone(ZoneInfo("America/New_York")).date()
+        if clock_date is not None and point.formation_session > clock_date:
+            code = "first_use.date_after_clock"
+            nearest = target_sessions(clock_date + timedelta(days=1), now)["entry_session"]
+        elif point.entry_session != named:
+            code, nearest = "first_use.date_not_session", point.entry_session.isoformat()
+        if code is not None:
+            reading.update(
+                status="REFUSED",
+                failure_code=code,
+                target_date=named.isoformat(),
+                nearest_date=nearest,
+            )
+    return reading
 
 
 class GoalReferenceRequest(GoalContract):

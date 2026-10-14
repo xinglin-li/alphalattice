@@ -7,6 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterator
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -28,9 +29,6 @@ from alphalattice.evidence.alternative_evidence.sources.recorded import Recorded
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
-)
-from alphalattice.interface.local_application.portfolio_research import (
-    PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
 from alphalattice.interface.local_application.web import SESSION_COOKIE, SESSION_HEADER
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
@@ -57,6 +55,8 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _Resolver,
     _run,
 )
+
+PortfolioResearchAgentRequest = PortfolioResearchRequestDocument
 
 
 def _workspace_manifest(workspace_id: str) -> ResearchWorkspaceManifest:
@@ -165,6 +165,7 @@ def build_authority(
     with_actor: bool = True,
     model_authority_admitted: bool = True,
     document_suffix: str = "",
+    now: datetime = _NOW,
     listing_symbols: dict[str, str] | None = None,
     extra_documents: Callable[[tuple[str, ...]], tuple[RecordedEvidenceDocument, ...]]
     | None = None,
@@ -176,7 +177,7 @@ def build_authority(
     tickers = (
         tuple(sorted(set(listing_symbols.values()))) if listing_symbols is not None else TICKERS
     )
-    registry_snapshot = _registry(tickers)
+    registry_snapshot = _registry(tickers, now=now)
     listing_authority = _listing_authority(listings, symbols=listing_symbols)
     mapping = resolve_portfolio_issuer_mapping(
         registry=registry_snapshot,
@@ -186,7 +187,7 @@ def build_authority(
     resources = AlternativeEvidenceDocumentTaskResources(
         recorded_registry=registry_snapshot,
         recorded_documents=(
-            *_documents(entities, suffix=document_suffix),
+            *_documents(entities, suffix=document_suffix, now=now),
             *(() if extra_documents is None else extra_documents(entities)),
         ),
         analysis_actor=(

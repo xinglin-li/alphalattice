@@ -11,7 +11,7 @@ as it did.
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,7 @@ from tests.alternative_evidence_desk.document_intelligence_support import (
     _counted_runtime,
     _registry,
 )
+from tests.alternative_evidence_desk.issuer_listing import _registry as dated_registry
 from tests.alternative_evidence_desk.planted_corpus import _NOW, _recorded_document
 
 
@@ -131,11 +132,17 @@ def test_source_bytes_are_kept_once_and_referenced_by_every_request(tmp_path: Pa
     runtime.close()
 
 
-def test_the_retained_inline_source_set_still_canonicalizes(tmp_path: Path) -> None:
+@pytest.mark.parametrize("now", (_NOW, _NOW - timedelta(days=7)))
+def test_the_retained_inline_source_set_still_canonicalizes(tmp_path: Path, now: datetime) -> None:
     runtime, _passes = _counted_runtime(tmp_path)
-    request = _request_at(_NOW)
+    request = _request_at(now)
+    registry, document = dated_registry(("AAPL",), now=now), _recorded_document(now=now)
+    assert dated_registry(("AAPL",)) == _registry()
+    assert _recorded_document() == _recorded_document(now=_NOW)
+    assert registry.captured_at == document.captured_at == document.available_at < now
+    assert document.published_at == now - timedelta(days=2)
     _snapshot, acquired = runtime.acquisition.build_recorded_evidence(
-        request=request, registry=_registry(), documents=(_recorded_document(),), published_at=_NOW
+        request=request, registry=registry, documents=(document,), published_at=now
     )
     inline = seal_contract(
         AcquiredEvidenceDocumentSet,
@@ -143,14 +150,14 @@ def test_the_retained_inline_source_set_still_canonicalizes(tmp_path: Path) -> N
         request_hash=request.request_hash,
         source_snapshot_hash=_snapshot.snapshot_hash,
         documents=acquired,
-        acquired_at=_NOW,
+        acquired_at=now,
     )
     runtime.artifacts.publish("source-document-sets", inline.source_set_hash, inline)
     loaded = runtime.artifacts.load_source_set(inline.source_set_hash)
     assert isinstance(loaded, AcquiredEvidenceDocumentSet)
     assert loaded == inline
     assert runtime.resolve_source_documents(loaded) == acquired
-    document_set = runtime.canonicalize(source_set=loaded, published_at=_NOW)
+    document_set = runtime.canonicalize(source_set=loaded, published_at=now)
     assert len(document_set.documents) == 1
     assert _objects(tmp_path) == [], "reading an inline set publishes no object"
     payload = json.loads(

@@ -5856,6 +5856,12 @@
 "feature_trial.study_not_from_factor_evidence": {
 "owner": "feature_trial"
 },
+"first_use.date_after_clock": {
+"owner": "first_use"
+},
+"first_use.date_not_session": {
+"owner": "first_use"
+},
 "first_use.date_outside_calendar": {
 "owner": "first_use"
 },
@@ -11097,6 +11103,9 @@
 "research_workspace.binding_field_unknown": {
 "owner": "research_workspace"
 },
+"research_workspace.committee_agenda_limit_invalid": {
+"owner": "research_workspace"
+},
 "research_workspace.configuration_changed_restart_required": {
 "owner": "research_workspace"
 },
@@ -13099,6 +13108,9 @@
 "owner": "workspace_preparation"
 },
 "workspace_preparation.local_panel_index_absent": {
+"owner": "workspace_preparation"
+},
+"workspace_preparation.local_inputs_after_requested_date": {
 "owner": "workspace_preparation"
 },
 "workspace_preparation.panel_absent": {

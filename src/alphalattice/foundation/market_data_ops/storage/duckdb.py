@@ -6733,24 +6733,19 @@ class MarketDataRepository(WorkspaceRepository):
             values["coverage_listing_set_hash"] = _canonical_hash(listing_ids)
         return {**values, "watermark_hash": _canonical_hash(values)}
 
+    def _session_range(self, sql: str, args: Sequence[object] = ()) -> tuple[date, date] | None:
+        """Read one source date range."""
+        with self._connect(read_only=True) as conn:
+            row = conn.execute(sql, args).fetchone()
+        return (row[0], row[1]) if row and row[0] is not None and row[1] is not None else None
+
     def manifest_raw_range(self, manifest: UniverseManifest) -> tuple[date, date] | None:
         """Return the canonical session range covered by one manifest."""
-        connection = self._connect(read_only=True)
-        try:
-            row = connection.execute(
-                """
-                SELECT min(bar.session_date), max(bar.session_date)
-                FROM raw_daily_bar_current AS bar
-                JOIN universe_manifest_listing AS member USING (listing_id)
-                WHERE member.manifest_id = ?
-                """,
-                [manifest.manifest_id],
-            ).fetchone()
-        finally:
-            connection.close()
-        if row is None or row[0] is None or row[1] is None:
-            return None
-        return row[0], row[1]
+        return self._session_range(
+            "SELECT min(b.session_date), max(b.session_date) FROM raw_daily_bar_current b "
+            "JOIN universe_manifest_listing USING (listing_id) WHERE manifest_id = ?",
+            [manifest.manifest_id],
+        )
 
     def listing_raw_ranges(
         self, listing_ids: Sequence[str], *, through: date | None = None
@@ -6838,22 +6833,11 @@ class MarketDataRepository(WorkspaceRepository):
 
     def market_reference_raw_range(self, reference_id: str) -> tuple[date, date] | None:
         """Return a reference's raw coverage without exposing its listing identity."""
-        connection = self._connect(read_only=True)
-        try:
-            row = connection.execute(
-                """
-                SELECT min(bar.session_date), max(bar.session_date)
-                FROM market_reference_current AS reference
-                JOIN raw_daily_bar_current AS bar USING (listing_id)
-                WHERE reference.reference_id = ?
-                """,
-                [reference_id],
-            ).fetchone()
-        finally:
-            connection.close()
-        if row is None or row[0] is None or row[1] is None:
-            return None
-        return row[0], row[1]
+        return self._session_range(
+            "SELECT min(b.session_date), max(b.session_date) FROM market_reference_current r "
+            "JOIN raw_daily_bar_current b USING (listing_id) WHERE r.reference_id = ?",
+            [reference_id],
+        )
 
     def actions(
         self,

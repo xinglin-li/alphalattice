@@ -500,6 +500,35 @@ def _home_fidelity(closed, home) -> list[str]:
     return problems
 
 
+def agenda_findings(floor: Mapping[str, Any], projection: Mapping[str, Any]) -> list[str]:
+    """A bounded floor discloses its exact rule, agenda and every remaining point."""
+    expected = floor.get("agenda")
+    if expected is None:
+        return []
+    findings = [] if projection.get("agenda") == expected else ["agenda.rule_or_count_changed"]
+    if "summary" in projection:
+        summary = projection["summary"]
+        counts = [str(len(expected["aliases"])), str(expected["below_count"])]
+        if re.findall(r"\d+", summary)[:2] != counts or expected["ranking"] not in summary:
+            findings.append("agenda.summary_changed")
+    points = {p["alias"] for p in floor["tension_points"]}
+    shown = projection.get("points", [])
+    if set(shown) != points or len(shown) != len(points):
+        findings.append("agenda.point_hidden")
+    if "html" in projection:
+        articles = {
+            " ".join(html.unescape(re.sub(r"<[^>]+>", " ", part)).split())
+            for part in re.findall(r"<article\b[^>]*>(.*?)</article>", projection["html"], re.S)
+        }
+        if any(
+            " ".join(f"{r['attribution']} {r['text']}".split()) not in articles
+            for r in projection["rows"]
+            if "agenda" in r or "point" in r
+        ):
+            findings.append("agenda.report_hidden")
+    return findings
+
+
 def report_fidelity(
     closed: Mapping[str, Any],
     report: Mapping[str, Any],
@@ -518,6 +547,15 @@ def report_fidelity(
         + _final_view_fidelity(messages, rows)
         + _floor_fidelity(messages, rows, page, raw)
         + _home_fidelity(closed, home)
+        + agenda_findings(
+            closed,
+            {
+                "agenda": next((r["agenda"] for r in rows if "agenda" in r), None),
+                "points": [r["point"] for r in rows if "point" in r],
+                "html": str(report.get("html", "")),
+                "rows": rows,
+            },
+        )
     )
     if raw_messages is None or {m["id"] for m in raw_messages} != {m["id"] for m in messages}:
         problems.append("UNPROVED:raw_messages")

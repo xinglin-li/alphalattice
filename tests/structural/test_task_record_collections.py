@@ -29,7 +29,7 @@ STRICT_READERS = {
     COMPOSITION + "local_web_session.py": ("LocalPortfolioWebSession", "_recovery_commands"),
     COMPOSITION + "portfolio_research_operations.py": (
         "PortfolioResearchOperations",
-        "_tasks_wait _execute _workspace_operation _strategy_task "
+        "_tasks_wait __post_init__ _workspace_operation _strategy_task "
         "_automation_answer upgrade cpu_budget _install",
     ),
     COMPOSITION + "portfolio_updates.py": (
@@ -58,7 +58,7 @@ STRICT_READERS = {
     PREPARATION + "application.py": (
         "WorkspacePreparationApplication",
         "tasks readback plan delegated_resume_allowed require_confirmation_caller "
-        "confirm confirm confirm owns_published_manifest",
+        "_require_requested_date confirm confirm confirm owns_published_manifest",
     ),
     PREPARATION + "feature_research.py": (
         "ResearchFeatureBuildApplication",

@@ -1,13 +1,4 @@
-"""The planted-claims filing corpus and the offline retrieval runtime of the
-Alternative Evidence suites.
-
-The issuers' CIKs, the claims planted in their recorded filings, the one-hot
-embedding adapter and fake reranker that make retrieval deterministic without
-a model pack, the recorded-document writer and the citing actor that drives
-them. Three suites drove all of this through the document intelligence test
-module. Test support beside its owner; nothing here is product authority or
-evidence.
-"""
+"""Synthetic filings and deterministic retrieval/actors; no product authority or evidence."""
 
 from __future__ import annotations
 
@@ -182,11 +173,9 @@ def _recorded_document(
     claims: tuple[str, ...] = (PLANTED_CLAIMS[EvidenceTopic.OPERATIONS_SUPPLY],),
     revision: str = "issuer-release-2026-q3",
     document_type: str = "8-K",
+    now: datetime = _NOW,
 ) -> RecordedEvidenceDocument:
-    """One recorded official release, filed as a current report (the form
-    the product acquires and the integrated selection reads; a text with no
-    item heading past its cover is read whole by the residual questions):
-    routine background with planted sentences."""
+    """A current report with planted sentences and scenario-relative dates."""
 
     background = "".join(
         f"Background section {index} reports routine operating context.\n" for index in range(60)
@@ -200,9 +189,9 @@ def _recorded_document(
         evidence_class=AlternativeEvidenceClass.ISSUER_OFFICIAL_RECORDED,
         document_type=document_type,
         revision=revision,
-        published_at=_NOW - timedelta(days=2),
-        captured_at=_NOW - timedelta(days=1),
-        available_at=_NOW - timedelta(days=1),
+        published_at=now - timedelta(days=2),
+        captured_at=now - timedelta(days=1),
+        available_at=now - timedelta(days=1),
         text=body,
         immutable_source=True,
     )

@@ -616,6 +616,14 @@
         "type": "string"
       }
     },
+    "answer:COMMITTEE_READ.agenda": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
+      }
+    },
     "answer:COMMITTEE_READ.closes_at": {
       "required": true,
       "schema": {
@@ -45970,6 +45978,8 @@
     "refusal:feature_trial.study_factor_not_curatable": {},
     "refusal:feature_trial.study_factor_not_in_prepared_input": {},
     "refusal:feature_trial.study_not_from_factor_evidence": {},
+    "refusal:first_use.date_after_clock": {},
+    "refusal:first_use.date_not_session": {},
     "refusal:first_use.date_outside_calendar": {},
     "refusal:frozen_portfolio.alpha_input_mismatch": {},
     "refusal:frozen_portfolio.alpha_listing_axis_mismatch": {},
@@ -46119,6 +46129,7 @@
     "refusal:local_web.agent_session_invalid": {},
     "refusal:local_web.analysis_publication_hash_required": {},
     "refusal:local_web.application_absent": {},
+    "refusal:local_web.assets_stale": {},
     "refusal:local_web.goal_header_invalid": {},
     "refusal:local_web.goal_id_invalid": {},
     "refusal:local_web.handler_failed": {},
@@ -47742,6 +47753,7 @@
     "refusal:research_workspace.artifact_keys_invalid": {},
     "refusal:research_workspace.artifact_path_invalid": {},
     "refusal:research_workspace.binding_field_unknown": {},
+    "refusal:research_workspace.committee_agenda_limit_invalid": {},
     "refusal:research_workspace.configuration_changed_restart_required": {},
     "refusal:research_workspace.evidence_review_path_invalid": {},
     "refusal:research_workspace.experiment_input_duplicate": {},
@@ -48416,6 +48428,7 @@
     "refusal:workspace_preparation.human_confirmation_does_not_use_delegation": {},
     "refusal:workspace_preparation.human_confirmation_required": {},
     "refusal:workspace_preparation.inputs_already_published": {},
+    "refusal:workspace_preparation.local_inputs_after_requested_date": {},
     "refusal:workspace_preparation.local_inputs_changed_new_scope_required": {},
     "refusal:workspace_preparation.local_panel_index_absent": {},
     "refusal:workspace_preparation.nothing_captured_to_resume": {},
