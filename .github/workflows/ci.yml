@@ -128,6 +128,20 @@ jobs:
         run: uv sync --locked --all-extras
       - name: Build Local Web
         run: uv run python scripts/build_local_web_ui.py --product
+      - name: Install OpenMP on macOS
+        if: runner.os == 'macOS'
+        run: brew install libomp
+      - name: Install the locked Workbench browser tooling
+        working-directory: third_party/playwright
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .browsers
+        run: |
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+          if [ "$RUNNER_OS" = Linux ]; then
+            npx --no-install playwright install --with-deps chromium
+          else
+            npx --no-install playwright install chromium
+          fi
       - name: Run the offline first-use scenario
         run: >-
           uv run python -m pytest
