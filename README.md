@@ -1,5 +1,9 @@
 # AlphaLattice
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg)](docs/public-source/getting-started.md)
+[![uv](https://img.shields.io/badge/uv-locked-261230.svg)](docs/public-source/getting-started.md)
+
 **Turn an investment idea into a reviewed research portfolio.**
 
 Tell your Codex or Claude Code agent what you want to investigate. It uses
@@ -8,7 +12,7 @@ results to a research committee. Follow the work and its results in your browser
 
 Give your agent this repository's link and one intent:
 
-> Use https://github.com/xinglin-li/alphalattice to build me a reviewed installed strategy from public data and show its dated research positions; open the Workbench in your browser so I can follow it.
+> Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound book from public data and show its dated research positions; open the Workbench in your browser so I can follow it.
 
 <!-- Hero image reserved: Codex conversation on the left, Workbench on the right. -->
 
@@ -18,7 +22,7 @@ Give your agent this repository's link and one intent:
   <img src="docs/images/research-performance-light.png" alt="Trend Rebound Book historical research performance from 2023-10-02 to 2026-09-08." width="1280">
 </picture>
 
-*Historical research performance for Trend Rebound Book, 2023-10-02 to 2026-09-08; this is not a record of executed trades. Historical research is not investment advice or a promise of future returns.*
+*Historical research performance for Trend Rebound Book, 2023-10-02 to 2026-09-08, from a replay of the strategy.*
 
 [Getting started](docs/public-source/getting-started.md) covers installation,
 first use and the decisions that remain yours.
@@ -35,52 +39,31 @@ first use and the decisions that remain yours.
 - **Factors and models you can extend.** Add factors and Alpha models through
   their registries and checked [extension paths](docs/public-source/extending.md).
 
-## Before you start
-
-- **Environment:** Windows is verified; macOS and Linux are unverified. Setup
-  uses Python 3.12, uv and locked dependencies. Bring Codex or Claude Code.
-- **Time:** First preparation and model training take time. One measured run
-  used prepared public-source data and retained filings, offline, with four
-  CPU cores on a shared Windows machine. It took 63 minutes from the start of
-  the first data preparation Task to writing the delivery report. Installation
-  and live downloads were outside that interval; this is an indicative example,
-  not a runtime guarantee.
-- **Software licence:** AlphaLattice is [Apache-2.0](LICENSE).
-- **Data and model terms:** Acquired data and downloaded model packs keep their
-  own [terms](docs/public-source/third-party-and-data.md); the software licence
-  grants no data licence.
-- **Agent costs:** Your Codex or Claude Code access and usage costs are separate.
-
-See [Getting started](docs/public-source/getting-started.md) and the
-[setup procedure](.agents/skills/alphalattice-research/references/operating.md)
-for details. Downloads need applicable consent; measured time and memory are
-observations, not runtime guarantees.
-
 ## A worked example
 
 An earlier completed run began with this request:
 
 > Build me a reviewed Trend Rebound book from public data and give me positions for 2026-09-11.
 
-**One sentence → studies → dated positions → Evidence review → committee
-discussion → report.**
+1. **Studies.** The agent prepared public-source data and ran the strategy's
+   model and Risk studies.
+2. **Dated positions.** It built the portfolio and delivered research positions
+   for the requested date, with their Risk assessment.
+3. **Evidence review.** Evidence Analysts read the prepared source material
+   available at the information cutoff. The chief risk officer (CRO) assessed
+   their findings.
+4. **Committee discussion.** Alpha, Risk, CRO and the lead discussed the dated
+   result, keeping objections and the lead's rulings in the record.
+5. **Report.** The delivery brought together positions, Risk, review coverage,
+   citations and the members' recorded views.
 
-The agent prepared the data, ran the strategy's model and Risk studies, built
-the book and delivered research positions for the requested date. Evidence
-Analysts read the prepared source material; the CRO assessed their findings;
-Alpha, Risk, CRO and the lead discussed the dated result. The delivery included
-positions, Risk, review coverage, citations and the members' recorded views.
-
-Reservations remained: the review covered only the admitted filings available
-at its cutoff, and members named limits in predictive support, liquidity and
-capacity evidence. A completed review did not clear those limits or authorize
-trades.
+The report kept the reservations alongside the results: the review covered
+the filings accepted by its source checks and available at its cutoff, and
+members named limits in predictive support, liquidity and capacity evidence.
 
 <!-- Committee discussion image reserved: use the final 0.2.0 acceptance run, not the earlier run's committee or verdict wording. -->
-*Committee discussion image: reserved for the final 0.2.0 run.*
 
 <!-- Example report link reserved: use the same final 0.2.0 acceptance run as the committee discussion image. -->
-*Example report: link reserved for the final 0.2.0 run.*
 
 ### Historical research views
 
@@ -90,13 +73,19 @@ trades.
   <img src="docs/images/research-positions-light.png" alt="Trend Rebound Book historical sector exposure and replay holdings on 2026-09-08." width="1280">
 </picture>
 
-*Sector exposure and historical replay weights for 2026-09-08; these are not executed trades.*
+*Sector exposure and historical replay weights for 2026-09-08.*
 
-[Research flows](docs/public-source/research-flows.md) explains studies, installed
-strategies and review. **Rebound Return Book** and **Trend Rebound Book** are
-installed strategies, distinct from research study books. Read each position's
-basis, information cutoff, first actionable session and horizon. Calculation
-alone grants no activation or publication.
+**Rebound Return Book** and **Trend Rebound Book** are installed strategies:
+ready-to-use strategy definitions that can be activated to produce dated
+positions. They are separate from exploratory research study portfolios.
+[Research flows](docs/public-source/research-flows.md) explains both routes.
+
+Read each result's information cutoff, coverage and limits on its use.
+For inputs built from a current membership snapshot, earlier membership is
+backfilled from the initial set of securities; later additions and removals
+follow recorded observations. This is not a complete reconstruction of past
+index membership. Read the reported survivorship limits, sector backfill and
+historical source availability alongside the performance.
 
 ## Follow the work
 
@@ -108,27 +97,47 @@ alone grants no activation or publication.
 
 *An earlier run's recorded Evidence review assignments, answers and acceptances.*
 
-Use **Goals** for Timeline, Conversation and Results, **History** for saved
-studies and reviews, and **Team** for recorded sessions and usage. Acceptance
-alone establishes no scientific validity or specialist authorship.
+- **Workbench.** Use **Goals** for the timeline, conversation and results,
+  **History** for saved studies and reviews, and **Team** for sessions and
+  usage. Review pages show which checks passed, what remains missing and how
+  the result may be used.
+- **Agent autonomy and your decisions.** On first use, your sentence opens a goal
+  that gives the agent permission for specific steps for 24 hours from opening:
+  preparing data,
+  handling data issues within the declared rules, opening the preparation's
+  network, setting up Evidence within the default budget and activating the
+  book. The agent reports each act. Permission ends when the goal's submission
+  is accepted, when it is abandoned, or when the 24 hours expire; the network
+  access it opened ends with it. You can stop the strategy
+  through your agent or on **Portfolio**. Stopping a goal and cancelling a Task
+  are separate controls. The guide lists
+  [what only you decide](AGENTS.md#what-only-a-person-decides).
+- **Host boundaries.** The agent installs AlphaLattice and continues in the
+  same session. Specialist tool limits apply through their instructions;
+  checkout sessions also load the host's project configuration. Start one with
+  `cd <checkout>; claude` in Claude Code or `codex -C <checkout>` in Codex, and
+  follow the [agent guide](AGENTS.md) for the host's setup and checks.
+- **Languages.** The Workbench offers English and Chinese. CLI detail uses
+  `--lang zh`, for example `alphalattice workspace show --lang zh`, with English
+  fallback.
 
-Local Web includes Chinese; CLI detail uses `--lang zh`, for example
-`alphalattice workspace show --lang zh`, with English fallback.
+## Before you start
 
-Read result standing, coverage and time limits, including survivorship, Sector
-backfill and historical source availability. A needed decision names its issue
-and page.
+- **Environment:** Windows is verified. Setup uses Python 3.12, uv and locked
+  dependencies, with Codex or Claude Code. macOS and Linux are not yet verified;
+  reports of setup results and problems are welcome.
+- **Time:** Data preparation, multi-year model fitting and validation, and
+  source review take time. One completed run using prepared public-source data
+  and retained filings, replayed offline with four CPU cores on a shared Windows
+  machine, took about **37 minutes** from the start of the first data preparation
+  Task to writing the delivery report. Installation and live downloads were outside
+  that interval. This is an observation, not a runtime guarantee.
+- **Agent costs:** Your Codex or Claude Code access and usage costs are separate
+  from AlphaLattice; check your provider's terms.
 
-The agent installs AlphaLattice and continues in the same session. Its specialists'
-tool limits hold by instruction. For limits enforced by the host, open a checkout
-session with `cd <checkout>; claude` in Claude Code or `codex -C <checkout>` in
-Codex. The [agent guide](AGENTS.md) gives the procedure.
-
-Your exact sentence opens the first-use goal. Its 24-hour delegation lets the
-agent handle admitted preparation and activate its reviewed book, reporting
-each act. Deactivate on **Portfolio**; stopping the goal and cancelling a Task
-are separate. The guide names [what only you decide](AGENTS.md#what-only-a-person-decides).
-Forward positions are research, not orders or advice.
+See [Getting started](docs/public-source/getting-started.md) and the
+[setup procedure](.agents/skills/alphalattice-research/references/operating.md)
+for installation, downloads and the permissions each step needs.
 
 ## Guides and care
 
@@ -146,8 +155,8 @@ Forward positions are research, not orders or advice.
 The [guide index](docs/public-source/README.md) links the other reference pages.
 
 Use [backup and restore](docs/public-source/data-and-care.md) into a new directory
-and keep sealed records intact. [Privacy](docs/public-source/privacy.md) explains
-recorded usage and its switch.
+to preserve the saved records and their integrity checks. [Privacy](docs/public-source/privacy.md)
+explains recorded usage and its switch.
 
 ## Tell us where you got stuck
 
@@ -158,19 +167,17 @@ data and credentials. For proposed code changes, follow
 conditions and agreement.
 For a security vulnerability, report privately as described in [SECURITY](SECURITY.md).
 
-## About and licence
+## About
 
-Documentation updated: 2026-10-13.
+Documentation updated: 2026-10-14.
 
 The [design principles](docs/public-source/design-principles.md) explain how the
 agent, the software and the person share the work.
 
 Created and maintained by Xinglin Li: [LinkedIn](https://www.linkedin.com/in/xinglin-li-381571139/)
 or [xinglin789@outlook.com](mailto:xinglin789@outlook.com).
-[Apache-2.0](LICENSE) covers the software; [NOTICE](NOTICE) records third-party
-material. Downloaded models and acquired data keep their own terms. See
-[governance](GOVERNANCE.md) for project decisions and contribution credit, and
-[contributing](CONTRIBUTING.md) for the opening condition, agreement and workflow.
+See [governance](GOVERNANCE.md) for project decisions and contribution credit,
+and [contributing](CONTRIBUTING.md) for the opening condition, agreement and workflow.
 
 ## Verify a source checkout
 
@@ -186,3 +193,15 @@ contains one shipped change exported from that development; releases publish
 the resulting versions.
 
 The public repository starts at 0.1.x; earlier development happened privately.
+
+## Disclaimer
+
+AlphaLattice produces research results, not orders, and places no trades.
+Historical research is not investment advice or a promise of future returns.
+A completed review records findings and limits; it is not a recommendation to
+trade or a guarantee of scientific validity.
+
+The software is licensed under [Apache-2.0](LICENSE); [NOTICE](NOTICE) records
+third-party material. Acquired data and downloaded model packs retain their
+own [terms](docs/public-source/third-party-and-data.md). The software licence
+grants no data licence. Agent access and usage costs follow your provider's terms.
