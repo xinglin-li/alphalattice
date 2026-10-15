@@ -665,7 +665,7 @@ _NAMING_TEXTS = (
     "README.md",
 )
 """The texts a person or an agent reads for how to run the product; the plans are history."""
-_OUTSIDE_TOOLS = frozenset({"git", "uv", "pip", "python", "codex", "claude", "brew"})
+_OUTSIDE_TOOLS = frozenset({"git", "uv", "pip", "python", "codex", "claude"})
 """Commands outside the product that a guide names beside its own."""
 _OUTSIDE_NAMES = ("ANTHROPIC_",)
 """Name prefixes that belong to a host, not the product, such as its environment variables."""

@@ -11,7 +11,6 @@ import re
 import shutil
 import sys
 import tomllib
-from ctypes.util import find_library
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -157,12 +156,6 @@ HOST_DEPENDENCIES = {
         "the network. A closed network remains a valid offline setting.",
         "PERSON",
     ),
-    "system_libraries": (
-        "Load the system libraries locked packages need",
-        "Ask once to install the packages its facts name (`install`), outside the lock, then "
-        "run doctor again; never install them unasked.",
-        "PERSON",
-    ),
     "user_layer": (
         "Local user tuning",
         "Use maintenance Skill; disclose the optional layer.",
@@ -175,60 +168,6 @@ HOST_DEPENDENCIES = {
         "AGENT",
     ),
 }
-
-
-SYSTEM_LIBRARIES: dict[str, dict[str, Any]] = {
-    # The libraries a locked package loads that no lock can ship: the person installs them once.
-    "darwin": {
-        "install": "brew install",
-        "libraries": (
-            {
-                "package": "libomp",
-                "without_it": "LightGBM cannot load, so no model trains or scores",
-                "names": ("omp",),
-                "paths": (
-                    "/opt/homebrew/opt/libomp/lib/libomp.dylib",
-                    "/usr/local/opt/libomp/lib/libomp.dylib",
-                ),
-            },
-        ),
-    },
-    "linux": {
-        "install": "sudo apt install",
-        "libraries": (
-            {
-                "package": "libatomic1",
-                "without_it": "the locked Node cannot start, so the Workbench cannot be built",
-                "names": ("atomic",),
-                "paths": (),
-            },
-            {
-                "package": "libgomp1",
-                "without_it": "LightGBM cannot load, so no model trains or scores",
-                "names": ("gomp",),
-                "paths": (),
-            },
-        ),
-    },
-}
-
-
-def _system_library() -> dict[str, Any]:
-    """This OS's libraries that the lock cannot ship, found or not; nothing is installed here."""
-    need = next((v for k, v in SYSTEM_LIBRARIES.items() if sys.platform.startswith(k)), None)
-    if need is None:
-        return {"present": True, "needed": False}
-    found, missing = {}, []
-    for library in need["libraries"]:
-        path = next((p for p in library["paths"] if Path(p).is_file()), None) or next(
-            filter(None, map(find_library, library["names"])), None
-        )
-        if path:
-            found[library["package"]] = path
-        else:
-            missing.append({key: library[key] for key in ("package", "without_it")})
-    install = " ".join([need["install"], *(m["package"] for m in missing)])
-    return {"present": not missing, "found": found, "missing": missing, "install": install}
 
 
 def host_readiness(
@@ -306,7 +245,6 @@ def host_readiness(
                 "operator_offline": offline(),
             },
         ),
-        ("system_libraries", (system := _system_library())["present"], system),
         ("user_layer", user.is_dir(), {"path": str(user)}),
         ("user_backup", bool(backups), {"latest": backups[-1] if backups else None}),
     )

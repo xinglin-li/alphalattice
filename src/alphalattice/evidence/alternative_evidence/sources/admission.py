@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 from importlib import resources
@@ -300,28 +300,30 @@ def admit_official_source(
     maximum_body_resources: int | None = None,
     campaign_id: str | None = None,
     workspace_root: Path | None = None,
-    now: datetime | None = None,
 ) -> OfficialSourceAdmission:
     """Compose the official source, or say by name why not.
 
-    Offline is the default: without the operator's explicit consent nothing is composed; with it,
-    the official client needs network access (the workspace's network control, `network_access`: the
-    operator's `ALPHALATTICE_NETWORK_DISABLED=1` keeps the process offline whatever the workspace
-    says) and the product's SEC contact (`sec_user_agent`). With consent and the network still
-    disabled the live branch is composed over a denied transport (`DENIED`): the workspace's live
-    preparations read back, no request leaves the process, and a source check is refused by name. An
-    injected transport is admitted under the consent alone -- it is the caller's controlled
-    responses, not the network -- and is recorded as injected. A declared per-document cap is
-    validated by the source policy contract, which admits nothing above its maximum. A declared
-    acquisition window and campaign budget (total attempts, total decoded bytes, distinct body
-    resources) are the admission's operational choices, enforced by the transport and the source
-    before each request. A `campaign_id` names a durable campaign under the workspace
-    (`campaign_ledger_path`): the first admission writes its totals -- every budget bound and the
-    document cap are then required -- and a later admission with the same id and totals resumes it
-    with only what remains; the same id with other totals is refused as another campaign, and a
-    campaign needs the official client (an injected transport spends none of it). A workspace's
-    network control is read on `now`, the caller's clock: the Host's, since a delegation's end is
-    the Host's instant.
+    Offline is the default: without the operator's explicit consent nothing
+    is composed; with it, the official client needs network access (the
+    workspace's network control, `network_access`: the operator's
+    `ALPHALATTICE_NETWORK_DISABLED=1` keeps the process offline whatever the
+    workspace says) and the product's SEC contact (`sec_user_agent`). With consent and the network
+    still disabled the live branch is composed over a denied transport
+    (`DENIED`): the workspace's live preparations read back, no request
+    leaves the process, and a source check is refused by name. An injected
+    transport is admitted under the consent alone -- it is the caller's
+    controlled responses, not the network -- and is recorded as injected. A
+    declared per-document cap is validated by the source policy contract,
+    which admits nothing above its maximum. A declared acquisition window
+    and campaign budget (total attempts, total decoded bytes, distinct body
+    resources) are the admission's operational choices, enforced by the
+    transport and the source before each request. A `campaign_id` names a
+    durable campaign under the workspace (`campaign_ledger_path`): the first
+    admission writes its totals -- every budget bound and the document cap
+    are then required -- and a later admission with the same id and totals
+    resumes it with only what remains; the same id with other totals is
+    refused as another campaign, and a campaign needs the official client
+    (an injected transport spends none of it).
     """
     if maximum_document_bytes is not None:
         AlternativeEvidenceSourcePolicy(maximum_document_bytes=maximum_document_bytes)
@@ -389,7 +391,7 @@ def admit_official_source(
         )
     values = dict(os.environ if environment is None else environment)
     # The workspace's typed network control decides, the operator's offline switch first.
-    access = network_access(workspace_root, values, now=now)
+    access = network_access(workspace_root, values)
     if not access.allowed:
         return OfficialSourceAdmission(
             source=SecEdgarSource(
@@ -448,7 +450,7 @@ CONSENT_ATTEMPTS_PER_DOCUMENT = 4
 
 
 def official_source_state(
-    workspace: Path, environment: Mapping[str, str] | None = None, *, now: datetime
+    workspace: Path, environment: Mapping[str, str] | None = None
 ) -> tuple[object, ...]:
     """What the workspace's admission of the official source depends on, read cheaply.
 
@@ -456,16 +458,13 @@ def official_source_state(
     """
     return (
         evidence_source_consent(workspace).body(),
-        network_access(workspace, environment, now=now).allowed,
+        network_access(workspace, environment).allowed,
         sec_user_agent(environment),
     )
 
 
 def admit_workspace_source(
-    workspace: Path,
-    environment: Mapping[str, str] | None = None,
-    *,
-    clock: Callable[[], datetime],
+    workspace: Path, environment: Mapping[str, str] | None = None
 ) -> OfficialSourceAdmission:
     """The official source as the workspace admits it now, with no Host restart.
 
@@ -476,7 +475,7 @@ def admit_workspace_source(
     consent = evidence_source_consent(workspace)
     if consent.actor in NOT_GRANTED:
         return admit_official_source(
-            network_consent=False, workspace_root=workspace, environment=environment, now=clock()
+            network_consent=False, workspace_root=workspace, environment=environment
         )
     return admit_official_source(
         network_consent=True,
@@ -487,7 +486,6 @@ def admit_workspace_source(
         maximum_total_response_bytes=consent.total_bytes,
         maximum_body_resources=consent.total_documents,
         campaign_id=consent.campaign_id,
-        now=clock(),
     )
 
 

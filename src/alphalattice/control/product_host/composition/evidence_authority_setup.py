@@ -527,7 +527,7 @@ class EvidenceInstall:
         except AlternativeEvidenceTaskCancelled:
             return StageExecutionResult(StageDisposition.CANCELLED)
         except (ValueError, RuntimeError, OSError) as error:
-            refusal = setup_refusal(arguments, error, now=self.clock())
+            refusal = setup_refusal(arguments, error)
             code = str(refusal["failure_code"])
             cause = StageFailureCause(
                 exception_type=type(error).__name__,
@@ -731,7 +731,7 @@ class _Setup:
                     "maximum_documents_per_issuer",
                 )
             consent = bool(arguments.network_consent)
-            network_enabled = network_access(workspace, now=self.clock()).allowed
+            network_enabled = network_access(workspace).allowed
             user_agent = sec_user_agent()
             cutoff = _acquisition_cutoff(arguments, self.clock())
             scopes = _accession_scopes(arguments, requested)
@@ -1395,17 +1395,13 @@ def _acquire_sec_sources(
         network_consent=bool(arguments.network_consent),
         workspace_root=workspace,
         maximum_document_bytes=arguments.maximum_document_bytes,
-        now=clock(),
     )
     source = official_source.source
     runtime = None
     try:
         if not official_source.network_consent:
             raise ValueError("evidence_review.explicit_sec_network_consent_required")
-        if (
-            official_source.transport_origin != "INJECTED"
-            and not network_access(workspace, now=clock()).allowed
-        ):
+        if official_source.transport_origin != "INJECTED" and not network_access(workspace).allowed:
             raise ValueError("evidence_review.workspace_network_not_allowed")
         if official_source.refusal_code or source is None:
             raise ValueError(
@@ -1760,7 +1756,7 @@ _RUNTIME_REFUSALS = (
 
 
 def setup_refusal(
-    arguments: argparse.Namespace, error: Exception, *, now: datetime, script: bool = False
+    arguments: argparse.Namespace, error: Exception, *, script: bool = False
 ) -> dict[str, Any]:
     """A setup refusal whole.
 
@@ -1814,10 +1810,8 @@ def setup_refusal(
         arguments.acquire_sec
         and payload["failure_code"] == "evidence_review.workspace_network_not_allowed"
     ):
-        permission = network_access(arguments.workspace, now=now).body(for_refusal=True)
-        payload.update(
-            refusal_words(payload["failure_code"], workspace=arguments.workspace, now=now)
-        )
+        permission = network_access(arguments.workspace).body(for_refusal=True)
+        payload.update(refusal_words(payload["failure_code"], workspace=arguments.workspace))
         payload["network_access"] = permission
         payload["next_requests"] = {
             "network": {"operation": "NETWORK_ACCESS"},
@@ -1858,7 +1852,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = materialize(arguments)
     except Exception as error:
-        print(json.dumps(setup_refusal(arguments, error, now=datetime.now(UTC), script=True)))
+        print(json.dumps(setup_refusal(arguments, error, script=True)))
         return 2
     print(json.dumps(result, indent=2, default=str))
     return 0

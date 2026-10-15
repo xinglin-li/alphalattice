@@ -89,7 +89,7 @@ def _code(answer: dict[str, Any]) -> str | None:
 
 def _network(live: Any) -> bool:
     """The workspace's own network control, read past the tests' offline switch."""
-    return network_access(live.workspace, environment={}, now=live.clock()).allowed
+    return network_access(live.workspace, environment={}).allowed
 
 
 def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them(
@@ -598,20 +598,15 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         code, opened = _cli(live, "goal", "open", "--file", str(declaration))
         assert code == 0, opened
         delegation = f"first-use-goal:{opened['goal_id']}"
-
-        def closed(workspace: Path, *, now: datetime) -> NetworkAccess:
-            assert now == OBSERVED_AT  # the Host's clock, never the machine's
-            return NetworkAccess(False, "DEFAULT")
-
         with monkeypatch.context() as patch:
             patch.setattr(live.operations.preparation, "provider", None)
             patch.setattr(
                 "alphalattice.control.product_host.data_preparation.application.network_access",
-                closed,
+                lambda _root: NetworkAccess(False, "DEFAULT"),
             )
             patch.setattr(
                 "alphalattice.control.product_host.composition.portfolio_research_operations.network_access",
-                closed,
+                lambda _root: NetworkAccess(False, "DEFAULT"),
             )
             code, preview = _cli(live, "preparation", "plan")
             code, hint = send({"operation": "NETWORK_ACCESS"})

@@ -242,11 +242,7 @@ def test_every_documented_command_line_parses(
     }
     commands, covered = ([], set())
     for path in paths:
-        text = path.read_text(encoding="utf-8")
-        # Every OS's command: `uv run python` for the checkout, `bin/python` beside `Scripts`.
-        assert ".venv/Scripts" not in text, path
-        assert "Scripts/python.exe" not in text or "bin/python" in text, path
-        for number, command in examples(text):
+        for number, command in examples(path.read_text(encoding="utf-8")):
             if command in grammar:
                 continue
             covered.add(path)

@@ -65,50 +65,6 @@ def test_observation_capacity_takes_a_fresh_sample_when_the_workspace_reopens(
         assert storage.capacity_cap_bytes() == first + 4096
 
 
-@pytest.mark.parametrize(
-    ("free", "write", "cap", "refused"),
-    [
-        (200, 3.7, "auto", None),  # a laptop's first preparation
-        (30, 3.7, "auto", None),  # one a tenth of the free disk would not hold
-        (20, 0.8, "auto", None),  # a CI runner's fixture preparation
-        (4, 3.7, "auto", "storage.disk_space_insufficient"),  # no recovery headroom left
-        (30, 10, "auto", "storage.managed_capacity_exceeded"),  # past a quarter of free disk
-        (200, 3.7, str(2**30), "storage.managed_capacity_exceeded"),  # an operator's own cap
-    ],
-)
-def test_an_automatic_cap_admits_a_first_preparation_the_disk_holds(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, free, write, cap, refused
-) -> None:
-    """requirement: under the automatic cap one write within a quarter of free disk is admitted
-    where the disk holds it with headroom; each refusal has its way on, and is retryable."""
-    from alphalattice.control.product_host.composition.research_experiments import (
-        retryable_block,
-    )
-    from alphalattice.control.product_host.storage.inventory import (
-        StorageInventoryError,
-        require_storage_capacity,
-    )
-    from alphalattice.control.workspace_runtime.storage import capacity
-    from alphalattice.interface.local_application.cli_contract import refusal_words
-
-    gib = 2**30
-    monkeypatch.setattr(
-        capacity.shutil, "disk_usage", lambda _path: SimpleNamespace(free=int(free * gib))
-    )
-    capacity.StorageCapStore(tmp_path).write(
-        cap, chosen_by="HUMAN", chosen_at=datetime(2026, 10, 14, tzinfo=UTC)
-    )
-    basis = capacity.StorageCapStore(tmp_path).capacity(measured_data_bytes=0).automatic_basis
-    assert capacity.SHARE_WORDS[capacity.FREE_SHARE] in basis and "percent" not in basis
-    if refused is None:
-        require_storage_capacity(tmp_path, additional_bytes=int(write * gib))
-        return
-    with pytest.raises(StorageInventoryError) as caught:
-        require_storage_capacity(tmp_path, additional_bytes=int(write * gib))
-    assert caught.value.failure_code == refused and refusal_words(refused)["next_action"]
-    assert retryable_block(f"{refused}:stage") == refused
-
-
 def _counting_reads(monkeypatch: pytest.MonkeyPatch, inject=None) -> list[int]:
     """Count every whole-object read of `file_digests`; `inject` runs once, at the
     first read -- after every path is open and grouped, before any byte is read."""

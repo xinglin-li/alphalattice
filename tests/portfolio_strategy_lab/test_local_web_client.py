@@ -1023,15 +1023,6 @@ def test_cli_reports_an_interrupted_response_body_without_retrying_work(
     )
     assert body["request_timeout_seconds"] == 120
     assert body["operation_outcome"] == "UNKNOWN"
-    assert body["next_requests"]["read"]["operation"] == body["operation"]  # the same read
-    assert body["next_action"] == "SEND_THE_SAME_READ_AGAIN" and "Task" not in body["detail"]
-    from alphalattice.interface.local_application.cli_contract import client_failure
-
-    # Answered, then lost while following: the read was answered, so its Task words stand.
-    lost, read = "local_client.connection_lost_task_may_still_run", body["next_requests"]["read"]
-    refusal, answered = client_failure(lost, read, TimeoutError(), 120.0, True)
-    assert refusal.next_action == "RECONNECT_AND_INSPECT_SAME_TASK"
-    assert "next_requests" not in answered
     assert "private transport detail" not in json.dumps(body)
     assert timeouts == [120.0]
     assert read_only_live.session.task_control_registry.tasks() == tasks_before

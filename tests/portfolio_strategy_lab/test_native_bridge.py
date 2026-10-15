@@ -7,7 +7,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import tomllib
 from dataclasses import asdict
 from pathlib import Path
@@ -49,7 +48,6 @@ READINESS_KEYS = (
     "network",
     "user_layer",
     "user_backup",
-    "system_libraries",
 )
 
 
@@ -471,10 +469,6 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
     monkeypatch.setattr(retrieval_environment, "interpreter_path", lambda: python)
     monkeypatch.setattr(model_store, "default_store_root", lambda: tmp_path / "packs")
     monkeypatch.setattr(model_store, "recipe_readiness", lambda *_: {"ready": True})
-    # Linux, here, without libgomp1: the locked Node finds libatomic, LightGBM finds no OpenMP.
-    linux = {sys.platform: setup.SYSTEM_LIBRARIES["linux"]}
-    monkeypatch.setattr(setup, "SYSTEM_LIBRARIES", linux if missing == "system_libraries" else {})
-    monkeypatch.setattr(setup, "find_library", lambda name: None if name == "gomp" else name)
 
     def run(argv, **_):
         exit_code = int(missing == "retrieval_runtime" and "-c" in argv)
@@ -510,9 +504,6 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
         assert all(item["present"] is True for item in items.values())
     else:
         assert items[missing]["present"] is (None if missing == "network" else False)
-    if missing == "system_libraries":
-        assert items[missing]["facts"]["install"] == "sudo apt install libgomp1"
-        assert items[missing]["who_decides"] == "PERSON"
     assert all(item["what_it_enables"] and item["how_to_fill"] for item in items.values())
     assert items["network"]["facts"]["scope"] == "WORKSPACE_HOST"
 

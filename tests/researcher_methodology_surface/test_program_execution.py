@@ -13,7 +13,6 @@ import copy
 import json
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -546,19 +545,18 @@ def test_a_run_is_held_offline_and_a_plan_over_budget_is_refused_at_plan(
     seen: list[tuple[NetworkAccess, bool]] = []
 
     def probe(**_arguments: Any) -> Any:
-        seen.append((network_access(workspace, now=datetime.now(UTC)), offline()))
+        seen.append((network_access(workspace), offline()))
         raise AuthoringError("probe.stopped_before_any_estimate")
 
     monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED")
-    set_network_access(workspace, enabled=True, now=datetime.now(UTC))
+    set_network_access(workspace, enabled=True)
     try:
         counted.workflow.preflight(document, **actor)
         monkeypatch.setattr(counted.executor, "execute", probe)
         with pytest.raises(AuthoringError, match=r"probe\.stopped_before_any_estimate"):
             counted.workflow.run_sealed(document, **actor)
         assert seen == [(NetworkAccess(False, "RUN_HELD_OFFLINE"), True)]
-        access = network_access(workspace, now=datetime.now(UTC))
-        assert access == NetworkAccess(True, "WORKSPACE_CONTROL")
+        assert network_access(workspace) == NetworkAccess(True, "WORKSPACE_CONTROL")
     finally:
         (workspace / CONTROL_PATH).unlink()
 

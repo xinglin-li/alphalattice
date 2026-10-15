@@ -8,7 +8,6 @@ import shlex
 import subprocess
 import sys
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -245,15 +244,14 @@ def test_a_door_refusal_filled_with_its_subject_reads_in_chinese(
     assert templated, "the door's table words no sentence around a subject"
 
     monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
-    now = datetime.now(UTC)
-    set_network_access(tmp_path, enabled=False, now=now)
+    set_network_access(tmp_path, enabled=False)
     keys = [key for key in cli_contract._zh() if key.count("{subject}") >= 2]
     assert keys, "no door sentence takes two subjects"
     token = cli_contract.ANSWER_LANGUAGE.set("zh")
     try:
         for code in templated:
             detail = cli_contract.refusal_words(
-                fill_subject(code + ":{subject}", "2026-09-10"), workspace=tmp_path, now=now
+                fill_subject(code + ":{subject}", "2026-09-10"), workspace=tmp_path
             )["detail"]
             chinese = cli_contract.worded(detail)
             assert chinese != detail and "2026-09-10" in str(chinese), (code, chinese)
@@ -281,9 +279,7 @@ def test_a_door_refusal_filled_with_its_subject_reads_in_chinese(
                 NETWORK_WORK_WORDS.get(need, unkeyed).format(session=session) for need in needs
             )
             detail = cli_contract.refusal_words(
-                f"research_update.input_source_access_not_admitted:{subject}",
-                workspace=tmp_path,
-                now=now,
+                f"research_update.input_source_access_not_admitted:{subject}", workspace=tmp_path
             )["detail"]
             assert cli_contract.worded(detail) == (
                 f"研究更新需要{expected}。此工作区已关闭的网络不允许访问数据提供方\uff1b"

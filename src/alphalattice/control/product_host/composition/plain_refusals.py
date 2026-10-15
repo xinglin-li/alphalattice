@@ -11,7 +11,6 @@ so an Agent and a test read exactly what they read before.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -317,7 +316,6 @@ def explain(
     installed_packages: tuple[str, ...] | None = None,
     strategy_package_id: str | None = None,
     workspace: Path | None = None,
-    now: datetime | None = None,
 ) -> dict[str, Any]:
     """The words and next requests for one refusal code; empty for a code without them.
 
@@ -333,7 +331,7 @@ def explain(
     base, _sep, subject = code.partition(":")
     if base == "workspace_data_update.panel_binding_mismatch":
         return {
-            **refusal_words(code, workspace=workspace, now=now),
+            **refusal_words(code, workspace=workspace),
             "next_requests": {"show": {"operation": "DATA_UPDATE_READBACK"}},
         }
     if base in {
@@ -380,12 +378,14 @@ def explain(
 
         target, _sep, kinds = subject.partition(",")
         names = kinds.split(",")
+        words = refusal_words(code, workspace=workspace)
         if kinds and all(name in NETWORK_WORK_WORDS for name in names):
             needs = "; ".join(NETWORK_WORK_WORDS[name].format(session=target) for name in names)
-            code = f"{base}:{needs}"  # worded below, with every network refusal
+            words = refusal_words(f"{base}:{needs}", workspace=workspace)
+        return {**words, "next_requests": {"network": {"operation": "NETWORK_ACCESS"}}}
     if base in NETWORK_ACCESS_REFUSALS:
         return {
-            **refusal_words(code, workspace=workspace, now=now),
+            **refusal_words(code, workspace=workspace),
             "next_requests": {"network": {"operation": "NETWORK_ACCESS"}},
         }
     if base in _PROVIDER_WAIT:

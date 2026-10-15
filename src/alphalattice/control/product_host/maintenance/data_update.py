@@ -146,11 +146,12 @@ them, never the whole manifest, so a publication of fields it does not read leav
 
 DATA_UPDATE_TASK_KIND = "workspace_data_update"
 _STAGES = ("validate_update_request", "maintain_data_feature", "publish_update_receipt")
-# One maintenance cycle advances one network chunk of listings: the runner fetches the chunk with
-# its transport workers and applies every completed fetch on one retained instance, so the
-# coordinator's preflight, the capacity walk, the cancel check and the engine's checkpoint are paid
-# once per chunk instead of once per listing. Cancellation is still honoured at the cycle boundary
-# and every listing still commits on its own.
+# One maintenance cycle advances one network chunk of listings: the runner
+# fetches the chunk with its transport workers and applies every completed
+# fetch on one retained instance, so the coordinator's preflight, the
+# capacity walk, the cancel check and the engine's checkpoint are paid once
+# per chunk instead of once per listing. Cancellation is still honoured at
+# the cycle boundary and every listing still commits on its own.
 _MAINTENANCE_CYCLE_LISTINGS = CurrentUniverseMaintenance.chunk_size
 _MEMBERSHIP_REVIEW = "workspace_data_update.membership_changed_review_required"
 """A plan without a declared change met a changed membership; a new plan, not a retry."""
@@ -222,8 +223,9 @@ def read_workspace_inputs(
     if binding != installed_data_update_binding(root):
         raise ValueError("workspace_data_update.installed_binding_mismatch")
     market = MarketDataRepository(root)
-    # Dozens of small reads over one database: one retained read-only instance serves them all. A
-    # write attempted inside is refused, not upgraded; this is a read-only consumer and stays one.
+    # Dozens of small reads over one database: one retained read-only
+    # instance serves them all. A write attempted inside is refused, not
+    # upgraded; this is a read-only consumer and stays one.
     with market.database.retain(read_only=True):
         state = _read_workspace_inputs(root, binding, market, allow_transition=allow_transition)
         if through is not None:
@@ -796,10 +798,12 @@ class WorkspaceDataUpdateApplication:
                 "next_action": "RESOLVE_EXISTING_WORKSPACE_TRANSITION",
             }
         readiness = self._readiness(MarketDataRepository(self.session.workspace))
-        # Two kinds of due work, planned independently: the raw retry of failed candidates and the
-        # Feature/Sector recheck of quarantined parent members. A day on which both fall due carries
-        # both; the raw retry admitting nothing does not settle the other, and the coordinator
-        # resolves the Feature scope against the parent as it stands after the raw retry.
+        # Two kinds of due work, planned independently: the raw retry of failed
+        # candidates and the Feature/Sector recheck of quarantined parent
+        # members. A day on which both fall due carries both; the raw retry
+        # admitting nothing does not settle the other, and the coordinator
+        # resolves the Feature scope against the parent as it stands after
+        # the raw retry.
         raw_recheck = (
             readiness.candidate_data.plan(observed_at=now, target_session=target)
             if change is None
@@ -1634,10 +1638,7 @@ class WorkspaceDataUpdateApplication:
 
     def _source_access_admitted(self) -> bool:
         """Whether the update may read its provider: one the Host supplies, or the network."""
-        return (
-            not self._provider_requires_network
-            or network_access(self.session.workspace, now=self.clock()).allowed
-        )
+        return not self._provider_requires_network or network_access(self.session.workspace).allowed
 
     @staticmethod
     def resumes(code: str | None) -> bool:
@@ -1954,9 +1955,10 @@ class WorkspaceDataUpdateApplication:
         if snapshot is None:
             raise ValueError(_MEMBERSHIP_REVIEW)
         if plan.change is None and snapshot["manifest_revision"] != plan.before.manifest_revision:
-            # A revision that admits the same listings is governance, not a membership change; the
-            # plan stops for review only when the members the Panel admits at its as-of session
-            # differ from the ones the plan was made against.
+            # A revision that admits the same listings is governance, not a
+            # membership change; the plan stops for review only when the
+            # members the Panel admits at its as-of session differ from the
+            # ones the plan was made against.
             resolver = ArtifactResolver(self.session.workspace / "artifacts")
             panel = resolver.load_feature_panel_manifest(str(snapshot["manifest_uri"]))
             admitted = panel_as_of_listing_identity(panel)[0]
@@ -2088,8 +2090,9 @@ class WorkspaceDataUpdateApplication:
                 else:
                     onboarding = None
                 if onboarding is not None:
-                    # The new members' hydration advances one chunk per run like first use does; the
-                    # cancel is honoured at the chunk boundary and every listing commits on its own.
+                    # The new members' hydration advances one chunk per run
+                    # like first use does; the cancel is honoured at the
+                    # chunk boundary and every listing commits on its own.
                     while True:
                         if cancelled():
                             return self._cancelled(plan)
@@ -2206,9 +2209,10 @@ class WorkspaceDataUpdateApplication:
                 except ValueError as error:
                     if str(error) != _MEMBERSHIP_REVIEW:
                         raise
-                    # The cycle activated a quality-derived child membership this plan did not
-                    # declare; the update is applied and the Task stops here by name for the user to
-                    # plan against the new membership, instead of surfacing as an interruption.
+                    # The cycle activated a quality-derived child membership
+                    # this plan did not declare; the update is applied and the
+                    # Task stops here by name for the user to plan against the
+                    # new membership, instead of surfacing as an interruption.
                     return StageExecutionResult(
                         StageDisposition.BLOCKED,
                         failure_code=public_failure(error, "workspace_data_update.blocked"),

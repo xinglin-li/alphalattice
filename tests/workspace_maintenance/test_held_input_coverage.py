@@ -36,7 +36,7 @@ def _plan(bounds=(2, 2, 2), ready="RESEARCH_READY"):
 
 def _owner():
     owner = object.__new__(WorkspaceDataUpdateApplication)
-    owner.provider, owner.clock = None, lambda: datetime(2026, 10, 3, 12, tzinfo=UTC)
+    owner.provider = None
     return owner
 
 

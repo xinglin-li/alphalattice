@@ -1,4 +1,4 @@
-# Getting started
+# Getting started on Windows
 Date: 2026-10-08
 
 Give your agent the repository link and one research intent. It installs
@@ -6,18 +6,6 @@ AlphaLattice and continues in the same session. The
 [setup procedure](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch)
 covers locked Python 3.12 and uv dependencies, the editable checkout or installed
 wheel, and Local Web. Windows is verified; macOS and Linux are unverified.
-
-## Prerequisites by system
-
-Every system needs Python 3.12, uv and a browser; the lock brings the Node that builds the Workbench.
-
-- **Windows:** nothing more.
-- **macOS:** libomp, which LightGBM loads to train and score models: `brew install libomp`.
-- **Linux:** libatomic1, which the locked Node loads to build the Workbench, and libgomp1, which LightGBM
-  loads to train and score models: `sudo apt install libatomic1 libgomp1`, or your distribution's packages.
-
-These are system packages outside the lock. The doctor (`python -m alphalattice.interface.local_application.native_setup doctor`)
-names any missing under `system_libraries`, and your agent asks you once before installing them.
 
 ## First preparation
 

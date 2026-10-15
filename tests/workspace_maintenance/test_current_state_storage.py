@@ -93,7 +93,7 @@ def test_storage_cap_counts_managed_models_panels_and_artifacts_and_follows_the_
     assert automatic.measured_data_bytes == used
     assert automatic.setting.cap_bytes == "auto"
     assert automatic.cap_bytes == used + min(
-        max(used // 4, automatic.free_disk_bytes // 10), automatic.free_disk_bytes // 4
+        max(used // 4, automatic.free_disk_bytes // 100), automatic.free_disk_bytes // 4
     )
     assert "cannot predict future" in automatic.estimate_limit
     retained = {name: (tmp_path / name).read_bytes() for name in contents}

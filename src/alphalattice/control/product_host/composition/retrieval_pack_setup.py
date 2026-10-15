@@ -5,8 +5,8 @@
     <gpu python>       scripts/install_retrieval_pack.py --install hybrid-v3-qwen3-gpu --network
     <retrieval python> scripts/install_retrieval_pack.py --import hybrid-v2-minilm --from <pack-dir>
 
-(`<retrieval python>` is `.venv-retrieval/Scripts/python.exe` on Windows and
-`.venv-retrieval/bin/python` elsewhere; `<gpu python>` is `.venv-gpu`'s, alike.)
+(`<retrieval python>` is `.venv-retrieval/Scripts/python.exe`, `<gpu python>`
+is `.venv-gpu/Scripts/python.exe`.)
 
 Packs live in the application model store (`--store`, else
 `ALPHALATTICE_MODEL_STORE`, else the platform's application-data directory),

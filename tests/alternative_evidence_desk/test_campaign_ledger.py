@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -296,7 +295,6 @@ def test_the_admission_opens_a_named_campaign_once_and_resumes_it_with_its_remai
             environment=environment,
             campaign_id="qa",
             workspace_root=workspace,
-            now=datetime.now(UTC),
         )
     with pytest.raises(ValueError, match="campaign_declaration_incomplete"):
         admit_official_source(
@@ -305,14 +303,13 @@ def test_the_admission_opens_a_named_campaign_once_and_resumes_it_with_its_remai
 
     # The network is the workspace's, as a person sets it in Settings; an incomplete
     # declaration is refused above before any network is asked for.
-    set_network_access(workspace, enabled=True, now=datetime.now(UTC))
+    set_network_access(workspace, enabled=True)
     first = admit_official_source(
         network_consent=True,
         environment=environment,
         campaign_id="qa",
         workspace_root=workspace,
         **bounds,
-        now=datetime.now(UTC),
     )
     assert first.source is not None
     first.source.close()
@@ -341,7 +338,6 @@ def test_the_admission_opens_a_named_campaign_once_and_resumes_it_with_its_remai
         campaign_id="qa",
         workspace_root=workspace,
         **bounds,
-        now=datetime.now(UTC),
     )
     assert second.source is not None
     second.source.close()
@@ -359,7 +355,6 @@ def test_the_admission_opens_a_named_campaign_once_and_resumes_it_with_its_remai
             campaign_id="qa",
             workspace_root=workspace,
             **{**bounds, "maximum_total_attempts": 5},
-            now=datetime.now(UTC),
         )
     injected = HttpxSecOfficialTransport(user_agent=USER_AGENT)
     try:
@@ -379,7 +374,6 @@ def test_the_admission_opens_a_named_campaign_once_and_resumes_it_with_its_remai
         campaign_id="qa-denied",
         workspace_root=workspace,
         **bounds,
-        now=datetime.now(UTC),
     )
     assert denied.transport_origin == "DENIED" and denied.campaign is None
     assert not campaign_ledger_path(workspace, "qa-denied").exists()
@@ -470,7 +464,6 @@ def test_a_campaign_id_is_one_safe_path_component_or_nothing_is_created(
                 maximum_total_attempts=4,
                 maximum_total_response_bytes=15_000,
                 maximum_body_resources=2,
-                now=datetime.now(UTC),
             )
     assert not workspace.exists(), "a refused id created nothing"
 
