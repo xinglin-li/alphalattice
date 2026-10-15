@@ -128,6 +128,12 @@ on return, whatever their outcome. A preview with no Task is recorded as exactly
 that; nothing here admits work or invents a Task."""
 
 
+OPERATIONAL_OPERATIONS: frozenset[str] = frozenset({"CPU_BUDGET_SET", "HOST_STOP"})
+"""Observed operations that run the Host or the machine rather than research: recorded like the
+others, but never attributed to a goal and never opening one (a session's first research
+request opens it)."""
+
+
 RECORDS_ITSELF: frozenset[str] = frozenset({"EVENT_DECLARE", "SESSION_USAGE_READ"})
 """Operations whose own record is what they write: a declared event is its row in the feed,
 and a usage reading files its readings, so the observer records no operation beside them
@@ -144,6 +150,18 @@ def observed_operation(operation: str) -> bool:
         Whether the operation belongs to the observed set.
     """
     return operation in OBSERVED_OPERATIONS
+
+
+def research_operation(operation: str) -> bool:
+    """Check whether this observed operation is research work, which a goal is attributed.
+
+    Args:
+        operation: The owner's operation name.
+
+    Returns:
+        Whether it is observed and not one of the Host's own operational commands.
+    """
+    return operation in OBSERVED_OPERATIONS and operation not in OPERATIONAL_OPERATIONS
 
 
 SUBJECT_FIELDS: tuple[str, ...] = (

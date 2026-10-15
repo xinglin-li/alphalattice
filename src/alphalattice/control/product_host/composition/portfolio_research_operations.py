@@ -286,8 +286,8 @@ from alphalattice.interface.local_application.activity import (
     ActivityReadQuery,
     ExternalActivityEventDocument,
     OperationObserver,
-    observed_operation,
     refusal_code,
+    research_operation,
 )
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
@@ -827,7 +827,7 @@ class PortfolioResearchOperations:
             goal = (
                 None
                 if request.operation.startswith("GOAL_")
-                or not observed_operation(request.operation)
+                or not research_operation(request.operation)
                 else self.goals.attributed_goal(provenance)
             )
             if goal is None and _opens_goal(request.operation, provenance):
@@ -6542,7 +6542,7 @@ def _opens_goal(operation: str, provenance: RequestProvenance | None) -> bool:
         and bool(provenance.session)
         and provenance.goal_id is None
         and not operation.startswith("GOAL_")
-        and observed_operation(operation)
+        and research_operation(operation)
         and operation not in {"EVENT_DECLARE", "SESSION_USAGE_READ", "USAGE_READING_SET"}
     )
 

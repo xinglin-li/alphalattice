@@ -22,7 +22,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Self, cast
+from typing import Any, Literal, Self
 
 import psutil  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -799,14 +799,13 @@ def _memory_capacity() -> tuple[int, int]:
     if os.name == "nt":
         status = _windows_memory_status()
         return int(status.total_physical), int(status.available_physical)
+    # No commit limit as on Windows: the memory a new process can take without swapping, the
+    # page cache counted free (Linux MemAvailable; macOS free and inactive pages), never free
+    # pages alone, and never a page count the platform lacks (macOS has no SC_AVPHYS_PAGES).
     try:
-        sysconf = cast(Any, getattr(os, "".join(("sys", "conf")), None))
-        if sysconf is None:
-            raise ProcessCapacityError("process_capacity.memory_snapshot_unavailable")
-        page = int(sysconf("SC_PAGE_SIZE"))
-        total = page * int(sysconf("SC_PHYS_PAGES"))
-        available = page * int(sysconf("SC_AVPHYS_PAGES"))
-    except (AttributeError, OSError, TypeError, ValueError) as error:
+        memory = psutil.virtual_memory()
+        total, available = int(memory.total), int(memory.available)
+    except (OSError, RuntimeError, AttributeError) as error:
         raise ProcessCapacityError("process_capacity.memory_snapshot_unavailable") from error
     return total, min(total, available)
 
@@ -1037,9 +1036,12 @@ def current_allowed_logical_processors() -> tuple[int, ...]:
         detected = os.cpu_count() or 1
         return tuple(index for index in range(detected) if mask & (1 << index))
     getter = getattr(os, "sched_getaffinity", None)
-    if not callable(getter):
-        raise ProcessCapacityError("process_capacity.logical_processor_bound_unenforceable")
-    return tuple(sorted(getter(0)))
+    if callable(getter):
+        return tuple(sorted(getter(0)))
+    if sys.platform == "darwin":
+        # macOS has no processor affinity that could have narrowed this process: all are its.
+        return tuple(range(os.cpu_count() or 1))
+    raise ProcessCapacityError("process_capacity.logical_processor_bound_unenforceable")
 
 
 def bind_process_logical_processors(

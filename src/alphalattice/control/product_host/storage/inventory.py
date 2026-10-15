@@ -10,7 +10,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
 
-from alphalattice.control.workspace_runtime.storage.capacity import StorageCapacity, StorageCapStore
+from alphalattice.control.workspace_runtime.storage.capacity import (
+    LIMIT_SHARE,
+    StorageCapacity,
+    StorageCapStore,
+)
 
 RECOVERY_HEADROOM_BYTES = 1_610_612_736
 """Physical publication/recovery reserve, a safety limit independent of the managed cap."""
@@ -183,13 +187,24 @@ def require_storage_capacity(workspace: Path, *, additional_bytes: int) -> None:
 
 
 def _admit(capacity: StorageCapacity, additional_bytes: int) -> None:
-    if capacity.measured_data_bytes + additional_bytes > capacity.cap_bytes:
+    # The automatic cap admits one write within a quarter of free disk that the disk holds with
+    # its recovery headroom (a first preparation on a modest disk), so writers at once stay
+    # within the disk together; a disk short of it is refused by its own name, and an
+    # operator's own cap refuses as before.
+    automatic = capacity.setting.cap_bytes == "auto"
+    roomy = capacity.free_disk_bytes >= additional_bytes + RECOVERY_HEADROOM_BYTES
+    within = automatic and additional_bytes <= capacity.free_disk_bytes // LIMIT_SHARE
+    if (
+        (roomy or not automatic)
+        and not within
+        and capacity.measured_data_bytes + additional_bytes > capacity.cap_bytes
+    ):
         raise StorageInventoryError(
             "storage.managed_capacity_exceeded",
             "Managed storage exceeds the workspace cap. "
             "Raise the cap (`storage set --cap-bytes <bytes>`) or plan a cleanup (`storage plan`).",
         )
-    if capacity.free_disk_bytes < additional_bytes + RECOVERY_HEADROOM_BYTES:
+    if not roomy:
         raise StorageInventoryError(
             "storage.disk_space_insufficient",
             "Insufficient space for publication and recovery headroom.",
