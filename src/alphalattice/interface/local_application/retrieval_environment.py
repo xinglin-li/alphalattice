@@ -8,7 +8,7 @@ the pinned additions from `config/requirements-retrieval.lock`, so the default
 committed files in this tree. No parent project, lock, or interpreter is
 consulted; a missing lock is a stop.
 
-    .venv/Scripts/python.exe scripts/create_retrieval_environment.py --offline
+    uv run python scripts/create_retrieval_environment.py --offline
 
 Acceptance that needs a real model runs under the interpreter this prints. No
 interpreter is ever guessed: a caller either uses this path or does not. A setup
