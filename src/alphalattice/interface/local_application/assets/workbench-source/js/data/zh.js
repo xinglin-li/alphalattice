@@ -5948,6 +5948,7 @@ window.ALPHA_ZH = {
   "The answer offers next requests, and the command names none of them it can send; the ones offered follow the code.": "此回答提供了后续请求，但命令没有指出其中任何一个可以发送的；提供的请求列在代码之后。",
   "The compact view left out the part named after the colon, which this continues from: continue from a full response (--view full) or the exact --output file.": "紧凑视图省略了冒号后指出的部分，而本次操作要从该部分继续：请从完整响应（--view full）或确切的 --output 文件继续。",
   "The connection to the Host was lost while the request was in flight, so whether it ran is unknown. Inspect the same Task before sending work again.": "请求进行中与 Host 的连接中断，因此不知道它是否已运行。再次发送工作之前，请先查看同一个任务。",
+  "The connection to the Host was lost while this read was in flight. A read changes nothing, so send the same request again, which this answer offers.": "此次读取进行中与 Host 的连接中断。读取不会改变任何内容，因此请再次发送同一请求，本答复已给出该请求。",
   "The file is empty: nothing was written into it. Write the answer's JSON or the request's YAML into it, then send it again.": "此文件为空：其中没有写入任何内容。请把回答的 JSON 或请求的 YAML 写入其中，然后再次发送。",
   "The model fails its contract at the check the code names; correct its fit, its prediction or its declaration and run `alphalattice model check <model-id>` again.": "模型在代码指出的检查上未通过其契约；请更正其拟合、预测或声明，然后再次运行 `alphalattice model check <model-id>`。",
   "The model's code or declaration refused; correct what the code names and run `alphalattice model check <model-id>` again.": "模型的代码或声明被拒绝；请更正代码指出的内容，然后再次运行 `alphalattice model check <model-id>`。",

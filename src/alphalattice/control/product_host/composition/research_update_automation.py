@@ -330,7 +330,7 @@ class ResearchUpdateAutomation:
         """
         with self._lock:
             self._held = (at, run)
-        self.held_wake.set_next_due(at)
+            self.held_wake.set_next_due(at)
         self.held_wake.event.set()
 
     def _run_held(self) -> None:
@@ -338,8 +338,18 @@ class ResearchUpdateAutomation:
             held, self._held = self._held, None
             if held is not None and (self._closing or held[0] > self.clock()):
                 self._held, held = held, None
+            # The wake's due time is the hold's own: one taken leaves none past due to spin on.
+            self.held_wake.set_next_due(None if self._held is None else self._held[0])
         if held is not None:
-            held[1]()
+            try:
+                held[1]()
+            except Exception:
+                with self._lock:
+                    if self._held is None and not self._closing:
+                        # Kept and due, so the worker's backoff runs it again; never dropped.
+                        self._held = held
+                        self.held_wake.set_next_due(held[0])
+                raise
 
     def command_completed(self) -> None:
         """Wake once the dispatcher's queue is idle.
@@ -348,7 +358,11 @@ class ResearchUpdateAutomation:
         admitted or resumed is read then.
         """
         with self._lock:
-            if (self._pending or self._watched or self._after) and not self._closing:
+            # A package refused while the inputs were not ready is owed this event, never a
+            # cycle due now: cycled at once, two refused packages would alternate forever.
+            self._pending += [p for p in self._after if p not in self._pending]
+            self._after.clear()
+            if (self._pending or self._watched) and not self._closing:
                 self._arm(self.clock())
 
     def _cycle(self) -> None:
@@ -398,10 +412,7 @@ class ResearchUpdateAutomation:
             ]
             for package in owed:
                 del self._retry[package]
-            self._pending += [
-                p for p in dict.fromkeys((*owed, *self._after)) if p not in self._pending
-            ]
-            self._after.clear()
+            self._pending += [p for p in owed if p not in self._pending]
             self._arm(min([min(at for _, at in ready if at > now), *self._retry.values()]))
             if not self._pending:
                 return

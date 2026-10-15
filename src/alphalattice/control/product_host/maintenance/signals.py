@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from threading import Event, Lock, Thread
 
 
@@ -113,6 +113,7 @@ class MaintenanceBackgroundHost:
         self.clock = clock
         self._stop = Event()
         self._last_error_code: str | None = None
+        self._failures = 0
         self._thread = Thread(
             target=self._worker,
             name="workspace-maintenance-coordinator",
@@ -160,12 +161,14 @@ class MaintenanceBackgroundHost:
             if due and signalled:
                 try:
                     self.run_once()
-                    self._last_error_code = None
+                    self._last_error_code, self._failures = None, 0
                 except Exception:
                     # The durable coordinator owns details; the chat surface gets
                     # only a stable safe code and the host remains wakeable.
                     self._last_error_code = "workspace_maintenance.background_cycle_failed"
-                    if self.clock is not None:
-                        # A failing timed callback must not spin on an expired
-                        # deadline. An explicit re-arm is needed after failure.
-                        self.wake.set_next_due(None)
+                    self._failures += 1
+                    if self.clock is not None and self.wake.seconds_until_due(self.clock()) == 0:
+                        # Work the failed run left due now is tried again after a bounded
+                        # backoff, never spun on; a time it armed, or its disarm, stands.
+                        delay = min(30.0 * 2 ** min(self._failures - 1, 7), 3600.0)
+                        self.wake.set_next_due(self.clock() + timedelta(seconds=delay))

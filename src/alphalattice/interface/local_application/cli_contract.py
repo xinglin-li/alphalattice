@@ -894,6 +894,15 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ),
     ),
     (
+        "local_client.connection_lost_read",
+        ClientRefusal(
+            "NO_HOST",
+            "SEND_THE_SAME_READ_AGAIN",
+            "The connection to the Host was lost while this read was in flight. A read changes "
+            "nothing, so send the same request again, which this answer offers.",
+        ),
+    ),
+    (
         "local_client.connection_unreadable",
         ClientRefusal(
             "NO_HOST",
@@ -1444,6 +1453,133 @@ def client_refusal(code: str) -> ClientRefusal:
         if code == prefix or (prefix.endswith(("_", ":", ".")) and code.startswith(prefix)):
             return refusal
     return _OTHER
+
+
+READ_OPERATIONS: frozenset[str] = frozenset(
+    {
+        "RESEARCH_STRATEGY_READBACK",
+        "FEATURE_CATALOG_CONTROLS",
+        "FEATURE_CATALOG_READBACK",
+        "FEATURE_CATALOG_BUILD_READBACK",
+        "FEATURE_TRIAL_READBACK",
+        "FEATURE_TRIALS",
+        "RESEARCH_STRATEGY_CONTROLS",
+        "GOAL_SCHEMA",
+        "GOAL_LIST",
+        "GOAL_SHOW",
+        "GOAL_NARRATIVE",
+        "GOAL_REFERENCE",
+        "GOAL_EXPORT",
+        "GOAL_CONTINUE",
+        "COMPARE",
+        "CONTROLS",
+        "CRO_REVIEW_DOSSIER",
+        "CRO_REVIEW_FINDING",
+        "DATA_ISSUES",
+        "DATA_UPDATE_READBACK",
+        "COMMITTEE_READ",
+        "EVIDENCE_CRO",
+        "EVIDENCE_CRO_EXPORT",
+        "EVIDENCE_DOCUMENTS",
+        "EVIDENCE_LEDGER",
+        "EVIDENCE_PACKET",
+        "EXPERIMENTS",
+        "EXPERIMENT_COMPARE",
+        "EXPERIMENT_ALPHA_COMPARE",
+        "EXPERIMENT_CONTROLS",
+        "EXPERIMENT_DECLARATION_CONVERT",
+        "EXPERIMENT_CURATION",
+        "EXPERIMENT_DELIVERY_EXPORT",
+        "EXPERIMENT_DRAFT",
+        "EXPERIMENT_EXPORT",
+        "EXPERIMENT_FOUNDATIONS",
+        "EXPERIMENT_FOUNDATION_DRAFT",
+        "EXPERIMENT_FOUNDATION_EXPORT",
+        "EXPERIMENT_FOUNDATION_READBACK",
+        "EXPERIMENT_FOUNDATION_SUMMARY",
+        "EXPERIMENT_PORTFOLIO_DRAFT",
+        "EXPERIMENT_PREVIEW_READBACK",
+        "EXPERIMENT_READBACK",
+        "EXPERIMENT_SUMMARY",
+        "EXPERIMENT_REPLAY",
+        "EXPERIMENT_RISK_EXPORT",
+        "EXPERIMENT_RISK_LINKS",
+        "EXPORT",
+        "FINALIZATION",
+        "PORTFOLIO_UPDATE_READBACK",
+        "PORTFOLIO_READBACK",
+        "REPORT",
+        "RESEARCH_HISTORY",
+        "RESEARCH_INPUTS",
+        "RESEARCH_INPUT_READBACK",
+        "MODEL_TRAINING_INPUT_READBACK",
+        "RESEARCH_UPDATE_AUTOMATION_READBACK",
+        "RESEARCH_UPDATE_READBACK",
+        "RESULTS",
+        "STATUS",
+        "STORAGE_CAP_SHOW",
+        "STORAGE_READBACK",
+        "TASK_RECOVERY",
+        "TASK_GUARDIAN",
+        "TASK_INCIDENTS",
+        "STRATEGY_CALIBRATION_READBACK",
+        "STRATEGY_SCORE_READBACK",
+        "TASKS",
+        "UPGRADE_OVERVIEW",
+        "NETWORK_ACCESS",
+        "EVIDENCE_CONSENT",
+        "USAGE_READING",
+        "PENDING_DECISIONS",
+        "WORKSPACE_PREPARE_READBACK",
+        "ACTIVITY_REFUSALS",
+        "ACTIVITY_LIST",
+        "ACTIVITY_RECENT",
+        "CPU_BUDGET_SHOW",
+        "WORKSPACE_BACKUPS",
+        "MODEL_EXTENSIONS",
+        "FEATURE_EXTENSIONS",
+        "FEATURE_REVIEW",
+        "OPERATION_LIST",
+        "WORKSPACE_SHOW",
+    }
+)
+"""Operations that change nothing and are never recorded as activity.
+
+The browser polls several of these every few seconds; recording them would fill
+the ledger with the observer's own reads. A refused read is still not activity:
+the caller already holds the refusal.
+"""
+
+
+def client_failure(
+    code: str,
+    document: Mapping[str, Any],
+    cause: BaseException | None,
+    request_timeout: float,
+    answered: bool,
+) -> tuple[ClientRefusal, dict[str, Any]]:
+    """A local refusal's words and, for a connection lost in flight, what it leaves known.
+
+    A read not yet answered changes nothing, so its exact request is offered again; any other
+    request, or a step after an answer, is inspected as its Task before work is sent again.
+    """
+    if code != "local_client.connection_lost_task_may_still_run":
+        return client_refusal(code), {}
+    read = not answered and document.get("operation") in READ_OPERATIONS
+    return client_refusal("local_client.connection_lost_read" if read else code), {
+        "transport_reason": "HTTP_WAIT_EXPIRED"
+        if isinstance(cause, TimeoutError)
+        else "CONNECTION_INTERRUPTED",
+        "request_timeout_seconds": request_timeout,
+        "operation_outcome": "UNKNOWN",
+        "guidance": (
+            "--request-timeout may increase this read's HTTP waiting."
+            if read
+            else "Inspect the same Task before resubmitting work. For a read-only "
+            "request, --request-timeout may increase HTTP waiting, not the Task budget."
+        ),
+        **({"next_requests": {"read": dict(document)}} if read else {}),
+    }
 
 
 def envelope(

@@ -26,6 +26,7 @@ from alphalattice.control.observation_runtime.contracts import (
     ObservationReadCursor,
     ObservationReadItem,
 )
+from alphalattice.interface.local_application.cli_contract import READ_OPERATIONS
 from alphalattice.interface.local_application.failure_codes import (
     FAILURE_DETAIL_WITHHELD,
 )
@@ -34,101 +35,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.interface.local_application.web import LocalWebError
-
-READ_OPERATIONS: frozenset[str] = frozenset(
-    {
-        "RESEARCH_STRATEGY_READBACK",
-        "FEATURE_CATALOG_CONTROLS",
-        "FEATURE_CATALOG_READBACK",
-        "FEATURE_CATALOG_BUILD_READBACK",
-        "FEATURE_TRIAL_READBACK",
-        "FEATURE_TRIALS",
-        "RESEARCH_STRATEGY_CONTROLS",
-        "GOAL_SCHEMA",
-        "GOAL_LIST",
-        "GOAL_SHOW",
-        "GOAL_NARRATIVE",
-        "GOAL_REFERENCE",
-        "GOAL_EXPORT",
-        "GOAL_CONTINUE",
-        "COMPARE",
-        "CONTROLS",
-        "CRO_REVIEW_DOSSIER",
-        "CRO_REVIEW_FINDING",
-        "DATA_ISSUES",
-        "DATA_UPDATE_READBACK",
-        "COMMITTEE_READ",
-        "EVIDENCE_CRO",
-        "EVIDENCE_CRO_EXPORT",
-        "EVIDENCE_DOCUMENTS",
-        "EVIDENCE_LEDGER",
-        "EVIDENCE_PACKET",
-        "EXPERIMENTS",
-        "EXPERIMENT_COMPARE",
-        "EXPERIMENT_ALPHA_COMPARE",
-        "EXPERIMENT_CONTROLS",
-        "EXPERIMENT_DECLARATION_CONVERT",
-        "EXPERIMENT_CURATION",
-        "EXPERIMENT_DELIVERY_EXPORT",
-        "EXPERIMENT_DRAFT",
-        "EXPERIMENT_EXPORT",
-        "EXPERIMENT_FOUNDATIONS",
-        "EXPERIMENT_FOUNDATION_DRAFT",
-        "EXPERIMENT_FOUNDATION_EXPORT",
-        "EXPERIMENT_FOUNDATION_READBACK",
-        "EXPERIMENT_FOUNDATION_SUMMARY",
-        "EXPERIMENT_PORTFOLIO_DRAFT",
-        "EXPERIMENT_PREVIEW_READBACK",
-        "EXPERIMENT_READBACK",
-        "EXPERIMENT_SUMMARY",
-        "EXPERIMENT_REPLAY",
-        "EXPERIMENT_RISK_EXPORT",
-        "EXPERIMENT_RISK_LINKS",
-        "EXPORT",
-        "FINALIZATION",
-        "PORTFOLIO_UPDATE_READBACK",
-        "PORTFOLIO_READBACK",
-        "REPORT",
-        "RESEARCH_HISTORY",
-        "RESEARCH_INPUTS",
-        "RESEARCH_INPUT_READBACK",
-        "MODEL_TRAINING_INPUT_READBACK",
-        "RESEARCH_UPDATE_AUTOMATION_READBACK",
-        "RESEARCH_UPDATE_READBACK",
-        "RESULTS",
-        "STATUS",
-        "STORAGE_CAP_SHOW",
-        "STORAGE_READBACK",
-        "TASK_RECOVERY",
-        "TASK_GUARDIAN",
-        "TASK_INCIDENTS",
-        "STRATEGY_CALIBRATION_READBACK",
-        "STRATEGY_SCORE_READBACK",
-        "TASKS",
-        "UPGRADE_OVERVIEW",
-        "NETWORK_ACCESS",
-        "EVIDENCE_CONSENT",
-        "USAGE_READING",
-        "PENDING_DECISIONS",
-        "WORKSPACE_PREPARE_READBACK",
-        "ACTIVITY_REFUSALS",
-        "ACTIVITY_LIST",
-        "ACTIVITY_RECENT",
-        "CPU_BUDGET_SHOW",
-        "WORKSPACE_BACKUPS",
-        "MODEL_EXTENSIONS",
-        "FEATURE_EXTENSIONS",
-        "FEATURE_REVIEW",
-        "OPERATION_LIST",
-        "WORKSPACE_SHOW",
-    }
-)
-"""Operations that change nothing and are never recorded as activity.
-
-The browser polls several of these every few seconds; recording them would fill
-the ledger with the observer's own reads. A refused read is still not activity:
-the caller already holds the refusal.
-"""
 
 OBSERVED_OPERATIONS: frozenset[str] = frozenset(
     {

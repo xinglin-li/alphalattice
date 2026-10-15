@@ -36,6 +36,7 @@ from alphalattice.interface.local_application.cli_contract import (
     agent_provenance_headers,
     agent_session,
     choices,
+    client_failure,
     client_refusal,
     command,
     command_table,
@@ -3475,22 +3476,8 @@ def run(
         return answered(client, outcome_of(body))
     except LocalResearchClientError as error:
         code = str(error)
-        transport: dict[str, Any] = {}
-        if code == "local_client.connection_lost_task_may_still_run":
-            transport = {
-                "transport_reason": (
-                    "HTTP_WAIT_EXPIRED"
-                    if isinstance(error.__cause__, TimeoutError)
-                    else "CONNECTION_INTERRUPTED"
-                ),
-                "request_timeout_seconds": args.request_timeout,
-                "operation_outcome": "UNKNOWN",
-                "guidance": (
-                    "Inspect the same Task before resubmitting work. For a read-only "
-                    "request, --request-timeout may increase HTTP waiting, not the Task budget."
-                ),
-            }
-        refusal = client_refusal(code)
+        failed = (code, document, error.__cause__, args.request_timeout, body is not None)
+        refusal, transport = client_failure(*failed)
         if body is not None:
             # The owner answered before a local step failed (writing --output or a bundle,
             # following the Task): the operation's own outcome stands, and the local failure
@@ -3536,7 +3523,7 @@ def run(
                     next_action=refusal.next_action,
                     next_requests={"schema": schema_request(document.get("operation"))}
                     if code == "local_client.document_unreadable"
-                    else None,
+                    else transport.pop("next_requests", None),
                     context=_context(args.workspace, getattr(args, "goal", None)),
                     **{
                         field: getattr(error, field)
