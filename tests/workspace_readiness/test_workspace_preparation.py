@@ -1410,6 +1410,7 @@ def test_empty_start_and_actor_boundary_without_strategy_or_data_authority(
         network_consent=True,
         transport=SecFixtureTransport() if injected else None,
         workspace_root=tmp_path,
+        now=OBSERVED_AT,
     )
     with pytest.raises(ValueError, match="operation_hash_invalid"):
         PortfolioResearchOperationRequest(

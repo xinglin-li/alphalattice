@@ -167,7 +167,7 @@ def guarded_membership_source(
     Raises:
         ValueError: Workspace network access is not admitted.
     """
-    if not network_access(workspace).allowed:
+    if not network_access(workspace, now=observed_at).allowed:
         raise ValueError("workspace_readiness.source_access_not_admitted")
     return discover_current_universe_candidates(observed_at=observed_at)
 

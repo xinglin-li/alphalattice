@@ -12342,6 +12342,13 @@
    "successor": "4a0e342103ed22beb4790cb8e3b53a5de6ad66d34bcc5c2d2095cf97ce4893a8",
    "change": "first-use dated preparation review and reds",
    "reason": "Lead signature 2026-10-14 03:59: date preflight respects retained BLOCKED Task replan refusal before cutoff validation, restoring ordinary inputs_already_published. Available-at, stale comparison, arithmetic, recipe, source MAX and date bounds unchanged. Earlier signed 02:39 five-role/equal-values controls stand; unchanged served scenario red/green: inv-past-date-reds/035248-checks-71ed14c7. Branch-only 73cad entry replaced as instructed."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "4a0e342103ed22beb4790cb8e3b53a5de6ad66d34bcc5c2d2095cf97ce4893a8",
+   "successor": "58cddf2af45c9e46d1b319b9e74df7a0b113dae02a108b09411ed153ddd894be",
+   "change": "network control on the Host's clock",
+   "reason": "Lead signature 2026-10-14 17:09: source closure of the network_access signature change (readiness and preparation pass the Host clock to the network control); no value change. Red/green and readouts: ui-network-clock/161224-fix-cb0cc314."
   }
  ]
 }

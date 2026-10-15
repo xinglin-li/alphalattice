@@ -20,6 +20,15 @@ class StorageCapSetting(BaseModel):  # type: ignore[misc]
     chosen_at: datetime | None = None
 
 
+FREE_SHARE = 10
+"""The automatic cap grows by at least this share of free disk (a tenth)."""
+LIMIT_SHARE = 4
+"""It grows by at most this share of free disk (a quarter), and admits one write within it on a
+disk that holds the write with its recovery headroom."""
+SHARE_WORDS = {4: "a quarter", 10: "a tenth"}
+"""The shares' words, so the readback names the shares the cap uses."""
+
+
 class StorageCapacity(BaseModel):  # type: ignore[misc]
     """Read the current setting against measured managed data and available disk."""
 
@@ -34,8 +43,10 @@ class StorageCapacity(BaseModel):  # type: ignore[misc]
         "it cannot predict future studies or models."
     )
     automatic_basis: str = (
-        "Automatic capacity adds the larger of a quarter of managed data and one percent of "
-        "free disk, limited to a quarter of free disk."
+        "Automatic capacity adds the larger of a quarter of managed data and "
+        f"{SHARE_WORDS[FREE_SHARE]} of free disk, limited to {SHARE_WORDS[LIMIT_SHARE]} of "
+        "free disk; one write within that limit is admitted while the disk holds it with its "
+        "recovery headroom."
     )
 
 
@@ -84,7 +95,7 @@ class StorageCapStore:
         """Resolve the same live setting for every storage reader and write admission."""
         setting = self.read()
         free = shutil.disk_usage(self.workspace).free
-        allowance = min(max(measured_data_bytes // 4, free // 100), free // 4)
+        allowance = min(max(measured_data_bytes // 4, free // FREE_SHARE), free // LIMIT_SHARE)
         automatic = max(1, measured_data_bytes + allowance)
         return StorageCapacity(
             cap_bytes=automatic if setting.cap_bytes == "auto" else setting.cap_bytes,

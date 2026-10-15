@@ -1263,7 +1263,7 @@ class EvidenceReviewApplication:
         """
         if self.official_source is None:
             return True
-        state = official_source_state(self.workspace)
+        state = official_source_state(self.workspace, now=self.clock())
         if state == self._source_state:
             return True
         if not self._source_turn.acquire(blocking=False):
@@ -1439,10 +1439,9 @@ class EvidenceReviewApplication:
             else self.evidence_policy
         )
         binding = adapter.run_binding_hash(prepare_only=prepare_only)
-        # The run this scope sealed at this cutoff under the same package and
-        # permissions is the coverage at this cutoff: a captured intent
-        # resolves to it after its own acquisition, or a later delta, has
-        # moved the counts a fresh packing would read.
+        # The run this scope sealed at this cutoff under the same package and permissions is the
+        # coverage at this cutoff: a captured intent resolves to it after its own acquisition, or a
+        # later delta, has moved the counts a fresh packing would read.
         for task in self._run_tasks(resolved.scope, evidence_as_of=evidence_as_of):
             sealed = adapter.run_of(task)
             if (
@@ -1503,7 +1502,8 @@ class EvidenceReviewApplication:
         """
         if self.network_access is None:
             return None
-        current = network_access(self.workspace)
+        now = self.clock()
+        current = network_access(self.workspace, now=now)
         if self.network_access.allowed and current.allowed:
             return None
         from alphalattice.control.product_host.composition.plain_refusals import refused
@@ -1511,7 +1511,12 @@ class EvidenceReviewApplication:
         words = refused("evidence_review.workspace_network_not_allowed")
         delegation = self.network_delegation(caller)
         ways = source_ways(
-            self.workspace, entities=None, book=None, for_refusal=True, delegation=delegation
+            self.workspace,
+            entities=None,
+            book=None,
+            for_refusal=True,
+            delegation=delegation,
+            now=now,
         )
         official = cast(dict[str, object], ways["official"])
         return ReviewOutcome(
@@ -1568,12 +1573,11 @@ class EvidenceReviewApplication:
             return coverage_units(scope.ordered_entity_ids, priority_rank=scope.priority_rank)
         sealed = self._sealed_run(scope, evidence_as_of=evidence_as_of)
         if sealed is not None:
-            # A run's own acquisition seals plans at its cutoff, and the
-            # count read "at or before the cutoff" would then move under
-            # the run: its units are re-derived from the run it sealed,
-            # never from the plans it left (seen on the book journey: the
-            # packet of a nine-unit run refused as another book's unit
-            # once its own plans packed the same cutoff into eight).
+            # A run's own acquisition seals plans at its cutoff, and the count read "at or before
+            # the cutoff" would then move under the run: its units are re-derived from the run it
+            # sealed, never from the plans it left (seen on the book journey: the packet of a
+            # nine-unit run refused as another book's unit once its own plans packed the same cutoff
+            # into eight).
             return tuple(unit.ordered_entity_ids for unit in sealed.units)
         if evidence_as_of is None:
             evidence_as_of = self.clock()
@@ -1732,11 +1736,10 @@ class EvidenceReviewApplication:
             answers[question.obligation.ordered_entity_ids] = _CurrentEvidenceSelection(
                 disposition=str(view.current_eligibility), question=question, evidence=view
             )
-        # Chosen from the records, newest first: every current analysis is
-        # asked its question, one that is not current only while a unit has no
-        # answer yet (X2) -- a question reads its request and its day's run.
-        # Only a record of the last TTL can be current; an older one is read
-        # only while a unit still waits, day by day (Z2).
+        # Chosen from the records, newest first: every current analysis is asked its question, one
+        # that is not current only while a unit has no answer yet (X2) -- a question reads its
+        # request and its day's run. Only a record of the last TTL can be current; an older one is
+        # read only while a unit still waits, day by day (Z2).
         records = sorted(
             analysis_records(self.artifacts, self._publication_days(), now - CURRENT_WITHIN),
             key=lambda value: value.published_at,
@@ -1783,9 +1786,8 @@ class EvidenceReviewApplication:
                 continue
             key = unit_of(publication.publication_hash)
             if key in waiting:
-                # The newest analysis that is not current, whatever the
-                # reason: its eligibility says whether it expired or was
-                # sealed under a superseded contract.
+                # The newest analysis that is not current, whatever the reason: its eligibility says
+                # whether it expired or was sealed under a superseded contract.
                 stale[key] = (questions[publication.publication_hash], publication)
                 waiting.discard(key)
         recorded = recorded_selections(self.artifacts, resolved.scope.scope_hash)
@@ -1794,10 +1796,9 @@ class EvidenceReviewApplication:
                 continue
             candidates = current[key]
             if len(candidates) > 1:
-                # A person may already have answered this for the unit. That
-                # answer is read here rather than at composition, so it
-                # survives a restart: the newest record among this unit's
-                # publications, and it must name one that is current.
+                # A person may already have answered this for the unit. That answer is read here
+                # rather than at composition, so it survives a restart: the newest record among this
+                # unit's publications, and it must name one that is current.
                 named = next(
                     (
                         value.analysis_publication_hash
@@ -1885,9 +1886,8 @@ class EvidenceReviewApplication:
         run = adapter.run_of(task)
         if run is None:
             return False
-        # The holdings that filed nothing in the window, and those whose every
-        # filing an earlier analysis read, are the run's too, named beside its
-        # units rather than packed into them.
+        # The holdings that filed nothing in the window, and those whose every filing an earlier
+        # analysis read, are the run's too, named beside its units rather than packed into them.
         packed = tuple(
             entity
             for entity in scope.ordered_entity_ids
@@ -2100,10 +2100,10 @@ class EvidenceReviewApplication:
             for value in resources.recorded_documents
             if value.entity_id in scope.ordered_entity_ids
         )
-        # What this preview describes, captured so that submitting it later --
-        # after the clock has moved -- is the same preparation and not a new one
-        # as of the moment of submission. The packing is not part of it: the
-        # preparation reads each holding's filing index and packs from that.
+        # What this preview describes, captured so that submitting it later -- after the clock has
+        # moved -- is the same preparation and not a new one as of the moment of submission. The
+        # packing is not part of it: the preparation reads each holding's filing index and packs
+        # from that.
         request = self.evidence_policy.run_request(run)
         selector_fields = chosen.request_fields()
         next_requests: dict[str, dict[str, str]] = {}
@@ -2189,6 +2189,7 @@ class EvidenceReviewApplication:
                     book=chosen,
                     refusal=self.source_refusal(),
                     delegation=self.network_delegation(caller),
+                    now=self.clock(),
                 ),
                 "acquisition_scope": self._acquisition_scope(len(scope.ordered_entity_ids)),
             }
@@ -2265,8 +2266,7 @@ class EvidenceReviewApplication:
             "preparation_binding_hash": intent,
             "preparation_binding": binding,
             "prepared_task_id": prepared_task_id,
-            # A one-unit book's check is the book's check; a wider book's are
-            # per unit, in `coverage.units`.
+            # A one-unit book's check is the book's; a wider book's are per unit (`coverage.units`).
             "source_check": units_body[0]["source_check"] if len(units_body) == 1 else None,
             "admission": self._admission_view(),
             "campaign": self._campaign_view(),
@@ -2336,13 +2336,11 @@ class EvidenceReviewApplication:
     ) -> ReviewOutcome:
         """`Refresh evidence`, all the way through: book, scope, request, Task.
 
-        A preparation names its cutoff. Given none, the cutoff is the moment of
-        submission and the request is new. Given the cutoff and binding a
-        preview handed out, the request is that captured intent: a completed
-        preparation for it is reused while its packet still reads, whatever
-        the clock says now; a binding that no longer describes this workspace
-        (scope, source package, policy or permission moved) is refused by the
-        part that moved.
+        A preparation names its cutoff. Given none, the cutoff is the moment of submission and the
+        request is new. Given the cutoff and binding a preview handed out, the request is that
+        captured intent: a completed preparation for it is reused while its packet still reads,
+        whatever the clock says now; a binding that no longer describes this workspace (scope,
+        source package, policy or permission moved) is refused by the part that moved.
         """
         if not self.refresh_source():
             return self._source_pending()
@@ -2424,17 +2422,14 @@ class EvidenceReviewApplication:
     ) -> ReviewOutcome | None:
         """The refresh already in flight for this exact run, when one is.
 
-        Two callers asking the same question -- a second click, a second
-        session submitting the same captured intent -- get the one Task that
-        is queued or running for it, not a second acquisition of the same
-        bodies behind it. The same question means the same Task input (run,
-        cutoff, resource binding, purpose). A request for another cutoff,
-        another package or another purpose -- or a single preparation queued
-        before every book was a run -- is another question: it is not
-        answered by the active Task, and the existing queue admits or refuses
-        it as busy. Decided last, after every reuse and refusal of the request
-        itself, so a completed preparation for the exact run is still
-        `REUSED_EXACT`.
+        Two callers asking the same question -- a second click, a second session submitting the same
+        captured intent -- get the one Task that is queued or running for it, not a second
+        acquisition of the same bodies behind it. The same question means the same Task input (run,
+        cutoff, resource binding, purpose). A request for another cutoff, another package or another
+        purpose -- or a single preparation queued before every book was a run -- is another
+        question: it is not answered by the active Task, and the existing queue admits or refuses it
+        as busy. Decided last, after every reuse and refusal of the request itself, so a completed
+        preparation for the exact run is still `REUSED_EXACT`.
         """
 
         active = self._active_refresh_task(scope=coverage.resolved.scope)
@@ -2493,10 +2488,10 @@ class EvidenceReviewApplication:
         ):
             return self._run_binding_refusal(preparation_binding_hash, run=run, preview=preview)
         if not run.units:
-            # Nothing is left to read: every holding's filings in the window were
-            # read earlier, or it filed nothing. The run is sealed where every run
-            # is -- the review reads it -- and nothing executes; the last review
-            # carries forward when nothing it read has changed (W3).
+            # Nothing is left to read: every holding's filings in the window were read earlier, or
+            # it filed nothing. The run is sealed where every run is -- the review reads it -- and
+            # nothing executes; the last review carries forward when nothing it read has changed
+            # (W3).
             adapter.admit_run(run)
             return self._nothing_new(run, selector=selector, dispatcher=dispatcher)
         deadline = run.units[0].request.acquisition_deadline
@@ -2616,9 +2611,9 @@ class EvidenceReviewApplication:
         except ValueError as error:
             if str(error) != "alternative_evidence.preparation_superseded":
                 raise
-            # Prepared under an acquisition, canonicalization, retrieval or
-            # allocation contract this workspace has since superseded: what it
-            # read stays readable as history, but no current plan continues it.
+            # Prepared under an acquisition, canonicalization, retrieval or allocation contract this
+            # workspace has since superseded: what it read stays readable as history, but no current
+            # plan continues it.
             return ReviewOutcome(
                 disposition="REFUSED_PREPARATION_SUPERSEDED",
                 detail="This packet was prepared under a contract this workspace has since "
@@ -3373,10 +3368,9 @@ class EvidenceReviewApplication:
                 )
             except ValidationError as error:
                 return (_dossier_refused(chosen, error), cutoff)
-        # A book wider than one unit: every unit with a current analysis is
-        # read exactly; every unit without one is named, with its reason, and
-        # stays in the coverage denominator. Complete and partial are told
-        # apart by the coverage the dossier reports, never by rounding.
+        # A book wider than one unit: every unit with a current analysis is read exactly; every unit
+        # without one is named, with its reason, and stays in the coverage denominator. Complete and
+        # partial are told apart by the coverage the dossier reports, never by rounding.
         children = []
         unreviewed = []
         for unit_id, value in selections.items():
@@ -4354,14 +4348,12 @@ class EvidenceReviewApplication:
     ) -> dict[str, object]:
         """Compare exact published review facts and report incomparable subjects explicitly.
 
-        What changed between two published reviews, as facts a reader can
-        trace: findings new, changed, no longer found or unchanged (matched on
-        issuer set, topic and the analyst's own words, never by handle, which
-        is per publication), dispositions that moved, coverage and issuer
-        position changes, and the sources each side stood on. Unavailable,
-        with the reason, when the two reviews are not comparable (another
-        book, another subject). Never a judgment: a finding that is no longer
-        found is reported as that, not as resolved.
+        What changed between two published reviews, as facts a reader can trace: findings new,
+        changed, no longer found or unchanged (matched on issuer set, topic and the analyst's own
+        words, never by handle, which is per publication), dispositions that moved, coverage and
+        issuer position changes, and the sources each side stood on. Unavailable, with the reason,
+        when the two reviews are not comparable (another book, another subject). Never a judgment: a
+        finding that is no longer found is reported as that, not as resolved.
         """
         current = self.review_publications.read(publication_hash)
         prior = self.review_publications.read(prior_publication_hash)

@@ -915,6 +915,10 @@
   "detail": "The retained input manifest at {subject}/manifest.json is missing, so storage cannot verify its retained references. Restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
+ "storage.disk_space_insufficient": {
+  "detail": "The disk does not hold this write with its recovery headroom. Free disk space or move the workspace to a larger disk, then resume the stopped Task from its recovery view; its verified stages are kept.",
+  "next_action": "FREE_SYSTEM_RESOURCES_AND_READ_TASK_RECOVERY"
+ },
  "storage.managed_capacity_exceeded": {
   "detail": "Managed storage exceeds the workspace cap. Raise the cap (`alphalattice storage set --cap-bytes <bytes>`) or preview a cleanup (`alphalattice storage plan`) for the person to confirm.",
   "next_action": "RAISE_THE_CAP_OR_PLAN_A_CLEANUP"

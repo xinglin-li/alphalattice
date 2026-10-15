@@ -739,10 +739,13 @@ def test_automation_uses_durable_settings_and_sequential_wakes(tmp_path):
     )
 
     calls = []
-    reached = threading.Event()
+    reached, refused = threading.Event(), threading.Event()
 
     def execute(request):
         calls.append(request.operation)
+        if refused.is_set():  # the workspace's inputs are not ready
+            code = "strategy_score.workspace_inputs_not_ready"
+            return {"status": "REFUSED", "failure_code": code}
         if request.operation == "RESEARCH_UPDATE_PLAN":
             return {"status": "PLANNED", "update_plan_hash": "a" * 64}
         if calls.count("RESEARCH_UPDATE_RUN") % 2 == 0:
@@ -780,6 +783,13 @@ def test_automation_uses_durable_settings_and_sequential_wakes(tmp_path):
         assert len(calls) == 8
         second.configure(enabled=False, package_ids=(), chosen_by="INSTALLED_AGENT")
         assert second.readback()["status"] == "DISABLED"
+        refused.set()
+        reached.clear()
+        calls.clear()
+        second.configure(enabled=True, package_ids=("one", "two"), chosen_by="HUMAN")
+        assert not reached.wait(0.3) and calls == ["RESEARCH_UPDATE_PLAN"] * 2  # then they wait
+        second.command_completed()  # the worker is idle: each refused package is tried once
+        assert not reached.wait(0.3) and calls == ["RESEARCH_UPDATE_PLAN"] * 4
     finally:
         assert second.close(timeout=None)
 
@@ -813,9 +823,27 @@ def test_a_held_dated_update_runs_once_at_its_time_without_the_daily_setting(tmp
         now[0] += timedelta(hours=7)
         automation.held_wake.event.set()
         assert reached.wait(5)
+        assert automation.held_wake.seconds_until_due(now[0]) is None  # its worker sleeps
         reached.clear()
         automation.held_wake.event.set()  # once: a second wake runs nothing
         assert not reached.wait(0.1) and ran == [1] and daily == []
+        failing = [OSError("synthetic"), None]
+
+        def flaky():
+            if error := failing.pop(0):
+                raise error
+
+        automation.hold(now[0], flaky)
+        end = time.monotonic() + 5
+        while automation.held_wake.seconds_until_due(now[0]) != 30.0:
+            assert time.monotonic() < end, automation.held_wake.seconds_until_due(now[0])
+            reached.wait(0.01)
+        assert automation.held_host.last_error_code and failing == [None]  # kept, backed off
+        now[0] += timedelta(seconds=30)
+        automation.held_wake.event.set()
+        while failing:
+            assert time.monotonic() < end
+            reached.wait(0.01)
     finally:
         assert automation.close(timeout=None)
 

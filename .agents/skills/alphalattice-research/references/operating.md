@@ -19,11 +19,11 @@ conversation text or private data to either form.
 
 At first use and any missing-dependency refusal, run `python -m alphalattice.interface.local_application.native_setup doctor`; fill each `host_readiness` item by `who_decides`, disclosing locked repairs and relaying one question before an outside-lock install.
 
-Windows is the certified platform for this source-checkout setup; macOS and Linux are unverified. Use Python 3.12, uv and a browser from the checkout root. Dependency setup needs permission to download locked packages or a local cache; it prepares no research data:
+Windows is the certified platform for this source-checkout setup; macOS and Linux are unverified. Use Python 3.12, uv and a browser from the checkout root; the lock brings the Node that builds the Workbench. macOS also needs libomp (`brew install libomp`), which LightGBM loads, and Linux libatomic1, which the locked Node loads, and libgomp1, which LightGBM loads (`sudo apt install libatomic1 libgomp1`). They are system packages outside the lock: doctor's `system_libraries` names those missing with one install command, and the person is asked once. Dependency setup needs permission to download locked packages or a local cache; it prepares no research data:
 
 ```powershell
 uv sync --locked --all-extras
-.venv/Scripts/python.exe scripts/build_local_web_ui.py --product
+uv run python scripts/build_local_web_ui.py --product
 uv export --locked --all-extras --no-dev --no-emit-project --no-hashes --output-file .venv/alphalattice-runtime-requirements.txt
 uv tool install --python 3.12 --editable . --with-requirements .venv/alphalattice-runtime-requirements.txt --constraints .venv/alphalattice-runtime-requirements.txt
 ```
@@ -42,6 +42,12 @@ Configure the shipped guidance with the tool environment's own interpreter, bene
 ```powershell
 $toolDir = uv tool dir
 & "$toolDir/alphalattice/Scripts/python.exe" -m alphalattice.interface.local_application.native_setup --project <agent-project> configure --host <codex-or-claude-code>
+```
+
+On macOS and Linux the interpreter is `bin/python`:
+
+```bash
+"$(uv tool dir)/alphalattice/bin/python" -m alphalattice.interface.local_application.native_setup --project <agent-project> configure --host <codex-or-claude-code>
 ```
 
 `configure` refuses to overwrite different files and answers `continue_here`: the files to read, the cards to start specialists from and a one-line `disclosure` for the person. A session opened with its `open_session` command loads them itself; offer it, never require it. On Claude Code with Bedrock, Vertex or Foundry, set `ANTHROPIC_DEFAULT_SONNET_MODEL` to pin a Sonnet version. Evidence review needs its declared retrieval environment, local model packs and an admitted issuer-source package; when `serve` reports one missing, run the setup command it returns.

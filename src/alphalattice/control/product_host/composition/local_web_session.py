@@ -718,10 +718,9 @@ class LocalPortfolioWebSession:
                 source_loader=self.data_source_loader,
             ),
         )
-        # The activity observer is composed after every owner it reads and
-        # before the socket opens, so the first request is already observed.
-        # Activity is optional infrastructure: a store that cannot open leaves
-        # the observer UNAVAILABLE on every read and the product usable.
+        # The activity observer is composed after every owner it reads and before the socket opens,
+        # so the first request is already observed. Activity is optional infrastructure: a store
+        # that cannot open leaves the observer UNAVAILABLE on every read and the product usable.
         activity = WorkspaceActivity(
             workspace=self.workspace,
             workspace_id=self.workspace_id,
@@ -889,7 +888,7 @@ class LocalPortfolioWebSession:
             finalization_store=finalization_store,
             authority=self.review_authority,
             official_source=(
-                partial(admit_workspace_source, self.workspace)
+                partial(admit_workspace_source, self.workspace, clock=self.clock)
                 if self._workspace_review_authority and self._official_source is None
                 else None
             ),
@@ -1870,9 +1869,8 @@ def build_local_web_application(
             HTTPStatus.OK,
             page.encode("utf-8"),
             "text/html; charset=utf-8",
-            # The sealed page styles itself inline, and the default policy
-            # forbids inline style. Naming its exact style by hash keeps the page
-            # byte-identical and the policy narrow.
+            # The sealed page styles itself inline, and the default policy forbids inline style.
+            # Naming its exact style by hash keeps the page byte-identical and the policy narrow.
             content_security_policy=report_policy(page),
         )
 

@@ -1291,6 +1291,10 @@ def test_a_sessions_task_listing_reads_each_artifact_from_its_owner_a_page_at_a_
     service = live.service
     assert service is not None
     submitted: dict[str, list[str]] = {"c-54": [], "t-54": []}
+    budget = ("cpu-budget", "set", "--cores", "auto")  # operational, as `host stop` is
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "c-54")
+    assert _cli(live, *budget)[0] == 0  # opens no goal: the first research request does
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
     runs = (
         ("CLAUDE_CODE_SESSION_ID", "c-54", "{}"),
         ("CLAUDE_CODE_SESSION_ID", "c-54", "top_k: 30\n"),
@@ -1310,7 +1314,14 @@ def test_a_sessions_task_listing_reads_each_artifact_from_its_owner_a_page_at_a_
     assert [row["task_id"] for row in page["tasks"]] == submitted["c-54"][::-1]
     assert page["next_cursor"] is None
     # The session's first research request opened the goal its Tasks attach to (AUTOBIND).
-    assert len({row["submitted_by"]["goal_id"] for row in page["tasks"]}) == 1
+    opened = {row["submitted_by"]["goal_id"] for row in page["tasks"]}
+    assert len(opened) == 1
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "c-54")
+    assert _cli(live, *budget)[0] == 0  # nor is it attributed to the goal the session holds
+    goal = _cli(live, "goal", "show", *opened)[1]["data"]
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
+    assert goal["goal"]["declaration"]["title"] == "Session work: strategy-book run", goal
+    assert "CPU_BUDGET_SET" not in {row["message_kind"] for row in goal["record"]["conversation"]}
     for row in page["tasks"]:
         assert row["submitted_by"]["goal_id"] is not None
         assert (row["submitted_by"]["vendor"], row["submitted_by"]["session"]) == (

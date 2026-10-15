@@ -124,6 +124,19 @@ def _project(live, host: str) -> Path:
     return project
 
 
+def _research(live: LocalPortfolioWebSession, folder: Path) -> list[str]:
+    """A research command: a book run on an empty spec (an operational one opens no goal)."""
+    (folder / "spec.yaml").write_text("{}", encoding="utf-8")
+    return [
+        "--workspace",
+        str(live.workspace),
+        "strategy-book",
+        "run",
+        "--file",
+        str(folder / "spec.yaml"),
+    ]
+
+
 def _session(monkeypatch, host: str, session: str | None = "fixture-parent") -> None:
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
@@ -608,14 +621,14 @@ def test_a_session_that_opens_a_goal_here_is_bound_without_a_separate_step(
 
 @pytest.mark.parametrize("host", ("codex", "claude-code"))
 def test_one_research_command_binds_the_session_and_opens_its_goal(
-    live: LocalPortfolioWebSession, monkeypatch, capsys, host
+    live: LocalPortfolioWebSession, monkeypatch, capsys, host, tmp_path
 ) -> None:
     """One research command binds the session and opens its goal."""
     from alphalattice.interface.local_application.native_setup import autobind_root
 
     _session(monkeypatch, host, "fixture-lead")
-    line = ["--workspace", str(live.workspace), "cpu-budget", "set", "--queue", "2"]
-    assert cli.main(line, serve=lambda _: 99) == 0
+    line = _research(live, tmp_path)
+    assert cli.main(line, serve=lambda _: 99) == 3  # admitted, its Task pending
     capsys.readouterr()
     root = autobind_root(live.workspace)
     binding = NativeResearchBinding.read(root, session=(host, "fixture-lead"))
@@ -638,21 +651,21 @@ def test_one_research_command_binds_the_session_and_opens_its_goal(
         row for row in record["conversation"] if row.get("input_channel") == "PRODUCT_OPERATION"
     ]
     # The Conversation shows the binding, then the request, both the Session's.
-    assert [row["message_kind"] for row in requests] == ["session_bound", "CPU_BUDGET_SET"]
+    assert [row["message_kind"] for row in requests] == ["session_bound", "RUN"]
     assert requests[1]["agent_session"] == "fixture-lead"
     assert bound[0]["payload"]["subject"]["goal_id"] == goals[0]["goal_id"]
     # The fact names the goal the Session holds, as its Sessions row reads it (STOPS-1).
     held = client.request({"operation": "GOAL_SHOW", "goal_id": goals[0]["goal_id"]})
     assert bound[0]["payload"]["subject"]["reference"] == f"case:{held['goal']['goal_hash']}"
     record_bytes = binding.record_path(root).read_bytes()
-    assert cli.main(line, serve=lambda _: 99) == 0
+    assert cli.main(line, serve=lambda _: 99) == 0  # the same plan answers its admitted Task
     capsys.readouterr()
     assert len(client.request({"operation": "GOAL_LIST"})["goals"]) == 1
     assert binding.record_path(root).read_bytes() == record_bytes
 
 
 def test_a_session_bound_by_a_read_names_the_goal_its_first_request_opens(
-    live: LocalPortfolioWebSession, monkeypatch, capsys
+    live: LocalPortfolioWebSession, monkeypatch, capsys, tmp_path
 ) -> None:
     """regression (STOPS-1, the Tech Lead's live check of 2026-10-08): a Session bound by its
     first read held no goal, and when its next request opened one its Sessions row still read
@@ -661,8 +674,7 @@ def test_a_session_bound_by_a_read_names_the_goal_its_first_request_opens(
     assert (
         cli.main(["--workspace", str(live.workspace), "workspace", "show"], serve=lambda _: 99) == 0
     )
-    line = ["--workspace", str(live.workspace), "cpu-budget", "set", "--queue", "2"]
-    assert cli.main(line, serve=lambda _: 99) == 0
+    assert cli.main(_research(live, tmp_path), serve=lambda _: 99) == 3  # admitted
     capsys.readouterr()
     client = LocalResearchClient(live.workspace)
     [goal] = client.request({"operation": "GOAL_LIST"})["goals"]

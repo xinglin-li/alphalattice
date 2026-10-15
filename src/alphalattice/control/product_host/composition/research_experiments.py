@@ -297,15 +297,18 @@ RETRYABLE_ARTIFACT_BLOCKS: frozenset[str] = frozenset(
 )
 """Stage refusals that name a required artifact that was missing or did not read.
 
-Once the artifact is back, the same execution contract can continue from its
-verified prefix and its checkpoint, so a person may ask for that explicitly. A
-scientific refusal, a permission refusal, an exhausted budget or a source that
-has not been repaired is not in this set and stays a stop.
+Once it is back, the same execution contract can continue from its verified prefix
+and checkpoint, so a person may ask for that. A scientific or permission refusal,
+an exhausted budget or an unrepaired source is not in this set and stays a stop.
 """
 
 
-RETRYABLE_CAPACITY_BLOCK = "storage.managed_capacity_exceeded"
-"""An operator capacity stop; the same declaration may continue after capacity is restored."""
+CAPACITY_BLOCKS = {
+    "storage.managed_capacity_exceeded": "Raise the cap (`storage set --cap-bytes <bytes>`) or "
+    "confirm a cleanup on the person's yes",
+    "storage.disk_space_insufficient": "Free disk space or move the workspace to a larger disk",
+}
+"""Capacity stops and their way on; the same declaration goes on once restored."""
 
 
 def retryable_block(failure_code: str | None) -> str | None:
@@ -313,7 +316,7 @@ def retryable_block(failure_code: str | None) -> str | None:
     if not failure_code:
         return None
     code = failure_code.split(":", 1)[0]
-    return code if code in RETRYABLE_ARTIFACT_BLOCKS or code == RETRYABLE_CAPACITY_BLOCK else None
+    return code if code in RETRYABLE_ARTIFACT_BLOCKS or code in CAPACITY_BLOCKS else None
 
 
 _VERIFIED_EVIDENCE: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
@@ -2210,12 +2213,11 @@ class ResearchExperimentApplication:
         code = retryable_block(task.failure_code)
         if code is None:
             return None
-        if code == RETRYABLE_CAPACITY_BLOCK:
+        if code in CAPACITY_BLOCKS:
             return (
-                "The stage stopped on storage.managed_capacity_exceeded. Raise the cap "
-                "(`storage set --cap-bytes <bytes>`) or confirm a cleanup on the person's yes, "
-                "then RECOVER with this version re-checks the current capacity and plan and "
-                "reopens the same Task; its verified stages and checkpoint are kept."
+                f"The stage stopped on {code}. {CAPACITY_BLOCKS[code]}, then RECOVER with this "
+                "version re-checks the current capacity and plan and reopens the same Task; its "
+                "verified stages and checkpoint are kept."
             )
         return (
             f"The stage stopped on {code}: a required artifact was missing or did not read. "
@@ -2293,7 +2295,7 @@ class ResearchExperimentApplication:
             }
         finally:
             self._admitted_workflows.pop(task_id, None)
-        if code == RETRYABLE_CAPACITY_BLOCK:
+        if code in CAPACITY_BLOCKS:
             try:
                 require_storage_capacity(self.session.workspace, additional_bytes=0)
             except StorageInventoryError as error:

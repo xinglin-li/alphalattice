@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -155,11 +155,15 @@ def network_access(
     """What decides network access for ``workspace``, the operator's offline switch first.
 
     Who set the workspace's control is named whatever decides, a hold or the switch included:
-    it is a fact about the control (OP19, U70).
+    it is a fact about the control (OP19, U70). A workspace's control is read on the caller's
+    clock, the Host's: a delegation's end is the Host's instant, so the machine's never decides.
     """
-    control, set_by = (
-        (None, None) if workspace is None else _control(workspace, now or datetime.now(UTC))
-    )
+    if workspace is None:
+        control, set_by = None, None
+    elif now is None:
+        raise TypeError("network_access reads a workspace control on the caller's clock: pass now")
+    else:
+        control, set_by = _control(workspace, now)
     if running_held_offline():
         return NetworkAccess(False, "RUN_HELD_OFFLINE", set_by)
     if offline(environment):
@@ -176,6 +180,7 @@ def set_network_access(
     delegation: str | None = None,
     until: datetime | None = None,
     relayed_by: str | None = None,
+    now: datetime,
 ) -> NetworkAccess:
     """Atomically persist the typed workspace setting and read effective permission.
 
@@ -185,6 +190,7 @@ def set_network_access(
         delegation: The person's delegation that sets it (a first-use goal), with ``until``.
         until: When that delegation's setting ends; after it the control reads closed.
         relayed_by: The agent session that relayed the person's yes, when one did.
+        now: The Host's clock, on which ``until`` was computed and is read back.
 
     Returns:
         Effective access after applying higher-priority run and operator offline holds.
@@ -199,7 +205,7 @@ def set_network_access(
     staged = path.with_suffix(".json.tmp")
     staged.write_text(json.dumps(record), "utf-8")
     replace_shared_file(staged, path)  # every request reads the control (V477)
-    return network_access(workspace)
+    return network_access(workspace, now=now)
 
 
 __all__ = [

@@ -560,7 +560,7 @@ class WorkspacePreparationApplication:
         )
 
     def _sources_allowed(self) -> None:
-        if not network_access(self.session.workspace).allowed and (
+        if not network_access(self.session.workspace, now=self.clock()).allowed and (
             self.provider is None
             or isinstance(self.provider, YFinanceMarketDataProvider)
             or self.source_loader is None
@@ -1035,7 +1035,7 @@ class WorkspacePreparationApplication:
             {}
             if access_failure is None
             else {
-                "network_access": network_access(self.session.workspace).body(
+                "network_access": network_access(self.session.workspace, now=self.clock()).body(
                     for_refusal=True, delegation=network_delegation
                 ),
                 "workspace_path": str(self.session.workspace),
