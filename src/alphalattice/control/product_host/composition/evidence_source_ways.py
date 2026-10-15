@@ -20,6 +20,8 @@ from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 
 SHORT_SOURCE_ACTION: Final = {
@@ -213,6 +215,7 @@ def source_ways(
     for_refusal: bool = False,
     refusal: str | None = None,
     delegation: str | None = None,
+    now: datetime,
 ) -> dict[str, object]:
     """The lawful ways on when the recorded package holds too few sources.
 
@@ -229,6 +232,7 @@ def source_ways(
         for_refusal: Whether official acquisition has actually been refused for network access.
         refusal: Why the official source is not admitted though consented, said first.
         delegation: Network authority validated by the first-use owner.
+        now: The Host's clock, on which the network control is read.
 
     Returns:
         The ``official`` consent command with what it needs first, the package rule, and the
@@ -240,9 +244,9 @@ def source_ways(
             "command": f'{" ".join(command_prefix())} --workspace "{workspace}" evidence-consent '
             f"set --per-issuer {DEFAULT_SOURCE_CONSENT.documents_per_issuer}",
             "before": str(
-                network_access(workspace).body(for_refusal=for_refusal, delegation=delegation)[
-                    "detail"
-                ]
+                network_access(workspace, now=now).body(
+                    for_refusal=for_refusal, delegation=delegation
+                )["detail"]
             )
             + " "
             + (

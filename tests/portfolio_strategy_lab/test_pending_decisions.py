@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -448,6 +449,34 @@ def test_current_attention_requires_a_successful_explicit_successor_of_this_vers
     assert fact.resolution == (
         "SUCCESSOR_SUCCEEDED" if successor_state is TaskLifecycle.SUCCEEDED else "STOPPED"
     )
+    if successor_state in {TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED}:  # a 0.1.3 chain
+        last = record(uuid4(), TaskLifecycle.SUCCEEDED)
+        onward = TaskRecoveryLink.create(
+            source_task_id=successor.task_id,
+            source_record_hash=successor.record_hash,
+            admission_request=request,
+            successor_task_id=last.task_id,
+            recorded_at=NOW,
+        )
+        chained = task_attention(
+            source, successors={**peers, last.task_id: last}, links=(confirmed, onward)
+        )
+        assert chained.successor_task_id == str(last.task_id) and not chained.unresolved
+        hops = [successor, *(record(uuid4(), TaskLifecycle.BLOCKED) for _ in range(600)), last]
+        ladder = [
+            TaskRecoveryLink.create(
+                source_task_id=a.task_id,
+                source_record_hash=a.record_hash,
+                admission_request=request,
+                successor_task_id=b.task_id,
+                recorded_at=NOW,
+            )
+            for a, b in pairwise(hops)
+        ]
+        deep = task_attention(
+            source, successors={h.task_id: h for h in hops}, links=(confirmed, *ladder)
+        )
+        assert deep.successor_task_id == str(last.task_id)  # no recursion limit, each Task once
 
     def refetch():
         return pending_decisions(

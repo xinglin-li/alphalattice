@@ -1271,7 +1271,13 @@ def test_a_replan_preview_and_admission_link_a_distinct_successor_across_restart
         assert source_after_success["attention"]["unresolved"] is False
         assert source_after_success["attention"]["resolution"] == "SUCCESSOR_SUCCEEDED"
         assert source_after_success["attention"]["successor_task_id"] == successor_id
+        successor_read = {"successor": {"operation": "STATUS", "task_id": successor_id}}
+        assert source_after_success["next_requests"] == successor_read, source_after_success
         assert decision_for(source_id, live) is None
+        # Resolved, the stop leaves the unfinished list, and its read leads to its successor.
+        status = _json(live, f"/api/status?task_id={source_id}")
+        assert status["next_requests"]["successor"]["task_id"] == successor_id, status
+        assert source_id not in str(_json(live, "/api/tasks/guardian")["tasks"])
         links = live.session.task_control_registry.recovery_links(  # type: ignore[union-attr]
             UUID(source_id)
         )

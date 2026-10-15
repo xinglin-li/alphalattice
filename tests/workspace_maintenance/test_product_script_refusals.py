@@ -356,7 +356,7 @@ def test_the_evidence_setup_names_the_network_hold_without_offering_to_override_
     from alphalattice.control.workspace_runtime.network_access import set_network_access
 
     monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
-    set_network_access(tmp_path, enabled=False)
+    set_network_access(tmp_path, enabled=False, now=datetime.now(UTC))
     assert setup.main(["--workspace", str(tmp_path), *acquisition]) == 2
     payload = json.loads(capsys.readouterr().out)
     assert payload["network_access"]["decided_by"] == "WORKSPACE_CONTROL"

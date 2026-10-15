@@ -430,7 +430,7 @@ class EvidenceCroProjector:
                     awaiting_alternative_evidence(book=book),
                     explanation=dossier.detail,
                     coverage_progress=progress,
-                    source_ways=source_ways(self.app.workspace, entities=None, book=chosen)
+                    source_ways=source_ways(self.app.workspace, entities=None, book=chosen, now=now)
                     if packaged
                     else None,
                 ),
@@ -831,7 +831,7 @@ class EvidenceCroProjector:
         if not short:
             return None
         whole = short[0].entity_ids if chosen is not None and total == 1 else None
-        return source_ways(self.app.workspace, entities=whole, book=chosen)
+        return source_ways(self.app.workspace, entities=whole, book=chosen, now=self.app.clock())
 
     def _failed_units(
         self, resolved: ResolvedBookScope, progress: EvidenceCroCoverageProgress | None

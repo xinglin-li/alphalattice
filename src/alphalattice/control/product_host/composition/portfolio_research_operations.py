@@ -158,6 +158,8 @@ from alphalattice.control.product_host.composition.task_recovery import (
     TaskAttentionFact,
     TaskRecoveryView,
     build_task_recovery_view,
+    finished_stop,
+    resolved_read,
     stop_detail,
     way_on,
 )
@@ -851,7 +853,7 @@ class PortfolioResearchOperations:
             code = public_failure(error, "person_confirmation.refused")
             return worded_refusal(
                 {"status": "REFUSED", "failure_code": code, "refused": code},
-                workspace=self.workspace_session.workspace,
+                **self._network(),
             )
         if goal is None:
             # Every refusal leaves with its words and a way on (OP4, V449).
@@ -860,7 +862,7 @@ class PortfolioResearchOperations:
                     self._execute_observed(request, caller=caller, agent_execution=agent_execution),
                     request,
                 ),
-                workspace=self.workspace_session.workspace,
+                **self._network(),
             )
             if request.operation.startswith("GOAL_"):
                 # After a goal's own operation, so the bound fact is filed under it.
@@ -906,7 +908,7 @@ class PortfolioResearchOperations:
         # The goal the request counted toward, which the answer's context names (V401).
         return worded_refusal(
             _carried({**body, "attributed_goal_id": str(goal.goal_id)}, request),
-            workspace=self.workspace_session.workspace,
+            **self._network(),
         )
 
     def _open_session_goal(
@@ -1052,6 +1054,10 @@ class PortfolioResearchOperations:
             return None
         return f"{provenance.vendor}:{provenance.session}"
 
+    def _network(self) -> dict[str, Any]:
+        """The workspace's network control and the Host's clock it is read on."""
+        return {"workspace": self.workspace_session.workspace, "now": self.dispatcher.clock()}
+
     def _delegating_goal(self) -> Goal | None:
         """The first-use goal whose delegation this request runs under, if any (V452)."""
         provenance = REQUEST_PROVENANCE.get()
@@ -1075,11 +1081,11 @@ class PortfolioResearchOperations:
             return
         # Only a setting the delegation still holds is undone: a person who set the network
         # since keeps theirs (V460).
-        held = network_access(self.workspace_session.workspace).set_by
+        held = network_access(**self._network()).set_by
         if held is None or held.get("delegation") != f"first-use-goal:{goal.goal_id}":
             return
         set_network_access(
-            self.workspace_session.workspace,
+            **self._network(),
             enabled=False,
             delegation=f"first-use-goal:{goal.goal_id}",
             until=self.goals.delegation_ends(goal),
@@ -1226,7 +1232,7 @@ class PortfolioResearchOperations:
                     self._observe(
                         lambda: observer.refused(request.operation, raised, caller=caller)
                     )
-                # Observation preserves the original transport exception for the entry boundary.
+                # Observation keeps the original transport exception.
                 raise
         if observer is not None and span is not None:
             self._observe(lambda: observer.returned(span, body))
@@ -1391,7 +1397,7 @@ class PortfolioResearchOperations:
                 return refused("activity.storage_unavailable")
             return self.observer.refusals(days=request.view_last_days or ACTIVITY_REFUSAL_DAYS)
         if request.operation == "NETWORK_ACCESS":
-            return network_access(self.workspace_session.workspace).body(
+            return network_access(**self._network()).body(
                 delegation=self.goals.network_delegation(REQUEST_PROVENANCE.get(), caller)
             )
         if request.operation == "NETWORK_ACCESS_SET":
@@ -1403,7 +1409,7 @@ class PortfolioResearchOperations:
             # A first-use goal's step holds only until its delegation ends (OP19, V452).
             delegated = self._delegating_goal()
             return set_network_access(
-                self.workspace_session.workspace,
+                **self._network(),
                 enabled=request.network_enabled,
                 delegation=None if delegated is None else f"first-use-goal:{delegated.goal_id}",
                 until=None if delegated is None else self.goals.delegation_ends(delegated),
@@ -1624,7 +1630,7 @@ class PortfolioResearchOperations:
             case "RESEARCH_UPDATE_AUTOMATION_CONFIGURE":
                 assert caller != "SERVICE_AUTOMATION"
                 if caller == "EXTERNAL_AUTOMATION":
-                    # A person turns it on or off, as the registry marks it (PERSON_ONLY, V407).
+                    # A person turns it on or off (PERSON_ONLY, V407).
                     raise ValueError("research_update.human_confirmation_required")
                 if (
                     type(request.automation_enabled) is not bool
@@ -2275,9 +2281,7 @@ class PortfolioResearchOperations:
                             raise
                         return agent_bundle_refusal("agent_bundle.preparation_stale")
                     except ValueError as error:
-                        # A packet prepared under authority the Host no longer holds -- an install
-                        # replaced its package -- is refused by what moved, with the book's preview
-                        # that prepares the unit again.
+                        # A packet whose authority an install replaced is refused by what moved.
                         if not str(error).startswith(STALE_PACKET):
                             raise
                         return stale_packet_refusal(
@@ -2565,9 +2569,8 @@ class PortfolioResearchOperations:
         raise ValueError("portfolio_research.operation_unknown")
 
     def _refresh_prepared_inputs(self) -> None:
-        # Asked on every operation, so the manifest's stat answers first whether anything
-        # changed: Task counts under one connection lock queued every light read (W10, py-spy),
-        # and a listing validating every Task record took ~0.2 s a poll on thirty-five Tasks.
+        # Asked on every operation: the manifest's stat answers first whether anything changed
+        # (W10: a lock-held count queued every light read; a full listing took ~0.2 s a poll).
         stamp = _file_stamp(self.workspace_session.workspace / RESEARCH_WORKSPACE_MANIFEST_NAME)
         if stamp is not None and stamp == self._manifest_stamp:
             return
@@ -2686,7 +2689,7 @@ class PortfolioResearchOperations:
                     clock=self.dispatcher.clock,
                 )
             except (ValueError, RuntimeError, OSError) as error:
-                return setup_refusal(arguments, error)
+                return setup_refusal(arguments, error, now=self.dispatcher.clock())
         if not arguments.install:
             return refused("local_client.request_invalid")
         if caller != "HUMAN":
@@ -3161,9 +3164,7 @@ class PortfolioResearchOperations:
                 )
                 return {
                     **self._run_answer(sent),
-                    **explain(
-                        sent.refusal_detail or "", workspace=self.workspace_session.workspace
-                    ),
+                    **explain(sent.refusal_detail or "", **self._network()),
                     **{
                         None: {},
                         "workspace_preparation.preview_required": {
@@ -3248,9 +3249,7 @@ class PortfolioResearchOperations:
                         **answer,
                         # A refused admission's words, a provider's wait among them (V375).
                         **(
-                            explain(
-                                submitted.refusal_detail, workspace=self.workspace_session.workspace
-                            )
+                            explain(submitted.refusal_detail, **self._network())
                             if submitted.refusal_detail
                             else {}
                         ),
@@ -4025,9 +4024,7 @@ class PortfolioResearchOperations:
         if stopped:
             body.update(stopped)
         elif projection.lifecycle.value == "DEFERRED":
-            # A deferred Task waits on its retry time and then on its plan sent again, which no
-            # waiter outlasts: its read says when and by which request, as its owner's readback
-            # words it, and a waiter ends on it with that.
+            # A deferred Task's read says when and by which request it resumes.
             body.update(self._deferred_way(projection.task_kind, task_id))
         registry = self.workspace_session.task_control_registry
         try:
@@ -4048,15 +4045,17 @@ class PortfolioResearchOperations:
         body["stage_updated_at"] = stage_timing["updated_at"] if stage_timing else None
         if record.task_kind == PREPARATION_TASK_KIND:
             body.update(self.preparation.activity_readback(record))
-        body["attention"] = self.supervisor.attention((record,))[task_id].model_dump(mode="json")
-        # What the stopped stage's owner saw beside its code, as its work item keeps it (V444).
+        fact = self.supervisor.attention((record,))[task_id]
+        body["attention"] = fact.model_dump(mode="json")
+        resolved_read(body, fact)
+        # What the stopped stage's owner saw beside its code (V444).
         cause = next((item.failure_cause for item in items if item.failure_cause), None)
         if cause is not None:
             body["failure_cause"] = cause.model_dump(mode="json")
         # The agent session that submitted it, where its request named one (U33).
         agent = registry.submitted_by(task_id)
         body["submitted_by"] = None if agent is None else agent.model_dump(mode="json")
-        # Its open incident, as the Supervisor last found it: a follower wakes on it (GY2, WK).
+        # Its open incident, as the Supervisor last found it (GY2, WK).
         incident = self.supervisor.open_incident(task_id)
         body["incident"] = (
             None
@@ -4097,8 +4096,7 @@ class PortfolioResearchOperations:
             raise ValueError("workspace_data_update.not_configured")
         updated = self.data_update.readback(task_id)
         if updated.get("task_lifecycle") == "BLOCKED" and updated.get("task_id"):
-            # A stop its plan's rerun resumes offers that rerun, as a deferral offers its resume
-            # (V600).
+            # A stop its plan's rerun resumes offers that rerun (V600).
             offer = self._resume_offer(UUID(str(updated["task_id"])))
             offered = cast(dict[str, Any], updated.get("next_requests") or {})
             task = self.workspace_session.task_control_registry.task(UUID(str(updated["task_id"])))
@@ -4529,6 +4527,7 @@ class PortfolioResearchOperations:
         body.update({key: value for key, value in context.items() if key != "next_requests"})
         subject = cast(dict[str, object], context.get("next_requests") or {})
         way_on(body, way, offered, subject, snapshot.projection.lifecycle in _RECOVERY_SOURCES)
+        resolved_read(body, attention)
         return body
 
     def _task_replan(self, task: TaskRecord) -> dict[str, object] | None:
@@ -4905,7 +4904,7 @@ class PortfolioResearchOperations:
             task_id=str(task_id),
             lifecycle=lifecycle,
             portfolio=book,
-            workspace=self.workspace_session.workspace,
+            **self._network(),
         )
         # A code the door's table words reads in those words when its owner adds none, as a
         # refusal does at the door (OP4): a walk refused before it opens says why (V519).
@@ -4942,10 +4941,7 @@ class PortfolioResearchOperations:
             except (ValueError, KeyError, OSError):
                 refusals.append(task_record_refusal(str(task.task_id)))
                 continue
-            if (
-                task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
-                and not cast(dict[str, object], view["attention"])["unresolved"]
-            ):
+            if finished_stop(task.lifecycle, cast(dict[str, object], view["attention"])):
                 continue
             stages = cast(list[dict[str, object]], view["stages"])
             health = cast(dict[str, object], view["health"])
@@ -6493,7 +6489,7 @@ def _position_rows(
             **review_requests(cast(dict[str, str], body["review_selector"])),
         }
         if risk is not None:
-            # The date's predicted Risk, report only; the sealed publication keeps its own status.
+            # The date's predicted Risk, report only.
             body["date_risk"] = risk(body, positions)
         if review is not None:
             try:

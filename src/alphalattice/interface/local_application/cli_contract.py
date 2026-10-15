@@ -21,7 +21,7 @@ from collections import Counter
 from collections.abc import Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
@@ -356,12 +356,15 @@ NETWORK_ACCESS_REFUSALS: Final = frozenset(
 """Permission refusals whose way on reads the effective network decision (OP5, TE12)."""
 
 
-def refusal_words(code: str, *, workspace: Path | None = None) -> dict[str, Any]:
+def refusal_words(
+    code: str, *, workspace: Path | None = None, now: datetime | None = None
+) -> dict[str, Any]:
     """A refusal code's words and next action, where the table words it (OP4, V449).
 
     Args:
         code: The refusal's code; what follows its first colon fills the words' `{subject}`.
         workspace: The actual control for network advice; absent context offers a read only.
+        now: The Host's clock, on which a workspace's control is read.
 
     Returns:
         Its ``detail`` and ``next_action``; empty for a code the table does not word.
@@ -379,7 +382,7 @@ def refusal_words(code: str, *, workspace: Path | None = None) -> dict[str, Any]
     if base in NETWORK_ACCESS_REFUSALS:
         from alphalattice.control.workspace_runtime.network_access import network_access
 
-        access = network_access(workspace)
+        access = network_access(workspace, now=now)
         decision = access.body(for_refusal=True)
         prefix = (
             f"The research update needs {subject}. "
@@ -431,7 +434,9 @@ def refusal_code(body: Mapping[str, Any]) -> str | None:
     return None
 
 
-def worded_refusal(body: dict[str, Any], *, workspace: Path | None = None) -> dict[str, Any]:
+def worded_refusal(
+    body: dict[str, Any], *, workspace: Path | None = None, now: datetime | None = None
+) -> dict[str, Any]:
     """A refusal as it leaves the Host, with words and a way on (OP4, V449).
 
     Its owner's words and way on, and, where the owner gave none, its code's own.
@@ -439,6 +444,7 @@ def worded_refusal(body: dict[str, Any], *, workspace: Path | None = None) -> di
     Args:
         body: The owner's answer.
         workspace: The actual control whose effective network decision words a refusal.
+        now: The Host's clock, on which that control is read.
 
     Returns:
         The refusal with what it lacked filled from the table; any other answer as it is.
@@ -446,7 +452,7 @@ def worded_refusal(body: dict[str, Any], *, workspace: Path | None = None) -> di
     code = refusal_code(body) if refused(body) else None
     if code is None:
         return body
-    words = refusal_words(code, workspace=workspace)
+    words = refusal_words(code, workspace=workspace, now=now)
     if code.partition(":")[0] in NETWORK_ACCESS_REFUSALS:
         source_access = body.get("source_network_access")
         source_ways = body.get("source_ways")

@@ -22,6 +22,7 @@ from alphalattice.control.guanyin.tasks.supervision import (
 )
 from alphalattice.control.product_host.composition.task_recovery import (
     TaskAttentionFact,
+    finished_stop,
     task_attention,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord, TaskRecoveryLink
@@ -298,6 +299,8 @@ def test_attention_requires_a_current_explicit_link_and_a_succeeded_child() -> N
     )
     assert not resolved_by_incident.unresolved
     assert resolved_by_incident.resolution == "INCIDENT_RESOLVED"
+    # An incident resolved is no successor: the stop stays on the unfinished list.
+    assert not finished_stop(stopped.lifecycle, resolved_by_incident.model_dump())
 
 
 def test_a_successful_current_task_resolves_as_not_stopped() -> None:

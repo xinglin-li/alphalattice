@@ -149,7 +149,7 @@ def test_the_running_host_installs_a_package_as_a_task_of_five_stages(tmp_path, 
     verify; it binds the package and asks the Host to serve it."""
     from alphalattice.control.workspace_runtime.network_access import set_network_access
 
-    set_network_access(tmp_path, enabled=True)
+    set_network_access(tmp_path, enabled=True, now=datetime.now(UTC))
     served: list[bool] = []
     task, before, after = _install(tmp_path, served=served)
     assert task.lifecycle.value == "SUCCEEDED", task.failure_code
@@ -164,7 +164,7 @@ def test_a_recovered_install_runs_only_the_stage_it_stopped_in(tmp_path, acquisi
 
     from alphalattice.control.workspace_runtime.network_access import set_network_access
 
-    set_network_access(tmp_path, enabled=True)
+    set_network_access(tmp_path, enabled=True, now=datetime.now(UTC))
     whole = setup.canonicalize_source_documents
     stops = [KeyError("a process that stopped mid-stage")]
 
@@ -186,7 +186,7 @@ def test_a_cancelled_install_binds_nothing(tmp_path, acquisition, monkeypatch):
 
     from alphalattice.control.workspace_runtime.network_access import set_network_access
 
-    set_network_access(tmp_path, enabled=True)
+    set_network_access(tmp_path, enabled=True, now=datetime.now(UTC))
     whole = setup.canonicalize_source_documents
     asked: list[Any] = []
 
@@ -408,7 +408,7 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
         with pytest.raises(RuntimeError, match="semantic_capability_not_ready") as raised:
             setup.materialize(args)
     # Its way on fills the runtime and reads the packs, never the same check again.
-    ways = setup.setup_refusal(args, raised.value)["next_commands"]
+    ways = setup.setup_refusal(args, raised.value, now=datetime.now(UTC))["next_commands"]
     assert set(ways) == {"environment", "packs"} and "--offline" in ways["environment"]
     assert transport.calls == []
     args.preflight = False

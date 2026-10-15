@@ -27,6 +27,7 @@ codes), and this view does not transplant one.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime
 from typing import Any, Literal
@@ -432,6 +433,100 @@ def stop_detail(task_kind: str, code: str, source: str) -> str:
     )[:STOP_WORDS_BOUND]
 
 
+_STOPPED = frozenset(
+    {TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED, TaskLifecycle.CANCELLED}
+)
+"""The lifecycles `task_attention` reads as a stop, and a successor chain passes through."""
+
+
+def _chain_end(
+    task: TaskRecord,
+    child: TaskRecord,
+    successors: Mapping[UUID, TaskRecord],
+    links: tuple[TaskRecoveryLink, ...],
+) -> TaskRecord:
+    """The Task a successor chain ends in, as a 0.1.3 workspace kept one.
+
+    A successor that stopped too but whose own exact successor succeeded, at any depth, ends
+    this stop as well; else `child`. One breadth-first walk over the links, each Task once.
+    """
+    if child.lifecycle not in _STOPPED:
+        return child
+    onward: dict[UUID, list[TaskRecoveryLink]] = {}
+    for link in sorted(links, key=lambda link: (link.recorded_at, str(link.successor_task_id))):
+        onward.setdefault(link.source_task_id, []).append(link)
+    seen, queue = {task.task_id, child.task_id}, deque([child])
+    while queue:
+        node = queue.popleft()
+        for link in onward.get(node.task_id, ()):
+            following = successors.get(link.successor_task_id) if link.successor_task_id else None
+            if (
+                following is None
+                or following.task_id in seen
+                or link.source_record_hash != node.record_hash
+                or following.task_kind != node.task_kind
+            ):
+                continue
+            if following.lifecycle is TaskLifecycle.SUCCEEDED:
+                return following
+            seen.add(following.task_id)
+            if following.lifecycle in _STOPPED:
+                queue.append(following)
+    return child
+
+
+def _ended(actions: Any, attention: TaskAttentionFact | None) -> Any:
+    """A stop its successor chain ended offers none of its own actions, each saying why."""
+    if attention is None or attention.resolution != "SUCCESSOR_SUCCEEDED":
+        return actions
+    why = f"Continued by Task {attention.successor_task_id}, which succeeded."
+    return type(actions)(a.model_copy(update={"available": False, "reason": why}) for a in actions)
+
+
+def finished_stop(lifecycle: TaskLifecycle, fact: Mapping[str, object]) -> bool:
+    """Whether the unfinished list leaves a stopped Task out.
+
+    One owing no recovery, or a stop its successor chain ended, is finished there; a stop an
+    incident resolved still waits for its decision.
+
+    Args:
+        lifecycle: The Task's lifecycle.
+        fact: Its attention, as its recovery view carries it.
+
+    Returns:
+        True when the list leaves it out.
+    """
+    return (lifecycle is TaskLifecycle.RECOVERY_REQUIRED and not fact["unresolved"]) or (
+        lifecycle is TaskLifecycle.BLOCKED and fact["resolution"] == "SUCCESSOR_SUCCEEDED"
+    )
+
+
+def resolved_read(body: dict[str, object], fact: TaskAttentionFact | None) -> None:
+    """Lead a read of a stop its successor chain ended to that chain's end.
+
+    Its history stays readable, and its only way on is the chain end's read: never its own
+    resume, replan, cancel or network offer.
+
+    Args:
+        body: A status or recovery read, rewritten in place.
+        fact: The stop's attention.
+    """
+    if fact is None or fact.resolution != "SUCCESSOR_SUCCEEDED":
+        return
+    for key in ("failure_code", "network_access"):
+        body.pop(key, None)
+    successor = fact.successor_task_id
+    # Only the fields each read already carries, so a typed read keeps its shape.
+    owned = {
+        "detail": f"Continued by Task {successor}, which succeeded.",
+        "next_action": "READ_THE_TASK_WITH_TASK_SHOW",
+        "resume_refusal": None,
+        "cancel_available": False,
+    }
+    body.update({key: value for key, value in owned.items() if key in body})
+    body["next_requests"] = {"successor": {"operation": "STATUS", "task_id": successor}}
+
+
 def task_attention(
     task: TaskRecord,
     *,
@@ -443,11 +538,10 @@ def task_attention(
 ) -> TaskAttentionFact:
     """Project current stop attention from canonical Task, link and incident facts.
 
-    A confirmed successor link is evidence only for its exact source record hash.
-    A matching child must be a distinct canonical Task of the same kind in
-    ``SUCCEEDED``. A pending, failed, unreadable or invalid child keeps the source
-    stopped unless another exact-version confirmed child has succeeded or a
-    current-version resolved incident supplies independent resolution evidence.
+    A confirmed successor link is evidence only for its exact source record hash. A matching
+    child must be a distinct canonical Task of the same kind that ``SUCCEEDED``, or whose chain
+    did (`_chain_end`). A pending, failed, unreadable or invalid child keeps the source stopped
+    unless another exact-version child succeeded or a resolved incident gives independent evidence.
     A blocked request may also be superseded by a later successful admission with
     its exact Task kind and ResearchPlan.plan_hash. A changed plan stays distinct;
     it needs the owner's explicit recovery link. Successful unrelated Tasks are
@@ -458,22 +552,18 @@ def task_attention(
     proof of resolution and leave a stopped Task unresolved. An open incident for
     this Task's current execution takes precedence over a resolved incident.
     """
-    if task.lifecycle not in {
-        TaskLifecycle.BLOCKED,
-        TaskLifecycle.RECOVERY_REQUIRED,
-        TaskLifecycle.CANCELLED,
-    }:
+    if task.lifecycle not in _STOPPED:
         return TaskAttentionFact(
             unresolved=False,
             resolution="NOT_STOPPED",
             task_record_hash=task.record_hash,
         )
 
-    successor_records = successors or {}
+    successor_records, current_links_all = successors or {}, tuple(links)
     current_links = sorted(
         (
             link
-            for link in links
+            for link in current_links_all
             if link.source_task_id == task.task_id
             and link.source_record_hash == task.record_hash
             and link.successor_task_id is not None
@@ -494,14 +584,15 @@ def task_attention(
         )
         if canonical_child:
             assert child is not None
-            if child.lifecycle is TaskLifecycle.SUCCEEDED:
+            front = _chain_end(task, child, successor_records, current_links_all)
+            if front.lifecycle is TaskLifecycle.SUCCEEDED:
                 return TaskAttentionFact(
                     unresolved=False,
                     resolution="SUCCESSOR_SUCCEEDED",
                     task_record_hash=task.record_hash,
-                    successor_task_id=str(child.task_id),
-                    successor_task_hash=child.record_hash,
-                    successor_lifecycle=child.lifecycle.value,
+                    successor_task_id=str(front.task_id),
+                    successor_task_hash=front.record_hash,
+                    successor_lifecycle=front.lifecycle.value,
                 )
         if pending_successor is None:
             pending_successor = TaskAttentionFact(
@@ -1066,6 +1157,7 @@ def build_task_recovery_view(
         resume_refusal,
         replan_refusal,
     )
+    actions = _ended(actions, attention)
     health, incidents = _health_and_incidents(task, projection, liveness, stop, observed_at)
     values = {
         "task_id": str(task.task_id),
